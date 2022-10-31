@@ -676,6 +676,38 @@ pub const VMcompiler = struct {
                         }
                         return NumberType;
                     },
+                    .star => {
+                        _ = try self.genExpr(left, discardTopExprReg);
+                        _ = try self.genExpr(right, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushMultiply);
+                        }
+                        return NumberType;
+                    },
+                    .slash => {
+                        _ = try self.genExpr(left, discardTopExprReg);
+                        _ = try self.genExpr(right, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushDivide);
+                        }
+                        return NumberType;
+                    },
+                    .percent => {
+                        _ = try self.genExpr(left, discardTopExprReg);
+                        _ = try self.genExpr(right, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushMod);
+                        }
+                        return NumberType;
+                    },
+                    .caret => {
+                        _ = try self.genExpr(left, discardTopExprReg);
+                        _ = try self.genExpr(right, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushPower);
+                        }
+                        return NumberType;
+                    },
                     .minus => {
                         // Generating pushMinus1 for fib.cy increases performance ~10-12%.
                         var leftVar: u8 = 255;

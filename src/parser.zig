@@ -2024,19 +2024,19 @@ pub const OperatorType = enum(u3) {
     plus,
     minus,
     star,
-    star_star,
+    caret,
     slash,
     percent,
 };
 
-const LogicOpType = enum(u3) {
-    bang = 0,
-    bang_equal = 1,
-    less = 2,
-    less_equal = 3,
-    greater = 4,
-    greater_equal = 5,
-    equal_equal = 6,
+const LogicOpType = enum {
+    bang,
+    bang_equal,
+    less,
+    less_equal,
+    greater,
+    greater_equal,
+    equal_equal,
 };
 
 pub const TokenType = enum {
@@ -2059,6 +2059,7 @@ pub const TokenType = enum {
     logic_op,
     equal,
     plus_equal,
+    star_equal,
     new_line,
     indent,
     return_k,
@@ -2145,7 +2146,7 @@ pub const BinaryExprOp = enum {
     plus,
     minus,
     star,
-    star_star,
+    caret,
     slash,
     percent,
     bang_equal,
@@ -2363,7 +2364,7 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
         .plus => .plus,
         .minus => .minus,
         .star => .star,
-        .star_star => .star_star,
+        .caret => .caret,
         .slash => .slash,
         .percent => .percent,
     };
@@ -2387,7 +2388,7 @@ fn toBinExprOpFromLogicOp(op: LogicOpType) !BinaryExprOp {
 pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
     switch (op) {
         .slash,
-        .star_star,
+        .caret,
         .star => {
             return 2;
         },
@@ -2594,10 +2595,13 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         p.pushOpToken(.plus, start);
                     }
                 },
+                '^' => {
+                    p.pushOpToken(.caret, start);
+                },
                 '*' => {
-                    if (peekChar(p) == '*') {
+                    if (peekChar(p) == '=') {
                         advanceChar(p);
-                        p.pushOpToken(.star_star, start);
+                        p.pushToken(.star_equal, start);
                     } else {
                         p.pushOpToken(.star, start);
                     }

@@ -963,40 +963,37 @@ test "Binary Expressions" {
     );
     try t.eq(val.asI32(), 2);
 
-//     val = try run.eval(
-//         \\3 * 4
-//     );
-//     try t.eq(val.asI32(), 12);
-//     run.deinitValue(val);
+    val = try run.eval(
+        \\3 * 4
+    );
+    try t.eq(val.asI32(), 12);
 
-//     val = try run.eval(
-//         \\20 / 5
-//     );
-//     try t.eq(val.asI32(), 4);
-//     run.deinitValue(val);
+    val = try run.eval(
+        \\20 / 5
+    );
+    try t.eq(val.asI32(), 4);
 
-//     // Power
-//     val = try run.eval(
-//         \\2 ** 5
-//     );
-//     try t.eq(val.asI32(), 32);
-//     run.deinitValue(val);
+    // Power
+    val = try run.eval(
+        \\2 ^ 5
+    );
+    try t.eq(val.asI32(), 32);
 
-//     // Modulus
-//     val = try run.eval(
-//         \\3 % 2
-//     );
-//     try t.eq(val.asI32(), 1);
-//     run.deinitValue(val);
+    t.setLogLevel(.debug);
 
-//     // Right function call.
-//     val = try run.eval(
-//         \\func foo():
-//         \\  return 123
-//         \\1 + foo()
-//     );
-//     try t.eq(val.asI32(), 124);
-//     run.deinitValue(val);
+    // Modulus
+    val = try run.eval(
+        \\3 % 2
+    );
+    try t.eq(val.asI32(), 1);
+
+    // Right function call.
+    val = try run.eval(
+        \\func foo():
+        \\  return 123
+        \\1 + foo()
+    );
+    try t.eq(val.asI32(), 124);
 }
 
 const RunnerImpl = switch (build_options.cyEngine) {

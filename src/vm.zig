@@ -1543,6 +1543,38 @@ pub const VM = struct {
                     self.popStackFrame(0);
                     continue;
                 },
+                .pushMultiply => {
+                    self.pc += 1;
+                    self.stack.top -= 1;
+                    const left = self.stack.buf[self.stack.top-1];
+                    const right = self.stack.buf[self.stack.top];
+                    self.stack.buf[self.stack.top-1] = evalMultiply(left, right);
+                    continue;
+                },
+                .pushDivide => {
+                    self.pc += 1;
+                    self.stack.top -= 1;
+                    const left = self.stack.buf[self.stack.top-1];
+                    const right = self.stack.buf[self.stack.top];
+                    self.stack.buf[self.stack.top-1] = evalDivide(left, right);
+                    continue;
+                },
+                .pushMod => {
+                    self.pc += 1;
+                    self.stack.top -= 1;
+                    const left = self.stack.buf[self.stack.top-1];
+                    const right = self.stack.buf[self.stack.top];
+                    self.stack.buf[self.stack.top-1] = evalMod(left, right);
+                    continue;
+                },
+                .pushPower => {
+                    self.pc += 1;
+                    self.stack.top -= 1;
+                    const left = self.stack.buf[self.stack.top-1];
+                    const right = self.stack.buf[self.stack.top];
+                    self.stack.buf[self.stack.top-1] = evalPower(left, right);
+                    continue;
+                },
                 .end => {
                     return;
                 },
@@ -1624,6 +1656,83 @@ fn evalMinus(left: cy.Value, right: cy.Value) cy.Value {
             cy.TagFalse => return Value.initF64(-right.toF64()),
             cy.TagTrue => return Value.initF64(1 - right.toF64()),
             cy.TagNone => return Value.initF64(-right.toF64()),
+            else => stdx.panic("unexpected tag"),
+        }
+    }
+}
+
+fn evalPower(left: cy.Value, right: cy.Value) cy.Value {
+    @setRuntimeSafety(debug);
+    if (left.isNumber()) {
+        return Value.initF64(std.math.pow(f64, left.asF64(), right.toF64()));
+    } else {
+        switch (left.getTag()) {
+            cy.TagFalse => return Value.initF64(0),
+            cy.TagTrue => return Value.initF64(1),
+            cy.TagNone => return Value.initF64(0),
+            else => stdx.panic("unexpected tag"),
+        }
+    }
+}
+
+fn evalDivide(left: cy.Value, right: cy.Value) cy.Value {
+    @setRuntimeSafety(debug);
+    if (left.isNumber()) {
+        return Value.initF64(left.asF64() / right.toF64());
+    } else {
+        switch (left.getTag()) {
+            cy.TagFalse => return Value.initF64(0),
+            cy.TagTrue => return Value.initF64(1.0 / right.toF64()),
+            cy.TagNone => return Value.initF64(0),
+            else => stdx.panic("unexpected tag"),
+        }
+    }
+}
+
+fn evalMod(left: cy.Value, right: cy.Value) cy.Value {
+    @setRuntimeSafety(debug);
+    if (left.isNumber()) {
+        return Value.initF64(std.math.mod(f64, left.asF64(), right.toF64()) catch std.math.nan_f64);
+    } else {
+        switch (left.getTag()) {
+            cy.TagFalse => {
+                if (right.toF64() != 0) {
+                    return Value.initF64(0);
+                } else {
+                    return Value.initF64(std.math.nan_f64);
+                }
+            },
+            cy.TagTrue => {
+                const rightf = right.toF64();
+                if (rightf > 0) {
+                    return Value.initF64(1);
+                } else if (rightf == 0) {
+                    return Value.initF64(std.math.nan_f64);
+                } else {
+                    return Value.initF64(rightf + 1);
+                }
+            },
+            cy.TagNone => {
+                if (right.toF64() != 0) {
+                    return Value.initF64(0);
+                } else {
+                    return Value.initF64(std.math.nan_f64);
+                }
+            },
+            else => stdx.panic("unexpected tag"),
+        }
+    }
+}
+
+fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
+    @setRuntimeSafety(debug);
+    if (left.isNumber()) {
+        return Value.initF64(left.asF64() * right.toF64());
+    } else {
+        switch (left.getTag()) {
+            cy.TagFalse => return Value.initF64(0),
+            cy.TagTrue => return Value.initF64(right.toF64()),
+            cy.TagNone => return Value.initF64(0),
             else => stdx.panic("unexpected tag"),
         }
     }

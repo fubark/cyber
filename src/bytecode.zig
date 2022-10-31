@@ -464,6 +464,10 @@ pub const OpCode = enum(u8) {
     cont,
     forRange,
     forIter,
+    pushMultiply,
+    pushDivide,
+    pushPower,
+    pushMod,
 
     /// Indicates the end of the main script.
     end,
@@ -471,7 +475,7 @@ pub const OpCode = enum(u8) {
 
 comptime {
     const end = @enumToInt(OpCode.end);
-    if (end != 48) {
+    if (end != 52) {
         @compileError(std.fmt.comptimePrint("Unexpected end op code {}", .{end}));
     }
 }

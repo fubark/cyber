@@ -1,5 +1,4 @@
 const std = @import("std");
-const cyber = @import("lib.zig");
 const cy_config = @import("src/config.zig");
 
 const Options = struct {
@@ -9,6 +8,21 @@ const Options = struct {
 pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
+
+    {
+        const exe = b.addExecutable("cyber", "src/main.zig");
+        exe.setBuildMode(mode);
+        if (mode == .ReleaseSafe) {
+            exe.strip = true;
+        }
+        exe.setTarget(target);
+        exe.setOutputDir("zig-out/cyber");
+
+        // exe.linkLibC();
+        exe.addPackage(stdxPkg);
+
+        b.step("cli", "Build main cli.").dependOn(&exe.step);
+    }
 
     {
         const step = b.addTest("./test/main_test.zig");

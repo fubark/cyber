@@ -4,6 +4,7 @@ pub const testing = @import("testing.zig");
 
 pub const log = @import("log.zig");
 pub const time = @import("time.zig");
+pub const heap = @import("heap.zig");
 
 pub const stack = @import("ds/stack.zig");
 pub const Stack = stack.Stack;

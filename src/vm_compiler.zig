@@ -25,6 +25,7 @@ pub const VMcompiler = struct {
     loadStack: std.ArrayListUnmanaged(Load),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
     curBlock: *Block,
+    u8Buf: std.ArrayListUnmanaged(u8),
 
     pub fn init(self: *VMcompiler, vm: *cy.VM) void {
         self.* = .{
@@ -42,6 +43,7 @@ pub const VMcompiler = struct {
             .operandStack = .{},
             .curBlock = undefined,
             .src = undefined,
+            .u8Buf = .{},
         };
     }
 
@@ -52,6 +54,7 @@ pub const VMcompiler = struct {
         self.jumpStack.deinit(self.alloc);
         self.loadStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
+        self.u8Buf.deinit(self.alloc);
     }
 
     pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
@@ -572,7 +575,11 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     const token = self.tokens[node.start_token];
                     const literal = self.src[token.start_pos+1..token.data.end_pos-1];
-                    const idx = try self.buf.pushStringConst(literal);
+
+                    // Unescape single quotes.
+                    _ = try replaceIntoShorterList(u8, literal, "\\'", "'", &self.u8Buf, self.alloc);
+
+                    const idx = try self.buf.pushStringConst(self.u8Buf.items);
                     try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
                 }
                 return ConstStringType;
@@ -1064,3 +1071,26 @@ const Load = struct {
     pc: u32,
     tempOffset: u8,
 };
+
+// Same as std.mem.replace except writes to an ArrayList. Final result is also known to be at most the size of the original.
+pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []const T, replacement: []const T, output: *std.ArrayListUnmanaged(T), alloc: std.mem.Allocator) !usize {
+    // Known upper bound.
+    try output.resize(alloc, input.len);
+    var i: usize = 0;
+    var slide: usize = 0;
+    var replacements: usize = 0;
+    while (slide < input.len) {
+        if (std.mem.indexOf(T, input[slide..], needle) == @as(usize, 0)) {
+            std.mem.copy(u8, output.items[i..i+replacement.len], replacement);
+            i += replacement.len;
+            slide += needle.len;
+            replacements += 1;
+        } else {
+            output.items[i] = input[slide];
+            i += 1;
+            slide += 1;
+        }
+    }
+    output.items.len = i;
+    return replacements;
+}

@@ -384,47 +384,43 @@ test "boolean" {
 //     run.deinitValue(val);
 // }
 
-// test "Strings" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Strings" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Single quotes.
-//     var val = try run.eval(
-//         \\str = 'abc'
-//         \\str
-//     );
-//     var str = try run.valueToString(val);
-//     try t.eqStr(str, "abc");
-//     t.alloc.free(str);
+    // Const string with single quotes.
+    var val = try run.eval(
+        \\str = 'abc'
+        \\str
+    );
+    var str = try run.valueString(val);
+    try t.eqStr(str, "abc");
 
-//     // Unicode.
-//     val = try run.eval(
-//         \\str = 'abc🦊xyz🐶'
-//         \\str
-//     );
-//     str = try run.valueToString(val);
-//     try t.eqStr(str, "abc🦊xyz🐶");
-//     t.alloc.free(str);
+    // Const string with unicode.
+    val = try run.eval(
+        \\str = 'abc🦊xyz🐶'
+        \\str
+    );
+    str = try run.valueString(val);
+    try t.eqStr(str, "abc🦊xyz🐶");
 
-//     // Escape single quote.
-//     val = try run.eval(
-//         \\str = 'ab\'c'
-//         \\str
-//     );
-//     str = try run.valueToString(val);
-//     try t.eqStr(str, "ab'c");
-//     t.alloc.free(str);
+    // Const string with escaped single quote.
+    val = try run.eval(
+        \\str = 'ab\'c'
+        \\str
+    );
+    str = try run.valueString(val);
+    try t.eqStr(str, "ab'c");
 
-//     // Multi-line backtick literal.
-//     val = try run.eval(
-//         \\str = `abc
-//         \\abc`
-//         \\str
-//     );
-//     str = try run.valueToString(val);
-//     try t.eqStr(str, "abc\nabc");
-//     t.alloc.free(str);
-// }
+    // Const string multi-line backtick literal.
+    val = try run.eval(
+        \\str = `abc
+        \\abc`
+        \\str
+    );
+    str = try run.valueString(val);
+    try t.eqStr(str, "abc\nabc");
+}
 
 test "Lists" {
     const run = Runner.create();
@@ -1044,8 +1040,8 @@ const Runner = struct {
         return self.inner.eval2(src, embed_interrupts);
     }
 
-    pub fn valueToString(self: *Runner, val: cy.Value) ![]const u8 {
-        return self.inner.valueToString(val);
+    pub fn valueString(self: *Runner, val: cy.Value) ![]const u8 {
+        return self.inner.valueString(val);
     }
 
     pub fn valueToIntSlice(self: *Runner, val: cy.Value) ![]const i32 {
@@ -1093,10 +1089,12 @@ const VMrunner = struct {
         return undefined;
     }
 
-    pub fn valueToString(self: *VMrunner, val: cy.Value) ![]const u8 {
-        _ = self;
-        _ = val;
-        return "";
+    pub fn valueString(self: *VMrunner, val: cy.Value) ![]const u8 {
+        if (self.vm.isValueString(val)) {
+            return self.vm.valueAsString(val);
+        } else {
+            return error.NotAString;
+        }
     }
 
     pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {

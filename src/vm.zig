@@ -1595,6 +1595,26 @@ pub const VM = struct {
             }
         }
     }
+
+    pub fn isValueString(self: *VM, val: Value) bool {
+        _ = self;
+        if (val.isPointer()) {
+            return false;
+        } else {
+            const tag = val.getTag();
+            return tag == cy.TagConstString;
+        }
+    }
+
+    pub fn valueAsString(self: *VM, val: Value) []const u8 {
+        if (val.isPointer()) {
+            stdx.unsupported();
+        } else {
+            // Assume const string.
+            const slice = val.asConstStr();
+            return self.strBuf[slice.start..slice.end];
+        }
+    }
 };
 
 fn evalAnd(left: cy.Value, right: cy.Value) cy.Value {

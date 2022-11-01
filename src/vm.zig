@@ -1297,13 +1297,6 @@ pub const VM = struct {
                     self.setStackFrameValue(offset, val);
                     continue;
                 },
-                .setNew => {
-                    const offset = self.ops[self.pc+1].arg;
-                    self.pc += 2;
-                    const val = self.popRegister();
-                    self.setStackFrameValue(offset, val);
-                    continue;
-                },
                 .setIndex => {
                     self.pc += 1;
                     const right = self.popRegister();

@@ -215,7 +215,7 @@ pub const VMcompiler = struct {
             return info.localOffset;
         } else {
             const info = try self.reserveLocalVar(name, vtype);
-            try self.buf.pushOp1(.setNew, info.localOffset);
+            try self.buf.pushOp1(.set, info.localOffset);
             return info.localOffset;
         }
     }

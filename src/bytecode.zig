@@ -216,11 +216,6 @@ pub const ByteCodeBuffer = struct {
                     log.info("set {}", .{offset});
                     pc += 2;
                 },
-                .setNew => {
-                    const offset = ops[pc+1].arg;
-                    log.info("setNew {}", .{offset});
-                    pc += 2;
-                },
                 .setIndex => {
                     log.info("setIndex", .{});
                     pc += 1;
@@ -411,8 +406,6 @@ pub const OpCode = enum(u8) {
     /// Pops top register and copies value to address relative to the local frame.
     set,
     releaseSet,
-    /// Same as set except it also does a ensure capacity on the stack.
-    setNew,
     /// Pops right, index, left registers, sets right value to address of left[index].
     setIndex,
     /// Loads a value from address relative to the local frame onto the register stack.
@@ -475,7 +468,7 @@ pub const OpCode = enum(u8) {
 
 comptime {
     const end = @enumToInt(OpCode.end);
-    if (end != 52) {
+    if (end != 51) {
         @compileError(std.fmt.comptimePrint("Unexpected end op code {}", .{end}));
     }
 }

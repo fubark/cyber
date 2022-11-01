@@ -718,6 +718,42 @@ pub const VM = struct {
         }
     }
 
+    fn getReverseIndex(self: *VM, left: Value, index: Value) !Value {
+        @setRuntimeSafety(debug);
+        if (left.isPointer()) {
+            const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
+            switch (obj.retainedCommon.structId) {
+                ListS => {
+                    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
+                    const idx = @floatToInt(u32, index.toF64());
+                    if (idx < list.items.len) {
+                        return list.items[list.items.len-idx];
+                    } else {
+                        return error.OutOfBounds;
+                    }
+                },
+                MapS => {
+                    const map = stdx.ptrCastAlign(*Rc(Map), left.asPointer());
+                    const mapKey = MapKey{
+                        .keyT = .number,
+                        .inner = .{
+                            .number = @bitCast(u64, -index.toF64()),
+                        },
+                    };
+                    const ctx = MapContext{ .vm = self };
+                    if (map.val.inner.getContext(mapKey, ctx)) |val| {
+                        return val;
+                    } else return Value.initNone();
+                },
+                else => {
+                    return stdx.panic("expected map or list");
+                },
+            }
+        } else {
+            return stdx.panic("expected pointer");
+        }
+    }
+
     fn getIndex(self: *VM, left: Value, index: Value) !Value {
         @setRuntimeSafety(debug);
         if (left.isPointer()) {
@@ -1351,6 +1387,14 @@ pub const VM = struct {
                     const index = self.popRegister();
                     const left = self.popRegister();
                     const val = try self.getIndex(left, index);
+                    try self.pushRegister(val);
+                    continue;
+                },
+                .pushReverseIndex => {
+                    self.pc += 1;
+                    const index = self.popRegister();
+                    const left = self.popRegister();
+                    const val = try self.getReverseIndex(left, index);
                     try self.pushRegister(val);
                     continue;
                 },

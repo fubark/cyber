@@ -645,10 +645,17 @@ pub const VMcompiler = struct {
                 _ = try self.genExpr(left, discardTopExprReg);
 
                 const index = self.nodes[node.head.left_right.right];
-                _ = try self.genExpr(index, discardTopExprReg);
-
-                if (!discardTopExprReg) {
-                    try self.buf.pushOp(.pushIndex);
+                if (index.node_t == .unary_expr and index.head.unary.op == .minus) {
+                    const right = self.nodes[index.head.unary.child];
+                    _ = try self.genExpr(right, discardTopExprReg);
+                    if (!discardTopExprReg) {
+                        try self.buf.pushOp(.pushReverseIndex);
+                    }
+                } else {
+                    _ = try self.genExpr(index, discardTopExprReg);
+                    if (!discardTopExprReg) {
+                        try self.buf.pushOp(.pushIndex);
+                    }
                 }
                 return AnyType;
             },

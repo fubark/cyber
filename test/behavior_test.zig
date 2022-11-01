@@ -426,8 +426,22 @@ test "Lists" {
     const run = Runner.create();
     defer run.destroy();
 
-    // Number entry.
+    // Index access.
     var val = try run.eval(
+        \\a = [1, 2, 3]
+        \\a[0]
+    );
+    try t.eq(val.asI32(), 1);
+
+    // Negative index access.
+    val = try run.eval(
+        \\a = [1, 2, 3]
+        \\a[-1]
+    );
+    try t.eq(val.asI32(), 3);
+
+    // Set to index.
+    val = try run.eval(
         \\a = []
         \\a.resize(3)
         \\a[2] = 3
@@ -974,8 +988,6 @@ test "Binary Expressions" {
         \\2 ^ 5
     );
     try t.eq(val.asI32(), 32);
-
-    t.setLogLevel(.debug);
 
     // Modulus
     val = try run.eval(

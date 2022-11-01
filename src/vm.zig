@@ -997,11 +997,34 @@ pub const VM = struct {
     }
 
     /// Current stack top is already pointing past the last arg. 
-    fn callSym(self: *VM, symId: SymbolId, numArgs: u8, retInfo: Value) !void {
+    fn callSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) !void {
         @setRuntimeSafety(debug);
         const sym = self.funcSyms.items[symId];
         switch (sym.entryT) {
+            .nativeFunc1 => {
+                const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
+                const res = sym.inner.nativeFunc1(self, args);
+                if (reqNumRetVals == 1) {
+                    self.stack.top = self.stack.top - numArgs + 1;
+                    self.stack.ensureTotalCapacity(self.alloc, self.stack.top) catch stdx.fatal();
+                    self.stack.buf[self.stack.top-1] = res;
+                } else {
+                    switch (reqNumRetVals) {
+                        0 => {
+                            self.stack.top = self.stack.top - numArgs;
+                        },
+                        1 => stdx.panic("not possible"),
+                        2 => {
+                            stdx.panic("unsupported require 2 ret vals");
+                        },
+                        3 => {
+                            stdx.panic("unsupported require 3 ret vals");
+                        },
+                    }
+                }
+            },
             .func => {
+                const retInfo = self.buildReturnInfo(reqNumRetVals);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
                 // numLocals includes the function params as well as the return info value.
@@ -1014,7 +1037,7 @@ pub const VM = struct {
                 self.stack.buf[self.stack.top-1] = retInfo;
             },
             .none => stdx.panic("Symbol doesn't exist."),
-            else => stdx.panic("unsupported callsym"),
+            // else => stdx.panic("unsupported callsym"),
         }
     }
 
@@ -1401,8 +1424,7 @@ pub const VM = struct {
                     const numArgs = self.ops[self.pc+2].arg;
                     self.pc += 3;
 
-                    const retInfo = self.buildReturnInfo(0);
-                    try self.callSym(symId, numArgs, retInfo);
+                    try self.callSym(symId, numArgs, 0);
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, false });
                     continue;
                 },
@@ -1411,8 +1433,7 @@ pub const VM = struct {
                     const numArgs = self.ops[self.pc+2].arg;
                     self.pc += 3;
 
-                    const retInfo = self.buildReturnInfo(1);
-                    try self.callSym(symId, numArgs, retInfo);
+                    try self.callSym(symId, numArgs, 1);
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, true });
                     continue;
                 },
@@ -1912,15 +1933,15 @@ const SymbolEntry = struct {
 };
 
 const FuncSymbolEntryType = enum {
+    nativeFunc1,
     func,
-    nativeFunc,
     none,
 };
 
 pub const FuncSymbolEntry = struct {
     entryT: FuncSymbolEntryType,
     inner: packed union {
-        nativeFunc: *const anyopaque,
+        nativeFunc1: std.meta.FnPtr(fn (*VM, []const Value) Value),
         func: packed struct {
             pc: usize,
             /// Includes function params, locals, and return info slot.
@@ -1928,11 +1949,11 @@ pub const FuncSymbolEntry = struct {
         },
     },
 
-    fn initNativeFunc(func: *const anyopaque) FuncSymbolEntry {
+    fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, []const Value) Value)) FuncSymbolEntry {
         return .{
-            .entryT = .nativeFunc,
+            .entryT = .nativeFunc1,
             .inner = .{
-                .nativeFunc = func,
+                .nativeFunc1 = func,
             },
         };
     }

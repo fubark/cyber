@@ -60,6 +60,7 @@ pub const VM = struct {
     const ListS: StructId = 0;
     const MapS: StructId = 1;
     const ClosureS: StructId = 2;
+    const StringS: StructId = 3;
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -113,6 +114,9 @@ pub const VM = struct {
 
         id = try self.addStruct("Closure");
         std.debug.assert(id == ClosureS);
+
+        id = try self.addStruct("String");
+        std.debug.assert(id == StringS);
     }
 
     pub fn deinit(self: *VM) void {
@@ -247,7 +251,7 @@ pub const VM = struct {
                 while (i < numOps) : (i += 1) {
                     if (self.trace.opCounts[i].count > 0) {
                         const op = std.meta.intToEnum(cy.OpCode, self.trace.opCounts[i].code) catch continue;
-                        log.err("{} {}", .{op, self.trace.opCounts[i].count});
+                        log.info("{} {}", .{op, self.trace.opCounts[i].count});
                     }
                 }
             }
@@ -262,9 +266,9 @@ pub const VM = struct {
     }
 
     pub fn dumpInfo(self: *VM) void {
-        log.err("stack cap: {}", .{self.stack.buf.len});
-        log.err("stack top: {}", .{self.stack.top});
-        log.err("heap pages: {}", .{self.heapPages.items.len});
+        log.info("stack cap: {}", .{self.stack.buf.len});
+        log.info("stack top: {}", .{self.stack.top});
+        log.info("heap pages: {}", .{self.heapPages.items.len});
     }
 
     pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) linksection(".eval") void {
@@ -579,6 +583,21 @@ pub const VM = struct {
                 return error.Unsupported;
             }
         }
+        return Value.initPtr(obj);
+    }
+
+    fn allocStringConcat(self: *VM, str: []const u8, str2: []const u8) !Value {
+        @setRuntimeSafety(debug);
+        const obj = try self.allocObject();
+        const buf = try self.alloc.alloc(u8, str.len + str2.len);
+        std.mem.copy(u8, buf[0..str.len], str);
+        std.mem.copy(u8, buf[str.len..], str2);
+        obj.string = .{
+            .structId = StringS,
+            .rc = 1,
+            .ptr = buf.ptr,
+            .len = buf.len,
+        };
         return Value.initPtr(obj);
     }
 
@@ -993,9 +1012,14 @@ pub const VM = struct {
                             for (src) |capturedVal| {
                                 self.release(capturedVal, trace);
                             }
+                            self.freeObject(obj);
                         } else {
                             stdx.panic("unsupported");
                         }
+                    },
+                    StringS => {
+                        self.alloc.free(obj.string.ptr[0..obj.string.len]);
+                        self.freeObject(obj);
                     },
                     else => {
                         return stdx.panic("unsupported struct type");
@@ -1734,9 +1758,11 @@ pub const VM = struct {
     }
 
     pub fn isValueString(self: *VM, val: Value) bool {
+        @setRuntimeSafety(debug);
         _ = self;
         if (val.isPointer()) {
-            return false;
+            const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
+            return obj.common.structId == StringS;
         } else {
             const tag = val.getTag();
             return tag == cy.TagConstString;
@@ -1744,8 +1770,10 @@ pub const VM = struct {
     }
 
     pub fn valueAsString(self: *VM, val: Value) []const u8 {
+        @setRuntimeSafety(debug);
         if (val.isPointer()) {
-            stdx.unsupported();
+            const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
+            return obj.string.ptr[0..obj.string.len];
         } else {
             // Assume const string.
             const slice = val.asConstStr();
@@ -1916,6 +1944,12 @@ fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) cy.Value {
         cy.TagTrue => return Value.initF64(1 + right.toF64()),
         cy.TagNone => return Value.initF64(right.toF64()),
         cy.TagError => stdx.fatal(),
+        cy.TagConstString => {
+            // Convert into heap string.
+            const slice = left.asConstStr();
+            const str = vm.strBuf[slice.start..slice.end];
+            return vm.allocStringConcat(str, toTempString(vm, right)) catch stdx.fatal();
+        },
         else => stdx.panic("unexpected tag"),
     }
 }
@@ -1938,16 +1972,40 @@ fn evalNot(val: cy.Value) cy.Value {
     }
 }
 
+var tempU8Buf: [256]u8 = undefined;
+
+/// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
+fn toTempString(vm: *const VM, val: Value) []const u8 {
+    if (val.isNumber()) {
+        if (Value.floatCanBeInteger(val.asF64())) {
+            return std.fmt.bufPrint(&tempU8Buf, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
+        } else {
+            return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
+        }
+    } else {
+        switch (val.getTag()) {
+            cy.TagFalse => return "false",
+            cy.TagTrue => return "true",
+            cy.TagNone => return "none",
+            cy.TagConstString => {
+                // Convert into heap string.
+                const slice = val.asConstStr();
+                return vm.strBuf[slice.start..slice.end];
+            },
+            else => stdx.panic("unexpected tag"),
+        }
+    }
+}
+
 const NullByteId = std.math.maxInt(u8);
 const NullId = std.math.maxInt(u32);
 
-pub fn Rc(comptime T: type) type {
-    return struct {
-        structId: StructId,
-        rc: u32,
-        val: T,
-    };
-}
+const String = packed struct {
+    structId: StructId,
+    rc: u32,
+    ptr: [*]u8,
+    len: usize,
+};
 
 const Closure = packed struct {
     structId: StructId,
@@ -2000,6 +2058,7 @@ const HeapObject = packed union {
     },
     retainedList: List,
     closure: Closure,
+    string: String,
     retainedObject: packed struct {
         structId: StructId,
         rc: u32,

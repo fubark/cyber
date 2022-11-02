@@ -420,6 +420,17 @@ test "Strings" {
     );
     str = try run.valueString(val);
     try t.eqStr(str, "abc\nabc");
+
+    // Heap string. 
+    val = try run.eval(
+        \\str = 'abc'
+        \\str + 'xyz'
+    );
+    str = try run.valueString(val);
+    try t.eqStr(str, "abcxyz");
+    run.deinitValue(val);
+
+    t.setLogLevel(.debug);
 }
 
 test "Lists" {
@@ -1111,9 +1122,10 @@ const VMrunner = struct {
 
     pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {
         _ = self;
-        const list = stdx.ptrCastAlign(*cy.Rc(std.ArrayListUnmanaged(cy.Value)), val.asPointer());
-        const dupe = try t.alloc.alloc(i32, list.val.items.len);
-        for (list.val.items) |it, i| {
+        const obj = stdx.ptrCastAlign(*cy.HeapObject, val.asPointer());
+        const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(cy.Value), &obj.retainedList.list);
+        const dupe = try t.alloc.alloc(i32, list.items.len);
+        for (list.items) |it, i| {
             dupe[i] = @floatToInt(i32, it.toF64());
         }
         return dupe;

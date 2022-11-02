@@ -25,12 +25,12 @@ pub const ValuePair = value.ValuePair;
 pub const TagFalse = value.TagFalse;
 pub const TagTrue = value.TagTrue;
 pub const TagNone = value.TagNone;
+pub const TagError = value.TagError;
 pub const TagConstString = value.TagConstString;
 
 const vm = @import("vm.zig");
 pub const VM = vm.VM;
 pub const FuncSymbolEntry = vm.FuncSymbolEntry;
-pub const Rc = vm.Rc;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 

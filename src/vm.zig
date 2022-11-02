@@ -89,7 +89,7 @@ pub const VM = struct {
             .panicMsg = "",
         };
         self.compiler.init(self);
-        try self.stack.ensureTotalCapacity(self.alloc, 100);
+        try self.ensureStackTotalCapacity(100);
 
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
@@ -247,7 +247,7 @@ pub const VM = struct {
                 while (i < numOps) : (i += 1) {
                     if (self.trace.opCounts[i].count > 0) {
                         const op = std.meta.intToEnum(cy.OpCode, self.trace.opCounts[i].code) catch continue;
-                        log.info("{} {}", .{op, self.trace.opCounts[i].count});
+                        log.err("{} {}", .{op, self.trace.opCounts[i].count});
                     }
                 }
             }
@@ -262,18 +262,33 @@ pub const VM = struct {
     }
 
     pub fn dumpInfo(self: *VM) void {
-        log.info("stack cap: {}", .{self.stack.buf.len});
-        log.info("stack top: {}", .{self.stack.top});
-        log.info("heap pages: {}", .{self.heapPages.items.len});
+        log.err("stack cap: {}", .{self.stack.buf.len});
+        log.err("stack top: {}", .{self.stack.top});
+        log.err("heap pages: {}", .{self.heapPages.items.len});
     }
 
-    pub fn popStackFrame(self: *VM, comptime numRetVals: u2) void {
+    pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) linksection(".eval") void {
+        _ = self;
+        @setRuntimeSafety(debug);
+        switch (numRetVals) {
+            2 => {
+                log.err("unsupported", .{});
+            },
+            3 => {
+                // unreachable;
+            },
+            else => @compileError("Unsupported num return values."),
+        }
+    }
+
+    pub inline fn popStackFrame(self: *VM, comptime numRetVals: u2) linksection(".eval") void {
         @setRuntimeSafety(debug);
 
         // If there are fewer return values than required from the function call, 
         // fill the missing slots with the none value.
         switch (numRetVals) {
             0 => {
+                @setRuntimeSafety(debug);
                 const retInfo = self.stack.buf[self.stack.top-1];
                 const reqNumArgs = retInfo.retInfo.numRetVals;
                 if (reqNumArgs == 0) {
@@ -286,18 +301,21 @@ pub const VM = struct {
                     switch (reqNumArgs) {
                         0 => unreachable,
                         1 => {
+                            @setRuntimeSafety(debug);
                             self.stack.buf[self.framePtr] = Value.initNone();
                             self.stack.top = self.framePtr + 1;
                         },
                         2 => {
+                            @setRuntimeSafety(debug);
                             // Only start checking for space after 2 since function calls should have at least one slot after framePtr.
-                            self.stack.ensureTotalCapacity(self.alloc, self.stack.top + 1) catch stdx.fatal();
+                            self.ensureStackTotalCapacity(self.stack.top + 1) catch stdx.fatal();
                             self.stack.buf[self.framePtr] = Value.initNone();
                             self.stack.buf[self.framePtr+1] = Value.initNone();
                             self.stack.top = self.framePtr + 2;
                         },
                         3 => {
-                            self.stack.ensureTotalCapacity(self.alloc, self.stack.top + 2) catch stdx.fatal();
+                            @setRuntimeSafety(debug);
+                            self.ensureStackTotalCapacity(self.stack.top + 2) catch stdx.fatal();
                             self.stack.buf[self.framePtr] = Value.initNone();
                             self.stack.buf[self.framePtr+1] = Value.initNone();
                             self.stack.buf[self.framePtr+2] = Value.initNone();
@@ -311,6 +329,7 @@ pub const VM = struct {
                 }
             },
             1 => {
+                @setRuntimeSafety(debug);
                 const retInfo = self.stack.buf[self.stack.top-2];
                 const reqNumArgs = retInfo.retInfo.numRetVals;
                 if (reqNumArgs == 1) {
@@ -325,16 +344,19 @@ pub const VM = struct {
                 } else {
                     switch (reqNumArgs) {
                         0 => {
+                            @setRuntimeSafety(debug);
                             self.stack.top = self.framePtr;
                         },
                         1 => unreachable,
                         2 => {
+                            @setRuntimeSafety(debug);
                             self.stack.buf[self.framePtr+1] = Value.initNone();
                             self.stack.top = self.framePtr + 2;
                         },
                         3 => {
+                            @setRuntimeSafety(debug);
                             // Only start checking for space at 3 since function calls should have at least two slot after framePtr.
-                            // self.stack.ensureTotalCapacity(self.alloc, self.stack.top + 1) catch stdx.fatal();
+                            // self.ensureStackTotalCapacity(self.stack.top + 1) catch stdx.fatal();
                             self.stack.buf[self.framePtr+1] = Value.initNone();
                             self.stack.buf[self.framePtr+2] = Value.initNone();
                             self.stack.top = self.framePtr + 3;
@@ -346,12 +368,7 @@ pub const VM = struct {
                     return;
                 }
             },
-            2 => {
-                unreachable;
-            },
-            3 => {
-                unreachable;
-            },
+            else => @compileError("Unsupported num return values."),
         }
     }
 
@@ -367,7 +384,7 @@ pub const VM = struct {
         self.pc = 0;
         self.framePtr = 0;
 
-        try self.stack.ensureTotalCapacity(self.alloc, buf.mainLocalSize);
+        try self.ensureStackTotalCapacity(buf.mainLocalSize);
         self.stack.top = buf.mainLocalSize;
 
         try self.evalStackFrame(trace);
@@ -583,22 +600,29 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    inline fn getStackFrameValue(self: VM, offset: u8) Value {
+    inline fn getStackFrameValue(self: *const VM, offset: u8) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return self.stack.buf[self.framePtr + offset];
     }
 
-    inline fn setStackFrameValue(self: VM, offset: u8, val: Value) void {
+    inline fn setStackFrameValue(self: *const VM, offset: u8, val: Value) linksection(".eval") void {
         @setRuntimeSafety(debug);
         self.stack.buf[self.framePtr + offset] = val;
     }
 
-    inline fn popRegister(self: *VM) Value {
+    inline fn popRegister(self: *VM) linksection(".eval") Value {
         @setRuntimeSafety(debug);
-        return self.stack.pop();
+        self.stack.top -= 1;
+        return self.stack.buf[self.stack.top];
     }
 
-    inline fn pushRegister(self: *VM, val: Value) !void {
+    inline fn ensureStackTotalCapacity(self: *VM, newCap: usize) linksection(".eval") !void {
+        if (newCap > self.stack.buf.len) {
+            try self.stack.growTotalCapacity(self.alloc, newCap);
+        }
+    }
+
+    inline fn pushRegister(self: *VM, val: Value) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         if (self.stack.top == self.stack.buf.len) {
             try self.stack.growTotalCapacity(self.alloc, self.stack.top + 1);
@@ -718,16 +742,17 @@ pub const VM = struct {
         }
     }
 
-    fn getReverseIndex(self: *VM, left: Value, index: Value) !Value {
+    fn getReverseIndex(self: *const VM, left: Value, index: Value) !Value {
         @setRuntimeSafety(debug);
         if (left.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
                 ListS => {
+                    @setRuntimeSafety(debug);
                     const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
-                    const idx = @floatToInt(u32, index.toF64());
+                    const idx = list.items.len - @floatToInt(u32, index.toF64());
                     if (idx < list.items.len) {
-                        return list.items[list.items.len-idx];
+                        return list.items[idx];
                     } else {
                         return error.OutOfBounds;
                     }
@@ -746,7 +771,7 @@ pub const VM = struct {
                     } else return Value.initNone();
                 },
                 else => {
-                    return stdx.panic("expected map or list");
+                    stdx.panic("expected map or list");
                 },
             }
         } else {
@@ -760,6 +785,7 @@ pub const VM = struct {
             const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
                 ListS => {
+                    @setRuntimeSafety(debug);
                     const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.items.len) {
@@ -941,7 +967,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn release(self: *VM, val: Value, comptime trace: bool) void {
+    pub fn release(self: *VM, val: Value, comptime trace: bool) linksection(".eval") void {
         @setRuntimeSafety(debug);
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
@@ -979,7 +1005,7 @@ pub const VM = struct {
         }
     }
 
-    fn pushField(self: VM, symId: SymbolId, recv: Value) void {
+    fn pushField(self: *const VM, symId: SymbolId, recv: Value) void {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*GenericObject, recv.asPointer());
@@ -1033,7 +1059,7 @@ pub const VM = struct {
     }
 
     /// Current stack top is already pointing past the last arg. 
-    fn callSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) !void {
+    fn callSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         const sym = self.funcSyms.items[symId];
         switch (sym.entryT) {
@@ -1042,7 +1068,7 @@ pub const VM = struct {
                 const res = sym.inner.nativeFunc1(self, args);
                 if (reqNumRetVals == 1) {
                     self.stack.top = self.stack.top - numArgs + 1;
-                    self.stack.ensureTotalCapacity(self.alloc, self.stack.top) catch stdx.fatal();
+                    self.ensureStackTotalCapacity(self.stack.top) catch stdx.fatal();
                     self.stack.buf[self.stack.top-1] = res;
                 } else {
                     switch (reqNumRetVals) {
@@ -1077,7 +1103,7 @@ pub const VM = struct {
         }
     }
 
-    inline fn callSymEntry(self: *VM, entry: SymbolEntry, argStart: usize, objPtr: *anyopaque, numArgs: u8, comptime reqNumRetVals: u2) void {
+    inline fn callSymEntry(self: *VM, entry: SymbolEntry, argStart: usize, objPtr: *anyopaque, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") void {
         _ = numArgs;
         @setRuntimeSafety(debug);
         switch (entry.entryT) {
@@ -1129,7 +1155,7 @@ pub const VM = struct {
         }
     }
 
-    fn callObjSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) void {
+    fn callObjSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") void {
         @setRuntimeSafety(debug);
         // numArgs includes the receiver.
         const argStart = self.stack.top - numArgs;
@@ -1148,7 +1174,7 @@ pub const VM = struct {
         }
     }
 
-    inline fn buildReturnInfo(self: VM, comptime numRetVals: u2) Value {
+    inline fn buildReturnInfo(self: *const VM, comptime numRetVals: u2) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return Value{
             .retInfo = .{
@@ -1159,7 +1185,7 @@ pub const VM = struct {
         };
     }
 
-    fn evalStackFrame(self: *VM, comptime trace: bool) anyerror!void {
+    fn evalStackFrame(self: *VM, comptime trace: bool) linksection(".eval") anyerror!void {
         @setRuntimeSafety(debug);
         while (true) {
             if (trace) {
@@ -1170,40 +1196,47 @@ pub const VM = struct {
             log.debug("{} op: {}", .{self.pc, self.ops[self.pc].code});
             switch (self.ops[self.pc].code) {
                 .pushTrue => {
-                    try self.pushRegister(Value.initTrue());
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
+                    try self.pushRegister(Value.initTrue());
                     continue;
                 },
                 .pushFalse => {
-                    try self.pushRegister(Value.initFalse());
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
+                    try self.pushRegister(Value.initFalse());
                     continue;
                 },
                 .pushNone => {
-                    try self.pushRegister(Value.initNone());
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
+                    try self.pushRegister(Value.initNone());
                     continue;
                 },
                 .pushConst => {
+                    @setRuntimeSafety(debug);
                     const idx = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     try self.pushRegister(Value{ .val = self.consts[idx].val });
                     continue;
                 },
                 .pushNot => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
                     const val = self.popRegister();
                     try self.pushRegister(evalNot(val));
-                    self.pc += 1;
                     continue;
                 },
                 .pushCompare => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
                     try self.pushRegister(evalCompare(left, right));
-                    self.pc += 1;
                     continue;
                 },
                 .pushLess => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
@@ -1211,27 +1244,31 @@ pub const VM = struct {
                     continue;
                 },
                 .pushGreater => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
                     try self.pushRegister(evalGreater(left, right));
-                    self.pc += 1;
                     continue;
                 },
                 .pushLessEqual => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
                     try self.pushRegister(evalLessOrEqual(left, right));
-                    self.pc += 1;
                     continue;
                 },
                 .pushGreaterEqual => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
                     try self.pushRegister(evalGreaterOrEqual(left, right));
-                    self.pc += 1;
                     continue;
                 },
                 .pushOr => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
@@ -1239,6 +1276,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushAnd => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     const right = self.popRegister();
                     const left = self.popRegister();
@@ -1246,14 +1284,20 @@ pub const VM = struct {
                     continue;
                 },
                 .pushAdd => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
                     const right = self.stack.buf[self.stack.top];
-                    self.stack.buf[self.stack.top-1] = evalAdd(left, right);
+                    if (left.isNumber()) {
+                        self.stack.buf[self.stack.top-1] = evalAddNumber(left, right);
+                    } else {
+                        self.stack.buf[self.stack.top-1] = evalAddOther(self, left, right);
+                    }
                     continue;
                 },
                 .pushMinus => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
@@ -1262,6 +1306,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushMinus1 => {
+                    @setRuntimeSafety(debug);
                     const leftOffset = self.ops[self.pc+1].arg;
                     const rightOffset = self.ops[self.pc+2].arg;
                     self.pc += 3;
@@ -1279,6 +1324,7 @@ pub const VM = struct {
                     }
                 },
                 .pushMinus2 => {
+                    @setRuntimeSafety(debug);
                     const leftOffset = self.ops[self.pc+1].arg;
                     const rightOffset = self.ops[self.pc+2].arg;
                     self.pc += 3;
@@ -1289,6 +1335,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushList => {
+                    @setRuntimeSafety(debug);
                     const numElems = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const top = self.stack.top;
@@ -1302,6 +1349,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushMapEmpty => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
 
                     const map = try self.allocEmptyMap();
@@ -1312,6 +1360,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushMap => {
+                    @setRuntimeSafety(debug);
                     const numEntries = self.ops[self.pc+1].arg;
                     const startConst = self.ops[self.pc+2].arg;
                     self.pc += 3;
@@ -1325,6 +1374,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushSlice => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     const end = self.popRegister();
                     const start = self.popRegister();
@@ -1334,13 +1384,21 @@ pub const VM = struct {
                     continue;
                 },
                 .addSet => {
+                    @setRuntimeSafety(debug);
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.popRegister();
-                    self.setStackFrameValue(offset, evalAdd(self.getStackFrameValue(offset), val));
+
+                    const left = self.getStackFrameValue(offset);
+                    if (left.isNumber()) {
+                        self.setStackFrameValue(offset, evalAddNumber(left, val));
+                    } else {
+                        self.setStackFrameValue(offset, evalAddOther(self, left, val));
+                    }
                     continue;
                 },
                 .releaseSet => {
+                    @setRuntimeSafety(debug);
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.popRegister();
@@ -1350,6 +1408,7 @@ pub const VM = struct {
                     continue;
                 },
                 .set => {
+                    @setRuntimeSafety(debug);
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.popRegister();
@@ -1357,6 +1416,7 @@ pub const VM = struct {
                     continue;
                 },
                 .setIndex => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     const right = self.popRegister();
                     const index = self.popRegister();
@@ -1365,6 +1425,7 @@ pub const VM = struct {
                     continue;
                 },
                 .load => {
+                    @setRuntimeSafety(debug);
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.getStackFrameValue(offset);
@@ -1372,6 +1433,7 @@ pub const VM = struct {
                     continue;
                 },
                 .loadRetain => {
+                    @setRuntimeSafety(debug);
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.getStackFrameValue(offset);
@@ -1383,30 +1445,37 @@ pub const VM = struct {
                     continue;
                 },
                 .pushIndex => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const index = self.popRegister();
-                    const left = self.popRegister();
+                    self.stack.top -= 1;
+                    const index = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
                     const val = try self.getIndex(left, index);
-                    try self.pushRegister(val);
+                    self.stack.buf[self.stack.top - 1] = val;
                     continue;
                 },
                 .pushReverseIndex => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const index = self.popRegister();
-                    const left = self.popRegister();
+                    self.stack.top -= 1;
+                    const index = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
                     const val = try self.getReverseIndex(left, index);
-                    try self.pushRegister(val);
+                    self.stack.buf[self.stack.top - 1] = val;
                     continue;
                 },
                 .jumpBack => {
+                    @setRuntimeSafety(debug);
                     self.pc -= self.ops[self.pc+1].arg;
                     continue;
                 },
                 .jump => {
+                    @setRuntimeSafety(debug);
                     self.pc += self.ops[self.pc+1].arg;
                     continue;
                 },
                 .jumpNotCond => {
+                    @setRuntimeSafety(debug);
                     const pcOffset = self.ops[self.pc+1].arg;
                     const cond = self.popRegister();
                     if (!cond.toBool()) {
@@ -1417,12 +1486,14 @@ pub const VM = struct {
                     continue;
                 },
                 .release => {
+                    @setRuntimeSafety(debug);
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     self.release(self.getStackFrameValue(offset), trace);
                     continue;
                 },
                 .pushCall0 => {
+                    @setRuntimeSafety(debug);
                     const numArgs = self.ops[self.pc+1].arg;
                     self.pc += 2;
 
@@ -1432,6 +1503,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushCall1 => {
+                    @setRuntimeSafety(debug);
                     const numArgs = self.ops[self.pc+1].arg;
                     self.pc += 2;
 
@@ -1441,9 +1513,11 @@ pub const VM = struct {
                     continue;
                 },
                 .call => {
+                    @setRuntimeSafety(debug);
                     stdx.unsupported();
                 },
                 .callStr => {
+                    @setRuntimeSafety(debug);
                     // const numArgs = self.ops[self.pc+1].arg;
                     // const str = self.extras[self.extraPc].two;
                     self.pc += 3;
@@ -1456,6 +1530,7 @@ pub const VM = struct {
                     continue;
                 },
                 .callObjSym => {
+                    @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
                     self.pc += 3;
@@ -1464,6 +1539,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushCallSym0 => {
+                    @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
                     self.pc += 3;
@@ -1473,6 +1549,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushCallSym1 => {
+                    @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
                     self.pc += 3;
@@ -1482,6 +1559,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushField => {
+                    @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     self.pc += 2;
 
@@ -1490,6 +1568,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushLambda => {
+                    @setRuntimeSafety(debug);
                     const funcOffset = self.ops[self.pc+1].arg;
                     const numParams = self.ops[self.pc+2].arg;
                     const numLocals = self.ops[self.pc+3].arg;
@@ -1500,6 +1579,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushClosure => {
+                    @setRuntimeSafety(debug);
                     const funcPc = self.pc - self.ops[self.pc+1].arg;
                     const numParams = self.ops[self.pc+2].arg;
                     const numCaptured = self.ops[self.pc+3].arg;
@@ -1513,6 +1593,7 @@ pub const VM = struct {
                     continue;
                 },
                 .forIter => {
+                    @setRuntimeSafety(debug);
                     const local = self.ops[self.pc+1].arg;
                     const endPc = self.pc + self.ops[self.pc+2].arg;
                     const innerPc = self.pc + 3;
@@ -1529,7 +1610,7 @@ pub const VM = struct {
                                 break;
                             }
                             self.pc = innerPc;
-                            _ = try self.evalStackFrame(trace);
+                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
@@ -1545,15 +1626,17 @@ pub const VM = struct {
                             }
                             self.setStackFrameValue(local, next);
                             self.pc = innerPc;
-                            _ = try self.evalStackFrame(trace);
+                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
                         }
                     }
                     self.pc = endPc;
+                    continue;
                 },
                 .forRange => {
+                    @setRuntimeSafety(debug);
                     const local = self.ops[self.pc+1].arg;
                     const endPc = self.pc + self.ops[self.pc+2].arg;
                     const innerPc = self.pc + 3;
@@ -1567,7 +1650,7 @@ pub const VM = struct {
                     if (local == 255) {
                         while (i < rangeEnd) : (i += step) {
                             self.pc = innerPc;
-                            _ = try self.evalStackFrame(trace);
+                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
@@ -1576,7 +1659,7 @@ pub const VM = struct {
                         while (i < rangeEnd) : (i += step) {
                             self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
                             self.pc = innerPc;
-                            _ = try self.evalStackFrame(trace);
+                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
@@ -1586,22 +1669,29 @@ pub const VM = struct {
                     continue;
                 },
                 .cont => {
+                    @setRuntimeSafety(debug);
                     self.contFlag = true;
                     return;
                 },
                 .ret2 => {
-                    self.popStackFrame(2);
+                    @setRuntimeSafety(debug);
+                    // Using never_inline seems to work against the final compiler optimizations.
+                    // @call(.{ .modifier = .never_inline }, self.popStackFrameCold, .{2});
+                    self.popStackFrameCold(2);
                     continue;
                 },
                 .ret1 => {
-                    self.popStackFrame(1);
+                    @setRuntimeSafety(debug);
+                    @call(.{ .modifier = .always_inline }, self.popStackFrame, .{1});
                     continue;
                 },
                 .ret0 => {
-                    self.popStackFrame(0);
+                    @setRuntimeSafety(debug);
+                    @call(.{ .modifier = .always_inline }, self.popStackFrame, .{0});
                     continue;
                 },
                 .pushMultiply => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
@@ -1610,6 +1700,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushDivide => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
@@ -1618,6 +1709,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushMod => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
@@ -1626,6 +1718,7 @@ pub const VM = struct {
                     continue;
                 },
                 .pushPower => {
+                    @setRuntimeSafety(debug);
                     self.pc += 1;
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
@@ -1816,18 +1909,20 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
     }
 }
 
-fn evalAdd(left: cy.Value, right: cy.Value) cy.Value {
+fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) cy.Value {
     @setRuntimeSafety(debug);
-    if (left.isNumber()) {
-        return Value.initF64(left.asF64() + right.toF64());
-    } else {
-        switch (left.getTag()) {
-            cy.TagFalse => return Value.initF64(right.toF64()),
-            cy.TagTrue => return Value.initF64(1 + right.toF64()),
-            cy.TagNone => return Value.initF64(right.toF64()),
-            else => stdx.panic("unexpected tag"),
-        }
+    switch (left.getTag()) {
+        cy.TagFalse => return Value.initF64(right.toF64()),
+        cy.TagTrue => return Value.initF64(1 + right.toF64()),
+        cy.TagNone => return Value.initF64(right.toF64()),
+        cy.TagError => stdx.fatal(),
+        else => stdx.panic("unexpected tag"),
     }
+}
+
+inline fn evalAddNumber(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
+    @setRuntimeSafety(debug);
+    return Value.initF64(left.asF64() + right.toF64());
 }
 
 fn evalNot(val: cy.Value) cy.Value {

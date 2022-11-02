@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const endian = builtin.target.cpu.arch.endian();
 const stdx = @import("stdx");
+const t = stdx.testing;
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
 
@@ -48,22 +49,22 @@ pub const Value = packed union {
         numRetVals: u2,
     },
 
-    pub inline fn asI32(self: Value) i32 {
+    pub inline fn asI32(self: *const Value) i32 {
         @setRuntimeSafety(debug);
         return @floatToInt(i32, self.asF64());
     }
 
-    pub inline fn asU32(self: Value) u32 {
+    pub inline fn asU32(self: *const Value) u32 {
         @setRuntimeSafety(debug);
         return @floatToInt(u32, self.asF64());
     }
 
-    pub inline fn asF64(self: Value) f64 {
+    pub inline fn asF64(self: *const Value) f64 {
         @setRuntimeSafety(debug);
         return @bitCast(f64, self.val);
     }
 
-    pub inline fn asError(self: Value) u32 {
+    pub inline fn asError(self: *const Value) u32 {
         if (endian == .Little) {
             return self.two[0];
         } else {
@@ -71,7 +72,7 @@ pub const Value = packed union {
         } 
     }
 
-    pub fn toF64(self: Value) f64 {
+    pub fn toF64(self: *const Value) f64 {
         @setRuntimeSafety(debug);
         if (self.isNumber()) {
             return self.asF64();
@@ -85,7 +86,7 @@ pub const Value = packed union {
         }
     }
 
-    pub fn toBool(self: Value) bool {
+    pub fn toBool(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         if (self.isNumber()) {
             return self.asF64() != 0;
@@ -99,38 +100,38 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn isNumber(self: Value) bool {
+    pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
         // Only a number(f64) if nan bits are not set.
         return self.val & QNANmask != QNANmask;
     }
 
-    pub inline fn isPointer(self: Value) bool {
+    pub inline fn isPointer(self: *const Value) linksection(".eval") bool {
         // Only a pointer if nan bits and sign bit are set.
         return self.val & PointerMask == PointerMask;
     }
 
-    pub inline fn asPointer(self: Value) ?*anyopaque {
+    pub inline fn asPointer(self: *const Value) ?*anyopaque {
         @setRuntimeSafety(debug);
         return @intToPtr(?*anyopaque, self.val & ~PointerMask);
     }
 
-    pub inline fn asBool(self: Value) bool {
+    pub inline fn asBool(self: *const Value) bool {
         return self.val == TrueMask;
     }
 
-    pub inline fn isNone(self: Value) bool {
+    pub inline fn isNone(self: *const Value) bool {
         return self.val == NoneMask;
     }
 
-    pub inline fn isFalse(self: Value) bool {
+    pub inline fn isFalse(self: *const Value) bool {
         return self.val == FalseMask;
     }
 
-    pub inline fn isTrue(self: Value) bool {
+    pub inline fn isTrue(self: *const Value) bool {
         return self.val == TrueMask;
     }
 
-    pub inline fn getTag(self: Value) u3 {
+    pub inline fn getTag(self: *const Value) u3 {
         @setRuntimeSafety(debug);
         return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
         // if (endian == .Little) {
@@ -154,6 +155,7 @@ pub const Value = packed union {
     }
 
     pub inline fn initNone() Value {
+        @setRuntimeSafety(debug);
         return .{ .val = NoneMask };
     }
 
@@ -174,7 +176,7 @@ pub const Value = packed union {
         return .{ .val = ConstStringMask | (@as(u64, len) << 35) | start };
     }
 
-    pub inline fn asConstStr(self: Value) stdx.IndexSlice(u32) {
+    pub inline fn asConstStr(self: *const Value) stdx.IndexSlice(u32) {
         @setRuntimeSafety(debug);
         const len = (@intCast(u32, self.val >> 32) & BeforeTagMask) >> 3;
         const start = @intCast(u32, self.val & 0xffffffff);
@@ -191,16 +193,19 @@ pub const Value = packed union {
         // }
     }
 
-    pub fn floatCanBeInteger(val: f64) bool {
+    pub inline fn floatCanBeInteger(val: f64) bool {
         @setRuntimeSafety(debug);
-        return @fabs(std.math.floor(val) - val) < std.math.f64_epsilon;
+        // return @fabs(std.math.floor(val) - val) < std.math.f64_epsilon;
+        
+        // This seems to be the faster check so far.
+        return std.math.floor(val) == val;
     }
 
     pub inline fn initError(id: u32) Value {
         return .{ .val = ErrorMask | id };
     }
 
-    pub fn dump(self: Value) void {
+    pub fn dump(self: *const Value) void {
         if (self.isNumber()) {
             log.info("{}", .{self.asF64()});
         } else {
@@ -208,3 +213,12 @@ pub const Value = packed union {
         }
     }
 };
+
+test "floatCanBeInteger" {
+    var f: f64 = -100000000000;
+    while (f < 100000000000) : (f += 10000) {
+        if (std.math.floor(f) == f) {
+            continue;
+        } else try t.fail();
+    }
+}

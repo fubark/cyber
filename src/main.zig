@@ -1,8 +1,19 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
+
+/// Trace collects debug info.
+const Trace = false;
+
+var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
+
+/// It seems having the vm in the .data section outperforms it on the stack at least for release-fast.
+/// Since the eval hot loop just stays in the same stack frame, a VM allocated on the stack could be evicted more frequently from the cpu cache.
+/// TODO: Check how it would perform if the VM was allocated on the heap right next to the vm stack.
+var vm: cy.VM = undefined;
 
 pub fn main() !void {
     // var miAlloc: mi.Allocator = undefined;
@@ -10,8 +21,12 @@ pub fn main() !void {
     // defer miAlloc.deinit();
     // const alloc = miAlloc.allocator();
 
-    const alloc = stdx.heap.getDefaultAllocator();
-    defer stdx.heap.deinitDefaultAllocator();
+    const alloc = gpa.allocator();
+    defer {
+        if (builtin.mode == .Debug) {
+            _ = gpa.deinit();
+        }
+    }
 
     // var traceAlloc: stdx.heap.TraceAllocator = undefined;
     // traceAlloc.init(miAlloc.allocator());
@@ -27,16 +42,15 @@ pub fn main() !void {
         const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
         defer alloc.free(src);
 
-        var vm: cy.VM = undefined;
         try vm.init(alloc);
         defer vm.deinit();
 
         var trace: cy.TraceInfo = undefined;
         vm.trace = &trace;
-        const res = try vm.eval(src, false);
+        const res = try vm.eval(src, Trace);
 
         if (cy.Value.floatCanBeInteger(res.asF64())) {
-            std.debug.print("{d:.0}\n", .{@floatToInt(u64, res.asF64())});
+            std.debug.print("{}\n", .{@floatToInt(u64, res.asF64())});
         } else {
             std.debug.print("{d:.10}\n", .{res.asF64()});
         }

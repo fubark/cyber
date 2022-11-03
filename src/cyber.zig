@@ -33,6 +33,11 @@ pub const VM = vm.VM;
 pub const FuncSymbolEntry = vm.FuncSymbolEntry;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
+pub const HeapObject = vm.HeapObject;
+
+const map = @import("map.zig");
+pub const ValueMap = map.ValueMap;
+pub const ValueMapEntry = map.ValueMapEntry;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

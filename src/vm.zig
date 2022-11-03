@@ -434,76 +434,53 @@ pub const VM = struct {
     }
 
     fn allocEmptyMap(self: *VM) !Value {
-        const map = try self.alloc.create(Rc(Map));
-        map.* = .{
+        const obj = try self.allocObject();
+        obj.map = .{
             .structId = MapS,
             .rc = 1,
-            .val = .{
-                .inner = .{},
-                .nextIterIdx = 0,
+            .inner = .{
+                .metadata = null,
+                .entries = null,
+                .size = 0,
+                .cap = 0,
+                .available = 0,
+                .extra = 0,
             },
         };
-        return Value.initPtr(map);
-    }
-
-    fn toMapKey(val: Value) MapKey {
-        if (val.isNumber()) {
-            return .{
-                .keyT = .number,
-                .inner = .{
-                    .number = val.val,
-                },
-            };
-        } else {
-            switch (val.getTag()) {
-                cy.TagConstString => {
-                    const slice = val.asConstStr();
-                    return .{
-                        .keyT = .constStr,
-                        .inner = .{
-                            .constStr = .{
-                                .start = slice.start,
-                                .end = slice.end,
-                            },
-                        },
-                    };
-                },
-                else => stdx.panic("unsupported dynamic tag"),
-            }
-        }
+        return Value.initPtr(obj);
     }
 
     fn allocMap(self: *VM, keys: []const cy.Const, vals: []const Value) !Value {
         @setRuntimeSafety(debug);
-        const map = try self.alloc.create(Rc(Map));
-        map.* = .{
+        const obj = try self.allocObject();
+        obj.map = .{
             .structId = MapS,
             .rc = 1,
-            .val = .{
-                .inner = .{},
-                .nextIterIdx = 0,
+            .inner = .{
+                .metadata = null,
+                .entries = null,
+                .size = 0,
+                .cap = 0,
+                .available = 0,
+                .extra = 0,
             },
         };
 
-        const ctx = MapContext{ .vm = self };
+        const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
         for (keys) |key, i| {
             const val = vals[i];
 
             const keyVal = Value{ .val = key.val };
-            const mapKey = toMapKey(keyVal);
-
-            const res = try map.val.inner.getOrPutContext(self.alloc, mapKey, ctx);
-            if (res.found_existing) {
+            const res = try inner.getOrPut(self.alloc, self, keyVal);
+            if (res.foundExisting) {
                 // TODO: Handle reference count.
-                res.value_ptr.* = val;
+                res.valuePtr.* = val;
             } else {
-                res.value_ptr.* = val;
+                res.valuePtr.* = val;
             }
         }
 
-        const res = Value.initPtr(map);
-        log.debug("allocmap {}", .{res.isPointer()});
-
+        const res = Value.initPtr(obj);
         return res;
     }
 
@@ -747,10 +724,8 @@ pub const VM = struct {
                     }
                 },
                 MapS => {
-                    const map = stdx.ptrCastAlign(*Rc(Map), left.asPointer());
-                    const key = toMapKey(index);
-                    const ctx = MapContext{ .vm = self };
-                    try map.val.inner.putContext(self.alloc, key, right, ctx);
+                    const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                    try map.put(self.alloc, self, index, right);
                 },
                 else => {
                     return stdx.panic("unsupported struct");
@@ -777,15 +752,10 @@ pub const VM = struct {
                     }
                 },
                 MapS => {
-                    const map = stdx.ptrCastAlign(*Rc(Map), left.asPointer());
-                    const mapKey = MapKey{
-                        .keyT = .number,
-                        .inner = .{
-                            .number = @bitCast(u64, -index.toF64()),
-                        },
-                    };
-                    const ctx = MapContext{ .vm = self };
-                    if (map.val.inner.getContext(mapKey, ctx)) |val| {
+                    @setRuntimeSafety(debug);
+                    const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                    const key = Value.initF64(-index.toF64());
+                    if (map.get(self, key)) |val| {
                         return val;
                     } else return Value.initNone();
                 },
@@ -814,10 +784,9 @@ pub const VM = struct {
                     }
                 },
                 MapS => {
-                    const map = stdx.ptrCastAlign(*Rc(Map), left.asPointer());
-                    const mapKey = toMapKey(index);
-                    const ctx = MapContext{ .vm = self };
-                    if (map.val.inner.getContext(mapKey, ctx)) |val| {
+                    @setRuntimeSafety(debug);
+                    const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                    if (map.get(self, index)) |val| {
                         return val;
                     } else return Value.initNone();
                 },
@@ -840,10 +809,10 @@ pub const VM = struct {
         if (args.len == 0) {
             stdx.panic("Args mismatch");
         }
-        const ctx = MapContext{ .vm = self };
-        const map = stdx.ptrCastAlign(*Rc(Map), ptr);
-        const key = toMapKey(args[0]);
-        _ = map.val.inner.removeContext(key, ctx);
+        // const key = toMapKey(args[0]);
+        const obj = stdx.ptrCastAlign(*HeapObject, ptr);
+        const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+        _ = inner.remove(self, args[0]);
         return Value.initNone();
     }
 
@@ -976,9 +945,9 @@ pub const VM = struct {
                 self.freeObject(obj);
             },
             MapS => {
-                const map = stdx.ptrCastAlign(*Rc(Map), &obj.retainedList);
-                map.val.inner.deinit(self.alloc);
-                self.alloc.destroy(map);
+                const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                map.deinit(self.alloc);
+                self.freeObject(obj);
             },
             else => {
                 return stdx.panic("unsupported struct type");
@@ -1002,9 +971,9 @@ pub const VM = struct {
                         self.freeObject(obj);
                     },
                     MapS => {
-                        const map = stdx.ptrCastAlign(*Rc(Map), val.asPointer());
-                        map.val.inner.deinit(self.alloc);
-                        self.alloc.destroy(map);
+                        const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                        map.deinit(self.alloc);
+                        self.freeObject(obj);
                     },
                     ClosureS => {
                         if (obj.closure.numCaptured <= 3) {
@@ -2023,6 +1992,25 @@ const Closure = packed struct {
     },
 };
 
+comptime {
+    std.debug.assert(@sizeOf(MapInner) == 32);
+}
+
+const MapInner = cy.ValueMap;
+const Map = packed struct {
+    structId: StructId,
+    rc: u32,
+    inner: packed struct {
+        metadata: ?[*]u64,
+        entries: ?[*]cy.ValueMapEntry,
+        size: u32,
+        cap: u32,
+        available: u32,
+        extra: u32,
+    },
+    // nextIterIdx: u32,
+};
+
 const List = packed struct {
     structId: StructId,
     rc: u32,
@@ -2042,7 +2030,7 @@ const HeapPage = struct {
 const HeapObjectId = u32;
 
 /// Total of 40 bytes per object. If structs are bigger they are allocated on the gpa.
-const HeapObject = packed union {
+pub const HeapObject = packed union {
     common: packed struct {
         structId: StructId,
     },
@@ -2057,6 +2045,7 @@ const HeapObject = packed union {
         rc: u32,
     },
     retainedList: List,
+    map: Map,
     closure: Closure,
     string: String,
     retainedObject: packed struct {
@@ -2213,69 +2202,6 @@ pub const TraceInfo = struct {
 pub const OpCount = struct {
     code: u32,
     count: u32,
-};
-
-const MapKeyType = enum {
-    constStr,
-    heapStr,
-    number,
-};
-
-const MapKey = struct {
-    keyT: MapKeyType,
-    inner: packed union {
-        constStr: packed struct {
-            start: u32,
-            end: u32,
-        },
-        heapStr: Value,
-        number: u64,
-    },
-};
-
-const Map = struct {
-    inner: std.HashMapUnmanaged(MapKey, Value, MapContext, std.hash_map.default_max_load_percentage),
-    nextIterIdx: u32,
-};
-
-pub const MapContext = struct {
-    vm: *VM,
-
-    pub fn hash(self: MapContext, key: MapKey) u64 {
-        switch (key.keyT) {
-            .constStr => return std.hash.Wyhash.hash(0, self.vm.strBuf[key.inner.constStr.start..key.inner.constStr.end]),
-            .heapStr => stdx.panic("unsupported heapStr"),
-            .number => {
-                return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.inner.number));
-            },
-        }
-    }
-
-    pub fn eql(self: MapContext, a: MapKey, b: MapKey) bool {
-        switch (a.keyT) {
-            .constStr => {
-                if (b.keyT == .constStr) {
-                    const aStr = self.vm.strBuf[a.inner.constStr.start..a.inner.constStr.end];
-                    const bStr = self.vm.strBuf[b.inner.constStr.start..b.inner.constStr.end];
-                    return std.mem.eql(u8, aStr, bStr);
-                } else if (b.keyT == .heapStr) {
-                    stdx.panic("unsupported heapStr");
-                } else {
-                    return false;
-                }
-            },
-            .heapStr => {
-                stdx.panic("unsupported heapStr");
-            },
-            .number => {
-                if (b.keyT != .number) {
-                    return false;
-                } else {
-                    return a.inner.number == b.inner.number;
-                }
-            },
-        }
-    }
 };
 
 const RcNode = struct {

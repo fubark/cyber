@@ -748,11 +748,15 @@ pub const VMcompiler = struct {
                         }
 
                         if (!discardTopExprReg) {
-                            if (leftVar != rightVar) {
-                                try self.buf.pushOp2(.pushMinus1, leftVar, rightVar);
-                            } else {
-                                if (leftVar == 255) {
+                            if (leftVar == 255) {
+                                if (rightVar == 255) {
                                     try self.buf.pushOp(.pushMinus);
+                                } else {
+                                    try self.buf.pushOp2(.pushMinus1, leftVar, rightVar);
+                                }
+                            } else {
+                                if (rightVar == 255) {
+                                    try self.buf.pushOp2(.pushMinus1, leftVar, rightVar);
                                 } else {
                                     try self.buf.pushOp2(.pushMinus2, leftVar, leftVar);
                                 }

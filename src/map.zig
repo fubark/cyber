@@ -21,6 +21,10 @@ pub const ValueMap = struct {
 
     const MaxLoadPercentage = 80;
 
+    pub fn iterator(self: *const ValueMap) Iterator {
+        return Iterator{ .map = self };
+    }
+
     pub fn put(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(".core") std.mem.Allocator.Error!void {
         const res = try self.getOrPut(alloc, vm, key);
         res.valuePtr.* = value;
@@ -480,3 +484,24 @@ pub const GetOrPutResult = struct {
 //         }
 //     }
 // };
+
+pub const Iterator = struct {
+    map: *const ValueMap,
+    idx: u32 = 0,
+
+    pub fn next(self: *Iterator) ?ValueMapEntry {
+        std.debug.assert(self.idx <= self.map.cap);
+        if (self.map.size == 0) {
+            return null;
+        }
+
+        while (self.idx < self.map.cap) : (self.idx += 1) {
+            const md = self.map.metadata.?[self.idx];
+            if (md.isUsed()) {
+                defer self.idx += 1;
+                return self.map.entries.?[self.idx];
+            }
+        }
+        return null;
+    }
+};

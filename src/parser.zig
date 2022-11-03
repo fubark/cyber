@@ -2608,13 +2608,14 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 },
                 '/' => {
                     if (peekChar(p) == '/') {
+                        advanceChar(p);
                         // Single line comment. Ignore chars until eol.
                         while (!isAtEndChar(p)) {
-                            _ = consumeChar(p);
                             if (peekChar(p) == '\n') {
                                 // Don't consume new line or the current indentation could augment with the next line.
                                 return tokenizeOne(p, parsedNewLine);
                             }
+                            advanceChar(p);
                         }
                         return false;
                     } else {

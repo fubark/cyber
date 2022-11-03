@@ -7,6 +7,14 @@ const debug = builtin.mode == .Debug;
 
 const log = stdx.log.scoped(.vm);
 
+/// Reserved symbols known at comptime.
+pub const ListS: StructId = 0;
+pub const MapS: StructId = 1;
+const ClosureS: StructId = 2;
+pub const StringS: StructId = 3;
+
+var tempU8Buf: [256]u8 = undefined;
+
 pub const VM = struct {
     alloc: std.mem.Allocator,
     parser: cy.Parser,
@@ -55,12 +63,6 @@ pub const VM = struct {
     panicMsg: []const u8,
 
     trace: *TraceInfo,
-
-    /// Reserved symbols known at comptime.
-    const ListS: StructId = 0;
-    const MapS: StructId = 1;
-    const ClosureS: StructId = 2;
-    const StringS: StructId = 3;
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{

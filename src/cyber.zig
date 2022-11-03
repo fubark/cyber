@@ -34,6 +34,9 @@ pub const FuncSymbolEntry = vm.FuncSymbolEntry;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 pub const HeapObject = vm.HeapObject;
+pub const ListS = vm.ListS;
+pub const MapS = vm.MapS;
+pub const StringS = vm.StringS;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;

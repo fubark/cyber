@@ -47,7 +47,9 @@ pub fn main() !void {
 
         var trace: cy.TraceInfo = undefined;
         vm.trace = &trace;
-        const res = try vm.eval(src, Trace);
+        const res = vm.eval(src, Trace) catch |err| {
+            stdx.panicFmt("unexpected {}", .{err});
+        };
 
         if (cy.Value.floatCanBeInteger(res.asF64())) {
             std.debug.print("{}\n", .{@floatToInt(u64, res.asF64())});

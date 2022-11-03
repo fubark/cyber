@@ -5,6 +5,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
+const cy = @import("cyber.zig");
 
 /// Most significant bit.
 const SignMask: u64 = 1 << 63;
@@ -81,7 +82,7 @@ pub const Value = packed union {
                 TagFalse => return 0,
                 TagTrue => return 1,
                 TagNone => return 0,
-                else => stdx.panic("unexpected tag"),
+                else => stdx.panicFmt("unexpected tag {}", .{self.getTag()}),
             }
         }
     }
@@ -207,9 +208,27 @@ pub const Value = packed union {
 
     pub fn dump(self: *const Value) void {
         if (self.isNumber()) {
-            log.info("{}", .{self.asF64()});
+            log.info("Number {}", .{self.asF64()});
         } else {
-            log.info("{}", .{self.val});
+            if (self.isPointer()) {
+                const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+                switch (obj.common.structId) {
+                    cy.ListS => log.info("List {*} len={}", .{obj, obj.retainedList.list.len}),
+                    cy.MapS => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
+                    cy.StringS => {
+                        if (obj.string.len > 20) {
+                            log.info("String {*} len={} str=\"{s}\"...", .{obj, obj.string.len, obj.string.ptr[0..20]});
+                        } else {
+                            log.info("String {*} len={} str={s}", .{obj, obj.string.len, obj.string.ptr[0..obj.string.len]});
+                        }
+                    },
+                    else => {
+                        log.info("HeapObject {*} {}", .{obj, obj.common.structId});
+                    },
+                }
+            } else {
+                log.info("{}", .{self.val});
+            }
         }
     }
 };

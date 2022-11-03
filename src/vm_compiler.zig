@@ -77,7 +77,7 @@ pub const VMcompiler = struct {
                 .hasError = true,
             };
         };
-        self.buf.mainLocalSize = self.curBlock.vars.size;
+        self.buf.mainLocalSize = self.blockNumLocals();
 
         return ResultView{
             .buf = self.buf,
@@ -92,6 +92,14 @@ pub const VMcompiler = struct {
                 try self.buf.pushOp1(.release, info.localOffset);
             }
         }
+    }
+
+    fn pushSpecialBlock(self: *VMcompiler) !void {
+        try self.curBlock.specialBlocks.append(self.alloc, .{});
+    }
+
+    fn popSpecialBlock(self: *VMcompiler) void {
+        _ = self.curBlock.specialBlocks.pop();
     }
 
     fn pushBlock(self: *VMcompiler) !void {
@@ -121,10 +129,59 @@ pub const VMcompiler = struct {
         return null;
     }
 
+    fn specialBlock(self: *VMcompiler) *SpecialBlock {
+        return &self.curBlock.specialBlocks.items[self.curBlock.specialBlocks.items.len-1];
+    }
+
+    fn blockUsingTempVar(self: *VMcompiler, varName: []const u8) bool {
+        for (self.curBlock.specialBlocks.items) |block| {
+            if (block.hasTempVars) {
+                if (std.mem.eql(u8, block.varName1, varName)) {
+                    return true;
+                }
+                if (block.varName2.len == 0) {
+                    continue;
+                }
+                if (std.mem.eql(u8, block.varName2, varName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    fn blockGetTempVar(self: *VMcompiler, varName: []const u8) ?LocalId {
+        return self.curBlock.tempVars.get(varName);
+    }
+
+    fn blockNumLocals(self: *VMcompiler) u32 {
+        return self.curBlock.vars.size + self.curBlock.tempVars.size;
+    }
+
     /// Returns the VarInfo if the var was in the current scope or the immediate non-main parent scope.
     /// If found in the parent scope, the var is recorded as a captured var.
     /// Captured vars are given a tempId (order among other captured vars) and patched later by a local offset at the end of the block.
     fn readScopedVar(self: *VMcompiler, varName: []const u8) !?VarInfo {
+        if (self.curBlock.specialBlocks.items.len > 0) {
+            // Search temp vars first.
+            var i: usize = self.curBlock.specialBlocks.items.len;
+            while (i > 0) {
+                i -= 1;
+                const sblock = self.curBlock.specialBlocks.items[i];
+                if (sblock.hasTempVars) {
+                    if (std.mem.eql(u8, sblock.varName1, varName)) {
+                        return sblock.varInfo1;
+                    }
+                    if (sblock.varName2.len == 0) {
+                        continue;
+                    }
+                    if (std.mem.eql(u8, sblock.varName2, varName)) {
+                        return sblock.varInfo2;
+                    }
+                }
+            }
+        }
+
         if (self.curBlock.vars.get(varName)) |info| {
             return info;
         }
@@ -313,7 +370,7 @@ pub const VMcompiler = struct {
                 try self.buf.pushOp(.ret0);
 
                 // Reserve another local for the call return info.
-                const numLocals = self.curBlock.vars.size + 1;
+                const numLocals = self.blockNumLocals() + 1;
                 self.popBlock();
 
                 self.buf.setOpArgs1(jumpOpStart + 1, @intCast(u8, self.buf.ops.items.len - jumpOpStart));
@@ -345,6 +402,9 @@ pub const VMcompiler = struct {
                 self.jumpStack.items.len = jumpStackSave;
             },
             .for_iter_stmt => {
+                try self.pushSpecialBlock();
+                defer self.popSpecialBlock();
+
                 const iterable = self.nodes[node.head.for_iter_stmt.iterable];
                 _ = try self.genExpr(iterable, false);
 
@@ -353,11 +413,21 @@ pub const VMcompiler = struct {
                 const ident = self.nodes[as_clause.head.as_iter_clause.value];
                 const ident_token = self.tokens[ident.start_token];
                 const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-                if (self.getScopedVarInfo(asName)) |info| {
-                    local = info.localOffset;
+
+                if (self.blockGetTempVar(asName)) |local_| {
+                    // Temp variable must not be used already in this block.
+                    if (self.blockUsingTempVar(asName)) {
+                        log.debug("Temp var already used in this block. {s}", .{asName});
+                        return error.CompileError;
+                    } else {
+                        local = local_;
+                        self.specialBlock().setFirst(asName, NumberType, local);
+                    }
                 } else {
-                    const info = try self.reserveLocalVar(asName, AnyType);
-                    local = info.localOffset;
+                    const newLocal = try self.curBlock.reserveLocal();
+                    try self.curBlock.tempVars.put(self.alloc, asName, newLocal);
+                    local = newLocal;
+                    self.specialBlock().setFirst(asName, AnyType, local);
                 }
 
                 const forOpStart = self.buf.ops.items.len;
@@ -368,18 +438,32 @@ pub const VMcompiler = struct {
                 self.buf.setOpArgs1(forOpStart+2, @intCast(u8, self.buf.ops.items.len - forOpStart));
             },
             .for_range_stmt => {
+                try self.pushSpecialBlock();
+                defer self.popSpecialBlock();
+
                 var local: u8 = NullByteId;
                 if (node.head.for_range_stmt.as_clause != NullId) {
                     const asClause = self.nodes[node.head.for_range_stmt.as_clause];
                     const ident = self.nodes[asClause.head.as_range_clause.ident];
                     const ident_token = self.tokens[ident.start_token];
                     const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-                    if (self.getScopedVarInfo(asName)) |info| {
-                        local = info.localOffset;
+
+                    if (self.blockGetTempVar(asName)) |local_| {
+                        // Temp variable must not be used already in this block.
+                        if (self.blockUsingTempVar(asName)) {
+                            log.debug("Temp var already used in this block. {s}", .{asName});
+                            return error.CompileError;
+                        } else {
+                            local = local_;
+                            self.specialBlock().setFirst(asName, NumberType, local);
+                        }
                     } else {
-                        const info = try self.reserveLocalVar(asName, NumberType);
-                        local = info.localOffset;
+                        const newLocal = try self.curBlock.reserveLocal();
+                        try self.curBlock.tempVars.put(self.alloc, asName, newLocal);
+                        local = newLocal;
+                        self.specialBlock().setFirst(asName, NumberType, local);
                     }
+
                     // inc = as_clause.head.as_range_clause.inc;
                     // if (as_clause.head.as_range_clause.step != NullId) {
                     //     step = self.nodes[as_clause.head.as_range_clause.step];
@@ -932,7 +1016,7 @@ pub const VMcompiler = struct {
                     }
                     self.loadStack.items.len = loadStackSave;
 
-                    const numLocals = @intCast(u8, self.curBlock.vars.size + 1);
+                    const numLocals = @intCast(u8, self.blockNumLocals() + 1);
                     const numCaptured = @intCast(u8, self.curBlock.capturedVars.items.len);
                     self.popBlock();
 
@@ -970,9 +1054,51 @@ const CapturedVar = struct {
     localOffset: u8,
 };
 
+const SpecialBlock = struct {
+    /// Each special block has at most 2 temp vars.
+    varName1: []const u8 = "",
+    varInfo1: VarInfo = undefined,
+    varName2: []const u8 = "",
+    varInfo2: VarInfo = undefined,
+    hasTempVars: bool = false,
+    
+    fn setFirst(self: *SpecialBlock, name: []const u8, vtype: Type, local: LocalId) void {
+        self.varName1 = name;
+        self.varInfo1 = .{
+            .vtype = vtype,
+            .localOffset = local,
+            .rcCandidate = vtype.rcCandidate,
+            .hasStaticType = false,
+            .isCapturedVar = false,
+        };
+        self.hasTempVars = true;
+    }
+
+    fn setSecond(self: *SpecialBlock, name: []const u8, vtype: Type, local: LocalId) void {
+        self.varName2 = name;
+        self.varInfo2 = .{
+            .vtype = vtype,
+            .localOffset = local,
+            .rcCandidate = vtype.rcCandidate,
+            .hasStaticType = false,
+            .isCapturedVar = false,
+        };
+        self.hasTempVars = true;
+    }
+};
+
+const LocalId = u8;
+
 const Block = struct {
     stackLen: u32,
     vars: std.StringHashMapUnmanaged(VarInfo),
+
+    /// Temp vars only exist within their special block. eg. the current for loop element
+    tempVars: std.StringHashMapUnmanaged(LocalId),
+
+    /// Special block stack. If the length is greater than 0, variables are searched from the special blocks first.
+    specialBlocks: std.ArrayListUnmanaged(SpecialBlock),
+
     capturedVars: std.ArrayListUnmanaged(CapturedVar),
     pcSave: u32,
 
@@ -980,6 +1106,8 @@ const Block = struct {
         return .{
             .stackLen = 0,
             .vars = .{},
+            .specialBlocks = .{},
+            .tempVars = .{},
             .capturedVars = .{},
             .pcSave = 0,
         };
@@ -988,6 +1116,8 @@ const Block = struct {
     fn deinit(self: *Block, alloc: std.mem.Allocator) void {
         self.vars.deinit(alloc);
         self.capturedVars.deinit(alloc);
+        self.specialBlocks.deinit(alloc);
+        self.tempVars.deinit(alloc);
     }
 
     fn reserveLocal(self: *Block) !u8 {

@@ -698,6 +698,17 @@ test "For iterator." {
         \\sum
     );
     try t.eq(val.asI32(), 45);
+
+    // Temporary vars only exist in their for loop scope.
+    // They don't interfere with vars declared by the user.
+    val = try run.eval(
+        \\elem = 123
+        \\list = [1, 2, 3]
+        \\for list as elem:
+        \\  pass
+        \\elem
+    );
+    try t.eq(val.asI32(), 123);
 }
 
 test "For loop over range." {
@@ -747,6 +758,17 @@ test "For loop over range." {
         \\count
     );
     try t.eq(val.asI32(), 100);
+
+    // Temporary vars only exist in their for loop scope.
+    // They don't interfere with vars declared by the user.
+    val = try run.eval(
+        \\i = 123
+        \\sum = 0
+        \\for 0..10 as i:
+        \\  sum += i
+        \\i
+    );
+    try t.eq(val.asI32(), 123);
 
     // // Increment by step.
     // val = try run.eval(

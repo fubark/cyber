@@ -219,7 +219,7 @@ pub const VM = struct {
         tt.endPrint("compile");
 
         if (trace) {
-            res.buf.dump();
+            try res.buf.dump();
             const numOps = @enumToInt(cy.OpCode.end) + 1;
             var opCounts: [numOps]cy.OpCount = undefined;
             self.trace.opCounts = &opCounts;
@@ -230,6 +230,7 @@ pub const VM = struct {
                     .count = 0,
                 };
             }
+            self.trace.totalOpCounts = 0;
             self.trace.numReleases = 0;
             self.trace.numRetains = 0;
             self.trace.numRetainCycles = 0;
@@ -245,13 +246,14 @@ pub const VM = struct {
                         return a.count > b.count;
                     }
                 };
+                log.info("total ops evaled: {}", .{self.trace.totalOpCounts});
                 std.sort.sort(cy.OpCount, self.trace.opCounts, {}, S.opCountLess);
                 var i: u32 = 0;
                 const numOps = @enumToInt(cy.OpCode.end) + 1;
                 while (i < numOps) : (i += 1) {
                     if (self.trace.opCounts[i].count > 0) {
                         const op = std.meta.intToEnum(cy.OpCode, self.trace.opCounts[i].code) catch continue;
-                        log.info("{} {}", .{op, self.trace.opCounts[i].count});
+                        log.info("\t{s} {}", .{@tagName(op), self.trace.opCounts[i].count});
                     }
                 }
             }
@@ -269,6 +271,15 @@ pub const VM = struct {
         log.info("stack cap: {}", .{self.stack.buf.len});
         log.info("stack top: {}", .{self.stack.top});
         log.info("heap pages: {}", .{self.heapPages.items.len});
+
+        // Dump symbols.
+        {
+            log.info("obj syms:", .{});
+            var iter = self.funcSymSignatures.iterator();
+            while (iter.next()) |it| {
+                log.info("\t{s}: {}", .{it.key_ptr.*, it.value_ptr.*});
+            }
+        }
     }
 
     pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) linksection(".eval") void {
@@ -1186,7 +1197,7 @@ pub const VM = struct {
                 self.trace.opCounts[@enumToInt(op)].count += 1;
                 self.trace.totalOpCounts += 1;
             }
-            log.debug("{} op: {}", .{self.pc, self.ops[self.pc].code});
+            log.debug("{} op: {s}", .{self.pc, @tagName(self.ops[self.pc].code)});
             switch (self.ops[self.pc].code) {
                 .pushTrue => {
                     @setRuntimeSafety(debug);

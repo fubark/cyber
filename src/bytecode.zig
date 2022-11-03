@@ -107,241 +107,91 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn dump(self: ByteCodeBuffer) void {
+    pub fn dump(self: ByteCodeBuffer) !void {
         var pc: usize = 0;
         const ops = self.ops.items;
+
+        var buf = std.ArrayList(u8).init(self.alloc);
+        defer buf.deinit();
+        const w = buf.writer();
+
         while (pc < ops.len) {
-            log.info("{}", .{pc});
+            const name = @tagName(ops[pc].code);
+            try w.print("{} {s} ", .{pc, name});
             switch (ops[pc].code) {
-                .pushTrue => {
-                    log.info("pushTrue", .{});
-                    pc += 1;
-                },
+                .pushLess,
+                .pushGreater,
+                .pushLessEqual,
+                .pushGreaterEqual,
+                .pushOr,
+                .pushAnd,
+                .pushMultiply,
+                .pushAdd,
+                .pushMinus,
+                .pushDivide,
+                .pushMod,
+                .cont,
+                .ret2,
+                .ret1,
+                .ret0,
+                .end,
+                .pushCompare,
+                .pushNot,
+                .pushNone,
+                .pushIndex,
+                .pushReverseIndex,
+                .pushMapEmpty,
+                .pushSlice,
+                .setIndex,
                 .pushFalse => {
-                    log.info("pushFalse", .{});
                     pc += 1;
                 },
-                .pushNone => {
-                    log.info("pushNone", .{});
-                    pc += 1;
-                },
+                .releaseSet,
+                .set,
+                .addSet,
+                .pushList,
+                .load,
+                .jumpBack,
+                .jump,
+                .jumpNotCond,
+                .release,
+                .pushCall0,
+                .pushCall1,
+                .loadRetain,
+                .pushField,
                 .pushConst => {
-                    const idx = ops[pc+1].arg;
-                    log.info("pushConst {}", .{idx});
+                    try w.print("{}", .{ops[pc+1].arg});
                     pc += 2;
                 },
-                .pushNot => {
-                    log.info("pushNot", .{});
-                    pc += 1;
-                },
-                .pushCompare => {
-                    log.info("pushCompare", .{});
-                    pc += 1;
-                },
-                .pushLess => {
-                    log.info("pushLess", .{});
-                    pc += 1;
-                },
-                .pushGreater => {
-                    log.info("pushGreater", .{});
-                    pc += 1;
-                },
-                .pushLessEqual => {
-                    log.info("pushLessEqual", .{});
-                    pc += 1;
-                },
-                .pushGreaterEqual => {
-                    log.info("pushGreaterEqual", .{});
-                    pc += 1;
-                },
-                .pushOr => {
-                    log.info("pushOr", .{});
-                    pc += 1;
-                },
-                .pushAnd => {
-                    log.info("pushAnd", .{});
-                    pc += 1;
-                },
-                .pushAdd => {
-                    log.info("pushAdd", .{});
-                    pc += 1;
-                },
-                .pushMinus => {
-                    log.info("pushMinus", .{});
-                    pc += 1;
-                },
+                .pushMap,
+                .callObjSym,
+                .pushCallSym0,
+                .pushCallSym1,
+                .forIter,
+                .forRange,
+                .pushMinus2,
                 .pushMinus1 => {
-                    const left = ops[pc+1].arg;
-                    const right = ops[pc+2].arg;
-                    log.info("pushMinus1 {} {}", .{left, right});
+                    try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
                     pc += 3;
-                },
-                .pushMinus2 => {
-                    const left = ops[pc+1].arg;
-                    const right = ops[pc+2].arg;
-                    log.info("pushMinus2 {} {}", .{left, right});
-                    pc += 3;
-                },
-                .pushList => {
-                    const numElems = ops[pc+1].arg;
-                    log.info("pushList {}", .{numElems});
-                    pc += 2;
-                },
-                .pushMapEmpty => {
-                    log.info("pushMapEmpty", .{});
-                    pc += 1;
-                },
-                .pushMap => {
-                    const numEntries = ops[pc+1].arg;
-                    const startConst = ops[pc+2].arg;
-                    log.info("pushMap {} {}", .{numEntries, startConst});
-                    pc += 3;
-                },
-                .pushSlice => {
-                    log.info("pushSlice", .{});
-                    pc += 1;
-                },
-                .addSet => {
-                    const offset = ops[pc+1].arg;
-                    log.info("addSet {}", .{offset});
-                    pc += 2;
-                },
-                .releaseSet => {
-                    const offset = ops[pc+1].arg;
-                    log.info("releaseSet {}", .{offset});
-                    pc += 2;
-                },
-                .set => {
-                    const offset = ops[pc+1].arg;
-                    log.info("set {}", .{offset});
-                    pc += 2;
-                },
-                .setIndex => {
-                    log.info("setIndex", .{});
-                    pc += 1;
-                },
-                .load => {
-                    const offset = ops[pc+1].arg;
-                    log.info("load {}", .{offset});
-                    pc += 2;
-                },
-                .loadRetain => {
-                    const offset = ops[pc+1].arg;
-                    log.info("loadRetain {}", .{offset});
-                    pc += 2;
-                },
-                .pushIndex => {
-                    log.info("pushIndex", .{});
-                    pc += 1;
-                },
-                .jumpBack => {
-                    const offset = ops[pc+1].arg;
-                    log.info("jumpBack {}", .{offset});
-                    pc += 2;
-                },
-                .jump => {
-                    const offset = ops[pc+1].arg;
-                    log.info("jump {}", .{offset});
-                    pc += 2;
-                },
-                .jumpNotCond => {
-                    const offset = ops[pc+1].arg;
-                    log.info("jumpNotCond {}", .{offset});
-                    pc += 2;
-                },
-                .release => {
-                    const offset = ops[pc+1].arg;
-                    log.info("release {}", .{offset});
-                    pc += 2;
-                },
-                .pushCall0 => {
-                    const numArgs = ops[pc+1].arg;
-                    log.info("pushCall0 {}", .{numArgs});
-                    pc += 2;
-                },
-                .pushCall1 => {
-                    const numArgs = ops[pc+1].arg;
-                    log.info("pushCall1 {}", .{numArgs});
-                    pc += 2;
                 },
                 .call => {
                     stdx.unsupported();
                 },
-                .callObjSym => {
-                    const symId = ops[pc+1].arg;
-                    const numArgs = ops[pc+2].arg;
-                    log.info("callObjSym {} {}", .{symId, numArgs});
-                    pc += 3;
-                },
-                .pushCallSym0 => {
-                    const symId = ops[pc+1].arg;
-                    const numArgs = ops[pc+2].arg;
-                    log.info("pushCallSym0 {} {}", .{symId, numArgs});
-                    pc += 3;
-                },
-                .pushCallSym1 => {
-                    const symId = ops[pc+1].arg;
-                    const numArgs = ops[pc+2].arg;
-                    log.info("pushCallSym1 {} {}", .{symId, numArgs});
-                    pc += 3;
-                },
-                .pushField => {
-                    const symId = ops[pc+1].arg;
-                    log.info("pushField {}", .{symId});
-                    pc += 2;
-                },
                 .pushLambda => {
-                    const funcOffset = ops[pc+1].arg;
-                    const numParams = ops[pc+2].arg;
-                    const numLocals = ops[pc+3].arg;
-                    log.info("pushLambda {} {} {}", .{funcOffset, numParams, numLocals});
+                    try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
                     pc += 4;
                 },
                 .pushClosure => {
-                    const funcOffset = ops[pc+1].arg;
-                    const numParams = ops[pc+2].arg;
-                    const numCaptured = ops[pc+3].arg;
-                    const numLocals = ops[pc+4].arg;
-                    log.info("pushClosure {} {} {} {}", .{funcOffset, numParams, numCaptured, numLocals});
+                    try w.print("{} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
                     pc += 5;
-                },
-                .forIter => {
-                    const local = ops[pc+1].arg;
-                    const pcOffset = ops[pc+2].arg;
-                    log.info("forIter {} {}", .{local, pcOffset});
-                    pc += 3;
-                },
-                .forRange => {
-                    const local = ops[pc+1].arg;
-                    const pcOffset = ops[pc+2].arg;
-                    log.info("forRange {} {}", .{local, pcOffset});
-                    pc += 3;
-                },
-                .cont => {
-                    log.info("cont", .{});
-                    pc += 1;
-                },
-                .ret2 => {
-                    log.info("ret2", .{});
-                    pc += 1;
-                },
-                .ret1 => {
-                    log.info("ret1", .{});
-                    pc += 1;
-                },
-                .ret0 => {
-                    log.info("ret0", .{});
-                    pc += 1;
-                },
-                .end => {
-                    log.info("end", .{});
-                    pc += 1;
                 },
                 else => {
                     stdx.panicFmt("unsupported {}", .{ops[pc].code});
                 },
             }
+            _ = try w.write("\n");
         }
+        log.info("{s}", .{buf.items});
 
         for (self.consts.items) |extra| {
             log.info("extra {}", .{extra});

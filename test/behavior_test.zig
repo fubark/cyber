@@ -669,37 +669,36 @@ test "Infinite for loop." {
 //     run.deinitValue(val);
 // }
 
-// test "For loop over list." {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "For loop over list." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Basic.
-//     var val = try run.eval(
-//         \\list = [1, 2, 3]
-//         \\sum = 0
-//         \\for list as it:
-//         \\   sum += it
-//         \\sum
-//     );
-//     try t.eq(val.asI32(), 6);
-//     run.deinitValue(val);
-// }
+    // Basic.
+    var val = try run.eval(
+        \\list = [1, 2, 3]
+        \\sum = 0
+        \\for list as it:
+        \\   sum += it
+        \\sum
+    );
+    try t.eq(val.asI32(), 6);
+}
 
-// test "For iterator." {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "For iterator." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     var val = try run.eval(
-//         \\list = []
-//         \\for 0..10 as i:
-//         \\  list.add(i)
-//         \\sum = 0
-//         \\for list as i:
-//         \\  sum += i
-//         \\sum
-//     );
-//     try t.eq(val.asI32(), 45);
-// }
+    var val = try run.eval(
+        \\list = []
+        \\for 0..10 as i:
+        \\  list.add(i)
+        \\sum = 0
+        \\for list as i:
+        \\  sum += i
+        \\sum
+    );
+    try t.eq(val.asI32(), 45);
+}
 
 test "For loop over range." {
     const run = Runner.create();
@@ -736,6 +735,18 @@ test "For loop over range." {
         \\iters
     );
     try t.eq(val.asI32(), 20);
+
+    // Nested for loop.
+    val = try run.eval(
+        \\count = 0
+        \\for 0..10 as i:
+        \\  inner = 0
+        \\  for 0..10 as j:
+        \\    inner += 1
+        \\  count += inner
+        \\count
+    );
+    try t.eq(val.asI32(), 100);
 
     // // Increment by step.
     // val = try run.eval(

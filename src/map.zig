@@ -34,6 +34,14 @@ pub const ValueMap = struct {
         return null;
     }
 
+    pub fn getByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(".core") ?cy.Value {
+        @setRuntimeSafety(debug);
+        if (self.getIndexByString(vm, key)) |idx| {
+            return self.entries.?[idx].value;
+        }
+        return null;
+    }
+
     // This counts the number of occupied slots (not counting tombstones), which is
     // what has to stay under the max_load_percentage of capacity.
     fn load(self: *const ValueMap) u32 {
@@ -133,17 +141,48 @@ pub const ValueMap = struct {
         return self.getIndex(vm, key) != null;
     }
 
+    fn computeStringHash(str: []const u8) linksection(".core") u64 {
+        @setRuntimeSafety(debug);
+        return std.hash.Wyhash.hash(0, str);
+    }
+
     fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(".core") u64 {
         @setRuntimeSafety(debug);
         if (key.isNumber()) {
             return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
         } else {
-            switch (key.getTag()) {
-                cy.TagConstString => {
-                    const slice = key.asConstStr();
-                    return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
-                },
-                else => stdx.unsupported(),
+            if (key.isPointer()) {
+                const obj = stdx.ptrCastAlign(*cy.HeapObject, key.asPointer().?);
+                if (obj.common.structId == cy.StringS) {
+                    return std.hash.Wyhash.hash(0, obj.string.ptr[0..obj.string.len]);
+                } else stdx.unsupported();
+            } else {
+                switch (key.getTag()) {
+                    cy.TagConstString => {
+                        const slice = key.asConstStr();
+                        return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
+                    },
+                    else => stdx.unsupported(),
+                }
+            }
+        }
+    }
+
+    fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(".core") bool {
+        @setRuntimeSafety(debug);
+        if (b.isPointer()) {
+            const obj = stdx.ptrCastAlign(*cy.HeapObject, b.asPointer().?);
+            if (obj.common.structId == cy.StringS) {
+                return std.mem.eql(u8, a, obj.string.ptr[0..obj.string.len]);
+            } else return false;
+        } else {
+            const bTag = b.getTag();
+            if (bTag == cy.TagConstString) {
+                const bSlice = b.asConstStr();
+                const bStr = vm.strBuf[bSlice.start..bSlice.end];
+                return std.mem.eql(u8, a, bStr);
+            } else {
+                stdx.unsupported();
             }
         }
     }
@@ -179,6 +218,32 @@ pub const ValueMap = struct {
         return newCap;
     }
 
+    inline fn getIndexByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(".core") ?usize {
+        @setRuntimeSafety(debug);
+        const hash = computeStringHash(key);
+        const mask = self.cap - 1;
+        const fingerprint = Metadata.takeFingerprint(hash);
+
+        // Don't loop indefinitely when there are no empty slots.
+        var limit = self.cap;
+        var idx = @truncate(usize, hash & mask);
+
+        var md = self.metadata.?[idx];
+        while (!md.isFree() and limit != 0) {
+            if (md.isUsed() and md.fingerprint == fingerprint) {
+                const testKey = self.entries.?[idx].key;
+                if (stringKeyEqual(vm, key, testKey)) {
+                    return idx;
+                }
+            }
+
+            limit -= 1;
+            idx = (idx + 1) & mask;
+            md = self.metadata.?[idx];
+        }
+        return null;
+    }
+
     /// Find the index containing the data for the given key.
     /// Whether this function returns null is almost always
     /// branched on after this function returns, and this function
@@ -189,10 +254,6 @@ pub const ValueMap = struct {
     /// marked as inline.
     inline fn getIndex(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(".core") ?usize {
         @setRuntimeSafety(debug);
-        if (self.size == 0) {
-            return null;
-        }
-
         const hash = computeHash(vm, key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);

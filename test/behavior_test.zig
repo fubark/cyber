@@ -504,6 +504,15 @@ test "Maps" {
     );
     try t.eq(val.asI32(), 32);
 
+    // Access expression.
+    val = try run.eval(
+        \\a = {
+        \\  b: 32
+        \\}
+        \\a.b
+    );
+    try t.eq(val.asI32(), 32);
+
     // String entry.
     // val = try run.eval(
     //     \\a = {

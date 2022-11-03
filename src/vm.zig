@@ -670,6 +670,7 @@ pub const VM = struct {
             try self.fieldSyms.append(self.alloc, .{
                 .mapT = .empty,
                 .inner = undefined,
+                .name = name,
             });
             res.value_ptr.* = id;
             return id;
@@ -940,8 +941,8 @@ pub const VM = struct {
         _ = self;
         @setRuntimeSafety(debug);
         if (val.isPointer()) {
-            const obj = stdx.ptrCastAlign(*GenericObject, val.asPointer());
-            obj.rc += 1;
+            const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer());
+            obj.retainedCommon.rc += 1;
         }
     }
 
@@ -1009,19 +1010,37 @@ pub const VM = struct {
         }
     }
 
-    fn pushField(self: *const VM, symId: SymbolId, recv: Value) void {
+    fn getField(self: *const VM, symId: SymbolId, recv: Value) !Value {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
-            const obj = stdx.ptrCastAlign(*GenericObject, recv.asPointer());
-            const map = self.fieldSyms.items[symId];
-            switch (map.mapT) {
+            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+            const symMap = self.fieldSyms.items[symId];
+            switch (symMap.mapT) {
                 .oneStruct => {
-                    if (obj.structId == map.inner.oneStruct.id) {
+                    if (obj.common.structId == symMap.inner.oneStruct.id) {
                         stdx.panic("TODO: get field");
-                    } else stdx.panic("Symbol does not exist.");
+                    } else if (obj.common.structId == MapS) {
+                        @setCold(true);
+                        const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                        if (map.getByString(self, symMap.name)) |val| {
+                            return val;
+                        } else return Value.initNone();
+                    } else {
+                        return error.MissingSymbol;
+                    }
                 },
-                .empty => stdx.panic("Symbol does not exist."),
-                else => stdx.panicFmt("unsupported {}", .{map.mapT}),
+                .empty => {
+                    @setCold(true);
+                    if (obj.common.structId == MapS) {
+                        const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                        if (map.getByString(self, symMap.name)) |val| {
+                            return val;
+                        } else return Value.initNone();
+                    } else {
+                        return error.MissingSymbol;
+                    }
+                },
+                else => stdx.panicFmt("unsupported {}", .{symMap.mapT}),
             } 
         } else stdx.panic("Symbol does not exist.");
     }
@@ -1102,7 +1121,12 @@ pub const VM = struct {
                 // Push return pc address and previous current framePtr onto the stack.
                 self.stack.buf[self.stack.top-1] = retInfo;
             },
-            .none => stdx.panic("Symbol doesn't exist."),
+            .none => {
+                // Function doesn't exist.
+                log.debug("Symbol {} doesn't exist.", .{symId});
+                // TODO: script panic.
+                return error.MissingSymbol;
+            },
             // else => stdx.panic("unsupported callsym"),
         }
     }
@@ -1568,7 +1592,8 @@ pub const VM = struct {
                     self.pc += 2;
 
                     const recv = self.popRegister();
-                    self.pushField(symId, recv);
+                    const val = try self.getField(symId, recv);
+                    try self.pushRegister(val);
                     continue;
                 },
                 .pushLambda => {
@@ -2074,11 +2099,6 @@ comptime {
     std.debug.assert(@sizeOf(HeapPage) == 40 * 1600);
 }
 
-const GenericObject = struct {
-    structId: StructId,
-    rc: u32,
-};
-
 const SymbolMapType = enum {
     oneStruct,
     // twoStructs,
@@ -2094,6 +2114,7 @@ const FieldSymbolMap = struct {
             fieldIdx: u32,
         },
     },
+    name: []const u8,
 };
 
 const SymbolMap = struct {

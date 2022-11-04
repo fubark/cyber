@@ -443,10 +443,10 @@ pub const VM = struct {
                 }
                 return self.allocList(list.items[@intCast(u32, start)..@intCast(u32, end)]);
             } else {
-                try stdx.panic("expected list");
+                stdx.panic("expected list");
             }
         } else {
-            try stdx.panic("expected pointer");
+            stdx.panic("expected pointer");
         }
     }
 
@@ -1543,7 +1543,13 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const pcOffset = self.ops[self.pc+1].arg;
                     const cond = self.popRegister();
-                    if (!cond.toBool()) {
+                    const condVal = if (cond.isBool()) b: {
+                        break :b cond.asBool();
+                    } else b: {
+                        @setCold(true);
+                        break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
+                    };
+                    if (!condVal) {
                         self.pc += pcOffset;
                     } else {
                         self.pc += 2;
@@ -1833,8 +1839,9 @@ fn evalAnd(left: cy.Value, right: cy.Value) cy.Value {
         }
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return left,
-            cy.TagTrue => return right,
+            cy.TagBoolean => {
+                if (left.asBool()) return right else return left;
+            },
             cy.TagNone => return left,
             else => stdx.panic("unexpected tag"),
         }
@@ -1850,8 +1857,9 @@ fn evalOr(left: cy.Value, right: cy.Value) cy.Value {
         }
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return right,
-            cy.TagTrue => return left,
+            cy.TagBoolean => {
+                if (left.asBool()) return left else return right;
+            },
             cy.TagNone => return right,
             else => stdx.panic("unexpected tag"),
         }
@@ -1880,9 +1888,8 @@ fn evalCompare(left: cy.Value, right: cy.Value) cy.Value {
         return Value.initBool(right.isNumber() and left.asF64() == right.asF64());
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return Value.initBool(right.isFalse()),
-            cy.TagTrue => return Value.initBool(right.isTrue()),
             cy.TagNone => return Value.initBool(right.isNone()),
+            cy.TagBoolean => return Value.initBool(left.asBool() == right.toBool()),
             else => stdx.panic("unexpected tag"),
         }
     }
@@ -1894,8 +1901,13 @@ fn evalMinus(left: cy.Value, right: cy.Value) cy.Value {
         return Value.initF64(left.asF64() - right.toF64());
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return Value.initF64(-right.toF64()),
-            cy.TagTrue => return Value.initF64(1 - right.toF64()),
+            cy.TagBoolean => {
+                if (left.asBool()) {
+                    return Value.initF64(1 - right.toF64());
+                } else {
+                    return Value.initF64(-right.toF64());
+                }
+            },
             cy.TagNone => return Value.initF64(-right.toF64()),
             else => stdx.panic("unexpected tag"),
         }
@@ -1908,8 +1920,13 @@ fn evalPower(left: cy.Value, right: cy.Value) cy.Value {
         return Value.initF64(std.math.pow(f64, left.asF64(), right.toF64()));
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return Value.initF64(0),
-            cy.TagTrue => return Value.initF64(1),
+            cy.TagBoolean => {
+                if (left.asBool()) {
+                    return Value.initF64(1);
+                } else {
+                    return Value.initF64(0);
+                }
+            },
             cy.TagNone => return Value.initF64(0),
             else => stdx.panic("unexpected tag"),
         }
@@ -1922,8 +1939,13 @@ fn evalDivide(left: cy.Value, right: cy.Value) cy.Value {
         return Value.initF64(left.asF64() / right.toF64());
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return Value.initF64(0),
-            cy.TagTrue => return Value.initF64(1.0 / right.toF64()),
+            cy.TagBoolean => {
+                if (left.asBool()) {
+                    return Value.initF64(1.0 / right.toF64());
+                } else {
+                    return Value.initF64(0);
+                }
+            },
             cy.TagNone => return Value.initF64(0),
             else => stdx.panic("unexpected tag"),
         }
@@ -1936,21 +1958,22 @@ fn evalMod(left: cy.Value, right: cy.Value) cy.Value {
         return Value.initF64(std.math.mod(f64, left.asF64(), right.toF64()) catch std.math.nan_f64);
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => {
-                if (right.toF64() != 0) {
-                    return Value.initF64(0);
+            cy.TagBoolean => {
+                if (left.asBool()) {
+                    const rightf = right.toF64();
+                    if (rightf > 0) {
+                        return Value.initF64(1);
+                    } else if (rightf == 0) {
+                        return Value.initF64(std.math.nan_f64);
+                    } else {
+                        return Value.initF64(rightf + 1);
+                    }
                 } else {
-                    return Value.initF64(std.math.nan_f64);
-                }
-            },
-            cy.TagTrue => {
-                const rightf = right.toF64();
-                if (rightf > 0) {
-                    return Value.initF64(1);
-                } else if (rightf == 0) {
-                    return Value.initF64(std.math.nan_f64);
-                } else {
-                    return Value.initF64(rightf + 1);
+                    if (right.toF64() != 0) {
+                        return Value.initF64(0);
+                    } else {
+                        return Value.initF64(std.math.nan_f64);
+                    }
                 }
             },
             cy.TagNone => {
@@ -1971,8 +1994,13 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
         return Value.initF64(left.asF64() * right.toF64());
     } else {
         switch (left.getTag()) {
-            cy.TagFalse => return Value.initF64(0),
-            cy.TagTrue => return Value.initF64(right.toF64()),
+            cy.TagBoolean => {
+                if (left.asBool()) {
+                    return Value.initF64(right.toF64());
+                } else {
+                    return Value.initF64(0);
+                }
+            },
             cy.TagNone => return Value.initF64(0),
             else => stdx.panic("unexpected tag"),
         }
@@ -1982,8 +2010,13 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
 fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) cy.Value {
     @setRuntimeSafety(debug);
     switch (left.getTag()) {
-        cy.TagFalse => return Value.initF64(right.toF64()),
-        cy.TagTrue => return Value.initF64(1 + right.toF64()),
+        cy.TagBoolean => {
+            if (left.asBool()) {
+                return Value.initF64(1 + right.toF64());
+            } else {
+                return Value.initF64(right.toF64());
+            }
+        },
         cy.TagNone => return Value.initF64(right.toF64()),
         cy.TagError => stdx.fatal(),
         cy.TagConstString => {

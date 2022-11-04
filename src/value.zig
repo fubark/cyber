@@ -16,8 +16,10 @@ const QNANmask: u64 = 0x7ff8000000000000;
 /// QNAN + Sign bit indicates a pointer value.
 const PointerMask: u64 = QNANmask | SignMask;
 
-const TrueMask: u64 = QNANmask | (TagTrue << 32);
-const FalseMask: u64 = QNANmask | (TagFalse << 32);
+const BooleanMask: u64 = QNANmask | (TagBoolean << 32);
+const FalseMask: u64 = BooleanMask;
+const TrueMask: u64 = BooleanMask | TrueBitMask;
+const TrueBitMask: u64 = 1;
 const NoneMask: u64 = QNANmask | (TagNone << 32);
 const ErrorMask: u64 = QNANmask | (TagError << 32);
 const ConstStringMask: u64 = QNANmask | (TagConstString << 32);
@@ -25,10 +27,9 @@ const ConstStringMask: u64 = QNANmask | (TagConstString << 32);
 const TagMask: u32 = (1 << 3) - 1;
 const BeforeTagMask: u32 = 0xffff << 3;
 pub const TagNone = 0;
-pub const TagFalse = 1;
-pub const TagTrue = 2;
-pub const TagError = 3;
-pub const TagConstString = 4;
+pub const TagBoolean = 1;
+pub const TagError = 2;
+pub const TagConstString = 3;
 
 pub const ValuePair = struct {
     left: Value,
@@ -79,9 +80,8 @@ pub const Value = packed union {
             return self.asF64();
         } else {
             switch (self.getTag()) {
-                TagFalse => return 0,
-                TagTrue => return 1,
                 TagNone => return 0,
+                TagBoolean => return if (self.asBool()) 1 else 0,
                 else => stdx.panicFmt("unexpected tag {}", .{self.getTag()}),
             }
         }
@@ -93,20 +93,24 @@ pub const Value = packed union {
             return self.asF64() != 0;
         } else {
             switch (self.getTag()) {
-                TagFalse => return false,
-                TagTrue => return true,
                 TagNone => return false,
-                else => stdx.panic("unexpected tag"),
+                TagBoolean => return self.asBool(),
+                else => {
+                    // @setCold(true);
+                    stdx.panic("unexpected tag");
+                },
             }
         }
     }
 
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
         // Only a number(f64) if nan bits are not set.
         return self.val & QNANmask != QNANmask;
     }
 
     pub inline fn isPointer(self: *const Value) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
         // Only a pointer if nan bits and sign bit are set.
         return self.val & PointerMask == PointerMask;
     }
@@ -132,7 +136,12 @@ pub const Value = packed union {
         return self.val == TrueMask;
     }
 
-    pub inline fn getTag(self: *const Value) u3 {
+    pub inline fn isBool(self: *const Value) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
+        return self.val & BooleanMask == BooleanMask;
+    }
+
+    pub inline fn getTag(self: *const Value) linksection(".eval") u3 {
         @setRuntimeSafety(debug);
         return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
         // if (endian == .Little) {

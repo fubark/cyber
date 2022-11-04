@@ -809,6 +809,17 @@ test "Native function call." {
     try t.eq(run.inner.vm.stack.top, 0);
 }
 
+test "Lambdas." {
+    const run = Runner.create();
+    defer run.destroy();
+
+    var val = try run.eval(
+        \\foo = a => a + 1
+        \\foo(10)
+    );
+    try t.eq(val.asI32(), 11);
+}
+
 test "Closures." {
     const run = Runner.create();
     defer run.destroy();

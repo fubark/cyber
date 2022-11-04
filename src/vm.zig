@@ -11,7 +11,8 @@ const log = stdx.log.scoped(.vm);
 pub const ListS: StructId = 0;
 pub const MapS: StructId = 1;
 const ClosureS: StructId = 2;
-pub const StringS: StructId = 3;
+const LambdaS: StructId = 3;
+pub const StringS: StructId = 4;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -116,6 +117,9 @@ pub const VM = struct {
 
         id = try self.addStruct("Closure");
         std.debug.assert(id == ClosureS);
+
+        id = try self.addStruct("Lambda");
+        std.debug.assert(id == LambdaS);
 
         id = try self.addStruct("String");
         std.debug.assert(id == StringS);
@@ -537,6 +541,19 @@ pub const VM = struct {
             self.heapFreeHead = next;
             return ptr;
         }
+    }
+
+    fn allocLambda(self: *VM, funcPc: usize, numParams: u8, numLocals: u8) !Value {
+        @setRuntimeSafety(debug);
+        const obj = try self.allocObject();
+        obj.lambda = .{
+            .structId = LambdaS,
+            .rc = 1,
+            .funcPc = @intCast(u32, funcPc),
+            .numParams = numParams,
+            .numLocals = numLocals,
+        };
+        return Value.initPtr(obj);
     }
 
     fn allocClosure(self: *VM, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const Value) !Value {
@@ -1000,12 +1017,15 @@ pub const VM = struct {
                             stdx.panic("unsupported");
                         }
                     },
+                    LambdaS => {
+                        self.freeObject(obj);
+                    },
                     StringS => {
                         self.alloc.free(obj.string.ptr[0..obj.string.len]);
                         self.freeObject(obj);
                     },
                     else => {
-                        return stdx.panic("unsupported struct type");
+                        return stdx.panicFmt("unsupported struct type {}", .{obj.common.structId});
                     },
                 }
             }
@@ -1075,6 +1095,21 @@ pub const VM = struct {
                     } else {
                         stdx.panic("unsupported closure > 3 captured args.");
                     }
+                },
+                LambdaS => {
+                    if (numArgs - 1 != obj.lambda.numParams) {
+                        stdx.panic("params/args mismatch");
+                    }
+                    self.pc = obj.lambda.funcPc;
+                    self.framePtr = self.stack.top - numArgs;
+                    // numLocals includes the function params as well as the return info value.
+                    self.stack.top = self.framePtr + obj.lambda.numLocals;
+
+                    if (self.stack.top > self.stack.buf.len) {
+                        try self.stack.growTotalCapacity(self.alloc, self.stack.top);
+                    }
+                    // Push return pc address and previous current framePtr onto the stack.
+                    self.stack.buf[self.stack.top-1] = retInfo;
                 },
                 else => {},
             }
@@ -1600,13 +1635,13 @@ pub const VM = struct {
                 },
                 .pushLambda => {
                     @setRuntimeSafety(debug);
-                    const funcOffset = self.ops[self.pc+1].arg;
+                    const funcPc = self.pc - self.ops[self.pc+1].arg;
                     const numParams = self.ops[self.pc+2].arg;
                     const numLocals = self.ops[self.pc+3].arg;
                     self.pc += 4;
-                    _ = funcOffset;
-                    _ = numParams;
-                    _ = numLocals;
+
+                    const lambda = try self.allocLambda(funcPc, numParams, numLocals);
+                    try self.pushRegister(lambda);
                     continue;
                 },
                 .pushClosure => {
@@ -2014,6 +2049,14 @@ const String = packed struct {
     len: usize,
 };
 
+const Lambda = packed struct {
+    structId: StructId,
+    rc: u32,
+    funcPc: u32, 
+    numParams: u8,
+    numLocals: u8,
+};
+
 const Closure = packed struct {
     structId: StructId,
     rc: u32,
@@ -2085,6 +2128,7 @@ pub const HeapObject = packed union {
     retainedList: List,
     map: Map,
     closure: Closure,
+    lambda: Lambda,
     string: String,
     retainedObject: packed struct {
         structId: StructId,

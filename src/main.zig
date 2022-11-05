@@ -10,11 +10,6 @@ const Trace = false;
 
 var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
 
-/// It seems having the vm in the .data section outperforms it on the stack at least for release-fast.
-/// Since the eval hot loop just stays in the same stack frame, a VM allocated on the stack could be evicted more frequently from the cpu cache.
-/// TODO: Check how it would perform if the VM was allocated on the heap right next to the vm stack.
-var vm: cy.VM = undefined;
-
 pub fn main() !void {
     // var miAlloc: mi.Allocator = undefined;
     // miAlloc.init();
@@ -42,12 +37,12 @@ pub fn main() !void {
         const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
         defer alloc.free(src);
 
-        try vm.init(alloc);
-        defer vm.deinit();
+        try cy.initVM(alloc);
+        defer cy.deinitVM();
 
         var trace: cy.TraceInfo = undefined;
-        vm.trace = &trace;
-        const res = vm.eval(src, Trace) catch |err| {
+        cy.setTrace(&trace);
+        const res = cy.eval(src, Trace) catch |err| {
             stdx.panicFmt("unexpected {}", .{err});
         };
 

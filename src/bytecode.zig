@@ -240,13 +240,19 @@ pub const OpData = packed union {
 };
 
 pub const OpCode = enum(u8) {
+    /// Push constant value onto register stack.
+    pushConst,
+    /// Loads a value from address relative to the local frame onto the register stack.
+    load,
+    /// Pops top two registers, performs addition, and pushes result onto stack.
+    pushAdd,
+    pushMinus,
+    pushMinus1,
     /// Push boolean onto register stack.
     pushTrue,
     pushFalse,
     /// Push none value onto register stack.
     pushNone,
-    /// Push constant value onto register stack.
-    pushConst,
     /// Pops top two registers, performs or, and pushes result onto stack.
     pushOr,
     /// Pops top two registers, performs and, and pushes result onto stack.
@@ -258,12 +264,8 @@ pub const OpCode = enum(u8) {
     releaseSet,
     /// Pops right, index, left registers, sets right value to address of left[index].
     setIndex,
-    /// Loads a value from address relative to the local frame onto the register stack.
-    load,
     loadRetain,
     pushIndex,
-    /// Pops top two registers, performs addition, and pushes result onto stack.
-    pushAdd,
     /// Pops specifc number of registers to allocate a new list on the heap. Pointer to new list is pushed onto the stack.
     pushList,
     pushMap,
@@ -301,8 +303,6 @@ pub const OpCode = enum(u8) {
     pushGreater,
     pushLessEqual,
     pushGreaterEqual,
-    pushMinus,
-    pushMinus1,
     pushMinus2,
     cont,
     forRange,

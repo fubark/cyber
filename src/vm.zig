@@ -16,6 +16,26 @@ pub const StringS: StructId = 4;
 
 var tempU8Buf: [256]u8 = undefined;
 
+/// Accessing the immediate VM vars is faster when the virtual address is known at compile time.
+/// This also puts it in the .data section which can be closer to the eval hot loop.
+var gvm: VM = undefined;
+
+pub fn initVM(alloc: std.mem.Allocator) !void {
+    try gvm.init(alloc);
+}
+
+pub fn deinitVM() void {
+    gvm.deinit();
+}
+
+pub fn eval(src: []const u8, comptime trace: bool) !Value {
+    return gvm.eval(src, trace);
+}
+
+pub fn setTrace(trace: *TraceInfo) void {
+    gvm.trace = trace;
+}
+
 pub const VM = struct {
     alloc: std.mem.Allocator,
     parser: cy.Parser,
@@ -408,7 +428,10 @@ pub const VM = struct {
         try self.ensureStackTotalCapacity(buf.mainLocalSize);
         self.stack.top = buf.mainLocalSize;
 
-        try self.evalStackFrame(trace);
+        try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
+        if (trace) {
+            log.info("main local size: {}", .{buf.mainLocalSize});
+        }
 
         if (self.stack.top == buf.mainLocalSize) {
             self.stack.top = 0;
@@ -501,7 +524,7 @@ pub const VM = struct {
         return res;
     }
 
-    fn freeObject(self: *VM, obj: *HeapObject) void {
+    fn freeObject(self: *VM, obj: *HeapObject) linksection(".eval") void {
         const prev = &(@ptrCast([*]HeapObject, obj) - 1)[0];
         if (prev.common.structId == NullId) {
             // Left is a free span. Extend length.
@@ -648,11 +671,14 @@ pub const VM = struct {
         }
     }
 
-    inline fn pushRegister(self: *VM, val: Value) linksection(".eval") !void {
-        @setRuntimeSafety(debug);
+    inline fn checkStackHasOneSpace(self: *const VM) linksection(".eval") !void {
         if (self.stack.top == self.stack.buf.len) {
-            try self.stack.growTotalCapacity(self.alloc, self.stack.top + 1);
+            return error.StackOverflow;
         }
+    }
+
+    inline fn pushValueNoCheck(self: *VM, val: Value) linksection(".eval") void {
+        @setRuntimeSafety(debug);
         self.stack.buf[self.stack.top] = val;
         self.stack.top += 1;
     }
@@ -840,7 +866,6 @@ pub const VM = struct {
         if (args.len == 0) {
             stdx.panic("Args mismatch");
         }
-        // const key = toMapKey(args[0]);
         const obj = stdx.ptrCastAlign(*HeapObject, ptr);
         const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
         _ = inner.remove(self, args[0]);
@@ -988,6 +1013,8 @@ pub const VM = struct {
 
     pub fn release(self: *VM, val: Value, comptime trace: bool) linksection(".eval") void {
         @setRuntimeSafety(debug);
+        // log.info("release", .{});
+        // val.dump();
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
             obj.retainedCommon.rc -= 1;
@@ -1118,7 +1145,7 @@ pub const VM = struct {
         }
     }
 
-    /// Current stack top is already pointing past the last arg. 
+    /// Current stack top is already pointing past the last arg.
     fn callSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         const sym = self.funcSyms.items[symId];
@@ -1250,7 +1277,23 @@ pub const VM = struct {
         };
     }
 
-    fn evalStackFrame(self: *VM, comptime trace: bool) linksection(".eval") anyerror!void {
+    /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
+    /// This is also the entry way for native code to call into the VM.
+    fn evalStackFrameGrowStack(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds}!void {
+        @setRuntimeSafety(debug);
+        while (true) {
+            @call(.{.modifier = .always_inline}, self.evalStackFrame, .{trace}) catch |err| {
+                @setCold(true);
+                if (err == error.StackOverflow) {
+                    try self.stack.growTotalCapacity(self.alloc, self.stack.buf.len + 1);
+                    continue;
+                } else return err;
+            };
+            return;
+        }
+    }
+
+    fn evalStackFrame(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds}!void {
         @setRuntimeSafety(debug);
         while (true) {
             if (trace) {
@@ -1262,90 +1305,101 @@ pub const VM = struct {
             switch (self.ops[self.pc].code) {
                 .pushTrue => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     self.pc += 1;
-                    try self.pushRegister(Value.initTrue());
+                    self.pushValueNoCheck(Value.initTrue());
                     continue;
                 },
                 .pushFalse => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     self.pc += 1;
-                    try self.pushRegister(Value.initFalse());
+                    self.pushValueNoCheck(Value.initFalse());
                     continue;
                 },
                 .pushNone => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     self.pc += 1;
-                    try self.pushRegister(Value.initNone());
+                    self.pushValueNoCheck(Value.initNone());
                     continue;
                 },
                 .pushConst => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     const idx = self.ops[self.pc+1].arg;
                     self.pc += 2;
-                    try self.pushRegister(Value{ .val = self.consts[idx].val });
+                    self.pushValueNoCheck(Value{ .val = self.consts[idx].val });
                     continue;
                 },
                 .pushNot => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const val = self.popRegister();
-                    try self.pushRegister(evalNot(val));
+                    const val = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalNot(val);
                     continue;
                 },
                 .pushCompare => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalCompare(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalCompare(left, right);
                     continue;
                 },
                 .pushLess => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalLess(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalLess(left, right);
                     continue;
                 },
                 .pushGreater => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalGreater(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalGreater(left, right);
                     continue;
                 },
                 .pushLessEqual => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalLessOrEqual(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalLessOrEqual(left, right);
                     continue;
                 },
                 .pushGreaterEqual => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalGreaterOrEqual(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalGreaterOrEqual(left, right);
                     continue;
                 },
                 .pushOr => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalOr(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalOr(left, right);
                     continue;
                 },
                 .pushAnd => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const left = self.popRegister();
-                    try self.pushRegister(evalAnd(left, right));
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalAnd(left, right);
                     continue;
                 },
                 .pushAdd => {
@@ -1390,38 +1444,39 @@ pub const VM = struct {
                 },
                 .pushMinus2 => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     const leftOffset = self.ops[self.pc+1].arg;
                     const rightOffset = self.ops[self.pc+2].arg;
                     self.pc += 3;
 
                     const left = self.getStackFrameValue(leftOffset);
                     const right = self.getStackFrameValue(rightOffset);
-                    try self.pushRegister(evalMinus(left, right));
+                    self.pushValueNoCheck(@call(.{ .modifier = .never_inline }, evalMinus, .{left, right}));
                     continue;
                 },
                 .pushList => {
                     @setRuntimeSafety(debug);
                     const numElems = self.ops[self.pc+1].arg;
                     self.pc += 2;
-                    const top = self.stack.top;
-                    const elems = self.stack.buf[top-numElems..top];
+                    const elems = self.stack.buf[self.stack.top-numElems..self.stack.top];
                     const list = try self.allocList(elems);
                     if (trace) {
                         self.trace.numRetains += 1;
                     }
-                    self.stack.top = top-numElems;
-                    try self.pushRegister(list);
+                    self.stack.top = self.stack.top - numElems + 1;
+                    self.stack.buf[self.stack.top-1] = list;
                     continue;
                 },
                 .pushMapEmpty => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     self.pc += 1;
 
                     const map = try self.allocEmptyMap();
                     if (trace) {
                         self.trace.numRetains += 1;
                     }
-                    try self.pushRegister(map);
+                    self.pushValueNoCheck(map);
                     continue;
                 },
                 .pushMap => {
@@ -1441,11 +1496,12 @@ pub const VM = struct {
                 .pushSlice => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const end = self.popRegister();
-                    const start = self.popRegister();
-                    const list = self.popRegister();
+                    self.stack.top -= 2;
+                    const end = self.stack.buf[self.stack.top+1];
+                    const start = self.stack.buf[self.stack.top];
+                    const list = self.stack.buf[self.stack.top-1];
                     const newList = try self.sliceList(list, start, end);
-                    try self.pushRegister(newList);
+                    self.stack.buf[self.stack.top-1] = newList;
                     continue;
                 },
                 .addSet => {
@@ -1483,26 +1539,29 @@ pub const VM = struct {
                 .setIndex => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
-                    const right = self.popRegister();
-                    const index = self.popRegister();
-                    const left = self.popRegister();
+                    self.stack.top -= 3;
+                    const right = self.stack.buf[self.stack.top+2];
+                    const index = self.stack.buf[self.stack.top+1];
+                    const left = self.stack.buf[self.stack.top];
                     try self.setIndex(left, index, right);
                     continue;
                 },
                 .load => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.getStackFrameValue(offset);
-                    try self.pushRegister(val);
+                    self.pushValueNoCheck(val);
                     continue;
                 },
                 .loadRetain => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.getStackFrameValue(offset);
-                    try self.pushRegister(val);
+                    self.pushValueNoCheck(val);
                     self.retain(val);
                     if (trace) {
                         self.trace.numRetains += 1;
@@ -1515,7 +1574,7 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const index = self.stack.buf[self.stack.top];
                     const left = self.stack.buf[self.stack.top-1];
-                    const val = try self.getIndex(left, index);
+                    const val = try @call(.{.modifier = .never_inline}, self.getIndex, .{left, index});
                     self.stack.buf[self.stack.top - 1] = val;
                     continue;
                 },
@@ -1525,7 +1584,7 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const index = self.stack.buf[self.stack.top];
                     const left = self.stack.buf[self.stack.top-1];
-                    const val = try self.getReverseIndex(left, index);
+                    const val = try @call(.{.modifier = .never_inline}, self.getReverseIndex, .{left, index});
                     self.stack.buf[self.stack.top - 1] = val;
                     continue;
                 },
@@ -1558,9 +1617,10 @@ pub const VM = struct {
                 },
                 .release => {
                     @setRuntimeSafety(debug);
-                    const offset = self.ops[self.pc+1].arg;
+                    const local = self.ops[self.pc+1].arg;
                     self.pc += 2;
-                    self.release(self.getStackFrameValue(offset), trace);
+                    // TODO: Inline if heap object.
+                    @call(.{ .modifier = .never_inline }, self.release, .{self.getStackFrameValue(local), trace});
                     continue;
                 },
                 .pushCall0 => {
@@ -1570,7 +1630,7 @@ pub const VM = struct {
 
                     const callee = self.stack.buf[self.stack.top - 1];
                     const retInfo = self.buildReturnInfo(0);
-                    try self.call(callee, numArgs, retInfo);
+                    try @call(.{ .modifier = .never_inline }, self.call, .{callee, numArgs, retInfo});
                     continue;
                 },
                 .pushCall1 => {
@@ -1580,12 +1640,13 @@ pub const VM = struct {
 
                     const callee = self.stack.buf[self.stack.top - 1];
                     const retInfo = self.buildReturnInfo(1);
-                    try self.call(callee, numArgs, retInfo);
+                    try @call(.{ .modifier = .never_inline }, self.call, .{callee, numArgs, retInfo});
                     continue;
                 },
                 .call => {
                     @setRuntimeSafety(debug);
-                    stdx.unsupported();
+                    self.pc += 1;
+                    continue;
                 },
                 .callStr => {
                     @setRuntimeSafety(debug);
@@ -1634,20 +1695,22 @@ pub const VM = struct {
                     const symId = self.ops[self.pc+1].arg;
                     self.pc += 2;
 
-                    const recv = self.popRegister();
-                    const val = try self.getField(symId, recv);
-                    try self.pushRegister(val);
+                    const recv = self.stack.buf[self.stack.top-1];
+                    // const val = try self.getField(symId, recv);
+                    const val = self.getField(symId, recv);
+                    self.stack.buf[self.stack.top-1] = val;
                     continue;
                 },
                 .pushLambda => {
                     @setRuntimeSafety(debug);
+                    try self.checkStackHasOneSpace();
                     const funcPc = self.pc - self.ops[self.pc+1].arg;
                     const numParams = self.ops[self.pc+2].arg;
                     const numLocals = self.ops[self.pc+3].arg;
                     self.pc += 4;
 
                     const lambda = try self.allocLambda(funcPc, numParams, numLocals);
-                    try self.pushRegister(lambda);
+                    self.pushValueNoCheck(lambda);
                     continue;
                 },
                 .pushClosure => {
@@ -1670,27 +1733,28 @@ pub const VM = struct {
                     const endPc = self.pc + self.ops[self.pc+2].arg;
                     const innerPc = self.pc + 3;
 
+                    // try self.callObjSym(self.iteratorObjSym, 1, 1);
                     self.callObjSym(self.iteratorObjSym, 1, 1);
                     const iter = self.popRegister();
                     if (local == 255) {
                         while (true) {
-                            try self.pushRegister(iter);
-                            // const retInfo2 = self.buildReturnInfo(1);
+                            self.pushValueNoCheck(iter);
+                            // try self.callObjSym(self.nextObjSym, 1, 1);
                             self.callObjSym(self.nextObjSym, 1, 1);
                             const next = self.popRegister();
                             if (next.isNone()) {
                                 break;
                             }
                             self.pc = innerPc;
-                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
+                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
                         }
                     } else {
                         while (true) {
-                            try self.pushRegister(iter);
-                            // const retInfo2 = self.buildReturnInfo(1);
+                            self.pushValueNoCheck(iter);
+                            // try self.callObjSym(self.nextObjSym, 1, 1);
                             self.callObjSym(self.nextObjSym, 1, 1);
                             const next = self.popRegister();
                             if (next.isNone()) {
@@ -1698,7 +1762,7 @@ pub const VM = struct {
                             }
                             self.setStackFrameValue(local, next);
                             self.pc = innerPc;
-                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
+                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
@@ -1713,16 +1777,17 @@ pub const VM = struct {
                     const endPc = self.pc + self.ops[self.pc+2].arg;
                     const innerPc = self.pc + 3;
 
-                    const step = self.popRegister().toF64();
-                    const rangeEnd = self.popRegister().toF64();
-                    var i = self.popRegister().toF64();
+                    self.stack.top -= 3;
+                    const step = self.stack.buf[self.stack.top+2].toF64();
+                    const rangeEnd = self.stack.buf[self.stack.top+1].toF64();
+                    var i = self.stack.buf[self.stack.top].toF64();
 
                     // defer stdx.panicFmt("forrange {}", .{self.stack.top});
 
                     if (local == 255) {
                         while (i < rangeEnd) : (i += step) {
                             self.pc = innerPc;
-                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
+                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
@@ -1731,7 +1796,7 @@ pub const VM = struct {
                         while (i < rangeEnd) : (i += step) {
                             self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
                             self.pc = innerPc;
-                            _ = try @call(.{ .modifier = .never_inline }, self.evalStackFrame, .{trace});
+                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
                             if (!self.contFlag) {
                                 break;
                             }
@@ -1768,7 +1833,7 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
                     const right = self.stack.buf[self.stack.top];
-                    self.stack.buf[self.stack.top-1] = evalMultiply(left, right);
+                    self.stack.buf[self.stack.top-1] = @call(.{ .modifier = .never_inline }, evalMultiply, .{left, right});
                     continue;
                 },
                 .pushDivide => {
@@ -1777,7 +1842,7 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
                     const right = self.stack.buf[self.stack.top];
-                    self.stack.buf[self.stack.top-1] = evalDivide(left, right);
+                    self.stack.buf[self.stack.top-1] = @call(.{ .modifier = .never_inline }, evalDivide, .{left, right});
                     continue;
                 },
                 .pushMod => {
@@ -1786,7 +1851,7 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
                     const right = self.stack.buf[self.stack.top];
-                    self.stack.buf[self.stack.top-1] = evalMod(left, right);
+                    self.stack.buf[self.stack.top-1] = @call(.{ .modifier = .never_inline }, evalMod, .{left, right});
                     continue;
                 },
                 .pushPower => {
@@ -1795,7 +1860,7 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
                     const right = self.stack.buf[self.stack.top];
-                    self.stack.buf[self.stack.top-1] = evalPower(left, right);
+                    self.stack.buf[self.stack.top-1] = @call(.{ .modifier = .never_inline }, evalPower, .{left, right});
                     continue;
                 },
                 .end => {
@@ -1826,6 +1891,30 @@ pub const VM = struct {
             // Assume const string.
             const slice = val.asConstStr();
             return self.strBuf[slice.start..slice.end];
+        }
+    }
+
+    /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
+    fn valueToTempString(self: *const VM, val: Value) []const u8 {
+        if (val.isNumber()) {
+            if (Value.floatCanBeInteger(val.asF64())) {
+                return std.fmt.bufPrint(&tempU8Buf, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
+            } else {
+                return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
+            }
+        } else {
+            switch (val.getTag()) {
+                cy.TagBoolean => {
+                    if (val.asBool()) return "true" else return "false";
+                },
+                cy.TagNone => return "none",
+                cy.TagConstString => {
+                    // Convert into heap string.
+                    const slice = val.asConstStr();
+                    return self.strBuf[slice.start..slice.end];
+                },
+                else => stdx.panic("unexpected tag"),
+            }
         }
     }
 };
@@ -1878,7 +1967,7 @@ fn evalLessOrEqual(left: cy.Value, right: cy.Value) cy.Value {
     return Value.initBool(left.toF64() <= right.toF64());
 }
 
-fn evalLess(left: cy.Value, right: cy.Value) cy.Value {
+fn evalLess(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     @setRuntimeSafety(debug);
     return Value.initBool(left.toF64() < right.toF64());
 }
@@ -1895,7 +1984,7 @@ fn evalCompare(left: cy.Value, right: cy.Value) cy.Value {
     }
 }
 
-fn evalMinus(left: cy.Value, right: cy.Value) cy.Value {
+fn evalMinus(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     @setRuntimeSafety(debug);
     if (left.isNumber()) {
         return Value.initF64(left.asF64() - right.toF64());
@@ -2007,7 +2096,7 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
     }
 }
 
-fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) cy.Value {
+fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     @setRuntimeSafety(debug);
     switch (left.getTag()) {
         cy.TagBoolean => {
@@ -2023,7 +2112,7 @@ fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) cy.Value {
             // Convert into heap string.
             const slice = left.asConstStr();
             const str = vm.strBuf[slice.start..slice.end];
-            return vm.allocStringConcat(str, toTempString(vm, right)) catch stdx.fatal();
+            return vm.allocStringConcat(str, vm.valueToTempString(right)) catch stdx.fatal();
         },
         else => stdx.panic("unexpected tag"),
     }
@@ -2039,34 +2128,8 @@ fn evalNot(val: cy.Value) cy.Value {
         return cy.Value.initFalse();
     } else {
         switch (val.getTag()) {
-            cy.TagFalse => return cy.Value.initTrue(),
-            cy.TagTrue => return cy.Value.initFalse(),
             cy.TagNone => return cy.Value.initTrue(),
-            else => stdx.panic("unexpected tag"),
-        }
-    }
-}
-
-var tempU8Buf: [256]u8 = undefined;
-
-/// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-fn toTempString(vm: *const VM, val: Value) []const u8 {
-    if (val.isNumber()) {
-        if (Value.floatCanBeInteger(val.asF64())) {
-            return std.fmt.bufPrint(&tempU8Buf, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
-        } else {
-            return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
-        }
-    } else {
-        switch (val.getTag()) {
-            cy.TagFalse => return "false",
-            cy.TagTrue => return "true",
-            cy.TagNone => return "none",
-            cy.TagConstString => {
-                // Convert into heap string.
-                const slice = val.asConstStr();
-                return vm.strBuf[slice.start..slice.end];
-            },
+            cy.TagBoolean => return Value.initBool(!val.asBool()),
             else => stdx.panic("unexpected tag"),
         }
     }

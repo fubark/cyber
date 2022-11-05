@@ -61,7 +61,7 @@ pub const Value = packed union {
         return @floatToInt(u32, self.asF64());
     }
 
-    pub inline fn asF64(self: *const Value) f64 {
+    pub inline fn asF64(self: *const Value) linksection(".eval") f64 {
         @setRuntimeSafety(debug);
         return @bitCast(f64, self.val);
     }
@@ -74,7 +74,7 @@ pub const Value = packed union {
         } 
     }
 
-    pub fn toF64(self: *const Value) f64 {
+    pub fn toF64(self: *const Value) linksection(".eval") f64 {
         @setRuntimeSafety(debug);
         if (self.isNumber()) {
             return self.asF64();
@@ -115,12 +115,13 @@ pub const Value = packed union {
         return self.val & PointerMask == PointerMask;
     }
 
-    pub inline fn asPointer(self: *const Value) ?*anyopaque {
+    pub inline fn asPointer(self: *const Value) linksection(".eval") ?*anyopaque {
         @setRuntimeSafety(debug);
         return @intToPtr(?*anyopaque, self.val & ~PointerMask);
     }
 
-    pub inline fn asBool(self: *const Value) bool {
+    pub inline fn asBool(self: *const Value) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
         return self.val == TrueMask;
     }
 
@@ -169,7 +170,7 @@ pub const Value = packed union {
         return .{ .val = NoneMask };
     }
 
-    pub inline fn initBool(b: bool) Value {
+    pub inline fn initBool(b: bool) linksection(".eval") Value {
         if (b) {
             return .{ .val = TrueMask };
         } else {

@@ -237,60 +237,56 @@ test "boolean" {
 //     run.deinitValue(val);
 // }
 
-// test "Indentation." {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Indentation." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Detect end of block.
-//     var val = try run.eval(
-//         \\func foo():
-//         \\  return 123
-//         \\foo()
-//     );
-//     try t.eq(val.asI32(), 123);
-//     run.deinitValue(val);
+    // Detect end of block.
+    var val = try run.eval(
+        \\func foo():
+        \\  return 123
+        \\foo()
+    );
+    try t.eq(val.asI32(), 123);
 
-//     // Comment before end of block.
-//     val = try run.eval(
-//         \\func foo():
-//         \\  return 123
-//         \\  // Comment.
-//         \\foo()
-//     );
-//     try t.eq(val.asI32(), 123);
-//     run.deinitValue(val);
+    // Comment before end of block.
+    val = try run.eval(
+        \\func foo():
+        \\  return 123
+        \\  // Comment.
+        \\foo()
+    );
+    try t.eq(val.asI32(), 123);
 
-//     // New block requires at least one statement.
-//     const parse_res = try run.parse(
-//         \\if true:
-//         \\return 123 
-//     );
-//     try t.eq(parse_res.has_error, true);
-//     try t.expect(std.mem.indexOf(u8, parse_res.err_msg, "Block requires at least one statement. Use the `pass` statement as a placeholder.") != null);
+    // New block requires at least one statement.
+    // const parse_res = try run.parse(
+    //     \\if true:
+    //     \\return 123 
+    // );
+    // try t.eq(parse_res.has_error, true);
+    // try t.expect(std.mem.indexOf(u8, parse_res.err_msg, "Block requires at least one statement. Use the `pass` statement as a placeholder.") != null);
 
-//     // Continue from parent indentation.
-//     val = try run.eval(
-//         \\func foo():
-//         \\  if false:
-//         \\    pass
-//         \\  return 123 
-//         \\foo()
-//     );
-//     try t.eq(val.asI32(), 123);
-//     run.deinitValue(val);
+    // Continue from parent indentation.
+    val = try run.eval(
+        \\func foo():
+        \\  if false:
+        \\    pass
+        \\  return 123 
+        \\foo()
+    );
+    try t.eq(val.asI32(), 123);
 
-//     // Continue from grand parent indentation.
-//     val = try run.eval(
-//         \\func foo():
-//         \\  if false:
-//         \\    if false:
-//         \\      pass
-//         \\  return 123 
-//         \\foo()
-//     );
-//     try t.eq(val.asI32(), 123);
-//     run.deinitValue(val);
-// }
+    // Continue from grand parent indentation.
+    val = try run.eval(
+        \\func foo():
+        \\  if false:
+        \\    if false:
+        \\      pass
+        \\  return 123 
+        \\foo()
+    );
+    try t.eq(val.asI32(), 123);
+}
 
 // test "Numbers." {
 //     const run = Runner.create();

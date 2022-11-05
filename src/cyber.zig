@@ -28,10 +28,8 @@ pub const TagError = value.TagError;
 pub const TagConstString = value.TagConstString;
 
 const vm = @import("vm.zig");
-pub const initVM = vm.initVM;
-pub const deinitVM = vm.deinitVM;
-pub const eval = vm.eval;
-pub const setTrace = vm.setTrace;
+pub const getUserVM = vm.getUserVM;
+pub const UserVM = vm.UserVM;
 pub const VM = vm.VM;
 pub const FuncSymbolEntry = vm.FuncSymbolEntry;
 pub const TraceInfo = vm.TraceInfo;

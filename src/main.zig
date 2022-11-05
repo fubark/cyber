@@ -37,12 +37,13 @@ pub fn main() !void {
         const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
         defer alloc.free(src);
 
-        try cy.initVM(alloc);
-        defer cy.deinitVM();
+        const vm = cy.getUserVM();
+        try vm.init(alloc);
+        defer vm.deinit();
 
         var trace: cy.TraceInfo = undefined;
-        cy.setTrace(&trace);
-        const res = cy.eval(src, Trace) catch |err| {
+        vm.setTrace(&trace);
+        const res = vm.eval(src, Trace) catch |err| {
             stdx.panicFmt("unexpected {}", .{err});
         };
 

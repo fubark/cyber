@@ -20,20 +20,8 @@ var tempU8Buf: [256]u8 = undefined;
 /// This also puts it in the .data section which can be closer to the eval hot loop.
 var gvm: VM = undefined;
 
-pub fn initVM(alloc: std.mem.Allocator) !void {
-    try gvm.init(alloc);
-}
-
-pub fn deinitVM() void {
-    gvm.deinit();
-}
-
-pub fn eval(src: []const u8, comptime trace: bool) !Value {
-    return gvm.eval(src, trace);
-}
-
-pub fn setTrace(trace: *TraceInfo) void {
-    gvm.trace = trace;
+pub fn getUserVM() UserVM {
+    return UserVM{};
 }
 
 pub const VM = struct {
@@ -2402,4 +2390,41 @@ pub const OpCount = struct {
 const RcNode = struct {
     visited: bool,
     entered: bool,
+};
+
+/// Force users to use the global vm instance (to avoid deoptimization).
+pub const UserVM = struct {
+    dummy: u32 = 0,
+
+    pub fn init(_: UserVM, alloc: std.mem.Allocator) !void {
+        try gvm.init(alloc);
+    }
+
+    pub fn deinit(_: UserVM) void {
+        gvm.deinit();
+    }
+
+    pub fn setTrace(_: UserVM, trace: *TraceInfo) void {
+        gvm.trace = trace;
+    }
+
+    pub fn release(_: UserVM, val: Value, comptime trace: bool) void {
+        gvm.release(val, trace);
+    }
+
+    pub fn checkMemory(_: UserVM, comptime trace: bool) !bool {
+        return gvm.checkMemory(trace);
+    }
+
+    pub fn eval(_: UserVM, src: []const u8, comptime trace: bool) !Value {
+        return gvm.eval(src, trace);
+    }
+
+    pub fn isValueString(_: UserVM, val: Value) bool {
+        return gvm.isValueString(val);
+    }
+
+    pub fn valueAsString(_: UserVM, val: Value) []const u8 {
+        return gvm.valueAsString(val);
+    }
 };

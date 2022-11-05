@@ -47,7 +47,6 @@ test "Automatic reference counting." {
     );
     try t.eq(trace.numRetains, 4);
     try t.eq(trace.numReleases, 2);
-    try t.eq(run.inner.vm.stack.top, 0);
     try t.eq(try run.checkMemory(), false);
     try t.eq(trace.numRetainCycles, 1);
     try t.eq(trace.numRetainCycleRoots, 2);
@@ -793,7 +792,6 @@ test "Native function call." {
     const run = Runner.create();
     defer run.destroy();
 
-    // Stack top should return to main.
     var val = try run.eval(
         \\list = []
         \\for 0..10 as i:
@@ -1104,16 +1102,16 @@ const Runner = struct {
 };
 
 const VMrunner = struct {
-    vm: cy.VM,
+    vm: cy.UserVM,
     trace: cy.TraceInfo,
 
     fn init(self: *VMrunner) void {
         self.* = .{
-            .vm = undefined,
+            .vm = cy.getUserVM(),
             .trace = undefined,
         };
         self.vm.init(t.alloc) catch fatal();
-        self.vm.trace = &self.trace;
+        self.vm.setTrace(&self.trace);
     }
 
     fn deinit(self: *VMrunner) void {

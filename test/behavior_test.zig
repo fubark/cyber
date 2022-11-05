@@ -909,20 +909,20 @@ test "function declaration" {
     try t.eq(val.asI32(), 4);
 
     // Function with one param.
-    // val = try run.eval(
-    //     \\func foo(bar):
-    //     \\    return bar + 2
-    //     \\foo(1)
-    // );
-    // try t.eq(val.asI32(), 3);
+    val = try run.eval(
+        \\func foo(bar):
+        \\    return bar + 2
+        \\foo(1)
+    );
+    try t.eq(val.asI32(), 3);
 
-    // // Function with multiple param.
-    // val = try run.eval(
-    //     \\func foo(bar, inc):
-    //     \\    return bar + inc
-    //     \\foo(20, 10)
-    // );
-    // try t.eq(val.asI32(), 30);
+    // Function with multiple param.
+    val = try run.eval(
+        \\func foo(bar, inc):
+        \\    return bar + inc
+        \\foo(20, 10)
+    );
+    try t.eq(val.asI32(), 30);
 }
 
 // test "Lambdas" {

@@ -805,18 +805,6 @@ test "Native function call." {
         \\list[9]
     );
     try t.eq(val.asI32(), 9);
-    try t.eq(run.inner.vm.stack.top, 0);
-}
-
-test "Lambdas." {
-    const run = Runner.create();
-    defer run.destroy();
-
-    var val = try run.eval(
-        \\foo = a => a + 1
-        \\foo(10)
-    );
-    try t.eq(val.asI32(), 11);
 }
 
 test "Closures." {
@@ -897,7 +885,6 @@ test "function declaration" {
         \\sum
     );
     try t.eq(val.asI32(), 40);
-    try t.eq(run.inner.vm.stack.top, 0);
 
     // Function with no params.
     val = try run.eval(
@@ -924,33 +911,30 @@ test "function declaration" {
     try t.eq(val.asI32(), 30);
 }
 
-// test "Lambdas" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Lambdas." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Lambda with no params.
-//     var val = try run.eval(
-//         \\foo = func () => 2 + 2
-//         \\foo()
-//     );
-//     try t.eq(val.asI32(), 4);
-//     run.deinitValue(val);
+    // No params.
+    var val = try run.eval(
+        \\foo = () => 2 + 2
+        \\foo()
+    );
+    try t.eq(val.asI32(), 4);
 
-//     // Lambda with one param.
-//     val = try run.eval(
-//         \\foo = func (bar) => bar + 2
-//         \\foo(1)
-//     );
-//     try t.eq(val.asI32(), 3);
-//     run.deinitValue(val);
+    // One param.
+    val = try run.eval(
+        \\foo = a => a + 1
+        \\foo(10)
+    );
+    try t.eq(val.asI32(), 11);
 
-//     // Lambda with multiple param.
-//     val = try run.eval(
-//         \\foo = func (bar, inc) => bar + inc
-//         \\foo(20, 10)
-//     );
-//     try t.eq(val.asI32(), 30);
-//     run.deinitValue(val);
+    // Lambda with multiple param.
+    val = try run.eval(
+        \\foo = (bar, inc) => bar + inc
+        \\foo(20, 10)
+    );
+    try t.eq(val.asI32(), 30);
 
 //     // Lambda assign declaration.
 //     val = try run.eval(
@@ -960,8 +944,7 @@ test "function declaration" {
 //         \\foo.bar()
 //     );
 //     try t.eq(val.asI32(), 2);
-//     run.deinitValue(val);
-// }
+}
 
 // test "Function named parameters call." {
 //     const run = Runner.create();

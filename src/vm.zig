@@ -1339,6 +1339,15 @@ pub const VM = struct {
                     self.stack.buf[self.stack.top-1] = evalNot(val);
                     continue;
                 },
+                .pushNotCompare => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalNotCompare(left, right);
+                    continue;
+                },
                 .pushCompare => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
@@ -1970,6 +1979,18 @@ fn evalLessOrEqual(left: cy.Value, right: cy.Value) cy.Value {
 fn evalLess(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     @setRuntimeSafety(debug);
     return Value.initBool(left.toF64() < right.toF64());
+}
+
+fn evalNotCompare(left: cy.Value, right: cy.Value) cy.Value {
+    if (left.isNumber()) {
+        return Value.initBool(right.isNumber() and left.asF64() != right.asF64());
+    } else {
+        switch (left.getTag()) {
+            cy.TagNone => return Value.initBool(!right.isNone()),
+            cy.TagBoolean => return Value.initBool(left.asBool() != right.toBool()),
+            else => stdx.panic("unexpected tag"),
+        }
+    }
 }
 
 fn evalCompare(left: cy.Value, right: cy.Value) cy.Value {

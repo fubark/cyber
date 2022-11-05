@@ -378,6 +378,19 @@ pub const VMcompiler = struct {
                 const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
                 try self.vm.setFuncSym(symId, sym);
             },
+            .for_cond_stmt => {
+                const top = @intCast(u32, self.buf.ops.items.len);
+                const cond = self.nodes[node.head.left_right.left];
+                _ = try self.genExpr(cond, false);
+
+                var skipOpPc = self.buf.ops.items.len;
+                try self.buf.pushOp1(.jumpNotCond, 0);
+
+                try self.genStatements(node.head.left_right.right, false);
+                try self.buf.pushOp1(.jumpBack, @intCast(u8, self.buf.ops.items.len - top));
+
+                self.buf.setOpArgs1(skipOpPc + 1, @intCast(u8, self.buf.ops.items.len - skipOpPc));
+            },
             .for_inf_stmt => {
                 self.curBlock.pcSave = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.jumpStack.items.len);
@@ -867,6 +880,14 @@ pub const VMcompiler = struct {
                         if (ltype.typeT == rtype.typeT) {
                             return ltype;
                         } else return AnyType;
+                    },
+                    .bang_equal => {
+                        _ = try self.genExpr(left, discardTopExprReg);
+                        _ = try self.genExpr(right, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushNotCompare);
+                        }
+                        return BoolType;
                     },
                     .equal_equal => {
                         _ = try self.genExpr(left, discardTopExprReg);

@@ -654,20 +654,19 @@ test "Infinite for loop." {
     try t.eq(val.asI32(), 10);
 }
 
-// test "Conditional for loop." {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Conditional for loop." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // `for` with condition expression.
-//     var val = try run.eval(
-//         \\i = 0
-//         \\for i != 10:
-//         \\  i += 1
-//         \\i
-//     );
-//     try t.eq(val.asI32(), 10);
-//     run.deinitValue(val);
-// }
+    // `for` with condition expression.
+    var val = try run.eval(
+        \\i = 0
+        \\for i != 10:
+        \\  i += 1
+        \\i
+    );
+    try t.eq(val.asI32(), 10);
+}
 
 test "For loop over list." {
     const run = Runner.create();

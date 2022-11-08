@@ -6,6 +6,8 @@ const debug = builtin.mode == .Debug;
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.map);
 
+const eval2 = ".eval2";
+
 /// The implementation of ValueMap is based on Zig's std.HashMapUnmanaged.
 /// Since keys and values are just cy.Values (8 bytes each), the memory layout can be made more compact.
 /// This also allows inserting optimizations where needed.
@@ -25,12 +27,12 @@ pub const ValueMap = struct {
         return Iterator{ .map = self };
     }
 
-    pub fn put(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(".core") std.mem.Allocator.Error!void {
+    pub fn put(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(eval2) std.mem.Allocator.Error!void {
         const res = try self.getOrPut(alloc, vm, key);
         res.valuePtr.* = value;
     }
 
-    pub fn get(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(".core") ?cy.Value {
+    pub fn get(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(eval2) ?cy.Value {
         @setRuntimeSafety(debug);
         if (self.getIndex(vm, key)) |idx| {
             return self.entries.?[idx].value;
@@ -38,7 +40,7 @@ pub const ValueMap = struct {
         return null;
     }
 
-    pub fn getByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(".core") ?cy.Value {
+    pub fn getByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(eval2) ?cy.Value {
         @setRuntimeSafety(debug);
         if (self.getIndexByString(vm, key)) |idx| {
             return self.entries.?[idx].value;
@@ -54,7 +56,7 @@ pub const ValueMap = struct {
         return @truncate(u32, maxLoad - self.available);
     }
 
-    pub fn getOrPut(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(".core") std.mem.Allocator.Error!GetOrPutResult {
+    pub fn getOrPut(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(eval2) std.mem.Allocator.Error!GetOrPutResult {
         const res = try self.getOrPutAdapted(alloc, vm, key);
         if (!res.foundExisting) {
             res.keyPtr.* = key;
@@ -62,14 +64,14 @@ pub const ValueMap = struct {
         return res;
     }
 
-    pub fn getOrPutAdapted(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(".core") std.mem.Allocator.Error!GetOrPutResult {
+    pub fn getOrPutAdapted(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(eval2) std.mem.Allocator.Error!GetOrPutResult {
         if (self.available == 0) {
             try self.grow(alloc, vm, capacityForSize(self.load() + 1));
         }
         return self.getOrPutAssumeCapacityAdapted(vm, key);
     }
 
-    pub fn getOrPutAssumeCapacityAdapted(self: *ValueMap, vm: *const cy.VM, key: cy.Value) linksection(".core") GetOrPutResult {
+    pub fn getOrPutAssumeCapacityAdapted(self: *ValueMap, vm: *const cy.VM, key: cy.Value) linksection(eval2) GetOrPutResult {
         const hash = computeHash(vm, key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);
@@ -115,7 +117,7 @@ pub const ValueMap = struct {
         };
     }
 
-    pub fn putAssumeCapacityNoClobber(self: *ValueMap, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(".core") void {
+    pub fn putAssumeCapacityNoClobber(self: *ValueMap, vm: *const cy.VM, key: cy.Value, value: cy.Value) linksection(eval2) void {
         std.debug.assert(!self.contains(vm, key));
 
         const hash = computeHash(vm, key);
@@ -141,16 +143,16 @@ pub const ValueMap = struct {
         self.size += 1;
     }
 
-    pub fn contains(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(".core") bool {
+    pub fn contains(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(eval2) bool {
         return self.getIndex(vm, key) != null;
     }
 
-    fn computeStringHash(str: []const u8) linksection(".core") u64 {
+    fn computeStringHash(str: []const u8) linksection(eval2) u64 {
         @setRuntimeSafety(debug);
         return std.hash.Wyhash.hash(0, str);
     }
 
-    fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(".core") u64 {
+    fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(eval2) u64 {
         @setRuntimeSafety(debug);
         if (key.isNumber()) {
             return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
@@ -172,7 +174,7 @@ pub const ValueMap = struct {
         }
     }
 
-    fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(".core") bool {
+    fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(eval2) bool {
         @setRuntimeSafety(debug);
         if (b.isPointer()) {
             const obj = stdx.ptrCastAlign(*cy.HeapObject, b.asPointer().?);
@@ -191,7 +193,7 @@ pub const ValueMap = struct {
         }
     }
 
-    fn keysEqual(vm: *const cy.VM, a: cy.Value, b: cy.Value) linksection(".core") bool {
+    fn keysEqual(vm: *const cy.VM, a: cy.Value, b: cy.Value) linksection(eval2) bool {
         @setRuntimeSafety(debug);
         if (a.isNumber()) {
             return a.val == b.val;
@@ -216,13 +218,13 @@ pub const ValueMap = struct {
         }
     }
 
-    fn capacityForSize(size: u32) linksection(".core") u32 {
+    fn capacityForSize(size: u32) linksection(eval2) u32 {
         var newCap = @truncate(u32, (@as(u64, size) * 100) / MaxLoadPercentage + 1);
         newCap = std.math.ceilPowerOfTwo(u32, newCap) catch unreachable;
         return newCap;
     }
 
-    inline fn getIndexByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(".core") ?usize {
+    inline fn getIndexByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(eval2) ?usize {
         @setRuntimeSafety(debug);
         const hash = computeStringHash(key);
         const mask = self.cap - 1;
@@ -256,7 +258,7 @@ pub const ValueMap = struct {
     /// fuse the basic blocks after the branch to the basic blocks
     /// from this function.  To encourage that, this function is
     /// marked as inline.
-    inline fn getIndex(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(".core") ?usize {
+    inline fn getIndex(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(eval2) ?usize {
         @setRuntimeSafety(debug);
         const hash = computeHash(vm, key);
         const mask = self.cap - 1;
@@ -337,7 +339,7 @@ pub const ValueMap = struct {
         self.available = 0;
     }
 
-    pub fn remove(self: *ValueMap, vm: *cy.VM, key: cy.Value) linksection(".core") bool {
+    pub fn remove(self: *ValueMap, vm: *cy.VM, key: cy.Value) linksection(eval2) bool {
         if (self.getIndex(vm, key)) |idx| {
             self.removeByIndex(idx);
             return true;
@@ -345,7 +347,7 @@ pub const ValueMap = struct {
         return false;
     }
 
-    fn removeByIndex(self: *ValueMap, idx: usize) linksection(".core") void {
+    fn removeByIndex(self: *ValueMap, idx: usize) linksection(eval2) void {
         self.metadata.?[idx].remove();
         self.size -= 1;
         self.available += 1;

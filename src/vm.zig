@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
+const bindings = @import("bindings.zig");
 const Value = cy.Value;
 const debug = builtin.mode == .Debug;
 
@@ -10,15 +11,15 @@ const log = stdx.log.scoped(.vm);
 /// Reserved symbols known at comptime.
 pub const ListS: StructId = 0;
 pub const MapS: StructId = 1;
-const ClosureS: StructId = 2;
-const LambdaS: StructId = 3;
+pub const ClosureS: StructId = 2;
+pub const LambdaS: StructId = 3;
 pub const StringS: StructId = 4;
 
 var tempU8Buf: [256]u8 = undefined;
 
 /// Accessing the immediate VM vars is faster when the virtual address is known at compile time.
 /// This also puts it in the .data section which can be closer to the eval hot loop.
-var gvm: VM = undefined;
+pub var gvm: VM = undefined;
 
 pub fn getUserVM() UserVM {
     return UserVM{};
@@ -68,6 +69,8 @@ pub const VM = struct {
     pairIteratorObjSym: SymbolId,
     nextObjSym: SymbolId,
 
+    globals: std.StringHashMapUnmanaged(SymbolId),
+
     panicMsg: []const u8,
 
     trace: *TraceInfo,
@@ -97,6 +100,7 @@ pub const VM = struct {
             .nextObjSym = undefined,
             .trace = undefined,
             .panicMsg = "",
+            .globals = .{},
         };
         self.compiler.init(self);
         try self.ensureStackTotalCapacity(100);
@@ -104,31 +108,8 @@ pub const VM = struct {
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
 
-        // Init compile time builtins.
-        const resize = try self.ensureStructSym("resize");
-        var id = try self.addStruct("List");
-        std.debug.assert(id == ListS);
-        try self.addStructSym(ListS, resize, SymbolEntry.initNativeFunc1(nativeListResize));
-        self.iteratorObjSym = try self.ensureStructSym("iterator");
-        try self.addStructSym(ListS, self.iteratorObjSym, SymbolEntry.initNativeFunc1(nativeListIterator));
-        self.nextObjSym = try self.ensureStructSym("next");
-        try self.addStructSym(ListS, self.nextObjSym, SymbolEntry.initNativeFunc1(nativeListNext));
-        const add = try self.ensureStructSym("add");
-        try self.addStructSym(ListS, add, SymbolEntry.initNativeFunc1(nativeListAdd));
-
-        id = try self.addStruct("Map");
-        std.debug.assert(id == MapS);
-        const remove = try self.ensureStructSym("remove");
-        try self.addStructSym(MapS, remove, SymbolEntry.initNativeFunc1(nativeMapRemove));
-
-        id = try self.addStruct("Closure");
-        std.debug.assert(id == ClosureS);
-
-        id = try self.addStruct("Lambda");
-        std.debug.assert(id == LambdaS);
-
-        id = try self.addStruct("String");
-        std.debug.assert(id == StringS);
+        // Core bindings.
+        try bindings.bindCore(self);
     }
 
     pub fn deinit(self: *VM) void {
@@ -157,6 +138,8 @@ pub const VM = struct {
 
         self.structs.deinit(self.alloc);
         self.alloc.free(self.panicMsg);
+
+        self.globals.deinit(self.alloc);
     }
 
     /// Returns the first free HeapObject.
@@ -460,7 +443,7 @@ pub const VM = struct {
         }
     }
 
-    fn allocEmptyMap(self: *VM) !Value {
+    pub fn allocEmptyMap(self: *VM) !Value {
         const obj = try self.allocObject();
         obj.map = .{
             .structId = MapS,
@@ -646,7 +629,7 @@ pub const VM = struct {
         self.stack.buf[self.framePtr + offset] = val;
     }
 
-    inline fn popRegister(self: *VM) linksection(".eval") Value {
+    pub inline fn popRegister(self: *VM) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         self.stack.top -= 1;
         return self.stack.buf[self.stack.top];
@@ -664,13 +647,19 @@ pub const VM = struct {
         }
     }
 
+    pub inline fn ensureUnusedStackSpace(self: *VM, unused: u32) linksection(".eval") !void {
+        if (self.stack.top + unused > self.stack.buf.len) {
+            try self.stack.growTotalCapacity(self.alloc, self.stack.top + unused);
+        }
+    }
+
     inline fn pushValueNoCheck(self: *VM, val: Value) linksection(".eval") void {
         @setRuntimeSafety(debug);
         self.stack.buf[self.stack.top] = val;
         self.stack.top += 1;
     }
 
-    fn addStruct(self: *VM, name: []const u8) !StructId {
+    pub fn addStruct(self: *VM, name: []const u8) !StructId {
         _ = name;
         const s = Struct{
             .name = "",
@@ -678,6 +667,15 @@ pub const VM = struct {
         const id = @intCast(u32, self.structs.items.len);
         try self.structs.append(self.alloc, s);
         return id;
+    }
+
+    pub fn ensureGlobalFuncSym(self: *VM, ident: []const u8, funcSymName: []const u8) !void {
+        const id = try self.ensureFuncSym(funcSymName);
+        try self.globals.put(self.alloc, ident, id);
+    }
+
+    pub fn getGlobalFuncSym(self: *VM, ident: []const u8) ?SymbolId {
+        return self.globals.get(ident);
     }
     
     pub fn ensureFuncSym(self: *VM, name: []const u8) !SymbolId {
@@ -730,7 +728,7 @@ pub const VM = struct {
         self.funcSyms.items[symId] = sym;
     }
 
-    fn addStructSym(self: *VM, id: StructId, symId: SymbolId, sym: SymbolEntry) !void {
+    pub fn addStructSym(self: *VM, id: StructId, symId: SymbolId, sym: SymbolEntry) !void {
         switch (self.symbols.items[symId].mapT) {
             .empty => {
                 self.symbols.items[symId] = .{
@@ -846,58 +844,6 @@ pub const VM = struct {
     fn panic(self: *VM, msg: []const u8) error{Panic, OutOfMemory} {
         self.panicMsg = try self.alloc.dupe(u8, msg);
         return error.Panic;
-    }
-
-    fn nativeMapRemove(self: *VM, ptr: *anyopaque, args: []const Value) Value {
-        @setRuntimeSafety(debug);
-        if (args.len == 0) {
-            stdx.panic("Args mismatch");
-        }
-        const obj = stdx.ptrCastAlign(*HeapObject, ptr);
-        const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-        _ = inner.remove(self, args[0]);
-        return Value.initNone();
-    }
-
-    fn nativeListAdd(self: *VM, ptr: *anyopaque, args: []const Value) Value {
-        @setRuntimeSafety(debug);
-        if (args.len == 0) {
-            stdx.panic("Args mismatch");
-        }
-        const list = stdx.ptrCastAlign(*HeapObject, ptr);
-        const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.retainedList.list);
-        inner.append(self.alloc, args[0]) catch stdx.fatal();
-        return Value.initNone();
-    }
-
-    fn nativeListNext(self: *VM, ptr: *anyopaque, args: []const Value) Value {
-        @setRuntimeSafety(debug);
-        _ = self;
-        _ = args;
-        const list = stdx.ptrCastAlign(*HeapObject, ptr);
-        if (list.retainedList.nextIterIdx < list.retainedList.list.len) {
-            defer list.retainedList.nextIterIdx += 1;
-            return list.retainedList.list.ptr[list.retainedList.nextIterIdx];
-        } else return Value.initNone();
-    }
-
-    fn nativeListIterator(self: *VM, ptr: *anyopaque, args: []const Value) Value {
-        _ = self;
-        _ = args;
-        const list = stdx.ptrCastAlign(*HeapObject, ptr);
-        list.retainedList.nextIterIdx = 0;
-        return Value.initPtr(ptr);
-    }
-
-    fn nativeListResize(self: *VM, ptr: *anyopaque, args: []const Value) Value {
-        if (args.len == 0) {
-            stdx.panic("Args mismatch");
-        }
-        const list = stdx.ptrCastAlign(*HeapObject, ptr);
-        const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.retainedList.list);
-        const size = @floatToInt(u32, args[0].toF64());
-        inner.resize(self.alloc, size) catch stdx.fatal();
-        return Value.initNone();
     }
 
     /// Performs an iteration over the heap pages to check whether there are retain cycles.
@@ -1083,7 +1029,7 @@ pub const VM = struct {
 
     /// Stack layout: arg0, arg1, ..., callee
     /// numArgs includes the callee.
-    fn call(self: *VM, callee: Value, numArgs: u8, retInfo: Value) !void {
+    pub fn call(self: *VM, callee: Value, numArgs: u8, retInfo: Value) !void {
         @setRuntimeSafety(debug);
         if (callee.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, callee.asPointer().?);
@@ -1141,7 +1087,7 @@ pub const VM = struct {
         switch (sym.entryT) {
             .nativeFunc1 => {
                 const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
-                const res = sym.inner.nativeFunc1(self, args);
+                const res = sym.inner.nativeFunc1(self, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
                     self.stack.top = self.stack.top - numArgs + 1;
                     self.ensureStackTotalCapacity(self.stack.top) catch stdx.fatal();
@@ -1190,7 +1136,7 @@ pub const VM = struct {
         switch (entry.entryT) {
             .nativeFunc1 => {
                 const args = self.stack.buf[argStart + 1..self.stack.top];
-                const res = entry.inner.nativeFunc1(self, objPtr, args);
+                const res = entry.inner.nativeFunc1(self, objPtr, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
                     self.stack.buf[argStart] = res;
                     self.stack.top = argStart + 1;
@@ -1250,12 +1196,20 @@ pub const VM = struct {
                         self.callSymEntry(map.inner.oneStruct.sym, argStart, obj, numArgs, reqNumRetVals);
                     } else stdx.panic("Symbol does not exist for receiver.");
                 },
-                else => stdx.panicFmt("unsupported {}", .{map.mapT}),
+                // .empty => {
+                //     @setCold(true);
+                //     log.debug("Missing object symbol. {}", .{symId});
+                //     return error.MissingSymbol;
+                // },
+                else => {
+                    unreachable;
+                    // stdx.panicFmt("unsupported {}", .{map.mapT});
+                },
             } 
         }
     }
 
-    inline fn buildReturnInfo(self: *const VM, comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
+    pub inline fn buildReturnInfo(self: *const VM, comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return Value{
             .retInfo = .{
@@ -1887,7 +1841,7 @@ pub const VM = struct {
     }
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-    fn valueToTempString(self: *const VM, val: Value) []const u8 {
+    pub fn valueToTempString(self: *const VM, val: Value) []const u8 {
         if (val.isNumber()) {
             if (Value.floatCanBeInteger(val.asF64())) {
                 return std.fmt.bufPrint(&tempU8Buf, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
@@ -2177,7 +2131,7 @@ comptime {
     std.debug.assert(@sizeOf(MapInner) == 32);
 }
 
-const MapInner = cy.ValueMap;
+pub const MapInner = cy.ValueMap;
 const Map = packed struct {
     structId: StructId,
     rc: u32,
@@ -2288,17 +2242,17 @@ const SymbolEntryType = enum {
     nativeFunc2,
 };
 
-const SymbolEntry = struct {
+pub const SymbolEntry = struct {
     entryT: SymbolEntryType,
     inner: packed union {
-        nativeFunc1: std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) Value),
-        nativeFunc2: std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) cy.ValuePair),
+        nativeFunc1: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) Value),
+        nativeFunc2: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) cy.ValuePair),
         func: packed struct {
             pc: u32,
         },
     },
 
-    fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) Value)) SymbolEntry {
+    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) Value)) SymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{
@@ -2307,7 +2261,7 @@ const SymbolEntry = struct {
         };
     }
 
-    fn initNativeFunc2(func: std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) cy.ValuePair)) SymbolEntry {
+    fn initNativeFunc2(func: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) cy.ValuePair)) SymbolEntry {
         return .{
             .entryT = .nativeFunc2,
             .inner = .{
@@ -2326,7 +2280,7 @@ const FuncSymbolEntryType = enum {
 pub const FuncSymbolEntry = struct {
     entryT: FuncSymbolEntryType,
     inner: packed union {
-        nativeFunc1: std.meta.FnPtr(fn (*VM, []const Value) Value),
+        nativeFunc1: std.meta.FnPtr(fn (*VM, [*]const Value, u8) Value),
         func: packed struct {
             pc: usize,
             /// Includes function params, locals, and return info slot.
@@ -2334,7 +2288,7 @@ pub const FuncSymbolEntry = struct {
         },
     },
 
-    fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, []const Value) Value)) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, [*]const Value, u8) Value)) FuncSymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{
@@ -2426,7 +2380,7 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-fn evalStackFrameGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
+pub fn evalStackFrameGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
     @setRuntimeSafety(debug);
     while (true) {
         @call(.{ .modifier = .always_inline }, gvm.evalStackFrame, .{trace}) catch |err| {

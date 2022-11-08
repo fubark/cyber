@@ -989,7 +989,7 @@ pub const VMcompiler = struct {
                                 arg_id = arg.next;
                             }
 
-                            const symId = try self.vm.ensureFuncSym(name);
+                            const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
                             if (discardTopExprReg) {
                                 try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs));
                             } else {

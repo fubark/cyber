@@ -635,7 +635,23 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocList(self: *VM, elems: []const Value) !Value {
+    pub fn allocOwnedList(self: *VM, elems: []Value) !Value {
+        @setRuntimeSafety(debug);
+        const obj = try self.allocObject();
+        obj.retainedList = .{
+            .structId = ListS,
+            .rc = 1,
+            .list = .{
+                .ptr = elems.ptr,
+                .len = elems.len,
+                .cap = elems.len,
+            },
+            .nextIterIdx = 0,
+        };
+        return Value.initPtr(obj);
+    }
+
+    fn allocList(self: *VM, elems: []const Value) linksection(".eval") !Value {
         @setRuntimeSafety(debug);
         const obj = try self.allocObject();
         obj.retainedList = .{

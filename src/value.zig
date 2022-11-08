@@ -47,8 +47,9 @@ pub const Value = packed union {
     /// Call frame return info.
     retInfo: packed struct {
         pc: u32,
-        framePtr: u30,
+        framePtr: u29,
         numRetVals: u2,
+        retFlag: u1,
     },
 
     pub inline fn asI32(self: *const Value) i32 {

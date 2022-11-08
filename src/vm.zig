@@ -35,7 +35,6 @@ pub const VM = struct {
     pc: usize,
     /// Current stack frame ptr. Previous stack frame info is saved as a Value after all the reserved locals.
     framePtr: usize,
-    contFlag: bool,
 
     ops: []const cy.OpData,
     consts: []const cy.Const,
@@ -86,7 +85,6 @@ pub const VM = struct {
             .heapFreeHead = null,
             .pc = 0,
             .framePtr = 0,
-            .contFlag = false,
             .symbols = .{},
             .symSignatures = .{},
             .funcSyms = .{},
@@ -310,7 +308,8 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn popStackFrame(self: *VM, comptime numRetVals: u2) linksection(".eval") void {
+    /// Returns whether to continue execution loop.
+    pub fn popStackFrame(self: *VM, comptime numRetVals: u2) linksection(".eval") bool {
         @setRuntimeSafety(debug);
 
         // If there are fewer return values than required from the function call, 
@@ -325,7 +324,7 @@ pub const VM = struct {
                     // Restore pc.
                     self.framePtr = retInfo.retInfo.framePtr;
                     self.pc = retInfo.retInfo.pc;
-                    return;
+                    return retInfo.retInfo.retFlag == 0;
                 } else {
                     switch (reqNumArgs) {
                         0 => unreachable,
@@ -354,7 +353,7 @@ pub const VM = struct {
                     // Restore pc.
                     self.framePtr = retInfo.retInfo.framePtr;
                     self.pc = retInfo.retInfo.pc;
-                    return;
+                    return retInfo.retInfo.retFlag == 0;
                 }
             },
             1 => {
@@ -362,14 +361,14 @@ pub const VM = struct {
                 const retInfo = self.stack.buf[self.stack.top-2];
                 const reqNumArgs = retInfo.retInfo.numRetVals;
                 if (reqNumArgs == 1) {
-                    // Copy return value to retInfo.
+                    // Copy return value to framePtr.
                     self.stack.buf[self.framePtr] = self.stack.buf[self.stack.top-1];
                     self.stack.top = self.framePtr + 1;
 
                     // Restore pc.
                     self.framePtr = retInfo.retInfo.framePtr;
                     self.pc = retInfo.retInfo.pc;
-                    return;
+                    return retInfo.retInfo.retFlag == 0;
                 } else {
                     switch (reqNumArgs) {
                         0 => {
@@ -394,7 +393,7 @@ pub const VM = struct {
                     // Restore pc.
                     self.framePtr = retInfo.retInfo.framePtr;
                     self.pc = retInfo.retInfo.pc;
-                    return;
+                    return retInfo.retInfo.retFlag == 0;
                 }
             },
             else => @compileError("Unsupported num return values."),
@@ -416,7 +415,7 @@ pub const VM = struct {
         try self.ensureStackTotalCapacity(buf.mainLocalSize);
         self.stack.top = buf.mainLocalSize;
 
-        try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
+        try @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace});
         if (trace) {
             log.info("main local size: {}", .{buf.mainLocalSize});
         }
@@ -1082,6 +1081,8 @@ pub const VM = struct {
         } else stdx.panic("Symbol does not exist.");
     }
 
+    /// Stack layout: arg0, arg1, ..., callee
+    /// numArgs includes the callee.
     fn call(self: *VM, callee: Value, numArgs: u8, retInfo: Value) !void {
         @setRuntimeSafety(debug);
         if (callee.isPointer()) {
@@ -1113,7 +1114,7 @@ pub const VM = struct {
                 },
                 LambdaS => {
                     if (numArgs - 1 != obj.lambda.numParams) {
-                        stdx.panic("params/args mismatch");
+                        stdx.panicFmt("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     }
                     self.pc = obj.lambda.funcPc;
                     self.framePtr = self.stack.top - numArgs;
@@ -1161,7 +1162,7 @@ pub const VM = struct {
                 }
             },
             .func => {
-                const retInfo = self.buildReturnInfo(reqNumRetVals);
+                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
                 // numLocals includes the function params as well as the return info value.
@@ -1254,34 +1255,19 @@ pub const VM = struct {
         }
     }
 
-    inline fn buildReturnInfo(self: *const VM, comptime numRetVals: u2) linksection(".eval") Value {
+    inline fn buildReturnInfo(self: *const VM, comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return Value{
             .retInfo = .{
                 .pc = @intCast(u32, self.pc),
-                .framePtr = @intCast(u30, self.framePtr),
+                .framePtr = @intCast(u29, self.framePtr),
                 .numRetVals = numRetVals,
+                .retFlag = if (cont) 0 else 1,
             },
         };
     }
 
-    /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
-    /// This is also the entry way for native code to call into the VM.
-    fn evalStackFrameGrowStack(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds}!void {
-        @setRuntimeSafety(debug);
-        while (true) {
-            @call(.{.modifier = .always_inline}, self.evalStackFrame, .{trace}) catch |err| {
-                @setCold(true);
-                if (err == error.StackOverflow) {
-                    try self.stack.growTotalCapacity(self.alloc, self.stack.buf.len + 1);
-                    continue;
-                } else return err;
-            };
-            return;
-        }
-    }
-
-    fn evalStackFrame(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds}!void {
+    fn evalStackFrame(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
         @setRuntimeSafety(debug);
         while (true) {
             if (trace) {
@@ -1626,7 +1612,7 @@ pub const VM = struct {
                     self.pc += 2;
 
                     const callee = self.stack.buf[self.stack.top - 1];
-                    const retInfo = self.buildReturnInfo(0);
+                    const retInfo = self.buildReturnInfo(0, true);
                     try @call(.{ .modifier = .never_inline }, self.call, .{callee, numArgs, retInfo});
                     continue;
                 },
@@ -1636,7 +1622,7 @@ pub const VM = struct {
                     self.pc += 2;
 
                     const callee = self.stack.buf[self.stack.top - 1];
-                    const retInfo = self.buildReturnInfo(1);
+                    const retInfo = self.buildReturnInfo(1, true);
                     try @call(.{ .modifier = .never_inline }, self.call, .{callee, numArgs, retInfo});
                     continue;
                 },
@@ -1743,10 +1729,11 @@ pub const VM = struct {
                                 break;
                             }
                             self.pc = innerPc;
-                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
-                            if (!self.contFlag) {
-                                break;
-                            }
+                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                                if (err == error.BreakLoop) {
+                                    break;
+                                } else return err;
+                            };
                         }
                     } else {
                         while (true) {
@@ -1759,10 +1746,11 @@ pub const VM = struct {
                             }
                             self.setStackFrameValue(local, next);
                             self.pc = innerPc;
-                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
-                            if (!self.contFlag) {
-                                break;
-                            }
+                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                                if (err == error.BreakLoop) {
+                                    break;
+                                } else return err;
+                            };
                         }
                     }
                     self.pc = endPc;
@@ -1784,19 +1772,21 @@ pub const VM = struct {
                     if (local == 255) {
                         while (i < rangeEnd) : (i += step) {
                             self.pc = innerPc;
-                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
-                            if (!self.contFlag) {
-                                break;
-                            }
+                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                                if (err == error.BreakLoop) {
+                                    break;
+                                } else return err;
+                            };
                         }
                     } else {
                         while (i < rangeEnd) : (i += step) {
                             self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
                             self.pc = innerPc;
-                            try @call(.{ .modifier = .never_inline }, self.evalStackFrameGrowStack, .{trace});
-                            if (!self.contFlag) {
-                                break;
-                            }
+                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                                if (err == error.BreakLoop) {
+                                    break;
+                                } else return err;
+                            };
                         }
                     }
                     self.pc = endPc;
@@ -1804,25 +1794,30 @@ pub const VM = struct {
                 },
                 .cont => {
                     @setRuntimeSafety(debug);
-                    self.contFlag = true;
                     return;
                 },
-                .ret2 => {
-                    @setRuntimeSafety(debug);
-                    // Using never_inline seems to work against the final compiler optimizations.
-                    // @call(.{ .modifier = .never_inline }, self.popStackFrameCold, .{2});
-                    self.popStackFrameCold(2);
-                    continue;
-                },
+                // .ret2 => {
+                //     @setRuntimeSafety(debug);
+                //     // Using never_inline seems to work against the final compiler optimizations.
+                //     // @call(.{ .modifier = .never_inline }, self.popStackFrameCold, .{2});
+                //     self.popStackFrameCold(2);
+                //     continue;
+                // },
                 .ret1 => {
                     @setRuntimeSafety(debug);
-                    @call(.{ .modifier = .always_inline }, self.popStackFrame, .{1});
-                    continue;
+                    if (@call(.{ .modifier = .always_inline }, self.popStackFrame, .{1})) {
+                        continue;
+                    } else {
+                        return;
+                    }
                 },
                 .ret0 => {
                     @setRuntimeSafety(debug);
-                    @call(.{ .modifier = .always_inline }, self.popStackFrame, .{0});
-                    continue;
+                    if (@call(.{ .modifier = .always_inline }, self.popStackFrame, .{0})) {
+                        continue;
+                    } else {
+                        return;
+                    }
                 },
                 .pushMultiply => {
                     @setRuntimeSafety(debug);
@@ -1861,7 +1856,7 @@ pub const VM = struct {
                     continue;
                 },
                 .end => {
-                    return;
+                    return error.End;
                 },
             }
         }
@@ -2428,3 +2423,21 @@ pub const UserVM = struct {
         return gvm.valueAsString(val);
     }
 };
+
+/// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
+/// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
+fn evalStackFrameGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
+    @setRuntimeSafety(debug);
+    while (true) {
+        @call(.{ .modifier = .always_inline }, gvm.evalStackFrame, .{trace}) catch |err| {
+            @setCold(true);
+            if (err == error.StackOverflow) {
+                try gvm.stack.growTotalCapacity(gvm.alloc, gvm.stack.buf.len + 1);
+                continue;
+            } else if (err == error.End) {
+                return;
+            } else return err;
+        };
+        return;
+    }
+}

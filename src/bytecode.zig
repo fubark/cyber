@@ -131,7 +131,7 @@ pub const ByteCodeBuffer = struct {
                 .pushDivide,
                 .pushMod,
                 .cont,
-                .ret2,
+                // .ret2,
                 .ret1,
                 .ret0,
                 .end,
@@ -277,6 +277,7 @@ pub const OpCode = enum(u8) {
     /// Jumps the pc forward by an offset.
     jump,
     jumpBack,
+    cont,
 
     // releaseMany,
     release,
@@ -288,7 +289,7 @@ pub const OpCode = enum(u8) {
     callObjSym,
     pushCallSym0,
     pushCallSym1,
-    ret2,
+    // ret2,
     ret1,
     ret0,
     /// Pops callee and args, performs a function call, and ensures no return values.
@@ -305,7 +306,6 @@ pub const OpCode = enum(u8) {
     pushLessEqual,
     pushGreaterEqual,
     pushMinus2,
-    cont,
     forRange,
     forIter,
     pushMultiply,
@@ -321,7 +321,7 @@ pub const OpCode = enum(u8) {
 
 comptime {
     const end = @enumToInt(OpCode.end);
-    if (end != 53) {
+    if (end != 52) {
         @compileError(std.fmt.comptimePrint("Unexpected end op code {}", .{end}));
     }
 }

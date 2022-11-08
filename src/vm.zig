@@ -267,10 +267,19 @@ pub const VM = struct {
         log.info("stack top: {}", .{self.stack.top});
         log.info("heap pages: {}", .{self.heapPages.items.len});
 
-        // Dump symbols.
+        // Dump object symbols.
         {
             log.info("obj syms:", .{});
             var iter = self.funcSymSignatures.iterator();
+            while (iter.next()) |it| {
+                log.info("\t{s}: {}", .{it.key_ptr.*, it.value_ptr.*});
+            }
+        }
+
+        // Dump object fields.
+        {
+            log.info("obj fields:", .{});
+            var iter = self.fieldSymSignatures.iterator();
             while (iter.next()) |it| {
                 log.info("\t{s}: {}", .{it.key_ptr.*, it.value_ptr.*});
             }

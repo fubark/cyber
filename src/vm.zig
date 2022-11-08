@@ -595,6 +595,31 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
+    pub fn allocOwnedString(self: *VM, str: []u8) !Value {
+        @setRuntimeSafety(debug);
+        const obj = try self.allocObject();
+        obj.string = .{
+            .structId = StringS,
+            .rc = 1,
+            .ptr = str.ptr,
+            .len = str.len,
+        };
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocString(self: *VM, str: []const u8) !Value {
+        @setRuntimeSafety(debug);
+        const obj = try self.allocObject();
+        const dupe = try self.alloc.dupe(u8, str);
+        obj.string = .{
+            .structId = StringS,
+            .rc = 1,
+            .ptr = dupe.ptr,
+            .len = dupe.len,
+        };
+        return Value.initPtr(obj);
+    }
+
     fn allocStringConcat(self: *VM, str: []const u8, str2: []const u8) !Value {
         @setRuntimeSafety(debug);
         const obj = try self.allocObject();

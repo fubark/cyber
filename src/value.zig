@@ -126,7 +126,7 @@ pub const Value = packed union {
         return self.val == TrueMask;
     }
 
-    pub inline fn isNone(self: *const Value) bool {
+    pub inline fn isNone(self: *const Value) linksection(".eval") bool {
         return self.val == NoneMask;
     }
 

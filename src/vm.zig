@@ -589,7 +589,7 @@ pub const VM = struct {
             },
             else => {
                 log.debug("Unsupported number of closure captured values: {}", .{capturedVals.len});
-                return error.Unsupported;
+                return error.Panic;
             }
         }
         return Value.initPtr(obj);
@@ -1035,14 +1035,15 @@ pub const VM = struct {
                         self.freeObject(obj);
                     },
                     else => {
-                        return stdx.panicFmt("unsupported struct type {}", .{obj.common.structId});
+                        // return stdx.panicFmt("unsupported struct type {}", .{obj.common.structId});
+                        unreachable;
                     },
                 }
             }
         }
     }
 
-    fn getField(self: *const VM, symId: SymbolId, recv: Value) !Value {
+    fn getField(self: *const VM, symId: SymbolId, recv: Value) Value {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
@@ -1058,7 +1059,8 @@ pub const VM = struct {
                             return val;
                         } else return Value.initNone();
                     } else {
-                        return error.MissingSymbol;
+                        unreachable;
+                        // return error.MissingSymbol;
                     }
                 },
                 .empty => {
@@ -1069,12 +1071,21 @@ pub const VM = struct {
                             return val;
                         } else return Value.initNone();
                     } else {
-                        return error.MissingSymbol;
+                        log.debug("Missing symbol for object: {}", .{obj.common.structId});
+                        return Value.initNone();
                     }
                 },
-                else => stdx.panicFmt("unsupported {}", .{symMap.mapT}),
+                else => {
+                    // @setCold(true);
+                    // stdx.panicFmt("unsupported {}", .{symMap.mapT});
+                    unreachable;
+                },
             } 
-        } else stdx.panic("Symbol does not exist.");
+        } else {
+            // log.debug("Object missing symbol: {}", .{symId});
+            // return error.MissingSymbol;
+            unreachable;
+        }
     }
 
     /// Stack layout: arg0, arg1, ..., callee
@@ -1170,13 +1181,14 @@ pub const VM = struct {
                 // Push return pc address and previous current framePtr onto the stack.
                 self.stack.buf[self.stack.top-1] = retInfo;
             },
-            .none => {
-                // Function doesn't exist.
-                log.debug("Symbol {} doesn't exist.", .{symId});
-                // TODO: script panic.
-                return error.MissingSymbol;
-            },
-            // else => stdx.panic("unsupported callsym"),
+            // .none => {
+            //     @setCold(true);
+            //     // Function doesn't exist.
+            //     log.debug("Symbol {} doesn't exist.", .{symId});
+            //     // TODO: script panic.
+            //     return error.MissingSymbol;
+            // },
+            else => stdx.panic("unsupported callsym"),
         }
     }
 
@@ -1228,7 +1240,11 @@ pub const VM = struct {
                     }
                 }
             },
-            else => stdx.panicFmt("unsupported {}", .{entry.entryT}),
+            else => {
+                // @setCold(true);
+                // stdx.panicFmt("unsupported {}", .{entry.entryT});
+                unreachable;
+            },
         }
     }
 

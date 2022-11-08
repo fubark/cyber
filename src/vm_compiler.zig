@@ -296,6 +296,9 @@ pub const VMcompiler = struct {
     fn genStatement(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) !void {
         // log.debug("gen stmt {}", .{node.node_t});
         switch (node.node_t) {
+            .pass_stmt => {
+                return;
+            },
             .expr_stmt => {
                 const expr = self.nodes[node.head.child_head];
                 _ = try self.genExpr(expr, discardTopExprReg);
@@ -460,7 +463,7 @@ pub const VMcompiler = struct {
                     const ident = self.nodes[asClause.head.as_range_clause.ident];
                     const ident_token = self.tokens[ident.start_token];
                     const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-
+    
                     if (self.blockGetTempVar(asName)) |local_| {
                         // Temp variable must not be used already in this block.
                         if (self.blockUsingTempVar(asName)) {

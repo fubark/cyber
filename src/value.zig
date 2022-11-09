@@ -205,6 +205,11 @@ pub const Value = packed union {
         // }
     }
 
+    pub inline fn floatIsSpecial(val: f64) bool {
+        if (std.math.isInf(val)) return true;
+        return false;
+    }
+
     pub inline fn floatCanBeInteger(val: f64) bool {
         @setRuntimeSafety(debug);
         // return @fabs(std.math.floor(val) - val) < std.math.f64_epsilon;
@@ -251,4 +256,14 @@ test "floatCanBeInteger" {
             continue;
         } else try t.fail();
     }
+}
+
+test "asF64" {
+    // +Inf.
+    var val = Value{ .val = 0x7ff0000000000000 };
+    try t.eq(val.asF64(), std.math.inf_f64);
+
+    // -Inf.
+    val = Value{ .val = 0xfff0000000000000 };
+    try t.eq(val.asF64(), -std.math.inf_f64);
 }

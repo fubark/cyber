@@ -1964,46 +1964,70 @@ pub const VM = struct {
                 return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
             }
         } else {
-            switch (val.getTag()) {
-                cy.TagBoolean => {
-                    if (val.asBool()) return "true" else return "false";
-                },
-                cy.TagNone => return "none",
-                cy.TagConstString => {
-                    // Convert into heap string.
-                    const slice = val.asConstStr();
-                    return self.strBuf[slice.start..slice.end];
-                },
-                else => stdx.panic("unexpected tag"),
+            if (val.isPointer()) {
+                const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
+                if (obj.common.structId == StringS) {
+                    return obj.string.ptr[0..obj.string.len];
+                } else {
+                    stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
+                }
+            } else {
+                switch (val.getTag()) {
+                    cy.TagBoolean => {
+                        if (val.asBool()) return "true" else return "false";
+                    },
+                    cy.TagNone => return "none",
+                    cy.TagConstString => {
+                        // Convert into heap string.
+                        const slice = val.asConstStr();
+                        return self.strBuf[slice.start..slice.end];
+                    },
+                    else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
+                }
             }
         }
     }
 
     fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
         if (val.isNumber()) {
-            if (Value.floatCanBeInteger(val.asF64())) {
-                std.fmt.format(writer, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
+            const f = val.asF64();
+            if (Value.floatIsSpecial(f)) {
+                std.fmt.format(writer, "{}", .{f}) catch stdx.fatal();
             } else {
-                std.fmt.format(writer, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
+                if (Value.floatCanBeInteger(f)) {
+                    std.fmt.format(writer, "{}", .{@floatToInt(u64, f)}) catch stdx.fatal();
+                } else {
+                    std.fmt.format(writer, "{d:.10}", .{f}) catch stdx.fatal();
+                }
             }
         } else {
-            switch (val.getTag()) {
-                cy.TagBoolean => {
-                    if (val.asBool()) {
-                        _ = writer.write("true") catch stdx.fatal();
-                    } else {
-                        _ = writer.write("false") catch stdx.fatal();
-                    }
-                },
-                cy.TagNone => {
-                    _ = writer.write("none") catch stdx.fatal();
-                },
-                cy.TagConstString => {
-                    // Convert into heap string.
-                    const slice = val.asConstStr();
-                    _ = writer.write(self.strBuf[slice.start..slice.end]) catch stdx.fatal();
-                },
-                else => stdx.panic("unexpected tag"),
+            if (val.isPointer()) {
+                const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
+                if (obj.common.structId == StringS) {
+                    const str = obj.string.ptr[0..obj.string.len];
+                    _ = writer.write(str) catch stdx.fatal();
+                } else {
+                    stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
+                }
+            } else {
+                switch (val.getTag()) {
+                    cy.TagBoolean => {
+                        if (val.asBool()) {
+                            _ = writer.write("true") catch stdx.fatal();
+                        } else {
+                            _ = writer.write("false") catch stdx.fatal();
+                        }
+                    },
+                    cy.TagNone => {
+                        _ = writer.write("none") catch stdx.fatal();
+                    },
+                    cy.TagConstString => {
+                        // Convert into heap string.
+                        const slice = val.asConstStr();
+                        _ = writer.write(self.strBuf[slice.start..slice.end]) catch stdx.fatal();
+                    },
+                    else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
+                }
             }
         }
     }

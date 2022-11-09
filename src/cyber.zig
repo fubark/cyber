@@ -61,10 +61,12 @@ pub const Const = bytecode.Const;
 // pub const QJS = js_rt.QJS;
 
 const cdata = @import("cdata.zig");
-pub const encodeCDATA = cdata.encode;
-pub const decodeCDATAmap = cdata.decodeMap;
+pub const encodeCyon = cdata.encode;
+pub const decodeCyonMap = cdata.decodeMap;
+pub const decodeCyon = cdata.decode;
 pub const EncodeValueContext = cdata.EncodeValueContext;
 pub const EncodeMapContext = cdata.EncodeMapContext;
 pub const EncodeListContext = cdata.EncodeListContext;
 pub const DecodeMapIR = cdata.DecodeMapIR;
 pub const DecodeListIR = cdata.DecodeListIR;
+pub const DecodeValueIR = cdata.DecodeValueIR;

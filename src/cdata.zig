@@ -3,6 +3,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 
 const parser_ = @import("parser.zig");
+const NodeId = parser_.NodeId;
 const Parser = parser_.Parser;
 const log = stdx.log.scoped(.cdata);
 
@@ -266,6 +267,14 @@ pub const DecodeListIR = struct {
         self.alloc.free(self.arr);
     }
 
+    pub fn getIndex(self: DecodeListIR, idx: usize) DecodeValueIR {
+        return DecodeValueIR{
+            .alloc = self.alloc,
+            .res = self.res,
+            .exprId = self.arr[idx],
+        };
+    }
+
     pub fn decodeMap(self: DecodeListIR, idx: u32) !DecodeMapIR {
         if (idx < self.arr.len) {
             return try DecodeMapIR.init(self.alloc, self.res, self.arr[idx]);
@@ -280,7 +289,7 @@ pub const DecodeMapIR = struct {
     /// Preserve order of entries.
     map: std.StringArrayHashMapUnmanaged(parser_.NodeId),
 
-    fn init(alloc: std.mem.Allocator, res: parser_.ResultView, map_id: parser_.NodeId) !DecodeMapIR {
+    fn init(alloc: std.mem.Allocator, res: parser_.ResultView, map_id: NodeId) !DecodeMapIR {
         const map = res.nodes.items[map_id];
         if (map.node_t != .map_literal) {
             return error.NotAMap;
@@ -317,6 +326,14 @@ pub const DecodeMapIR = struct {
     pub fn iterator(self: DecodeMapIR) std.StringArrayHashMapUnmanaged(parser_.NodeId).Iterator {
         return self.map.iterator();
     }
+
+    pub fn getValue(self: DecodeMapIR, key: []const u8) DecodeValueIR {
+        return DecodeValueIR{
+            .alloc = self.alloc,
+            .res = self.res,
+            .exprId = self.map.get(key).?,
+        };
+    }
     
     pub fn allocString(self: DecodeMapIR, key: []const u8) ![]const u8 {
         if (self.map.get(key)) |val_id| {
@@ -329,7 +346,15 @@ pub const DecodeMapIR = struct {
                 const replaces = std.mem.replace(u8, buf.items, "\\`", "`", buf.items);
                 buf.items.len -= replaces;
                 return buf.toOwnedSlice();
-            } else return error.NotAString;
+            } else if (val_n.node_t == .stringTemplate and val_n.head.stringTemplate.exprHead == NullId) {
+                const str = self.res.nodes.items[val_n.head.stringTemplate.stringHead];
+                const token_s = self.res.getTokenString(str.start_token);
+                var buf = std.ArrayList(u8).init(self.alloc);
+                defer buf.deinit();
+                _ = replaceIntoList(u8, token_s, "\\`", "`", &buf);
+                return buf.toOwnedSlice();
+            }
+            return error.NotAString;
         } else return error.NoSuchEntry;
     }
 
@@ -373,7 +398,7 @@ pub const DecodeMapIR = struct {
 
 const NullId = std.math.maxInt(u32);
 
-// Currently uses cscript parser.
+// Currently uses Cyber parser.
 pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: anytype, decode_map: fn (DecodeMapIR, @TypeOf(ctx), @TypeOf(out)) anyerror!void, cdata: []const u8) !void {
     const res = try parser.parse(cdata);
     if (res.has_error) {
@@ -394,6 +419,78 @@ pub fn decodeMap(alloc: std.mem.Allocator, parser: *Parser, ctx: anytype, out: a
     defer map.deinit();
     try decode_map(map, ctx, out);
 }
+
+pub fn decode(alloc: std.mem.Allocator, parser: *Parser, cyon: []const u8) !DecodeValueIR {
+    const res = try parser.parse(cyon);
+    if (res.has_error) {
+        log.debug("Parse Error: {s}", .{res.err_msg});
+        return error.ParseError;
+    }
+
+    const root = res.nodes.items[res.root_id];
+    if (root.head.child_head == NullId) {
+        return error.NotAValue;
+    }
+    const first_stmt = res.nodes.items[root.head.child_head];
+    if (first_stmt.node_t != .expr_stmt) {
+        return error.NotAValue;
+    }
+
+    return DecodeValueIR{
+        .alloc = alloc, 
+        .res = res,
+        .exprId = first_stmt.head.child_head,
+    };
+}
+
+const ValueType = enum {
+    list,
+    map,
+    string,
+    number,
+};
+
+pub const DecodeValueIR = struct {
+    alloc: std.mem.Allocator,
+    res: parser_.ResultView,
+    exprId: NodeId,
+
+    pub fn getValueType(self: DecodeValueIR) ValueType {
+        const node = self.res.nodes.items[self.exprId];
+        switch (node.node_t) {
+            .arr_literal => return .list,
+            .map_literal => return .map,
+            .string => return .string,
+            .number => return .number,
+            else => stdx.panicFmt("unsupported {}", .{node.node_t}),
+        }
+    }
+
+    pub fn asList(self: DecodeValueIR) !DecodeListIR {
+        return DecodeListIR.init(self.alloc, self.res, self.exprId);
+    }
+
+    pub fn asMap(self: DecodeValueIR) !DecodeMapIR {
+        return DecodeMapIR.init(self.alloc, self.res, self.exprId);
+    }
+
+    pub fn allocString(self: DecodeValueIR) []u8 {
+        const node = self.res.nodes.items[self.exprId];
+        const token_s = self.res.getTokenString(node.start_token);
+        var buf = std.ArrayList(u8).init(self.alloc);
+        defer buf.deinit();
+        _ = replaceIntoList(u8, token_s[1..token_s.len-1], "\\'", "'", &buf);
+        const replaces = std.mem.replace(u8, buf.items, "\\`", "`", buf.items);
+        buf.items.len -= replaces;
+        return buf.toOwnedSlice();
+    }
+
+    pub fn asF64(self: DecodeValueIR) !f64 {
+        const node = self.res.nodes.items[self.exprId];
+        const token_s = self.res.getTokenString(node.start_token);
+        return try std.fmt.parseFloat(f64, token_s);
+    }
+};
 
 const TestRoot = struct {
     name: []const u8,

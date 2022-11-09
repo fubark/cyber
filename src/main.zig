@@ -7,19 +7,23 @@ const log = stdx.log.scoped(.main);
 
 /// Trace collects debug info.
 const Trace = false;
+const UseMimalloc = false;
 
 var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
+var miAlloc: mi.Allocator = undefined;
 
 pub fn main() !void {
-    // var miAlloc: mi.Allocator = undefined;
-    // miAlloc.init();
-    // defer miAlloc.deinit();
-    // const alloc = miAlloc.allocator();
-
-    const alloc = gpa.allocator();
+    if (UseMimalloc) {
+        miAlloc.init();
+    }
+    const alloc = if (UseMimalloc) miAlloc.allocator() else gpa.allocator();
     defer {
         if (builtin.mode == .Debug) {
-            _ = gpa.deinit();
+            if (UseMimalloc) {
+                miAlloc.deinit();
+            } else {
+                _ = gpa.deinit();
+            }
         }
     }
 

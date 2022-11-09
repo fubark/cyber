@@ -1,5 +1,6 @@
 const std = @import("std");
 const cy_config = @import("src/config.zig");
+const mimalloc = @import("lib/mimalloc/lib.zig");
 
 const Options = struct {
     linkMimalloc: bool = false,
@@ -20,6 +21,8 @@ pub fn build(b: *std.build.Builder) !void {
 
         // exe.linkLibC();
         exe.addPackage(stdxPkg);
+        mimalloc.addPackage(exe);
+        mimalloc.buildAndLink(exe, .{});
 
         b.step("cli", "Build main cli.").dependOn(&exe.step);
     }

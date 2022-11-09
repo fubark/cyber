@@ -1037,11 +1037,19 @@ pub const VM = struct {
                 switch (obj.retainedCommon.structId) {
                     ListS => {
                         const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
+                        for (list.items) |it| {
+                            self.release(it, trace);
+                        }
                         list.deinit(self.alloc);
                         self.freeObject(obj);
                     },
                     MapS => {
                         const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+                        var iter = map.iterator();
+                        while (iter.next()) |entry| {
+                            self.release(entry.key, trace);
+                            self.release(entry.value, trace);
+                        }
                         map.deinit(self.alloc);
                         self.freeObject(obj);
                     },

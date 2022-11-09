@@ -425,7 +425,15 @@ test "Strings" {
     try t.eqStr(str, "abcxyz");
     run.deinitValue(val);
 
-    t.setLogLevel(.debug);
+    // String interpolation.
+    val = try run.eval(
+        \\a = 'World'
+        \\b = 123
+        \\`Hello \(a) \(b)`
+    );
+    str = try run.valueString(val);
+    try t.eqStr(str, "Hello World 123");
+    run.deinitValue(val);
 }
 
 test "Lists" {

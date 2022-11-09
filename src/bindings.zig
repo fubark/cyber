@@ -55,6 +55,7 @@ fn stdPrint(self: *cy.VM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = self.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
+    gvm.release(args[0], false);
     return Value.initNone();
 }
 

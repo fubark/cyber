@@ -411,7 +411,7 @@ pub const VM = struct {
         try self.ensureStackTotalCapacity(buf.mainLocalSize);
         self.stack.top = buf.mainLocalSize;
 
-        try @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace});
+        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace});
         if (trace) {
             log.info("main local size: {}", .{buf.mainLocalSize});
         }
@@ -1316,7 +1316,7 @@ pub const VM = struct {
         };
     }
 
-    fn evalStackFrame(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
+    fn evalLoop(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
         @setRuntimeSafety(debug);
         while (true) {
             if (trace) {
@@ -1790,7 +1790,7 @@ pub const VM = struct {
                                 break;
                             }
                             self.pc = innerPc;
-                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
                                 } else return err;
@@ -1807,7 +1807,7 @@ pub const VM = struct {
                             }
                             self.setStackFrameValue(local, next);
                             self.pc = innerPc;
-                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
                                 } else return err;
@@ -1833,7 +1833,7 @@ pub const VM = struct {
                     if (local == 255) {
                         while (i < rangeEnd) : (i += step) {
                             self.pc = innerPc;
-                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
                                 } else return err;
@@ -1843,7 +1843,7 @@ pub const VM = struct {
                         while (i < rangeEnd) : (i += step) {
                             self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
                             self.pc = innerPc;
-                            @call(.{ .modifier = .never_inline }, evalStackFrameGrowStack, .{trace}) catch |err| {
+                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
                                 } else return err;
@@ -2516,10 +2516,10 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-pub fn evalStackFrameGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
+pub fn evalLoopGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
     @setRuntimeSafety(debug);
     while (true) {
-        @call(.{ .modifier = .always_inline }, gvm.evalStackFrame, .{trace}) catch |err| {
+        @call(.{ .modifier = .always_inline }, gvm.evalLoop, .{trace}) catch |err| {
             @setCold(true);
             if (err == error.StackOverflow) {
                 try gvm.stack.growTotalCapacity(gvm.alloc, gvm.stack.buf.len + 1);

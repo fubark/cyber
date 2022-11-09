@@ -143,7 +143,7 @@ fn listSort(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
             ctx_.vm.stack.buf[ctx_.vm.stack.top-1] = ctx_.lessFn;
             const retInfo = ctx_.vm.buildReturnInfo(1, false);
             ctx_.vm.call(ctx_.lessFn, 3, retInfo) catch stdx.fatal();
-            @call(.{ .modifier = .never_inline }, vm_.evalStackFrameGrowStack, .{false}) catch unreachable;
+            @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{false}) catch unreachable;
             const res = ctx_.vm.popRegister();
             return res.toBool();
         }

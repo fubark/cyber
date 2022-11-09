@@ -145,6 +145,7 @@ pub const ByteCodeBuffer = struct {
                 .pushSlice,
                 .setIndex,
                 .pushStringTemplate,
+                .pushTrue,
                 .pushFalse => {
                     pc += 1;
                 },

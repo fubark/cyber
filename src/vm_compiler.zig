@@ -892,7 +892,7 @@ pub const VMcompiler = struct {
                                 if (rightVar == 255) {
                                     try self.buf.pushOp2(.pushMinus1, leftVar, rightVar);
                                 } else {
-                                    try self.buf.pushOp2(.pushMinus2, leftVar, leftVar);
+                                    try self.buf.pushOp2(.pushMinus2, leftVar, rightVar);
                                 }
                             }
                         }

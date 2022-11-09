@@ -144,6 +144,7 @@ pub const ByteCodeBuffer = struct {
                 .pushMapEmpty,
                 .pushSlice,
                 .setIndex,
+                .pushStringTemplate,
                 .pushFalse => {
                     pc += 1;
                 },
@@ -314,6 +315,7 @@ pub const OpCode = enum(u8) {
     pushMod,
     pushReverseIndex,
     pushNotCompare,
+    pushStringTemplate,
 
     /// Indicates the end of the main script.
     end,
@@ -321,7 +323,7 @@ pub const OpCode = enum(u8) {
 
 comptime {
     const end = @enumToInt(OpCode.end);
-    if (end != 52) {
+    if (end != 53) {
         @compileError(std.fmt.comptimePrint("Unexpected end op code {}", .{end}));
     }
 }

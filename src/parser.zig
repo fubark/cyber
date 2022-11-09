@@ -1398,6 +1398,76 @@ pub const Parser = struct {
         return if_expr;
     }
 
+    fn parseStringTemplate(self: *Parser) !NodeId {
+        // Assumes start at templateString and alternates between templateExpr and templateString.
+        const start = self.next_pos;
+        const id = self.pushNode(.stringTemplate, start);
+
+        const firstStr = self.pushNode(.string, start);
+
+        self.advanceToken();
+        var token = self.peekToken();
+        if (token.token_t != .templateExprStart) {
+            // No exprs.
+            self.nodes.items[id].head = .{
+                .stringTemplate = .{
+                    .stringHead = firstStr,
+                    .exprHead = NullId,
+                },
+            };
+            return id;
+        }
+
+        // Has exprs.
+        self.advanceToken();
+        token = self.peekToken();
+        const firstExpr = (try self.parseExpr(.{})) orelse {
+            return self.reportTokenError(error.SyntaxError, "Expected expression.", token);
+        };
+        token = self.peekToken();
+        if (token.token_t != .right_paren) {
+            return self.reportTokenError(error.SyntaxError, "Expected right parenthesis.", token);
+        }
+
+        self.nodes.items[id].head = .{
+            .stringTemplate = .{
+                .stringHead = firstStr,
+                .exprHead = firstExpr,
+            },
+        };
+        var lastStr = firstStr;
+        var lastExpr = firstExpr;
+        self.advanceToken();
+        token = self.peekToken();
+        while (token.token_t == .templateString) {
+            const str = self.pushNode(.string, self.next_pos);
+            self.nodes.items[lastStr].next = str;
+            lastStr = str;
+
+            self.advanceToken();
+            token = self.peekToken();
+            if (token.token_t != .templateExprStart) {
+                break;
+            }
+
+            self.advanceToken();
+            token = self.peekToken();
+            const expr = (try self.parseExpr(.{})) orelse {
+                return self.reportTokenError(error.SyntaxError, "Expected expression.", token);
+            };
+            token = self.peekToken();
+            if (token.token_t != .right_paren) {
+                return self.reportTokenError(error.SyntaxError, "Expected right parenthesis.", token);
+            }
+            self.advanceToken();
+            token = self.peekToken();
+
+            self.nodes.items[lastExpr].next = expr;
+            lastExpr = expr;
+        }
+        return id;
+    }
+
     fn parseTermExpr(self: *Parser) anyerror!NodeId {
         var start = self.next_pos;
         var token = self.peekToken();
@@ -1434,6 +1504,9 @@ pub const Parser = struct {
             .string => b: {
                 self.advanceToken();
                 break :b self.pushNode(.string, start);
+            },
+            .templateString => {
+                return self.parseStringTemplate();
             },
             .at => b: {
                 self.advanceToken();
@@ -1926,6 +1999,16 @@ pub const Parser = struct {
         }) catch fatal();
     }
 
+    inline fn pushTemplateStringToken(self: *Parser, start_pos: u32, end_pos: u32) void {
+        self.tokens.append(self.alloc, .{
+            .token_t = .templateString,
+            .start_pos = start_pos,
+            .data = .{
+                .end_pos = end_pos,
+            },
+        }) catch fatal();
+    }
+
     inline fn pushStringToken(self: *Parser, start_pos: u32, end_pos: u32) void {
         self.tokens.append(self.alloc, .{
             .token_t = .string,
@@ -2043,6 +2126,8 @@ pub const TokenType = enum {
     ident,
     number,
     string,
+    templateString,
+    templateExprStart,
     operator,
     at,
     left_paren,
@@ -2113,6 +2198,7 @@ const NodeType = enum {
     false_literal,
     none,
     string,
+    stringTemplate,
     await_expr,
     access_expr,
     arr_access_expr,
@@ -2236,6 +2322,10 @@ pub const Node = struct {
             // for else ifs only.
             cond: NodeId,
             else_clause: NodeId,
+        },
+        stringTemplate: struct {
+            stringHead: NodeId,
+            exprHead: NodeId,
         },
     },
 };
@@ -2479,6 +2569,8 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
 pub const TokenizeState = enum {
     start,
     token,
+    templateStart,
+    templateToken,
     end,
 };
 
@@ -2561,15 +2653,21 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
         }
 
-        /// Returns true if a token was parsed.
-        /// Returns false if the end was reached or a character was skipped.
-        fn tokenizeOne(p: *Parser, parsedNewLine: *bool) !bool {
-            parsedNewLine.* = false;
+        /// Consumes the next token skipping whitespace and returns the next tokenizer state.
+        fn tokenizeOne(p: *Parser, state: TokenizeState) !TokenizeState {
+            if (isAtEndChar(p)) {
+                return .end;
+            }
             const start = p.next_pos;
             const ch = consumeChar(p);
             switch (ch) {
                 '(' => p.pushToken(.left_paren, start),
-                ')' => p.pushToken(.right_paren, start),
+                ')' => {
+                    p.pushToken(.right_paren, start);
+                    if (state == .templateToken) {
+                        return .templateStart;
+                    }
+                },
                 '{' => p.pushToken(.left_brace, start),
                 '}' => p.pushToken(.right_brace, start),
                 '[' => p.pushToken(.left_bracket, start),
@@ -2613,11 +2711,11 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         while (!isAtEndChar(p)) {
                             if (peekChar(p) == '\n') {
                                 // Don't consume new line or the current indentation could augment with the next line.
-                                return tokenizeOne(p, parsedNewLine);
+                                return tokenizeOne(p, state);
                             }
                             advanceChar(p);
                         }
-                        return false;
+                        return .end;
                     } else {
                         p.pushOpToken(.slash, start);
                     }
@@ -2675,46 +2773,17 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             ' ',
                             '\r',
                             '\t' => advanceChar(p),
-                            else => return tokenizeOne(p, parsedNewLine),
+                            else => return tokenizeOne(p, state),
                         }
                     }
-                    return false;
+                    return .end;
                 },
                 '\n' => {
                     p.pushToken(.new_line, start);
-                    parsedNewLine.* = true;
+                    return .start;
                 },
                 '`' => {
-                    savePos(p);
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            if (p.tokenizeOpts.ignoreErrors) {
-                                restorePos(p);
-                                p.pushToken(.err, start);
-                                return true;
-                            } else return error.UnterminatedString;
-                        }
-                        const ch_ = consumeChar(p);
-                        switch (ch_) {
-                            '`' => {
-                                p.pushStringToken(start, p.next_pos);
-                                break;
-                            },
-                            '\\' => {
-                                // Escape the next character.
-                                if (isAtEndChar(p)) {
-                                    if (p.tokenizeOpts.ignoreErrors) {
-                                        restorePos(p);
-                                        p.pushToken(.err, start);
-                                        return true;
-                                    } else return error.UnterminatedString;
-                                }
-                                _ = consumeChar(p);
-                                continue;
-                            },
-                            else => {},
-                        }
-                    }
+                    return tokenizeTemplateStartOne(p);
                 },
                 '\'' => {
                     savePos(p);
@@ -2723,7 +2792,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             if (p.tokenizeOpts.ignoreErrors) {
                                 restorePos(p);
                                 p.pushToken(.err, start);
-                                return true;
+                                return .token;
                             } else return error.UnterminatedString;
                         }
                         const ch_ = consumeChar(p);
@@ -2738,7 +2807,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                                     if (p.tokenizeOpts.ignoreErrors) {
                                         restorePos(p);
                                         p.pushToken(.err, start);
-                                        return true;
+                                        return .token;
                                     } else return error.UnterminatedString;
                                 }
                                 _ = consumeChar(p);
@@ -2748,7 +2817,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                                 if (p.tokenizeOpts.ignoreErrors) {
                                     restorePos(p);
                                     p.pushToken(.err, start);
-                                    return true;
+                                    return .token;
                                 } else return error.UnterminatedString;
                             },
                             else => {},
@@ -2758,22 +2827,22 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 else => {
                     if (std.ascii.isAlpha(ch)) {
                         tokenizeKeywordOrIdent(p, start);
-                        return true;
+                        return .token;
                     }
                     if (ch >= '0' and ch <= '9') {
                         tokenizeNumber(p, start);
-                        return true;
+                        return .token;
                     }
                     if (p.tokenizeOpts.ignoreErrors) {
                         p.pushToken(.err, start);
-                        return true;
+                        return .token;
                     } else {
                         p.last_err = std.fmt.allocPrint(p.alloc, "unknown character: {c} ({}) at {}", .{ch, ch, start}) catch fatal();
                         return error.UnknownChar;
                     }
                 }
             }
-            return true;
+            return .token;
         }
 
         /// Returns true if an indent or new line token was parsed.
@@ -2817,25 +2886,10 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     }
                 },
                 .token => {
-                    var parsedNewLine: bool = undefined;
-                    if (try tokenizeOne(p, &parsedNewLine)) {
-                        if (!parsedNewLine) {
-                            return .token;
-                        } else {
-                            return .start;
-                        }
-                    } else {
-                        while (!isAtEndChar(p)) {
-                            if (try tokenizeOne(p, &parsedNewLine)) {
-                                if (!parsedNewLine) {
-                                    return .token;
-                                } else {
-                                    return .start;
-                                }
-                            }
-                        }
-                        return .end;
-                    }
+                    return tokenizeOne(p, state);
+                },
+                .templateToken => {
+                    return tokenizeOne(p, state);
                 },
                 .end => return error.AtEnd,
             }
@@ -2846,20 +2900,106 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             p.tokens.clearRetainingCapacity();
             p.next_pos = 0;
 
-            var parsedNewLine = false;
-            while (!isAtEndChar(p)) {
-                // First parse indent spaces.
-                while (!isAtEndChar(p)) {
-                    if (!tokenizeIndentOne(p)) {
-                        break;
-                    }
-                }
-                while (!isAtEndChar(p)) {
-                    if (try tokenizeOne(p, &parsedNewLine)) {
-                        if (parsedNewLine) {
-                            break;
+            var state: TokenizeState = .start;
+            while (true) {
+                switch (state) {
+                    .start => {
+                        // First parse indent spaces.
+                        while (true) {
+                            if (!tokenizeIndentOne(p)) {
+                                state = .token;
+                                break;
+                            }
                         }
-                    } else break;
+                    },
+                    .token => {
+                        while (true) {
+                            state = try tokenizeOne(p, state);
+                            if (state != .token) {
+                                break;
+                            }
+                        }
+                    },
+                    .templateStart => {
+                        state = try tokenizeTemplateStartOne(p);
+                    },
+                    .templateToken => {
+                        while (true) {
+                            const nextState = try tokenizeOne(p, state);
+                            if (nextState != .token) {
+                                state = nextState;
+                                break;
+                            }
+                        }
+                    },
+                    .end => {
+                        break;
+                    },
+                }
+            }
+        }
+
+        /// Returns the next tokenizer state.
+        fn tokenizeTemplateStartOne(p: *Parser) !TokenizeState {
+            const start = p.next_pos;
+            savePos(p);
+
+            var ch = peekChar(p);
+            if (ch == '\\') {
+                if (peekCharAhead(p, 1)) |next| {
+                    if (next == '(') {
+                        // Parse template expr.
+                        advanceChar(p);
+                        advanceChar(p);
+                        p.pushToken(.templateExprStart, p.next_pos);
+                        return .templateToken;
+                    }
+                } else {
+                    if (p.tokenizeOpts.ignoreErrors) {
+                        restorePos(p);
+                        p.pushToken(.err, start);
+                        return .token;
+                    } else return error.UnterminatedString;
+                }
+            }
+            // Parse template string.
+            while (true) {
+                if (isAtEndChar(p)) {
+                    if (p.tokenizeOpts.ignoreErrors) {
+                        restorePos(p);
+                        p.pushToken(.err, start);
+                        return .token;
+                    } else return error.UnterminatedString;
+                }
+                ch = peekChar(p);
+                switch (ch) {
+                    '`' => {
+                        p.pushTemplateStringToken(start, p.next_pos);
+                        _ = consumeChar(p);
+                        return .token;
+                    },
+                    '\\' => {
+                        if (peekCharAhead(p, 1)) |next| {
+                            if (next == '(') {
+                                p.pushTemplateStringToken(start, p.next_pos);
+                                return .templateStart;
+                            }
+                        }
+                        // Escape the next character.
+                        _ = consumeChar(p);
+                        if (isAtEndChar(p)) {
+                            if (p.tokenizeOpts.ignoreErrors) {
+                                restorePos(p);
+                                p.pushToken(.err, start);
+                                return .token;
+                            } else return error.UnterminatedString;
+                        }
+                        _ = consumeChar(p);
+                        continue;
+                    },
+                    else => {
+                        _ = consumeChar(p);
+                    },
                 }
             }
         }

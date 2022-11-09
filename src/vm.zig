@@ -71,6 +71,8 @@ pub const VM = struct {
 
     globals: std.StringHashMapUnmanaged(SymbolId),
 
+    u8Buf: std.ArrayListUnmanaged(u8),
+
     panicMsg: []const u8,
 
     trace: *TraceInfo,
@@ -101,6 +103,7 @@ pub const VM = struct {
             .trace = undefined,
             .panicMsg = "",
             .globals = .{},
+            .u8Buf = .{},
         };
         self.compiler.init(self);
         try self.ensureStackTotalCapacity(100);
@@ -140,6 +143,7 @@ pub const VM = struct {
         self.alloc.free(self.panicMsg);
 
         self.globals.deinit(self.alloc);
+        self.u8Buf.deinit(self.alloc);
     }
 
     /// Returns the first free HeapObject.
@@ -616,6 +620,31 @@ pub const VM = struct {
             .rc = 1,
             .ptr = dupe.ptr,
             .len = dupe.len,
+        };
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocStringTemplate(self: *VM, strs: []const Value, vals: []const Value) !Value {
+        @setRuntimeSafety(debug);
+
+        const firstStr = self.valueAsString(strs[0]);
+        try self.u8Buf.resize(self.alloc, firstStr.len);
+        std.mem.copy(u8, self.u8Buf.items, firstStr);
+
+        var writer = self.u8Buf.writer(self.alloc);
+        for (vals) |val, i| {
+            self.writeValueToString(writer, val);
+            try self.u8Buf.appendSlice(self.alloc, self.valueAsString(strs[i+1]));
+        }
+
+        const obj = try self.allocObject();
+        const buf = try self.alloc.alloc(u8, self.u8Buf.items.len);
+        std.mem.copy(u8, buf, self.u8Buf.items);
+        obj.string = .{
+            .structId = StringS,
+            .rc = 1,
+            .ptr = buf.ptr,
+            .len = buf.len,
         };
         return Value.initPtr(obj);
     }
@@ -1326,6 +1355,18 @@ pub const VM = struct {
                     self.pushValueNoCheck(Value{ .val = self.consts[idx].val });
                     continue;
                 },
+                .pushStringTemplate => {
+                    @setRuntimeSafety(debug);
+                    const exprCount = self.ops[self.pc+1].arg;
+                    self.pc += 2;
+                    const count = exprCount * 2 + 1;
+                    const strs = self.stack.buf[self.stack.top-count..self.stack.top-exprCount];
+                    const vals = self.stack.buf[self.stack.top-exprCount..self.stack.top];
+                    const res = try @call(.{ .modifier = .never_inline }, self.allocStringTemplate, .{strs, vals});
+                    self.stack.top = self.stack.top - count + 1;
+                    self.stack.buf[self.stack.top-1] = res;
+                    continue;
+                },
                 .pushNot => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
@@ -1924,6 +1965,35 @@ pub const VM = struct {
                     // Convert into heap string.
                     const slice = val.asConstStr();
                     return self.strBuf[slice.start..slice.end];
+                },
+                else => stdx.panic("unexpected tag"),
+            }
+        }
+    }
+
+    fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
+        if (val.isNumber()) {
+            if (Value.floatCanBeInteger(val.asF64())) {
+                std.fmt.format(writer, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
+            } else {
+                std.fmt.format(writer, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
+            }
+        } else {
+            switch (val.getTag()) {
+                cy.TagBoolean => {
+                    if (val.asBool()) {
+                        _ = writer.write("true") catch stdx.fatal();
+                    } else {
+                        _ = writer.write("false") catch stdx.fatal();
+                    }
+                },
+                cy.TagNone => {
+                    _ = writer.write("none") catch stdx.fatal();
+                },
+                cy.TagConstString => {
+                    // Convert into heap string.
+                    const slice = val.asConstStr();
+                    _ = writer.write(self.strBuf[slice.start..slice.end]) catch stdx.fatal();
                 },
                 else => stdx.panic("unexpected tag"),
             }

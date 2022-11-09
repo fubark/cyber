@@ -684,6 +684,40 @@ pub const VMcompiler = struct {
                 }
                 return ConstStringType;
             },
+            .stringTemplate => {
+                if (!discardTopExprReg or node.head.stringTemplate.exprHead != NullId) {
+                    if (node.head.stringTemplate.exprHead == NullId) {
+                        // Just a string.
+                        const str = self.nodes[node.head.stringTemplate.stringHead];
+                        const token = self.tokens[str.start_token];
+                        const literal = self.src[token.start_pos..token.data.end_pos];
+                        const idx = try self.buf.pushStringConst(literal);
+                        try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
+                    } else {
+                        var curId = node.head.stringTemplate.stringHead;
+                        while (curId != NullId) {
+                            const str = self.nodes[curId];
+                            const token = self.tokens[str.start_token];
+                            const literal = self.src[token.start_pos..token.data.end_pos];
+
+                            const idx = try self.buf.pushStringConst(literal);
+                            try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
+                            curId = str.next;
+                        }
+                        var count: u8 = 0;
+                        curId = node.head.stringTemplate.exprHead;
+                        while (curId != NullId) {
+                            count += 1;
+                            const expr = self.nodes[curId];
+                            _ = try self.genExpr(expr, discardTopExprReg);
+                            curId = expr.next;
+                        }
+
+                        try self.buf.pushOp1(.pushStringTemplate, count);
+                    }
+                }
+                return StringType;
+            },
             .ident => {
                 const token = self.tokens[node.start_token];
                 const name = self.src[token.start_pos..token.data.end_pos];
@@ -1205,6 +1239,11 @@ const NumberType = Type{
 const ConstStringType = Type{
     .typeT = .string,
     .rcCandidate = false,
+};
+
+const StringType = Type{
+    .typeT = .string,
+    .rcCandidate = true,
 };
 
 const ListType = Type{

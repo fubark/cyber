@@ -116,6 +116,7 @@ pub const Parser = struct {
 
     pub fn parse(self: *Parser, src: []const u8) !ResultView {
         self.src.clearRetainingCapacity();
+        try self.src.ensureTotalCapacity(self.alloc, 1024);
         try self.src.appendSlice(self.alloc, src);
         self.name = "";
         self.deps.clearRetainingCapacity();
@@ -2847,6 +2848,9 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
 
         /// Returns true if an indent or new line token was parsed.
         fn tokenizeIndentOne(p: *Parser) bool {
+            if (isAtEndChar(p)) {
+                return false;
+            }
             const ch = peekChar(p);
             switch (ch) {
                 ' ' => {

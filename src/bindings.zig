@@ -51,9 +51,9 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.ensureGlobalFuncSym("print", "std.print");
 }
 
-fn stdPrint(self: *cy.VM, args: [*]const Value, nargs: u8) Value {
+fn stdPrint(_: *cy.VM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
-    const str = self.valueToTempString(args[0]);
+    const str = gvm.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
     gvm.release(args[0], false);
     return Value.initNone();
@@ -111,9 +111,9 @@ fn fromCyonValue(self: *cy.VM, val: cy.DecodeValueIR) !Value {
     }
 }
 
-fn stdMapPut(self: *cy.VM, obj: *cy.HeapObject, key: Value, value: Value) void {
+fn stdMapPut(_: *cy.VM, obj: *cy.HeapObject, key: Value, value: Value) void {
     const map = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner); 
-    map.put(self.alloc, self, key, value) catch stdx.fatal();
+    map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
 fn listSort(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
@@ -154,20 +154,19 @@ fn listSort(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     return Value.initNone();
 }
 
-fn listAdd(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listAdd(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.retainedList.list);
-    inner.append(self.alloc, args[0]) catch stdx.fatal();
+    inner.append(gvm.alloc, args[0]) catch stdx.fatal();
     return Value.initNone();
 }
 
-fn listNext(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listNext(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
-    _ = self;
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
@@ -177,8 +176,7 @@ fn listNext(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     } else return Value.initNone();
 }
 
-fn listIterator(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    _ = self;
+fn listIterator(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
@@ -186,24 +184,24 @@ fn listIterator(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     return Value.initPtr(ptr);
 }
 
-fn listResize(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listResize(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.retainedList.list);
     const size = @floatToInt(u32, args[0].toF64());
-    inner.resize(self.alloc, size) catch stdx.fatal();
+    inner.resize(gvm.alloc, size) catch stdx.fatal();
     return Value.initNone();
 }
 
-fn mapRemove(self: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn mapRemove(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
     const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
-    _ = inner.remove(self, args[0]);
+    _ = inner.remove(gvm, args[0]);
     return Value.initNone();
 }

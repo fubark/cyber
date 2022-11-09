@@ -1956,7 +1956,7 @@ pub const VM = struct {
     }
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-    pub fn valueToTempString(self: *const VM, val: Value) []const u8 {
+    pub fn valueToTempString(self: *const VM, val: Value) linksection(".eval2") []const u8 {
         if (val.isNumber()) {
             if (Value.floatCanBeInteger(val.asF64())) {
                 return std.fmt.bufPrint(&tempU8Buf, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();

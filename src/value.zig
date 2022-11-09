@@ -166,7 +166,7 @@ pub const Value = packed union {
         return .{ .val = @bitCast(u64, val) };
     }
 
-    pub inline fn initNone() Value {
+    pub inline fn initNone() linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return .{ .val = NoneMask };
     }
@@ -206,11 +206,12 @@ pub const Value = packed union {
     }
 
     pub inline fn floatIsSpecial(val: f64) bool {
+        @setRuntimeSafety(debug);
         if (std.math.isInf(val)) return true;
         return false;
     }
 
-    pub inline fn floatCanBeInteger(val: f64) bool {
+    pub inline fn floatCanBeInteger(val: f64) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         // return @fabs(std.math.floor(val) - val) < std.math.f64_epsilon;
         

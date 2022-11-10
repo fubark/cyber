@@ -2115,6 +2115,14 @@ fn evalMinus(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     if (left.isNumber()) {
         return Value.initF64(left.asF64() - right.toF64());
     } else {
+        return @call(.{ .modifier = .never_inline }, evalMinusOther, .{left, right});
+    }
+}
+
+fn evalMinusOther(left: Value, right: Value) linksection(".eval") Value {
+    if (left.isPointer()) {
+        return Value.initF64(left.toF64() - right.toF64());
+    } else {
         switch (left.getTag()) {
             cy.TagBoolean => {
                 if (left.asBool()) {

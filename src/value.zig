@@ -75,10 +75,22 @@ pub const Value = packed union {
         } 
     }
 
-    pub fn toF64(self: *const Value) linksection(".eval") f64 {
+    pub inline fn toF64(self: *const Value) linksection(".eval") f64 {
         @setRuntimeSafety(debug);
         if (self.isNumber()) {
             return self.asF64();
+        } else {
+            return @call(.{ .modifier = .never_inline }, otherToF64, .{self});
+        }
+    }
+
+    fn otherToF64(self: *const Value) linksection(".eval") f64 {
+        if (self.isPointer()) {
+            const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+            if (obj.common.structId == cy.StringS) {
+                const str = obj.string.ptr[0..obj.string.len];
+                return std.fmt.parseFloat(f64, str) catch 0;
+            } else stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
         } else {
             switch (self.getTag()) {
                 TagNone => return 0,

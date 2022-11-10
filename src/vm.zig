@@ -51,6 +51,7 @@ pub const VM = struct {
     /// Symbol table used to lookup object fields and methods.
     /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
     symbols: std.ArrayListUnmanaged(SymbolMap),
+    symbolsInfo: cy.List([]const u8),
 
     /// Used to track which symbols already exist. Only considers the name right now.
     symSignatures: std.StringHashMapUnmanaged(SymbolId),
@@ -90,6 +91,7 @@ pub const VM = struct {
             .heapFreeHead = null,
             .pc = 0,
             .framePtr = 0,
+            .symbolsInfo = .{},
             .symbols = .{},
             .symSignatures = .{},
             .funcSyms = .{},
@@ -120,12 +122,13 @@ pub const VM = struct {
         self.compiler.deinit();
         self.stack.deinit(self.alloc);
 
-        for (self.symbols.items) |*map| {
-            if (map.mapT == .manyStructs) {
-                map.inner.manyStructs.deinit(self.alloc);
-            }
-        }
+        // for (self.symbols.items) |*map| {
+            // if (map.mapT == .manyStructs) {
+            //     map.inner.manyStructs.deinit(self.alloc);
+            // }
+        // }
         self.symbols.deinit(self.alloc);
+        self.symbolsInfo.deinit(self.alloc);
         self.symSignatures.deinit(self.alloc);
 
         self.funcSyms.deinit(self.alloc);
@@ -796,6 +799,7 @@ pub const VM = struct {
                 .mapT = .empty,
                 .inner = undefined,
             });
+            try self.symbolsInfo.append(self.alloc, name);
             res.value_ptr.* = id;
             return id;
         } else {
@@ -810,13 +814,11 @@ pub const VM = struct {
     pub fn addStructSym(self: *VM, id: StructId, symId: SymbolId, sym: SymbolEntry) !void {
         switch (self.symbols.items[symId].mapT) {
             .empty => {
-                self.symbols.items[symId] = .{
-                    .mapT = .oneStruct,
-                    .inner = .{
-                        .oneStruct = .{
-                            .id = id,
-                            .sym = sym,
-                        },
+                self.symbols.items[symId].mapT = .oneStruct;
+                self.symbols.items[symId].inner = .{
+                    .oneStruct = .{
+                        .id = id,
+                        .sym = sym,
                     },
                 };
             },
@@ -1080,7 +1082,20 @@ pub const VM = struct {
         }
     }
 
-    fn getField(self: *const VM, symId: SymbolId, recv: Value) Value {
+    fn getFieldOther(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(".eval") Value {
+        @setCold(true);
+        if (obj.common.structId == MapS) {
+            const map = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
+            if (map.getByString(self, name)) |val| {
+                return val;
+            } else return Value.initNone();
+        } else {
+            log.debug("Missing symbol for object: {}", .{obj.common.structId});
+            return Value.initNone();
+        }
+    }
+
+    fn getField(self: *const VM, symId: SymbolId, recv: Value) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
@@ -1089,34 +1104,18 @@ pub const VM = struct {
                 .oneStruct => {
                     if (obj.common.structId == symMap.inner.oneStruct.id) {
                         stdx.panic("TODO: get field");
-                    } else if (obj.common.structId == MapS) {
-                        @setCold(true);
-                        const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-                        if (map.getByString(self, symMap.name)) |val| {
-                            return val;
-                        } else return Value.initNone();
                     } else {
-                        unreachable;
-                        // return error.MissingSymbol;
+                        return self.getFieldOther(obj, symMap.name);
                     }
                 },
                 .empty => {
-                    @setCold(true);
-                    if (obj.common.structId == MapS) {
-                        const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-                        if (map.getByString(self, symMap.name)) |val| {
-                            return val;
-                        } else return Value.initNone();
-                    } else {
-                        log.debug("Missing symbol for object: {}", .{obj.common.structId});
-                        return Value.initNone();
-                    }
+                    return self.getFieldOther(obj, symMap.name);
                 },
-                else => {
-                    // @setCold(true);
-                    // stdx.panicFmt("unsupported {}", .{symMap.mapT});
-                    unreachable;
-                },
+                // else => {
+                //     // @setCold(true);
+                //     // stdx.panicFmt("unsupported {}", .{symMap.mapT});
+                //     unreachable;
+                // },
             } 
         } else {
             // log.debug("Object missing symbol: {}", .{symId});
@@ -1229,13 +1228,13 @@ pub const VM = struct {
         }
     }
 
-    inline fn callSymEntry(self: *VM, entry: SymbolEntry, argStart: usize, objPtr: *anyopaque, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") void {
-        _ = numArgs;
+    inline fn callSymEntry(self: *VM, entry: SymbolEntry, objPtr: *anyopaque, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") void {
         @setRuntimeSafety(debug);
+        const argStart = self.stack.top - numArgs;
         switch (entry.entryT) {
             .nativeFunc1 => {
-                const args = self.stack.buf[argStart + 1..self.stack.top];
-                const res = entry.inner.nativeFunc1(self, objPtr, args.ptr, @intCast(u8, args.len));
+                const args = self.stack.buf[argStart .. self.stack.top - 1];
+                const res = entry.inner.nativeFunc1(.{}, objPtr, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
                     self.stack.buf[argStart] = res;
                     self.stack.top = argStart + 1;
@@ -1255,13 +1254,13 @@ pub const VM = struct {
                 }
             },
             .nativeFunc2 => {
+                const args = self.stack.buf[argStart .. self.stack.top - 1];
                 const func = @ptrCast(std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) cy.ValuePair), entry.inner.nativeFunc2);
-                const args = self.stack.buf[argStart + 1..self.stack.top];
                 const res = func(self, objPtr, args);
                 if (reqNumRetVals == 2) {
                     self.stack.buf[argStart] = res.left;
-                    self.stack.buf[argStart + 1] = res.right;
-                    self.stack.top = argStart + 1;
+                    self.stack.buf[argStart+1] = res.right;
+                    self.stack.top = argStart + 2;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
@@ -1285,29 +1284,45 @@ pub const VM = struct {
         }
     }
 
+    fn callObjSymOther(self: *VM, obj: *const HeapObject, name: []const u8, numArgs: u8, comptime reqNumRetVals: u2) void {
+        @setCold(true);
+        if (obj.common.structId == MapS) {
+            const heapMap = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
+            if (heapMap.getByString(self, name)) |val| {
+                // Replace receiver with function.
+                self.stack.buf[self.stack.top-1] = val;
+                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
+                self.call(val, numArgs, retInfo) catch stdx.fatal();
+                return;
+            }
+        }
+        log.debug("Missing object symbol. {s}", .{name});
+        stdx.fatal();
+    }
+
+    /// Stack layout: arg0, arg1, ..., receiver
+    /// numArgs includes the receiver.
     fn callObjSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") void {
         @setRuntimeSafety(debug);
-        // numArgs includes the receiver.
-        const argStart = self.stack.top - numArgs;
-        const recv = self.stack.buf[argStart];
+        const recv = self.stack.buf[self.stack.top - 1];
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer().?);
             const map = self.symbols.items[symId];
             switch (map.mapT) {
                 .oneStruct => {
+                    @setRuntimeSafety(debug);
                     if (obj.retainedCommon.structId == map.inner.oneStruct.id) {
-                        self.callSymEntry(map.inner.oneStruct.sym, argStart, obj, numArgs, reqNumRetVals);
+                        self.callSymEntry(map.inner.oneStruct.sym, obj, numArgs, reqNumRetVals);
                     } else stdx.panic("Symbol does not exist for receiver.");
                 },
-                // .empty => {
-                //     @setCold(true);
-                //     log.debug("Missing object symbol. {}", .{symId});
-                //     return error.MissingSymbol;
-                // },
-                else => {
-                    unreachable;
-                    // stdx.panicFmt("unsupported {}", .{map.mapT});
+                .empty => {
+                    @setRuntimeSafety(debug);
+                    self.callObjSymOther(obj, self.symbolsInfo.buf[symId], numArgs, reqNumRetVals);
                 },
+                // else => {
+                //     unreachable;
+                //     // stdx.panicFmt("unsupported {}", .{map.mapT});
+                // },
             } 
         }
     }
@@ -1713,13 +1728,22 @@ pub const VM = struct {
                     // self.callStr(vals[0], self.strBuf[str[0]..str[1]], vals[1..]);
                     continue;
                 },
-                .callObjSym => {
+                .pushCallObjSym0 => {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
                     self.pc += 3;
 
                     self.callObjSym(symId, numArgs, 0);
+                    continue;
+                },
+                .pushCallObjSym1 => {
+                    @setRuntimeSafety(debug);
+                    const symId = self.ops[self.pc+1].arg;
+                    const numArgs = self.ops[self.pc+2].arg;
+                    self.pc += 3;
+
+                    self.callObjSym(symId, numArgs, 1);
                     continue;
                 },
                 .pushCallSym0 => {
@@ -2399,7 +2423,7 @@ comptime {
 const SymbolMapType = enum {
     oneStruct,
     // twoStructs,
-    manyStructs,
+    // manyStructs,
     empty,
 };
 
@@ -2414,6 +2438,8 @@ const FieldSymbolMap = struct {
     name: []const u8,
 };
 
+/// Keeping this small is better for function calls. TODO: Reduce size.
+/// Secondary symbol data should be moved to `symbolsInfo`.
 const SymbolMap = struct {
     mapT: SymbolMapType,
     inner: union {

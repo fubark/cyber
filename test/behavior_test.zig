@@ -1001,26 +1001,24 @@ test "Lambdas." {
 //     run.deinitValue(val);
 // }
 
-// test "access expression" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "access expression" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // One level of access from parent.
-//     var val = try run.eval(
-//         \\map = { a: func () => 5 }
-//         \\map.a()
-//     );
-//     try t.eq(val.asI32(), 5);
-//     run.deinitValue(val);
+    // One level of access from parent.
+    var val = try run.eval(
+        \\map = { a: () => 5 }
+        \\map.a()
+    );
+    try t.eq(val.asI32(), 5);
 
-//     // Multiple levels of access from parent.
-//     val = try run.eval(
-//         \\map = { a: { b: func () => 5 } }
-//         \\map.a.b()
-//     );
-//     try t.eq(val.asI32(), 5);
-//     run.deinitValue(val);
-// }
+    // Multiple levels of access from parent.
+    val = try run.eval(
+        \\map = { a: { b: () => 5 } }
+        \\map.a.b()
+    );
+    try t.eq(val.asI32(), 5);
+}
 
 test "Binary Expressions" {
     const run = Runner.create();

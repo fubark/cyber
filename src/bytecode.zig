@@ -1,5 +1,6 @@
 const std = @import("std");
 const stdx = @import("stdx");
+const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.bytecode);
 
@@ -167,7 +168,8 @@ pub const ByteCodeBuffer = struct {
                     pc += 2;
                 },
                 .pushMap,
-                .callObjSym,
+                .pushCallObjSym0,
+                .pushCallObjSym1,
                 .pushCallSym0,
                 .pushCallSym1,
                 .forIter,
@@ -288,7 +290,8 @@ pub const OpCode = enum(u8) {
     /// Num args includes the receiver.
     callStr,
     /// Num args includes the receiver.
-    callObjSym,
+    pushCallObjSym0,
+    pushCallObjSym1,
     pushCallSym0,
     pushCallSym1,
     // ret2,
@@ -322,9 +325,6 @@ pub const OpCode = enum(u8) {
     end,
 };
 
-comptime {
-    const end = @enumToInt(OpCode.end);
-    if (end != 53) {
-        @compileError(std.fmt.comptimePrint("Unexpected end op code {}", .{end}));
-    }
+test "Internals." {
+    try t.eq(@enumToInt(OpCode.end), 54);
 }

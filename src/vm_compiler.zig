@@ -975,9 +975,6 @@ pub const VMcompiler = struct {
                     if (callee.node_t == .access_expr) {
                         const right = self.nodes[callee.head.left_right.right];
                         if (right.node_t == .ident) {
-                            const left = self.nodes[callee.head.left_right.left];
-                            _ = try self.genExpr(left, false);
-
                             var numArgs: u32 = 1;
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
@@ -986,13 +983,20 @@ pub const VMcompiler = struct {
                                 arg_id = arg.next;
                             }
 
+                            const left = self.nodes[callee.head.left_right.left];
+                            _ = try self.genExpr(left, false);
+
                             const identToken = self.tokens[right.start_token];
                             const str = self.src[identToken.start_pos .. identToken.data.end_pos];
                             // const slice = try self.buf.getStringConst(str);
                             // try self.buf.pushExtra(.{ .two = .{ slice.start, slice.end } });
                             const symId = try self.vm.ensureStructSym(str);
 
-                            try self.buf.pushOp2(.callObjSym, @intCast(u8, symId), @intCast(u8, numArgs));
+                            if (discardTopExprReg) {
+                                try self.buf.pushOp2(.pushCallObjSym0, @intCast(u8, symId), @intCast(u8, numArgs));
+                            } else {
+                                try self.buf.pushOp2(.pushCallObjSym1, @intCast(u8, symId), @intCast(u8, numArgs));
+                            }
                             return AnyType;
                         } else return self.reportError("Unsupported callee", .{}, node);
                     } else if (callee.node_t == .ident) {

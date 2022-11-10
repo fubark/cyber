@@ -2468,14 +2468,14 @@ const SymbolEntryType = enum {
 pub const SymbolEntry = struct {
     entryT: SymbolEntryType,
     inner: packed union {
-        nativeFunc1: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) Value),
-        nativeFunc2: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) cy.ValuePair),
+        nativeFunc1: std.meta.FnPtr(fn (UserVM, *anyopaque, [*]const Value, u8) Value),
+        nativeFunc2: std.meta.FnPtr(fn (UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair),
         func: packed struct {
             pc: u32,
         },
     },
 
-    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) Value)) SymbolEntry {
+    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (UserVM, *anyopaque, [*]const Value, u8) Value)) SymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{
@@ -2484,7 +2484,7 @@ pub const SymbolEntry = struct {
         };
     }
 
-    fn initNativeFunc2(func: std.meta.FnPtr(fn (*VM, *anyopaque, [*]const Value, u8) cy.ValuePair)) SymbolEntry {
+    fn initNativeFunc2(func: std.meta.FnPtr(fn (UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair)) SymbolEntry {
         return .{
             .entryT = .nativeFunc2,
             .inner = .{
@@ -2580,23 +2580,23 @@ pub const UserVM = struct {
         gvm.trace = trace;
     }
 
-    pub fn release(_: UserVM, val: Value, comptime trace: bool) void {
+    pub inline fn release(_: UserVM, val: Value, comptime trace: bool) void {
         gvm.release(val, trace);
     }
 
-    pub fn checkMemory(_: UserVM, comptime trace: bool) !bool {
+    pub inline fn checkMemory(_: UserVM, comptime trace: bool) !bool {
         return gvm.checkMemory(trace);
     }
 
-    pub fn eval(_: UserVM, src: []const u8, comptime trace: bool) !Value {
+    pub inline fn eval(_: UserVM, src: []const u8, comptime trace: bool) !Value {
         return gvm.eval(src, trace);
     }
 
-    pub fn isValueString(_: UserVM, val: Value) bool {
+    pub inline fn isValueString(_: UserVM, val: Value) bool {
         return gvm.isValueString(val);
     }
 
-    pub fn valueAsString(_: UserVM, val: Value) []const u8 {
+    pub inline fn valueAsString(_: UserVM, val: Value) []const u8 {
         return gvm.valueAsString(val);
     }
 };

@@ -116,7 +116,7 @@ fn stdMapPut(_: *cy.VM, obj: *cy.HeapObject, key: Value, value: Value) void {
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
-fn listSort(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listSort(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
@@ -154,7 +154,7 @@ fn listSort(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     return Value.initNone();
 }
 
-fn listAdd(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listAdd(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
@@ -165,7 +165,7 @@ fn listAdd(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     return Value.initNone();
 }
 
-fn listNext(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listNext(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     _ = args;
     _ = nargs;
@@ -176,7 +176,7 @@ fn listNext(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     } else return Value.initNone();
 }
 
-fn listIterator(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listIterator(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
@@ -184,7 +184,7 @@ fn listIterator(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     return Value.initPtr(ptr);
 }
 
-fn listResize(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listResize(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
@@ -195,7 +195,7 @@ fn listResize(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value
     return Value.initNone();
 }
 
-fn mapRemove(_: *cy.VM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn mapRemove(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");

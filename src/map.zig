@@ -1,5 +1,6 @@
 const std = @import("std");
 const stdx = @import("stdx");
+const t = stdx.testing;
 const builtin = @import("builtin");
 const debug = builtin.mode == .Debug;
 
@@ -359,11 +360,11 @@ pub const ValueMapEntry = struct {
     value: cy.Value,
 };
 
-comptime {
-    std.debug.assert(@sizeOf(ValueMapEntry) == 16);
-    std.debug.assert(@alignOf(*ValueMapEntry) == 8);
-    std.debug.assert(@sizeOf(Metadata) == 1);
-    std.debug.assert(@sizeOf(ValueMap) == 32);
+test "Internals." {
+    try t.eq(@sizeOf(ValueMapEntry), 16);
+    try t.eq(@alignOf(*ValueMapEntry), 8);
+    try t.eq(@sizeOf(Metadata), 1);
+    try t.eq(@sizeOf(ValueMap), 32);
 }
 
 /// Metadata for a slot. It can be in three states: empty, used or

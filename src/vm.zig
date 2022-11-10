@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
+const t = stdx.testing;
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const Value = cy.Value;
@@ -2348,10 +2349,6 @@ const Closure = packed struct {
     },
 };
 
-comptime {
-    std.debug.assert(@sizeOf(MapInner) == 32);
-}
-
 pub const MapInner = cy.ValueMap;
 const Map = packed struct {
     structId: StructId,
@@ -2415,11 +2412,6 @@ pub const HeapObject = packed union {
     },
 };
 
-comptime {
-    std.debug.assert(@sizeOf(HeapObject) == 40);
-    std.debug.assert(@sizeOf(HeapPage) == 40 * 1600);
-}
-
 const SymbolMapType = enum {
     oneStruct,
     // twoStructs,
@@ -2458,6 +2450,14 @@ const SymbolMap = struct {
         },
     },
 };
+
+test "Internals." {
+    try t.eq(@sizeOf(SymbolMap), 40);
+    try t.eq(@sizeOf(SymbolEntry), 16);
+    try t.eq(@sizeOf(MapInner), 32);
+    try t.eq(@sizeOf(HeapObject), 40);
+    try t.eq(@sizeOf(HeapPage), 40 * 1600);
+}
 
 const SymbolEntryType = enum {
     func,

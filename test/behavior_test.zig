@@ -330,31 +330,37 @@ test "Indentation." {
 //     run.deinitValue(val);
 // }
 
-// test "Operator precedence." {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Operator precedence." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Multiplication before addition.
-//     var val = try run.eval(
-//         \\2 + 3 * 4
-//     );
-//     try t.eq(val.asI32(), 14);
-//     run.deinitValue(val);
+    // Multiplication before addition.
+    var val = try run.eval(
+        \\2 + 3 * 4
+    );
+    try t.eq(val.asI32(), 14);
 
-//     // Division before addition.
-//     val = try run.eval(
-//         \\2 + 4 / 4
-//     );
-//     try t.eq(val.asI32(), 3);
-//     run.deinitValue(val);
+    // Division before addition.
+    val = try run.eval(
+        \\2 + 4 / 4
+    );
+    try t.eq(val.asI32(), 3);
 
-//     // Power before addition.
-//     val = try run.eval(
-//         \\2 + 3 ** 2
-//     );
-//     try t.eq(val.asI32(), 11);
-//     run.deinitValue(val);
-// }
+    // Power before addition.
+    val = try run.eval(
+        \\2 + 3 ^ 2
+    );
+    try t.eq(val.asI32(), 11);
+
+    // Variables and parenthesis.
+    val = try run.eval(
+        \\time = 50
+        \\minTime = 50
+        \\timeRange = 100
+        \\5 + 90 * (time - minTime) / timeRange
+    );
+    try t.eq(val.asI32(), 5);
+}
 
 // test "Comments" {
 //     const run = Runner.create();

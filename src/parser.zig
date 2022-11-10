@@ -1329,7 +1329,7 @@ pub const Parser = struct {
         const expr_id = try self.parseTermExpr();
 
         // Check if next token is an operator with higher precedence.
-        const token = self.peekToken();
+        var token = self.peekToken();
         if (token.token_t == .operator) {
             const op_prec = getBinOpPrecedence(left_op);
             const right_op = toBinExprOp(token.data.operator_t);
@@ -1348,7 +1348,34 @@ pub const Parser = struct {
                         .extra = @enumToInt(right_op),
                     },
                 };
-                return bin_expr;
+
+                // Before returning, perform left recursion with the right if the op prec is the same.
+                // eg. a + b * c * d
+                // The result should be a + ((b * c) * d).
+                var left = bin_expr;
+                while (true) {
+                    token = self.peekToken();
+                    if (token.token_t == .operator) {
+                        const right2_op = toBinExprOp(token.data.operator_t);
+                        const right2_op_prec = getBinOpPrecedence(right2_op);
+                        if (right2_op_prec == right_op_prec) {
+                            self.advanceToken();
+                            const rightExpr = try self.parseRightExpression(right_op);
+                            const newBinExpr = self.pushNode(.bin_expr, start);
+                            self.nodes.items[newBinExpr].head = .{
+                                .left_right = .{
+                                    .left = left,
+                                    .right = rightExpr,
+                                    .extra = @enumToInt(right_op),
+                                },
+                            };
+                            left = newBinExpr;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+                return left;
             }
         }
         return expr_id;

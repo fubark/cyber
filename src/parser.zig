@@ -1366,7 +1366,7 @@ pub const Parser = struct {
                                 .left_right = .{
                                     .left = left,
                                     .right = rightExpr,
-                                    .extra = @enumToInt(right_op),
+                                    .extra = @enumToInt(right2_op),
                                 },
                             };
                             left = newBinExpr;

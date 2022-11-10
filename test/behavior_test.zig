@@ -360,6 +360,12 @@ test "Operator precedence." {
         \\5 + 90 * (time - minTime) / timeRange
     );
     try t.eq(val.asI32(), 5);
+
+    // Left recursion with different operators.
+    val = try run.eval(
+        \\5 + 2 * 3 / 3 
+    );
+    try t.eq(val.asI32(), 7);
 }
 
 // test "Comments" {

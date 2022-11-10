@@ -47,6 +47,9 @@ const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;
 pub const ValueMapEntry = map.ValueMapEntry;
 
+const list = @import("list.zig");
+pub const List = list.List;
+
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;
 pub const OpCode = bytecode.OpCode;

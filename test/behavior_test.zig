@@ -784,17 +784,25 @@ test "For loop over range." {
     );
     try t.eq(val.asI32(), 123);
 
-    // // Increment by step.
-    // val = try run.eval(
-    //     \\iters = 0
-    //     \\for 0..10 as i += 3:
-    //     \\   iters += 1
-    //     \\iters
-    // );
-    // try t.eq(val.asI32(), 4);
-    // run.deinitValue(val);
+    // Reverse direction.
+    val = try run.eval(
+        \\sum = 0
+        \\for 10..0 as i:
+        \\  sum += i
+        \\sum
+    );
+    try t.eq(val.asI32(), 55);
 
-    // // Increment by non const step value. Two loops after another.
+    // Custom step.
+    // val = try run.eval(
+    //     \\sum = 0
+    //     \\for 0..10, 2 as i:
+    //     \\  sum += i
+    //     \\sum
+    // );
+    // try t.eq(val.asI32(), 20);
+
+    // Custom step variable.
     // val = try run.eval(
     //     \\iters = 0
     //     \\step = 3

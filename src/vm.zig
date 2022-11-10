@@ -1836,26 +1836,47 @@ pub const VM = struct {
                     const rangeEnd = self.stack.buf[self.stack.top+1].toF64();
                     var i = self.stack.buf[self.stack.top].toF64();
 
-                    // defer stdx.panicFmt("forrange {}", .{self.stack.top});
-
-                    if (local == 255) {
-                        while (i < rangeEnd) : (i += step) {
-                            self.pc = innerPc;
-                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
-                                if (err == error.BreakLoop) {
-                                    break;
-                                } else return err;
-                            };
+                    if (i <= rangeEnd) {
+                        if (local == 255) {
+                            while (i < rangeEnd) : (i += step) {
+                                self.pc = innerPc;
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                    if (err == error.BreakLoop) {
+                                        break;
+                                    } else return err;
+                                };
+                            }
+                        } else {
+                            while (i < rangeEnd) : (i += step) {
+                                self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
+                                self.pc = innerPc;
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                    if (err == error.BreakLoop) {
+                                        break;
+                                    } else return err;
+                                };
+                            }
                         }
                     } else {
-                        while (i < rangeEnd) : (i += step) {
-                            self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
-                            self.pc = innerPc;
-                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
-                                if (err == error.BreakLoop) {
-                                    break;
-                                } else return err;
-                            };
+                        if (local == 255) {
+                            while (i > rangeEnd) : (i -= step) {
+                                self.pc = innerPc;
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                    if (err == error.BreakLoop) {
+                                        break;
+                                    } else return err;
+                                };
+                            }
+                        } else {
+                            while (i > rangeEnd) : (i -= step) {
+                                self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
+                                self.pc = innerPc;
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                    if (err == error.BreakLoop) {
+                                        break;
+                                    } else return err;
+                                };
+                            }
                         }
                     }
                     self.pc = endPc;

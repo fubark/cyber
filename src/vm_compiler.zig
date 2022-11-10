@@ -493,7 +493,7 @@ pub const VMcompiler = struct {
                 const right_range = self.nodes[range_clause.head.left_right.right];
                 _ = try self.genExpr(right_range, false);
 
-                // Push step.
+                // Push custom step.
                 const stepConst = try self.buf.pushConst(.{ .val = f64One.val });
                 try self.buf.pushOp1(.pushConst, @intCast(u8, stepConst));
 

@@ -590,23 +590,22 @@ test "Variables" {
     try t.eq(val.asI32(), 3);
 }
 
-// test "if expression" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "if expression" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     var val = try run.eval(
-//         \\foo = true
-//         \\if foo then 123 else 456
-//     );
-//     try t.eq(val.asI32(), 123);
-//     run.deinitValue(val);
-//     val = try run.eval(
-//         \\foo = false
-//         \\if foo then 123 else 456
-//     );
-//     try t.eq(val.asI32(), 456);
-//     run.deinitValue(val);
-// }
+    var val = try run.eval(
+        \\foo = true
+        \\if foo then 123 else 456
+    );
+    try t.eq(val.asI32(), 123);
+
+    val = try run.eval(
+        \\foo = false
+        \\if foo then 123 else 456
+    );
+    try t.eq(val.asI32(), 456);
+}
 
 test "if statement" {
     const run = Runner.create();

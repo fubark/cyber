@@ -729,6 +729,33 @@ pub const VMcompiler = struct {
                     return AnyType;
                 }
             },
+            .if_expr => {
+                const cond = self.nodes[node.head.if_expr.cond];
+                _ = try self.genExpr(cond, false);
+
+                var jumpNotPc = self.buf.ops.items.len;
+                try self.buf.pushOp1(.jumpNotCond, 0);
+
+                const trueExpr = self.nodes[node.head.if_expr.body_expr];
+                _ = try self.genExpr(trueExpr, discardTopExprReg);
+
+                const jumpPc = self.buf.ops.items.len;
+                try self.buf.pushOp1(.jump, 0);
+
+                self.buf.setOpArgs1(jumpNotPc + 1, @intCast(u8, self.buf.ops.items.len - jumpNotPc));
+                if (node.head.if_expr.else_clause != NullId) {
+                    const else_clause = self.nodes[node.head.if_expr.else_clause];
+                    const falseExpr = self.nodes[else_clause.head.child_head];
+                    _ = try self.genExpr(falseExpr, discardTopExprReg);
+                } else {
+                    if (!discardTopExprReg) {
+                        try self.buf.pushOp(.pushNone);
+                    }
+                }
+                self.buf.setOpArgs1(jumpPc + 1, @intCast(u8, self.buf.ops.items.len - jumpPc));
+
+                return AnyType;
+            },
             .arr_range_expr => {
                 const arr = self.nodes[node.head.arr_range_expr.arr];
                 _ = try self.genExpr(arr, discardTopExprReg);

@@ -1348,7 +1348,18 @@ pub const VM = struct {
                 self.trace.opCounts[@enumToInt(op)].count += 1;
                 self.trace.totalOpCounts += 1;
             }
-            log.debug("{} op: {s}", .{self.pc, @tagName(self.ops[self.pc].code)});
+            if (builtin.mode == .Debug) {
+                switch (self.ops[self.pc].code) {
+                    .pushConst => {
+                        const idx = self.ops[self.pc+1].arg;
+                        const val = Value{ .val = self.consts[idx].val };
+                        log.debug("{} op: {s} [{s}]", .{self.pc, @tagName(self.ops[self.pc].code), self.valueToTempString(val)});
+                    },
+                    else => {
+                        log.debug("{} op: {s}", .{self.pc, @tagName(self.ops[self.pc].code)});
+                    },
+                }
+            }
             switch (self.ops[self.pc].code) {
                 .pushTrue => {
                     @setRuntimeSafety(debug);
@@ -2011,10 +2022,11 @@ pub const VM = struct {
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
     pub fn valueToTempString(self: *const VM, val: Value) linksection(".eval2") []const u8 {
         if (val.isNumber()) {
-            if (Value.floatCanBeInteger(val.asF64())) {
-                return std.fmt.bufPrint(&tempU8Buf, "{}", .{@floatToInt(u64, val.asF64())}) catch stdx.fatal();
+            const f = val.asF64();
+            if (Value.floatCanBeInteger(f)) {
+                return std.fmt.bufPrint(&tempU8Buf, "{d:.0}", .{f}) catch stdx.fatal();
             } else {
-                return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{val.asF64()}) catch stdx.fatal();
+                return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{f}) catch stdx.fatal();
             }
         } else {
             if (val.isPointer()) {

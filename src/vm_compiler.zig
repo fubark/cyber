@@ -845,18 +845,19 @@ pub const VMcompiler = struct {
                 const left = self.nodes[node.head.left_right.left];
                 const right = self.nodes[node.head.left_right.right];
 
-                var ltype: Type = undefined;
-                var rtype: Type = undefined;
-
                 const op = @intToEnum(cy.BinaryExprOp, node.head.left_right.extra);
                 switch (op) {
                     .plus => {
-                        _ = try self.genExpr(left, discardTopExprReg);
+                        const ltype = try self.genExpr(left, discardTopExprReg);
                         _ = try self.genExpr(right, discardTopExprReg);
                         if (!discardTopExprReg) {
                             try self.buf.pushOp(.pushAdd);
                         }
-                        return NumberType;
+                        if (ltype.typeT == .string) {
+                            return StringType;
+                        } else {
+                            return NumberType;
+                        }
                     },
                     .star => {
                         _ = try self.genExpr(left, discardTopExprReg);
@@ -933,8 +934,8 @@ pub const VMcompiler = struct {
                         return NumberType;
                     },
                     .and_op => {
-                        ltype = try self.genExpr(left, discardTopExprReg);
-                        rtype = try self.genExpr(right, discardTopExprReg);
+                        const ltype = try self.genExpr(left, discardTopExprReg);
+                        const rtype = try self.genExpr(right, discardTopExprReg);
                         if (!discardTopExprReg) {
                             try self.buf.pushOp(.pushAnd);
                         }
@@ -943,8 +944,8 @@ pub const VMcompiler = struct {
                         } else return AnyType;
                     },
                     .or_op => {
-                        ltype = try self.genExpr(left, discardTopExprReg);
-                        rtype = try self.genExpr(right, discardTopExprReg);
+                        const ltype = try self.genExpr(left, discardTopExprReg);
+                        const rtype = try self.genExpr(right, discardTopExprReg);
                         if (!discardTopExprReg) {
                             try self.buf.pushOp(.pushOr);
                         }

@@ -128,13 +128,35 @@ test "Comparison ops." {
     );
     try t.eq(val.asBool(), true);
 
-    // Equals.
+    // Number equals.
+    val = try run.eval(
+        \\3 == 2
+    );
+    try t.eq(val.asBool(), false);
+    val = try run.eval(
+        \\3 == 3
+    );
+    try t.eq(val.asBool(), true);
+
+    // Const string equals.
     val = try run.eval(
         \\'foo' == 'bar'
     );
     try t.eq(val.asBool(), false);
     val = try run.eval(
         \\'foo' == 'foo'
+    );
+    try t.eq(val.asBool(), true);
+
+    // Heap string equals.
+    val = try run.eval(
+        \\foo = 'fo' + 'o'
+        \\foo == 'bar'
+    );
+    try t.eq(val.asBool(), false);
+    val = try run.eval(
+        \\foo = 'fo' + 'o'
+        \\foo == 'foo'
     );
     try t.eq(val.asBool(), true);
 }

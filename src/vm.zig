@@ -2169,22 +2169,32 @@ fn evalNotCompare(left: cy.Value, right: cy.Value) cy.Value {
 
 inline fn evalCompareNumber(left: Value, right: Value) linksection(".eval") Value {
     @setRuntimeSafety(debug);
-    return Value.initF64(left.asF64() + right.toF64());
+    return Value.initBool(left.asF64() == right.toF64());
 }
 
 fn evalCompareOther(vm: *const VM, left: Value, right: Value) Value {
     @setRuntimeSafety(debug);
-    switch (left.getTag()) {
-        cy.TagNone => return Value.initBool(right.isNone()),
-        cy.TagBoolean => return Value.initBool(left.asBool() == right.toBool()),
-        cy.TagConstString => {
+    if (left.isPointer()) {
+        const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
+        if (obj.common.structId == StringS) {
             if (vm.isValueString(right)) {
-                const slice = left.asConstStr();
-                const str = vm.strBuf[slice.start..slice.end];
+                const str = obj.string.ptr[0..obj.string.len];
                 return Value.initBool(std.mem.eql(u8, str, vm.valueAsString(right)));
-            } return Value.initFalse();
-        },
-        else => stdx.panic("unexpected tag"),
+            } else return Value.initFalse();
+        } else return Value.initFalse();
+    } else {
+        switch (left.getTag()) {
+            cy.TagNone => return Value.initBool(right.isNone()),
+            cy.TagBoolean => return Value.initBool(left.asBool() == right.toBool()),
+            cy.TagConstString => {
+                if (vm.isValueString(right)) {
+                    const slice = left.asConstStr();
+                    const str = vm.strBuf[slice.start..slice.end];
+                    return Value.initBool(std.mem.eql(u8, str, vm.valueAsString(right)));
+                } return Value.initFalse();
+            },
+            else => stdx.panic("unexpected tag"),
+        }
     }
 }
 

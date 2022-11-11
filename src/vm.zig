@@ -1391,6 +1391,13 @@ pub const VM = struct {
                     self.stack.buf[self.stack.top-1] = res;
                     continue;
                 },
+                .pushNeg => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
+                    const val = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalNeg(val);
+                    continue;
+                },
                 .pushNot => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
@@ -2301,6 +2308,24 @@ fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) linksection(".eval") c
 inline fn evalAddNumber(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     @setRuntimeSafety(debug);
     return Value.initF64(left.asF64() + right.toF64());
+}
+
+fn evalNeg(val: Value) Value {
+    if (val.isNumber()) {
+        return Value.initF64(-val.asF64());
+    } else {
+        switch (val.getTag()) {
+            cy.TagNone => return Value.initF64(0),
+            cy.TagBoolean => {
+                if (val.asBool()) {
+                    return Value.initF64(-1);
+                } else {
+                    return Value.initF64(0);
+                }
+            },
+            else => stdx.panic("unexpected tag"),
+        }
+    }
 }
 
 fn evalNot(val: cy.Value) cy.Value {

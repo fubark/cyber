@@ -797,6 +797,13 @@ pub const VMcompiler = struct {
                 const child = self.nodes[node.head.unary.child];
                 const op = node.head.unary.op;
                 switch (op) {
+                    .minus => {
+                        _ = try self.genExpr(child, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushNeg);
+                        }
+                        return NumberType;
+                    },
                     .not => {
                         _ = try self.genExpr(child, discardTopExprReg);
                         if (!discardTopExprReg) {
@@ -804,7 +811,7 @@ pub const VMcompiler = struct {
                         }
                         return BoolType;
                     },
-                    else => return self.reportError("Unsupported unary op: {}", .{op}, node),
+                    // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
                 }
             },
             .bin_expr => {

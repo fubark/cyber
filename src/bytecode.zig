@@ -146,6 +146,7 @@ pub const ByteCodeBuffer = struct {
                 .pushSlice,
                 .setIndex,
                 .pushStringTemplate,
+                .pushNeg,
                 .pushTrue,
                 .pushFalse => {
                     pc += 1;
@@ -320,11 +321,12 @@ pub const OpCode = enum(u8) {
     pushReverseIndex,
     pushNotCompare,
     pushStringTemplate,
+    pushNeg,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 54);
+    try t.eq(@enumToInt(OpCode.end), 55);
 }

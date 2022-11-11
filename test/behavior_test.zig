@@ -287,48 +287,43 @@ test "Indentation." {
     try t.eq(val.asI32(), 123);
 }
 
-// test "Numbers." {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Numbers." {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     var val = try run.eval(
-//         \\1
-//     );
-//     try t.eq(val.asI32(), 1);
-//     run.deinitValue(val);
+    var val = try run.eval(
+        \\1
+    );
+    try t.eq(val.asI32(), 1);
 
-//     val = try run.eval(
-//         \\-1
-//     );
-//     try t.eq(val.asI32(), -1);
-//     run.deinitValue(val);
-// }
+    val = try run.eval(
+        \\-1
+    );
+    try t.eq(val.asI32(), -1);
+}
 
-// test "Parentheses" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Parentheses" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Parentheses at left of binary expression.
-//     var val = try run.eval(
-//         \\(2 + 3) * 4
-//     );
-//     try t.eq(val.asI32(), 20);
-//     run.deinitValue(val);
+    // Parentheses at left of binary expression.
+    var val = try run.eval(
+        \\(2 + 3) * 4
+    );
+    try t.eq(val.asI32(), 20);
 
-//     // Parentheses at right of binary expression.
-//     val = try run.eval(
-//         \\2 * (3 + 4)
-//     );
-//     try t.eq(val.asI32(), 14);
-//     run.deinitValue(val);
+    // Parentheses at right of binary expression.
+    val = try run.eval(
+        \\2 * (3 + 4)
+    );
+    try t.eq(val.asI32(), 14);
 
-//     // Nested parentheses.
-//     val = try run.eval(
-//         \\2 + ((3 + 4) / 7)
-//     );
-//     try t.eq(val.asI32(), 3);
-//     run.deinitValue(val);
-// }
+    // Nested parentheses.
+    val = try run.eval(
+        \\2 + ((3 + 4) / 7)
+    );
+    try t.eq(val.asI32(), 3);
+}
 
 test "Operator precedence." {
     const run = Runner.create();
@@ -368,28 +363,26 @@ test "Operator precedence." {
     try t.eq(val.asI32(), 7);
 }
 
-// test "Comments" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Comments" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Single line comment.
-//     var val = try run.eval(
-//         \\// 1
-//         \\2
-//     );
-//     try t.eq(val.asI32(), 2);
-//     run.deinitValue(val);
+    // Single line comment.
+    var val = try run.eval(
+        \\// 1
+        \\2
+    );
+    try t.eq(val.asI32(), 2);
 
-//     // Multiple single line comments.
-//     val = try run.eval(
-//         \\// 1
-//         \\// 2
-//         \\// 3
-//         \\4
-//     );
-//     try t.eq(val.asI32(), 4);
-//     run.deinitValue(val);
-// }
+    // Multiple single line comments.
+    val = try run.eval(
+        \\// 1
+        \\// 2
+        \\// 3
+        \\4
+    );
+    try t.eq(val.asI32(), 4);
+}
 
 test "Strings" {
     const run = Runner.create();
@@ -400,7 +393,7 @@ test "Strings" {
         \\str = 'abc'
         \\str
     );
-    var str = try run.valueString(val);
+    var str = try run.assertValueString(val);
     try t.eqStr(str, "abc");
 
     // Const string with unicode.
@@ -408,7 +401,7 @@ test "Strings" {
         \\str = 'abc🦊xyz🐶'
         \\str
     );
-    str = try run.valueString(val);
+    str = try run.assertValueString(val);
     try t.eqStr(str, "abc🦊xyz🐶");
 
     // Const string with escaped single quote.
@@ -416,7 +409,7 @@ test "Strings" {
         \\str = 'ab\'c'
         \\str
     );
-    str = try run.valueString(val);
+    str = try run.assertValueString(val);
     try t.eqStr(str, "ab'c");
 
     // Const string multi-line backtick literal.
@@ -425,7 +418,7 @@ test "Strings" {
         \\abc`
         \\str
     );
-    str = try run.valueString(val);
+    str = try run.assertValueString(val);
     try t.eqStr(str, "abc\nabc");
 
     // Heap string. 
@@ -433,7 +426,7 @@ test "Strings" {
         \\str = 'abc'
         \\str + 'xyz'
     );
-    str = try run.valueString(val);
+    str = try run.assertValueString(val);
     try t.eqStr(str, "abcxyz");
     run.deinitValue(val);
 
@@ -443,7 +436,7 @@ test "Strings" {
         \\b = 123
         \\`Hello \(a) \(b)`
     );
-    str = try run.valueString(val);
+    str = try run.assertValueString(val);
     try t.eqStr(str, "Hello World 123");
     run.deinitValue(val);
 }
@@ -529,16 +522,15 @@ test "Maps" {
     try t.eq(val.asI32(), 32);
 
     // String entry.
-    // val = try run.eval(
-    //     \\a = {
-    //     \\  b: 'hello'
-    //     \\}
-    //     \\a['b']
-    // );
-    // const str = try run.valueToString(val);
-    // defer t.alloc.free(str);
-    // try t.eqStr(str, "hello");
-    // run.deinitValue(val);
+    val = try run.eval(
+        \\a = {
+        \\  b: 'hello'
+        \\}
+        \\a['b']
+    );
+    const str = try run.assertValueString(val);
+    try t.eqStr(str, "hello");
+    run.deinitValue(val);
 
     // Add to empty map.
     val = try run.eval(
@@ -548,28 +540,26 @@ test "Maps" {
     );
     try t.eq(val.asI32(), 234);
 
-//     // Nested list.
-//     val = try run.eval(
-//         \\a = {
-//         \\  b: [ 1, 2 ]
-//         \\}
-//         \\a.b[1]
-//     );
-//     try t.eq(val.asI32(), 2);
-//     run.deinitValue(val);
+    // Nested list.
+    val = try run.eval(
+        \\a = {
+        \\  b: [ 1, 2 ]
+        \\}
+        \\a.b[1]
+    );
+    try t.eq(val.asI32(), 2);
 
-//     // Nested list with items separated by new line.
-//     val = try run.eval(
-//         \\a = {
-//         \\  b: [
-//         \\    1
-//         \\    2
-//         \\  ]
-//         \\}
-//         \\a.b[1]
-//     );
-//     try t.eq(val.asI32(), 2);
-//     run.deinitValue(val);
+    // Nested list with items separated by new line.
+    val = try run.eval(
+        \\a = {
+        \\  b: [
+        \\    1
+        \\    2
+        \\  ]
+        \\}
+        \\a.b[1]
+    );
+    try t.eq(val.asI32(), 2);
 }
 
 test "Variables" {
@@ -1118,8 +1108,8 @@ const Runner = struct {
         return self.inner.eval2(src, embed_interrupts);
     }
 
-    pub fn valueString(self: *Runner, val: cy.Value) ![]const u8 {
-        return self.inner.valueString(val);
+    pub fn assertValueString(self: *Runner, val: cy.Value) ![]const u8 {
+        return self.inner.assertValueString(val);
     }
 
     pub fn valueToIntSlice(self: *Runner, val: cy.Value) ![]const i32 {
@@ -1167,7 +1157,7 @@ const VMrunner = struct {
         return undefined;
     }
 
-    pub fn valueString(self: *VMrunner, val: cy.Value) ![]const u8 {
+    pub fn assertValueString(self: *VMrunner, val: cy.Value) ![]const u8 {
         if (self.vm.isValueString(val)) {
             return self.vm.valueAsString(val);
         } else {

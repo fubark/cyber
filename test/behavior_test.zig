@@ -127,6 +127,16 @@ test "Comparison ops." {
         \\3 >= 2
     );
     try t.eq(val.asBool(), true);
+
+    // Equals.
+    val = try run.eval(
+        \\'foo' == 'bar'
+    );
+    try t.eq(val.asBool(), false);
+    val = try run.eval(
+        \\'foo' == 'foo'
+    );
+    try t.eq(val.asBool(), true);
 }
 
 test "Logic operators" {

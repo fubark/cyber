@@ -1431,7 +1431,11 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const right = self.stack.buf[self.stack.top];
                     const left = self.stack.buf[self.stack.top-1];
-                    self.stack.buf[self.stack.top-1] = evalCompare(left, right);
+                    if (left.isNumber()) {
+                        self.stack.buf[self.stack.top-1] = evalCompareNumber(left, right);
+                    } else {
+                        self.stack.buf[self.stack.top-1] = evalCompareOther(self, left, right);
+                    }
                     continue;
                 },
                 .pushLess => {
@@ -1995,7 +1999,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn isValueString(self: *VM, val: Value) bool {
+    pub fn isValueString(self: *const VM, val: Value) bool {
         @setRuntimeSafety(debug);
         _ = self;
         if (val.isPointer()) {
@@ -2007,7 +2011,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn valueAsString(self: *VM, val: Value) []const u8 {
+    pub fn valueAsString(self: *const VM, val: Value) []const u8 {
         @setRuntimeSafety(debug);
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
@@ -2163,15 +2167,24 @@ fn evalNotCompare(left: cy.Value, right: cy.Value) cy.Value {
     }
 }
 
-fn evalCompare(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        return Value.initBool(right.isNumber() and left.asF64() == right.asF64());
-    } else {
-        switch (left.getTag()) {
-            cy.TagNone => return Value.initBool(right.isNone()),
-            cy.TagBoolean => return Value.initBool(left.asBool() == right.toBool()),
-            else => stdx.panic("unexpected tag"),
-        }
+inline fn evalCompareNumber(left: Value, right: Value) linksection(".eval") Value {
+    @setRuntimeSafety(debug);
+    return Value.initF64(left.asF64() + right.toF64());
+}
+
+fn evalCompareOther(vm: *const VM, left: Value, right: Value) Value {
+    @setRuntimeSafety(debug);
+    switch (left.getTag()) {
+        cy.TagNone => return Value.initBool(right.isNone()),
+        cy.TagBoolean => return Value.initBool(left.asBool() == right.toBool()),
+        cy.TagConstString => {
+            if (vm.isValueString(right)) {
+                const slice = left.asConstStr();
+                const str = vm.strBuf[slice.start..slice.end];
+                return Value.initBool(std.mem.eql(u8, str, vm.valueAsString(right)));
+            } return Value.initFalse();
+        },
+        else => stdx.panic("unexpected tag"),
     }
 }
 

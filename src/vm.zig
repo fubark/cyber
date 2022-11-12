@@ -1375,6 +1375,11 @@ pub const VM = struct {
                         const val = Value{ .val = self.consts[idx].val };
                         log.debug("{} op: {s} [{s}]", .{self.pc, @tagName(self.ops[self.pc].code), self.valueToTempString(val)});
                     },
+                    .setInit => {
+                        const numLocals = self.ops[self.pc+1].arg;
+                        const locals = self.ops[self.pc+2..self.pc+2+numLocals];
+                        log.debug("{} op: {s} {} {any}", .{self.pc, @tagName(self.ops[self.pc].code), numLocals, locals});
+                    },
                     else => {
                         log.debug("{} op: {s}", .{self.pc, @tagName(self.ops[self.pc].code)});
                     },
@@ -1637,6 +1642,15 @@ pub const VM = struct {
                     self.release(existing, trace);
                     self.setStackFrameValue(offset, val);
                     continue;
+                },
+                .setInit => {
+                    @setRuntimeSafety(debug);
+                    const numLocals = self.ops[self.pc+1].arg;
+                    const locals = self.ops[self.pc+2..self.pc+2+numLocals];
+                    self.pc += 2 + numLocals;
+                    for (locals) |local| {
+                        self.setStackFrameValue(local.arg, Value.initNone());
+                    }
                 },
                 .set => {
                     @setRuntimeSafety(debug);

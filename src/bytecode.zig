@@ -168,7 +168,6 @@ pub const ByteCodeBuffer = struct {
                     try w.print("{}", .{ops[pc+1].arg});
                     pc += 2;
                 },
-                .pushMap,
                 .pushCallObjSym0,
                 .pushCallObjSym1,
                 .pushCallSym0,
@@ -190,6 +189,16 @@ pub const ByteCodeBuffer = struct {
                 .pushClosure => {
                     try w.print("{} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
                     pc += 5;
+                },
+                .pushMap => {
+                    const numEntries = ops[pc+1].arg;
+                    try w.print("{}", .{numEntries});
+                    pc += 2 + numEntries;
+                },
+                .setInit => {
+                    const numVars = ops[pc+1].arg;
+                    try w.print("{}", .{numVars});
+                    pc += 2 + numVars;
                 },
                 else => {
                     stdx.panicFmt("unsupported {}", .{ops[pc].code});
@@ -322,11 +331,12 @@ pub const OpCode = enum(u8) {
     pushNotCompare,
     pushStringTemplate,
     pushNeg,
+    setInit,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 55);
+    try t.eq(@enumToInt(OpCode.end), 56);
 }

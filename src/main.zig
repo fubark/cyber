@@ -37,18 +37,44 @@ pub fn main() !void {
     defer std.process.argsFree(alloc, args);
 
     if (args.len > 1) {
-        const path = args[1];
-        const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
-        defer alloc.free(src);
-
-        const vm = cy.getUserVM();
-        try vm.init(alloc);
-        defer vm.deinit();
-
-        var trace: cy.TraceInfo = undefined;
-        vm.setTrace(&trace);
-        _ = vm.eval(src, Trace) catch |err| {
-            stdx.panicFmt("unexpected {}", .{err});
-        };
+        const arg0 = args[1];
+        if (std.mem.eql(u8, arg0, "compile")) {
+            if (args.len > 2) {
+                try compilePath(alloc, args[2]);
+            }
+        } else {
+            try evalPath(alloc, arg0);
+        }
     }
+}
+
+fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
+    const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
+    defer alloc.free(src);
+
+    const vm = cy.getUserVM();
+    try vm.init(alloc);
+    defer vm.deinit();
+
+    var trace: cy.TraceInfo = undefined;
+    vm.setTrace(&trace);
+    const buf = vm.compile(src) catch |err| {
+        stdx.panicFmt("unexpected {}", .{err});
+    };
+    try buf.dump();
+}
+
+fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
+    const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
+    defer alloc.free(src);
+
+    const vm = cy.getUserVM();
+    try vm.init(alloc);
+    defer vm.deinit();
+
+    var trace: cy.TraceInfo = undefined;
+    vm.setTrace(&trace);
+    _ = vm.eval(src, Trace) catch |err| {
+        stdx.panicFmt("unexpected {}", .{err});
+    };
 }

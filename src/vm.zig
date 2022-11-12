@@ -204,6 +204,26 @@ pub const VM = struct {
         return first;
     }
 
+    pub fn compile(self: *VM, src: []const u8) !cy.ByteCodeBuffer {
+        var tt = stdx.debug.trace();
+        const astRes = try self.parser.parse(src);
+        if (astRes.has_error) {
+            log.debug("Parse Error: {s}", .{astRes.err_msg});
+            return error.ParseError;
+        }
+        tt.endPrint("parse");
+
+        tt = stdx.debug.trace();
+        const res = try self.compiler.compile(astRes);
+        if (res.hasError) {
+            log.debug("Compile Error: {s}", .{self.compiler.lastErr});
+            return error.CompileError;
+        }
+        tt.endPrint("compile");
+
+        return res.buf;
+    }
+
     pub fn eval(self: *VM, src: []const u8, comptime trace: bool) !Value {
         var tt = stdx.debug.trace();
         const astRes = try self.parser.parse(src);

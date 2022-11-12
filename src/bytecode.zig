@@ -197,10 +197,10 @@ pub const ByteCodeBuffer = struct {
             }
             _ = try w.write("\n");
         }
-        log.info("{s}", .{buf.items});
+        std.debug.print("{s}\n", .{buf.items});
 
         for (self.consts.items) |extra| {
-            log.info("extra {}", .{extra});
+            std.debug.print("extra {}\n", .{extra});
         }
     }
 };

@@ -23,7 +23,7 @@ pub const JsTargetCompiler = struct {
     last_err: []const u8,
 
     /// Context vars.
-    func_decls: []const parser.FunctionDeclaration,
+    func_decls: []const parser.FuncDecl,
     func_params: []const parser.FunctionParam,
     nodes: []const parser.Node,
     node_list: *std.ArrayListUnmanaged(parser.Node),

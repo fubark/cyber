@@ -2,9 +2,10 @@ const std = @import("std");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 
+const log = stdx.log.scoped(.vm_compiler);
+
 const NullId = std.math.maxInt(u32);
 const NullByteId = std.math.maxInt(u8);
-const log = stdx.log.scoped(.vm_compiler);
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
 
@@ -18,7 +19,7 @@ pub const VMcompiler = struct {
     src: []const u8,
     nodes: []const cy.Node,
     tokens: []const cy.Token,
-    funcDecls: []const cy.FunctionDeclaration,
+    funcDecls: []const cy.FuncDecl,
     funcParams: []const cy.FunctionParam,
     blocks: std.ArrayListUnmanaged(Block),
     jumpStack: std.ArrayListUnmanaged(Jump),
@@ -280,7 +281,7 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn reserveFuncParams(self: *VMcompiler, func: cy.FunctionDeclaration) !void {
+    fn reserveFuncParams(self: *VMcompiler, func: cy.FuncDecl) !void {
         if (func.params.end > func.params.start) {
             for (self.funcParams[func.params.start..func.params.end]) |param| {
                 const paramName = self.src[param.name.start..param.name.end];

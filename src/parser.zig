@@ -51,7 +51,7 @@ pub const Parser = struct {
     block_stack: std.ArrayListUnmanaged(BlockState),
     cur_indent: u32,
     func_params: std.ArrayListUnmanaged(FunctionParam),
-    func_decls: std.ArrayListUnmanaged(FunctionDeclaration),
+    func_decls: std.ArrayListUnmanaged(FuncDecl),
 
     // TODO: This should be implemented by user callbacks.
     /// @name arg.
@@ -293,7 +293,7 @@ pub const Parser = struct {
         // Assumes first token is `=>`.
         self.advanceToken();
 
-        var decl = FunctionDeclaration{
+        var decl = FuncDecl{
             .name = undefined,
             .params = stdx.IndexSlice(u32).init(@intCast(u32, self.func_params.items.len), @intCast(u32, self.func_params.items.len+1)),
             .return_type = null,
@@ -329,7 +329,7 @@ pub const Parser = struct {
         // Assumes first token is `=>`.
         self.advanceToken();
 
-        var decl = FunctionDeclaration{
+        var decl = FuncDecl{
             .name = undefined,
             .params = stdx.IndexSlice(u32).init(0, 0),
             .return_type = null,
@@ -356,7 +356,7 @@ pub const Parser = struct {
     fn parseLambdaFunction(self: *Parser) !NodeId {
         const start = self.next_pos;
 
-        var decl = FunctionDeclaration{
+        var decl = FuncDecl{
             .name = undefined,
             .params = undefined,
             .return_type = null,
@@ -455,12 +455,12 @@ pub const Parser = struct {
         }
     }
 
-    fn parseFunctionDeclaration(self: *Parser) !NodeId {
+    fn parseFunctionDecl(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `func` keyword.
         self.advanceToken();
 
-        var decl = FunctionDeclaration{
+        var decl = FuncDecl{
             .name = undefined,
             .params = undefined,
             .return_type = null,
@@ -962,7 +962,7 @@ pub const Parser = struct {
                 }
             },
             .func_k => {
-                return try self.parseFunctionDeclaration();
+                return try self.parseFunctionDecl();
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -2378,7 +2378,7 @@ pub const Result = struct {
         }
 
         const func_decls_arr = try view.func_decls.clone(alloc);
-        const func_decls = try alloc.create(std.ArrayListUnmanaged(FunctionDeclaration));
+        const func_decls = try alloc.create(std.ArrayListUnmanaged(FuncDecl));
         func_decls.* = func_decls_arr;
 
         return Result{
@@ -2422,7 +2422,7 @@ pub const ResultView = struct {
     nodes: *std.ArrayListUnmanaged(Node),
     tokens: []const Token,
     src: []const u8,
-    func_decls: *std.ArrayListUnmanaged(FunctionDeclaration),
+    func_decls: *std.ArrayListUnmanaged(FuncDecl),
     func_params: []const FunctionParam,
 
     name: []const u8,
@@ -2467,7 +2467,7 @@ pub const ResultView = struct {
 
 const FuncDeclId = u32;
 
-pub const FunctionDeclaration = struct {
+pub const FuncDecl = struct {
     name: IndexSlice,
     params: IndexSlice,
     return_type: ?IndexSlice,

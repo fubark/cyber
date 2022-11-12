@@ -1178,7 +1178,8 @@ pub const VM = struct {
                 },
                 LambdaS => {
                     if (numArgs - 1 != obj.lambda.numParams) {
-                        stdx.panicFmt("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                        log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                        stdx.fatal();
                     }
                     self.pc = obj.lambda.funcPc;
                     self.framePtr = self.stack.top - numArgs;
@@ -2071,7 +2072,8 @@ pub const VM = struct {
                 if (obj.common.structId == StringS) {
                     return obj.string.ptr[0..obj.string.len];
                 } else {
-                    stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
+                    log.debug("unexpected struct {}", .{obj.common.structId});
+                    stdx.fatal();
                 }
             } else {
                 switch (val.getTag()) {
@@ -2084,7 +2086,10 @@ pub const VM = struct {
                         const slice = val.asConstStr();
                         return self.strBuf[slice.start..slice.end];
                     },
-                    else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
+                    else => {
+                        log.debug("unexpected tag {}", .{val.getTag()});
+                        stdx.fatal();
+                    },
                 }
             }
         }
@@ -2109,7 +2114,8 @@ pub const VM = struct {
                     const str = obj.string.ptr[0..obj.string.len];
                     _ = writer.write(str) catch stdx.fatal();
                 } else {
-                    stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
+                    log.debug("unexpected struct {}", .{obj.common.structId});
+                    stdx.fatal();
                 }
             } else {
                 switch (val.getTag()) {
@@ -2128,7 +2134,10 @@ pub const VM = struct {
                         const slice = val.asConstStr();
                         _ = writer.write(self.strBuf[slice.start..slice.end]) catch stdx.fatal();
                     },
-                    else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
+                    else => {
+                        log.debug("unexpected tag {}", .{val.getTag()});
+                        stdx.fatal();
+                    },
                 }
             }
         }

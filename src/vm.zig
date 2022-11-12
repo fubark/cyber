@@ -1095,8 +1095,8 @@ pub const VM = struct {
                         self.freeObject(obj);
                     },
                     else => {
-                        // return stdx.panicFmt("unsupported struct type {}", .{obj.common.structId});
-                        unreachable;
+                        log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});
+                        stdx.fatal();
                     },
                 }
             }
@@ -1231,7 +1231,6 @@ pub const VM = struct {
                 self.framePtr = self.stack.top - numArgs;
                 // numLocals includes the function params as well as the return info value.
                 self.stack.top = self.framePtr + sym.inner.func.numLocals;
-
                 if (self.stack.top > self.stack.buf.len) {
                     try self.stack.growTotalCapacity(self.alloc, self.stack.top);
                 }

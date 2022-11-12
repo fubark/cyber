@@ -68,6 +68,14 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[start+1] = .{ .arg = arg };
         self.ops.items[start+2] = .{ .arg = arg2 };
     }
+
+    pub fn pushOperandsRaw(self: *ByteCodeBuffer, args: []const u8) !void {
+        const start = self.ops.items.len;
+        try self.ops.resize(self.alloc, self.ops.items.len + args.len);
+        for (args) |arg, i| {
+            self.ops.items[start+i] = .{ .arg = arg };
+        }
+    }
     
     pub fn pushOpSlice(self: *ByteCodeBuffer, code: OpCode, args: []const u8) !void {
         const start = self.ops.items.len;

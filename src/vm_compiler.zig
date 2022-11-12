@@ -21,11 +21,15 @@ pub const VMcompiler = struct {
     tokens: []const cy.Token,
     funcDecls: []const cy.FuncDecl,
     funcParams: []const cy.FunctionParam,
+    semaBlocks: std.ArrayListUnmanaged(SemaBlock),
     blocks: std.ArrayListUnmanaged(Block),
+    subBlocks: std.ArrayListUnmanaged(SubBlock),
     jumpStack: std.ArrayListUnmanaged(Jump),
     loadStack: std.ArrayListUnmanaged(Load),
+    defLocalStack: std.ArrayListUnmanaged(LocalId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
     curBlock: *Block,
+    curSemaBlockId: u32,
     u8Buf: std.ArrayListUnmanaged(u8),
 
     pub fn init(self: *VMcompiler, vm: *cy.VM) void {
@@ -38,11 +42,15 @@ pub const VMcompiler = struct {
             .tokens = undefined,
             .funcDecls = undefined,
             .funcParams = undefined,
+            .semaBlocks = .{},
             .blocks = .{},
+            .subBlocks = .{},
             .jumpStack = .{},
             .loadStack = .{},
+            .defLocalStack = .{},
             .operandStack = .{},
             .curBlock = undefined,
+            .curSemaBlockId = undefined,
             .src = undefined,
             .u8Buf = .{},
         };
@@ -50,34 +58,538 @@ pub const VMcompiler = struct {
 
     pub fn deinit(self: *VMcompiler) void {
         self.alloc.free(self.lastErr);
+
+        for (self.semaBlocks.items) |*sblock| {
+            sblock.deinit(self.alloc);
+        }
+        self.semaBlocks.deinit(self.alloc);
+
         self.blocks.deinit(self.alloc);
+        self.subBlocks.deinit(self.alloc);
         self.buf.deinit();
         self.jumpStack.deinit(self.alloc);
+        self.defLocalStack.deinit(self.alloc);
         self.loadStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
     }
 
+    fn semaExpr(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) anyerror!Type {
+        // log.debug("sema expr {}", .{node.node_t});
+        switch (node.node_t) {
+            .true_literal => {
+                return BoolType;
+            },
+            .false_literal => {
+                return BoolType;
+            },
+            .arr_literal => {
+                var expr_id = node.head.child_head;
+                var i: u32 = 0;
+                while (expr_id != NullId) : (i += 1) {
+                    var expr = self.nodes[expr_id];
+                    _ = try self.semaExpr(expr, discardTopExprReg);
+                    expr_id = expr.next;
+                }
+
+                return ListType;
+            },
+            .map_literal => {
+                var i: u32 = 0;
+                var entry_id = node.head.child_head;
+                while (entry_id != NullId) : (i += 1) {
+                    var entry = self.nodes[entry_id];
+
+                    const val = self.nodes[entry.head.left_right.right];
+                    _ = try self.semaExpr(val, discardTopExprReg);
+                    entry_id = entry.next;
+                }
+                return MapType;
+            },
+            .number => {
+                return NumberType;
+            },
+            .string => {
+                return ConstStringType;
+            },
+            .stringTemplate => {
+                if (!discardTopExprReg or node.head.stringTemplate.exprHead != NullId) {
+                    if (node.head.stringTemplate.exprHead == NullId) {
+                        // nop
+                    } else {
+                        var count: u8 = 0;
+                        var curId = node.head.stringTemplate.exprHead;
+                        while (curId != NullId) {
+                            count += 1;
+                            const expr = self.nodes[curId];
+                            _ = try self.semaExpr(expr, discardTopExprReg);
+                            curId = expr.next;
+                        }
+                    }
+                }
+                return StringType;
+            },
+            .ident => {
+                const token = self.tokens[node.start_token];
+                const name = self.src[token.start_pos..token.data.end_pos];
+                if (try self.readScopedVar(name)) |info| {
+                    if (!info.genInitializer) {
+                        if (!self.curBlock.defLocals.contains(info.local)) {
+                            // Possibly undefined.
+                            const infoPtr = self.getScopedVarInfoPtr(name).?;
+                            infoPtr.genInitializer = true;
+                            try self.curBlock.varsToInit.append(self.alloc, infoPtr.local);
+                        }
+                    }
+                    return info.vtype;
+                } else {
+                    return AnyType;
+                }
+            },
+            .if_expr => {
+                const cond = self.nodes[node.head.if_expr.cond];
+                _ = try self.semaExpr(cond, false);
+
+                const trueExpr = self.nodes[node.head.if_expr.body_expr];
+                _ = try self.semaExpr(trueExpr, discardTopExprReg);
+
+                if (node.head.if_expr.else_clause != NullId) {
+                    const else_clause = self.nodes[node.head.if_expr.else_clause];
+                    const falseExpr = self.nodes[else_clause.head.child_head];
+                    _ = try self.semaExpr(falseExpr, discardTopExprReg);
+                }
+                return AnyType;
+            },
+            .arr_range_expr => {
+                const arr = self.nodes[node.head.arr_range_expr.arr];
+                _ = try self.semaExpr(arr, discardTopExprReg);
+
+                if (node.head.arr_range_expr.left == NullId) {
+                    // nop
+                } else {
+                    const left = self.nodes[node.head.arr_range_expr.left];
+                    _ = try self.semaExpr(left, discardTopExprReg);
+                }
+                if (node.head.arr_range_expr.right == NullId) {
+                    // nop
+                } else {
+                    const right = self.nodes[node.head.arr_range_expr.right];
+                    _ = try self.semaExpr(right, discardTopExprReg);
+                }
+
+                return ListType;
+            },
+            .access_expr => {
+                const left = self.nodes[node.head.left_right.left];
+                _ = try self.semaExpr(left, discardTopExprReg);
+                return AnyType;
+            },
+            .arr_access_expr => {
+                const left = self.nodes[node.head.left_right.left];
+                _ = try self.semaExpr(left, discardTopExprReg);
+
+                const index = self.nodes[node.head.left_right.right];
+                if (index.node_t == .unary_expr and index.head.unary.op == .minus) {
+                    const right = self.nodes[index.head.unary.child];
+                    _ = try self.semaExpr(right, discardTopExprReg);
+                } else {
+                    _ = try self.semaExpr(index, discardTopExprReg);
+                }
+                return AnyType;
+            },
+            .unary_expr => {
+                const child = self.nodes[node.head.unary.child];
+                const op = node.head.unary.op;
+                switch (op) {
+                    .minus => {
+                        _ = try self.semaExpr(child, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .not => {
+                        _ = try self.semaExpr(child, discardTopExprReg);
+                        return BoolType;
+                    },
+                    // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
+                }
+            },
+            .bin_expr => {
+                const left = self.nodes[node.head.left_right.left];
+                const right = self.nodes[node.head.left_right.right];
+
+                const op = @intToEnum(cy.BinaryExprOp, node.head.left_right.extra);
+                switch (op) {
+                    .plus => {
+                        const ltype = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        if (ltype.typeT == .string) {
+                            return StringType;
+                        } else {
+                            return NumberType;
+                        }
+                    },
+                    .star => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .slash => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .percent => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .caret => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .minus => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .and_op => {
+                        const ltype = try self.semaExpr(left, discardTopExprReg);
+                        const rtype = try self.semaExpr(right, discardTopExprReg);
+                        if (ltype.typeT == rtype.typeT) {
+                            return ltype;
+                        } else return AnyType;
+                    },
+                    .or_op => {
+                        const ltype = try self.semaExpr(left, discardTopExprReg);
+                        const rtype = try self.semaExpr(right, discardTopExprReg);
+                        if (ltype.typeT == rtype.typeT) {
+                            return ltype;
+                        } else return AnyType;
+                    },
+                    .bang_equal => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return BoolType;
+                    },
+                    .equal_equal => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return BoolType;
+                    },
+                    .less => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return BoolType;
+                    },
+                    .less_equal => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return BoolType;
+                    },
+                    .greater => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return BoolType;
+                    },
+                    .greater_equal => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return BoolType;
+                    },
+                    else => return self.reportError("Unsupported binary op: {}", .{op}, node),
+                }
+            },
+            .call_expr => {
+                const callee = self.nodes[node.head.func_call.callee];
+                if (!node.head.func_call.has_named_arg) {
+                    if (callee.node_t == .access_expr) {
+                        const right = self.nodes[callee.head.left_right.right];
+                        if (right.node_t == .ident) {
+                            var numArgs: u32 = 1;
+                            var arg_id = node.head.func_call.arg_head;
+                            while (arg_id != NullId) : (numArgs += 1) {
+                                const arg = self.nodes[arg_id];
+                                _ = try self.semaExpr(arg, false);
+                                arg_id = arg.next;
+                            }
+
+                            const left = self.nodes[callee.head.left_right.left];
+                            _ = try self.semaExpr(left, false);
+
+                            return AnyType;
+                        } else return self.reportError("Unsupported callee", .{}, node);
+                    } else if (callee.node_t == .ident) {
+                        const token = self.tokens[callee.start_token];
+                        const name = self.src[token.start_pos..token.data.end_pos];
+
+                        if (try self.readScopedVar(name)) |info| {
+                            _ = info;
+                            var numArgs: u32 = 1;
+                            var arg_id = node.head.func_call.arg_head;
+                            while (arg_id != NullId) : (numArgs += 1) {
+                                const arg = self.nodes[arg_id];
+                                _ = try self.semaExpr(arg, false);
+                                arg_id = arg.next;
+                            }
+
+            //                 // Load callee after args so it can be easily discarded.
+            //                 try self.genLoadLocal(info);
+                            return AnyType;
+                        } else {
+                            var numArgs: u32 = 0;
+                            var arg_id = node.head.func_call.arg_head;
+                            while (arg_id != NullId) : (numArgs += 1) {
+                                const arg = self.nodes[arg_id];
+                                _ = try self.semaExpr(arg, false);
+                                arg_id = arg.next;
+                            }
+                            return AnyType;
+                        }
+                    } else return self.reportError("Unsupported callee", .{}, node);
+                } else return self.reportError("Unsupported named args", .{}, node);
+            },
+            .lambda_expr => {
+                if (!discardTopExprReg) {
+                    const blockId = try self.pushSemaBlock();
+
+                    // Generate function body.
+                    const func = self.funcDecls[node.head.func.decl_id];
+                    try self.semaReserveFuncParams(func);
+                    const expr = self.nodes[node.head.func.body_head];
+                    _ = try self.semaExpr(expr, false);
+
+                    self.endSemaBlock(blockId);
+                }
+                return AnyType;
+            },
+            else => return self.reportError("Unsupported node", .{}, node),
+        }
+    }
+
+    fn semaStmt(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) !void {
+        // log.debug("sema stmt {}", .{node.node_t});
+        switch (node.node_t) {
+            .pass_stmt => {
+                return;
+            },
+            .expr_stmt => {
+                const expr = self.nodes[node.head.child_head];
+                _ = try self.semaExpr(expr, discardTopExprReg);
+            },
+            .break_stmt => {
+                return;
+            },
+            .add_assign_stmt => {
+                const left = self.nodes[node.head.left_right.left];
+                if (left.node_t == .ident) {
+                    const identToken = self.tokens[left.start_token];
+                    const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
+
+                    if (self.getScopedVarInfo(varName)) |info| {
+                        const right = self.nodes[node.head.left_right.right];
+                        const rtype = try self.semaExpr(right, false);
+                        if (info.vtype.typeT != .number and info.vtype.typeT != .any and rtype.typeT != info.vtype.typeT) {
+                            return self.reportError("Type mismatch: Expected {}", .{info.vtype.typeT}, node);
+                        }
+                    } else stdx.panic("variable not declared");
+                } else {
+                    stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                }
+            },
+            .assign_stmt => {
+                const left = self.nodes[node.head.left_right.left];
+                if (left.node_t == .ident) {
+                    const identToken = self.tokens[left.start_token];
+                    const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
+
+                    if (self.getScopedVarInfo(varName)) |info| {
+                        if (info.isCapturedVar) {
+                            return self.reportError("Can not reassign to a captured variable.", .{}, left);
+                        }
+                    }
+
+                    const right = self.nodes[node.head.left_right.right];
+                    const rtype = try self.semaExpr(right, false);
+                    _ = try self.semaSetVar(varName, rtype);
+                } else if (left.node_t == .arr_access_expr) {
+                    const accessLeft = self.nodes[left.head.left_right.left];
+                    _ = try self.semaExpr(accessLeft, false);
+                    const accessRight = self.nodes[left.head.left_right.right];
+                    _ = try self.semaExpr(accessRight, false);
+
+                    const right = self.nodes[node.head.left_right.right];
+                    _ = try self.semaExpr(right, false);
+                } else {
+                    stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                }
+            },
+            .func_decl => {
+                const func = self.funcDecls[node.head.func.decl_id];
+
+                const blockId = try self.pushSemaBlock();
+                try self.semaReserveFuncParams(func);
+                try self.semaStmts(node.head.func.body_head, false);
+                self.endSemaBlock(blockId);
+            },
+            .for_cond_stmt => {
+                try self.pushIterSubBlock();
+                defer self.popIterSubBlock();
+
+                const cond = self.nodes[node.head.left_right.left];
+                _ = try self.semaExpr(cond, false);
+
+                try self.semaStmts(node.head.left_right.right, false);
+            },
+            .for_inf_stmt => {
+                try self.pushIterSubBlock();
+                defer self.popIterSubBlock();
+                try self.semaStmts(node.head.child_head, false);
+            },
+            .for_iter_stmt => {
+                try self.pushIterSubBlock();
+                defer self.popIterSubBlock();
+
+                const iterable = self.nodes[node.head.for_iter_stmt.iterable];
+                _ = try self.semaExpr(iterable, false);
+
+                const as_clause = self.nodes[node.head.for_iter_stmt.as_clause];
+                const ident = self.nodes[as_clause.head.as_iter_clause.value];
+                const ident_token = self.tokens[ident.start_token];
+                const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
+
+                _ = try self.semaSetVar(asName, NumberType);
+
+                try self.semaStmts(node.head.for_iter_stmt.body_head, false);
+            },
+            .for_range_stmt => {
+                try self.pushIterSubBlock();
+                defer self.popIterSubBlock();
+
+                if (node.head.for_range_stmt.as_clause != NullId) {
+                    const asClause = self.nodes[node.head.for_range_stmt.as_clause];
+                    const ident = self.nodes[asClause.head.as_range_clause.ident];
+                    const ident_token = self.tokens[ident.start_token];
+                    const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
+
+                    _ = try self.semaSetVar(asName, NumberType);
+                }
+
+                const range_clause = self.nodes[node.head.for_range_stmt.range_clause];
+                const left_range = self.nodes[range_clause.head.left_right.left];
+                _ = try self.semaExpr(left_range, false);
+                const right_range = self.nodes[range_clause.head.left_right.right];
+                _ = try self.semaExpr(right_range, false);
+
+                try self.semaStmts(node.head.for_range_stmt.body_head, false);
+            },
+            .if_stmt => {
+                const cond = self.nodes[node.head.left_right.left];
+                _ = try self.semaExpr(cond, false);
+
+                try self.pushSubBlock();
+                try self.semaStmts(node.head.left_right.right, false);
+                self.popSubBlock();
+
+                var elseClauseId = node.head.left_right.extra;
+                while (elseClauseId != NullId) {
+                    const elseClause = self.nodes[elseClauseId];
+                    if (elseClause.head.else_clause.cond == NullId) {
+                        try self.pushSubBlock();
+                        try self.semaStmts(elseClause.head.else_clause.body_head, false);
+                        self.popSubBlock();
+                        break;
+                    } else {
+                        const elseCond = self.nodes[elseClause.head.else_clause.cond];
+                        _ = try self.semaExpr(elseCond, false);
+
+                        try self.pushSubBlock();
+                        try self.semaStmts(elseClause.head.else_clause.body_head, false);
+                        self.popSubBlock();
+                        elseClauseId = elseClause.head.else_clause.else_clause;
+                    }
+                }
+            },
+            .return_stmt => {
+                return;
+            },
+            .return_expr_stmt => {
+                const expr = self.nodes[node.head.child_head];
+                _ = try self.semaExpr(expr, false);
+            },
+            else => return self.reportError("Unsupported node", .{}, node),
+        }
+    }
+
+    fn semaStmts(self: *VMcompiler, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
+        var cur_id = head;
+        while (cur_id != NullId) {
+            const node = self.nodes[cur_id];
+            if (attachEnd) {
+                if (node.next == NullId) {
+                    try self.semaStmt(node, false);
+                } else {
+                    try self.semaStmt(node, true);
+                }
+            } else {
+                try self.semaStmt(node, true);
+            }
+            cur_id = node.next;
+        }
+    }
+
+    fn nextSemaBlock(self: *VMcompiler) void {
+        self.curSemaBlockId += 1;
+    }
+
+    fn genVarInits(self: *VMcompiler) !void {
+        const sBlock = self.semaBlocks.items[self.curSemaBlockId];
+        if (sBlock.varsToInit.items.len > 0) {
+            try self.buf.pushOp1(.setInit, @intCast(u8, sBlock.varsToInit.items.len));
+            try self.buf.pushOperandsRaw(sBlock.varsToInit.items);
+        }
+    }
+
     pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
         self.buf.clear();
         self.blocks.clearRetainingCapacity();
+
+        for (self.semaBlocks.items) |*block| {
+            block.deinit(self.alloc);
+        }
+        self.semaBlocks.clearRetainingCapacity();
+
+        self.subBlocks.clearRetainingCapacity();
+
+        // Dummy first element to avoid len > 0 check during pop.
+        try self.subBlocks.append(self.alloc, SubBlock.init(0));
+
         self.nodes = ast.nodes.items;
         self.funcDecls = ast.func_decls.items;
         self.funcParams = ast.func_params;
         self.src = ast.src;
         self.tokens = ast.tokens;
+        self.curSemaBlockId = 0;
 
         const root = self.nodes[ast.root_id];
 
-        try self.pushBlock();
-        defer self.popBlock();
+        const sBlockId = try self.pushSemaBlock();
+        self.semaStmts(root.head.child_head, true) catch {
+            return ResultView{
+                .buf = self.buf,
+                .hasError = true,
+            };
+        };
+        self.endSemaBlock(sBlockId);
 
+        try self.pushBlock();
+        try self.genVarInits();
         self.genStatements(root.head.child_head, true) catch {
             return ResultView{
                 .buf = self.buf,
                 .hasError = true,
             };
         };
+        self.popBlock();
         self.buf.mainLocalSize = self.blockNumLocals();
 
         return ResultView{
@@ -90,17 +602,47 @@ pub const VMcompiler = struct {
         var iter = self.curBlock.vars.valueIterator();
         while (iter.next()) |info| {
             if (info.rcCandidate and !info.isCapturedVar) {
-                try self.buf.pushOp1(.release, info.localOffset);
+                try self.buf.pushOp1(.release, info.local);
             }
         }
     }
 
-    fn pushSpecialBlock(self: *VMcompiler) !void {
-        try self.curBlock.specialBlocks.append(self.alloc, .{});
+    fn pushIterSubBlock(self: *VMcompiler) !void {
+        self.curBlock.iterBlockDepth += 1;
+        try self.pushSubBlock();
     }
 
-    fn popSpecialBlock(self: *VMcompiler) void {
-        _ = self.curBlock.specialBlocks.pop();
+    fn popIterSubBlock(self: *VMcompiler) void {
+        self.curBlock.iterBlockDepth -= 1;
+        self.popSubBlock();
+    }
+
+    fn pushSubBlock(self: *VMcompiler) !void {
+        try self.subBlocks.append(self.alloc, .{
+            .defLocalsStart = @intCast(u32, self.defLocalStack.items.len),
+        });
+    }
+
+    fn popSubBlock(self: *VMcompiler) void {
+        const sBlock = self.subBlocks.pop();
+        const defVars = self.defLocalStack.items[sBlock.defLocalsStart..];
+        for (defVars) |local| {
+            _ = self.curBlock.defLocals.remove(local);
+        }
+    }
+
+    fn pushSemaBlock(self: *VMcompiler) !u32 {
+        try self.pushBlock();
+        try self.pushSubBlock();
+        const id = @intCast(u32, self.semaBlocks.items.len);
+        try self.semaBlocks.append(self.alloc, SemaBlock.init());
+        return id;
+    }
+
+    fn endSemaBlock(self: *VMcompiler, blockId: u32) void {
+        const block = self.blocks.items[self.blocks.items.len-1];
+        self.semaBlocks.items[blockId].varsToInit = block.varsToInit;
+        self.popBlock();
     }
 
     fn pushBlock(self: *VMcompiler) !void {
@@ -130,27 +672,6 @@ pub const VMcompiler = struct {
         return null;
     }
 
-    fn specialBlock(self: *VMcompiler) *SpecialBlock {
-        return &self.curBlock.specialBlocks.items[self.curBlock.specialBlocks.items.len-1];
-    }
-
-    fn blockUsingTempVar(self: *VMcompiler, varName: []const u8) bool {
-        for (self.curBlock.specialBlocks.items) |block| {
-            if (block.hasTempVars) {
-                if (std.mem.eql(u8, block.varName1, varName)) {
-                    return true;
-                }
-                if (block.varName2.len == 0) {
-                    continue;
-                }
-                if (std.mem.eql(u8, block.varName2, varName)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     fn blockGetTempVar(self: *VMcompiler, varName: []const u8) ?LocalId {
         return self.curBlock.tempVars.get(varName);
     }
@@ -163,26 +684,6 @@ pub const VMcompiler = struct {
     /// If found in the parent scope, the var is recorded as a captured var.
     /// Captured vars are given a tempId (order among other captured vars) and patched later by a local offset at the end of the block.
     fn readScopedVar(self: *VMcompiler, varName: []const u8) !?VarInfo {
-        if (self.curBlock.specialBlocks.items.len > 0) {
-            // Search temp vars first.
-            var i: usize = self.curBlock.specialBlocks.items.len;
-            while (i > 0) {
-                i -= 1;
-                const sblock = self.curBlock.specialBlocks.items[i];
-                if (sblock.hasTempVars) {
-                    if (std.mem.eql(u8, sblock.varName1, varName)) {
-                        return sblock.varInfo1;
-                    }
-                    if (sblock.varName2.len == 0) {
-                        continue;
-                    }
-                    if (std.mem.eql(u8, sblock.varName2, varName)) {
-                        return sblock.varInfo2;
-                    }
-                }
-            }
-        }
-
         if (self.curBlock.vars.get(varName)) |info| {
             return info;
         }
@@ -190,7 +691,7 @@ pub const VMcompiler = struct {
         if (self.blocks.items.len > 2) {
             if (self.blocks.items[self.blocks.items.len-2].vars.get(varName)) |info| {
                 if (!info.hasStaticType) {
-                    const localInfo = try self.reserveCapturedVar(varName, AnyType, info.localOffset);
+                    const localInfo = try self.reserveCapturedVar(varName, AnyType, info.local);
                     return localInfo.*;
                 } else {
                     return error.UnsupportedStaticType;
@@ -221,12 +722,12 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn reserveCapturedVar(self: *VMcompiler, name: []const u8, vtype: Type, parentLocalOffset: u8) !*VarInfo {
+    fn reserveCapturedVar(self: *VMcompiler, name: []const u8, vtype: Type, parentLocal: u8) !*VarInfo {
         const tempOffset = @intCast(u8, self.curBlock.capturedVars.items.len);
         try self.curBlock.capturedVars.append(self.alloc, .{
             .name = name,
-            .parentLocalOffset = parentLocalOffset,
-            .localOffset = tempOffset,
+            .parentLocal = parentLocal,
+            .local = tempOffset,
         });
         const res = try self.curBlock.vars.getOrPut(self.alloc, name);
         if (res.found_existing) {
@@ -234,10 +735,11 @@ pub const VMcompiler = struct {
         } else {
             res.value_ptr.* = .{
                 .vtype = vtype,
-                .localOffset = tempOffset,
+                .local = tempOffset,
                 .rcCandidate = vtype.rcCandidate,
                 .hasStaticType = false,
                 .isCapturedVar = true,
+                .genInitializer = false,
             };
             return res.value_ptr;
         }
@@ -251,21 +753,65 @@ pub const VMcompiler = struct {
         } else {
             res.value_ptr.* = .{
                 .vtype = vtype,
-                .localOffset = offset,
+                .local = offset,
                 .rcCandidate = vtype.rcCandidate,
                 .hasStaticType = false,
                 .isCapturedVar = false,
+                .genInitializer = false,
             };
             return res.value_ptr;
+        }
+    }
+
+    fn semaSetVar(self: *VMcompiler, name: []const u8, vtype: Type) !u8 {
+        if (self.getScopedVarInfoPtr(name)) |info| {
+            if (info.vtype.typeT != vtype.typeT) {
+                info.vtype = vtype;
+                if (!info.rcCandidate and vtype.rcCandidate) {
+                    info.rcCandidate = true;
+                }
+            }
+
+            if (!self.curBlock.defLocals.contains(info.local)) {
+                // Possibly undefined. Add var to sub block.
+                try self.defLocalStack.append(self.alloc, info.local);
+                try self.curBlock.defLocals.put(self.alloc, info.local, {});
+            }
+
+            return info.local;
+        } else {
+            const info = try self.reserveLocalVar(name, vtype);
+            
+            if (self.curBlock.iterBlockDepth > 0) {
+                // First assigned inside an iteration block.
+                // Compiler needs to generate an initializer.
+                info.genInitializer = true;
+                try self.curBlock.varsToInit.append(self.alloc, info.local);
+            }
+
+            // First assignment to sub block.
+            try self.defLocalStack.append(self.alloc, info.local);
+            try self.curBlock.defLocals.put(self.alloc, info.local, {});
+
+            return info.local;
+        }
+    }
+
+    fn ensureLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !u8 {
+        if (self.getScopedVarInfo(name)) |info| {
+            return info.local;
+        } else {
+            const info = try self.reserveLocalVar(name, vtype);
+            return info.local;
         }
     }
 
     fn genSetVar(self: *VMcompiler, name: []const u8, vtype: Type) !u8 {
         if (self.getScopedVarInfoPtr(name)) |info| {
             if (info.vtype.rcCandidate) {
-                try self.buf.pushOp1(.releaseSet, info.localOffset);
+                try self.buf.pushOp1(.releaseSet, info.local);
             } else {
-                try self.buf.pushOp1(.set, info.localOffset);
+                try self.buf.pushOp1(.set, info.local);
             }
             if (info.vtype.typeT != vtype.typeT) {
                 info.vtype = vtype;
@@ -273,11 +819,22 @@ pub const VMcompiler = struct {
                     info.rcCandidate = true;
                 }
             }
-            return info.localOffset;
+            return info.local;
         } else {
             const info = try self.reserveLocalVar(name, vtype);
-            try self.buf.pushOp1(.set, info.localOffset);
-            return info.localOffset;
+            try self.buf.pushOp1(.set, info.local);
+            return info.local;
+        }
+    }
+
+    fn semaReserveFuncParams(self: *VMcompiler, func: cy.FuncDecl) !void {
+        if (func.params.end > func.params.start) {
+            for (self.funcParams[func.params.start..func.params.end]) |param| {
+                const paramName = self.src[param.name.start..param.name.end];
+                const paramT = AnyType;
+                const info = try self.reserveLocalVar(paramName, paramT);
+                try self.curBlock.defLocals.put(self.alloc, info.local, {});
+            }
         }
     }
 
@@ -322,7 +879,7 @@ pub const VMcompiler = struct {
                         if (info.vtype.typeT != .number and info.vtype.typeT != .any and rtype.typeT != info.vtype.typeT) {
                             return self.reportError("Type mismatch: Expected {}", .{info.vtype.typeT}, node);
                         }
-                        try self.buf.pushOp1(.addSet, info.localOffset);
+                        try self.buf.pushOp1(.addSet, info.local);
                     } else stdx.panic("variable not declared");
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
@@ -366,8 +923,12 @@ pub const VMcompiler = struct {
                 try self.buf.pushOp1(.jump, 0);
 
                 try self.pushBlock();
+                self.nextSemaBlock();
+
                 const opStart = @intCast(u32, self.buf.ops.items.len);
                 try self.reserveFuncParams(func);
+
+                try self.genVarInits();
                 try self.genStatements(node.head.func.body_head, false);
                 // TODO: Check last statement to skip adding ret.
                 try self.endLocals();
@@ -396,7 +957,7 @@ pub const VMcompiler = struct {
                 self.buf.setOpArgs1(skipOpPc + 1, @intCast(u8, self.buf.ops.items.len - skipOpPc));
             },
             .for_inf_stmt => {
-                self.curBlock.pcSave = @intCast(u32, self.buf.ops.items.len);
+                const pcSave = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.jumpStack.items.len);
 
                 // TODO: generate gas meter checks.
@@ -410,7 +971,7 @@ pub const VMcompiler = struct {
                 // }
 
                 try self.genStatements(node.head.child_head, false);
-                try self.buf.pushOp1(.jumpBack, @intCast(u8, self.buf.ops.items.len - self.curBlock.pcSave));
+                try self.buf.pushOp1(.jumpBack, @intCast(u8, self.buf.ops.items.len - pcSave));
 
                 // Patch break jumps.
                 for (self.jumpStack.items[jumpStackSave..]) |jump| {
@@ -419,33 +980,18 @@ pub const VMcompiler = struct {
                 self.jumpStack.items.len = jumpStackSave;
             },
             .for_iter_stmt => {
-                try self.pushSpecialBlock();
-                defer self.popSpecialBlock();
+                try self.pushIterSubBlock();
+                defer self.popIterSubBlock();
 
                 const iterable = self.nodes[node.head.for_iter_stmt.iterable];
                 _ = try self.genExpr(iterable, false);
 
-                var local: u8 = NullByteId;
                 const as_clause = self.nodes[node.head.for_iter_stmt.as_clause];
                 const ident = self.nodes[as_clause.head.as_iter_clause.value];
                 const ident_token = self.tokens[ident.start_token];
                 const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
 
-                if (self.blockGetTempVar(asName)) |local_| {
-                    // Temp variable must not be used already in this block.
-                    if (self.blockUsingTempVar(asName)) {
-                        log.debug("Temp var already used in this block. {s}", .{asName});
-                        return error.CompileError;
-                    } else {
-                        local = local_;
-                        self.specialBlock().setFirst(asName, NumberType, local);
-                    }
-                } else {
-                    const newLocal = try self.curBlock.reserveLocal();
-                    try self.curBlock.tempVars.put(self.alloc, asName, newLocal);
-                    local = newLocal;
-                    self.specialBlock().setFirst(asName, AnyType, local);
-                }
+                const local = try self.ensureLocalVar(asName, AnyType);
 
                 const forOpStart = self.buf.ops.items.len;
                 try self.buf.pushOp2(.forIter, local, 0);
@@ -455,8 +1001,8 @@ pub const VMcompiler = struct {
                 self.buf.setOpArgs1(forOpStart+2, @intCast(u8, self.buf.ops.items.len - forOpStart));
             },
             .for_range_stmt => {
-                try self.pushSpecialBlock();
-                defer self.popSpecialBlock();
+                try self.pushIterSubBlock();
+                defer self.popIterSubBlock();
 
                 var local: u8 = NullByteId;
                 if (node.head.for_range_stmt.as_clause != NullId) {
@@ -465,21 +1011,7 @@ pub const VMcompiler = struct {
                     const ident_token = self.tokens[ident.start_token];
                     const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
     
-                    if (self.blockGetTempVar(asName)) |local_| {
-                        // Temp variable must not be used already in this block.
-                        if (self.blockUsingTempVar(asName)) {
-                            log.debug("Temp var already used in this block. {s}", .{asName});
-                            return error.CompileError;
-                        } else {
-                            local = local_;
-                            self.specialBlock().setFirst(asName, NumberType, local);
-                        }
-                    } else {
-                        const newLocal = try self.curBlock.reserveLocal();
-                        try self.curBlock.tempVars.put(self.alloc, asName, newLocal);
-                        local = newLocal;
-                        self.specialBlock().setFirst(asName, NumberType, local);
-                    }
+                    local = try self.ensureLocalVar(asName, AnyType);
 
                     // inc = as_clause.head.as_range_clause.inc;
                     // if (as_clause.head.as_range_clause.step != NullId) {
@@ -560,12 +1092,21 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn genLoadLocal(self: *VMcompiler, info: VarInfo) !void {
-        try self.buf.pushOp1(.load, info.localOffset);
+    fn semaLoadLocal(self: *VMcompiler, info: VarInfo) !void {
         if (info.isCapturedVar) {
             try self.loadStack.append(self.alloc, .{
                 .pc = @intCast(u32, self.buf.ops.items.len) - 1,
-                .tempOffset = info.localOffset,
+                .tempOffset = info.local,
+            });
+        }
+    }
+
+    fn genLoadLocal(self: *VMcompiler, info: VarInfo) !void {
+        try self.buf.pushOp1(.load, info.local);
+        if (info.isCapturedVar) {
+            try self.loadStack.append(self.alloc, .{
+                .pc = @intCast(u32, self.buf.ops.items.len) - 1,
+                .tempOffset = info.local,
             });
         }
     }
@@ -576,11 +1117,11 @@ pub const VMcompiler = struct {
             const name = self.src[token.start_pos..token.data.end_pos];
             if (try self.readScopedVar(name)) |info| {
                 if (info.vtype.rcCandidate) {
-                    try self.buf.pushOp1(.loadRetain, info.localOffset);
+                    try self.buf.pushOp1(.loadRetain, info.local);
                     if (info.isCapturedVar) {
                         try self.loadStack.append(self.alloc, .{
                             .pc = @intCast(u32, self.buf.ops.items.len) - 1,
-                            .tempOffset = info.localOffset,
+                            .tempOffset = info.local,
                         });
                     }
                 } else {
@@ -899,7 +1440,7 @@ pub const VMcompiler = struct {
                             const token = self.tokens[left.start_token];
                             const name = self.src[token.start_pos .. token.data.end_pos];
                             if (try self.readScopedVar(name)) |info| {
-                                leftVar = info.localOffset;
+                                leftVar = info.local;
                             }
                         }
                         if (leftVar == 255) {
@@ -910,7 +1451,7 @@ pub const VMcompiler = struct {
                             const token = self.tokens[right.start_token];
                             const name = self.src[token.start_pos .. token.data.end_pos];
                             if (try self.readScopedVar(name)) |info| {
-                                rightVar = info.localOffset;
+                                rightVar = info.local;
                             }
                         }
                         if (rightVar == 255) {
@@ -1098,19 +1639,19 @@ pub const VMcompiler = struct {
 
                     // Reserve captured var locals together and push them onto execution stack.
                     for (self.curBlock.capturedVars.items) |*capVar| {
-                        capVar.localOffset = try self.curBlock.reserveLocal();
+                        capVar.local = try self.curBlock.reserveLocal();
                         const info = self.getScopedVarInfo(capVar.name).?;
                         if (info.vtype.rcCandidate) {
-                            try self.buf.pushOp1(.loadRetain, capVar.parentLocalOffset);
+                            try self.buf.pushOp1(.loadRetain, capVar.parentLocal);
                         } else {
-                            try self.buf.pushOp1(.load, capVar.parentLocalOffset);
+                            try self.buf.pushOp1(.load, capVar.parentLocal);
                         }
                     }
 
                     // Patch captured var load ops.
                     for (self.loadStack.items[loadStackSave..]) |load| {
                         const capVar = self.curBlock.capturedVars.items[load.tempOffset];
-                        self.buf.setOpArgs1(load.pc, capVar.localOffset);
+                        self.buf.setOpArgs1(load.pc, capVar.local);
                     }
                     self.loadStack.items.len = loadStackSave;
 
@@ -1148,73 +1689,49 @@ pub const ResultView = struct {
 
 const CapturedVar = struct {
     name: []const u8,
-    parentLocalOffset: u8,
-    localOffset: u8,
-};
-
-const SpecialBlock = struct {
-    /// Each special block has at most 2 temp vars.
-    varName1: []const u8 = "",
-    varInfo1: VarInfo = undefined,
-    varName2: []const u8 = "",
-    varInfo2: VarInfo = undefined,
-    hasTempVars: bool = false,
-    
-    fn setFirst(self: *SpecialBlock, name: []const u8, vtype: Type, local: LocalId) void {
-        self.varName1 = name;
-        self.varInfo1 = .{
-            .vtype = vtype,
-            .localOffset = local,
-            .rcCandidate = vtype.rcCandidate,
-            .hasStaticType = false,
-            .isCapturedVar = false,
-        };
-        self.hasTempVars = true;
-    }
-
-    fn setSecond(self: *SpecialBlock, name: []const u8, vtype: Type, local: LocalId) void {
-        self.varName2 = name;
-        self.varInfo2 = .{
-            .vtype = vtype,
-            .localOffset = local,
-            .rcCandidate = vtype.rcCandidate,
-            .hasStaticType = false,
-            .isCapturedVar = false,
-        };
-        self.hasTempVars = true;
-    }
+    parentLocal: LocalId,
+    local: LocalId,
 };
 
 const LocalId = u8;
 
 const Block = struct {
     stackLen: u32,
+
+    /// All the vars used in the block.
     vars: std.StringHashMapUnmanaged(VarInfo),
+
+    /// Quickly determine whether a var is defined at the current position to the root level.
+    defLocals: std.AutoHashMapUnmanaged(LocalId, void),
 
     /// Temp vars only exist within their special block. eg. the current for loop element
     tempVars: std.StringHashMapUnmanaged(LocalId),
 
-    /// Special block stack. If the length is greater than 0, variables are searched from the special blocks first.
-    specialBlocks: std.ArrayListUnmanaged(SpecialBlock),
-
     capturedVars: std.ArrayListUnmanaged(CapturedVar),
-    pcSave: u32,
+
+    /// See `SemaBlock.varsToInit`.
+    /// Copied to SemaBlock when this block is popped from sema.
+    varsToInit: std.ArrayListUnmanaged(LocalId),
+
+    /// Depth of iteration blocks.
+    iterBlockDepth: u8,
 
     fn init() Block {
         return .{
             .stackLen = 0,
             .vars = .{},
-            .specialBlocks = .{},
+            .defLocals = .{},
             .tempVars = .{},
             .capturedVars = .{},
-            .pcSave = 0,
+            .varsToInit = .{},
+            .iterBlockDepth = 0,
         };
     }
 
     fn deinit(self: *Block, alloc: std.mem.Allocator) void {
         self.vars.deinit(alloc);
+        self.defLocals.deinit(alloc);
         self.capturedVars.deinit(alloc);
-        self.specialBlocks.deinit(alloc);
         self.tempVars.deinit(alloc);
     }
 
@@ -1234,8 +1751,10 @@ const VarInfo = struct {
     /// The current type of the local in the traversed block.
     /// This is updated when there is a variable reassignment or a child block returns.
     vtype: Type,
-    /// Stack offset from frame it was declared in.
-    localOffset: u8,
+
+    /// Local offset relative to te stack frame's start position.
+    local: LocalId,
+
     /// Maybe points to a ref counted object throughout the local's lifetime.
     /// Once this is true, it can not be reverted to false.
     /// The end of the block will emit release ops for any locals that are rc candidates.
@@ -1246,6 +1765,9 @@ const VarInfo = struct {
     /// Captured variables can not be reassigned to another value. This restriction avoids
     /// an extra retain/release op for closure calls.
     isCapturedVar: bool,
+
+    /// Whether this variable will generate an implicit initializer at start of block.
+    genInitializer: bool,
 };
 
 const TypeTag = enum {
@@ -1338,3 +1860,32 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
     output.items.len = i;
     return replacements;
 }
+
+const SubBlock = struct {
+    /// Start of defLocals in `defLocalStack`.
+    defLocalsStart: u32,
+
+    fn init(defLocalsStart: usize) SubBlock {
+        return .{
+            .defLocalsStart = @intCast(u32, defLocalsStart),
+        };
+    }
+};
+
+const SemaBlock = struct {
+    /// There are two cases where the compiler needs to implicitly generate var initializers.
+    /// 1. Var is read when the only prior assignment happened in a branched block. eg. Assigned inside if block.
+    /// 2. Var is first assigned in an iteration block.
+    /// At the beginning of codegen for this block, these vars will be inited to the `none` value.
+    varsToInit: std.ArrayListUnmanaged(LocalId),
+
+    fn init() SemaBlock {
+        return .{
+            .varsToInit = .{},
+        };
+    }
+
+    fn deinit(self: *SemaBlock, alloc: std.mem.Allocator) void {
+        self.varsToInit.deinit(alloc);
+    }
+};

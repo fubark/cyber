@@ -620,6 +620,58 @@ test "Variables" {
         \\b
     );
     try t.eq(val.asI32(), 3);
+
+    // Using a variable that was conditionally assigned.
+    val = try run.eval(
+        \\if true:
+        \\  a = 1
+        \\a
+    );
+    try t.eq(val.asI32(), 1);
+
+    // Using a variable that was conditionally not assigned.
+    val = try run.eval(
+        \\if false:
+        \\  a = 1
+        \\a
+    );
+    try t.eq(val.isNone(), true);
+
+    // Using a variable that was assigned in a loop.
+    val = try run.eval(
+        \\for 2..3 as i:
+        \\  a = i
+        \\a
+    );
+    try t.eq(val.asI32(), 2);
+
+    // Using a variable that was not assigned in a loop.
+    val = try run.eval(
+        \\for 2..2 as i:
+        \\  a = i
+        \\a
+    );
+    try t.eq(val.isNone(), true);
+
+    // Using a variable that was conditionally assigned in a function.
+    val = try run.eval(
+        \\func foo():
+        \\  if true:
+        \\    a = 1
+        \\  return a
+        \\foo()
+    );
+    try t.eq(val.asI32(), 1);
+
+    // Using a variable that was conditionally not assigned in a function.
+    val = try run.eval(
+        \\func foo():
+        \\  if false:
+        \\    a = 1
+        \\  return a
+        \\foo()
+    );
+    try t.eq(val.isNone(), true);
 }
 
 test "if expression" {
@@ -734,8 +786,7 @@ test "For iterator." {
     );
     try t.eq(val.asI32(), 45);
 
-    // Temporary vars only exist in their for loop scope.
-    // They don't interfere with vars declared by the user.
+    // Loop iterator var overwrites the user var.
     val = try run.eval(
         \\elem = 123
         \\list = [1, 2, 3]
@@ -743,7 +794,7 @@ test "For iterator." {
         \\  pass
         \\elem
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asI32(), 3);
 }
 
 test "For loop over range." {
@@ -794,8 +845,7 @@ test "For loop over range." {
     );
     try t.eq(val.asI32(), 100);
 
-    // Temporary vars only exist in their for loop scope.
-    // They don't interfere with vars declared by the user.
+    // Index vars overwrites user var.
     val = try run.eval(
         \\i = 123
         \\sum = 0
@@ -803,7 +853,7 @@ test "For loop over range." {
         \\  sum += i
         \\i
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asI32(), 9);
 
     // Reverse direction.
     val = try run.eval(

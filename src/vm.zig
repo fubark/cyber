@@ -2668,6 +2668,10 @@ pub const UserVM = struct {
         return gvm.checkMemory(trace);
     }
 
+    pub inline fn compile(_: UserVM, src: []const u8) !cy.ByteCodeBuffer {
+        return gvm.compile(src);
+    }
+
     pub inline fn eval(_: UserVM, src: []const u8, comptime trace: bool) !Value {
         return gvm.eval(src, trace);
     }

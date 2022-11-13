@@ -46,34 +46,34 @@ pub const VM = struct {
     stack: stdx.Stack(Value),
 
     /// Object heap pages.
-    heapPages: std.ArrayListUnmanaged(*HeapPage),
+    heapPages: cy.List(*HeapPage),
     heapFreeHead: ?*HeapObject,
 
     /// Symbol table used to lookup object fields and methods.
     /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
-    symbols: std.ArrayListUnmanaged(SymbolMap),
+    symbols: cy.List(SymbolMap),
     symbolsInfo: cy.List([]const u8),
 
     /// Used to track which symbols already exist. Only considers the name right now.
     symSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     /// Regular function symbol table.
-    funcSyms: std.ArrayListUnmanaged(FuncSymbolEntry),
+    funcSyms: cy.List(FuncSymbolEntry),
     funcSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     /// Struct fields symbol table.
-    fieldSyms: std.ArrayListUnmanaged(FieldSymbolMap),
+    fieldSyms: cy.List(FieldSymbolMap),
     fieldSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     /// Structs.
-    structs: std.ArrayListUnmanaged(Struct),
+    structs: cy.List(Struct),
     iteratorObjSym: SymbolId,
     pairIteratorObjSym: SymbolId,
     nextObjSym: SymbolId,
 
     globals: std.StringHashMapUnmanaged(SymbolId),
 
-    u8Buf: std.ArrayListUnmanaged(u8),
+    u8Buf: cy.List(u8),
 
     panicMsg: []const u8,
 
@@ -138,7 +138,7 @@ pub const VM = struct {
         self.fieldSyms.deinit(self.alloc);
         self.fieldSymSignatures.deinit(self.alloc);
 
-        for (self.heapPages.items) |page| {
+        for (self.heapPages.items()) |page| {
             self.alloc.destroy(page);
         }
         self.heapPages.deinit(self.alloc);
@@ -152,12 +152,12 @@ pub const VM = struct {
 
     /// Returns the first free HeapObject.
     fn growHeapPages(self: *VM, numPages: usize) !*HeapObject {
-        var idx = self.heapPages.items.len;
-        try self.heapPages.resize(self.alloc, self.heapPages.items.len + numPages);
+        var idx = self.heapPages.len;
+        try self.heapPages.resize(self.alloc, self.heapPages.len + numPages);
 
         // Allocate first page.
         var page = try self.alloc.create(HeapPage);
-        self.heapPages.items[idx] = page;
+        self.heapPages.buf[idx] = page;
         // First HeapObject at index 0 is reserved so that freeObject can get the previous slot without a bounds check.
         page.objects[0].common = .{
             .structId = 0, // Non-NullId so freeObject doesn't think it's a free span.
@@ -178,9 +178,9 @@ pub const VM = struct {
         page.objects[page.objects.len-1].freeSpan.start = first;
         var last = first;
         idx += 1;
-        while (idx < self.heapPages.items.len) : (idx += 1) {
+        while (idx < self.heapPages.len) : (idx += 1) {
             page = try self.alloc.create(HeapPage);
-            self.heapPages.items[idx] = page;
+            self.heapPages.buf[idx] = page;
 
             page.objects[0].common = .{
                 .structId = 0,
@@ -293,7 +293,7 @@ pub const VM = struct {
     pub fn dumpInfo(self: *VM) void {
         log.info("stack cap: {}", .{self.stack.buf.len});
         log.info("stack top: {}", .{self.stack.top});
-        log.info("heap pages: {}", .{self.heapPages.items.len});
+        log.info("heap pages: {}", .{self.heapPages.len});
 
         // Dump object symbols.
         {
@@ -551,7 +551,7 @@ pub const VM = struct {
 
     fn allocObject(self: *VM) !*HeapObject {
         if (self.heapFreeHead == null) {
-            self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.items.len * 15) / 10));
+            self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.len * 15) / 10));
         }
         const ptr = self.heapFreeHead.?;
         if (ptr.freeSpan.len == 1) {
@@ -653,7 +653,7 @@ pub const VM = struct {
 
         const firstStr = self.valueAsString(strs[0]);
         try self.u8Buf.resize(self.alloc, firstStr.len);
-        std.mem.copy(u8, self.u8Buf.items, firstStr);
+        std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
         var writer = self.u8Buf.writer(self.alloc);
         for (vals) |val, i| {
@@ -662,8 +662,8 @@ pub const VM = struct {
         }
 
         const obj = try self.allocObject();
-        const buf = try self.alloc.alloc(u8, self.u8Buf.items.len);
-        std.mem.copy(u8, buf, self.u8Buf.items);
+        const buf = try self.alloc.alloc(u8, self.u8Buf.len);
+        std.mem.copy(u8, buf, self.u8Buf.items());
         obj.string = .{
             .structId = StringS,
             .rc = 1,
@@ -767,7 +767,7 @@ pub const VM = struct {
         const s = Struct{
             .name = "",
         };
-        const id = @intCast(u32, self.structs.items.len);
+        const id = @intCast(u32, self.structs.len);
         try self.structs.append(self.alloc, s);
         return id;
     }
@@ -784,7 +784,7 @@ pub const VM = struct {
     pub fn ensureFuncSym(self: *VM, name: []const u8) !SymbolId {
         const res = try self.funcSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.funcSyms.items.len);
+            const id = @intCast(u32, self.funcSyms.len);
             try self.funcSyms.append(self.alloc, .{
                 .entryT = .none,
                 .inner = undefined,
@@ -799,7 +799,7 @@ pub const VM = struct {
     pub fn ensureFieldSym(self: *VM, name: []const u8) !SymbolId {
         const res = try self.fieldSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.fieldSyms.items.len);
+            const id = @intCast(u32, self.fieldSyms.len);
             try self.fieldSyms.append(self.alloc, .{
                 .mapT = .empty,
                 .inner = undefined,
@@ -815,7 +815,7 @@ pub const VM = struct {
     pub fn ensureStructSym(self: *VM, name: []const u8) !SymbolId {
         const res = try self.symSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.symbols.items.len);
+            const id = @intCast(u32, self.symbols.len);
             try self.symbols.append(self.alloc, .{
                 .mapT = .empty,
                 .inner = undefined,
@@ -829,21 +829,21 @@ pub const VM = struct {
     }
 
     pub inline fn setFuncSym(self: *VM, symId: SymbolId, sym: FuncSymbolEntry) !void {
-        self.funcSyms.items[symId] = sym;
+        self.funcSyms.buf[symId] = sym;
     }
 
     pub fn addStructSym(self: *VM, id: StructId, symId: SymbolId, sym: SymbolEntry) !void {
-        switch (self.symbols.items[symId].mapT) {
+        switch (self.symbols.buf[symId].mapT) {
             .empty => {
-                self.symbols.items[symId].mapT = .oneStruct;
-                self.symbols.items[symId].inner = .{
+                self.symbols.buf[symId].mapT = .oneStruct;
+                self.symbols.buf[symId].inner = .{
                     .oneStruct = .{
                         .id = id,
                         .sym = sym,
                     },
                 };
             },
-            else => stdx.panicFmt("unsupported {}", .{self.symbols.items[symId].mapT}),
+            else => stdx.panicFmt("unsupported {}", .{self.symbols.buf[symId].mapT}),
         }
     }
 
@@ -958,7 +958,7 @@ pub const VM = struct {
 
         // No concept of root vars yet. Just report any existing retained objects.
         // First construct the graph.
-        for (self.heapPages.items) |page| {
+        for (self.heapPages.items()) |page| {
             for (page.objects[1..]) |*obj| {
                 if (obj.common.structId != NullId) {
                     try nodes.put(self.alloc, obj, .{
@@ -1120,7 +1120,7 @@ pub const VM = struct {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
-            const symMap = self.fieldSyms.items[symId];
+            const symMap = self.fieldSyms.buf[symId];
             switch (symMap.mapT) {
                 .oneStruct => {
                     if (obj.common.structId == symMap.inner.oneStruct.id) {
@@ -1202,7 +1202,7 @@ pub const VM = struct {
     /// Current stack top is already pointing past the last arg.
     fn callSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
-        const sym = self.funcSyms.items[symId];
+        const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
             .nativeFunc1 => {
                 const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
@@ -1328,7 +1328,7 @@ pub const VM = struct {
         const recv = self.stack.buf[self.stack.top - 1];
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer().?);
-            const map = self.symbols.items[symId];
+            const map = self.symbols.buf[symId];
             switch (map.mapT) {
                 .oneStruct => {
                     @setRuntimeSafety(debug);

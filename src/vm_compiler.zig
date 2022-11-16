@@ -607,6 +607,13 @@ pub const VMcompiler = struct {
         }
     }
 
+    fn pushEmptyJump(self: *VMcompiler) !void {
+        try self.jumpStack.append(self.alloc, .{
+            .pc = @intCast(u32, self.buf.ops.items.len),
+        });
+        try self.buf.pushOp1(.jump, 0);
+    }
+
     fn pushIterSubBlock(self: *VMcompiler) !void {
         self.curBlock.iterBlockDepth += 1;
         try self.pushSubBlock();
@@ -1042,29 +1049,48 @@ pub const VMcompiler = struct {
                 const cond = self.nodes[node.head.left_right.left];
                 _ = try self.genExpr(cond, false);
 
-                var opStart = self.buf.ops.items.len;
+                var lastCondJump = self.buf.ops.items.len;
                 try self.buf.pushOp1(.jumpNotCond, 0);
 
                 try self.genStatements(node.head.left_right.right, false);
-                self.buf.setOpArgs1(opStart + 1, @intCast(u8, self.buf.ops.items.len - opStart));
 
                 var elseClauseId = node.head.left_right.extra;
-                while (elseClauseId != NullId) {
-                    const elseClause = self.nodes[elseClauseId];
-                    if (elseClause.head.else_clause.cond == NullId) {
-                        try self.genStatements(elseClause.head.else_clause.body_head, false);
-                        break;
-                    } else {
-                        const elseCond = self.nodes[elseClause.head.else_clause.cond];
-                        _ = try self.genExpr(elseCond, false);
+                if (elseClauseId != NullId) {
+                    const jumpsStart = @intCast(u32, self.jumpStack.items.len);
+                    defer self.jumpStack.items.len = jumpsStart;
 
-                        opStart = self.buf.ops.items.len;
-                        try self.buf.pushOp1(.jumpNotCond, 0);
+                    var endsWithElse = false;
+                    while (elseClauseId != NullId) {
+                        try self.pushEmptyJump();
+                        self.buf.setOpArgs1(lastCondJump + 1, @intCast(u8, self.buf.ops.items.len - lastCondJump));
 
-                        try self.genStatements(elseClause.head.else_clause.body_head, false);
-                        self.buf.setOpArgs1(opStart + 1, @intCast(u8, self.buf.ops.items.len - opStart));
-                        elseClauseId = elseClause.head.else_clause.else_clause;
+                        const elseClause = self.nodes[elseClauseId];
+                        if (elseClause.head.else_clause.cond == NullId) {
+                            try self.genStatements(elseClause.head.else_clause.body_head, false);
+                            endsWithElse = true;
+                            break;
+                        } else {
+                            const elseCond = self.nodes[elseClause.head.else_clause.cond];
+                            _ = try self.genExpr(elseCond, false);
+
+                            lastCondJump = self.buf.ops.items.len;
+                            try self.buf.pushOp1(.jumpNotCond, 0);
+
+                            try self.genStatements(elseClause.head.else_clause.body_head, false);
+                            elseClauseId = elseClause.head.else_clause.else_clause;
+                        }
                     }
+
+                    if (!endsWithElse) {
+                        self.buf.setOpArgs1(lastCondJump + 1, @intCast(u8, self.buf.ops.items.len - lastCondJump));
+                    }
+
+                    // Patch jumps.
+                    for (self.jumpStack.items[jumpsStart..]) |jump| {
+                        self.buf.setOpArgs1(jump.pc + 1, @intCast(u8, self.buf.ops.items.len - jump.pc));
+                    }
+                } else {
+                    self.buf.setOpArgs1(lastCondJump + 1, @intCast(u8, self.buf.ops.items.len - lastCondJump));
                 }
             },
             .return_stmt => {

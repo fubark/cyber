@@ -691,7 +691,7 @@ test "if expression" {
     try t.eq(val.asI32(), 456);
 }
 
-test "if statement" {
+test "Return statement." {
     const run = Runner.create();
     defer run.destroy();
 
@@ -700,8 +700,6 @@ test "if statement" {
         \\foo = true
         \\if foo:
         \\  return 123
-        \\else:
-        \\  return 456
     );
     try t.eq(val.asI32(), 123);
 
@@ -722,6 +720,44 @@ test "if statement" {
         \\  return 123
         \\else:
         \\  return 456
+    );
+    try t.eq(val.asI32(), 123);
+}
+
+test "if statement" {
+    const run = Runner.create();
+    defer run.destroy();
+
+    // If/else.
+    var val = try run.eval(
+        \\if true:
+        \\  foo = 123
+        \\else:
+        \\  foo = 456
+        \\foo
+    );
+    try t.eq(val.asI32(), 123);
+
+    val = try run.eval(
+        \\if false:
+        \\  foo = 123
+        \\else:
+        \\  foo = 456
+        \\foo
+    );
+    try t.eq(val.asI32(), 456);
+
+    t.setLogLevel(.debug);
+
+    // else if condition.
+    val = try run.eval(
+        \\if false:
+        \\  foo = 456
+        \\else true:
+        \\  foo = 123
+        \\else:
+        \\  foo = 456
+        \\foo
     );
     try t.eq(val.asI32(), 123);
 }
@@ -1185,6 +1221,10 @@ const Runner = struct {
         return self.inner.eval(src);
     }
 
+    fn compile(self: *Runner, src: []const u8) !cy.ByteCodeBuffer {
+        return self.inner.compile(src);
+    }
+
     fn eval2(self: *Runner, src: []const u8, embed_interrupts: bool) !cy.Value {
         return self.inner.eval2(src, embed_interrupts);
     }
@@ -1225,6 +1265,10 @@ const VMrunner = struct {
 
     fn traceEval(self: *VMrunner, src: []const u8) !cy.Value {
         return self.vm.eval(src, true);
+    }
+
+    fn compile(self: *VMrunner, src: []const u8) !cy.ByteCodeBuffer {
+        return self.vm.compile(src);
     }
 
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {

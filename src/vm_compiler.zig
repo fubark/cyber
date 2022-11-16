@@ -83,6 +83,9 @@ pub const VMcompiler = struct {
             .false_literal => {
                 return BoolType;
             },
+            .none => {
+                return AnyType;
+            },
             .arr_literal => {
                 var expr_id = node.head.child_head;
                 var i: u32 = 0;
@@ -1177,6 +1180,12 @@ pub const VMcompiler = struct {
                     try self.buf.pushOp(.pushFalse);
                 }
                 return BoolType;
+            },
+            .none => {
+                if (!discardTopExprReg) {
+                    try self.buf.pushOp(.pushNone);
+                }
+                return AnyType;
             },
             .arr_literal => {
                 var expr_id = node.head.child_head;

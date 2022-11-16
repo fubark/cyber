@@ -53,17 +53,16 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 4);
 }
 
-// test "Optionals" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Optionals" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     var val = try run.eval(
-//         \\foo = none
-//         \\foo
-//     );
-//     try t.eq(val.isNone(), true);
-//     run.deinitValue(val);
-// }
+    var val = try run.eval(
+        \\foo = none
+        \\foo
+    );
+    try t.eq(val.isNone(), true);
+}
 
 // test "Binary expr with generator function call." {
 //     const run = Runner.create();

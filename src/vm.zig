@@ -1714,17 +1714,17 @@ pub const VM = struct {
                 },
                 .jumpBack => {
                     @setRuntimeSafety(debug);
-                    self.pc -= self.ops[self.pc+1].arg;
+                    self.pc -= @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
                     continue;
                 },
                 .jump => {
                     @setRuntimeSafety(debug);
-                    self.pc += self.ops[self.pc+1].arg;
+                    self.pc += @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
                     continue;
                 },
                 .jumpNotCond => {
                     @setRuntimeSafety(debug);
-                    const pcOffset = self.ops[self.pc+1].arg;
+                    const pcOffset = @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
                     const cond = self.popRegister();
                     const condVal = if (cond.isBool()) b: {
                         break :b cond.asBool();
@@ -1735,7 +1735,7 @@ pub const VM = struct {
                     if (!condVal) {
                         self.pc += pcOffset;
                     } else {
-                        self.pc += 2;
+                        self.pc += 3;
                     }
                     continue;
                 },

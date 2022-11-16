@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
@@ -90,6 +91,10 @@ pub const ByteCodeBuffer = struct {
         try self.ops.appendSlice(self.alloc, operands);
     }
 
+    pub fn setOpArgU16(self: *ByteCodeBuffer, idx: usize, arg: u16) void {
+        @ptrCast(*align(1) u16, &self.ops.items[idx]).* = arg;
+    }
+
     pub fn setOpArgs1(self: *ByteCodeBuffer, idx: usize, arg: u8) void {
         self.ops.items[idx].arg = arg;
     }
@@ -164,9 +169,6 @@ pub const ByteCodeBuffer = struct {
                 .addSet,
                 .pushList,
                 .load,
-                .jumpBack,
-                .jump,
-                .jumpNotCond,
                 .release,
                 .pushCall0,
                 .pushCall1,
@@ -176,6 +178,9 @@ pub const ByteCodeBuffer = struct {
                     try w.print("{}", .{ops[pc+1].arg});
                     pc += 2;
                 },
+                .jumpBack,
+                .jump,
+                .jumpNotCond,
                 .pushCallObjSym0,
                 .pushCallObjSym1,
                 .pushCallSym0,
@@ -214,10 +219,18 @@ pub const ByteCodeBuffer = struct {
             }
             _ = try w.write("\n");
         }
-        std.debug.print("{s}\n", .{buf.items});
+        if (builtin.is_test) {
+            log.info("{s}", .{buf.items});
+        } else {
+            std.debug.print("{s}\n", .{buf.items});
+        }
 
         for (self.consts.items) |extra| {
-            std.debug.print("extra {}\n", .{extra});
+            if (builtin.is_test) {
+                log.info("extra {}\n", .{extra});
+            } else {
+                std.debug.print("extra {}\n", .{extra});
+            }
         }
     }
 };

@@ -610,11 +610,30 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn pushEmptyJump(self: *VMcompiler) !void {
-        try self.jumpStack.append(self.alloc, .{
-            .pc = @intCast(u32, self.buf.ops.items.len),
-        });
-        try self.buf.pushOp1(.jump, 0);
+    fn pushJumpStack(self: *VMcompiler, pc: u32) !void {
+        try self.jumpStack.append(self.alloc, .{ .pc = pc });
+    }
+
+    fn pushJumpBackTo(self: *VMcompiler, toPc: u32) !void {
+        const pc = self.buf.ops.items.len;
+        try self.buf.pushOp2(.jumpBack, 0, 0);
+        self.buf.setOpArgU16(pc + 1, @intCast(u16, pc - toPc));
+    }
+
+    fn pushEmptyJump(self: *VMcompiler) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp2(.jump, 0, 0);
+        return start;
+    }
+
+    fn pushEmptyJumpNotCond(self: *VMcompiler) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp2(.jumpNotCond, 0, 0);
+        return start;
+    }
+
+    fn patchJumpToCurrent(self: *VMcompiler, jumpPc: u32) void {
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
     }
 
     fn pushIterSubBlock(self: *VMcompiler) !void {
@@ -872,10 +891,8 @@ pub const VMcompiler = struct {
                 _ = try self.genExpr(expr, discardTopExprReg);
             },
             .break_stmt => {
-                try self.jumpStack.append(self.alloc, .{
-                    .pc = @intCast(u32, self.buf.ops.items.len),
-                });
-                try self.buf.pushOp1(.jump, 0);
+                const pc = try self.pushEmptyJump();
+                try self.pushJumpStack(pc);
             },
             .add_assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
@@ -958,13 +975,12 @@ pub const VMcompiler = struct {
                 const cond = self.nodes[node.head.left_right.left];
                 _ = try self.genExpr(cond, false);
 
-                var skipOpPc = self.buf.ops.items.len;
-                try self.buf.pushOp1(.jumpNotCond, 0);
+                var jumpPc = try self.pushEmptyJumpNotCond();
 
                 try self.genStatements(node.head.left_right.right, false);
-                try self.buf.pushOp1(.jumpBack, @intCast(u8, self.buf.ops.items.len - top));
+                try self.pushJumpBackTo(top);
 
-                self.buf.setOpArgs1(skipOpPc + 1, @intCast(u8, self.buf.ops.items.len - skipOpPc));
+                self.patchJumpToCurrent(jumpPc);
             },
             .for_inf_stmt => {
                 const pcSave = @intCast(u32, self.buf.ops.items.len);
@@ -981,11 +997,11 @@ pub const VMcompiler = struct {
                 // }
 
                 try self.genStatements(node.head.child_head, false);
-                try self.buf.pushOp1(.jumpBack, @intCast(u8, self.buf.ops.items.len - pcSave));
+                try self.pushJumpBackTo(pcSave);
 
                 // Patch break jumps.
                 for (self.jumpStack.items[jumpStackSave..]) |jump| {
-                    self.buf.setOpArgs1(jump.pc + 1, @intCast(u8, self.buf.ops.items.len - jump.pc));
+                    self.patchJumpToCurrent(jump.pc);
                 }
                 self.jumpStack.items.len = jumpStackSave;
             },
@@ -1052,8 +1068,7 @@ pub const VMcompiler = struct {
                 const cond = self.nodes[node.head.left_right.left];
                 _ = try self.genExpr(cond, false);
 
-                var lastCondJump = self.buf.ops.items.len;
-                try self.buf.pushOp1(.jumpNotCond, 0);
+                var lastCondJump = try self.pushEmptyJumpNotCond();
 
                 try self.genStatements(node.head.left_right.right, false);
 
@@ -1064,8 +1079,10 @@ pub const VMcompiler = struct {
 
                     var endsWithElse = false;
                     while (elseClauseId != NullId) {
-                        try self.pushEmptyJump();
-                        self.buf.setOpArgs1(lastCondJump + 1, @intCast(u8, self.buf.ops.items.len - lastCondJump));
+                        const pc = try self.pushEmptyJump();
+                        try self.pushJumpStack(pc);
+
+                        self.patchJumpToCurrent(lastCondJump);
 
                         const elseClause = self.nodes[elseClauseId];
                         if (elseClause.head.else_clause.cond == NullId) {
@@ -1076,8 +1093,7 @@ pub const VMcompiler = struct {
                             const elseCond = self.nodes[elseClause.head.else_clause.cond];
                             _ = try self.genExpr(elseCond, false);
 
-                            lastCondJump = self.buf.ops.items.len;
-                            try self.buf.pushOp1(.jumpNotCond, 0);
+                            lastCondJump = try self.pushEmptyJumpNotCond();
 
                             try self.genStatements(elseClause.head.else_clause.body_head, false);
                             elseClauseId = elseClause.head.else_clause.else_clause;
@@ -1085,15 +1101,15 @@ pub const VMcompiler = struct {
                     }
 
                     if (!endsWithElse) {
-                        self.buf.setOpArgs1(lastCondJump + 1, @intCast(u8, self.buf.ops.items.len - lastCondJump));
+                        self.patchJumpToCurrent(lastCondJump);
                     }
 
                     // Patch jumps.
                     for (self.jumpStack.items[jumpsStart..]) |jump| {
-                        self.buf.setOpArgs1(jump.pc + 1, @intCast(u8, self.buf.ops.items.len - jump.pc));
+                        self.patchJumpToCurrent(jump.pc);
                     }
                 } else {
-                    self.buf.setOpArgs1(lastCondJump + 1, @intCast(u8, self.buf.ops.items.len - lastCondJump));
+                    self.patchJumpToCurrent(lastCondJump);
                 }
             },
             .return_stmt => {
@@ -1310,16 +1326,14 @@ pub const VMcompiler = struct {
                 const cond = self.nodes[node.head.if_expr.cond];
                 _ = try self.genExpr(cond, false);
 
-                var jumpNotPc = self.buf.ops.items.len;
-                try self.buf.pushOp1(.jumpNotCond, 0);
+                var jumpNotPc = try self.pushEmptyJumpNotCond();
 
                 const trueExpr = self.nodes[node.head.if_expr.body_expr];
                 _ = try self.genExpr(trueExpr, discardTopExprReg);
 
-                const jumpPc = self.buf.ops.items.len;
-                try self.buf.pushOp1(.jump, 0);
+                const jumpPc = try self.pushEmptyJump();
 
-                self.buf.setOpArgs1(jumpNotPc + 1, @intCast(u8, self.buf.ops.items.len - jumpNotPc));
+                self.patchJumpToCurrent(jumpNotPc);
                 if (node.head.if_expr.else_clause != NullId) {
                     const else_clause = self.nodes[node.head.if_expr.else_clause];
                     const falseExpr = self.nodes[else_clause.head.child_head];
@@ -1329,7 +1343,7 @@ pub const VMcompiler = struct {
                         try self.buf.pushOp(.pushNone);
                     }
                 }
-                self.buf.setOpArgs1(jumpPc + 1, @intCast(u8, self.buf.ops.items.len - jumpPc));
+                self.patchJumpToCurrent(jumpPc);
 
                 return AnyType;
             },
@@ -1655,8 +1669,7 @@ pub const VMcompiler = struct {
             },
             .lambda_expr => {
                 if (!discardTopExprReg) {
-                    const jumpOpStart = self.buf.ops.items.len;
-                    try self.buf.pushOp1(.jump, 0);
+                    const jumpPc = try self.pushEmptyJump();
 
                     try self.pushBlock();
                     const opStart = @intCast(u32, self.buf.ops.items.len);
@@ -1670,7 +1683,7 @@ pub const VMcompiler = struct {
                     _ = try self.genMaybeRetainExpr(expr, false);
                     try self.endLocals();
                     try self.buf.pushOp(.ret1);
-                    self.buf.setOpArgs1(jumpOpStart + 1, @intCast(u8, self.buf.ops.items.len - jumpOpStart));
+                    self.patchJumpToCurrent(jumpPc);
 
                     // Reserve captured var locals together and push them onto execution stack.
                     for (self.curBlock.capturedVars.items) |*capVar| {

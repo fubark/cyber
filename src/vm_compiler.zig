@@ -26,6 +26,7 @@ pub const VMcompiler = struct {
     subBlocks: std.ArrayListUnmanaged(SubBlock),
     jumpStack: std.ArrayListUnmanaged(Jump),
     loadStack: std.ArrayListUnmanaged(Load),
+    nodeStack: std.ArrayListUnmanaged(cy.NodeId),
     defLocalStack: std.ArrayListUnmanaged(LocalId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
     curBlock: *Block,
@@ -47,6 +48,7 @@ pub const VMcompiler = struct {
             .subBlocks = .{},
             .jumpStack = .{},
             .loadStack = .{},
+            .nodeStack = .{},
             .defLocalStack = .{},
             .operandStack = .{},
             .curBlock = undefined,
@@ -72,6 +74,7 @@ pub const VMcompiler = struct {
         self.loadStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
+        self.nodeStack.deinit(self.alloc);
     }
 
     fn semaExpr(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) anyerror!Type {
@@ -116,18 +119,24 @@ pub const VMcompiler = struct {
                 return ConstStringType;
             },
             .stringTemplate => {
-                if (!discardTopExprReg or node.head.stringTemplate.exprHead != NullId) {
-                    if (node.head.stringTemplate.exprHead == NullId) {
-                        // nop
+                const first = self.nodes[node.head.stringTemplate.partsHead];
+                if (node.head.stringTemplate.firstIsString and first.next == NullId) {
+                    // nop
+                    return ConstStringType;
+                }
+
+                var nextIsExpr = !node.head.stringTemplate.firstIsString;
+                var curId = node.head.stringTemplate.partsHead;
+                while (true) {
+                    const cur = self.nodes[curId];
+                    if (nextIsExpr) {
+                        _ = try self.semaExpr(cur, discardTopExprReg);
+                    }
+                    if (cur.next == NullId) {
+                        break;
                     } else {
-                        var count: u8 = 0;
-                        var curId = node.head.stringTemplate.exprHead;
-                        while (curId != NullId) {
-                            count += 1;
-                            const expr = self.nodes[curId];
-                            _ = try self.semaExpr(expr, discardTopExprReg);
-                            curId = expr.next;
-                        }
+                        curId = cur.next;
+                        nextIsExpr = !nextIsExpr;
                     }
                 }
                 return StringType;
@@ -1255,7 +1264,7 @@ pub const VMcompiler = struct {
                     const token = self.tokens[node.start_token];
                     const literal = self.src[token.start_pos..token.data.end_pos];
                     const val = try std.fmt.parseFloat(f64, literal);
-                    const idx = try self.buf.pushConst(.{ .val = @bitCast(u64, val) });
+                    const idx = try self.buf.pushConst(cy.Const.init(@bitCast(u64, val)));
                     try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
                 }
                 return NumberType;
@@ -1274,36 +1283,63 @@ pub const VMcompiler = struct {
                 return ConstStringType;
             },
             .stringTemplate => {
-                if (!discardTopExprReg or node.head.stringTemplate.exprHead != NullId) {
-                    if (node.head.stringTemplate.exprHead == NullId) {
-                        // Just a string.
-                        const str = self.nodes[node.head.stringTemplate.stringHead];
-                        const token = self.tokens[str.start_token];
-                        const literal = self.src[token.start_pos..token.data.end_pos];
-                        const idx = try self.buf.pushStringConst(literal);
+                const first = self.nodes[node.head.stringTemplate.partsHead];
+                if (node.head.stringTemplate.firstIsString and first.next == NullId) {
+                    // Just a string.
+                    if (!discardTopExprReg) {
+                        const str = self.getNodeTokenString(first);
+                        const idx = try self.buf.pushStringConst(str);
                         try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
-                    } else {
-                        var curId = node.head.stringTemplate.stringHead;
-                        while (curId != NullId) {
-                            const str = self.nodes[curId];
-                            const token = self.tokens[str.start_token];
-                            const literal = self.src[token.start_pos..token.data.end_pos];
-
-                            const idx = try self.buf.pushStringConst(literal);
-                            try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
-                            curId = str.next;
-                        }
-                        var count: u8 = 0;
-                        curId = node.head.stringTemplate.exprHead;
-                        while (curId != NullId) {
-                            count += 1;
-                            const expr = self.nodes[curId];
-                            _ = try self.genExpr(expr, discardTopExprReg);
-                            curId = expr.next;
-                        }
-
-                        try self.buf.pushOp1(.pushStringTemplate, count);
+                        return ConstStringType;
                     }
+                }
+
+                if (!node.head.stringTemplate.firstIsString) {
+                    if (!discardTopExprReg) {
+                        // Insert empty string.
+                        const idx = try self.buf.pushStringConst("");
+                        try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
+                    }
+                }
+
+                const exprStart = self.nodeStack.items.len;
+                defer self.nodeStack.items.len = exprStart;
+
+                var nextIsExpr = !node.head.stringTemplate.firstIsString;
+                var curId = node.head.stringTemplate.partsHead;
+                while (true) {
+                    const cur = self.nodes[curId];
+                    if (!nextIsExpr) {
+                        if (!discardTopExprReg) {
+                            const str = self.getNodeTokenString(cur);
+                            const idx = try self.buf.pushStringConst(str);
+                            try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
+                        }
+                    } else {
+                        // Push all exprs together.
+                        try self.nodeStack.append(self.alloc, curId);
+                    }
+                    if (cur.next == NullId) {
+                        if (nextIsExpr) {
+                            // Insert empty string.
+                            if (!discardTopExprReg) {
+                                const idx = try self.buf.pushStringConst("");
+                                try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
+                            }
+                        }
+                        break;
+                    } else {
+                        curId = cur.next;
+                        nextIsExpr = !nextIsExpr;
+                    }
+                }
+
+                const exprs = self.nodeStack.items[exprStart..];
+                for (exprs) |exprId| {
+                    _ = try self.genExpr(exprId, discardTopExprReg);
+                }
+                if (!discardTopExprReg) {
+                    try self.buf.pushOp1(.pushStringTemplate, @intCast(u8, exprs.len));
                 }
                 return StringType;
             },
@@ -1748,9 +1784,6 @@ const Block = struct {
     /// Quickly determine whether a var is defined at the current position to the root level.
     defLocals: std.AutoHashMapUnmanaged(LocalId, void),
 
-    /// Temp vars only exist within their special block. eg. the current for loop element
-    tempVars: std.StringHashMapUnmanaged(LocalId),
-
     capturedVars: std.ArrayListUnmanaged(CapturedVar),
 
     /// See `SemaBlock.varsToInit`.
@@ -1765,7 +1798,6 @@ const Block = struct {
             .stackLen = 0,
             .vars = .{},
             .defLocals = .{},
-            .tempVars = .{},
             .capturedVars = .{},
             .varsToInit = .{},
             .iterBlockDepth = 0,
@@ -1776,7 +1808,6 @@ const Block = struct {
         self.vars.deinit(alloc);
         self.defLocals.deinit(alloc);
         self.capturedVars.deinit(alloc);
-        self.tempVars.deinit(alloc);
     }
 
     fn reserveLocal(self: *Block) !u8 {

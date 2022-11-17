@@ -470,6 +470,22 @@ test "Strings" {
     str = try run.assertValueString(val);
     try t.eqStr(str, "Hello World 123");
     run.deinitValue(val);
+
+    // String interpolation with expr at start.
+    val = try run.eval(
+        \\`\(10)`
+    );
+    str = try run.assertValueString(val);
+    try t.eqStr(str, "10");
+    run.deinitValue(val);
+
+    // String interpolation with nested paren group.
+    val = try run.eval(
+        \\`\((1 + 2) * 3)`
+    );
+    str = try run.assertValueString(val);
+    try t.eqStr(str, "9");
+    run.deinitValue(val);
 }
 
 test "Lists" {
@@ -746,8 +762,6 @@ test "if statement" {
     );
     try t.eq(val.asI32(), 456);
 
-    t.setLogLevel(.debug);
-
     // else if condition.
     val = try run.eval(
         \\if false:
@@ -999,11 +1013,24 @@ test "Closures." {
     try t.eq(val.asI32(), 123);
 }
 
+test "Function recursion." {
+    const run = Runner.create();
+    defer run.destroy();
+
+    var val = try run.eval(
+        \\func foo(n):
+        \\  if n is 0:
+        \\    return 0
+        \\  return n + foo(n-1)
+        \\foo(10)
+    );
+    try t.eq(val.asI32(), 55);
+}
+
 test "function declaration" {
     const run = Runner.create();
     defer run.destroy();
 
-    // Stack top should return to main.
     var val = try run.eval(
         \\func foo():
         \\    return 2 + 2

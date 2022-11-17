@@ -1841,6 +1841,7 @@ pub const Parser = struct {
                     // If left is an accessor expression or identifier, parse as assignment statement.
                     if (opts.returnLeftAssignExpr) {
                         switch (self.nodes.items[left_id].node_t) {
+                            .access_expr,
                             .arr_access_expr,
                             .ident => {
                                 opts.outIsAssignStmt.* = true;
@@ -1949,14 +1950,16 @@ pub const Parser = struct {
     fn parseReturnStatement(self: *Parser) !u32 {
         const start = self.next_pos;
         self.advanceToken();
-        if (try self.parseExpr(.{})) |expr_id| {
+        const token = self.peekToken();
+        if (token.token_t == .new_line or token.token_t == .none) {
+            return self.pushNode(.return_stmt, start);
+        } else {
+            const expr = try self.parseExpr(.{}) orelse return self.reportTokenError("Expected expression.", .{});
             const id = self.pushNode(.return_expr_stmt, start);
             self.nodes.items[id].head = .{
-                .child_head = expr_id,
+                .child_head = expr,
             };
             return id;
-        } else {
-            return self.pushNode(.return_stmt, start);
         }
     }
 

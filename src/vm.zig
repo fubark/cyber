@@ -3081,9 +3081,8 @@ pub fn evalLoopGrowStack(comptime trace: bool) linksection(".eval") error{StackO
     @setRuntimeSafety(debug);
     while (true) {
         @call(.{ .modifier = .always_inline }, gvm.evalLoop, .{trace}) catch |err| {
-            @setCold(true);
             if (err == error.StackOverflow) {
-                try @call(.{ .modifier = .never_inline }, gvm.stack.growTotalCapacity, .{gvm.alloc, gvm.stack.buf.len + 1});
+                try gvm.stack.growTotalCapacity(gvm.alloc, gvm.stack.buf.len + 1);
                 continue;
             } else if (err == error.End) {
                 return;

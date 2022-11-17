@@ -103,7 +103,7 @@ pub const ByteCodeBuffer = struct {
         const slice = try self.getStringConst(str);
         const idx = @intCast(u32, self.consts.items.len);
         const val = cy.Value.initConstStr(slice.start, @intCast(u16, slice.end - slice.start));
-        try self.consts.append(self.alloc, .{ .val = val.val });
+        try self.consts.append(self.alloc, Const.init(val.val));
         return idx;
     }
 
@@ -266,6 +266,10 @@ pub const Const = packed union {
         lower: u32,
         upper: u32,
     },
+
+    pub fn init(val: u64) Const {
+        return .{ .val = val };
+    }
 };
 
 const ConstStringTag: u2 = 0b00;
@@ -273,6 +277,12 @@ const ConstStringTag: u2 = 0b00;
 pub const OpData = packed union {
     code: OpCode,
     arg: u8,
+
+    pub fn initArg(arg: u8) OpData {
+        return .{
+            .arg = arg,
+        };
+    }
 };
 
 pub const OpCode = enum(u8) {

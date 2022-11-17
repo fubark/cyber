@@ -701,12 +701,8 @@ pub const VMcompiler = struct {
         return null;
     }
 
-    fn blockGetTempVar(self: *VMcompiler, varName: []const u8) ?LocalId {
-        return self.curBlock.tempVars.get(varName);
-    }
-
     fn blockNumLocals(self: *VMcompiler) u32 {
-        return self.curBlock.vars.size + self.curBlock.tempVars.size;
+        return self.curBlock.vars.size;
     }
 
     /// Returns the VarInfo if the var was in the current scope or the immediate non-main parent scope.

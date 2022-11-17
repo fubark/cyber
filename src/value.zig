@@ -42,8 +42,6 @@ pub const ValuePair = struct {
 /// Pointer values can be at most 51 bits since the sign bit and quiet nan take up 13 bits.
 pub const Value = packed union {
     val: u64,
-    /// Split into two 4-byte words. Must consider endian.
-    // two: [2]u32,
     /// Call frame return info.
     retInfo: packed struct {
         pc: u32,
@@ -51,6 +49,10 @@ pub const Value = packed union {
         numRetVals: u2,
         retFlag: u1,
     },
+    // two: packed struct {
+    //     low: u32,
+    //     high: u32,
+    // },
 
     pub inline fn asI32(self: *const Value) i32 {
         @setRuntimeSafety(debug);
@@ -176,6 +178,11 @@ pub const Value = packed union {
     pub inline fn initF64(val: f64) Value {
         @setRuntimeSafety(debug);
         return .{ .val = @bitCast(u64, val) };
+    }
+
+    pub inline fn initRaw(val: u64) Value {
+        @setRuntimeSafety(debug);
+        return .{ .val = val };
     }
 
     pub inline fn initNone() linksection(".eval") Value {

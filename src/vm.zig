@@ -19,7 +19,6 @@ pub const StringS: StructId = 4;
 var tempU8Buf: [256]u8 = undefined;
 
 /// Accessing the immediate VM vars is faster when the virtual address is known at compile time.
-/// This also puts it in the .data section which can be closer to the eval hot loop.
 pub var gvm: VM = undefined;
 
 pub fn getUserVM() UserVM {
@@ -447,7 +446,7 @@ pub const VM = struct {
             defer self.stack.top = 0;
             return self.popRegister();
         } else {
-            log.debug("unexpected stack top: {}", .{self.stack.top});
+            log.debug("unexpected stack top: {}, expected: {}", .{self.stack.top, buf.mainLocalSize});
             return error.BadTop;
         }
     }
@@ -722,12 +721,12 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    inline fn getStackFrameValue(self: *const VM, offset: u8) linksection(".eval") Value {
+    inline fn getLocal(self: *const VM, offset: u8) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return self.stack.buf[self.framePtr + offset];
     }
 
-    inline fn setStackFrameValue(self: *const VM, offset: u8, val: Value) linksection(".eval") void {
+    inline fn setLocal(self: *const VM, offset: u8, val: Value) linksection(".eval") void {
         @setRuntimeSafety(debug);
         self.stack.buf[self.framePtr + offset] = val;
     }
@@ -1370,6 +1369,34 @@ pub const VM = struct {
             }
             if (builtin.mode == .Debug) {
                 switch (self.ops[self.pc].code) {
+                    .pushCallObjSym0 => {
+                        const methodId = self.ops[self.pc+1].arg;
+                        const numArgs = self.ops[self.pc+2].arg;
+                        log.debug("{} op: {s} {} {}", .{self.pc, @tagName(self.ops[self.pc].code), methodId, numArgs});
+                    },
+                    .pushCallSym1 => {
+                        const funcId = self.ops[self.pc+1].arg;
+                        const numArgs = self.ops[self.pc+2].arg;
+                        log.debug("{} op: {s} {} {}", .{self.pc, @tagName(self.ops[self.pc].code), funcId, numArgs});
+                    },
+                    .pushCallSym0 => {
+                        const funcId = self.ops[self.pc+1].arg;
+                        const numArgs = self.ops[self.pc+2].arg;
+                        log.debug("{} op: {s} {} {}", .{self.pc, @tagName(self.ops[self.pc].code), funcId, numArgs});
+                    },
+                    .load => {
+                        const local = self.ops[self.pc+1].arg;
+                        log.debug("{} op: {s} {}", .{self.pc, @tagName(self.ops[self.pc].code), local});
+                    },
+                    .pushFieldRetain => {
+                        const fieldId = self.ops[self.pc+1].arg;
+                        log.debug("{} op: {s} {}", .{self.pc, @tagName(self.ops[self.pc].code), fieldId});
+                    },
+                    .pushMap => {
+                        const numEntries = self.ops[self.pc+1].arg;
+                        const startConst = self.ops[self.pc+2].arg;
+                        log.debug("{} op: {s} {} {}", .{self.pc, @tagName(self.ops[self.pc].code), numEntries, startConst});
+                    },
                     .pushConst => {
                         const idx = self.ops[self.pc+1].arg;
                         const val = Value{ .val = self.consts[idx].val };
@@ -1412,7 +1439,7 @@ pub const VM = struct {
                     try self.checkStackHasOneSpace();
                     const idx = self.ops[self.pc+1].arg;
                     self.pc += 2;
-                    self.pushValueNoCheck(Value{ .val = self.consts[idx].val });
+                    self.pushValueNoCheck(Value.initRaw(self.consts[idx].val));
                     continue;
                 },
                 .pushStringTemplate => {
@@ -1547,11 +1574,11 @@ pub const VM = struct {
 
                     if (leftOffset == NullByteId) {
                         const left = self.stack.buf[self.stack.top-1];
-                        const right = self.getStackFrameValue(rightOffset);
+                        const right = self.getLocal(rightOffset);
                         self.stack.buf[self.stack.top-1] = evalMinus(left, right);
                         continue;
                     } else {
-                        const left = self.getStackFrameValue(leftOffset);
+                        const left = self.getLocal(leftOffset);
                         const right = self.stack.buf[self.stack.top-1];
                         self.stack.buf[self.stack.top-1] = evalMinus(left, right);
                         continue;
@@ -1564,8 +1591,8 @@ pub const VM = struct {
                     const rightOffset = self.ops[self.pc+2].arg;
                     self.pc += 3;
 
-                    const left = self.getStackFrameValue(leftOffset);
-                    const right = self.getStackFrameValue(rightOffset);
+                    const left = self.getLocal(leftOffset);
+                    const right = self.getLocal(rightOffset);
                     self.pushValueNoCheck(@call(.{ .modifier = .never_inline }, evalMinus, .{left, right}));
                     continue;
                 },
@@ -1625,11 +1652,11 @@ pub const VM = struct {
                     self.pc += 2;
                     const val = self.popRegister();
 
-                    const left = self.getStackFrameValue(offset);
+                    const left = self.getLocal(offset);
                     if (left.isNumber()) {
-                        self.setStackFrameValue(offset, evalAddNumber(left, val));
+                        self.setLocal(offset, evalAddNumber(left, val));
                     } else {
-                        self.setStackFrameValue(offset, evalAddOther(self, left, val));
+                        self.setLocal(offset, evalAddOther(self, left, val));
                     }
                     continue;
                 },
@@ -1638,9 +1665,9 @@ pub const VM = struct {
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.popRegister();
-                    const existing = self.getStackFrameValue(offset);
+                    const existing = self.getLocal(offset);
                     self.release(existing, trace);
-                    self.setStackFrameValue(offset, val);
+                    self.setLocal(offset, val);
                     continue;
                 },
                 .setInit => {
@@ -1649,7 +1676,7 @@ pub const VM = struct {
                     const locals = self.ops[self.pc+2..self.pc+2+numLocals];
                     self.pc += 2 + numLocals;
                     for (locals) |local| {
-                        self.setStackFrameValue(local.arg, Value.initNone());
+                        self.setLocal(local.arg, Value.initNone());
                     }
                 },
                 .set => {
@@ -1657,7 +1684,7 @@ pub const VM = struct {
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     const val = self.popRegister();
-                    self.setStackFrameValue(offset, val);
+                    self.setLocal(offset, val);
                     continue;
                 },
                 .setIndex => {
@@ -1675,7 +1702,7 @@ pub const VM = struct {
                     try self.checkStackHasOneSpace();
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
-                    const val = self.getStackFrameValue(offset);
+                    const val = self.getLocal(offset);
                     self.pushValueNoCheck(val);
                     continue;
                 },
@@ -1684,7 +1711,7 @@ pub const VM = struct {
                     try self.checkStackHasOneSpace();
                     const offset = self.ops[self.pc+1].arg;
                     self.pc += 2;
-                    const val = self.getStackFrameValue(offset);
+                    const val = self.getLocal(offset);
                     self.pushValueNoCheck(val);
                     self.retain(val);
                     if (trace) {
@@ -1744,7 +1771,7 @@ pub const VM = struct {
                     const local = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     // TODO: Inline if heap object.
-                    @call(.{ .modifier = .never_inline }, self.release, .{self.getStackFrameValue(local), trace});
+                    @call(.{ .modifier = .never_inline }, self.release, .{self.getLocal(local), trace});
                     continue;
                 },
                 .pushCall0 => {
@@ -1894,7 +1921,7 @@ pub const VM = struct {
                             if (next.isNone()) {
                                 break;
                             }
-                            self.setStackFrameValue(local, next);
+                            self.setLocal(local, next);
                             self.pc = innerPc;
                             @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
@@ -1929,7 +1956,7 @@ pub const VM = struct {
                             }
                         } else {
                             while (i < rangeEnd) : (i += step) {
-                                self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
+                                self.setLocal(local, Value.initF64(i));
                                 self.pc = innerPc;
                                 @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                     if (err == error.BreakLoop) {
@@ -1950,7 +1977,7 @@ pub const VM = struct {
                             }
                         } else {
                             while (i > rangeEnd) : (i -= step) {
-                                self.setStackFrameValue(local, .{ .val = @bitCast(u64, i) });
+                                self.setLocal(local, Value.initF64(i));
                                 self.pc = innerPc;
                                 @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                     if (err == error.BreakLoop) {

@@ -897,8 +897,7 @@ pub const VMcompiler = struct {
                 return;
             },
             .expr_stmt => {
-                const expr = self.nodes[node.head.child_head];
-                _ = try self.genExpr(expr, discardTopExprReg);
+                _ = try self.genExpr(node.head.child_head, discardTopExprReg);
             },
             .break_stmt => {
                 const pc = try self.pushEmptyJump();
@@ -911,8 +910,7 @@ pub const VMcompiler = struct {
                     const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
 
                     if (self.getScopedVarInfo(varName)) |info| {
-                        const right = self.nodes[node.head.left_right.right];
-                        const rtype = try self.genExpr(right, false);
+                        const rtype = try self.genExpr(node.head.left_right.right, false);
                         if (info.vtype.typeT != .number and info.vtype.typeT != .any and rtype.typeT != info.vtype.typeT) {
                             return self.reportError("Type mismatch: Expected {}", .{info.vtype.typeT}, node);
                         }
@@ -934,8 +932,7 @@ pub const VMcompiler = struct {
                         }
                     }
 
-                    const right = self.nodes[node.head.left_right.right];
-                    const rtype = try self.genMaybeRetainExpr(right, false);
+                    const rtype = try self.genMaybeRetainExpr(node.head.left_right.right, false);
                     _ = try self.genSetVar(varName, rtype);
                 } else if (left.node_t == .arr_access_expr) {
                     const accessLeft = self.nodes[left.head.left_right.left];
@@ -982,8 +979,7 @@ pub const VMcompiler = struct {
             },
             .for_cond_stmt => {
                 const top = @intCast(u32, self.buf.ops.items.len);
-                const cond = self.nodes[node.head.left_right.left];
-                _ = try self.genExpr(cond, false);
+                _ = try self.genExpr(node.head.left_right.left, false);
 
                 var jumpPc = try self.pushEmptyJumpNotCond();
 
@@ -1019,8 +1015,7 @@ pub const VMcompiler = struct {
                 try self.pushIterSubBlock();
                 defer self.popIterSubBlock();
 
-                const iterable = self.nodes[node.head.for_iter_stmt.iterable];
-                _ = try self.genExpr(iterable, false);
+                _ = try self.genExpr(node.head.for_iter_stmt.iterable, false);
 
                 const as_clause = self.nodes[node.head.for_iter_stmt.as_clause];
                 const ident = self.nodes[as_clause.head.as_iter_clause.value];
@@ -1057,10 +1052,8 @@ pub const VMcompiler = struct {
 
                 // Push range start/end.
                 const range_clause = self.nodes[node.head.for_range_stmt.range_clause];
-                const left_range = self.nodes[range_clause.head.left_right.left];
-                _ = try self.genExpr(left_range, false);
-                const right_range = self.nodes[range_clause.head.left_right.right];
-                _ = try self.genExpr(right_range, false);
+                _ = try self.genExpr(range_clause.head.left_right.left, false);
+                _ = try self.genExpr(range_clause.head.left_right.right, false);
 
                 // Push custom step.
                 const stepConst = try self.buf.pushConst(.{ .val = f64One.val });
@@ -1075,8 +1068,7 @@ pub const VMcompiler = struct {
                 self.buf.setOpArgs1(forOpStart+2, @intCast(u8, self.buf.ops.items.len - forOpStart));
             },
             .if_stmt => {
-                const cond = self.nodes[node.head.left_right.left];
-                _ = try self.genExpr(cond, false);
+                _ = try self.genExpr(node.head.left_right.left, false);
 
                 var lastCondJump = try self.pushEmptyJumpNotCond();
 
@@ -1100,8 +1092,7 @@ pub const VMcompiler = struct {
                             endsWithElse = true;
                             break;
                         } else {
-                            const elseCond = self.nodes[elseClause.head.else_clause.cond];
-                            _ = try self.genExpr(elseCond, false);
+                            _ = try self.genExpr(elseClause.head.else_clause.cond, false);
 
                             lastCondJump = try self.pushEmptyJumpNotCond();
 
@@ -1132,8 +1123,7 @@ pub const VMcompiler = struct {
                 }
             },
             .return_expr_stmt => {
-                const expr = self.nodes[node.head.child_head];
-                _ = try self.genExpr(expr, false);
+                _ = try self.genExpr(node.head.child_head, false);
 
                 if (self.blocks.items.len == 1) {
                     try self.endLocals();
@@ -1166,10 +1156,10 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn genMaybeRetainExpr(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) anyerror!Type {
+    fn genMaybeRetainExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
+        const node = self.nodes[nodeId];
         if (node.node_t == .ident) {
-            const token = self.tokens[node.start_token];
-            const name = self.src[token.start_pos..token.data.end_pos];
+            const name = self.getNodeTokenString(node);
             if (try self.readScopedVar(name)) |info| {
                 if (info.vtype.rcCandidate) {
                     try self.buf.pushOp1(.loadRetain, info.local);
@@ -1188,7 +1178,7 @@ pub const VMcompiler = struct {
                 return AnyType;
             }
         } else {
-            return self.genExpr(node, discardTopExprReg);
+            return self.genExpr(nodeId, discardTopExprReg);
         }
     }
 
@@ -1217,8 +1207,8 @@ pub const VMcompiler = struct {
                 var expr_id = node.head.child_head;
                 var i: u32 = 0;
                 while (expr_id != NullId) : (i += 1) {
-                    var expr = self.nodes[expr_id];
-                    _ = try self.genExpr(expr, discardTopExprReg);
+                    const expr = self.nodes[expr_id];
+                    _ = try self.genExpr(expr_id, discardTopExprReg);
                     expr_id = expr.next;
                 }
 
@@ -1243,14 +1233,13 @@ pub const VMcompiler = struct {
                                 const token = self.tokens[key.start_token];
                                 const name = self.src[token.start_pos..token.data.end_pos];
                                 const idx = try self.buf.pushStringConst(name);
-                                try self.operandStack.append(self.alloc, .{ .arg = @intCast(u8, idx) });
+                                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                             },
                             else => stdx.panicFmt("unsupported key {}", .{key.node_t}),
                         }
                     }
 
-                    const val = self.nodes[entry.head.left_right.right];
-                    _ = try self.genExpr(val, discardTopExprReg);
+                    _ = try self.genExpr(entry.head.left_right.right, discardTopExprReg);
                     entry_id = entry.next;
                 }
 
@@ -1360,21 +1349,18 @@ pub const VMcompiler = struct {
                 }
             },
             .if_expr => {
-                const cond = self.nodes[node.head.if_expr.cond];
-                _ = try self.genExpr(cond, false);
+                _ = try self.genExpr(node.head.if_expr.cond, false);
 
                 var jumpNotPc = try self.pushEmptyJumpNotCond();
 
-                const trueExpr = self.nodes[node.head.if_expr.body_expr];
-                _ = try self.genExpr(trueExpr, discardTopExprReg);
+                _ = try self.genExpr(node.head.if_expr.body_expr, discardTopExprReg);
 
                 const jumpPc = try self.pushEmptyJump();
 
                 self.patchJumpToCurrent(jumpNotPc);
                 if (node.head.if_expr.else_clause != NullId) {
                     const else_clause = self.nodes[node.head.if_expr.else_clause];
-                    const falseExpr = self.nodes[else_clause.head.child_head];
-                    _ = try self.genExpr(falseExpr, discardTopExprReg);
+                    _ = try self.genExpr(else_clause.head.child_head, discardTopExprReg);
                 } else {
                     if (!discardTopExprReg) {
                         try self.buf.pushOp(.pushNone);
@@ -1385,8 +1371,7 @@ pub const VMcompiler = struct {
                 return AnyType;
             },
             .arr_range_expr => {
-                const arr = self.nodes[node.head.arr_range_expr.arr];
-                _ = try self.genExpr(arr, discardTopExprReg);
+                _ = try self.genExpr(node.head.arr_range_expr.arr, discardTopExprReg);
 
                 if (node.head.arr_range_expr.left == NullId) {
                     if (!discardTopExprReg) {
@@ -1394,8 +1379,7 @@ pub const VMcompiler = struct {
                         try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
                     }
                 } else {
-                    const left = self.nodes[node.head.arr_range_expr.left];
-                    _ = try self.genExpr(left, discardTopExprReg);
+                    _ = try self.genExpr(node.head.arr_range_expr.left, discardTopExprReg);
                 }
                 if (node.head.arr_range_expr.right == NullId) {
                     if (!discardTopExprReg) {
@@ -1403,8 +1387,7 @@ pub const VMcompiler = struct {
                         try self.buf.pushOp1(.pushConst, @intCast(u8, idx));
                     }
                 } else {
-                    const right = self.nodes[node.head.arr_range_expr.right];
-                    _ = try self.genExpr(right, discardTopExprReg);
+                    _ = try self.genExpr(node.head.arr_range_expr.right, discardTopExprReg);
                 }
 
                 if (!discardTopExprReg) {
@@ -1413,15 +1396,13 @@ pub const VMcompiler = struct {
                 return ListType;
             },
             .access_expr => {
-                const left = self.nodes[node.head.left_right.left];
-                _ = try self.genExpr(left, discardTopExprReg);
+                _ = try self.genExpr(node.head.left_right.left, discardTopExprReg);
 
                 // right should be an ident.
                 const right = self.nodes[node.head.left_right.right];
-                const token = self.tokens[right.start_token];
 
-                const name = self.src[token.start_pos .. token.data.end_pos];
-                const symId = try self.vm.ensureFieldSym(name);
+                const name = self.getNodeTokenString(right);
+                const fieldId = try self.vm.ensureFieldSym(name);
 
                 if (!discardTopExprReg) {
                     try self.buf.pushOp1(.pushField, @intCast(u8, symId));
@@ -1430,18 +1411,16 @@ pub const VMcompiler = struct {
                 return AnyType;
             },
             .arr_access_expr => {
-                const left = self.nodes[node.head.left_right.left];
-                _ = try self.genExpr(left, discardTopExprReg);
+                _ = try self.genExpr(node.head.left_right.left, discardTopExprReg);
 
                 const index = self.nodes[node.head.left_right.right];
                 if (index.node_t == .unary_expr and index.head.unary.op == .minus) {
-                    const right = self.nodes[index.head.unary.child];
-                    _ = try self.genExpr(right, discardTopExprReg);
+                    _ = try self.genExpr(index.head.unary.child, discardTopExprReg);
                     if (!discardTopExprReg) {
                         try self.buf.pushOp(.pushReverseIndex);
                     }
                 } else {
-                    _ = try self.genExpr(index, discardTopExprReg);
+                    _ = try self.genExpr(node.head.left_right.right, discardTopExprReg);
                     if (!discardTopExprReg) {
                         try self.buf.pushOp(.pushIndex);
                     }
@@ -1449,18 +1428,17 @@ pub const VMcompiler = struct {
                 return AnyType;
             },
             .unary_expr => {
-                const child = self.nodes[node.head.unary.child];
                 const op = node.head.unary.op;
                 switch (op) {
                     .minus => {
-                        _ = try self.genExpr(child, discardTopExprReg);
+                        _ = try self.genExpr(node.head.unary.child, discardTopExprReg);
                         if (!discardTopExprReg) {
                             try self.buf.pushOp(.pushNeg);
                         }
                         return NumberType;
                     },
                     .not => {
-                        _ = try self.genExpr(child, discardTopExprReg);
+                        _ = try self.genExpr(node.head.unary.child, discardTopExprReg);
                         if (!discardTopExprReg) {
                             try self.buf.pushOp(.pushNot);
                         }
@@ -1470,8 +1448,8 @@ pub const VMcompiler = struct {
                 }
             },
             .bin_expr => {
-                const left = self.nodes[node.head.left_right.left];
-                const right = self.nodes[node.head.left_right.right];
+                const left = node.head.left_right.left;
+                const right = node.head.left_right.right;
 
                 const op = @intToEnum(cy.BinaryExprOp, node.head.left_right.extra);
                 switch (op) {
@@ -1522,9 +1500,9 @@ pub const VMcompiler = struct {
                     .minus => {
                         // Generating pushMinus1 for fib.cy increases performance ~10-12%.
                         var leftVar: u8 = 255;
-                        if (left.node_t == .ident) {
-                            const token = self.tokens[left.start_token];
-                            const name = self.src[token.start_pos .. token.data.end_pos];
+                        const leftN = self.nodes[left];
+                        if (leftN.node_t == .ident) {
+                            const name = self.getNodeTokenString(leftN);
                             if (try self.readScopedVar(name)) |info| {
                                 leftVar = info.local;
                             }
@@ -1533,9 +1511,9 @@ pub const VMcompiler = struct {
                             _ = try self.genExpr(left, discardTopExprReg);
                         }
                         var rightVar: u8 = 255;
-                        if (right.node_t == .ident) {
-                            const token = self.tokens[right.start_token];
-                            const name = self.src[token.start_pos .. token.data.end_pos];
+                        const rightN = self.nodes[right];
+                        if (rightN.node_t == .ident) {
+                            const name = self.getNodeTokenString(rightN);
                             if (try self.readScopedVar(name)) |info| {
                                 rightVar = info.local;
                             }
@@ -1558,6 +1536,14 @@ pub const VMcompiler = struct {
                                     try self.buf.pushOp2(.pushMinus2, leftVar, rightVar);
                                 }
                             }
+                        }
+                        return NumberType;
+                    },
+                    .bitwiseAnd => {
+                        _ = try self.genExpr(left, discardTopExprReg);
+                        _ = try self.genExpr(right, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp(.pushBitwiseAnd);
                         }
                         return NumberType;
                     },
@@ -1642,7 +1628,7 @@ pub const VMcompiler = struct {
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
-                                _ = try self.genMaybeRetainExpr(arg, false);
+                                _ = try self.genMaybeRetainExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
 
@@ -1671,7 +1657,7 @@ pub const VMcompiler = struct {
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
-                                _ = try self.genMaybeRetainExpr(arg, false);
+                                _ = try self.genMaybeRetainExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
 
@@ -1689,7 +1675,7 @@ pub const VMcompiler = struct {
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
-                                _ = try self.genMaybeRetainExpr(arg, false);
+                                _ = try self.genMaybeRetainExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
 
@@ -1715,9 +1701,8 @@ pub const VMcompiler = struct {
                     const loadStackSave = @intCast(u32, self.loadStack.items.len);
                     const func = self.funcDecls[node.head.func.decl_id];
                     try self.reserveFuncParams(func);
-                    const numParams = @intCast(u8, self.curBlock.stackLen);
-                    const expr = self.nodes[node.head.func.body_head];
-                    _ = try self.genMaybeRetainExpr(expr, false);
+                    const numParams = @intCast(u8, func.params.end - func.params.start);
+                    _ = try self.genMaybeRetainExpr(node.head.func.body_head, false);
                     try self.endLocals();
                     try self.buf.pushOp(.ret1);
                     self.patchJumpToCurrent(jumpPc);

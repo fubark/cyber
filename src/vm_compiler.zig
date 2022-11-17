@@ -264,6 +264,11 @@ pub const VMcompiler = struct {
                         _ = try self.semaExpr(right, discardTopExprReg);
                         return NumberType;
                     },
+                    .bitwiseAnd => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
                     .and_op => {
                         const ltype = try self.semaExpr(left, discardTopExprReg);
                         const rtype = try self.semaExpr(right, discardTopExprReg);

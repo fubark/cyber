@@ -1544,6 +1544,15 @@ pub const VM = struct {
                     self.stack.buf[self.stack.top-1] = evalAnd(left, right);
                     continue;
                 },
+                .pushBitwiseAnd => {
+                    @setRuntimeSafety(debug);
+                    self.pc += 1;
+                    self.stack.top -= 1;
+                    const right = self.stack.buf[self.stack.top];
+                    const left = self.stack.buf[self.stack.top-1];
+                    self.stack.buf[self.stack.top-1] = evalBitwiseAnd(left, right);
+                    continue;
+                },
                 .pushAdd => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
@@ -2170,6 +2179,17 @@ pub const VM = struct {
         }
     }
 };
+
+fn evalBitwiseAnd(left: Value, right: Value) Value {
+    @setRuntimeSafety(debug);
+    if (left.isNumber()) {
+       const f = @intToFloat(f64, left.asI32() & @floatToInt(i32, right.toF64()));
+       return Value.initF64(f);
+    } else {
+        log.debug("unsupported", .{});
+        unreachable;
+    }
+}
 
 fn evalAnd(left: cy.Value, right: cy.Value) cy.Value {
     if (left.isNumber()) {

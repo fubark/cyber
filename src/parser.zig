@@ -184,6 +184,9 @@ pub const Parser = struct {
         self.cur_indent = 0;
 
         const root_id = self.pushNode(.root, 0);
+
+        try self.pushBlock();
+        defer self.popBlock();
         const first_stmt = try self.parseBodyStatements(0);
         self.nodes.items[root_id].head = .{
             .child_head = first_stmt,
@@ -2138,13 +2141,14 @@ pub const Parser = struct {
     }
 };
 
-pub const OperatorType = enum(u3) {
+pub const OperatorType = enum {
     plus,
     minus,
     star,
     caret,
     slash,
     percent,
+    ampersand,
 };
 
 const LogicOpType = enum {
@@ -2270,6 +2274,7 @@ pub const BinaryExprOp = enum {
     caret,
     slash,
     percent,
+    bitwiseAnd,
     bang_equal,
     less,
     less_equal,
@@ -2492,6 +2497,7 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
         .caret => .caret,
         .slash => .slash,
         .percent => .percent,
+        .ampersand => .bitwiseAnd,
     };
 }
 
@@ -2747,6 +2753,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 '@' => p.pushToken(.at, start),
                 '-' => p.pushOpToken(.minus, start),
                 '%' => p.pushOpToken(.percent, start),
+                '&' => p.pushOpToken(.ampersand, start),
                 '+' => {
                     if (peekChar(p) == '=') {
                         advanceChar(p);

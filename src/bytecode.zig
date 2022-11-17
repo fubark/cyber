@@ -225,12 +225,20 @@ pub const ByteCodeBuffer = struct {
             std.debug.print("{s}\n", .{buf.items});
         }
 
+        buf.clearRetainingCapacity();
         for (self.consts.items) |extra| {
-            if (builtin.is_test) {
-                log.info("extra {}\n", .{extra});
+            const ww = buf.writer();
+            const val = cy.Value{ .val = extra.val };
+            if (val.isNumber()) {
+                try ww.print("{}\n", .{val.asF64()});
             } else {
-                std.debug.print("extra {}\n", .{extra});
+                try w.print("{}\n", .{extra});
             }
+        }
+        if (builtin.is_test) {
+            log.info("Constants:\n{s}", .{buf.items});
+        } else {
+            std.debug.print("Constants:\n{s}", .{buf.items});
         }
     }
 };

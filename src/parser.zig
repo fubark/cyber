@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const fatal = stdx.fatal;
@@ -7,6 +8,8 @@ pub const NodeId = u32;
 const NullId = std.math.maxInt(u32);
 const log = stdx.log.scoped(.parser);
 const IndexSlice = stdx.IndexSlice(u32);
+
+const dumpParseErrorStackTrace = builtin.mode == .Debug and true;
 
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "return", .return_k },
@@ -142,6 +145,9 @@ pub const Parser = struct {
         const root_id = self.parseRoot() catch |err| {
             log.debug("parse error: {} {s}", .{err, self.last_err});
             logSrcPos(self.src.items, self.last_err_pos, 20);
+            if (dumpParseErrorStackTrace) {
+                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+            }
             return ResultView{
                 .has_error = true,
                 .err_msg = self.last_err,

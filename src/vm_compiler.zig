@@ -100,6 +100,20 @@ pub const VMcompiler = struct {
 
                 return ListType;
             },
+            .structInit => {
+                const initializer = self.nodes[node.head.structInit.initializer];
+
+                var i: u32 = 0;
+                var entry_id = initializer.head.child_head;
+                while (entry_id != NullId) : (i += 1) {
+                    var entry = self.nodes[entry_id];
+
+                    const val = self.nodes[entry.head.left_right.right];
+                    _ = try self.semaExpr(val, discardTopExprReg);
+                    entry_id = entry.next;
+                }
+                return AnyType;
+            },
             .map_literal => {
                 var i: u32 = 0;
                 var entry_id = node.head.child_head;
@@ -448,6 +462,19 @@ pub const VMcompiler = struct {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
             },
+            .structDecl => {
+                var funcId = node.head.structDecl.funcsHead;
+                while (funcId != NullId) {
+                    const func = self.nodes[funcId];
+                    const decl = self.funcDecls[func.head.func.decl_id];
+
+                    const blockId = try self.pushSemaBlock();
+                    try self.semaReserveFuncParams(decl);
+                    try self.semaStmts(func.head.func.body_head, false);
+                    self.endSemaBlock(blockId);
+                    funcId = func.next;
+                }
+            },
             .func_decl => {
                 const func = self.funcDecls[node.head.func.decl_id];
 
@@ -573,7 +600,7 @@ pub const VMcompiler = struct {
     fn genVarInits(self: *VMcompiler) !void {
         const sBlock = self.semaBlocks.items[self.curSemaBlockId];
         if (sBlock.varsToInit.items.len > 0) {
-            try self.buf.pushOp1(.setInit, @intCast(u8, sBlock.varsToInit.items.len));
+            try self.buf.pushOp1(.setInitN, @intCast(u8, sBlock.varsToInit.items.len));
             try self.buf.pushOperandsRaw(sBlock.varsToInit.items);
         }
     }
@@ -930,6 +957,18 @@ pub const VMcompiler = struct {
         }
     }
 
+    fn reserveMethodParams(self: *VMcompiler, func: cy.FuncDecl) !void {
+        if (func.params.end > func.params.start + 1) {
+            for (self.funcParams[func.params.start + 1..func.params.end]) |param| {
+                const paramName = self.src[param.name.start..param.name.end];
+                const paramT = AnyType;
+                _ = try self.reserveLocalVar(paramName, paramT);
+            }
+        }
+        // Add self receiver param.
+        _ = try self.reserveLocalVar("self", AnyType);
+    }
+
     /// discardTopExprReg is usually true since statements aren't expressions and evaluating child expressions
     /// would just grow the register stack unnecessarily. However, the last main statement requires the
     /// resulting expr to persist to return from `eval`.
@@ -978,16 +1017,74 @@ pub const VMcompiler = struct {
                     const rtype = try self.genMaybeRetainExpr(node.head.left_right.right, false);
                     _ = try self.genSetVar(varName, rtype);
                 } else if (left.node_t == .arr_access_expr) {
-                    const accessLeft = self.nodes[left.head.left_right.left];
-                    _ = try self.genExpr(accessLeft, false);
-                    const accessRight = self.nodes[left.head.left_right.right];
-                    _ = try self.genExpr(accessRight, false);
-
-                    const right = self.nodes[node.head.left_right.right];
-                    _ = try self.genExpr(right, false);
+                    _ = try self.genExpr(left.head.left_right.left, false);
+                    _ = try self.genExpr(left.head.left_right.right, false);
+                    _ = try self.genExpr(node.head.left_right.right, false);
                     try self.buf.pushOp(.setIndex);
+                } else if (left.node_t == .access_expr) {
+                    _ = try self.genExpr(left.head.left_right.left, false);
+
+                    const accessRight = self.nodes[left.head.left_right.right];
+                    if (accessRight.node_t != .ident) {
+                        log.debug("Expected ident.", .{});
+                        return error.CompileError;
+                    }
+
+                    _ = try self.genMaybeRetainExpr(node.head.left_right.right, false);
+
+                    const fieldName = self.getNodeTokenString(accessRight);
+                    const fieldId = try self.vm.ensureFieldSym(fieldName);
+                    try self.buf.pushOp1(.setField, @intCast(u8, fieldId));
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                }
+            },
+            .structDecl => {
+                const nameN = self.nodes[node.head.structDecl.name];
+                const name = self.getNodeTokenString(nameN);
+
+                const sid = try self.vm.ensureStruct(name);
+
+                var i: u32 = 0;
+                var fieldId = node.head.structDecl.fieldsHead;
+                while (fieldId != NullId) : (i += 1) {
+                    const field = self.nodes[fieldId];
+                    fieldId = field.next;
+                }
+                const numFields = i;
+
+                i = 0;
+                fieldId = node.head.structDecl.fieldsHead;
+                while (fieldId != NullId) : (i += 1) {
+                    const field = self.nodes[fieldId];
+                    const fieldName = self.getNodeTokenString(field);
+                    const fieldSymId = try self.vm.ensureFieldSym(fieldName);
+                    self.vm.setFieldSym(sid, fieldSymId, i, numFields <= 4);
+                    fieldId = field.next;
+                }
+
+                self.vm.structs.buf[sid].numFields = i;
+
+                var funcId = node.head.structDecl.funcsHead;
+                var func: cy.Node = undefined;
+                while (funcId != NullId) : (funcId = func.next) {
+                    func = self.nodes[funcId];
+                    const decl = self.funcDecls[func.head.func.decl_id];
+
+                    const funcName = self.src[decl.name.start..decl.name.end];
+                    if (decl.params.end > decl.params.start) {
+                        const param = self.funcParams[decl.params.start];
+                        const paramName = self.src[param.name.start..param.name.end];
+                        if (std.mem.eql(u8, paramName, "self")) {
+                            // Struct method.
+                            try self.genMethodDecl(sid, func, decl, funcName);
+                            continue;
+                        }
+                    }
+
+                    const symPath = try std.fmt.allocPrint(self.alloc, "{s}.{s}", .{name, funcName});
+                    try self.vm.funcSymNames.append(self.alloc, symPath);
+                    try self.genFuncDecl(func, decl, symPath);
                 }
             },
             .func_decl => {
@@ -1195,9 +1292,51 @@ pub const VMcompiler = struct {
                 try self.buf.pushOp(.pushNone);
                 return AnyType;
             }
+        } else if (node.node_t == .access_expr) {
+            _ = try self.genExpr(node.head.left_right.left, discardTopExprReg);
+
+            // right should be an ident.
+            const right = self.nodes[node.head.left_right.right];
+
+            const name = self.getNodeTokenString(right);
+            const fieldId = try self.vm.ensureFieldSym(name);
+
+            if (!discardTopExprReg) {
+                try self.buf.pushOp1(.pushFieldRetain, @intCast(u8, fieldId));
+            }
+
+            return AnyType;
         } else {
             return self.genExpr(nodeId, discardTopExprReg);
         }
+    }
+
+    fn genMethodDecl(self: *VMcompiler, structId: cy.StructId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
+        const methodId = try self.vm.ensureMethodSymKey(name);
+
+        const jumpPc = try self.pushEmptyJump();
+
+        try self.pushBlock();
+        self.nextSemaBlock();
+
+        const opStart = @intCast(u32, self.buf.ops.items.len);
+        try self.reserveMethodParams(func);
+
+        try self.genVarInits();
+        try self.genStatements(node.head.func.body_head, false);
+        // TODO: Check last statement to skip adding ret.
+        try self.endLocals();
+        try self.buf.pushOp(.ret0);
+
+        // Reserve another local for the call return info.
+        const numLocals = self.blockNumLocals() + 1;
+        self.prevSemaBlock();
+        self.popBlock();
+
+        self.patchJumpToCurrent(jumpPc);
+
+        const sym = cy.SymbolEntry.initFunc(opStart, numLocals);
+        try self.vm.addMethodSym(structId, methodId, sym);
     }
 
     fn genFuncDecl(self: *VMcompiler, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
@@ -1264,6 +1403,52 @@ pub const VMcompiler = struct {
                     try self.buf.pushOp1(.pushList, @intCast(u8, i));
                 }
                 return ListType;
+            },
+            .structInit => {
+                const stype = self.nodes[node.head.structInit.structType];
+                const sname = self.getNodeTokenString(stype);
+                const sid = self.vm.getStruct(sname) orelse {
+                    log.debug("Missing struct {s}", .{sname});
+                    return error.CompileError;
+                };
+
+                const initializer = self.nodes[node.head.structInit.initializer];
+
+                // TODO: Have sema sort the fields so eval can handle default values easier.
+                // Push props onto stack.
+                const operandStart = self.operandStack.items.len;
+                defer self.operandStack.items.len = operandStart;
+
+                var i: u32 = 0;
+                var entryId = initializer.head.child_head;
+                while (entryId != NullId) : (i += 1) {
+                    var entry = self.nodes[entryId];
+                    const prop = self.nodes[entry.head.left_right.left];
+
+                    if (!discardTopExprReg) {
+                        const propName = self.getNodeTokenString(prop);
+                        const propIdx = self.vm.getStructFieldIdx(sid, propName) orelse {
+                            log.debug("Missing field {s}", .{propName});
+                            return error.CompileError;
+                        };
+                        try self.operandStack.append(self.alloc, .{ .arg = @intCast(u8, propIdx) });
+                    }
+
+                    _ = try self.genExpr(entry.head.left_right.right, discardTopExprReg);
+                    entryId = entry.next;
+                }
+
+                if (i != self.vm.structs.buf[sid].numFields) {
+                    log.debug("Default values not supported. {} {}", .{i, self.vm.structs.buf[sid].numFields});
+                    return error.CompileError;
+                }
+
+                if (!discardTopExprReg) {
+                    try self.buf.pushOp2(.pushStructInitSmall, @intCast(u8, sid), @intCast(u8, i));
+                    try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+                    // try self.buf.pushOp1(.pushStructInit, );
+                }
+                return AnyType;
             },
             .map_literal => {
                 const operandStart = self.operandStack.items.len;
@@ -1681,19 +1866,51 @@ pub const VMcompiler = struct {
                                 arg_id = arg.next;
                             }
 
-                            const left = self.nodes[callee.head.left_right.left];
-                            _ = try self.genExpr(left, false);
+                            const rightName = self.getNodeTokenString(right);
+                            const methodId = try self.vm.ensureMethodSymKey(rightName);
 
-                            const identToken = self.tokens[right.start_token];
-                            const str = self.src[identToken.start_pos .. identToken.data.end_pos];
-                            // const slice = try self.buf.getStringConst(str);
-                            // try self.buf.pushExtra(.{ .two = .{ slice.start, slice.end } });
-                            const symId = try self.vm.ensureStructSym(str);
+                            // var isStdCall = false;
+                            const left = self.nodes[callee.head.left_right.left];
+                            if (left.node_t == .ident) {
+                                // Check if it's a symbol path.
+                                const leftName = self.getNodeTokenString(left);
+                                try self.u8Buf.resize(self.alloc, leftName.len + rightName.len + 1);
+                                std.mem.copy(u8, self.u8Buf.items[0..leftName.len], leftName);
+                                self.u8Buf.items[leftName.len] = '.';
+                                std.mem.copy(u8, self.u8Buf.items[leftName.len+1..], rightName);
+
+                                if (self.vm.getFuncSym(self.u8Buf.items)) |symId| {
+                                    if (discardTopExprReg) {
+                                        try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs-1));
+                                    } else {
+                                        try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs-1));
+                                    }
+                                    return AnyType;
+                                }
+
+                                // if (try self.readScopedVar(leftName)) |info| {
+                                //     if (info.vtype.typeT == ListType.typeT) {
+                                //         if (self.vm.hasMethodSym(cy.ListS, methodId)) {
+                                //             isStdCall = true;
+                                //         } 
+                                //     }
+                                // }
+                            }
+                            
+                            // if (isStdCall) {
+                            //     // Avoid retain/release for std call.
+                            //     _ = try self.genExpr(left, false);
+                            // } else {
+                            //     _ = try self.genMaybeRetainExpr(left, false);
+                            // }
+
+                            // Retain is triggered during the function call if it ends up being a vm func.
+                            _ = try self.genExpr(callee.head.left_right.left, false);
 
                             if (discardTopExprReg) {
-                                try self.buf.pushOp2(.pushCallObjSym0, @intCast(u8, symId), @intCast(u8, numArgs));
+                                try self.buf.pushOp2(.pushCallObjSym0, @intCast(u8, methodId), @intCast(u8, numArgs));
                             } else {
-                                try self.buf.pushOp2(.pushCallObjSym1, @intCast(u8, symId), @intCast(u8, numArgs));
+                                try self.buf.pushOp2(.pushCallObjSym1, @intCast(u8, methodId), @intCast(u8, numArgs));
                             }
                             return AnyType;
                         } else return self.reportError("Unsupported callee", .{}, node);

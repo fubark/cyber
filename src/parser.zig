@@ -27,6 +27,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "not", .not_k },
     .{ "as", .as_k },
     .{ "pass", .pass_k },
+    .{ "struct", .struct_k },
     .{ "none", .none_k },
     .{ "is", .is_k },
 });
@@ -434,7 +435,146 @@ pub const Parser = struct {
             self.advanceToken();
             return return_type;
         } else {
-            return self.reportTokenError(error.SyntaxError, "Expected colon or type.", token);
+            return self.reportTokenError2(error.SyntaxError, "Expected colon or type.", .{}, token);
+        }
+    }
+
+    fn parseStructField(self: *Parser) !?NodeId {
+        const start = self.next_pos;
+        var token = self.peekToken();
+        if (token.token_t == .ident) {
+            const name = self.pushNode(.ident, self.next_pos);
+            self.advanceToken();
+
+            token = self.peekToken();
+            if (token.token_t == .ident) {
+                const nameToken = self.tokens.items[self.next_pos];
+                const typeName = self.src.items[nameToken.start_pos .. nameToken.data.end_pos];
+                if (std.mem.eql(u8, typeName, "any")) {
+                    const typeN = self.pushNode(.ident, self.next_pos);
+                    self.advanceToken();
+
+                    token = self.peekToken();
+                    if (token.token_t == .new_line) {
+                        self.advanceToken();
+                    } else {
+                        return self.reportTokenError("Expected new line.", .{});
+                    }
+
+                    const field = self.pushNode(.structField, start);
+                    self.nodes.items[field].head = .{
+                        .structField = .{
+                            .name = name,
+                            .fieldType = typeN,
+                        },
+                    };
+                    return field;
+                } else {
+                    return self.reportTokenError("Unsupported type.", .{});
+                }
+            } else if (token.token_t == .new_line) {
+                self.advanceToken();
+                const field = self.pushNode(.structField, start);
+                self.nodes.items[field].head = .{
+                    .structField = .{
+                        .name = name,
+                        .fieldType = NullId,
+                    },
+                };
+                return field;
+            } else {
+                return self.reportTokenError("Expected type.", .{});
+            }
+        } else return null;
+    }
+
+    fn parseStructDecl(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is the `struct` keyword.
+        self.advanceToken();
+
+        // Parse struct name.
+        var token = self.peekToken();
+        var name: NodeId = NullId;
+        if (token.token_t == .ident) {
+            name = self.pushNode(.ident, self.next_pos);
+            self.advanceToken();
+        } else return self.reportTokenError2(error.SyntaxError, "Expected struct name identifier.", .{}, token);
+
+        token = self.peekToken();
+        if (token.token_t == .colon) {
+            self.advanceToken();
+        } else {
+            return self.reportTokenError2(error.SyntaxError, "Expected colon.", .{}, token);
+        }
+
+        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+        const prevIndent = self.cur_indent;
+        self.cur_indent = reqIndent;
+        defer self.cur_indent = prevIndent;
+
+        var firstField = (try self.parseStructField()) orelse NullId;
+        if (firstField != NullId) {
+            var lastField = firstField;
+
+            while (true) {
+                const start2 = self.next_pos;
+                const indent = self.consumeIndentBeforeStmt();
+                if (indent == reqIndent) {
+                    const id = (try self.parseStructField()) orelse break;
+                    self.nodes.items[lastField].next = id;
+                    lastField = id;
+                } else if (indent <= prevIndent) {
+                    self.next_pos = start2;
+                    const id = self.pushNode(.structDecl, start);
+                    self.nodes.items[id].head = .{
+                        .structDecl = .{
+                            .name = name,
+                            .fieldsHead = firstField,
+                            .funcsHead = NullId,
+                        },
+                    };
+                    return id;
+                } else {
+                    return self.reportTokenError("Unexpected indentation.", .{});
+                }
+            }
+        }
+
+        token = self.peekToken();
+        if (token.token_t == .func_k) {
+            var firstFunc = try self.parseFunctionDecl();
+            var lastFunc = firstFunc;
+
+            while (true) {
+                const start2 = self.next_pos;
+                const indent = self.consumeIndentBeforeStmt();
+                if (indent == reqIndent) {
+                    token = self.peekToken();
+                    if (token.token_t == .func_k) {
+                        const id = try self.parseFunctionDecl();
+                        self.nodes.items[lastFunc].next = id;
+                        lastFunc = id;
+                    } else return self.reportTokenError("Unexpected token.", .{});
+                } else if (indent <= prevIndent) {
+                    self.next_pos = start2;
+                    break;
+                } else {
+                    return self.reportTokenError("Unexpected indentation.", .{});
+                }
+            }
+
+            const id = self.pushNode(.structDecl, start);
+            self.nodes.items[id].head = .{
+                .structDecl = .{
+                    .name = name,
+                    .fieldsHead = firstField,
+                    .funcsHead = firstFunc,
+                },
+            };
+            return id;
+        } else {
+            return self.reportTokenError("Unexpected token.", .{});
         }
     }
 
@@ -972,6 +1112,9 @@ pub const Parser = struct {
                 if (try self.parseExprOrAssignStatement()) |id| {
                     return id;
                 }
+            },
+            .struct_k => {
+                return try self.parseStructDecl();
             },
             .func_k => {
                 return try self.parseFunctionDecl();
@@ -1788,7 +1931,22 @@ pub const Parser = struct {
                     if (left_t == .ident or left_t == .access_expr or left_t == .at_ident) {
                         const call_id = try self.parseCallExpression(left_id);
                         left_id = call_id;
-                    } else return self.reportTokenError(error.SyntaxError, "Expected variable to left of call expression.", next);
+                    } else return self.reportTokenError2(error.SyntaxError, "Expected variable to left of call expression.", .{}, next);
+                },
+                .left_brace => {
+                    if (self.nodes.items[left_id].node_t == .ident) {
+                        const props = try self.parseMapLiteral();
+                        const initN = self.pushNode(.structInit, start);
+                        self.nodes.items[initN].head = .{
+                            .structInit = .{
+                                .structType = left_id,
+                                .initializer = props,
+                            },
+                        };
+                        left_id = initN;
+                    } else {
+                        return self.reportTokenError("Expected struct type to the left for initializer.", .{});
+                    }
                 },
                 .dot_dot,
                 .right_bracket,
@@ -2220,6 +2378,7 @@ pub const TokenType = enum {
     as_k,
     pass_k,
     none_k,
+    struct_k,
     func_k,
     is_k,
     // Error token, returned if ignoreErrors = true.
@@ -2279,6 +2438,9 @@ const NodeType = enum {
     as_iter_clause,
     label_decl,
     func_decl,
+    structDecl,
+    structField,
+    structInit,
     lambda_assign_decl,
     lambda_expr, 
     lambda_multi,
@@ -2347,6 +2509,19 @@ pub const Node = struct {
             decl_id: FuncDeclId,
             body_head: NodeId,
             assign_expr: NodeId,
+        },
+        structInit: struct {
+            structType: NodeId,
+            initializer: NodeId,
+        },
+        structField: struct {
+            name: NodeId,
+            fieldType: NodeId,
+        },
+        structDecl: struct {
+            name: NodeId,
+            fieldsHead: NodeId,
+            funcsHead: NodeId,
         },
         for_range_stmt: struct {
             range_clause: NodeId,
@@ -2495,6 +2670,14 @@ pub const ResultView = struct {
             return stmt_id;
         } else return null;
     }
+};
+
+const StructDeclId = u32;
+pub const StructDecl = struct {
+    name: IndexSlice,
+    fields: IndexSlice,
+    funcs: IndexSlice,
+    methods: IndexSlice,
 };
 
 const FuncDeclId = u32;

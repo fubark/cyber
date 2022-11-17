@@ -12,23 +12,23 @@ const log = stdx.log.scoped(.bindings);
 
 pub fn bindCore(self: *cy.VM) !void {
     // Init compile time builtins.
-    const resize = try self.ensureStructSym("resize");
+    const resize = try self.ensureMethodSymKey("resize");
     var id = try self.addStruct("List");
     std.debug.assert(id == cy.ListS);
-    try self.addStructSym(cy.ListS, resize, cy.SymbolEntry.initNativeFunc1(listResize));
-    self.iteratorObjSym = try self.ensureStructSym("iterator");
-    try self.addStructSym(cy.ListS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
-    self.nextObjSym = try self.ensureStructSym("next");
-    try self.addStructSym(cy.ListS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listNext));
-    const add = try self.ensureStructSym("add");
-    try self.addStructSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
-    const sort = try self.ensureStructSym("sort");
-    try self.addStructSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
+    try self.addMethodSym(cy.ListS, resize, cy.SymbolEntry.initNativeFunc1(listResize));
+    self.iteratorObjSym = try self.ensureMethodSymKey("iterator");
+    try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
+    self.nextObjSym = try self.ensureMethodSymKey("next");
+    try self.addMethodSym(cy.ListS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listNext));
+    const add = try self.ensureMethodSymKey("add");
+    try self.addMethodSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
+    const sort = try self.ensureMethodSymKey("sort");
+    try self.addMethodSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
 
     id = try self.addStruct("Map");
     std.debug.assert(id == cy.MapS);
-    const remove = try self.ensureStructSym("remove");
-    try self.addStructSym(cy.MapS, remove, cy.SymbolEntry.initNativeFunc1(mapRemove));
+    const remove = try self.ensureMethodSymKey("remove");
+    try self.addMethodSym(cy.MapS, remove, cy.SymbolEntry.initNativeFunc1(mapRemove));
 
     id = try self.addStruct("Closure");
     std.debug.assert(id == cy.ClosureS);
@@ -40,11 +40,11 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.StringS);
 
     id = try self.ensureFuncSym("std.readInput");
-    try self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
     id = try self.ensureFuncSym("std.parseCyon");
-    try self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdParseCyon));
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdParseCyon));
     id = try self.ensureFuncSym("std.print");
-    try self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdPrint));
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdPrint));
 
     try self.ensureGlobalFuncSym("readInput", "std.readInput");
     try self.ensureGlobalFuncSym("parseCyon", "std.parseCyon");

@@ -1453,7 +1453,8 @@ pub const VMcompiler = struct {
                 const fieldId = try self.vm.ensureFieldSym(name);
 
                 if (!discardTopExprReg) {
-                    try self.buf.pushOp1(.pushField, @intCast(u8, symId));
+                    try self.buf.pushOp1(.pushField, @intCast(u8, fieldId));
+                    try self.pushDebugSym(self.buf.ops.items.len, nodeId);
                 }
 
                 return AnyType;
@@ -1808,6 +1809,15 @@ pub const VMcompiler = struct {
         self.lastErr = try std.fmt.allocPrint(self.alloc, "{s}: {} at {}", .{customMsg, node.node_t, token.start_pos});
         return error.CompileError;
     }
+
+    fn getNodeTokenString(self: *const VMcompiler, node: cy.Node) []const u8 {
+        const token = self.tokens[node.start_token];
+        return self.src[token.start_pos..token.data.end_pos];
+    }
+
+    fn pushDebugSym(self: *VMcompiler, pc: usize, nodeId: cy.NodeId) !void {
+        try self.buf.pushDebugSym(pc, 0, nodeId, self.curBlock.frameLoc);
+    }
 };
 
 pub const ResultView = struct {
@@ -1840,6 +1850,8 @@ const Block = struct {
 
     /// Depth of iteration blocks.
     iterBlockDepth: u8,
+
+    frameLoc: cy.NodeId = NullId,
 
     fn init() Block {
         return .{

@@ -17,6 +17,9 @@ pub const ByteCodeBuffer = struct {
     /// Tracks the start index of strings that are already in strBuf.
     strMap: std.HashMapUnmanaged(stdx.IndexSlice(u32), u32, StringIndexContext, std.hash_map.default_max_load_percentage),
 
+    /// Maps ops back to source code.
+    debugTable: std.ArrayListUnmanaged(OpDebug),
+
     pub fn init(alloc: std.mem.Allocator) ByteCodeBuffer {
         return .{
             .alloc = alloc,
@@ -25,6 +28,7 @@ pub const ByteCodeBuffer = struct {
             .consts = .{},
             .strBuf = .{},
             .strMap = .{},
+            .debugTable = .{},
         };
     }
 
@@ -33,6 +37,7 @@ pub const ByteCodeBuffer = struct {
         self.consts.deinit(self.alloc);
         self.strBuf.deinit(self.alloc);
         self.strMap.deinit(self.alloc);
+        self.debugTable.deinit(self.alloc);
     }
 
     pub fn clear(self: *ByteCodeBuffer) void {
@@ -40,6 +45,7 @@ pub const ByteCodeBuffer = struct {
         self.consts.clearRetainingCapacity();
         self.strBuf.clearRetainingCapacity();
         self.strMap.clearRetainingCapacity();
+        self.debugTable.clearRetainingCapacity();
     }
 
     pub fn pushConst(self: *ByteCodeBuffer, val: Const) !u32 {
@@ -47,6 +53,15 @@ pub const ByteCodeBuffer = struct {
         try self.consts.resize(self.alloc, self.consts.items.len + 1);
         self.consts.items[start] = val;
         return start;
+    }
+
+    pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u16, loc: u32, frameLoc: u32) !void {
+        try self.debugTable.append(self.alloc, .{
+            .pc = @intCast(u32, pc),
+            .loc = loc,
+            .file = file,
+            .frameLoc = frameLoc,
+        });
     }
 
     pub fn pushOp(self: *ByteCodeBuffer, code: OpCode) !void {
@@ -291,6 +306,13 @@ pub const OpData = packed union {
             .arg = arg,
         };
     }
+};
+
+pub const OpDebug = struct {
+    pc: u32,
+    loc: u32,
+    frameLoc: u32,
+    file: u16,
 };
 
 pub const OpCode = enum(u8) {

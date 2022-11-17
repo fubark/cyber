@@ -42,6 +42,9 @@ pub const MapInner = vm.MapInner;
 pub const ClosureS = vm.ClosureS;
 pub const LambdaS = vm.LambdaS;
 pub const StringS = vm.StringS;
+pub const StructId = vm.StructId;
+pub const EvalError = vm.EvalError;
+pub const StackTrace = vm.StackTrace;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;
@@ -55,6 +58,7 @@ pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;
 pub const OpCode = bytecode.OpCode;
 pub const OpData = bytecode.OpData;
 pub const Const = bytecode.Const;
+pub const OpDebug = bytecode.OpDebug;
 
 // const js_rt = @import("js_rt.zig");
 // pub const JsEngine = js_rt.JsEngine;

@@ -53,6 +53,23 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 4);
 }
 
+test "Stack trace unwinding." {
+    const run = Runner.create();
+    defer run.destroy();
+
+    var res = run.eval(
+        \\a = 123
+        \\1 + a.foo
+    );
+    try t.expectError(res, error.Panic);
+
+    const trace = run.getStackTrace();
+    try t.eq(trace.frames.len, 1);
+    try t.eqStr(trace.frames[0].name, "main");
+    try t.eq(trace.frames[0].line, 1);
+    try t.eq(trace.frames[0].col, 4);
+}
+
 test "Optionals" {
     const run = Runner.create();
     defer run.destroy();
@@ -1253,7 +1270,11 @@ const Runner = struct {
         return self.inner.checkMemory();
     }
 
-    fn eval(self: *Runner, src: []const u8) !cy.Value {
+    fn getStackTrace(self: *Runner) *const cy.StackTrace {
+        return self.inner.getStackTrace();
+    }
+
+    fn eval(self: *Runner, src: []const u8) cy.EvalError!cy.Value {
         return self.inner.eval(src);
     }
 
@@ -1307,7 +1328,11 @@ const VMrunner = struct {
         return self.vm.compile(src);
     }
 
-    fn eval(self: *VMrunner, src: []const u8) !cy.Value {
+    fn getStackTrace(self: *VMrunner) *const cy.StackTrace {
+        return self.vm.getStackTrace();
+    }
+
+    fn eval(self: *VMrunner, src: []const u8) cy.EvalError!cy.Value {
         return self.vm.eval(src, false);
     }
 

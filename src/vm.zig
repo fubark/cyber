@@ -77,6 +77,8 @@ pub const VM = struct {
     panicMsg: []const u8,
 
     trace: *TraceInfo,
+    stackTrace: StackTrace,
+    debugTable: []const cy.OpDebug,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -106,6 +108,8 @@ pub const VM = struct {
             .panicMsg = "",
             .globals = .{},
             .u8Buf = .{},
+            .stackTrace = .{},
+            .debugTable = undefined,
         };
         self.compiler.init(self);
         try self.ensureStackTotalCapacity(100);
@@ -147,6 +151,7 @@ pub const VM = struct {
 
         self.globals.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
+        self.stackTrace.deinit(self.alloc);
     }
 
     /// Returns the first free HeapObject.
@@ -428,6 +433,7 @@ pub const VM = struct {
         self.ops = buf.ops.items;
         self.consts = buf.consts.items;
         self.strBuf = buf.strBuf.items;
+        self.debugTable = buf.debugTable.items;
         self.pc = 0;
 
         try self.ensureStackTotalCapacity(buf.mainLocalSize);
@@ -1366,7 +1372,76 @@ pub const VM = struct {
         };
     }
 
-    fn evalLoop(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
+    pub fn getStackTrace(self: *const VM) *const StackTrace {
+        return &self.stackTrace;
+    }
+
+    fn indexOfDebugSym(self: *const VM, pc: usize) ?usize {
+        for (self.debugTable) |sym, i| {
+            if (sym.pc == pc) {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    fn computeLinePos(self: *const VM, loc: u32, outLine: *u32, outCol: *u32) void {
+        var line: u32 = 0;
+        var lineStart: u32 = 0;
+        for (self.compiler.tokens) |token| {
+            if (token.token_t == .new_line) {
+                line += 1;
+                lineStart = token.start_pos + 1;
+                continue;
+            }
+            if (token.start_pos == loc) {
+                outLine.* = line;
+                outCol.* = loc - lineStart;
+                return;
+            }
+        }
+    }
+
+    pub fn buildStackTrace(self: *VM) !void {
+        self.stackTrace.deinit(self.alloc);
+        var frames: std.ArrayListUnmanaged(StackTraceFrame) = .{};
+
+        log.debug("build stack trace {}", .{self.debugTable[0].pc});
+
+        var framePtr = self.framePtr;
+        var pc = self.pc;
+        while (framePtr > 0) {
+            const idx = self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
+            const sym = self.debugTable[idx];
+
+            const node = self.compiler.nodes[sym.frameLoc];
+            const func = self.compiler.funcDecls[node.head.func.decl_id];
+            const name = self.compiler.src[func.name.start..func.name.end];
+            try frames.append(self.alloc, .{
+                .name = name,
+                .line = 0,
+                .col = 0,
+            });
+            pc = self.stack.buf[framePtr].retInfo.pc;
+            framePtr = self.stack.buf[framePtr].retInfo.framePtr;
+        }
+
+        const idx = self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
+        const sym = self.debugTable[idx];
+        const node = self.compiler.nodes[sym.loc];
+        var line: u32 = undefined;
+        var col: u32 = undefined;
+        self.computeLinePos(self.compiler.tokens[node.start_token].start_pos, &line, &col);
+        try frames.append(self.alloc, .{
+            .name = "main",
+            .line = line,
+            .col = col,
+        });
+
+        self.stackTrace.frames = frames.toOwnedSlice(self.alloc);
+    }
+
+    fn evalLoop(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
         @setRuntimeSafety(debug);
         while (true) {
             if (trace) {
@@ -2738,6 +2813,10 @@ pub const UserVM = struct {
         gvm.trace = trace;
     }
 
+    pub fn getStackTrace(_: UserVM) *const StackTrace {
+        return gvm.getStackTrace();
+    }
+
     pub inline fn release(_: UserVM, val: Value, comptime trace: bool) void {
         gvm.release(val, trace);
     }
@@ -2765,18 +2844,50 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-pub fn evalLoopGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, End}!void {
+pub fn evalLoopGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     @setRuntimeSafety(debug);
     while (true) {
         @call(.{ .modifier = .always_inline }, gvm.evalLoop, .{trace}) catch |err| {
             @setCold(true);
             if (err == error.StackOverflow) {
-                try gvm.stack.growTotalCapacity(gvm.alloc, gvm.stack.buf.len + 1);
+                try @call(.{ .modifier = .never_inline }, gvm.stack.growTotalCapacity, .{gvm.alloc, gvm.stack.buf.len + 1});
                 continue;
             } else if (err == error.End) {
                 return;
+            } else if (err == error.Panic) {
+                try @call(.{ .modifier = .never_inline }, gvm.buildStackTrace, .{});
+                return error.Panic;
             } else return err;
         };
         return;
     }
 }
+
+pub const EvalError = error{
+    Panic,
+    ParseError,
+    CompileError,
+    OutOfMemory,
+    NoEndOp,
+    End,
+    OutOfBounds,
+    StackOverflow,
+    BadTop,
+    NoDebugSym,
+};
+
+pub const StackTrace = struct {
+    frames: []const StackTraceFrame = &.{},
+
+    fn deinit(self: *StackTrace, alloc: std.mem.Allocator) void {
+        alloc.free(self.frames);
+    }
+};
+
+const StackTraceFrame = struct {
+    name: []const u8,
+    /// Starts at 0.
+    line: u32,
+    /// Starts at 0.
+    col: u32,
+};

@@ -1432,72 +1432,63 @@ pub const Parser = struct {
         return if_expr;
     }
 
+    /// Alternates between templateString and templateExprStart tokens.
     fn parseStringTemplate(self: *Parser) !NodeId {
-        // Assumes start at templateString and alternates between templateExpr and templateString.
         const start = self.next_pos;
+
         const id = self.pushNode(.stringTemplate, start);
 
-        const firstStr = self.pushNode(.string, start);
-
-        self.advanceToken();
+        // First determine the first token type.
+        var expectType: TokenType = undefined;
+        var first: NodeId = undefined;
         var token = self.peekToken();
-        if (token.token_t != .templateExprStart) {
-            // No exprs.
-            self.nodes.items[id].head = .{
-                .stringTemplate = .{
-                    .stringHead = firstStr,
-                    .exprHead = NullId,
-                },
-            };
-            return id;
-        }
-
-        // Has exprs.
-        self.advanceToken();
-        token = self.peekToken();
-        const firstExpr = (try self.parseExpr(.{})) orelse {
-            return self.reportTokenError(error.SyntaxError, "Expected expression.", token);
-        };
-        token = self.peekToken();
-        if (token.token_t != .right_paren) {
-            return self.reportTokenError(error.SyntaxError, "Expected right parenthesis.", token);
-        }
-
-        self.nodes.items[id].head = .{
-            .stringTemplate = .{
-                .stringHead = firstStr,
-                .exprHead = firstExpr,
-            },
-        };
-        var lastStr = firstStr;
-        var lastExpr = firstExpr;
-        self.advanceToken();
-        token = self.peekToken();
-        while (token.token_t == .templateString) {
-            const str = self.pushNode(.string, self.next_pos);
-            self.nodes.items[lastStr].next = str;
-            lastStr = str;
-
+        if (token.token_t == .templateString) {
+            first = self.pushNode(.string, start);
+            expectType = .templateExprStart;
+        } else if (token.token_t == .templateExprStart) {
             self.advanceToken();
-            token = self.peekToken();
-            if (token.token_t != .templateExprStart) {
-                break;
-            }
-
-            self.advanceToken();
-            token = self.peekToken();
-            const expr = (try self.parseExpr(.{})) orelse {
-                return self.reportTokenError(error.SyntaxError, "Expected expression.", token);
+            first = (try self.parseExpr(.{})) orelse {
+                return self.reportTokenError2(error.SyntaxError, "Expected expression.", .{}, token);
             };
             token = self.peekToken();
             if (token.token_t != .right_paren) {
-                return self.reportTokenError(error.SyntaxError, "Expected right parenthesis.", token);
+                return self.reportTokenError2(error.SyntaxError, "Expected right parenthesis.", .{}, token);
+            }
+            expectType = .templateString;
+        } else return self.reportTokenError("Expected template string or expression.", .{});
+
+        self.nodes.items[id].head = .{
+            .stringTemplate = .{
+                .partsHead = first,
+                .firstIsString = expectType == .templateExprStart,
+            },
+        };
+        var last = first;
+
+        self.advanceToken();
+        token = self.peekToken();
+
+        while (token.token_t == expectType) {
+            if (expectType == .templateString) {
+                const str = self.pushNode(.string, self.next_pos);
+                self.nodes.items[last].next = str;
+                last = str;
+                expectType = .templateExprStart;
+            } else {
+                self.advanceToken();
+                const expr = (try self.parseExpr(.{})) orelse {
+                    return self.reportTokenError2(error.SyntaxError, "Expected expression.", .{}, token);
+                };
+                token = self.peekToken();
+                if (token.token_t != .right_paren) {
+                    return self.reportTokenError2(error.SyntaxError, "Expected right parenthesis.", .{}, token);
+                }
+                self.nodes.items[last].next = expr;
+                last = expr;
+                expectType = .templateString;
             }
             self.advanceToken();
             token = self.peekToken();
-
-            self.nodes.items[lastExpr].next = expr;
-            lastExpr = expr;
         }
         return id;
     }
@@ -1540,6 +1531,9 @@ pub const Parser = struct {
                 break :b self.pushNode(.string, start);
             },
             .templateString => {
+                return self.parseStringTemplate();
+            },
+            .templateExprStart => {
                 return self.parseStringTemplate();
             },
             .at => b: {
@@ -2358,8 +2352,8 @@ pub const Node = struct {
             else_clause: NodeId,
         },
         stringTemplate: struct {
-            stringHead: NodeId,
-            exprHead: NodeId,
+            partsHead: NodeId,
+            firstIsString: bool,
         },
     },
 };
@@ -2600,7 +2594,14 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
     }
 }
 
-pub const TokenizeState = enum {
+pub const TokenizeState = struct {
+    stateT: TokenizeStateTag,
+    
+    /// For string interpolation, open parens can accumulate so the end of a template expression can be determined.
+    openParens: u32 = 0,
+};
+
+pub const TokenizeStateTag = enum {
     start,
     token,
     templateStart,
@@ -2690,16 +2691,36 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
         /// Consumes the next token skipping whitespace and returns the next tokenizer state.
         fn tokenizeOne(p: *Parser, state: TokenizeState) !TokenizeState {
             if (isAtEndChar(p)) {
-                return .end;
+                return .{
+                    .stateT = .end,
+                };
             }
             const start = p.next_pos;
             const ch = consumeChar(p);
             switch (ch) {
-                '(' => p.pushToken(.left_paren, start),
+                '(' => {
+                    p.pushToken(.left_paren, start);
+                    if (state.stateT == .templateToken) {
+                        return .{
+                            .stateT = .templateToken,
+                            .openParens = state.openParens + 1,
+                        };
+                    }
+                },
                 ')' => {
                     p.pushToken(.right_paren, start);
-                    if (state == .templateToken) {
-                        return .templateStart;
+                    if (state.stateT == .templateToken) {
+                        if (state.openParens == 0) {
+                            return .{
+                                .stateT = .templateStart,
+                                .openParens = 0,
+                            };
+                        } else {
+                            return .{
+                                .stateT = .templateToken,
+                                .openParens = state.openParens - 1,
+                            };
+                        }
                     }
                 },
                 '{' => p.pushToken(.left_brace, start),
@@ -2749,7 +2770,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             }
                             advanceChar(p);
                         }
-                        return .end;
+                        return .{ .stateT = .end };
                     } else {
                         p.pushOpToken(.slash, start);
                     }
@@ -2810,11 +2831,11 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             else => return tokenizeOne(p, state),
                         }
                     }
-                    return .end;
+                    return .{ .stateT = .end };
                 },
                 '\n' => {
                     p.pushToken(.new_line, start);
-                    return .start;
+                    return .{ .stateT = .start };
                 },
                 '`' => {
                     return tokenizeTemplateStartOne(p);
@@ -2826,7 +2847,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             if (p.tokenizeOpts.ignoreErrors) {
                                 restorePos(p);
                                 p.pushToken(.err, start);
-                                return .token;
+                                return .{ .stateT = .token };
                             } else return error.UnterminatedString;
                         }
                         const ch_ = consumeChar(p);
@@ -2841,7 +2862,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                                     if (p.tokenizeOpts.ignoreErrors) {
                                         restorePos(p);
                                         p.pushToken(.err, start);
-                                        return .token;
+                                        return .{ .stateT = .token };
                                     } else return error.UnterminatedString;
                                 }
                                 _ = consumeChar(p);
@@ -2851,7 +2872,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                                 if (p.tokenizeOpts.ignoreErrors) {
                                     restorePos(p);
                                     p.pushToken(.err, start);
-                                    return .token;
+                                    return .{ .stateT = .token };
                                 } else return error.UnterminatedString;
                             },
                             else => {},
@@ -2861,22 +2882,22 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 else => {
                     if (std.ascii.isAlpha(ch)) {
                         tokenizeKeywordOrIdent(p, start);
-                        return .token;
+                        return .{ .stateT = .token };
                     }
                     if (ch >= '0' and ch <= '9') {
                         tokenizeNumber(p, start);
-                        return .token;
+                        return .{ .stateT = .token };
                     }
                     if (p.tokenizeOpts.ignoreErrors) {
                         p.pushToken(.err, start);
-                        return .token;
+                        return .{ .stateT = .token };
                     } else {
                         p.last_err = std.fmt.allocPrint(p.alloc, "unknown character: {c} ({}) at {}", .{ch, ch, start}) catch fatal();
                         return error.UnknownChar;
                     }
                 }
             }
-            return .token;
+            return .{ .stateT = .token };
         }
 
         /// Returns true if an indent or new line token was parsed.
@@ -2937,14 +2958,16 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             p.tokens.clearRetainingCapacity();
             p.next_pos = 0;
 
-            var state: TokenizeState = .start;
+            var state = TokenizeState{
+                .stateT = .start,
+            };
             while (true) {
-                switch (state) {
+                switch (state.stateT) {
                     .start => {
                         // First parse indent spaces.
                         while (true) {
                             if (!tokenizeIndentOne(p)) {
-                                state = .token;
+                                state.stateT = .token;
                                 break;
                             }
                         }
@@ -2952,7 +2975,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     .token => {
                         while (true) {
                             state = try tokenizeOne(p, state);
-                            if (state != .token) {
+                            if (state.stateT != .token) {
                                 break;
                             }
                         }
@@ -2963,7 +2986,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     .templateToken => {
                         while (true) {
                             const nextState = try tokenizeOne(p, state);
-                            if (nextState != .token) {
+                            if (nextState.stateT != .token) {
                                 state = nextState;
                                 break;
                             }
@@ -2989,13 +3012,13 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         advanceChar(p);
                         advanceChar(p);
                         p.pushToken(.templateExprStart, p.next_pos);
-                        return .templateToken;
+                        return .{ .stateT = .templateToken };
                     }
                 } else {
                     if (p.tokenizeOpts.ignoreErrors) {
                         restorePos(p);
                         p.pushToken(.err, start);
-                        return .token;
+                        return .{ .stateT = .token };
                     } else return error.UnterminatedString;
                 }
             }
@@ -3005,7 +3028,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     if (p.tokenizeOpts.ignoreErrors) {
                         restorePos(p);
                         p.pushToken(.err, start);
-                        return .token;
+                        return .{ .stateT = .token };
                     } else return error.UnterminatedString;
                 }
                 ch = peekChar(p);
@@ -3013,13 +3036,13 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     '`' => {
                         p.pushTemplateStringToken(start, p.next_pos);
                         _ = consumeChar(p);
-                        return .token;
+                        return .{ .stateT = .token };
                     },
                     '\\' => {
                         if (peekCharAhead(p, 1)) |next| {
                             if (next == '(') {
                                 p.pushTemplateStringToken(start, p.next_pos);
-                                return .templateStart;
+                                return .{ .stateT = .templateStart };
                             }
                         }
                         // Escape the next character.
@@ -3028,7 +3051,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                             if (p.tokenizeOpts.ignoreErrors) {
                                 restorePos(p);
                                 p.pushToken(.err, start);
-                                return .token;
+                                return .{ .stateT = .token };
                             } else return error.UnterminatedString;
                         }
                         _ = consumeChar(p);

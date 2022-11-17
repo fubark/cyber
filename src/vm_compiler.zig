@@ -436,6 +436,14 @@ pub const VMcompiler = struct {
 
                     const right = self.nodes[node.head.left_right.right];
                     _ = try self.semaExpr(right, false);
+                } else if (left.node_t == .access_expr) {
+                    const accessLeft = self.nodes[left.head.left_right.left];
+                    _ = try self.semaExpr(accessLeft, false);
+                    const accessRight = self.nodes[left.head.left_right.right];
+                    _ = try self.semaExpr(accessRight, false);
+
+                    const right = self.nodes[node.head.left_right.right];
+                    _ = try self.semaExpr(right, false);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
@@ -556,6 +564,10 @@ pub const VMcompiler = struct {
 
     fn nextSemaBlock(self: *VMcompiler) void {
         self.curSemaBlockId += 1;
+    }
+
+    fn prevSemaBlock(self: *VMcompiler) void {
+        self.curSemaBlockId -= 1;
     }
 
     fn genVarInits(self: *VMcompiler) !void {
@@ -1690,7 +1702,7 @@ pub const VMcompiler = struct {
 
                         if (try self.readScopedVar(name)) |info| {
                             // Load callee first so it gets overwritten by the retInfo
-                            // and avoids a move operation on the first arg.
+                            // and avoids a copy operation on the first arg.
                             try self.genLoadLocal(info);
 
                             var numArgs: u32 = 1;

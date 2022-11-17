@@ -346,13 +346,15 @@ pub const DecodeMapIR = struct {
                 const replaces = std.mem.replace(u8, buf.items, "\\`", "`", buf.items);
                 buf.items.len -= replaces;
                 return buf.toOwnedSlice();
-            } else if (val_n.node_t == .stringTemplate and val_n.head.stringTemplate.exprHead == NullId) {
-                const str = self.res.nodes.items[val_n.head.stringTemplate.stringHead];
-                const token_s = self.res.getTokenString(str.start_token);
-                var buf = std.ArrayList(u8).init(self.alloc);
-                defer buf.deinit();
-                _ = replaceIntoList(u8, token_s, "\\`", "`", &buf);
-                return buf.toOwnedSlice();
+            } else if (val_n.node_t == .stringTemplate and val_n.head.stringTemplate.firstIsString) {
+                const str = self.res.nodes.items[val_n.head.stringTemplate.partsHead];
+                if (str.next == NullId) {
+                    const token_s = self.res.getTokenString(str.start_token);
+                    var buf = std.ArrayList(u8).init(self.alloc);
+                    defer buf.deinit();
+                    _ = replaceIntoList(u8, token_s, "\\`", "`", &buf);
+                    return buf.toOwnedSlice();
+                }
             }
             return error.NotAString;
         } else return error.NoSuchEntry;

@@ -784,6 +784,26 @@ pub const VMcompiler = struct {
         }
     }
 
+    fn semaReserveLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !*VarInfo {
+        const local = try self.curBlock.reserveLocal();
+        const res = try self.curBlock.vars.getOrPut(self.alloc, name);
+        if (res.found_existing) {
+            return error.VarExists;
+        } else {
+            res.value_ptr.* = .{
+                .vtype = vtype,
+                .local = local,
+                .rcCandidate = vtype.rcCandidate,
+                .hasStaticType = false,
+                .isCapturedVar = false,
+                .genInitializer = false,
+            };
+            try self.defLocalStack.append(self.alloc, local);
+            try self.curBlock.defLocals.put(self.alloc, local, {});
+            return res.value_ptr;
+        }
+    }
+
     fn reserveLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !*VarInfo {
         const offset = try self.curBlock.reserveLocal();
         const res = try self.curBlock.vars.getOrPut(self.alloc, name);
@@ -819,7 +839,7 @@ pub const VMcompiler = struct {
 
             return info.local;
         } else {
-            const info = try self.reserveLocalVar(name, vtype);
+            const info = try self.semaReserveLocalVar(name, vtype);
             
             if (self.curBlock.iterBlockDepth > 0) {
                 // First assigned inside an iteration block.
@@ -827,10 +847,6 @@ pub const VMcompiler = struct {
                 info.genInitializer = true;
                 try self.curBlock.varsToInit.append(self.alloc, info.local);
             }
-
-            // First assignment to sub block.
-            try self.defLocalStack.append(self.alloc, info.local);
-            try self.curBlock.defLocals.put(self.alloc, info.local, {});
 
             return info.local;
         }
@@ -867,23 +883,38 @@ pub const VMcompiler = struct {
     }
 
     fn semaReserveFuncParams(self: *VMcompiler, func: cy.FuncDecl) !void {
+        // First local is reserved for the return info.
+        // This slightly reduces cycles at function call time.
+        _ = try self.curBlock.reserveLocal();
         if (func.params.end > func.params.start) {
-            for (self.funcParams[func.params.start..func.params.end]) |param| {
+            for (self.funcParams[func.params.start+1..func.params.end]) |param| {
                 const paramName = self.src[param.name.start..param.name.end];
                 const paramT = AnyType;
-                const info = try self.reserveLocalVar(paramName, paramT);
-                try self.curBlock.defLocals.put(self.alloc, info.local, {});
+                _ = try self.semaReserveLocalVar(paramName, paramT);
             }
+            // First arg is copied to the end before the function call.
+            const param = self.funcParams[func.params.start];
+            const paramName = self.src[param.name.start..param.name.end];
+            const paramT = AnyType;
+            _ = try self.semaReserveLocalVar(paramName, paramT);
         }
     }
 
     fn reserveFuncParams(self: *VMcompiler, func: cy.FuncDecl) !void {
+        // First local is reserved for the return info.
+        // This slightly reduces cycles at function call time.
+        _ = try self.curBlock.reserveLocal();
         if (func.params.end > func.params.start) {
-            for (self.funcParams[func.params.start..func.params.end]) |param| {
+            for (self.funcParams[func.params.start+1..func.params.end]) |param| {
                 const paramName = self.src[param.name.start..param.name.end];
                 const paramT = AnyType;
                 _ = try self.reserveLocalVar(paramName, paramT);
             }
+            // First arg is copied to the end before the function call.
+            const param = self.funcParams[func.params.start];
+            const paramName = self.src[param.name.start..param.name.end];
+            const paramT = AnyType;
+            _ = try self.reserveLocalVar(paramName, paramT);
         }
     }
 
@@ -949,33 +980,8 @@ pub const VMcompiler = struct {
             },
             .func_decl => {
                 const func = self.funcDecls[node.head.func.decl_id];
-
                 const name = self.src[func.name.start..func.name.end];
-                const symId = try self.vm.ensureFuncSym(name);
-
-                const jumpOpStart = self.buf.ops.items.len;
-                try self.buf.pushOp1(.jump, 0);
-
-                try self.pushBlock();
-                self.nextSemaBlock();
-
-                const opStart = @intCast(u32, self.buf.ops.items.len);
-                try self.reserveFuncParams(func);
-
-                try self.genVarInits();
-                try self.genStatements(node.head.func.body_head, false);
-                // TODO: Check last statement to skip adding ret.
-                try self.endLocals();
-                try self.buf.pushOp(.ret0);
-
-                // Reserve another local for the call return info.
-                const numLocals = self.blockNumLocals() + 1;
-                self.popBlock();
-
-                self.buf.setOpArgs1(jumpOpStart + 1, @intCast(u8, self.buf.ops.items.len - jumpOpStart));
-
-                const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
-                try self.vm.setFuncSym(symId, sym);
+                try self.genFuncDecl(node, func, name);
             },
             .for_cond_stmt => {
                 const top = @intCast(u32, self.buf.ops.items.len);
@@ -1182,7 +1188,37 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn genExpr(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) anyerror!Type {
+    fn genFuncDecl(self: *VMcompiler, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
+        const symId = try self.vm.ensureFuncSym(name);
+
+        const jumpPc = try self.pushEmptyJump();
+
+        try self.pushBlock();
+        self.nextSemaBlock();
+
+        const opStart = @intCast(u32, self.buf.ops.items.len);
+        try self.reserveFuncParams(func);
+
+        try self.genVarInits();
+        try self.genStatements(node.head.func.body_head, false);
+        // TODO: Check last statement to skip adding ret.
+        try self.endLocals();
+        try self.buf.pushOp(.ret0);
+
+        // Reserve another local for the call return info.
+        const numParams = func.params.end - func.params.start;
+        const numLocals = self.blockNumLocals() + 1 - numParams;
+        self.prevSemaBlock();
+        self.popBlock();
+
+        self.patchJumpToCurrent(jumpPc);
+
+        const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
+        self.vm.setFuncSym(symId, sym);
+    }
+
+    fn genExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
+        const node = self.nodes[nodeId];
         // log.debug("gen expr {}", .{node.node_t});
         switch (node.node_t) {
             .true_literal => {
@@ -1653,16 +1689,26 @@ pub const VMcompiler = struct {
                         const name = self.src[token.start_pos..token.data.end_pos];
 
                         if (try self.readScopedVar(name)) |info| {
+                            // Load callee first so it gets overwritten by the retInfo
+                            // and avoids a move operation on the first arg.
+                            try self.genLoadLocal(info);
+
                             var numArgs: u32 = 1;
                             var arg_id = node.head.func_call.arg_head;
+                            // Second arg should be pushed first to match callSym layout.
+                            if (arg_id != NullId) {
+                                const arg = self.nodes[arg_id];
+                                arg_id = arg.next;
+                            }
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
                                 _ = try self.genMaybeRetainExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
-
-                            // Load callee after args so it can be easily discarded.
-                            try self.genLoadLocal(info);
+                            if (node.head.func_call.arg_head != NullId) {
+                                _ = try self.genMaybeRetainExpr(node.head.func_call.arg_head, false);
+                                numArgs += 1;
+                            }
 
                             if (discardTopExprReg) {
                                 try self.buf.pushOp1(.pushCall0, @intCast(u8, numArgs));
@@ -1725,7 +1771,7 @@ pub const VMcompiler = struct {
                     }
                     self.loadStack.items.len = loadStackSave;
 
-                    const numLocals = @intCast(u8, self.blockNumLocals() + 1);
+                    const numLocals = @intCast(u8, self.blockNumLocals() + 1 - numParams);
                     const numCaptured = @intCast(u8, self.curBlock.capturedVars.items.len);
                     self.popBlock();
 

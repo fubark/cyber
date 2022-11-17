@@ -377,7 +377,7 @@ pub const VM = struct {
             },
             1 => {
                 @setRuntimeSafety(debug);
-                const retInfo = self.stack.buf[self.stack.top-2];
+                const retInfo = self.stack.buf[self.framePtr];
                 const reqNumArgs = retInfo.retInfo.numRetVals;
                 if (reqNumArgs == 1) {
                     // Copy return value to framePtr.
@@ -429,9 +429,9 @@ pub const VM = struct {
         self.consts = buf.consts.items;
         self.strBuf = buf.strBuf.items;
         self.pc = 0;
-        self.framePtr = 0;
 
         try self.ensureStackTotalCapacity(buf.mainLocalSize);
+        self.framePtr = 0;
         self.stack.top = buf.mainLocalSize;
 
         try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace});
@@ -1156,21 +1156,19 @@ pub const VM = struct {
                         stdx.panic("params/args mismatch");
                     }
 
+                    if (self.stack.top + obj.closure.numLocals >= self.stack.buf.len) {
+                        return error.StackOverflow;
+                    }
+
                     self.pc = obj.closure.funcPc;
                     self.framePtr = self.stack.top - numArgs;
-                    // numLocals includes the function params as well as the return info value.
-                    self.stack.top = self.framePtr + obj.closure.numLocals;
-
-                    if (self.stack.top > self.stack.buf.len) {
-                        try self.stack.growTotalCapacity(self.alloc, self.stack.top);
-                    }
-                    // Push return pc address and previous current framePtr onto the stack.
-                    self.stack.buf[self.stack.top-1] = retInfo;
+                    self.stack.buf[self.framePtr] = retInfo;
+                    self.stack.top += obj.lambda.numLocals;
 
                     // Copy over captured vars to new call stack locals.
                     if (obj.closure.numCaptured <= 3) {
                         const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
-                        std.mem.copy(Value, self.stack.buf[self.stack.top-1-obj.closure.numCaptured..self.stack.top-1], src);
+                        std.mem.copy(Value, self.stack.buf[self.stack.top-obj.closure.numCaptured..self.stack.top], src);
                     } else {
                         stdx.panic("unsupported closure > 3 captured args.");
                     }
@@ -1180,16 +1178,15 @@ pub const VM = struct {
                         log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                         stdx.fatal();
                     }
+
+                    if (self.stack.top + obj.lambda.numLocals >= self.stack.buf.len) {
+                        return error.StackOverflow;
+                    }
+
                     self.pc = obj.lambda.funcPc;
                     self.framePtr = self.stack.top - numArgs;
-                    // numLocals includes the function params as well as the return info value.
-                    self.stack.top = self.framePtr + obj.lambda.numLocals;
-
-                    if (self.stack.top > self.stack.buf.len) {
-                        try self.stack.growTotalCapacity(self.alloc, self.stack.top);
-                    }
-                    // Push return pc address and previous current framePtr onto the stack.
-                    self.stack.buf[self.stack.top-1] = retInfo;
+                    self.stack.buf[self.framePtr] = retInfo;
+                    self.stack.top += obj.lambda.numLocals;
                 },
                 else => {},
             }
@@ -1204,11 +1201,15 @@ pub const VM = struct {
         const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
             .nativeFunc1 => {
+                @setRuntimeSafety(debug);
                 const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
                 const res = sym.inner.nativeFunc1(self, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
-                    self.stack.top = self.stack.top - numArgs + 1;
-                    self.ensureStackTotalCapacity(self.stack.top) catch stdx.fatal();
+                    const newTop = self.stack.top - numArgs + 1;
+                    if (newTop >= self.stack.buf.len) {
+                        return error.StackOverflow;
+                    }
+                    self.stack.top = newTop;
                     self.stack.buf[self.stack.top-1] = res;
                 } else {
                     switch (reqNumRetVals) {
@@ -1226,16 +1227,22 @@ pub const VM = struct {
                 }
             },
             .func => {
+                @setRuntimeSafety(debug);
+                if (self.stack.top + sym.inner.func.numLocals >= self.stack.buf.len) {
+                    return error.StackOverflow;
+                }
+
                 const retInfo = self.buildReturnInfo(reqNumRetVals, true);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
-                // numLocals includes the function params as well as the return info value.
-                self.stack.top = self.framePtr + sym.inner.func.numLocals;
-                if (self.stack.top > self.stack.buf.len) {
-                    try self.stack.growTotalCapacity(self.alloc, self.stack.top);
-                }
-                // Push return pc address and previous current framePtr onto the stack.
-                self.stack.buf[self.stack.top-1] = retInfo;
+
+                // Move first arg. 
+                const retInfoDst = &self.stack.buf[self.framePtr];
+                self.stack.buf[self.stack.top] = retInfoDst.*;
+                // Set retInfo last so it will copy over any undefined value for zero arg func calls.
+                retInfoDst.* = retInfo;
+
+                self.stack.top += sym.inner.func.numLocals;
             },
             // .none => {
             //     @setCold(true);
@@ -1788,7 +1795,7 @@ pub const VM = struct {
                     const numArgs = self.ops[self.pc+1].arg;
                     self.pc += 2;
 
-                    const callee = self.stack.buf[self.stack.top - 1];
+                    const callee = self.stack.buf[self.stack.top - numArgs];
                     const retInfo = self.buildReturnInfo(0, true);
                     try @call(.{ .modifier = .never_inline }, self.call, .{callee, numArgs, retInfo});
                     continue;
@@ -1798,7 +1805,7 @@ pub const VM = struct {
                     const numArgs = self.ops[self.pc+1].arg;
                     self.pc += 2;
 
-                    const callee = self.stack.buf[self.stack.top - 1];
+                    const callee = self.stack.buf[self.stack.top - numArgs];
                     const retInfo = self.buildReturnInfo(1, true);
                     try @call(.{ .modifier = .never_inline }, self.call, .{callee, numArgs, retInfo});
                     continue;
@@ -2479,6 +2486,7 @@ const Lambda = packed struct {
     rc: u32,
     funcPc: u32, 
     numParams: u8,
+    /// Includes locals and return info. Does not include params.
     numLocals: u8,
 };
 
@@ -2488,6 +2496,7 @@ const Closure = packed struct {
     funcPc: u32, 
     numParams: u8,
     numCaptured: u8,
+    /// Includes locals, captured vars, and return info. Does not include params.
     numLocals: u8,
     padding: u8,
     capturedVal0: Value,
@@ -2655,7 +2664,7 @@ pub const FuncSymbolEntry = struct {
         nativeFunc1: std.meta.FnPtr(fn (*VM, [*]const Value, u8) Value),
         func: packed struct {
             pc: usize,
-            /// Includes function params, locals, and return info slot.
+            /// Includes locals, and return info slot. Does not include params.
             numLocals: u32,
         },
     },

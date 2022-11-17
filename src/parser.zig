@@ -28,6 +28,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "as", .as_k },
     .{ "pass", .pass_k },
     .{ "none", .none_k },
+    .{ "is", .is_k },
 });
 
 const BlockState = struct {
@@ -1796,6 +1797,7 @@ pub const Parser = struct {
                 .else_k,
                 .comma,
                 .colon,
+                .is_k,
                 .plus_equal,
                 .equal,
                 .operator,
@@ -1908,6 +1910,20 @@ pub const Parser = struct {
                             .left = left_id,
                             .right = right_id,
                             .extra = @enumToInt(bin_op),
+                        },
+                    };
+                    left_id = bin_expr;
+                },
+                .is_k => {
+                    self.advanceToken();
+                    const right_id = try self.parseRightExpression(.equal_equal);
+
+                    const bin_expr = self.pushNode(.bin_expr, start);
+                    self.nodes.items[bin_expr].head = .{
+                        .left_right = .{
+                            .left = left_id,
+                            .right = right_id,
+                            .extra = @enumToInt(BinaryExprOp.equal_equal),
                         },
                     };
                     left_id = bin_expr;
@@ -2202,6 +2218,7 @@ pub const TokenType = enum {
     pass_k,
     none_k,
     func_k,
+    is_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.

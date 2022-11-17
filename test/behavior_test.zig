@@ -127,6 +127,16 @@ test "Comparison ops." {
     );
     try t.eq(val.asBool(), true);
 
+    // Using `is` keyword.
+    val = try run.eval(
+        \\3 is 2
+    );
+    try t.eq(val.asBool(), false);
+    val = try run.eval(
+        \\3 is 3
+    );
+    try t.eq(val.asBool(), true);
+
     // Number equals.
     val = try run.eval(
         \\3 == 2

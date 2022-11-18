@@ -135,11 +135,6 @@ pub const VM = struct {
         self.compiler.deinit();
         self.stack.deinit(self.alloc);
 
-        // for (self.symbols.items) |*map| {
-            // if (map.mapT == .manyStructs) {
-            //     map.inner.manyStructs.deinit(self.alloc);
-            // }
-        // }
         self.methodSyms.deinit(self.alloc);
         self.methodSymExtras.deinit(self.alloc);
         self.methodSymSigs.deinit(self.alloc);

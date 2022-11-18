@@ -96,6 +96,74 @@ test "Structs" {
     try t.eq(val.asI32(), 234);
 }
 
+test "Struct methods." {
+    const run = Runner.create();
+    defer run.destroy();
+
+    // self param.
+    var val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\  func get(self):
+        \\    return self.value
+        \\n = Node{ value: 123 }
+        \\n.get()
+    );
+    try t.eq(val.asI32(), 123);
+
+    // self param with regular param.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\  func get(self, param):
+        \\    return self.value + param
+        \\n = Node{ value: 123 }
+        \\n.get(321)
+    );
+    try t.eq(val.asI32(), 444);
+
+    // self param with many regular param.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\  func get(self, param, param2):
+        \\    return self.value + param - param2
+        \\n = Node{ value: 123 }
+        \\n.get(321, 1)
+    );
+    try t.eq(val.asI32(), 443);
+
+    // Static method, no params.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\  func get():
+        \\    return 123
+        \\Node.get()
+    );
+    try t.eq(val.asI32(), 123);
+
+    // Static method, one params.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\  func get(param):
+        \\    return 123 + param
+        \\Node.get(321)
+    );
+    try t.eq(val.asI32(), 444);
+
+    // Static method, many params.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\  func get(param, param2):
+        \\    return 123 + param - param2
+        \\Node.get(321, 1)
+    );
+    try t.eq(val.asI32(), 443);
+}
+
 test "Stack trace unwinding." {
     const run = Runner.create();
     defer run.destroy();
@@ -1404,6 +1472,10 @@ const VMrunner = struct {
     }
 
     fn eval(self: *VMrunner, src: []const u8) cy.EvalError!cy.Value {
+        // Eval with new env.
+        self.vm.deinit();
+        try self.vm.init(t.alloc);
+        self.vm.setTrace(&self.trace);
         return self.vm.eval(src, false);
     }
 

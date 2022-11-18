@@ -463,6 +463,14 @@ pub const VMcompiler = struct {
                 }
             },
             .structDecl => {
+                const nameN = self.nodes[node.head.structDecl.name];
+                const name = self.getNodeTokenString(nameN);
+
+                if (self.vm.getStruct(name) != null) {
+                    log.debug("struct already exists", .{});
+                    return error.CompileError;
+                }
+
                 var funcId = node.head.structDecl.funcsHead;
                 while (funcId != NullId) {
                     const func = self.nodes[funcId];
@@ -972,7 +980,7 @@ pub const VMcompiler = struct {
             _ = try self.reserveLocalVar("self", AnyType);
 
             // First arg is copied to the end before the function call.
-            const param = self.funcParams[func.params.start];
+            const param = self.funcParams[func.params.start+1];
             const paramName = self.src[param.name.start..param.name.end];
             const paramT = AnyType;
             _ = try self.reserveLocalVar(paramName, paramT);
@@ -1346,7 +1354,8 @@ pub const VMcompiler = struct {
         try self.buf.pushOp(.ret0);
 
         // Reserve another local for the call return info.
-        const numLocals = self.blockNumLocals() + 1;
+        const numParams = func.params.end - func.params.start;
+        const numLocals = self.blockNumLocals() + 1 - numParams;
         self.prevSemaBlock();
         self.popBlock();
 

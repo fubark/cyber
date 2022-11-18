@@ -1201,6 +1201,32 @@ test "Function recursion." {
         \\foo(10)
     );
     try t.eq(val.asI32(), 55);
+
+    // Recursion with long lived object.
+    val = try run.eval(
+        \\struct S:
+        \\  n
+        \\func foo(o):
+        \\  if o.n is 0:
+        \\    return 0
+        \\  n = o.n
+        \\  o.n = o.n - 1
+        \\  return n + foo(o)
+        \\foo(S{ n: 10 })
+    );
+    try t.eq(val.asI32(), 55);
+
+    // Recursion with new objects.
+    val = try run.eval(
+        \\struct S:
+        \\  n
+        \\func foo(o):
+        \\  if o.n is 0:
+        \\    return 0
+        \\  return o.n + foo(S{ n: o.n - 1 })
+        \\foo(S{ n: 10 })
+    );
+    try t.eq(val.asI32(), 55);
 }
 
 test "function declaration" {
@@ -1486,7 +1512,12 @@ const VMrunner = struct {
         self.vm.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);
-        return self.vm.eval(src, false);
+        return self.vm.eval(src, false) catch |err| {
+            if (err == error.Panic) {
+                self.vm.dumpPanicStackTrace();
+            }
+            return err;
+        };
     }
 
     fn eval2(self: *VMrunner, src: []const u8, embed_interrupts: bool) !cy.Value {

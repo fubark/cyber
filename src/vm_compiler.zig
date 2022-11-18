@@ -33,11 +33,11 @@ pub const VMcompiler = struct {
     curSemaBlockId: u32,
     u8Buf: std.ArrayListUnmanaged(u8),
 
-    pub fn init(self: *VMcompiler, vm: *cy.VM) void {
+    pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
             .vm = vm,
-            .buf = cy.ByteCodeBuffer.init(vm.alloc),
+            .buf = try cy.ByteCodeBuffer.init(vm.alloc),
             .lastErr = "",
             .nodes = undefined,
             .tokens = undefined,

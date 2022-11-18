@@ -54,6 +54,12 @@ pub fn Stack(comptime T: type) type {
             }
         }
 
+        pub fn ensureTotalCapacityPrecise(self: *StackT, alloc: std.mem.Allocator, newCap: usize) !void {
+            if (newCap > self.buf.len) {
+                try self.growTotalCapacityPrecise(alloc, newCap);
+            }
+        }
+
         pub fn growTotalCapacity(self: *StackT, alloc: std.mem.Allocator, newCap: usize) !void {
             var betterCap = newCap;
             while (true) {
@@ -63,6 +69,10 @@ pub fn Stack(comptime T: type) type {
                 }
             }
             self.buf = try alloc.reallocAtLeast(self.buf, betterCap);
+        }
+
+        pub fn growTotalCapacityPrecise(self: *StackT, alloc: std.mem.Allocator, newCap: usize) !void {
+            self.buf = try alloc.reallocAtLeast(self.buf, newCap);
         }
     };
 }

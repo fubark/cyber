@@ -111,7 +111,6 @@ pub const Value = packed union {
                 TagNone => return false,
                 TagBoolean => return self.asBool(),
                 else => {
-                    // @setCold(true);
                     stdx.panic("unexpected tag");
                 },
             }

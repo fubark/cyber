@@ -12,10 +12,6 @@ const UseMimalloc = false;
 var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
 var miAlloc: mi.Allocator = undefined;
 
-export fn cyDummy() linksection(".eval") callconv(.C) void {
-    // Force linking section ".eval" before ".eval2"
-}
-
 pub fn main() !void {
     if (UseMimalloc) {
         miAlloc.init();

@@ -22,8 +22,8 @@ pub const ByteCodeBuffer = struct {
     /// to advance the pc right after reading the opcode and operands.
     debugTable: std.ArrayListUnmanaged(OpDebug),
 
-    pub fn init(alloc: std.mem.Allocator) ByteCodeBuffer {
-        return .{
+    pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
+        var new = ByteCodeBuffer{
             .alloc = alloc,
             .mainLocalSize = 0,
             .ops = .{},
@@ -32,6 +32,10 @@ pub const ByteCodeBuffer = struct {
             .strMap = .{},
             .debugTable = .{},
         };
+        // Perform big allocation for instruction buffer for more consistent heap allocation.
+        // TODO: consts should be adjacent to instruction buffer.
+        try new.ops.ensureTotalCapacityPrecise(alloc, 4096);
+        return new;
     }
 
     pub fn deinit(self: *ByteCodeBuffer) void {
@@ -407,4 +411,5 @@ pub const OpCode = enum(u8) {
 
 test "Internals." {
     try t.eq(@enumToInt(OpCode.end), 60);
+    try t.eq(@sizeOf(OpData), 1);
 }

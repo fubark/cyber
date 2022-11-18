@@ -115,8 +115,10 @@ pub const VM = struct {
             .stackTrace = .{},
             .debugTable = undefined,
         };
-        self.compiler.init(self);
-        try self.ensureStackTotalCapacity(100);
+        try self.compiler.init(self);
+
+        // Perform big allocation for stack for more consistent heap allocation.
+        try self.stack.ensureTotalCapacityPrecise(self.alloc, 512);
 
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
@@ -1276,7 +1278,6 @@ pub const VM = struct {
                     return self.getFieldOther(obj, symMap.name);
                 },
                 // else => {
-                //     // @setCold(true);
                 //     // stdx.panicFmt("unsupported {}", .{symMap.mapT});
                 //     unreachable;
                 // },
@@ -1405,7 +1406,6 @@ pub const VM = struct {
                 self.stack.top += sym.inner.func.numLocals;
             },
             // .none => {
-            //     @setCold(true);
             //     // Function doesn't exist.
             //     log.debug("Symbol {} doesn't exist.", .{symId});
             //     // TODO: script panic.
@@ -1480,7 +1480,6 @@ pub const VM = struct {
                 }
             },
             // else => {
-            //     // @setCold(true);
             //     // stdx.panicFmt("unsupported {}", .{sym.entryT});
             //     unreachable;
             // },
@@ -2050,7 +2049,6 @@ pub const VM = struct {
                     const condVal = if (cond.isBool()) b: {
                         break :b cond.asBool();
                     } else b: {
-                        @setCold(true);
                         break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
                     };
                     if (!condVal) {

@@ -1036,7 +1036,8 @@ pub const VMcompiler = struct {
 
                     const fieldName = self.getNodeTokenString(accessRight);
                     const fieldId = try self.vm.ensureFieldSym(fieldName);
-                    try self.buf.pushOp1(.setField, @intCast(u8, fieldId));
+                    try self.buf.pushOp1(.releaseSetField, @intCast(u8, fieldId));
+                    try self.pushDebugSym(nodeId);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
@@ -1437,7 +1438,7 @@ pub const VMcompiler = struct {
                             log.debug("Missing field {s}", .{propName});
                             return error.CompileError;
                         };
-                        try self.operandStack.append(self.alloc, .{ .arg = @intCast(u8, propIdx) });
+                        try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, propIdx)));
                     }
 
                     _ = try self.genExpr(entry.head.left_right.right, discardTopExprReg);
@@ -1645,7 +1646,7 @@ pub const VMcompiler = struct {
 
                 if (!discardTopExprReg) {
                     try self.buf.pushOp1(.pushField, @intCast(u8, fieldId));
-                    try self.pushDebugSym(self.buf.ops.items.len, nodeId);
+                    try self.pushDebugSym(nodeId);
                 }
 
                 return AnyType;
@@ -1964,10 +1965,10 @@ pub const VMcompiler = struct {
                             const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
                             if (discardTopExprReg) {
                                 try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs));
-                                try self.pushDebugSym(self.buf.ops.items.len, nodeId);
+                                try self.pushDebugSym(nodeId);
                             } else {
                                 try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs));
-                                try self.pushDebugSym(self.buf.ops.items.len, nodeId);
+                                try self.pushDebugSym(nodeId);
                             }
                             return AnyType;
                         }
@@ -2040,7 +2041,11 @@ pub const VMcompiler = struct {
         return self.src[token.start_pos..token.data.end_pos];
     }
 
-    fn pushDebugSym(self: *VMcompiler, pc: usize, nodeId: cy.NodeId) !void {
+    fn pushDebugSym(self: *VMcompiler, nodeId: cy.NodeId) !void {
+        try self.buf.pushDebugSym(self.buf.ops.items.len, 0, nodeId, self.curBlock.frameLoc);
+    }
+
+    fn pushDebugSymAt(self: *VMcompiler, pc: usize, nodeId: cy.NodeId) !void {
         try self.buf.pushDebugSym(pc, 0, nodeId, self.curBlock.frameLoc);
     }
 };

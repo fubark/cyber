@@ -825,7 +825,7 @@ pub const VM = struct {
 
     pub fn addStruct(self: *VM, name: []const u8) !StructId {
         const s = Struct{
-            .name = "",
+            .name = name,
             .numFields = 0,
         };
         const id = @intCast(u32, self.structs.len);
@@ -1101,7 +1101,7 @@ pub const VM = struct {
         return true;
     }
 
-    pub inline fn retain(self: *VM, val: Value) void {
+    pub inline fn retain(self: *const VM, val: Value) void {
         _ = self;
         @setRuntimeSafety(debug);
         if (val.isPointer()) {
@@ -1204,13 +1204,43 @@ pub const VM = struct {
         }
     }
 
-    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") void {
+    fn releaseSetField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
             const symMap = self.fieldSyms.buf[fieldId];
             switch (symMap.mapT) {
                 .oneStruct => {
+                    @setRuntimeSafety(debug);
+                    if (obj.common.structId == symMap.inner.oneStruct.id) {
+                        if (symMap.inner.oneStruct.isSmallObject) {
+                            self.release(obj.smallObject.getValuesPtr()[symMap.inner.oneStruct.fieldIdx], false);
+                            obj.smallObject.getValuesPtr()[symMap.inner.oneStruct.fieldIdx] = val;
+                        } else {
+                            stdx.panic("TODO: big object");
+                        }
+                    } else {
+                        stdx.panic("TODO: set field fallback");
+                    }
+                },
+                .empty => {
+                    @setRuntimeSafety(debug);
+                    stdx.panic("TODO: set field fallback");
+                },
+            } 
+        } else {
+            try self.setFieldNotObjectError();
+        }
+    }
+
+    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
+        @setRuntimeSafety(debug);
+        if (recv.isPointer()) {
+            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+            const symMap = self.fieldSyms.buf[fieldId];
+            switch (symMap.mapT) {
+                .oneStruct => {
+                    @setRuntimeSafety(debug);
                     if (obj.common.structId == symMap.inner.oneStruct.id) {
                         if (symMap.inner.oneStruct.isSmallObject) {
                             obj.smallObject.getValuesPtr()[symMap.inner.oneStruct.fieldIdx] = val;
@@ -1222,12 +1252,18 @@ pub const VM = struct {
                     }
                 },
                 .empty => {
+                    @setRuntimeSafety(debug);
                     stdx.panic("TODO: set field fallback");
                 },
             } 
         } else {
-            unreachable;
+            try self.setFieldNotObjectError();
         }
+    }
+
+    fn setFieldNotObjectError(self: *VM) !void {
+        @setCold(true);
+        return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
     fn getAndRetainField(self: *const VM, symId: SymbolId, recv: Value) linksection(".eval") Value {
@@ -1238,9 +1274,10 @@ pub const VM = struct {
             switch (symMap.mapT) {
                 .oneStruct => {
                     if (obj.retainedCommon.structId == symMap.inner.oneStruct.id) {
-                        obj.retainedCommon.rc += 1;
                         if (symMap.inner.oneStruct.isSmallObject) {
-                            return obj.smallObject.getValuesConstPtr()[symMap.inner.oneStruct.fieldIdx];
+                            const val = obj.smallObject.getValuesConstPtr()[symMap.inner.oneStruct.fieldIdx];
+                            self.retain(val);
+                            return val;
                         } else {
                             stdx.panic("TODO: big object");
                         }
@@ -1650,6 +1687,10 @@ pub const VM = struct {
                         const funcId = self.ops[self.pc+1].arg;
                         const numArgs = self.ops[self.pc+2].arg;
                         log.debug("{} op: {s} {} {}", .{self.pc, @tagName(self.ops[self.pc].code), funcId, numArgs});
+                    },
+                    .release => {
+                        const local = self.ops[self.pc+1].arg;
+                        log.debug("{} op: {s} {}", .{self.pc, @tagName(self.ops[self.pc].code), local});
                     },
                     .load => {
                         const local = self.ops[self.pc+1].arg;
@@ -2140,6 +2181,16 @@ pub const VM = struct {
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, true });
                     continue;
                 },
+                .releaseSetField => {
+                    @setRuntimeSafety(debug);
+                    const fieldId = self.ops[self.pc+1].arg;
+                    self.pc += 2;
+
+                    const recv = self.stack.buf[self.stack.top-2];
+                    const val = self.stack.buf[self.stack.top-1];
+                    self.stack.top -= 2;
+                    try self.releaseSetField(recv, fieldId, val);
+                },
                 .setField => {
                     @setRuntimeSafety(debug);
                     const fieldId = self.ops[self.pc+1].arg;
@@ -2148,7 +2199,7 @@ pub const VM = struct {
                     const recv = self.stack.buf[self.stack.top-2];
                     const val = self.stack.buf[self.stack.top-1];
                     self.stack.top -= 2;
-                    self.setField(recv, fieldId, val);
+                    try self.setField(recv, fieldId, val);
                 },
                 .pushField => {
                     @setRuntimeSafety(debug);

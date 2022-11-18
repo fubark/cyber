@@ -53,6 +53,49 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 4);
 }
 
+test "Structs" {
+    const run = Runner.create();
+    defer run.destroy();
+
+    // Initialization.
+    var val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\n = Node{ value: 123 }
+        \\n.value
+    );
+    try t.eq(val.asI32(), 123);
+
+    // Initialize with heap value field.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\n = Node{ value: [123] }
+        \\n.value[0]
+    );
+    try t.eq(val.asI32(), 123);
+
+    // Set to object field.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\n = Node{ value: 123 }
+        \\n.value = 234
+        \\n.value
+    );
+    try t.eq(val.asI32(), 234);
+
+    // Set to field with heap value.
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\n = Node{ value: [123] }
+        \\n.value = 234
+        \\n.value
+    );
+    try t.eq(val.asI32(), 234);
+}
+
 test "Stack trace unwinding." {
     const run = Runner.create();
     defer run.destroy();

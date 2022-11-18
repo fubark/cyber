@@ -402,6 +402,7 @@ pub const OpCode = enum(u8) {
     setInitN,
     pushStructInitSmall,
     setField,
+    releaseSetField,
     pushBitwiseAnd,
     pushFieldRetain,
 
@@ -410,6 +411,6 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 60);
+    try t.eq(@enumToInt(OpCode.end), 61);
     try t.eq(@sizeOf(OpData), 1);
 }

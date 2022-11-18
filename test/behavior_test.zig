@@ -334,6 +334,24 @@ test "Comparison ops." {
         \\foo == 'foo'
     );
     try t.eq(val.asBool(), true);
+
+    // Object equals.
+    val = try run.eval(
+        \\struct S:
+        \\  value
+        \\s = S{ value: 123 }
+        \\a = S{ value: 123 }
+        \\a == s
+    );
+    try t.eq(val.asBool(), false);
+    val = try run.eval(
+        \\struct S:
+        \\  value
+        \\s = S{ value: 123 }
+        \\a = s
+        \\a == s
+    );
+    try t.eq(val.asBool(), true);
 }
 
 test "Logic operators" {

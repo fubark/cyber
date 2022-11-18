@@ -346,7 +346,7 @@ pub const VM = struct {
         switch (numRetVals) {
             0 => {
                 @setRuntimeSafety(debug);
-                const retInfo = self.stack.buf[self.stack.top-1];
+                const retInfo = self.stack.buf[self.framePtr];
                 const reqNumArgs = retInfo.retInfo.numRetVals;
                 if (reqNumArgs == 0) {
                     self.stack.top = self.framePtr;
@@ -1294,6 +1294,11 @@ pub const VM = struct {
         }
     }
 
+    fn getFieldMissingSymbolError(self: *VM) !void {
+        @setCold(true);
+        return self.panic("Field not found in value.");
+    }
+
     fn setFieldNotObjectError(self: *VM) !void {
         @setCold(true);
         return self.panic("Can't assign to value's field since the value is not an object.");
@@ -1331,7 +1336,7 @@ pub const VM = struct {
         }
     }
 
-    fn getField(self: *const VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
+    fn getField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
@@ -1361,9 +1366,8 @@ pub const VM = struct {
                 // },
             } 
         } else {
-            // log.debug("Object missing symbol: {}", .{symId});
-            // return error.MissingSymbol;
-            return error.Panic;
+            try self.getFieldMissingSymbolError();
+            unreachable;
         }
     }
 
@@ -1866,7 +1870,7 @@ pub const VM = struct {
                     if (left.isNumber()) {
                         self.stack.buf[self.stack.top-1] = evalCompareNumber(left, right);
                     } else {
-                        self.stack.buf[self.stack.top-1] = evalCompareOther(self, left, right);
+                        self.stack.buf[self.stack.top-1] = @call(.{.modifier = .never_inline }, evalCompareOther, .{self, left, right});
                     }
                     continue;
                 },
@@ -2667,6 +2671,7 @@ inline fn evalCompareNumber(left: Value, right: Value) linksection(".eval") Valu
 }
 
 fn evalCompareOther(vm: *const VM, left: Value, right: Value) Value {
+    @setCold(true);
     @setRuntimeSafety(debug);
     if (left.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
@@ -2675,7 +2680,11 @@ fn evalCompareOther(vm: *const VM, left: Value, right: Value) Value {
                 const str = obj.string.ptr[0..obj.string.len];
                 return Value.initBool(std.mem.eql(u8, str, vm.valueAsString(right)));
             } else return Value.initFalse();
-        } else return Value.initFalse();
+        } else {
+            if (right.isPointer()) {
+                return Value.initBool(@ptrCast(*anyopaque, obj) == right.asPointer().?);
+            } else return Value.initFalse();
+        }
     } else {
         switch (left.getTag()) {
             cy.TagNone => return Value.initBool(right.isNone()),

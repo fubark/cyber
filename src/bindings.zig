@@ -45,13 +45,27 @@ pub fn bindCore(self: *cy.VM) !void {
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdParseCyon));
     id = try self.ensureFuncSym("std.print");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdPrint));
+    id = try self.ensureFuncSym("std.toString");
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdToString));
 
     try self.ensureGlobalFuncSym("readInput", "std.readInput");
     try self.ensureGlobalFuncSym("parseCyon", "std.parseCyon");
     try self.ensureGlobalFuncSym("print", "std.print");
+    try self.ensureGlobalFuncSym("toString", "std.toString");
 }
 
-fn stdPrint(_: *cy.VM, args: [*]const Value, nargs: u8) Value {
+fn stdToString(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = nargs;
+    const val = args[0];
+    if (val.isString()) {
+        return val;
+    } else {
+        const str = gvm.valueToTempString(val);
+        return vm.allocString(str) catch stdx.fatal();
+    }
+}
+
+fn stdPrint(_: cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
@@ -59,12 +73,12 @@ fn stdPrint(_: *cy.VM, args: [*]const Value, nargs: u8) Value {
     return Value.initNone();
 }
 
-fn stdReadInput(_: *cy.VM, _: [*]const Value, _: u8) Value {
+fn stdReadInput(_: cy.UserVM, _: [*]const Value, _: u8) Value {
     const input = std.io.getStdIn().readToEndAlloc(gvm.alloc, 10e8) catch stdx.fatal();
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 
-fn stdParseCyon(_: *cy.VM, args: [*]const Value, nargs: u8) Value {
+fn stdParseCyon(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueAsString(args[0]);
     defer gvm.release(args[0], false);
@@ -72,26 +86,26 @@ fn stdParseCyon(_: *cy.VM, args: [*]const Value, nargs: u8) Value {
     var parser = cy.Parser.init(gvm.alloc);
     defer parser.deinit();
     const val = cy.decodeCyon(gvm.alloc, &parser, str) catch stdx.fatal();
-    return fromCyonValue(gvm, val) catch stdx.fatal();
+    return fromCyonValue(vm, val) catch stdx.fatal();
 }
 
-fn fromCyonValue(self: *cy.VM, val: cy.DecodeValueIR) !Value {
+fn fromCyonValue(self: cy.UserVM, val: cy.DecodeValueIR) !Value {
     switch (val.getValueType()) {
         .list => {
             var dlist = val.asList() catch stdx.fatal();
             defer dlist.deinit();
-            const elems = try self.alloc.alloc(Value, dlist.arr.len);
+            const elems = try gvm.alloc.alloc(Value, dlist.arr.len);
             for (elems) |*elem, i| {
                 elem.* = try fromCyonValue(self, dlist.getIndex(i));
             }
-            return try self.allocOwnedList(elems);
+            return try gvm.allocOwnedList(elems);
         },
         .map => {
             var dmap = val.asMap() catch stdx.fatal();
             defer dmap.deinit();
             var iter = dmap.iterator();
 
-            const mapVal = try self.allocEmptyMap();
+            const mapVal = try gvm.allocEmptyMap();
             const map = stdx.ptrCastAlign(*cy.HeapObject, mapVal.asPointer().?);
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
@@ -103,7 +117,7 @@ fn fromCyonValue(self: *cy.VM, val: cy.DecodeValueIR) !Value {
         .string => {
             const str = val.allocString();
             log.debug("cyon string {s}", .{str});
-            return try self.allocOwnedString(str);
+            return try gvm.allocOwnedString(str);
         },
         .number => {
             return Value.initF64(try val.asF64());
@@ -111,7 +125,7 @@ fn fromCyonValue(self: *cy.VM, val: cy.DecodeValueIR) !Value {
     }
 }
 
-fn stdMapPut(_: *cy.VM, obj: *cy.HeapObject, key: Value, value: Value) void {
+fn stdMapPut(_: cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
     const map = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner); 
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }

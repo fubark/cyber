@@ -94,6 +94,16 @@ test "Structs" {
         \\n.value
     );
     try t.eq(val.asI32(), 234);
+
+    // Struct to string returns struct name. 
+    val = try run.eval(
+        \\struct Node:
+        \\  value
+        \\n = Node{ value: 123 }
+        \\toString(n)
+    );
+    try t.eqStr(try run.assertValueString(val), "Node");
+    run.deinitValue(val);
 }
 
 test "Struct methods." {
@@ -1487,7 +1497,7 @@ const VMrunner = struct {
     }
 
     pub fn assertValueString(self: *VMrunner, val: cy.Value) ![]const u8 {
-        if (self.vm.isValueString(val)) {
+        if (val.isString()) {
             return self.vm.valueAsString(val);
         } else {
             return error.NotAString;

@@ -1440,7 +1440,7 @@ pub const VM = struct {
                 @setRuntimeSafety(debug);
                 self.pc += 3;
                 const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
-                const res = sym.inner.nativeFunc1(self, args.ptr, @intCast(u8, args.len));
+                const res = sym.inner.nativeFunc1(.{}, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
                     const newTop = self.stack.top - numArgs + 1;
                     if (newTop >= self.stack.buf.len) {
@@ -2487,18 +2487,6 @@ pub const VM = struct {
         }
     }
 
-    pub fn isValueString(self: *const VM, val: Value) bool {
-        @setRuntimeSafety(debug);
-        _ = self;
-        if (val.isPointer()) {
-            const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
-            return obj.common.structId == StringS;
-        } else {
-            const tag = val.getTag();
-            return tag == cy.TagConstString;
-        }
-    }
-
     pub fn valueAsString(self: *const VM, val: Value) []const u8 {
         @setRuntimeSafety(debug);
         if (val.isPointer()) {
@@ -2526,8 +2514,7 @@ pub const VM = struct {
                 if (obj.common.structId == StringS) {
                     return obj.string.ptr[0..obj.string.len];
                 } else {
-                    log.debug("unexpected struct {}", .{obj.common.structId});
-                    stdx.fatal();
+                    return self.structs.buf[obj.common.structId].name;
                 }
             } else {
                 switch (val.getTag()) {
@@ -2684,7 +2671,7 @@ fn evalCompareOther(vm: *const VM, left: Value, right: Value) Value {
     if (left.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
         if (obj.common.structId == StringS) {
-            if (vm.isValueString(right)) {
+            if (right.isString()) {
                 const str = obj.string.ptr[0..obj.string.len];
                 return Value.initBool(std.mem.eql(u8, str, vm.valueAsString(right)));
             } else return Value.initFalse();
@@ -2694,7 +2681,7 @@ fn evalCompareOther(vm: *const VM, left: Value, right: Value) Value {
             cy.TagNone => return Value.initBool(right.isNone()),
             cy.TagBoolean => return Value.initBool(left.asBool() == right.toBool()),
             cy.TagConstString => {
-                if (vm.isValueString(right)) {
+                if (right.isString()) {
                     const slice = left.asConstStr();
                     const str = vm.strBuf[slice.start..slice.end];
                     return Value.initBool(std.mem.eql(u8, str, vm.valueAsString(right)));
@@ -3103,7 +3090,7 @@ const FuncSymbolEntryType = enum {
 pub const FuncSymbolEntry = struct {
     entryT: FuncSymbolEntryType,
     inner: packed union {
-        nativeFunc1: std.meta.FnPtr(fn (*VM, [*]const Value, u8) Value),
+        nativeFunc1: std.meta.FnPtr(fn (UserVM, [*]const Value, u8) Value),
         func: packed struct {
             pc: usize,
             /// Includes locals, and return info slot. Does not include params.
@@ -3111,7 +3098,7 @@ pub const FuncSymbolEntry = struct {
         },
     },
 
-    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*VM, [*]const Value, u8) Value)) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (UserVM, [*]const Value, u8) Value)) FuncSymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{
@@ -3211,8 +3198,8 @@ pub const UserVM = struct {
         return gvm.eval(src, trace);
     }
 
-    pub inline fn isValueString(_: UserVM, val: Value) bool {
-        return gvm.isValueString(val);
+    pub inline fn allocString(_: UserVM, str: []const u8) !Value {
+        return gvm.allocString(str);
     }
 
     pub inline fn valueAsString(_: UserVM, val: Value) []const u8 {

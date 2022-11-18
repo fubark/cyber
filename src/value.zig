@@ -117,6 +117,16 @@ pub const Value = packed union {
         }
     }
 
+    pub fn isString(self: *const Value) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
+        if (self.isPointer()) {
+            const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+            return obj.common.structId == cy.StringS;
+        } else {
+            return self.getTag() == TagConstString;
+        }
+    }
+
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         // Only a number(f64) if nan bits are not set.

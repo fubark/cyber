@@ -785,12 +785,12 @@ pub const VMcompiler = struct {
             const node = self.nodes[cur_id];
             if (attachEnd) {
                 if (node.next == NullId) {
-                    try self.genStatement(node, false);
+                    try self.genStatement(cur_id, false);
                 } else {
-                    try self.genStatement(node, true);
+                    try self.genStatement(cur_id, true);
                 }
             } else {
-                try self.genStatement(node, true);
+                try self.genStatement(cur_id, true);
             }
             cur_id = node.next;
         }
@@ -972,8 +972,10 @@ pub const VMcompiler = struct {
     /// discardTopExprReg is usually true since statements aren't expressions and evaluating child expressions
     /// would just grow the register stack unnecessarily. However, the last main statement requires the
     /// resulting expr to persist to return from `eval`.
-    fn genStatement(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) !void {
+    fn genStatement(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
         // log.debug("gen stmt {}", .{node.node_t});
+
+        const node = self.nodes[nodeId];
         switch (node.node_t) {
             .pass_stmt => {
                 return;
@@ -1084,13 +1086,14 @@ pub const VMcompiler = struct {
 
                     const symPath = try std.fmt.allocPrint(self.alloc, "{s}.{s}", .{name, funcName});
                     try self.vm.funcSymNames.append(self.alloc, symPath);
-                    try self.genFuncDecl(func, decl, symPath);
+
+                    try self.genFuncDecl(funcId, symPath);
                 }
             },
             .func_decl => {
                 const func = self.funcDecls[node.head.func.decl_id];
                 const name = self.src[func.name.start..func.name.end];
-                try self.genFuncDecl(node, func, name);
+                try self.genFuncDecl(nodeId, name);
             },
             .for_cond_stmt => {
                 const top = @intCast(u32, self.buf.ops.items.len);
@@ -1339,13 +1342,16 @@ pub const VMcompiler = struct {
         try self.vm.addMethodSym(structId, methodId, sym);
     }
 
-    fn genFuncDecl(self: *VMcompiler, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
-        const symId = try self.vm.ensureFuncSym(name);
+    fn genFuncDecl(self: *VMcompiler, nodeId: cy.NodeId, symName: []const u8) !void {
+        const node = self.nodes[nodeId];
+        const func = self.funcDecls[node.head.func.decl_id];
+        const symId = try self.vm.ensureFuncSym(symName);
 
         const jumpPc = try self.pushEmptyJump();
 
         try self.pushBlock();
         self.nextSemaBlock();
+        self.curBlock.frameLoc = nodeId;
 
         const opStart = @intCast(u32, self.buf.ops.items.len);
         try self.reserveFuncParams(func);
@@ -1958,8 +1964,10 @@ pub const VMcompiler = struct {
                             const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
                             if (discardTopExprReg) {
                                 try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs));
+                                try self.pushDebugSym(self.buf.ops.items.len, nodeId);
                             } else {
                                 try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs));
+                                try self.pushDebugSym(self.buf.ops.items.len, nodeId);
                             }
                             return AnyType;
                         }

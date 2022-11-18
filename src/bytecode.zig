@@ -18,6 +18,8 @@ pub const ByteCodeBuffer = struct {
     strMap: std.HashMapUnmanaged(stdx.IndexSlice(u32), u32, StringIndexContext, std.hash_map.default_max_load_percentage),
 
     /// Maps ops back to source code.
+    /// The end pc of an instruction is mapped since the interpreter prefers
+    /// to advance the pc right after reading the opcode and operands.
     debugTable: std.ArrayListUnmanaged(OpDebug),
 
     pub fn init(alloc: std.mem.Allocator) ByteCodeBuffer {

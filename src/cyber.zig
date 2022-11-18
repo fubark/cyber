@@ -45,6 +45,7 @@ pub const StringS = vm.StringS;
 pub const StructId = vm.StructId;
 pub const EvalError = vm.EvalError;
 pub const StackTrace = vm.StackTrace;
+pub const StackFrame = vm.StackFrame;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;

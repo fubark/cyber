@@ -62,12 +62,40 @@ test "Stack trace unwinding." {
         \\1 + a.foo
     );
     try t.expectError(res, error.Panic);
-
-    const trace = run.getStackTrace();
+    var trace = run.getStackTrace();
     try t.eq(trace.frames.len, 1);
-    try t.eqStr(trace.frames[0].name, "main");
-    try t.eq(trace.frames[0].line, 1);
-    try t.eq(trace.frames[0].col, 4);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "main",
+        .line = 1,
+        .col = 4,
+    });
+
+    // Function stack trace.
+    res = run.eval(
+        \\func foo():
+        \\  a = 123
+        \\  return 1 + a.foo
+        \\foo()
+    );
+    try t.expectError(res, error.Panic);
+    trace = run.getStackTrace();
+    try t.eq(trace.frames.len, 2);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "foo",
+        .line = 2,
+        .col = 13,
+    });
+    try eqStackFrame(trace.frames[1], .{
+        .name = "main",
+        .line = 3,
+        .col = 0,
+    });
+}
+
+fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
+    try t.eqStr(act.name, exp.name);
+    try t.eq(act.line, exp.line);
+    try t.eq(act.col, exp.col);
 }
 
 test "Optionals" {

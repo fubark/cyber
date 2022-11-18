@@ -1359,12 +1359,15 @@ pub const VM = struct {
         switch (sym.entryT) {
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
+                self.pc += 3;
                 const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
                 const res = sym.inner.nativeFunc1(self, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
                     const newTop = self.stack.top - numArgs + 1;
                     if (newTop >= self.stack.buf.len) {
-                        return error.StackOverflow;
+                        // Already made state changes, so grow stack here instead of
+                        // returning StackOverflow.
+                        try self.stack.growTotalCapacity(self.alloc, newTop);
                     }
                     self.stack.top = newTop;
                     self.stack.buf[self.stack.top-1] = res;
@@ -1389,7 +1392,7 @@ pub const VM = struct {
                     return error.StackOverflow;
                 }
 
-                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
+                const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
 
@@ -1527,6 +1530,18 @@ pub const VM = struct {
         }
     }
 
+    pub inline fn buildReturnInfo2(self: *const VM, pc: usize, comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
+        @setRuntimeSafety(debug);
+        return Value{
+            .retInfo = .{
+                .pc = @intCast(u32, pc),
+                .framePtr = @intCast(u29, self.framePtr),
+                .numRetVals = numRetVals,
+                .retFlag = if (cont) 0 else 1,
+            },
+        };
+    }
+
     pub inline fn buildReturnInfo(self: *const VM, comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
         @setRuntimeSafety(debug);
         return Value{
@@ -1571,37 +1586,43 @@ pub const VM = struct {
 
     pub fn buildStackTrace(self: *VM) !void {
         self.stackTrace.deinit(self.alloc);
-        var frames: std.ArrayListUnmanaged(StackTraceFrame) = .{};
+        var frames: std.ArrayListUnmanaged(StackFrame) = .{};
 
         var framePtr = self.framePtr;
         var pc = self.pc;
-        while (framePtr > 0) {
+        while (true) {
             const idx = self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
             const sym = self.debugTable[idx];
 
-            const node = self.compiler.nodes[sym.frameLoc];
-            const func = self.compiler.funcDecls[node.head.func.decl_id];
-            const name = self.compiler.src[func.name.start..func.name.end];
-            try frames.append(self.alloc, .{
-                .name = name,
-                .line = 0,
-                .col = 0,
-            });
-            pc = self.stack.buf[framePtr].retInfo.pc;
-            framePtr = self.stack.buf[framePtr].retInfo.framePtr;
-        }
+            if (sym.frameLoc == NullId) {
+                const node = self.compiler.nodes[sym.loc];
+                var line: u32 = undefined;
+                var col: u32 = undefined;
+                self.computeLinePos(self.compiler.tokens[node.start_token].start_pos, &line, &col);
+                try frames.append(self.alloc, .{
+                    .name = "main",
+                    .line = line,
+                    .col = col,
+                });
+                break;
+            } else {
+                const frameNode = self.compiler.nodes[sym.frameLoc];
+                const func = self.compiler.funcDecls[frameNode.head.func.decl_id];
+                const name = self.compiler.src[func.name.start..func.name.end];
 
-        const idx = self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
-        const sym = self.debugTable[idx];
-        const node = self.compiler.nodes[sym.loc];
-        var line: u32 = undefined;
-        var col: u32 = undefined;
-        self.computeLinePos(self.compiler.tokens[node.start_token].start_pos, &line, &col);
-        try frames.append(self.alloc, .{
-            .name = "main",
-            .line = line,
-            .col = col,
-        });
+                const node = self.compiler.nodes[sym.loc];
+                var line: u32 = undefined;
+                var col: u32 = undefined;
+                self.computeLinePos(self.compiler.tokens[node.start_token].start_pos, &line, &col);
+                try frames.append(self.alloc, .{
+                    .name = name,
+                    .line = line,
+                    .col = col,
+                });
+                pc = self.stack.buf[framePtr].retInfo.pc;
+                framePtr = self.stack.buf[framePtr].retInfo.framePtr;
+            }
+        }
 
         self.stackTrace.frames = frames.toOwnedSlice(self.alloc);
     }
@@ -2107,7 +2128,6 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
-                    self.pc += 3;
 
                     try self.callSym(symId, numArgs, 0);
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, false });
@@ -2117,7 +2137,6 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
-                    self.pc += 3;
 
                     try self.callSym(symId, numArgs, 1);
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, true });
@@ -3109,14 +3128,14 @@ pub const EvalError = error{
 };
 
 pub const StackTrace = struct {
-    frames: []const StackTraceFrame = &.{},
+    frames: []const StackFrame = &.{},
 
     fn deinit(self: *StackTrace, alloc: std.mem.Allocator) void {
         alloc.free(self.frames);
     }
 };
 
-const StackTraceFrame = struct {
+pub const StackFrame = struct {
     name: []const u8,
     /// Starts at 0.
     line: u32,

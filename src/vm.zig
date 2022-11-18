@@ -1456,19 +1456,29 @@ pub const VM = struct {
         const argStart = self.stack.top - numArgs;
         switch (sym.entryT) {
             .func => {
+                @setRuntimeSafety(debug);
+                if (self.stack.top + sym.inner.func.numLocals >= self.stack.buf.len) {
+                    return error.StackOverflow;
+                }
+
                 // Retain receiver.
                 obj.retainedCommon.rc += 1;
-                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
+
+                const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
-                self.stack.top = self.framePtr + sym.inner.func.numLocals;
-                if (self.stack.top > self.stack.buf.len) {
-                    try self.stack.growTotalCapacity(self.alloc, self.stack.top);
-                }
-                // Push return pc address and previous current framePtr onto the stack.
-                self.stack.buf[self.stack.top-1] = retInfo;
+
+                // Move first arg. 
+                const retInfoDst = &self.stack.buf[self.framePtr];
+                self.stack.buf[self.stack.top] = retInfoDst.*;
+                // Set retInfo last so it will copy over any undefined value for zero arg func calls.
+                retInfoDst.* = retInfo;
+
+                self.stack.top += sym.inner.func.numLocals;
             },
             .nativeFunc1 => {
+                @setRuntimeSafety(debug);
+                self.pc += 3;
                 const args = self.stack.buf[argStart .. self.stack.top - 1];
                 const res = sym.inner.nativeFunc1(.{}, obj, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
@@ -1490,6 +1500,8 @@ pub const VM = struct {
                 }
             },
             .nativeFunc2 => {
+                @setRuntimeSafety(debug);
+                self.pc += 3;
                 const args = self.stack.buf[argStart .. self.stack.top - 1];
                 const func = @ptrCast(std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) cy.ValuePair), sym.inner.nativeFunc2);
                 const res = func(self, obj, args);
@@ -1526,7 +1538,7 @@ pub const VM = struct {
             if (heapMap.getByString(self, name)) |val| {
                 // Replace receiver with function.
                 self.stack.buf[self.stack.top-1] = val;
-                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
+                const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 self.call(val, numArgs, retInfo) catch stdx.fatal();
                 return;
             }
@@ -2145,7 +2157,6 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
-                    self.pc += 3;
 
                     try self.callObjSym(symId, numArgs, 0);
                     continue;
@@ -2154,7 +2165,6 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
-                    self.pc += 3;
 
                     try self.callObjSym(symId, numArgs, 1);
                     continue;

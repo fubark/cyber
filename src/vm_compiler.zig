@@ -958,15 +958,28 @@ pub const VMcompiler = struct {
     }
 
     fn reserveMethodParams(self: *VMcompiler, func: cy.FuncDecl) !void {
+        // First local is reserved for the return info.
+        // This slightly reduces cycles at function call time.
+        _ = try self.curBlock.reserveLocal();
         if (func.params.end > func.params.start + 1) {
-            for (self.funcParams[func.params.start + 1..func.params.end]) |param| {
+            for (self.funcParams[func.params.start + 2..func.params.end]) |param| {
                 const paramName = self.src[param.name.start..param.name.end];
                 const paramT = AnyType;
                 _ = try self.reserveLocalVar(paramName, paramT);
             }
+
+            // Add self receiver param.
+            _ = try self.reserveLocalVar("self", AnyType);
+
+            // First arg is copied to the end before the function call.
+            const param = self.funcParams[func.params.start];
+            const paramName = self.src[param.name.start..param.name.end];
+            const paramT = AnyType;
+            _ = try self.reserveLocalVar(paramName, paramT);
+        } else {
+            // Add self receiver param.
+            _ = try self.reserveLocalVar("self", AnyType);
         }
-        // Add self receiver param.
-        _ = try self.reserveLocalVar("self", AnyType);
     }
 
     /// discardTopExprReg is usually true since statements aren't expressions and evaluating child expressions

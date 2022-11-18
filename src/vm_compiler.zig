@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 
@@ -8,6 +9,8 @@ const NullId = std.math.maxInt(u32);
 const NullByteId = std.math.maxInt(u8);
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
+
+const dumpCompileErrorStackTrace = builtin.mode == .Debug and true;
 
 pub const VMcompiler = struct {
     alloc: std.mem.Allocator,
@@ -648,6 +651,9 @@ pub const VMcompiler = struct {
         try self.pushBlock();
         try self.genVarInits();
         self.genStatements(root.head.child_head, true) catch {
+            if (dumpCompileErrorStackTrace) {
+                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+            }
             return ResultView{
                 .buf = self.buf,
                 .hasError = true,

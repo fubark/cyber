@@ -51,6 +51,7 @@ pub const VM = struct {
     /// Symbol table used to lookup object methods.
     /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
     methodSyms: cy.List(SymbolMap),
+    methodTable: std.AutoHashMapUnmanaged(MethodKey, SymbolEntry),
     methodSymExtras: cy.List([]const u8),
 
     /// Used to track which method symbols already exist. Only considers the name right now.
@@ -97,6 +98,7 @@ pub const VM = struct {
             .methodSymExtras = .{},
             .methodSyms = .{},
             .methodSymSigs = .{},
+            .methodTable = .{},
             .funcSyms = .{},
             .funcSymSignatures = .{},
             .funcSymNames = .{},
@@ -116,8 +118,10 @@ pub const VM = struct {
         };
         try self.compiler.init(self);
 
-        // Perform big allocation for stack for more consistent heap allocation.
+        // Perform big allocation for hot data paths since the allocator
+        // will likely use a more consistent allocation.
         try self.stack.ensureTotalCapacityPrecise(self.alloc, 512);
+        try self.methodTable.ensureTotalCapacity(self.alloc, 512);
 
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
@@ -139,6 +143,7 @@ pub const VM = struct {
         self.methodSyms.deinit(self.alloc);
         self.methodSymExtras.deinit(self.alloc);
         self.methodSymSigs.deinit(self.alloc);
+        self.methodTable.deinit(self.alloc);
 
         self.funcSyms.deinit(self.alloc);
         self.funcSymSignatures.deinit(self.alloc);
@@ -924,7 +929,36 @@ pub const VM = struct {
                     },
                 };
             },
-            else => stdx.panicFmt("unsupported {}", .{self.methodSyms.buf[symId].mapT}),
+            .oneStruct => {
+                // Convert to manyStructs.
+                var key = MethodKey{
+                    .structId = self.methodSyms.buf[symId].inner.oneStruct.id,
+                    .methodId = symId,
+                };
+                self.methodTable.putAssumeCapacityNoClobber(key, self.methodSyms.buf[symId].inner.oneStruct.sym);
+
+                key = .{
+                    .structId = id,
+                    .methodId = symId,
+                };
+                self.methodTable.putAssumeCapacityNoClobber(key, sym);
+
+                self.methodSyms.buf[symId].mapT = .manyStructs;
+                self.methodSyms.buf[symId].inner = .{
+                    .manyStructs = .{
+                        .mruStructId = id,
+                        .mruSym = sym,
+                    },
+                };
+            },
+            .manyStructs => {
+                const key = MethodKey{
+                    .structId = id,
+                    .methodId = symId,
+                };
+                self.methodTable.putAssumeCapacityNoClobber(key, sym);
+            },
+            // else => stdx.panicFmt("unsupported {}", .{self.methodSyms.buf[symId].mapT}),
         }
     }
 
@@ -1219,6 +1253,10 @@ pub const VM = struct {
                         stdx.panic("TODO: set field fallback");
                     }
                 },
+                .manyStructs => {
+                    @setRuntimeSafety(debug);
+                    stdx.fatal();
+                },
                 .empty => {
                     @setRuntimeSafety(debug);
                     stdx.panic("TODO: set field fallback");
@@ -1246,6 +1284,10 @@ pub const VM = struct {
                     } else {
                         stdx.panic("TODO: set field fallback");
                     }
+                },
+                .manyStructs => {
+                    @setRuntimeSafety(debug);
+                    stdx.fatal();
                 },
                 .empty => {
                     @setRuntimeSafety(debug);
@@ -1281,6 +1323,10 @@ pub const VM = struct {
                         return self.getFieldOther(obj, symMap.name);
                     }
                 },
+                .manyStructs => {
+                    @setRuntimeSafety(debug);
+                    stdx.fatal();
+                },
                 .empty => {
                     return self.getFieldOther(obj, symMap.name);
                 },
@@ -1306,6 +1352,10 @@ pub const VM = struct {
                     } else {
                         return self.getFieldOther(obj, symMap.name);
                     }
+                },
+                .manyStructs => {
+                    @setRuntimeSafety(debug);
+                    stdx.fatal();
                 },
                 .empty => {
                     return self.getFieldOther(obj, symMap.name);
@@ -1561,6 +1611,22 @@ pub const VM = struct {
                     if (obj.retainedCommon.structId == map.inner.oneStruct.id) {
                         try self.callSymEntry(map.inner.oneStruct.sym, obj, numArgs, reqNumRetVals);
                     } else stdx.panic("Symbol does not exist for receiver.");
+                },
+                .manyStructs => {
+                    @setRuntimeSafety(debug);
+                    if (map.inner.manyStructs.mruStructId == obj.retainedCommon.structId) {
+                        try self.callSymEntry(map.inner.manyStructs.mruSym, obj, numArgs, reqNumRetVals);
+                    } else {
+                        const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse {
+                            log.debug("Symbol does not exist for receiver.", .{});
+                            stdx.fatal();
+                        };
+                        self.methodSyms.buf[symId].inner.manyStructs = .{
+                            .mruStructId = obj.retainedCommon.structId,
+                            .mruSym = sym,
+                        };
+                        try self.callSymEntry(sym, obj, numArgs, reqNumRetVals);
+                    }
                 },
                 .empty => {
                     @setRuntimeSafety(debug);
@@ -2937,10 +3003,31 @@ pub const HeapObject = packed union {
 };
 
 const SymbolMapType = enum {
-    oneStruct,
-    // twoStructs,
-    // manyStructs,
+    oneStruct, // TODO: rename to one.
+    // two,
+    // ring, // Sorted mru, up to 8 syms.
+    manyStructs, // TODO: rename to many.
     empty,
+};
+
+/// Keeping this small is better for function calls. TODO: Reduce size.
+/// Secondary symbol data should be moved to `methodSymExtras`.
+const SymbolMap = struct {
+    mapT: SymbolMapType,
+    inner: union {
+        oneStruct: struct {
+            id: StructId,
+            sym: SymbolEntry,
+        },
+        // two: struct {
+        // },
+        // ring: struct {
+        // },
+        manyStructs: struct {
+            mruStructId: StructId,
+            mruSym: SymbolEntry,
+        },
+    },
 };
 
 const FieldSymbolMap = struct {
@@ -2953,27 +3040,6 @@ const FieldSymbolMap = struct {
         },
     },
     name: []const u8,
-};
-
-/// Keeping this small is better for function calls. TODO: Reduce size.
-/// Secondary symbol data should be moved to `methodSymExtras`.
-const SymbolMap = struct {
-    mapT: SymbolMapType,
-    inner: union {
-        oneStruct: struct {
-            id: StructId,
-            sym: SymbolEntry,
-        },
-        // twoStructs: struct {
-        // },
-        manyStructs: struct {
-            map: std.AutoHashMapUnmanaged(StructId, SymbolEntry),
-
-            fn deinit(self: *@This(), alloc: std.mem.Allocator) void {
-                self.map.deinit(alloc);
-            }
-        },
-    },
 };
 
 test "Internals." {
@@ -3212,4 +3278,9 @@ pub const StackFrame = struct {
     line: u32,
     /// Starts at 0.
     col: u32,
+};
+
+const MethodKey = struct {
+    structId: StructId,
+    methodId: SymbolId,
 };

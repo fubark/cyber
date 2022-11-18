@@ -76,11 +76,10 @@ pub const VM = struct {
 
     u8Buf: cy.List(u8),
 
-    panicMsg: []const u8,
-
     trace: *TraceInfo,
     stackTrace: StackTrace,
     debugTable: []const cy.OpDebug,
+    panicMsg: []const u8,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -109,11 +108,11 @@ pub const VM = struct {
             .pairIteratorObjSym = undefined,
             .nextObjSym = undefined,
             .trace = undefined,
-            .panicMsg = "",
             .globals = .{},
             .u8Buf = .{},
             .stackTrace = .{},
             .debugTable = undefined,
+            .panicMsg = "",
         };
         try self.compiler.init(self);
 
@@ -158,11 +157,11 @@ pub const VM = struct {
 
         self.structs.deinit(self.alloc);
         self.structSignatures.deinit(self.alloc);
-        self.alloc.free(self.panicMsg);
 
         self.globals.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
         self.stackTrace.deinit(self.alloc);
+        self.alloc.free(self.panicMsg);
     }
 
     /// Returns the first free HeapObject.
@@ -297,12 +296,7 @@ pub const VM = struct {
             }
         }
 
-        return self.evalByteCode(res.buf, trace) catch |err| {
-            if (err == error.Panic) {
-                log.debug("panic: {s}", .{self.panicMsg});
-            }
-            return err;
-        };
+        return self.evalByteCode(res.buf, trace);
     }
 
     pub fn dumpInfo(self: *VM) void {
@@ -440,6 +434,8 @@ pub const VM = struct {
             return error.NoEndOp;
         }
 
+        self.alloc.free(self.panicMsg);
+        self.panicMsg = "";
         self.stack.clearRetainingCapacity();
         self.ops = buf.ops.items;
         self.consts = buf.consts.items;
@@ -3118,6 +3114,16 @@ pub const UserVM = struct {
         return gvm.getStackTrace();
     }
 
+    pub fn getPanicMsg(_: UserVM) []const u8 {
+        return gvm.panicMsg;
+    }
+
+    pub fn dumpPanicStackTrace(_: UserVM) void {
+        std.debug.print("panic: {s}\n", .{gvm.panicMsg});
+        const trace = gvm.getStackTrace();
+        trace.dump();
+    }
+
     pub inline fn release(_: UserVM, val: Value, comptime trace: bool) void {
         gvm.release(val, trace);
     }
@@ -3181,6 +3187,12 @@ pub const StackTrace = struct {
 
     fn deinit(self: *StackTrace, alloc: std.mem.Allocator) void {
         alloc.free(self.frames);
+    }
+
+    pub fn dump(self: *const StackTrace) void {
+        for (self.frames) |frame| {
+            std.debug.print("{s}:{}:{}\n", .{frame.name, frame.line + 1, frame.col + 1});
+        }
     }
 };
 

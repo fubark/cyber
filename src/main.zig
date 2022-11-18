@@ -75,6 +75,11 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
     _ = vm.eval(src, Trace) catch |err| {
-        stdx.panicFmt("unexpected {}", .{err});
+        if (err == error.Panic) {
+            vm.dumpPanicStackTrace();
+            std.os.exit(1);
+        } else {
+            stdx.panicFmt("unexpected {}", .{err});
+        }
     };
 }

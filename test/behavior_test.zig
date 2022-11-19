@@ -366,14 +366,36 @@ test "Comparison ops." {
         \\a == s
     );
     try t.eq(val.asBool(), true);
+}
+
+test "Not equal comparison." {
+    const run = Runner.create();
+    defer run.destroy();
 
     // Using `is not` op.
-    val = try run.eval(
+    var val = try run.eval(
         \\3 is not 2
     );
     try t.eq(val.asBool(), true);
     val = try run.eval(
         \\3 is not 3
+    );
+    try t.eq(val.asBool(), false);
+
+    // Comparing struct.
+    val = try run.eval(
+        \\struct S:
+        \\  value
+        \\s = S{ value: 3 }
+        \\s != 123
+    );
+    try t.eq(val.asBool(), true);
+    val = try run.eval(
+        \\struct S:
+        \\  value
+        \\s = S{ value: 3 }
+        \\t = s
+        \\s != t
     );
     try t.eq(val.asBool(), false);
 }

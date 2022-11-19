@@ -1896,7 +1896,11 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const right = self.stack.buf[self.stack.top];
                     const left = self.stack.buf[self.stack.top-1];
-                    self.stack.buf[self.stack.top-1] = evalNotCompare(left, right);
+                    if (left.isNumber()) {
+                        self.stack.buf[self.stack.top-1] = evalNotCompareNumber(left, right);
+                    } else {
+                        self.stack.buf[self.stack.top-1] = @call(.{.modifier = .never_inline }, evalNotCompareOther, .{self, left, right});
+                    }
                     continue;
                 },
                 .pushCompare => {
@@ -2709,9 +2713,26 @@ fn evalLess(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     return Value.initBool(left.toF64() < right.toF64());
 }
 
-fn evalNotCompare(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        return Value.initBool(right.isNumber() and left.asF64() != right.asF64());
+inline fn evalNotCompareNumber(left: Value, right: Value) linksection(".eval") Value {
+    @setRuntimeSafety(debug);
+    return Value.initBool(left.asF64() != right.toF64());
+}
+
+fn evalNotCompareOther(vm: *const VM, left: cy.Value, right: cy.Value) cy.Value {
+    @setCold(true);
+    @setRuntimeSafety(debug);
+    if (left.isPointer()) {
+        const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
+        if (obj.common.structId == StringS) {
+            if (right.isString()) {
+                const str = obj.string.ptr[0..obj.string.len];
+                return Value.initBool(!std.mem.eql(u8, str, vm.valueAsString(right)));
+            } else return Value.initTrue();
+        } else {
+            if (right.isPointer()) {
+                return Value.initBool(@ptrCast(*anyopaque, obj) != right.asPointer().?);
+            } else return Value.initTrue();
+        }
     } else {
         switch (left.getTag()) {
             cy.TagNone => return Value.initBool(!right.isNone()),

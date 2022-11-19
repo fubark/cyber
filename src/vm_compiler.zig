@@ -1490,7 +1490,7 @@ pub const VMcompiler = struct {
                         try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, propIdx)));
                     }
 
-                    _ = try self.genExpr(entry.head.left_right.right, discardTopExprReg);
+                    _ = try self.genMaybeRetainExpr(entry.head.left_right.right, discardTopExprReg);
                     entryId = entry.next;
                 }
 
@@ -1965,8 +1965,10 @@ pub const VMcompiler = struct {
 
                             if (discardTopExprReg) {
                                 try self.buf.pushOp2(.pushCallObjSym0, @intCast(u8, methodId), @intCast(u8, numArgs));
+                                try self.pushDebugSym(nodeId);
                             } else {
                                 try self.buf.pushOp2(.pushCallObjSym1, @intCast(u8, methodId), @intCast(u8, numArgs));
+                                try self.pushDebugSym(nodeId);
                             }
                             return AnyType;
                         } else return self.reportError("Unsupported callee", .{}, node);

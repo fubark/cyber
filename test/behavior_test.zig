@@ -38,6 +38,20 @@ test "Automatic reference counting." {
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
+    // Object is retained when assigned to struct literal.
+    val = try run.traceEval(
+        \\struct S:
+        \\  value
+        \\func foo():
+        \\  a = [123]
+        \\  return S{ value: a }
+        \\s = foo()
+        \\s.value[0]
+    );
+    try t.eq(val.asI32(), 123);
+    try t.eq(trace.numRetains, 3);
+    try t.eq(trace.numReleases, 3);
+
     // vm.checkMemory is able to detect retain cycle.
     val = try run.traceEval(
         \\a = []

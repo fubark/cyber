@@ -2046,6 +2046,9 @@ pub const VM = struct {
                     const obj = try self.allocSmallObject(sid, offsets, props);
                     self.stack.top = self.stack.top - numProps + 1;
                     self.stack.buf[self.stack.top-1] = obj;
+                    if (trace) {
+                        self.trace.numRetains += 1;
+                    }
                     continue;
                 },
                 .pushMap => {

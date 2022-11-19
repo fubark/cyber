@@ -237,6 +237,12 @@ pub const ByteCodeBuffer = struct {
                     try w.print("{}", .{numEntries});
                     pc += 2 + numEntries;
                 },
+                .pushStructInitSmall => {
+                    _ = ops[pc+1].arg;
+                    const numEntries = ops[pc+2].arg;
+                    try w.print("{}", .{numEntries});
+                    pc += 3 + numEntries;
+                },
                 .setInitN => {
                     const numVars = ops[pc+1].arg;
                     try w.print("{}", .{numVars});

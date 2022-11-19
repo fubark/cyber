@@ -699,6 +699,18 @@ pub const VMcompiler = struct {
         return start;
     }
 
+    fn pushEmptyJumpCondKeep(self: *VMcompiler) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp2(.jumpCondKeep, 0, 0);
+        return start;
+    }
+
+    fn pushEmptyJumpNotCondKeep(self: *VMcompiler) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp2(.jumpNotCondKeep, 0, 0);
+        return start;
+    }
+
     fn pushEmptyJumpNotCond(self: *VMcompiler) !u32 {
         const start = @intCast(u32, self.buf.ops.items.len);
         try self.buf.pushOp2(.jumpNotCond, 0, 0);
@@ -864,14 +876,14 @@ pub const VMcompiler = struct {
     }
 
     fn reserveLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !*VarInfo {
-        const offset = try self.curBlock.reserveLocal();
+        const local = try self.curBlock.reserveLocal();
         const res = try self.curBlock.vars.getOrPut(self.alloc, name);
         if (res.found_existing) {
             return error.VarExists;
         } else {
             res.value_ptr.* = .{
                 .vtype = vtype,
-                .local = offset,
+                .local = local,
                 .rcCandidate = vtype.rcCandidate,
                 .hasStaticType = false,
                 .isCapturedVar = false,
@@ -1827,20 +1839,20 @@ pub const VMcompiler = struct {
                     },
                     .and_op => {
                         const ltype = try self.genExpr(left, discardTopExprReg);
+                        const jumpPc = try self.pushEmptyJumpNotCondKeep();
                         const rtype = try self.genExpr(right, discardTopExprReg);
-                        if (!discardTopExprReg) {
-                            try self.buf.pushOp(.pushAnd);
-                        }
+                        self.patchJumpToCurrent(jumpPc);
+
                         if (ltype.typeT == rtype.typeT) {
                             return ltype;
                         } else return AnyType;
                     },
                     .or_op => {
                         const ltype = try self.genExpr(left, discardTopExprReg);
+                        const jumpPc = try self.pushEmptyJumpCondKeep();
                         const rtype = try self.genExpr(right, discardTopExprReg);
-                        if (!discardTopExprReg) {
-                            try self.buf.pushOp(.pushOr);
-                        }
+                        self.patchJumpToCurrent(jumpPc);
+
                         if (ltype.typeT == rtype.typeT) {
                             return ltype;
                         } else return AnyType;

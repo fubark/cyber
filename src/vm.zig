@@ -1948,24 +1948,6 @@ pub const VM = struct {
                     self.stack.buf[self.stack.top-1] = evalGreaterOrEqual(left, right);
                     continue;
                 },
-                .pushOr => {
-                    @setRuntimeSafety(debug);
-                    self.pc += 1;
-                    self.stack.top -= 1;
-                    const right = self.stack.buf[self.stack.top];
-                    const left = self.stack.buf[self.stack.top-1];
-                    self.stack.buf[self.stack.top-1] = evalOr(left, right);
-                    continue;
-                },
-                .pushAnd => {
-                    @setRuntimeSafety(debug);
-                    self.pc += 1;
-                    self.stack.top -= 1;
-                    const right = self.stack.buf[self.stack.top];
-                    const left = self.stack.buf[self.stack.top-1];
-                    self.stack.buf[self.stack.top-1] = evalAnd(left, right);
-                    continue;
-                },
                 .pushBitwiseAnd => {
                     @setRuntimeSafety(debug);
                     self.pc += 1;
@@ -2192,6 +2174,40 @@ pub const VM = struct {
                 .jump => {
                     @setRuntimeSafety(debug);
                     self.pc += @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
+                    continue;
+                },
+                .jumpNotCondKeep => {
+                    @setRuntimeSafety(debug);
+                    const pcOffset = @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
+                    const expr = self.stack.buf[self.stack.top-1];
+                    const condVal = if (expr.isBool()) b: {
+                        break :b expr.asBool();
+                    } else b: {
+                        break :b @call(.{ .modifier = .never_inline }, expr.toBool, .{});
+                    };
+                    if (!condVal) {
+                        self.pc += pcOffset;
+                    } else {
+                        self.pc += 3;
+                        self.stack.top -= 1;
+                    }
+                    continue;
+                },
+                .jumpCondKeep => {
+                    @setRuntimeSafety(debug);
+                    const pcOffset = @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
+                    const expr = self.stack.buf[self.stack.top-1];
+                    const condVal = if (expr.isBool()) b: {
+                        break :b expr.asBool();
+                    } else b: {
+                        break :b @call(.{ .modifier = .never_inline }, expr.toBool, .{});
+                    };
+                    if (condVal) {
+                        self.pc += pcOffset;
+                    } else {
+                        self.pc += 3;
+                        self.stack.top -= 1;
+                    }
                     continue;
                 },
                 .jumpNotCond => {
@@ -2670,42 +2686,6 @@ fn evalBitwiseAnd(left: Value, right: Value) Value {
     } else {
         log.debug("unsupported", .{});
         unreachable;
-    }
-}
-
-fn evalAnd(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        if (left.asF64() == 0) {
-            return left;
-        } else {
-            return right;
-        }
-    } else {
-        switch (left.getTag()) {
-            cy.TagBoolean => {
-                if (left.asBool()) return right else return left;
-            },
-            cy.TagNone => return left,
-            else => stdx.panic("unexpected tag"),
-        }
-    }
-}
-
-fn evalOr(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        if (left.asF64() == 0) {
-            return right;
-        } else {
-            return left;
-        }
-    } else {
-        switch (left.getTag()) {
-            cy.TagBoolean => {
-                if (left.asBool()) return left else return right;
-            },
-            cy.TagNone => return right,
-            else => stdx.panic("unexpected tag"),
-        }
     }
 }
 

@@ -167,8 +167,6 @@ pub const ByteCodeBuffer = struct {
                 .pushGreater,
                 .pushLessEqual,
                 .pushGreaterEqual,
-                .pushOr,
-                .pushAnd,
                 .pushMultiply,
                 .pushAdd,
                 .pushMinus,
@@ -345,10 +343,6 @@ pub const OpCode = enum(u8) {
     pushFalse,
     /// Push none value onto register stack.
     pushNone,
-    /// Pops top two registers, performs or, and pushes result onto stack.
-    pushOr,
-    /// Pops top two registers, performs and, and pushes result onto stack.
-    pushAnd,
     /// Pops top register, performs not, and pushes result onto stack.
     pushNot,
     /// Pops top register and copies value to address relative to the local frame.
@@ -414,6 +408,8 @@ pub const OpCode = enum(u8) {
     releaseSetField,
     pushBitwiseAnd,
     pushFieldRetain,
+    jumpCondKeep,
+    jumpNotCondKeep,
 
     /// Indicates the end of the main script.
     end,

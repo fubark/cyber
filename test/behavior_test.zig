@@ -368,6 +368,21 @@ test "Logic operators" {
     );
     try t.eq(val.asBool(), true);
 
+    // If first `or` operand evaluates to true, the second expression is not evaluated
+    // and the first operand is returned.
+    val = try run.eval(
+        \\a = none
+        \\123 or a.foo
+    );
+    try t.eq(val.asI32(), 123);
+
+    // If first `or` operand evaluates to false, the second expression is evaluated and returned.
+    val = try run.eval(
+        \\a = 123
+        \\0 or a
+    );
+    try t.eq(val.asI32(), 123);
+
     val = try run.eval(
         \\false and true
     );
@@ -377,6 +392,20 @@ test "Logic operators" {
         \\true and true
     );
     try t.eq(val.asBool(), true);
+
+    // If first `and` operand evaluates to false, the second expression is not evaluated
+    // and the first operand is returned
+    val = try run.eval(
+        \\a = none
+        \\0 and a.foo
+    );
+    try t.eq(val.asI32(), 0);
+
+    // If first `and` operand evaluates to true, the second expression is evaluated and returned.
+    val = try run.eval(
+        \\123 and 234
+    );
+    try t.eq(val.asI32(), 234);
 
     val = try run.eval(
         \\not false

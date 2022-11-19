@@ -1959,6 +1959,8 @@ pub const Parser = struct {
                 .plus_equal,
                 .equal,
                 .operator,
+                .or_k,
+                .and_k,
                 .logic_op,
                 .then_k,
                 .as_k => break,

@@ -1053,7 +1053,9 @@ pub const VM = struct {
         }
     }
 
-    fn panic(self: *VM, msg: []const u8) error{Panic, OutOfMemory} {
+    fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
+        @setCold(true);
+        @setRuntimeSafety(debug);
         self.panicMsg = try self.alloc.dupe(u8, msg);
         return error.Panic;
     }
@@ -1500,7 +1502,7 @@ pub const VM = struct {
         }
     }
 
-    inline fn callSymEntry(self: *VM, sym: SymbolEntry, obj: *HeapObject, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    fn callSymEntry(self: *VM, sym: SymbolEntry, obj: *HeapObject, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         const argStart = self.stack.top - numArgs;
         switch (sym.entryT) {
@@ -1513,7 +1515,8 @@ pub const VM = struct {
                 // Retain receiver.
                 obj.retainedCommon.rc += 1;
 
-                const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
+                // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
+                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
 
@@ -1527,7 +1530,7 @@ pub const VM = struct {
             },
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
-                self.pc += 3;
+                // self.pc += 3;
                 const args = self.stack.buf[argStart .. self.stack.top - 1];
                 const res = sym.inner.nativeFunc1(.{}, obj, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
@@ -1550,7 +1553,7 @@ pub const VM = struct {
             },
             .nativeFunc2 => {
                 @setRuntimeSafety(debug);
-                self.pc += 3;
+                // self.pc += 3;
                 const args = self.stack.buf[argStart .. self.stack.top - 1];
                 const func = @ptrCast(std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) cy.ValuePair), sym.inner.nativeFunc2);
                 const res = func(self, obj, args);
@@ -1580,27 +1583,62 @@ pub const VM = struct {
         }
     }
 
-    fn callObjSymOther(self: *VM, obj: *const HeapObject, name: []const u8, numArgs: u8, comptime reqNumRetVals: u2) void {
+    fn callObjSymOther(self: *VM, obj: *const HeapObject, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) !void {
         @setCold(true);
+        @setRuntimeSafety(debug);
+        const name = self.methodSymExtras.buf[symId];
         if (obj.common.structId == MapS) {
             const heapMap = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
             if (heapMap.getByString(self, name)) |val| {
                 // Replace receiver with function.
                 self.stack.buf[self.stack.top-1] = val;
-                const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
+                // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
+                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
                 self.call(val, numArgs, retInfo) catch stdx.fatal();
                 return;
             }
         }
-        log.debug("Missing object symbol. {s}", .{name});
-        stdx.fatal();
+        return self.panic("Missing function symbol in value");
+    }
+
+    fn getCallObjSym(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(".eval") ?SymbolEntry {
+        @setRuntimeSafety(debug);
+        const map = self.methodSyms.buf[symId];
+        switch (map.mapT) {
+            .oneStruct => {
+                @setRuntimeSafety(debug);
+                if (obj.retainedCommon.structId == map.inner.oneStruct.id) {
+                    return map.inner.oneStruct.sym;
+                } else return null;
+            },
+            .manyStructs => {
+                @setRuntimeSafety(debug);
+                if (map.inner.manyStructs.mruStructId == obj.retainedCommon.structId) {
+                    return map.inner.manyStructs.mruSym;
+                } else {
+                    const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse return null;
+                    self.methodSyms.buf[symId].inner.manyStructs = .{
+                        .mruStructId = obj.retainedCommon.structId,
+                        .mruSym = sym,
+                    };
+                    return sym;
+                }
+            },
+            .empty => {
+                @setRuntimeSafety(debug);
+                return null;
+            },
+            // else => {
+            //     unreachable;
+            //     // stdx.panicFmt("unsupported {}", .{map.mapT});
+            // },
+        } 
     }
 
     /// Stack layout: arg0, arg1, ..., receiver
     /// numArgs includes the receiver.
-    fn callObjSym(self: *VM, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    fn callObjSym(self: *VM, recv: Value, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
-        const recv = self.stack.buf[self.stack.top - 1];
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer().?);
             const map = self.methodSyms.buf[symId];
@@ -1609,7 +1647,7 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     if (obj.retainedCommon.structId == map.inner.oneStruct.id) {
                         try self.callSymEntry(map.inner.oneStruct.sym, obj, numArgs, reqNumRetVals);
-                    } else stdx.panic("Symbol does not exist for receiver.");
+                    } else return self.panic("Symbol does not exist for receiver.");
                 },
                 .manyStructs => {
                     @setRuntimeSafety(debug);
@@ -1629,7 +1667,7 @@ pub const VM = struct {
                 },
                 .empty => {
                     @setRuntimeSafety(debug);
-                    self.callObjSymOther(obj, self.methodSymExtras.buf[symId], numArgs, reqNumRetVals);
+                    try self.callObjSymOther(obj, symId, numArgs, reqNumRetVals);
                 },
                 // else => {
                 //     unreachable;
@@ -2222,16 +2260,44 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
+                    self.pc += 3;
 
-                    try self.callObjSym(symId, numArgs, 0);
+                    const recv = self.stack.buf[self.stack.top-1];
+                    if (recv.isPointer()) {
+                        const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                        if (self.getCallObjSym(obj, symId)) |sym| {
+                            try self.callSymEntry(sym, obj, numArgs, 0);
+                            // self.callSymEntry, .{sym, obj, numArgs, 0});
+                        } else {
+                            try @call(.{ .modifier = .never_inline }, self.callObjSymOther, .{obj, symId, numArgs, 0});
+                        }
+                    } else {
+                        return self.panic("Missing function symbol in value.");
+                    }
+                    // try self.callObjSym(recv, symId, numArgs, 0);
+                    // try @call(.{.modifier = .always_inline }, self.callObjSym, .{recv, symId, numArgs, 0});
                     continue;
                 },
                 .pushCallObjSym1 => {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
+                    self.pc += 3;
 
-                    try self.callObjSym(symId, numArgs, 1);
+                    const recv = self.stack.buf[self.stack.top-1];
+                    if (recv.isPointer()) {
+                        const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                        if (self.getCallObjSym(obj, symId)) |sym| {
+                            try self.callSymEntry(sym, obj, numArgs, 1);
+                            // try @call(.{ .modifier = .always_inline }, self.callSymEntry, .{sym, obj, numArgs, 1});
+                        } else {
+                            try @call(.{ .modifier = .never_inline }, self.callObjSymOther, .{obj, symId, numArgs, 1});
+                        }
+                    } else {
+                        return self.panic("Missing function symbol in value.");
+                    }
+                    // try self.callObjSym(recv, symId, numArgs, 1);
+                    // try @call(.{.modifier = .always_inline }, self.callObjSym, .{recv, symId, numArgs, 1});
                     continue;
                 },
                 .pushCallSym0 => {
@@ -2321,22 +2387,27 @@ pub const VM = struct {
                 .forIter => {
                     @setRuntimeSafety(debug);
                     const local = self.ops[self.pc+1].arg;
-                    const endPc = self.pc + self.ops[self.pc+2].arg;
-                    const innerPc = self.pc + 3;
+                    self.pc += 3;
 
-                    // try self.callObjSym(self.iteratorObjSym, 1, 1);
-                    try self.callObjSym(self.iteratorObjSym, 1, 1);
-                    const iter = self.popRegister();
+                    const val = self.stack.buf[self.stack.top-1];
+                    try self.callObjSym(val, self.iteratorObjSym, 1, 1);
+                    const recv = self.stack.buf[self.stack.top-1];
+                    if (!recv.isPointer()) {
+                        return self.panic("Not an iterator.");
+                    }
                     if (local == 255) {
                         while (true) {
-                            self.pushValueNoCheck(iter);
-                            // try self.callObjSym(self.nextObjSym, 1, 1);
-                            try self.callObjSym(self.nextObjSym, 1, 1);
-                            const next = self.popRegister();
+                            // try self.callObjSym(recv, self.nextObjSym, 1, 1);
+                            // try @call(.{ .modifier = .never_inline }, self.callObjSym, .{recv, self.nextObjSym, 1, 1});
+                            const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                            if (self.getCallObjSym(obj, self.nextObjSym)) |sym| {
+                                try self.callSymEntry(sym, obj, 1, 1);
+                            } else return self.panic("Missing function symbol in value.");
+
+                            const next = self.stack.buf[self.stack.top-1];
                             if (next.isNone()) {
                                 break;
                             }
-                            self.pc = innerPc;
                             @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
@@ -2345,15 +2416,18 @@ pub const VM = struct {
                         }
                     } else {
                         while (true) {
-                            self.pushValueNoCheck(iter);
-                            // try self.callObjSym(self.nextObjSym, 1, 1);
-                            try self.callObjSym(self.nextObjSym, 1, 1);
-                            const next = self.popRegister();
+                            // try self.callObjSym(recv, self.nextObjSym, 1, 1);
+                            // try @call(.{ .modifier = .never_inline }, self.callObjSym, .{recv, self.nextObjSym, 1, 1});
+                            const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                            if (self.getCallObjSym(obj, self.nextObjSym)) |sym| {
+                                try self.callSymEntry(sym, obj, 1, 1);
+                            } else return self.panic("Missing function symbol in value.");
+
+                            const next = self.stack.buf[self.stack.top-1];
                             if (next.isNone()) {
                                 break;
                             }
                             self.setLocal(local, next);
-                            self.pc = innerPc;
                             @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
@@ -2361,14 +2435,16 @@ pub const VM = struct {
                             };
                         }
                     }
-                    self.pc = endPc;
+                    self.release(recv, trace);
+                    self.stack.top -= 1;
+                    self.pc = self.pc + self.ops[self.pc-1].arg - 3;
                     continue;
                 },
                 .forRange => {
                     @setRuntimeSafety(debug);
                     const local = self.ops[self.pc+1].arg;
                     const endPc = self.pc + self.ops[self.pc+2].arg;
-                    const innerPc = self.pc + 3;
+                    self.pc += 3;
 
                     self.stack.top -= 3;
                     const step = self.stack.buf[self.stack.top+2].toF64();
@@ -2378,7 +2454,6 @@ pub const VM = struct {
                     if (i <= rangeEnd) {
                         if (local == 255) {
                             while (i < rangeEnd) : (i += step) {
-                                self.pc = innerPc;
                                 @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
@@ -2388,7 +2463,6 @@ pub const VM = struct {
                         } else {
                             while (i < rangeEnd) : (i += step) {
                                 self.setLocal(local, Value.initF64(i));
-                                self.pc = innerPc;
                                 @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
@@ -2399,7 +2473,6 @@ pub const VM = struct {
                     } else {
                         if (local == 255) {
                             while (i > rangeEnd) : (i -= step) {
-                                self.pc = innerPc;
                                 @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
@@ -2409,7 +2482,6 @@ pub const VM = struct {
                         } else {
                             while (i > rangeEnd) : (i -= step) {
                                 self.setLocal(local, Value.initF64(i));
-                                self.pc = innerPc;
                                 @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
@@ -2423,6 +2495,7 @@ pub const VM = struct {
                 },
                 .cont => {
                     @setRuntimeSafety(debug);
+                    self.pc -= @ptrCast(*const align(1) u16, &self.ops[self.pc+1]).*;
                     return;
                 },
                 // .ret2 => {

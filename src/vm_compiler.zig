@@ -681,7 +681,13 @@ pub const VMcompiler = struct {
         try self.jumpStack.append(self.alloc, .{ .pc = pc });
     }
 
-    fn pushJumpBackTo(self: *VMcompiler, toPc: u32) !void {
+    fn pushContTo(self: *VMcompiler, toPc: usize) !void {
+        const pc = self.buf.ops.items.len;
+        try self.buf.pushOp2(.cont, 0, 0);
+        self.buf.setOpArgU16(pc + 1, @intCast(u16, pc - toPc));
+    }
+
+    fn pushJumpBackTo(self: *VMcompiler, toPc: usize) !void {
         const pc = self.buf.ops.items.len;
         try self.buf.pushOp2(.jumpBack, 0, 0);
         self.buf.setOpArgU16(pc + 1, @intCast(u16, pc - toPc));
@@ -1170,12 +1176,14 @@ pub const VMcompiler = struct {
 
                 const local = try self.ensureLocalVar(asName, AnyType);
 
-                const forOpStart = self.buf.ops.items.len;
+                const forPc = self.buf.ops.items.len;
                 try self.buf.pushOp2(.forIter, local, 0);
 
+                const bodyPc = self.buf.ops.items.len;
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
-                try self.buf.pushOp(.cont);
-                self.buf.setOpArgs1(forOpStart+2, @intCast(u8, self.buf.ops.items.len - forOpStart));
+                try self.pushContTo(bodyPc);
+
+                self.buf.setOpArgs1(forPc+2, @intCast(u8, self.buf.ops.items.len - forPc));
             },
             .for_range_stmt => {
                 try self.pushIterSubBlock();
@@ -1209,8 +1217,9 @@ pub const VMcompiler = struct {
                 const forOpStart = self.buf.ops.items.len;
                 try self.buf.pushOp2(.forRange, local, 0);
 
+                const bodyPc = self.buf.ops.items.len;
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
-                try self.buf.pushOp(.cont);
+                try self.pushContTo(bodyPc);
                 self.buf.setOpArgs1(forOpStart+2, @intCast(u8, self.buf.ops.items.len - forOpStart));
             },
             .if_stmt => {

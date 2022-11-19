@@ -194,6 +194,7 @@ fn listIterator(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    list.retainedList.rc += 1;
     list.retainedList.nextIterIdx = 0;
     return Value.initPtr(ptr);
 }

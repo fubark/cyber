@@ -91,6 +91,15 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[start+2] = .{ .arg = arg2 };
     }
 
+    pub fn pushOp3(self: *ByteCodeBuffer, code: OpCode, arg: u8, arg2: u8, arg3: u8) !void {
+        const start = self.ops.items.len;
+        try self.ops.resize(self.alloc, self.ops.items.len + 4);
+        self.ops.items[start] = .{ .code = code };
+        self.ops.items[start+1] = .{ .arg = arg };
+        self.ops.items[start+2] = .{ .arg = arg2 };
+        self.ops.items[start+3] = .{ .arg = arg3 };
+    }
+
     pub fn pushOperandsRaw(self: *ByteCodeBuffer, args: []const u8) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len);
@@ -165,7 +174,6 @@ pub const ByteCodeBuffer = struct {
                 .pushMinus,
                 .pushDivide,
                 .pushMod,
-                .cont,
                 // .ret2,
                 .ret1,
                 .ret0,
@@ -200,6 +208,7 @@ pub const ByteCodeBuffer = struct {
                     try w.print("{}", .{ops[pc+1].arg});
                     pc += 2;
                 },
+                .cont,
                 .jumpBack,
                 .jump,
                 .jumpNotCond,

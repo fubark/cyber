@@ -19,6 +19,10 @@ pub fn build(b: *std.build.Builder) !void {
         exe.setTarget(target);
         exe.setOutputDir("zig-out/cyber");
 
+        const build_options = b.addOptions();
+        build_options.addOption(bool, "trace", false);
+        exe.addPackage(build_options.getPackage("build_options"));
+
         // exe.linkLibC();
         exe.addPackage(stdxPkg);
         // mimalloc.addPackage(exe);
@@ -32,14 +36,28 @@ pub fn build(b: *std.build.Builder) !void {
         step.setBuildMode(mode);
         step.setTarget(target);
         step.setMainPkgPath(".");
-
-        const build_options = b.addOptions();
-        build_options.addOption(cy_config.Engine, "cyEngine", .vm);
-        step.addPackage(build_options.getPackage("build_options"));
-
+        {
+            const build_options = b.addOptions();
+            build_options.addOption(cy_config.Engine, "cyEngine", .vm);
+            build_options.addOption(bool, "trace", false);
+            step.addPackage(build_options.getPackage("build_options"));
+        }
         step.addPackage(stdxPkg);
 
-        b.step("test", "Run tests.").dependOn(&step.step);
+        const traceTest = b.addTest("./test/trace_test.zig");
+        traceTest.setBuildMode(mode);
+        traceTest.setTarget(target);
+        traceTest.setMainPkgPath(".");
+        {
+            const build_options = b.addOptions();
+            build_options.addOption(cy_config.Engine, "cyEngine", .vm);
+            build_options.addOption(bool, "trace", true);
+            traceTest.addPackage(build_options.getPackage("build_options"));
+        }
+        traceTest.addPackage(stdxPkg);
+
+        traceTest.step.dependOn(&step.step);
+        b.step("test", "Run tests.").dependOn(&traceTest.step);
     }
 }
 

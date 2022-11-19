@@ -9,64 +9,6 @@ const cy = @import("../src/cyber.zig");
 const QJS = cy.QJS;
 const log = stdx.log.scoped(.behavior_test);
 
-test "Automatic reference counting." {
-    const run = Runner.create();
-    defer run.destroy();
-
-    const trace = run.getTrace();
-
-    // List literal does not escape expression. No ref count.
-    var val = try run.traceEval(
-        \\[1, 2]
-        \\return
-    );
-    try t.eq(trace.numRetains, 0);
-    try t.eq(trace.numReleases, 0);
-
-    // List literal is assigned to a local. Increase ref count.
-    val = try run.traceEval(
-        \\a = [1, 2]
-    );
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
-
-    // Assigning to another variable increases the ref count.
-    val = try run.traceEval(
-        \\a = [1, 2]
-        \\b = a
-    );
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
-
-    // Object is retained when assigned to struct literal.
-    val = try run.traceEval(
-        \\struct S:
-        \\  value
-        \\func foo():
-        \\  a = [123]
-        \\  return S{ value: a }
-        \\s = foo()
-        \\s.value[0]
-    );
-    try t.eq(val.asI32(), 123);
-    try t.eq(trace.numRetains, 3);
-    try t.eq(trace.numReleases, 3);
-
-    // vm.checkMemory is able to detect retain cycle.
-    val = try run.traceEval(
-        \\a = []
-        \\b = []
-        \\a.add(b)
-        \\b.add(a)
-    );
-    try t.eq(trace.numRetains, 4);
-    try t.eq(trace.numReleases, 2);
-    try t.eq(try run.checkMemory(), false);
-    try t.eq(trace.numRetainCycles, 1);
-    try t.eq(trace.numRetainCycleRoots, 2);
-    try t.eq(trace.numReleases, 4);
-}
-
 test "Structs" {
     const run = Runner.create();
     defer run.destroy();
@@ -1530,10 +1472,6 @@ const Runner = struct {
         return &self.inner.trace;
     }
 
-    fn traceEval(self: *Runner, src: []const u8) !cy.Value {
-        return self.inner.traceEval(src);
-    }
-
     fn checkMemory(self: *Runner) !bool {
         return self.inner.checkMemory();
     }
@@ -1581,15 +1519,11 @@ const VMrunner = struct {
     }
 
     fn deinitValue(self: *VMrunner, val: cy.Value) void {
-        self.vm.release(val, true);
+        self.vm.release(val);
     }
 
     fn checkMemory(self: *VMrunner) !bool {
-        return self.vm.checkMemory(true);
-    }
-
-    fn traceEval(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.vm.eval(src, true);
+        return self.vm.checkMemory();
     }
 
     fn compile(self: *VMrunner, src: []const u8) !cy.ByteCodeBuffer {
@@ -1605,7 +1539,7 @@ const VMrunner = struct {
         self.vm.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);
-        return self.vm.eval(src, false) catch |err| {
+        return self.vm.eval(src) catch |err| {
             if (err == error.Panic) {
                 self.vm.dumpPanicStackTrace();
             }

@@ -6,7 +6,6 @@ const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
 
 /// Trace collects debug info.
-const Trace = false;
 const UseMimalloc = false;
 
 var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
@@ -74,7 +73,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    _ = vm.eval(src, Trace) catch |err| {
+    _ = vm.eval(src) catch |err| {
         if (err == error.Panic) {
             vm.dumpPanicStackTrace();
             std.os.exit(1);

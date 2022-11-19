@@ -6,6 +6,7 @@ const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const Value = cy.Value;
 const debug = builtin.mode == .Debug;
+const TraceEnabled = @import("build_options").trace;
 
 const log = stdx.log.scoped(.vm);
 
@@ -238,7 +239,7 @@ pub const VM = struct {
         return res.buf;
     }
 
-    pub fn eval(self: *VM, src: []const u8, comptime trace: bool) !Value {
+    pub fn eval(self: *VM, src: []const u8) !Value {
         var tt = stdx.debug.trace();
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
@@ -255,7 +256,7 @@ pub const VM = struct {
         }
         tt.endPrint("compile");
 
-        if (trace) {
+        if (TraceEnabled) {
             try res.buf.dump();
             const numOps = @enumToInt(cy.OpCode.end) + 1;
             var opCounts: [numOps]cy.OpCount = undefined;
@@ -269,6 +270,7 @@ pub const VM = struct {
             }
             self.trace.totalOpCounts = 0;
             self.trace.numReleases = 0;
+            self.trace.numForceReleases = 0;
             self.trace.numRetains = 0;
             self.trace.numRetainCycles = 0;
             self.trace.numRetainCycleRoots = 0;
@@ -276,7 +278,7 @@ pub const VM = struct {
         tt = stdx.debug.trace();
         defer {
             tt.endPrint("eval");
-            if (trace) {
+            if (TraceEnabled) {
                 self.dumpInfo();
                 const S = struct {
                     fn opCountLess(_: void, a: cy.OpCount, b: cy.OpCount) bool {
@@ -296,7 +298,7 @@ pub const VM = struct {
             }
         }
 
-        return self.evalByteCode(res.buf, trace);
+        return self.evalByteCode(res.buf);
     }
 
     pub fn dumpInfo(self: *VM) void {
@@ -429,7 +431,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer, comptime trace: bool) !Value {
+    pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer) !Value {
         if (buf.ops.items.len == 0) {
             return error.NoEndOp;
         }
@@ -447,8 +449,8 @@ pub const VM = struct {
         self.framePtr = 0;
         self.stack.top = buf.mainLocalSize;
 
-        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace});
-        if (trace) {
+        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{});
+        if (TraceEnabled) {
             log.info("main local size: {}", .{buf.mainLocalSize});
         }
 
@@ -506,6 +508,9 @@ pub const VM = struct {
                 .extra = 0,
             },
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -520,6 +525,9 @@ pub const VM = struct {
             .val2 = undefined,
             .val3 = undefined,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
 
         const dst = @ptrCast([*]Value, &obj.smallObject.val0);
         for (offsets) |offset, i| {
@@ -750,6 +758,9 @@ pub const VM = struct {
             },
             .nextIterIdx = 0,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
         try list.appendSlice(self.alloc, elems);
         return Value.initPtr(obj);
@@ -1061,7 +1072,7 @@ pub const VM = struct {
     }
 
     /// Performs an iteration over the heap pages to check whether there are retain cycles.
-    pub fn checkMemory(self: *VM, comptime trace: bool) !bool {
+    pub fn checkMemory(self: *VM) !bool {
         var nodes: std.AutoHashMapUnmanaged(*HeapObject, RcNode) = .{};
         defer nodes.deinit(self.alloc);
 
@@ -1114,13 +1125,13 @@ pub const VM = struct {
         var iter = nodes.iterator();
         while (iter.next()) |*entry| {
             if (S.visit(self.alloc, &nodes, &cycleRoots, entry.key_ptr.*, entry.value_ptr)) {
-                if (trace) {
+                if (TraceEnabled) {
                     self.trace.numRetainCycles = 1;
                     self.trace.numRetainCycleRoots = @intCast(u32, cycleRoots.items.len);
                 }
                 for (cycleRoots.items) |root| {
                     // Force release.
-                    self.forceRelease(root, trace);
+                    self.forceRelease(root);
                 }
                 return false;
             }
@@ -1129,17 +1140,19 @@ pub const VM = struct {
     }
 
     pub inline fn retain(self: *const VM, val: Value) void {
-        _ = self;
         @setRuntimeSafety(debug);
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer());
             obj.retainedCommon.rc += 1;
+            if (TraceEnabled) {
+                self.trace.numRetains += 1;
+            }
         }
     }
 
-    pub fn forceRelease(self: *VM, obj: *HeapObject, comptime trace: bool) void {
-        if (trace) {
-            self.trace.numReleases += 1;
+    pub fn forceRelease(self: *VM, obj: *HeapObject) void {
+        if (TraceEnabled) {
+            self.trace.numForceReleases += 1;
         }
         switch (obj.retainedCommon.structId) {
             ListS => {
@@ -1158,14 +1171,14 @@ pub const VM = struct {
         }
     }
 
-    pub fn release(self: *VM, val: Value, comptime trace: bool) linksection(".eval") void {
+    pub fn release(self: *VM, val: Value) linksection(".eval") void {
         @setRuntimeSafety(debug);
         // log.info("release", .{});
         // val.dump();
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
             obj.retainedCommon.rc -= 1;
-            if (trace) {
+            if (TraceEnabled) {
                 self.trace.numReleases += 1;
             }
             if (obj.retainedCommon.rc == 0) {
@@ -1173,7 +1186,7 @@ pub const VM = struct {
                     ListS => {
                         const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
                         for (list.items) |it| {
-                            self.release(it, trace);
+                            self.release(it);
                         }
                         list.deinit(self.alloc);
                         self.freeObject(obj);
@@ -1182,8 +1195,8 @@ pub const VM = struct {
                         const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
                         var iter = map.iterator();
                         while (iter.next()) |entry| {
-                            self.release(entry.key, trace);
-                            self.release(entry.value, trace);
+                            self.release(entry.key);
+                            self.release(entry.value);
                         }
                         map.deinit(self.alloc);
                         self.freeObject(obj);
@@ -1192,7 +1205,7 @@ pub const VM = struct {
                         if (obj.closure.numCaptured <= 3) {
                             const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
                             for (src) |capturedVal| {
-                                self.release(capturedVal, trace);
+                                self.release(capturedVal);
                             }
                             self.freeObject(obj);
                         } else {
@@ -1218,7 +1231,7 @@ pub const VM = struct {
                         const numFields = self.structs.buf[obj.retainedCommon.structId].numFields;
                         if (numFields <= 4) {
                             for (obj.smallObject.getValuesConstPtr()[0..numFields]) |child| {
-                                self.release(child, trace);
+                                self.release(child);
                             }
                             self.freeObject(obj);
                         } else {
@@ -1241,7 +1254,7 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     if (obj.common.structId == symMap.inner.oneStruct.id) {
                         if (symMap.inner.oneStruct.isSmallObject) {
-                            self.release(obj.smallObject.getValuesPtr()[symMap.inner.oneStruct.fieldIdx], false);
+                            self.release(obj.smallObject.getValuesPtr()[symMap.inner.oneStruct.fieldIdx]);
                             obj.smallObject.getValuesPtr()[symMap.inner.oneStruct.fieldIdx] = val;
                         } else {
                             stdx.panic("TODO: big object");
@@ -1774,10 +1787,10 @@ pub const VM = struct {
         self.stackTrace.frames = frames.toOwnedSlice(self.alloc);
     }
 
-    fn evalLoop(self: *VM, comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+    fn evalLoop(self: *VM) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
         @setRuntimeSafety(debug);
         while (true) {
-            if (trace) {
+            if (TraceEnabled) {
                 const op = self.ops[self.pc].code;
                 self.trace.opCounts[@enumToInt(op)].count += 1;
                 self.trace.totalOpCounts += 1;
@@ -2019,9 +2032,6 @@ pub const VM = struct {
                     self.pc += 2;
                     const elems = self.stack.buf[self.stack.top-numElems..self.stack.top];
                     const list = try self.allocList(elems);
-                    if (trace) {
-                        self.trace.numRetains += 1;
-                    }
                     self.stack.top = self.stack.top - numElems + 1;
                     self.stack.buf[self.stack.top-1] = list;
                     continue;
@@ -2032,9 +2042,6 @@ pub const VM = struct {
                     self.pc += 1;
 
                     const map = try self.allocEmptyMap();
-                    if (trace) {
-                        self.trace.numRetains += 1;
-                    }
                     self.pushValueNoCheck(map);
                     continue;
                 },
@@ -2050,9 +2057,6 @@ pub const VM = struct {
                     const obj = try self.allocSmallObject(sid, offsets, props);
                     self.stack.top = self.stack.top - numProps + 1;
                     self.stack.buf[self.stack.top-1] = obj;
-                    if (trace) {
-                        self.trace.numRetains += 1;
-                    }
                     continue;
                 },
                 .pushMap => {
@@ -2100,7 +2104,7 @@ pub const VM = struct {
                     self.pc += 2;
                     const val = self.popRegister();
                     const existing = self.getLocal(offset);
-                    self.release(existing, trace);
+                    self.release(existing);
                     self.setLocal(offset, val);
                     continue;
                 },
@@ -2148,9 +2152,6 @@ pub const VM = struct {
                     const val = self.getLocal(offset);
                     self.pushValueNoCheck(val);
                     self.retain(val);
-                    if (trace) {
-                        self.trace.numRetains += 1;
-                    }
                     continue;
                 },
                 .pushIndex => {
@@ -2238,7 +2239,7 @@ pub const VM = struct {
                     const local = self.ops[self.pc+1].arg;
                     self.pc += 2;
                     // TODO: Inline if heap object.
-                    @call(.{ .modifier = .never_inline }, self.release, .{self.getLocal(local), trace});
+                    @call(.{ .modifier = .never_inline }, self.release, .{self.getLocal(local)});
                     continue;
                 },
                 .pushCall0 => {
@@ -2431,7 +2432,7 @@ pub const VM = struct {
                             if (next.isNone()) {
                                 break;
                             }
-                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
                                 } else return err;
@@ -2451,14 +2452,14 @@ pub const VM = struct {
                                 break;
                             }
                             self.setLocal(local, next);
-                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                            @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
                                 } else return err;
                             };
                         }
                     }
-                    self.release(recv, trace);
+                    self.release(recv);
                     self.stack.top -= 1;
                     self.pc = self.pc + self.ops[self.pc-1].arg - 3;
                     continue;
@@ -2477,7 +2478,7 @@ pub const VM = struct {
                     if (i <= rangeEnd) {
                         if (local == 255) {
                             while (i < rangeEnd) : (i += step) {
-                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
                                     } else return err;
@@ -2486,7 +2487,7 @@ pub const VM = struct {
                         } else {
                             while (i < rangeEnd) : (i += step) {
                                 self.setLocal(local, Value.initF64(i));
-                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
                                     } else return err;
@@ -2496,7 +2497,7 @@ pub const VM = struct {
                     } else {
                         if (local == 255) {
                             while (i > rangeEnd) : (i -= step) {
-                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
                                     } else return err;
@@ -2505,7 +2506,7 @@ pub const VM = struct {
                         } else {
                             while (i > rangeEnd) : (i -= step) {
                                 self.setLocal(local, Value.initF64(i));
-                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{trace}) catch |err| {
+                                @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                     if (err == error.BreakLoop) {
                                         break;
                                     } else return err;
@@ -3224,6 +3225,7 @@ pub const TraceInfo = struct {
     totalOpCounts: u32,
     numRetains: u32,
     numReleases: u32,
+    numForceReleases: u32,
     numRetainCycles: u32,
     numRetainCycleRoots: u32,
 };
@@ -3268,20 +3270,20 @@ pub const UserVM = struct {
         trace.dump();
     }
 
-    pub inline fn release(_: UserVM, val: Value, comptime trace: bool) void {
-        gvm.release(val, trace);
+    pub inline fn release(_: UserVM, val: Value) void {
+        gvm.release(val);
     }
 
-    pub inline fn checkMemory(_: UserVM, comptime trace: bool) !bool {
-        return gvm.checkMemory(trace);
+    pub inline fn checkMemory(_: UserVM) !bool {
+        return gvm.checkMemory();
     }
 
     pub inline fn compile(_: UserVM, src: []const u8) !cy.ByteCodeBuffer {
         return gvm.compile(src);
     }
 
-    pub inline fn eval(_: UserVM, src: []const u8, comptime trace: bool) !Value {
-        return gvm.eval(src, trace);
+    pub inline fn eval(_: UserVM, src: []const u8) !Value {
+        return gvm.eval(src);
     }
 
     pub inline fn allocString(_: UserVM, str: []const u8) !Value {
@@ -3295,10 +3297,10 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-pub fn evalLoopGrowStack(comptime trace: bool) linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+pub fn evalLoopGrowStack() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     @setRuntimeSafety(debug);
     while (true) {
-        @call(.{ .modifier = .always_inline }, gvm.evalLoop, .{trace}) catch |err| {
+        @call(.{ .modifier = .always_inline }, gvm.evalLoop, .{}) catch |err| {
             if (err == error.StackOverflow) {
                 try gvm.stack.growTotalCapacity(gvm.alloc, gvm.stack.buf.len + 1);
                 continue;

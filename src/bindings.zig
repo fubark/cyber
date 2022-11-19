@@ -69,7 +69,7 @@ fn stdPrint(_: cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
-    gvm.release(args[0], false);
+    gvm.release(args[0]);
     return Value.initNone();
 }
 
@@ -81,7 +81,7 @@ fn stdReadInput(_: cy.UserVM, _: [*]const Value, _: u8) Value {
 fn stdParseCyon(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueAsString(args[0]);
-    defer gvm.release(args[0], false);
+    defer gvm.release(args[0]);
 
     var parser = cy.Parser.init(gvm.alloc);
     defer parser.deinit();
@@ -158,13 +158,13 @@ fn listSort(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
             ctx_.vm.stack.buf[ctx_.vm.stack.top-1] = ctx_.lessFn;
             const retInfo = ctx_.vm.buildReturnInfo(1, false);
             ctx_.vm.call(ctx_.lessFn, 3, retInfo) catch stdx.fatal();
-            @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{false}) catch unreachable;
+            @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
             const res = ctx_.vm.popRegister();
             return res.toBool();
         }
     };
     std.sort.sort(Value, list.items, &ctx, S.less);
-    vm.release(ctx.lessFn, false);
+    vm.release(ctx.lessFn);
     return Value.initNone();
 }
 

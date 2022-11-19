@@ -366,6 +366,16 @@ test "Comparison ops." {
         \\a == s
     );
     try t.eq(val.asBool(), true);
+
+    // Using `is not` op.
+    val = try run.eval(
+        \\3 is not 2
+    );
+    try t.eq(val.asBool(), true);
+    val = try run.eval(
+        \\3 is not 3
+    );
+    try t.eq(val.asBool(), false);
 }
 
 test "Logic operators" {

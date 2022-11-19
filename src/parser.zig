@@ -2077,14 +2077,20 @@ pub const Parser = struct {
                 },
                 .is_k => {
                     self.advanceToken();
-                    const right_id = try self.parseRightExpression(.equal_equal);
+                    token = self.peekToken();
+                    var binOp = BinaryExprOp.equal_equal;
+                    if (token.token_t == .not_k) {
+                        binOp = BinaryExprOp.bang_equal;
+                        self.advanceToken();
+                    }
+                    const right_id = try self.parseRightExpression(binOp);
 
                     const bin_expr = self.pushNode(.bin_expr, start);
                     self.nodes.items[bin_expr].head = .{
                         .left_right = .{
                             .left = left_id,
                             .right = right_id,
-                            .extra = @enumToInt(BinaryExprOp.equal_equal),
+                            .extra = @enumToInt(binOp),
                         },
                     };
                     left_id = bin_expr;

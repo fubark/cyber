@@ -1290,7 +1290,7 @@ pub const VMcompiler = struct {
                 }
             },
             .return_expr_stmt => {
-                _ = try self.genExpr(node.head.child_head, false);
+                _ = try self.genMaybeRetainExpr(node.head.child_head, false);
 
                 if (self.blocks.items.len == 1) {
                     try self.endLocals();
@@ -1345,6 +1345,7 @@ pub const VMcompiler = struct {
                 return AnyType;
             }
         } else if (node.node_t == .access_expr) {
+            const left = self.nodes[node.head.left_right.left];
             _ = try self.genExpr(node.head.left_right.left, discardTopExprReg);
 
             // right should be an ident.
@@ -1354,7 +1355,11 @@ pub const VMcompiler = struct {
             const fieldId = try self.vm.ensureFieldSym(name);
 
             if (!discardTopExprReg) {
-                try self.buf.pushOp1(.pushFieldRetain, @intCast(u8, fieldId));
+                if (shouldReleaseAccessParent(left.node_t)) {
+                    try self.buf.pushOp1(.pushFieldRetainParentRelease, @intCast(u8, fieldId));
+                } else {
+                    try self.buf.pushOp1(.pushFieldRetain, @intCast(u8, fieldId));
+                }
             }
 
             return AnyType;
@@ -1685,6 +1690,7 @@ pub const VMcompiler = struct {
                 return ListType;
             },
             .access_expr => {
+                const left = self.nodes[node.head.left_right.left];
                 _ = try self.genExpr(node.head.left_right.left, discardTopExprReg);
 
                 // right should be an ident.
@@ -1694,7 +1700,11 @@ pub const VMcompiler = struct {
                 const fieldId = try self.vm.ensureFieldSym(name);
 
                 if (!discardTopExprReg) {
-                    try self.buf.pushOp1(.pushField, @intCast(u8, fieldId));
+                    if (shouldReleaseAccessParent(left.node_t)) {
+                        try self.buf.pushOp1(.pushFieldParentRelease, @intCast(u8, fieldId));
+                    } else {
+                        try self.buf.pushOp1(.pushField, @intCast(u8, fieldId));
+                    }
                     try self.pushDebugSym(nodeId);
                 }
 
@@ -2305,3 +2315,11 @@ const SemaBlock = struct {
         self.varsToInit.deinit(alloc);
     }
 };
+
+fn shouldReleaseAccessParent(nodeT: cy.NodeType) bool {
+    switch (nodeT) {
+        .call_expr,
+        .structInit => return true,
+        else => return false,
+    }
+}

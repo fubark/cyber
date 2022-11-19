@@ -63,6 +63,28 @@ test "Automatic reference counting." {
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
+    // Object is released when returned from a function if no followup assignment.
+    val = try run.traceEval(
+        \\struct S:
+        \\  value
+        \\func foo():
+        \\  return S{ value: a }
+        \\foo()
+        \\return
+    );
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
+
+    // Object is released when returned rvalue field access.
+    val = try run.traceEval(
+        \\struct S:
+        \\  value
+        \\1 + S{ value: 123 }.value
+    );
+    try t.eq(val.asI32(), 124);
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
+
     // vm.checkMemory is able to detect retain cycle.
     val = try run.traceEval(
         \\a = []

@@ -2408,7 +2408,7 @@ pub const Token = struct {
     },
 };
 
-const NodeType = enum {
+pub const NodeType = enum {
     root,
     expr_stmt,
     assign_stmt,

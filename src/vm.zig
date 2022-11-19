@@ -404,6 +404,7 @@ pub const VM = struct {
                     switch (reqNumArgs) {
                         0 => {
                             @setRuntimeSafety(debug);
+                            self.release(self.stack.buf[self.stack.top-1]);
                             self.stack.top = self.framePtr;
                         },
                         1 => unreachable,
@@ -2362,6 +2363,17 @@ pub const VM = struct {
                     self.stack.top -= 2;
                     try self.setField(recv, fieldId, val);
                 },
+                .pushFieldParentRelease => {
+                    @setRuntimeSafety(debug);
+                    const fieldId = self.ops[self.pc+1].arg;
+                    self.pc += 2;
+
+                    const recv = self.stack.buf[self.stack.top-1];
+                    const val = try self.getField(fieldId, recv);
+                    self.stack.buf[self.stack.top-1] = val;
+                    self.release(recv);
+                    continue;
+                },
                 .pushField => {
                     @setRuntimeSafety(debug);
                     const fieldId = self.ops[self.pc+1].arg;
@@ -2370,6 +2382,17 @@ pub const VM = struct {
                     const recv = self.stack.buf[self.stack.top-1];
                     const val = try self.getField(fieldId, recv);
                     self.stack.buf[self.stack.top-1] = val;
+                    continue;
+                },
+                .pushFieldRetainParentRelease => {
+                    @setRuntimeSafety(debug);
+                    const fieldId = self.ops[self.pc+1].arg;
+                    self.pc += 2;
+
+                    const recv = self.stack.buf[self.stack.top-1];
+                    const val = self.getAndRetainField(fieldId, recv);
+                    self.stack.buf[self.stack.top-1] = val;
+                    self.release(recv);
                     continue;
                 },
                 .pushFieldRetain => {

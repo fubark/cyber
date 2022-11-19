@@ -3,6 +3,7 @@ pub const Parser = parser.Parser;
 pub const ParseResultView = parser.ResultView;
 pub const ParseResult = parser.Result;
 pub const Node = parser.Node;
+pub const NodeType = parser.NodeType;
 pub const NodeId = parser.NodeId;
 pub const BinaryExprOp = parser.BinaryExprOp;
 pub const FuncDecl = parser.FuncDecl;

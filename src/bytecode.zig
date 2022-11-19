@@ -202,6 +202,8 @@ pub const ByteCodeBuffer = struct {
                 .loadRetain,
                 .pushField,
                 .pushFieldRetain,
+                .pushFieldParentRelease,
+                .pushFieldRetainParentRelease,
                 .pushConst => {
                     try w.print("{}", .{ops[pc+1].arg});
                     pc += 2;
@@ -416,12 +418,14 @@ pub const OpCode = enum(u8) {
     pushFieldRetain,
     jumpCondKeep,
     jumpNotCondKeep,
+    pushFieldRetainParentRelease,
+    pushFieldParentRelease,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 61);
+    try t.eq(@enumToInt(OpCode.end), 63);
     try t.eq(@sizeOf(OpData), 1);
 }

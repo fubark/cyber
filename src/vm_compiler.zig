@@ -34,6 +34,10 @@ pub const VMcompiler = struct {
     operandStack: std.ArrayListUnmanaged(cy.OpData),
     curBlock: *Block,
     curSemaBlockId: u32,
+
+    // Used during codegen to advance to the next processed sema block.
+    nextSemaBlockId: u32,
+
     u8Buf: std.ArrayListUnmanaged(u8),
 
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
@@ -56,6 +60,7 @@ pub const VMcompiler = struct {
             .operandStack = .{},
             .curBlock = undefined,
             .curSemaBlockId = undefined,
+            .nextSemaBlockId = undefined,
             .src = undefined,
             .u8Buf = .{},
         };
@@ -592,12 +597,15 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn nextSemaBlock(self: *VMcompiler) void {
-        self.curSemaBlockId += 1;
+    fn nextSemaBlock(self: *VMcompiler) u32 {
+        const last = self.curSemaBlockId;
+        self.curSemaBlockId = self.nextSemaBlockId;
+        self.nextSemaBlockId += 1;
+        return last;
     }
 
-    fn prevSemaBlock(self: *VMcompiler) void {
-        self.curSemaBlockId -= 1;
+    fn restoreSemaBlock(self: *VMcompiler, id: u32) void {
+        self.curSemaBlockId = id;
     }
 
     fn genVarInits(self: *VMcompiler) !void {
@@ -640,7 +648,8 @@ pub const VMcompiler = struct {
         };
         self.endSemaBlock(sBlockId);
 
-        self.curSemaBlockId = 1;
+        self.nextSemaBlockId = 1;
+        _ = self.nextSemaBlock();
         try self.pushBlock();
         try self.genVarInits();
         self.genStatements(root.head.child_head, true) catch {
@@ -751,6 +760,7 @@ pub const VMcompiler = struct {
         const block = self.blocks.items[self.blocks.items.len-1];
         self.semaBlocks.items[blockId].varsToInit = block.varsToInit;
         self.curSemaBlockId -= 1;
+        self.popSubBlock();
         self.popBlock();
     }
 
@@ -914,7 +924,7 @@ pub const VMcompiler = struct {
                 try self.curBlock.varsToInit.append(self.alloc, info.local);
             }
 
-            if (self.subBlocks.items.len > self.semaBlocks.items[self.curSemaBlockId].subBlockStart) {
+            if (self.subBlocks.items.len - 1 > self.semaBlocks.items[self.curSemaBlockId].subBlockStart) {
                 info.genInitializer = true;
                 try self.curBlock.varsToInit.append(self.alloc, info.local);
             }
@@ -1374,7 +1384,7 @@ pub const VMcompiler = struct {
         const jumpPc = try self.pushEmptyJump();
 
         try self.pushBlock();
-        self.nextSemaBlock();
+        const prevId = self.nextSemaBlock();
 
         const opStart = @intCast(u32, self.buf.ops.items.len);
         try self.reserveMethodParams(func);
@@ -1388,7 +1398,8 @@ pub const VMcompiler = struct {
         // Reserve another local for the call return info.
         const numParams = func.params.end - func.params.start;
         const numLocals = self.blockNumLocals() + 1 - numParams;
-        self.prevSemaBlock();
+
+        self.restoreSemaBlock(prevId);
         self.popBlock();
 
         self.patchJumpToCurrent(jumpPc);
@@ -1405,7 +1416,7 @@ pub const VMcompiler = struct {
         const jumpPc = try self.pushEmptyJump();
 
         try self.pushBlock();
-        self.nextSemaBlock();
+        const prevId = self.nextSemaBlock();
         self.curBlock.frameLoc = nodeId;
 
         const opStart = @intCast(u32, self.buf.ops.items.len);
@@ -1420,7 +1431,7 @@ pub const VMcompiler = struct {
         // Reserve another local for the call return info.
         const numParams = func.params.end - func.params.start;
         const numLocals = self.blockNumLocals() + 1 - numParams;
-        self.prevSemaBlock();
+        self.restoreSemaBlock(prevId);
         self.popBlock();
 
         self.patchJumpToCurrent(jumpPc);
@@ -1758,6 +1769,7 @@ pub const VMcompiler = struct {
                         _ = try self.genExpr(right, discardTopExprReg);
                         if (!discardTopExprReg) {
                             try self.buf.pushOp(.pushAdd);
+                            try self.pushDebugSym(nodeId);
                         }
                         if (ltype.typeT == .string) {
                             return StringType;

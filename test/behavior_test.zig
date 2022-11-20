@@ -911,7 +911,19 @@ test "Variables and scope" {
         \\if false:
         \\  a = S{ value: 123 }
     );
-    try t.eq(val.isNone(), true);
+
+    // Same test in method scope.
+    try run.inner.resetEnv();
+    run.inner.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+    val = try run.inner.evalNoReset(
+        \\struct S:
+        \\  value
+        \\  func foo(self):
+        \\    if false:
+        \\      a = S{ value: 123 }
+        \\s = S{ value: 234 }
+        \\s.foo()
+    );
 }
 
 test "if expression" {

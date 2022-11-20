@@ -35,17 +35,48 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    if (args.len > 1) {
-        const arg0 = args[1];
-        if (std.mem.eql(u8, arg0, "compile")) {
-            if (args.len > 2) {
-                try compilePath(alloc, args[2]);
+    var cmd = Command.none;
+    var arg0: []const u8 = "";
+    var verbose = false;
+    for (args[1..]) |arg| {
+        if (arg[0] == '-') {
+            if (std.mem.eql(u8, arg, "-v")) {
+                verbose = true;
             }
         } else {
-            try evalPath(alloc, arg0);
+            if (cmd == .none) {
+                if (std.mem.eql(u8, arg, "compile")) {
+                    cmd = .compile;
+                } else {
+                    cmd = .eval;
+                    arg0 = arg;
+                }
+
+            } else {
+                arg0 = arg;
+            }
         }
     }
+
+    switch (cmd) {
+        .eval => {
+            try evalPath(alloc, arg0, verbose);
+        },
+        .compile => {
+            try compilePath(alloc, arg0);
+        },
+        .none => {
+            std.debug.print("Missing command\n", .{});
+            std.os.exit(1);
+        },
+    }
 }
+
+const Command = enum {
+    eval,
+    compile,
+    none,
+};
 
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
@@ -63,7 +94,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     try buf.dump();
 }
 
-fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
+fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
     const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
     defer alloc.free(src);
 
@@ -81,4 +112,8 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
             stdx.panicFmt("unexpected {}", .{err});
         }
     };
+    if (verbose) {
+        std.debug.print("\n==VM Info==\n", .{});
+        vm.dumpInfo();
+    }
 }

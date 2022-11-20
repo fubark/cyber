@@ -302,25 +302,26 @@ pub const VM = struct {
     }
 
     pub fn dumpInfo(self: *VM) void {
-        log.info("stack cap: {}", .{self.stack.buf.len});
-        log.info("stack top: {}", .{self.stack.top});
-        log.info("heap pages: {}", .{self.heapPages.len});
+        const print = std.debug.print;
+        print("stack cap: {}\n", .{self.stack.buf.len});
+        print("stack top: {}\n", .{self.stack.top});
+        print("heap pages: {}\n", .{self.heapPages.len});
 
         // Dump object symbols.
         {
-            log.info("obj syms:", .{});
+            print("obj syms:\n", .{});
             var iter = self.funcSymSignatures.iterator();
             while (iter.next()) |it| {
-                log.info("\t{s}: {}", .{it.key_ptr.*, it.value_ptr.*});
+                print("\t{s}: {}\n", .{it.key_ptr.*, it.value_ptr.*});
             }
         }
 
         // Dump object fields.
         {
-            log.info("obj fields:", .{});
+            print("obj fields:\n", .{});
             var iter = self.fieldSymSignatures.iterator();
             while (iter.next()) |it| {
-                log.info("\t{s}: {}", .{it.key_ptr.*, it.value_ptr.*});
+                print("\t{s}: {}\n", .{it.key_ptr.*, it.value_ptr.*});
             }
         }
     }
@@ -3324,6 +3325,10 @@ pub const UserVM = struct {
         std.debug.print("panic: {s}\n", .{gvm.panicMsg});
         const trace = gvm.getStackTrace();
         trace.dump();
+    }
+
+    pub fn dumpInfo(_: UserVM) void {
+        gvm.dumpInfo();
     }
 
     pub fn fillUndefinedStackSpace(_: UserVM, val: Value) void {

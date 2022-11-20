@@ -1981,10 +1981,10 @@ pub const VM = struct {
                     self.stack.top -= 1;
                     const left = self.stack.buf[self.stack.top-1];
                     const right = self.stack.buf[self.stack.top];
-                    if (left.isNumber()) {
+                    if (left.isNumber() and right.isNumber()) {
                         self.stack.buf[self.stack.top-1] = evalAddNumber(left, right);
                     } else {
-                        self.stack.buf[self.stack.top-1] = evalAddOther(self, left, right);
+                        self.stack.buf[self.stack.top-1] = try evalAddFallback(self, left, right);
                     }
                     continue;
                 },
@@ -2092,10 +2092,10 @@ pub const VM = struct {
                     const val = self.popRegister();
 
                     const left = self.getLocal(offset);
-                    if (left.isNumber()) {
+                    if (left.isNumber() and val.isNumber()) {
                         self.setLocal(offset, evalAddNumber(left, val));
                     } else {
-                        self.setLocal(offset, evalAddOther(self, left, val));
+                        self.setLocal(offset, try evalAddFallback(self, left, val));
                     }
                     continue;
                 },
@@ -2922,31 +2922,64 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
     }
 }
 
-fn evalAddOther(vm: *VM, left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
+fn evalAddFallback(vm: *VM, left: cy.Value, right: cy.Value) linksection(".eval") !cy.Value {
     @setRuntimeSafety(debug);
-    switch (left.getTag()) {
-        cy.TagBoolean => {
-            if (left.asBool()) {
-                return Value.initF64(1 + right.toF64());
-            } else {
-                return Value.initF64(right.toF64());
-            }
-        },
-        cy.TagNone => return Value.initF64(right.toF64()),
-        cy.TagError => stdx.fatal(),
-        cy.TagConstString => {
-            // Convert into heap string.
-            const slice = left.asConstStr();
-            const str = vm.strBuf[slice.start..slice.end];
-            return vm.allocStringConcat(str, vm.valueToTempString(right)) catch stdx.fatal();
-        },
-        else => stdx.panic("unexpected tag"),
+    @setCold(true);
+    if (left.isNumber()) {
+        log.debug("left num", .{});
+        return Value.initF64(left.asF64() + try toF64OrPanic(vm, right));
+    } else {
+        switch (left.getTag()) {
+            cy.TagBoolean => {
+                if (left.asBool()) {
+                    return Value.initF64(1 + right.toF64());
+                } else {
+                    return Value.initF64(right.toF64());
+                }
+            },
+            cy.TagNone => return Value.initF64(right.toF64()),
+            cy.TagError => stdx.fatal(),
+            cy.TagConstString => {
+                // Convert into heap string.
+                const slice = left.asConstStr();
+                const str = vm.strBuf[slice.start..slice.end];
+                return vm.allocStringConcat(str, vm.valueToTempString(right)) catch stdx.fatal();
+            },
+            else => stdx.panic("unexpected tag"),
+        }
     }
 }
 
-inline fn evalAddNumber(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
+inline fn evalAddNumber(left: Value, right: Value) linksection(".eval") Value {
     @setRuntimeSafety(debug);
-    return Value.initF64(left.asF64() + right.toF64());
+    return Value.initF64(left.asF64() + right.asF64());
+}
+
+fn toF64OrPanic(vm: *VM, val: Value) linksection(".eval") !f64 {
+    @setRuntimeSafety(debug);
+    if (val.isNumber()) {
+        return val.asF64();
+    } else {
+        return try @call(.{ .modifier = .never_inline }, convToF64OrPanic, .{vm, val});
+    }
+}
+
+fn convToF64OrPanic(vm: *VM, val: Value) linksection(".eval") !f64 {
+    if (val.isPointer()) {
+        log.debug("right pointer", .{});
+        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
+        if (obj.common.structId == cy.StringS) {
+            const str = obj.string.ptr[0..obj.string.len];
+            return std.fmt.parseFloat(f64, str) catch 0;
+        } else return vm.panic("Cannot convert struct to number");
+    } else {
+        log.debug("right value", .{});
+        switch (val.getTag()) {
+            cy.TagNone => return 0,
+            cy.TagBoolean => return if (val.asBool()) 1 else 0,
+            else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
+        }
+    }
 }
 
 fn evalNeg(val: Value) Value {

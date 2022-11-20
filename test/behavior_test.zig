@@ -820,7 +820,7 @@ test "Maps" {
     try t.eq(val.asI32(), 2);
 }
 
-test "Variables" {
+test "Variables and scope" {
     const run = Runner.create();
     defer run.destroy();
 
@@ -896,6 +896,20 @@ test "Variables" {
         \\    a = 1
         \\  return a
         \\foo()
+    );
+    try t.eq(val.isNone(), true);
+
+    // Initializing an object in a branch will auto generate initializers at the start of
+    // the function. This test sets freed object values along the undefined stack space.
+    // If the initializers were generated, the release on `a` would succeed.
+    // If not `a` would refer to a freed object value and fail the release op.
+    try run.inner.resetEnv();
+    run.inner.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+    val = try run.inner.evalNoReset(
+        \\struct S:
+        \\  value
+        \\if false:
+        \\  a = S{ value: 123 }
     );
     try t.eq(val.isNone(), true);
 }
@@ -1536,9 +1550,22 @@ const VMrunner = struct {
 
     fn eval(self: *VMrunner, src: []const u8) cy.EvalError!cy.Value {
         // Eval with new env.
+        try self.resetEnv();
+        return self.vm.eval(src) catch |err| {
+            if (err == error.Panic) {
+                self.vm.dumpPanicStackTrace();
+            }
+            return err;
+        };
+    }
+
+    fn resetEnv(self: *VMrunner) !void {
         self.vm.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);
+    }
+
+    fn evalNoReset(self: *VMrunner, src: []const u8) cy.EvalError!cy.Value {
         return self.vm.eval(src) catch |err| {
             if (err == error.Panic) {
                 self.vm.dumpPanicStackTrace();

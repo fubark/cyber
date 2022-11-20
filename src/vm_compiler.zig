@@ -162,14 +162,6 @@ pub const VMcompiler = struct {
                 const token = self.tokens[node.start_token];
                 const name = self.src[token.start_pos..token.data.end_pos];
                 if (try self.readScopedVar(name)) |info| {
-                    if (!info.genInitializer) {
-                        if (!self.curBlock.defLocals.contains(info.local)) {
-                            // Possibly undefined.
-                            const infoPtr = self.getScopedVarInfoPtr(name).?;
-                            infoPtr.genInitializer = true;
-                            try self.curBlock.varsToInit.append(self.alloc, infoPtr.local);
-                        }
-                    }
                     return info.vtype;
                 } else {
                     return AnyType;
@@ -629,13 +621,13 @@ pub const VMcompiler = struct {
 
         // Dummy first element to avoid len > 0 check during pop.
         try self.subBlocks.append(self.alloc, SubBlock.init(0));
+        try self.semaBlocks.append(self.alloc, SemaBlock.init(0));
 
         self.nodes = ast.nodes.items;
         self.funcDecls = ast.func_decls.items;
         self.funcParams = ast.func_params;
         self.src = ast.src;
         self.tokens = ast.tokens;
-        self.curSemaBlockId = 0;
 
         const root = self.nodes[ast.root_id];
 
@@ -648,6 +640,7 @@ pub const VMcompiler = struct {
         };
         self.endSemaBlock(sBlockId);
 
+        self.curSemaBlockId = 1;
         try self.pushBlock();
         try self.genVarInits();
         self.genStatements(root.head.child_head, true) catch {
@@ -747,15 +740,17 @@ pub const VMcompiler = struct {
 
     fn pushSemaBlock(self: *VMcompiler) !u32 {
         try self.pushBlock();
+        const subBlockStart = self.subBlocks.items.len;
         try self.pushSubBlock();
-        const id = @intCast(u32, self.semaBlocks.items.len);
-        try self.semaBlocks.append(self.alloc, SemaBlock.init());
-        return id;
+        self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
+        try self.semaBlocks.append(self.alloc, SemaBlock.init(subBlockStart));
+        return self.curSemaBlockId;
     }
 
     fn endSemaBlock(self: *VMcompiler, blockId: u32) void {
         const block = self.blocks.items[self.blocks.items.len-1];
         self.semaBlocks.items[blockId].varsToInit = block.varsToInit;
+        self.curSemaBlockId -= 1;
         self.popBlock();
     }
 
@@ -915,6 +910,11 @@ pub const VMcompiler = struct {
             if (self.curBlock.iterBlockDepth > 0) {
                 // First assigned inside an iteration block.
                 // Compiler needs to generate an initializer.
+                info.genInitializer = true;
+                try self.curBlock.varsToInit.append(self.alloc, info.local);
+            }
+
+            if (self.subBlocks.items.len > self.semaBlocks.items[self.curSemaBlockId].subBlockStart) {
                 info.genInitializer = true;
                 try self.curBlock.varsToInit.append(self.alloc, info.local);
             }
@@ -2299,15 +2299,20 @@ const SubBlock = struct {
 };
 
 const SemaBlock = struct {
-    /// There are two cases where the compiler needs to implicitly generate var initializers.
-    /// 1. Var is read when the only prior assignment happened in a branched block. eg. Assigned inside if block.
+    /// There two cases where the compiler needs to implicitly generate var initializers.
+    /// 1. Var is first assigned in a branched block. eg. Assigned inside if block.
+    ///    Since the var needs to be released at the end of the root block,
+    ///    it needs to have a defined value.
     /// 2. Var is first assigned in an iteration block.
     /// At the beginning of codegen for this block, these vars will be inited to the `none` value.
     varsToInit: std.ArrayListUnmanaged(LocalId),
 
-    fn init() SemaBlock {
+    subBlockStart: u32,
+
+    fn init(subBlockStart: usize) SemaBlock {
         return .{
             .varsToInit = .{},
+            .subBlockStart = @intCast(u32, subBlockStart),
         };
     }
 

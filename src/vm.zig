@@ -3293,6 +3293,10 @@ pub const UserVM = struct {
         trace.dump();
     }
 
+    pub fn fillUndefinedStackSpace(_: UserVM, val: Value) void {
+        std.mem.set(Value, gvm.stack.buf[gvm.stack.top..], val);
+    }
+
     pub inline fn release(_: UserVM, val: Value) void {
         gvm.release(val);
     }

@@ -165,14 +165,8 @@ pub const VM = struct {
         self.alloc.free(self.panicMsg);
     }
 
-    /// Returns the first free HeapObject.
-    fn growHeapPages(self: *VM, numPages: usize) !*HeapObject {
-        var idx = self.heapPages.len;
-        try self.heapPages.resize(self.alloc, self.heapPages.len + numPages);
-
-        // Allocate first page.
-        var page = try self.alloc.create(HeapPage);
-        self.heapPages.buf[idx] = page;
+    /// Initializes the page with freed object slots and returns the pointer to the first slot.
+    fn initHeapPage(page: *HeapPage) *HeapObject {
         // First HeapObject at index 0 is reserved so that freeObject can get the previous slot without a bounds check.
         page.objects[0].common = .{
             .structId = 0, // Non-NullId so freeObject doesn't think it's a free span.
@@ -191,30 +185,27 @@ pub const VM = struct {
             }
         });
         page.objects[page.objects.len-1].freeSpan.start = first;
+        return first;
+    }
+
+    /// Returns the first free HeapObject.
+    fn growHeapPages(self: *VM, numPages: usize) !*HeapObject {
+        var idx = self.heapPages.len;
+        try self.heapPages.resize(self.alloc, self.heapPages.len + numPages);
+
+        // Allocate first page.
+        var page = try self.alloc.create(HeapPage);
+        self.heapPages.buf[idx] = page;
+
+        const first = initHeapPage(page);
         var last = first;
         idx += 1;
         while (idx < self.heapPages.len) : (idx += 1) {
             page = try self.alloc.create(HeapPage);
             self.heapPages.buf[idx] = page;
-
-            page.objects[0].common = .{
-                .structId = 0,
-            };
-            const ptr = &page.objects[1];
-            ptr.freeSpan = .{
-                .structId = NullId,
-                .len = page.objects.len - 1,
-                .start = ptr,
-                .next = null,
-            };
-            std.mem.set(HeapObject, page.objects[2..], .{
-                .common = .{
-                    .structId = NullId,
-                }
-            });
-            page.objects[page.objects.len-1].freeSpan.start = ptr;
-            last.freeSpan.next = ptr;
-            last = ptr;
+            const first_ = initHeapPage(page);
+            last.freeSpan.next = first_;
+            last = first_;
         }
         return first;
     }
@@ -302,7 +293,7 @@ pub const VM = struct {
     }
 
     pub fn dumpInfo(self: *VM) void {
-        const print = std.debug.print;
+        const print = if (builtin.is_test) log.debug else std.debug.print;
         print("stack cap: {}\n", .{self.stack.buf.len});
         print("stack top: {}\n", .{self.stack.top});
         print("heap pages: {}\n", .{self.heapPages.len});
@@ -3174,6 +3165,7 @@ test "Internals." {
     try t.eq(@sizeOf(MapInner), 32);
     try t.eq(@sizeOf(HeapObject), 40);
     try t.eq(@sizeOf(HeapPage), 40 * 1600);
+    try t.eq(@alignOf(HeapPage), 8);
 }
 
 const SymbolEntryType = enum {

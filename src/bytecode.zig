@@ -100,6 +100,12 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[start+3] = .{ .arg = arg3 };
     }
 
+    pub fn pushOperand(self: *ByteCodeBuffer, arg: u8) !void {
+        const start = self.ops.items.len;
+        try self.ops.resize(self.alloc, self.ops.items.len + 1);
+        self.ops.items[start] = .{ .arg = arg };
+    }
+
     pub fn pushOperandsRaw(self: *ByteCodeBuffer, args: []const u8) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len);

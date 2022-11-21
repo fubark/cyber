@@ -1448,15 +1448,16 @@ pub const VM = struct {
                     self.pc = obj.closure.funcPc;
                     self.framePtr = self.stack.top - numArgs;
                     self.stack.buf[self.framePtr] = retInfo;
-                    self.stack.top += obj.lambda.numLocals;
 
                     // Copy over captured vars to new call stack locals.
                     if (obj.closure.numCaptured <= 3) {
                         const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
-                        std.mem.copy(Value, self.stack.buf[self.stack.top-obj.closure.numCaptured..self.stack.top], src);
+                        std.mem.copy(Value, self.stack.buf[self.stack.top..self.stack.top+obj.closure.numCaptured], src);
                     } else {
                         stdx.panic("unsupported closure > 3 captured args.");
                     }
+
+                    self.stack.top += obj.lambda.numLocals;
                 },
                 LambdaS => {
                     if (numArgs - 1 != obj.lambda.numParams) {

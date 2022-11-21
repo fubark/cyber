@@ -20,23 +20,27 @@ pub const VMcompiler = struct {
 
     /// Context vars.
     src: []const u8,
-    nodes: []const cy.Node,
+    nodes: []cy.Node,
     tokens: []const cy.Token,
     funcDecls: []const cy.FuncDecl,
     funcParams: []const cy.FunctionParam,
     semaBlocks: std.ArrayListUnmanaged(SemaBlock),
+    semaSubBlocks: std.ArrayListUnmanaged(SemaSubBlock),
+    vars: std.ArrayListUnmanaged(SemaVar),
+    capVarParents: std.AutoHashMapUnmanaged(SemaVarId, SemaVarId),
     blocks: std.ArrayListUnmanaged(Block),
-    subBlocks: std.ArrayListUnmanaged(SubBlock),
     jumpStack: std.ArrayListUnmanaged(Jump),
-    loadStack: std.ArrayListUnmanaged(Load),
     nodeStack: std.ArrayListUnmanaged(cy.NodeId),
-    defLocalStack: std.ArrayListUnmanaged(LocalId),
+    definedVarStack: std.ArrayListUnmanaged(SemaVarId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
     curBlock: *Block,
-    curSemaBlockId: u32,
+    curSemaBlockId: SemaBlockId,
+    semaBlockDepth: u32,
+    curSemaSubBlockId: SemaSubBlockId,
 
     // Used during codegen to advance to the next processed sema block.
     nextSemaBlockId: u32,
+    nextSemaSubBlockId: u32,
 
     u8Buf: std.ArrayListUnmanaged(u8),
 
@@ -51,16 +55,20 @@ pub const VMcompiler = struct {
             .funcDecls = undefined,
             .funcParams = undefined,
             .semaBlocks = .{},
+            .semaSubBlocks = .{},
+            .vars = .{},
+            .capVarParents = .{},
             .blocks = .{},
-            .subBlocks = .{},
             .jumpStack = .{},
-            .loadStack = .{},
             .nodeStack = .{},
-            .defLocalStack = .{},
+            .definedVarStack = .{},
             .operandStack = .{},
             .curBlock = undefined,
             .curSemaBlockId = undefined,
+            .curSemaSubBlockId = undefined,
             .nextSemaBlockId = undefined,
+            .nextSemaSubBlockId = undefined,
+            .semaBlockDepth = undefined,
             .src = undefined,
             .u8Buf = .{},
         };
@@ -69,23 +77,29 @@ pub const VMcompiler = struct {
     pub fn deinit(self: *VMcompiler) void {
         self.alloc.free(self.lastErr);
 
+        for (self.semaSubBlocks.items) |*block| {
+            block.deinit(self.alloc);
+        }
+        self.semaSubBlocks.deinit(self.alloc);
+
         for (self.semaBlocks.items) |*sblock| {
             sblock.deinit(self.alloc);
         }
         self.semaBlocks.deinit(self.alloc);
 
         self.blocks.deinit(self.alloc);
-        self.subBlocks.deinit(self.alloc);
         self.buf.deinit();
         self.jumpStack.deinit(self.alloc);
-        self.defLocalStack.deinit(self.alloc);
-        self.loadStack.deinit(self.alloc);
+        self.definedVarStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
         self.nodeStack.deinit(self.alloc);
+        self.vars.deinit(self.alloc);
+        self.capVarParents.deinit(self.alloc);
     }
 
-    fn semaExpr(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) anyerror!Type {
+    fn semaExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
+        const node = self.nodes[nodeId];
         // log.debug("sema expr {}", .{node.node_t});
         switch (node.node_t) {
             .true_literal => {
@@ -102,7 +116,7 @@ pub const VMcompiler = struct {
                 var i: u32 = 0;
                 while (expr_id != NullId) : (i += 1) {
                     var expr = self.nodes[expr_id];
-                    _ = try self.semaExpr(expr, discardTopExprReg);
+                    _ = try self.semaExpr(expr_id, discardTopExprReg);
                     expr_id = expr.next;
                 }
 
@@ -115,9 +129,7 @@ pub const VMcompiler = struct {
                 var entry_id = initializer.head.child_head;
                 while (entry_id != NullId) : (i += 1) {
                     var entry = self.nodes[entry_id];
-
-                    const val = self.nodes[entry.head.left_right.right];
-                    _ = try self.semaExpr(val, discardTopExprReg);
+                    _ = try self.semaExpr(entry.head.left_right.right, discardTopExprReg);
                     entry_id = entry.next;
                 }
                 return AnyType;
@@ -128,8 +140,7 @@ pub const VMcompiler = struct {
                 while (entry_id != NullId) : (i += 1) {
                     var entry = self.nodes[entry_id];
 
-                    const val = self.nodes[entry.head.left_right.right];
-                    _ = try self.semaExpr(val, discardTopExprReg);
+                    _ = try self.semaExpr(entry.head.left_right.right, discardTopExprReg);
                     entry_id = entry.next;
                 }
                 return MapType;
@@ -152,7 +163,7 @@ pub const VMcompiler = struct {
                 while (true) {
                     const cur = self.nodes[curId];
                     if (nextIsExpr) {
-                        _ = try self.semaExpr(cur, discardTopExprReg);
+                        _ = try self.semaExpr(curId, discardTopExprReg);
                     }
                     if (cur.next == NullId) {
                         break;
@@ -164,83 +175,71 @@ pub const VMcompiler = struct {
                 return StringType;
             },
             .ident => {
-                const token = self.tokens[node.start_token];
-                const name = self.src[token.start_pos..token.data.end_pos];
-                if (try self.readScopedVar(name)) |info| {
-                    return info.vtype;
+                if (try self.semaReadVar(nodeId)) |svar| {
+                    return svar.vtype;
                 } else {
                     return AnyType;
                 }
             },
             .if_expr => {
-                const cond = self.nodes[node.head.if_expr.cond];
-                _ = try self.semaExpr(cond, false);
+                _ = try self.semaExpr(node.head.if_expr.cond, false);
 
-                const trueExpr = self.nodes[node.head.if_expr.body_expr];
-                _ = try self.semaExpr(trueExpr, discardTopExprReg);
+                _ = try self.semaExpr(node.head.if_expr.body_expr, discardTopExprReg);
 
                 if (node.head.if_expr.else_clause != NullId) {
                     const else_clause = self.nodes[node.head.if_expr.else_clause];
-                    const falseExpr = self.nodes[else_clause.head.child_head];
-                    _ = try self.semaExpr(falseExpr, discardTopExprReg);
+                    _ = try self.semaExpr(else_clause.head.child_head, discardTopExprReg);
                 }
                 return AnyType;
             },
             .arr_range_expr => {
-                const arr = self.nodes[node.head.arr_range_expr.arr];
-                _ = try self.semaExpr(arr, discardTopExprReg);
+                _ = try self.semaExpr(node.head.arr_range_expr.arr, discardTopExprReg);
 
                 if (node.head.arr_range_expr.left == NullId) {
                     // nop
                 } else {
-                    const left = self.nodes[node.head.arr_range_expr.left];
-                    _ = try self.semaExpr(left, discardTopExprReg);
+                    _ = try self.semaExpr(node.head.arr_range_expr.left, discardTopExprReg);
                 }
                 if (node.head.arr_range_expr.right == NullId) {
                     // nop
                 } else {
-                    const right = self.nodes[node.head.arr_range_expr.right];
-                    _ = try self.semaExpr(right, discardTopExprReg);
+                    _ = try self.semaExpr(node.head.arr_range_expr.right, discardTopExprReg);
                 }
 
                 return ListType;
             },
             .access_expr => {
-                const left = self.nodes[node.head.left_right.left];
-                _ = try self.semaExpr(left, discardTopExprReg);
+                _ = try self.semaExpr(node.head.left_right.left, discardTopExprReg);
                 return AnyType;
             },
             .arr_access_expr => {
-                const left = self.nodes[node.head.left_right.left];
-                _ = try self.semaExpr(left, discardTopExprReg);
+                _ = try self.semaExpr(node.head.left_right.left, discardTopExprReg);
 
                 const index = self.nodes[node.head.left_right.right];
                 if (index.node_t == .unary_expr and index.head.unary.op == .minus) {
-                    const right = self.nodes[index.head.unary.child];
-                    _ = try self.semaExpr(right, discardTopExprReg);
+                    _ = try self.semaExpr(index.head.unary.child, discardTopExprReg);
                 } else {
-                    _ = try self.semaExpr(index, discardTopExprReg);
+                    _ = try self.semaExpr(node.head.left_right.right, discardTopExprReg);
                 }
                 return AnyType;
             },
             .unary_expr => {
-                const child = self.nodes[node.head.unary.child];
                 const op = node.head.unary.op;
                 switch (op) {
                     .minus => {
-                        _ = try self.semaExpr(child, discardTopExprReg);
+                        _ = try self.semaExpr(node.head.unary.child, discardTopExprReg);
                         return NumberType;
                     },
                     .not => {
-                        _ = try self.semaExpr(child, discardTopExprReg);
+                        _ = try self.semaExpr(node.head.unary.child, discardTopExprReg);
                         return BoolType;
                     },
                     // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
                 }
             },
             .bin_expr => {
-                const left = self.nodes[node.head.left_right.left];
-                const right = self.nodes[node.head.left_right.right];
+                const left = node.head.left_right.left;
+                const right = node.head.left_right.right;
 
                 const op = @intToEnum(cy.BinaryExprOp, node.head.left_right.extra);
                 switch (op) {
@@ -340,26 +339,22 @@ pub const VMcompiler = struct {
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
-                                _ = try self.semaExpr(arg, false);
+                                _ = try self.semaExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
 
-                            const left = self.nodes[callee.head.left_right.left];
-                            _ = try self.semaExpr(left, false);
+                            _ = try self.semaExpr(callee.head.left_right.left, false);
 
                             return AnyType;
                         } else return self.reportError("Unsupported callee", .{}, node);
                     } else if (callee.node_t == .ident) {
-                        const token = self.tokens[callee.start_token];
-                        const name = self.src[token.start_pos..token.data.end_pos];
-
-                        if (try self.readScopedVar(name)) |info| {
+                        if (try self.semaReadVar(node.head.func_call.callee)) |info| {
                             _ = info;
                             var numArgs: u32 = 1;
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
-                                _ = try self.semaExpr(arg, false);
+                                _ = try self.semaExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
 
@@ -371,7 +366,7 @@ pub const VMcompiler = struct {
                             var arg_id = node.head.func_call.arg_head;
                             while (arg_id != NullId) : (numArgs += 1) {
                                 const arg = self.nodes[arg_id];
-                                _ = try self.semaExpr(arg, false);
+                                _ = try self.semaExpr(arg_id, false);
                                 arg_id = arg.next;
                             }
                             return AnyType;
@@ -381,15 +376,13 @@ pub const VMcompiler = struct {
             },
             .lambda_expr => {
                 if (!discardTopExprReg) {
-                    const blockId = try self.pushSemaBlock();
+                    try self.pushSemaBlock();
+                    defer self.endSemaBlock();
 
                     // Generate function body.
                     const func = self.funcDecls[node.head.func.decl_id];
-                    try self.semaReserveFuncParams(func);
-                    const expr = self.nodes[node.head.func.body_head];
-                    _ = try self.semaExpr(expr, false);
-
-                    self.endSemaBlock(blockId);
+                    try self.pushSemaFuncParamVars(func);
+                    _ = try self.semaExpr(node.head.func.body_head, false);
                 }
                 return AnyType;
             },
@@ -404,8 +397,7 @@ pub const VMcompiler = struct {
                 return;
             },
             .expr_stmt => {
-                const expr = self.nodes[node.head.child_head];
-                _ = try self.semaExpr(expr, discardTopExprReg);
+                _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
             },
             .break_stmt => {
                 return;
@@ -413,14 +405,10 @@ pub const VMcompiler = struct {
             .add_assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    const identToken = self.tokens[left.start_token];
-                    const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
-
-                    if (self.getScopedVarInfo(varName)) |info| {
-                        const right = self.nodes[node.head.left_right.right];
-                        const rtype = try self.semaExpr(right, false);
-                        if (info.vtype.typeT != .number and info.vtype.typeT != .any and rtype.typeT != info.vtype.typeT) {
-                            return self.reportError("Type mismatch: Expected {}", .{info.vtype.typeT}, node);
+                    if (try self.semaReadVar(node.head.left_right.left)) |svar| {
+                        const rtype = try self.semaExpr(node.head.left_right.right, false);
+                        if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and rtype.typeT != svar.vtype.typeT) {
+                            return self.reportError("Type mismatch: Expected {}", .{svar.vtype.typeT}, node);
                         }
                     } else stdx.panic("variable not declared");
                 } else {
@@ -430,34 +418,22 @@ pub const VMcompiler = struct {
             .assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    const identToken = self.tokens[left.start_token];
-                    const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
-
-                    if (self.getScopedVarInfo(varName)) |info| {
-                        if (info.isCapturedVar) {
-                            return self.reportError("Can not reassign to a captured variable.", .{}, left);
+                    if (try self.semaReadVar(node.head.left_right.left)) |svar| {
+                        if (svar.isCaptured) {
+                            return self.reportError("TODO: reassign to a captured variable.", .{}, left);
                         }
                     }
 
-                    const right = self.nodes[node.head.left_right.right];
-                    const rtype = try self.semaExpr(right, false);
-                    _ = try self.semaSetVar(varName, rtype);
+                    const rtype = try self.semaExpr(node.head.left_right.right, false);
+                    _ = try self.semaSetVar(node.head.left_right.left, rtype);
                 } else if (left.node_t == .arr_access_expr) {
-                    const accessLeft = self.nodes[left.head.left_right.left];
-                    _ = try self.semaExpr(accessLeft, false);
-                    const accessRight = self.nodes[left.head.left_right.right];
-                    _ = try self.semaExpr(accessRight, false);
-
-                    const right = self.nodes[node.head.left_right.right];
-                    _ = try self.semaExpr(right, false);
+                    _ = try self.semaExpr(left.head.left_right.left, false);
+                    _ = try self.semaExpr(left.head.left_right.right, false);
+                    _ = try self.semaExpr(node.head.left_right.right, false);
                 } else if (left.node_t == .access_expr) {
-                    const accessLeft = self.nodes[left.head.left_right.left];
-                    _ = try self.semaExpr(accessLeft, false);
-                    const accessRight = self.nodes[left.head.left_right.right];
-                    _ = try self.semaExpr(accessRight, false);
-
-                    const right = self.nodes[node.head.left_right.right];
-                    _ = try self.semaExpr(right, false);
+                    _ = try self.semaExpr(left.head.left_right.left, false);
+                    _ = try self.semaExpr(left.head.left_right.right, false);
+                    _ = try self.semaExpr(node.head.left_right.right, false);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
@@ -476,95 +452,95 @@ pub const VMcompiler = struct {
                     const func = self.nodes[funcId];
                     const decl = self.funcDecls[func.head.func.decl_id];
 
-                    const blockId = try self.pushSemaBlock();
-                    try self.semaReserveFuncParams(decl);
+                    if (decl.params.end > decl.params.start) {
+                        const param = self.funcParams[decl.params.start];
+                        const paramName = self.src[param.name.start..param.name.end];
+                        if (std.mem.eql(u8, paramName, "self")) {
+                            // Struct method.
+                            try self.pushSemaBlock();
+                            try self.pushSemaMethodParamVars(decl);
+                            try self.semaStmts(func.head.func.body_head, false);
+                            self.endSemaBlock();
+                            funcId = func.next;
+                            continue;
+                        }
+                    }
+                    try self.pushSemaBlock();
+                    try self.pushSemaFuncParamVars(decl);
                     try self.semaStmts(func.head.func.body_head, false);
-                    self.endSemaBlock(blockId);
+                    self.endSemaBlock();
                     funcId = func.next;
                 }
             },
             .func_decl => {
                 const func = self.funcDecls[node.head.func.decl_id];
 
-                const blockId = try self.pushSemaBlock();
-                try self.semaReserveFuncParams(func);
+                try self.pushSemaBlock();
+                try self.pushSemaFuncParamVars(func);
                 try self.semaStmts(node.head.func.body_head, false);
-                self.endSemaBlock(blockId);
+                self.endSemaBlock();
             },
             .for_cond_stmt => {
-                try self.pushIterSubBlock();
-                defer self.popIterSubBlock();
+                try self.pushSemaIterSubBlock();
 
-                const cond = self.nodes[node.head.left_right.left];
-                _ = try self.semaExpr(cond, false);
+                _ = try self.semaExpr(node.head.left_right.left, false);
 
                 try self.semaStmts(node.head.left_right.right, false);
+
+                try self.endSemaIterSubBlock();
             },
             .for_inf_stmt => {
-                try self.pushIterSubBlock();
-                defer self.popIterSubBlock();
+                try self.pushSemaIterSubBlock();
                 try self.semaStmts(node.head.child_head, false);
+                try self.endSemaIterSubBlock();
             },
             .for_iter_stmt => {
-                try self.pushIterSubBlock();
-                defer self.popIterSubBlock();
+                try self.pushSemaIterSubBlock();
 
-                const iterable = self.nodes[node.head.for_iter_stmt.iterable];
-                _ = try self.semaExpr(iterable, false);
+                _ = try self.semaExpr(node.head.for_iter_stmt.iterable, false);
 
                 const as_clause = self.nodes[node.head.for_iter_stmt.as_clause];
-                const ident = self.nodes[as_clause.head.as_iter_clause.value];
-                const ident_token = self.tokens[ident.start_token];
-                const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-
-                _ = try self.semaSetVar(asName, NumberType);
+                _ = try self.semaEnsureVar(as_clause.head.as_iter_clause.value, NumberType);
 
                 try self.semaStmts(node.head.for_iter_stmt.body_head, false);
+                try self.endSemaIterSubBlock();
             },
             .for_range_stmt => {
-                try self.pushIterSubBlock();
-                defer self.popIterSubBlock();
+                try self.pushSemaIterSubBlock();
 
                 if (node.head.for_range_stmt.as_clause != NullId) {
                     const asClause = self.nodes[node.head.for_range_stmt.as_clause];
-                    const ident = self.nodes[asClause.head.as_range_clause.ident];
-                    const ident_token = self.tokens[ident.start_token];
-                    const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-
-                    _ = try self.semaSetVar(asName, NumberType);
+                    _ = try self.semaEnsureVar(asClause.head.as_range_clause.ident, NumberType);
                 }
 
                 const range_clause = self.nodes[node.head.for_range_stmt.range_clause];
-                const left_range = self.nodes[range_clause.head.left_right.left];
-                _ = try self.semaExpr(left_range, false);
-                const right_range = self.nodes[range_clause.head.left_right.right];
-                _ = try self.semaExpr(right_range, false);
+                _ = try self.semaExpr(range_clause.head.left_right.left, false);
+                _ = try self.semaExpr(range_clause.head.left_right.right, false);
 
                 try self.semaStmts(node.head.for_range_stmt.body_head, false);
+                try self.endSemaIterSubBlock();
             },
             .if_stmt => {
-                const cond = self.nodes[node.head.left_right.left];
-                _ = try self.semaExpr(cond, false);
+                _ = try self.semaExpr(node.head.left_right.left, false);
 
-                try self.pushSubBlock();
+                try self.pushSemaSubBlock();
                 try self.semaStmts(node.head.left_right.right, false);
-                self.popSubBlock();
+                self.endSemaSubBlock();
 
                 var elseClauseId = node.head.left_right.extra;
                 while (elseClauseId != NullId) {
                     const elseClause = self.nodes[elseClauseId];
                     if (elseClause.head.else_clause.cond == NullId) {
-                        try self.pushSubBlock();
+                        try self.pushSemaSubBlock();
                         try self.semaStmts(elseClause.head.else_clause.body_head, false);
-                        self.popSubBlock();
+                        self.endSemaSubBlock();
                         break;
                     } else {
-                        const elseCond = self.nodes[elseClause.head.else_clause.cond];
-                        _ = try self.semaExpr(elseCond, false);
+                        _ = try self.semaExpr(elseClause.head.else_clause.cond, false);
 
-                        try self.pushSubBlock();
+                        try self.pushSemaSubBlock();
                         try self.semaStmts(elseClause.head.else_clause.body_head, false);
-                        self.popSubBlock();
+                        self.endSemaSubBlock();
                         elseClauseId = elseClause.head.else_clause.else_clause;
                     }
                 }
@@ -573,8 +549,7 @@ pub const VMcompiler = struct {
                 return;
             },
             .return_expr_stmt => {
-                const expr = self.nodes[node.head.child_head];
-                _ = try self.semaExpr(expr, false);
+                _ = try self.semaExpr(node.head.child_head, false);
             },
             else => return self.reportError("Unsupported node", .{}, node),
         }
@@ -597,22 +572,48 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn nextSemaBlock(self: *VMcompiler) u32 {
-        const last = self.curSemaBlockId;
+    fn nextSemaSubBlock(self: *VMcompiler) void {
+        self.curSemaSubBlockId = self.nextSemaSubBlockId;
+        self.nextSemaSubBlockId += 1;
+    }
+
+    fn prevSemaSubBlock(self: *VMcompiler) void {
+        self.curSemaSubBlockId = self.curSemaSubBlock().prevSubBlockId;
+    }
+
+    fn nextSemaBlock(self: *VMcompiler) void {
         self.curSemaBlockId = self.nextSemaBlockId;
         self.nextSemaBlockId += 1;
-        return last;
+        self.nextSemaSubBlock();
     }
 
-    fn restoreSemaBlock(self: *VMcompiler, id: u32) void {
-        self.curSemaBlockId = id;
+    fn prevSemaBlock(self: *VMcompiler) void {
+        self.curSemaBlockId = self.curSemaBlock().prevBlockId;
+        self.prevSemaSubBlock();
     }
 
-    fn genVarInits(self: *VMcompiler) !void {
-        const sBlock = self.semaBlocks.items[self.curSemaBlockId];
-        if (sBlock.varsToInit.items.len > 0) {
-            try self.buf.pushOp1(.setInitN, @intCast(u8, sBlock.varsToInit.items.len));
-            try self.buf.pushOperandsRaw(sBlock.varsToInit.items);
+    /// Reserve locals upfront and gen var initializer if necessary.
+    fn genInitLocals(self: *VMcompiler) !void {
+        const sblock = self.curSemaBlock();
+
+        // Reserve the locals.
+        var numInitializers: u32 = 0;
+        for (sblock.locals.items) |varId| {
+            const svar = self.genGetVar(varId).?;
+            _ = try self.reserveLocalVar(varId);
+            if (svar.genInitializer) {
+                numInitializers += 1;
+            }
+        }
+
+        if (numInitializers > 0) {
+            try self.buf.pushOp1(.setInitN, @intCast(u8, numInitializers));
+            for (sblock.locals.items) |varId| {
+                const svar = self.genGetVar(varId).?;
+                if (svar.genInitializer) {
+                    try self.buf.pushOperand(svar.local);
+                }
+            }
         }
     }
 
@@ -625,10 +626,13 @@ pub const VMcompiler = struct {
         }
         self.semaBlocks.clearRetainingCapacity();
 
-        self.subBlocks.clearRetainingCapacity();
+        for (self.semaSubBlocks.items) |*block| {
+            block.deinit(self.alloc);
+        }
+        self.semaSubBlocks.clearRetainingCapacity();
 
         // Dummy first element to avoid len > 0 check during pop.
-        try self.subBlocks.append(self.alloc, SubBlock.init(0));
+        try self.semaSubBlocks.append(self.alloc, SemaSubBlock.init(0, 0));
         try self.semaBlocks.append(self.alloc, SemaBlock.init(0));
 
         self.nodes = ast.nodes.items;
@@ -636,22 +640,24 @@ pub const VMcompiler = struct {
         self.funcParams = ast.func_params;
         self.src = ast.src;
         self.tokens = ast.tokens;
+        self.semaBlockDepth = 0;
 
         const root = self.nodes[ast.root_id];
 
-        const sBlockId = try self.pushSemaBlock();
+        try self.pushSemaBlock();
         self.semaStmts(root.head.child_head, true) catch {
             return ResultView{
                 .buf = self.buf,
                 .hasError = true,
             };
         };
-        self.endSemaBlock(sBlockId);
+        self.endSemaBlock();
 
         self.nextSemaBlockId = 1;
+        self.nextSemaSubBlockId = 1;
         _ = self.nextSemaBlock();
         try self.pushBlock();
-        try self.genVarInits();
+        try self.genInitLocals();
         self.genStatements(root.head.child_head, true) catch {
             if (dumpCompileErrorStackTrace) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
@@ -662,7 +668,7 @@ pub const VMcompiler = struct {
             };
         };
         self.popBlock();
-        self.buf.mainLocalSize = self.blockNumLocals();
+        self.buf.mainLocalSize = @intCast(u32, self.blockNumLocals());
 
         return ResultView{
             .buf = self.buf,
@@ -671,10 +677,11 @@ pub const VMcompiler = struct {
     }
 
     fn endLocals(self: *VMcompiler) !void {
-        var iter = self.curBlock.vars.valueIterator();
-        while (iter.next()) |info| {
-            if (info.rcCandidate and !info.isCapturedVar) {
-                try self.buf.pushOp1(.release, info.local);
+        const sblock = self.curSemaBlock();
+        for (sblock.locals.items) |varId| {
+            const svar = self.vars.items[varId];
+            if (svar.lifetimeRcCandidate) {
+                try self.buf.pushOp1(.release, svar.local);
             }
         }
     }
@@ -723,45 +730,73 @@ pub const VMcompiler = struct {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
     }
 
-    fn pushIterSubBlock(self: *VMcompiler) !void {
-        self.curBlock.iterBlockDepth += 1;
-        try self.pushSubBlock();
-    }
-
-    fn popIterSubBlock(self: *VMcompiler) void {
-        self.curBlock.iterBlockDepth -= 1;
-        self.popSubBlock();
-    }
-
-    fn pushSubBlock(self: *VMcompiler) !void {
-        try self.subBlocks.append(self.alloc, .{
-            .defLocalsStart = @intCast(u32, self.defLocalStack.items.len),
-        });
-    }
-
-    fn popSubBlock(self: *VMcompiler) void {
-        const sBlock = self.subBlocks.pop();
-        const defVars = self.defLocalStack.items[sBlock.defLocalsStart..];
-        for (defVars) |local| {
-            _ = self.curBlock.defLocals.remove(local);
+    fn semaUpdateIterVarEndTypes(self: *VMcompiler) void {
+        const ssblock = self.curSemaSubBlock();
+        for (self.definedVarStack.items[ssblock.definedVarStart..]) |varId| {
+            const svar = &self.vars.items[varId];
+            if (svar.endsIterAsType.typeT != svar.vtype.typeT) {
+                svar.endsIterAsType = AnyType;
+            }
         }
     }
 
-    fn pushSemaBlock(self: *VMcompiler) !u32 {
-        try self.pushBlock();
-        const subBlockStart = self.subBlocks.items.len;
-        try self.pushSubBlock();
-        self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
-        try self.semaBlocks.append(self.alloc, SemaBlock.init(subBlockStart));
-        return self.curSemaBlockId;
+    fn pushSemaSubBlock(self: *VMcompiler) !void {
+        self.curSemaBlock().subBlockDepth += 1;
+        const prev = self.curSemaSubBlockId;
+        self.curSemaSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
+        try self.semaSubBlocks.append(self.alloc, SemaSubBlock.init(prev, self.definedVarStack.items.len));
     }
 
-    fn endSemaBlock(self: *VMcompiler, blockId: u32) void {
-        const block = self.blocks.items[self.blocks.items.len-1];
-        self.semaBlocks.items[blockId].varsToInit = block.varsToInit;
-        self.curSemaBlockId -= 1;
-        self.popSubBlock();
+    fn pushSemaIterSubBlock(self: *VMcompiler) !void {
+        try self.pushSemaSubBlock();
+    }
+
+    fn endSemaIterSubBlock(self: *VMcompiler) !void {
+        const ssblock = self.curSemaSubBlock();
+        for (self.definedVarStack.items[ssblock.definedVarStart..]) |varId| {
+            try ssblock.iterVarEndTypes.append(self.alloc, .{
+                .id = varId,
+                .vtype = self.vars.items[varId].endsIterAsType,
+            });
+        }
+        self.endSemaSubBlock();
+    }
+
+    fn endSemaSubBlock(self: *VMcompiler) void {
+        const sblock = self.curSemaBlock();
+        sblock.subBlockDepth -= 1;
+        const ssblock = self.curSemaSubBlock();
+        for (self.definedVarStack.items[ssblock.definedVarStart..]) |varId| {
+            _ = sblock.definedVars.remove(varId);
+        }
+        self.curSemaSubBlockId = ssblock.prevSubBlockId;
+    }
+
+    fn curSemaSubBlock(self: *VMcompiler) *SemaSubBlock {
+        return &self.semaSubBlocks.items[self.curSemaSubBlockId];
+    }
+
+    fn curSemaBlock(self: *VMcompiler) *SemaBlock {
+        return &self.semaBlocks.items[self.curSemaBlockId];
+    }
+
+    fn pushSemaBlock(self: *VMcompiler) !void {
+        try self.pushBlock();
+        const prevId = self.curSemaBlockId;
+        self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
+        try self.semaBlocks.append(self.alloc, SemaBlock.init(prevId));
+        self.semaBlockDepth += 1;
+        try self.pushSemaSubBlock();
+    }
+
+    fn endSemaBlock(self: *VMcompiler) void {
+        self.endSemaSubBlock();
+        const sblock = self.curSemaBlock();
+        sblock.definedVars.deinit(self.alloc);
+        sblock.nameToVar.deinit(self.alloc);
+        self.curSemaBlockId = sblock.prevBlockId;
         self.popBlock();
+        self.semaBlockDepth -= 1;
     }
 
     fn pushBlock(self: *VMcompiler) !void {
@@ -777,42 +812,64 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn getScopedVarInfoPtr(self: *VMcompiler, varName: []const u8) ?*VarInfo {
-        if (self.curBlock.vars.getPtr(varName)) |info| {
-            return info;
-        }
-        return null;
+    fn blockNumLocals(self: *VMcompiler) usize {
+        return self.curSemaBlock().locals.items.len + self.curSemaBlock().params.items.len;
     }
 
-    fn getScopedVarInfo(self: *VMcompiler, varName: []const u8) ?VarInfo {
-        if (self.curBlock.vars.get(varName)) |info| {
-            return info;
-        }
-        return null;
-    }
-
-    fn blockNumLocals(self: *VMcompiler) u32 {
-        return self.curBlock.vars.size;
-    }
-
-    /// Returns the VarInfo if the var was in the current scope or the immediate non-main parent scope.
-    /// If found in the parent scope, the var is recorded as a captured var.
-    /// Captured vars are given a tempId (order among other captured vars) and patched later by a local offset at the end of the block.
-    fn readScopedVar(self: *VMcompiler, varName: []const u8) !?VarInfo {
-        if (self.curBlock.vars.get(varName)) |info| {
-            return info;
-        }
-        // Only check one block above that isn't the main scope.
-        if (self.blocks.items.len > 2) {
-            if (self.blocks.items[self.blocks.items.len-2].vars.get(varName)) |info| {
-                if (!info.hasStaticType) {
-                    const localInfo = try self.reserveCapturedVar(varName, AnyType, info.local);
-                    return localInfo.*;
-                } else {
-                    return error.UnsupportedStaticType;
+    fn semaSetVar(self: *VMcompiler, ident: cy.NodeId, vtype: Type) !void {
+        const node = self.nodes[ident];
+        const name = self.getNodeTokenString(node);
+        // log.debug("set var {s}", .{name});
+        if (self.curSemaBlock().nameToVar.get(name)) |varId| {
+            const svar = &self.vars.items[varId];
+            if (svar.vtype.typeT != vtype.typeT) {
+                svar.vtype = vtype;
+                if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
+                    svar.lifetimeRcCandidate = true;
                 }
             }
+
+            // if (!self.curBlock.defLocals.contains(info.local)) {
+            //     // Possibly undefined. Add var to sub block.
+            //     try self.defLocalStack.append(self.alloc, info.local);
+            //     try self.curBlock.defLocals.put(self.alloc, info.local, {});
+            // }
+            self.nodes[ident].head.ident.semaVarId = varId;
+        } else {
+            const id = try self.pushSemaLocalVar(name, vtype);
+            const sblock = self.curSemaBlock();
+            if (sblock.subBlockDepth > 1) {
+                self.vars.items[id].genInitializer = true;
+            }
+            self.nodes[ident].head.ident.semaVarId = id;
         }
+    }
+
+    /// Retrieve the SemaVar and set the id onto the node for codegen.
+    /// First checks current scope and then the immediate parent scope.
+    fn semaReadVar(self: *VMcompiler, ident: cy.NodeId) !?SemaVar {
+        const node = self.nodes[ident];
+        const name = self.getNodeTokenString(node);
+        const sblock = self.curSemaBlock();
+        if (sblock.nameToVar.get(name)) |varId| {
+            self.nodes[ident].head.ident.semaVarId = varId;
+            return self.vars.items[varId];
+        }
+        // Only check one block above.
+        if (self.semaBlockDepth > 1) {
+            const prev = self.semaBlocks.items[sblock.prevBlockId];
+            if (prev.nameToVar.get(name)) |varId| {
+                // Create a new captured variable.
+                const svar = self.vars.items[varId];
+                const id = try self.pushSemaCapturedVar(name, varId, svar.vtype);
+
+                self.nodes[ident].head.ident.semaVarId = id;
+                return self.vars.items[id];
+            }
+        }
+
+        // Undefined var.
+        self.nodes[ident].head.ident.semaVarId = NullId;
         return null;
     }
 
@@ -837,190 +894,162 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn reserveCapturedVar(self: *VMcompiler, name: []const u8, vtype: Type, parentLocal: u8) !*VarInfo {
-        const tempOffset = @intCast(u8, self.curBlock.capturedVars.items.len);
-        try self.curBlock.capturedVars.append(self.alloc, .{
-            .name = name,
-            .parentLocal = parentLocal,
-            .local = tempOffset,
-        });
-        const res = try self.curBlock.vars.getOrPut(self.alloc, name);
-        if (res.found_existing) {
-            return error.VarExists;
+    fn semaGetVarPtr(self: *VMcompiler, name: []const u8) ?*SemaVar {
+        if (self.curSemaBlock().nameToVar.get(name)) |varId| {
+            return &self.vars.items[varId];
+        } else return null;
+    }
+
+    fn genGetVarPtr(self: *const VMcompiler, id: SemaVarId) ?*SemaVar {
+        if (id != NullId) {
+            return &self.vars.items[id];
         } else {
-            res.value_ptr.* = .{
-                .vtype = vtype,
-                .local = tempOffset,
-                .rcCandidate = vtype.rcCandidate,
-                .hasStaticType = false,
-                .isCapturedVar = true,
-                .genInitializer = false,
-            };
-            return res.value_ptr;
+            return null;
         }
     }
 
-    fn semaReserveLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !*VarInfo {
+    fn genGetVar(self: *const VMcompiler, id: SemaVarId) ?SemaVar {
+        if (id != NullId) {
+            return self.vars.items[id];
+        } else {
+            return null;
+        }
+    }
+
+    fn pushSemaCapturedVar(self: *VMcompiler, name: []const u8, parentVarId: SemaVarId, vtype: Type) !SemaVarId {
+        const id = try self.pushSemaVar(name, vtype);
+        self.vars.items[id].isCaptured = true;
+        try self.capVarParents.put(self.alloc, id, parentVarId);
+        try self.curSemaBlock().params.append(self.alloc, id);
+        return id;
+    }
+
+    fn pushSemaLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !SemaVarId {
+        const id = try self.pushSemaVar(name, vtype);
+        try self.curSemaBlock().locals.append(self.alloc, id);
+        return id;
+    }
+
+    fn semaEnsureVar(self: *VMcompiler, ident: cy.NodeId, vtype: Type) !SemaVarId {
+        const node = self.nodes[ident];
+        const name = self.getNodeTokenString(node);
+        if (self.curSemaBlock().nameToVar.get(name)) |varId| {
+            self.nodes[ident].head.ident.semaVarId = varId;
+            return varId;
+        } else {
+            const id = try self.pushSemaLocalVar(name, vtype);
+            self.nodes[ident].head.ident.semaVarId = id;
+            return id;
+        }
+    }
+
+    fn pushSemaVar(self: *VMcompiler, name: []const u8, vtype: Type) !SemaVarId {
+        const sblock = self.curSemaBlock();
+        const id = @intCast(u32, self.vars.items.len);
+        const res = try sblock.nameToVar.getOrPut(self.alloc, name);
+        if (res.found_existing) {
+            return error.VarExists;
+        } else {
+            res.value_ptr.* = id;
+            try self.vars.append(self.alloc, .{
+                .vtype = vtype,
+                .endsIterAsType = undefined,
+                .lifetimeRcCandidate = vtype.rcCandidate,
+            });
+            try self.definedVarStack.append(self.alloc, id);
+            try sblock.definedVars.put(self.alloc, id, {});
+            return id;
+        }
+    }
+
+    fn reserveLocalVar(self: *VMcompiler, varId: SemaVarId) !LocalId {
         const local = try self.curBlock.reserveLocal();
-        const res = try self.curBlock.vars.getOrPut(self.alloc, name);
-        if (res.found_existing) {
-            return error.VarExists;
-        } else {
-            res.value_ptr.* = .{
-                .vtype = vtype,
-                .local = local,
-                .rcCandidate = vtype.rcCandidate,
-                .hasStaticType = false,
-                .isCapturedVar = false,
-                .genInitializer = false,
-            };
-            try self.defLocalStack.append(self.alloc, local);
-            try self.curBlock.defLocals.put(self.alloc, local, {});
-            return res.value_ptr;
-        }
+        self.vars.items[varId].local = local;
+        return local;
     }
 
-    fn reserveLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !*VarInfo {
-        const local = try self.curBlock.reserveLocal();
-        const res = try self.curBlock.vars.getOrPut(self.alloc, name);
-        if (res.found_existing) {
-            return error.VarExists;
-        } else {
-            res.value_ptr.* = .{
-                .vtype = vtype,
-                .local = local,
-                .rcCandidate = vtype.rcCandidate,
-                .hasStaticType = false,
-                .isCapturedVar = false,
-                .genInitializer = false,
-            };
-            return res.value_ptr;
-        }
-    }
-
-    fn semaSetVar(self: *VMcompiler, name: []const u8, vtype: Type) !u8 {
-        if (self.getScopedVarInfoPtr(name)) |info| {
-            if (info.vtype.typeT != vtype.typeT) {
-                info.vtype = vtype;
-                if (!info.rcCandidate and vtype.rcCandidate) {
-                    info.rcCandidate = true;
+    fn genSetVar(self: *VMcompiler, varId: SemaVarId, vtype: Type) !u8 {
+        // log.debug("gensetvar {}", .{varId});
+        if (self.genGetVarPtr(varId)) |svar| {
+            if (svar.genIsDefined) {
+                if (svar.vtype.rcCandidate) {
+                    // log.debug("releaseSet {} {}", .{varId, svar.vtype.typeT});
+                    try self.buf.pushOp1(.releaseSet, svar.local);
+                } else {
+                    // log.debug("set {} {}", .{varId, svar.vtype.typeT});
+                    try self.buf.pushOp1(.set, svar.local);
                 }
-            }
-
-            if (!self.curBlock.defLocals.contains(info.local)) {
-                // Possibly undefined. Add var to sub block.
-                try self.defLocalStack.append(self.alloc, info.local);
-                try self.curBlock.defLocals.put(self.alloc, info.local, {});
-            }
-
-            return info.local;
-        } else {
-            const info = try self.semaReserveLocalVar(name, vtype);
-            
-            if (self.curBlock.iterBlockDepth > 0) {
-                // First assigned inside an iteration block.
-                // Compiler needs to generate an initializer.
-                info.genInitializer = true;
-                try self.curBlock.varsToInit.append(self.alloc, info.local);
-            }
-
-            if (self.subBlocks.items.len - 1 > self.semaBlocks.items[self.curSemaBlockId].subBlockStart) {
-                info.genInitializer = true;
-                try self.curBlock.varsToInit.append(self.alloc, info.local);
-            }
-
-            return info.local;
-        }
-    }
-
-    fn ensureLocalVar(self: *VMcompiler, name: []const u8, vtype: Type) !u8 {
-        if (self.getScopedVarInfo(name)) |info| {
-            return info.local;
-        } else {
-            const info = try self.reserveLocalVar(name, vtype);
-            return info.local;
-        }
-    }
-
-    fn genSetVar(self: *VMcompiler, name: []const u8, vtype: Type) !u8 {
-        if (self.getScopedVarInfoPtr(name)) |info| {
-            if (info.vtype.rcCandidate) {
-                try self.buf.pushOp1(.releaseSet, info.local);
+                if (svar.vtype.typeT != vtype.typeT) {
+                    svar.vtype = vtype;
+                }
             } else {
-                try self.buf.pushOp1(.set, info.local);
+                try self.buf.pushOp1(.set, svar.local);
+                svar.genIsDefined = true;
+                svar.vtype = vtype;
             }
-            if (info.vtype.typeT != vtype.typeT) {
-                info.vtype = vtype;
-                if (!info.rcCandidate and vtype.rcCandidate) {
-                    info.rcCandidate = true;
-                }
-            }
-            return info.local;
+            return svar.local;
         } else {
-            const info = try self.reserveLocalVar(name, vtype);
-            try self.buf.pushOp1(.set, info.local);
-            return info.local;
+            log.debug("Undefined var.", .{});
+            return error.CompileError;
         }
     }
 
-    fn semaReserveFuncParams(self: *VMcompiler, func: cy.FuncDecl) !void {
-        // First local is reserved for the return info.
-        // This slightly reduces cycles at function call time.
-        _ = try self.curBlock.reserveLocal();
-        if (func.params.end > func.params.start) {
-            for (self.funcParams[func.params.start+1..func.params.end]) |param| {
-                const paramName = self.src[param.name.start..param.name.end];
-                const paramT = AnyType;
-                _ = try self.semaReserveLocalVar(paramName, paramT);
-            }
-            // First arg is copied to the end before the function call.
-            const param = self.funcParams[func.params.start];
-            const paramName = self.src[param.name.start..param.name.end];
-            const paramT = AnyType;
-            _ = try self.semaReserveLocalVar(paramName, paramT);
-        }
-    }
+    fn pushSemaMethodParamVars(self: *VMcompiler, func: cy.FuncDecl) !void {
+        const sblock = self.curSemaBlock();
 
-    fn reserveFuncParams(self: *VMcompiler, func: cy.FuncDecl) !void {
-        // First local is reserved for the return info.
-        // This slightly reduces cycles at function call time.
-        _ = try self.curBlock.reserveLocal();
-        if (func.params.end > func.params.start) {
-            for (self.funcParams[func.params.start+1..func.params.end]) |param| {
-                const paramName = self.src[param.name.start..param.name.end];
-                const paramT = AnyType;
-                _ = try self.reserveLocalVar(paramName, paramT);
-            }
-            // First arg is copied to the end before the function call.
-            const param = self.funcParams[func.params.start];
-            const paramName = self.src[param.name.start..param.name.end];
-            const paramT = AnyType;
-            _ = try self.reserveLocalVar(paramName, paramT);
-        }
-    }
-
-    fn reserveMethodParams(self: *VMcompiler, func: cy.FuncDecl) !void {
-        // First local is reserved for the return info.
-        // This slightly reduces cycles at function call time.
-        _ = try self.curBlock.reserveLocal();
         if (func.params.end > func.params.start + 1) {
             for (self.funcParams[func.params.start + 2..func.params.end]) |param| {
                 const paramName = self.src[param.name.start..param.name.end];
                 const paramT = AnyType;
-                _ = try self.reserveLocalVar(paramName, paramT);
+                const id = try self.pushSemaVar(paramName, paramT);
+                try sblock.params.append(self.alloc, id);
             }
 
             // Add self receiver param.
-            _ = try self.reserveLocalVar("self", AnyType);
+            var id = try self.pushSemaVar("self", AnyType);
+            try sblock.params.append(self.alloc, id);
 
             // First arg is copied to the end before the function call.
             const param = self.funcParams[func.params.start+1];
             const paramName = self.src[param.name.start..param.name.end];
             const paramT = AnyType;
-            _ = try self.reserveLocalVar(paramName, paramT);
+            id = try self.pushSemaVar(paramName, paramT);
+            try sblock.params.append(self.alloc, id);
         } else {
             // Add self receiver param.
-            _ = try self.reserveLocalVar("self", AnyType);
+            const id = try self.pushSemaVar("self", AnyType);
+            try sblock.params.append(self.alloc, id);
+        }
+    }
+
+    fn pushSemaFuncParamVars(self: *VMcompiler, func: cy.FuncDecl) !void {
+        const sblock = self.curSemaBlock();
+
+        if (func.params.end > func.params.start) {
+            for (self.funcParams[func.params.start+1..func.params.end]) |param| {
+                const paramName = self.src[param.name.start..param.name.end];
+                const paramT = AnyType;
+                const id = try self.pushSemaVar(paramName, paramT);
+                try sblock.params.append(self.alloc, id);
+            }
+            // First arg is copied to the end before the function call.
+            const param = self.funcParams[func.params.start];
+            const paramName = self.src[param.name.start..param.name.end];
+            const paramT = AnyType;
+            const id = try self.pushSemaVar(paramName, paramT);
+            try sblock.params.append(self.alloc, id);
+        }
+    }
+
+    // Reserve params and captured vars.
+    fn reserveFuncParams(self: *VMcompiler) !void {
+        // First local is reserved for the return info.
+        // This slightly reduces cycles at function call time.
+        _ = try self.curBlock.reserveLocal();
+
+        const sblock = self.curSemaBlock();
+        for (sblock.params.items) |varId| {
+            _ = try self.reserveLocalVar(varId);
         }
     }
 
@@ -1045,15 +1074,12 @@ pub const VMcompiler = struct {
             .add_assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    const identToken = self.tokens[left.start_token];
-                    const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
-
-                    if (self.getScopedVarInfo(varName)) |info| {
+                    if (self.genGetVar(left.head.ident.semaVarId)) |svar| {
                         const rtype = try self.genExpr(node.head.left_right.right, false);
-                        if (info.vtype.typeT != .number and info.vtype.typeT != .any and rtype.typeT != info.vtype.typeT) {
-                            return self.reportError("Type mismatch: Expected {}", .{info.vtype.typeT}, node);
+                        if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and rtype.typeT != svar.vtype.typeT) {
+                            return self.reportError("Type mismatch: Expected {}", .{svar.vtype.typeT}, node);
                         }
-                        try self.buf.pushOp1(.addSet, info.local);
+                        try self.buf.pushOp1(.addSet, svar.local);
                     } else stdx.panic("variable not declared");
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
@@ -1062,17 +1088,13 @@ pub const VMcompiler = struct {
             .assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    const identToken = self.tokens[left.start_token];
-                    const varName = self.src[identToken.start_pos .. identToken.data.end_pos];
-
-                    if (self.getScopedVarInfo(varName)) |info| {
-                        if (info.isCapturedVar) {
+                    if (self.genGetVar(left.head.ident.semaVarId)) |svar| {
+                        if (svar.isCaptured) {
                             return self.reportError("Can not reassign to a captured variable.", .{}, left);
                         }
                     }
-
                     const rtype = try self.genMaybeRetainExpr(node.head.left_right.right, false);
-                    _ = try self.genSetVar(varName, rtype);
+                    _ = try self.genSetVar(left.head.ident.semaVarId, rtype);
                 } else if (left.node_t == .arr_access_expr) {
                     _ = try self.genExpr(left.head.left_right.left, false);
                     _ = try self.genExpr(left.head.left_right.right, false);
@@ -1152,6 +1174,9 @@ pub const VMcompiler = struct {
                 try self.genFuncDecl(nodeId, name);
             },
             .for_cond_stmt => {
+                self.nextSemaSubBlock();
+                defer self.prevSemaSubBlock();
+
                 const top = @intCast(u32, self.buf.ops.items.len);
                 _ = try self.genExpr(node.head.left_right.left, false);
 
@@ -1163,6 +1188,9 @@ pub const VMcompiler = struct {
                 self.patchJumpToCurrent(jumpPc);
             },
             .for_inf_stmt => {
+                self.nextSemaSubBlock();
+                defer self.prevSemaSubBlock();
+
                 const pcSave = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.jumpStack.items.len);
 
@@ -1186,39 +1214,33 @@ pub const VMcompiler = struct {
                 self.jumpStack.items.len = jumpStackSave;
             },
             .for_iter_stmt => {
-                try self.pushIterSubBlock();
-                defer self.popIterSubBlock();
+                self.nextSemaSubBlock();
+                defer self.prevSemaSubBlock();
 
                 _ = try self.genExpr(node.head.for_iter_stmt.iterable, false);
 
                 const as_clause = self.nodes[node.head.for_iter_stmt.as_clause];
                 const ident = self.nodes[as_clause.head.as_iter_clause.value];
-                const ident_token = self.tokens[ident.start_token];
-                const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-
-                const local = try self.ensureLocalVar(asName, AnyType);
+                const val = self.genGetVar(ident.head.ident.semaVarId).?;
 
                 const forPc = self.buf.ops.items.len;
-                try self.buf.pushOp2(.forIter, local, 0);
+                try self.buf.pushOp3(.forIter, val.local, 0, 0);
 
                 const bodyPc = self.buf.ops.items.len;
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
                 try self.pushContTo(bodyPc);
 
-                self.buf.setOpArgs1(forPc+2, @intCast(u8, self.buf.ops.items.len - forPc));
+                self.buf.setOpArgU16(forPc+2, @intCast(u16, self.buf.ops.items.len - forPc));
             },
             .for_range_stmt => {
-                try self.pushIterSubBlock();
-                defer self.popIterSubBlock();
+                self.nextSemaSubBlock();
+                defer self.prevSemaSubBlock();
 
                 var local: u8 = NullByteId;
                 if (node.head.for_range_stmt.as_clause != NullId) {
                     const asClause = self.nodes[node.head.for_range_stmt.as_clause];
                     const ident = self.nodes[asClause.head.as_range_clause.ident];
-                    const ident_token = self.tokens[ident.start_token];
-                    const asName = self.src[ident_token.start_pos..ident_token.data.end_pos];
-    
-                    local = try self.ensureLocalVar(asName, AnyType);
+                    local = self.genGetVar(ident.head.ident.semaVarId).?.local;
 
                     // inc = as_clause.head.as_range_clause.inc;
                     // if (as_clause.head.as_range_clause.step != NullId) {
@@ -1236,20 +1258,24 @@ pub const VMcompiler = struct {
                 try self.buf.pushOp1(.pushConst, @intCast(u8, stepConst));
 
                 // Push for range op with asLocal.
-                const forOpStart = self.buf.ops.items.len;
-                try self.buf.pushOp2(.forRange, local, 0);
+                const forPc = self.buf.ops.items.len;
+                try self.buf.pushOp3(.forRange, local, 0, 0);
 
                 const bodyPc = self.buf.ops.items.len;
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
                 try self.pushContTo(bodyPc);
-                self.buf.setOpArgs1(forOpStart+2, @intCast(u8, self.buf.ops.items.len - forOpStart));
+                self.buf.setOpArgU16(forPc+2, @intCast(u16, self.buf.ops.items.len - forPc));
+
+                self.semaUpdateIterVarEndTypes();
             },
             .if_stmt => {
                 _ = try self.genExpr(node.head.left_right.left, false);
 
                 var lastCondJump = try self.pushEmptyJumpNotCond();
 
+                self.nextSemaSubBlock();
                 try self.genStatements(node.head.left_right.right, false);
+                self.prevSemaSubBlock();
 
                 var elseClauseId = node.head.left_right.extra;
                 if (elseClauseId != NullId) {
@@ -1265,7 +1291,9 @@ pub const VMcompiler = struct {
 
                         const elseClause = self.nodes[elseClauseId];
                         if (elseClause.head.else_clause.cond == NullId) {
+                            self.nextSemaSubBlock();
                             try self.genStatements(elseClause.head.else_clause.body_head, false);
+                            self.prevSemaSubBlock();
                             endsWithElse = true;
                             break;
                         } else {
@@ -1273,7 +1301,9 @@ pub const VMcompiler = struct {
 
                             lastCondJump = try self.pushEmptyJumpNotCond();
 
+                            self.nextSemaSubBlock();
                             try self.genStatements(elseClause.head.else_clause.body_head, false);
+                            self.prevSemaSubBlock();
                             elseClauseId = elseClause.head.else_clause.else_clause;
                         }
                     }
@@ -1314,42 +1344,20 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn semaLoadLocal(self: *VMcompiler, info: VarInfo) !void {
-        if (info.isCapturedVar) {
-            try self.loadStack.append(self.alloc, .{
-                .pc = @intCast(u32, self.buf.ops.items.len) - 1,
-                .tempOffset = info.local,
-            });
-        }
-    }
-
-    fn genLoadLocal(self: *VMcompiler, info: VarInfo) !void {
-        try self.buf.pushOp1(.load, info.local);
-        if (info.isCapturedVar) {
-            try self.loadStack.append(self.alloc, .{
-                .pc = @intCast(u32, self.buf.ops.items.len) - 1,
-                .tempOffset = info.local,
-            });
-        }
+    fn genLoadLocal(self: *VMcompiler, local: LocalId) !void {
+        try self.buf.pushOp1(.load, local);
     }
 
     fn genMaybeRetainExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
         const node = self.nodes[nodeId];
         if (node.node_t == .ident) {
-            const name = self.getNodeTokenString(node);
-            if (try self.readScopedVar(name)) |info| {
-                if (info.vtype.rcCandidate) {
-                    try self.buf.pushOp1(.loadRetain, info.local);
-                    if (info.isCapturedVar) {
-                        try self.loadStack.append(self.alloc, .{
-                            .pc = @intCast(u32, self.buf.ops.items.len) - 1,
-                            .tempOffset = info.local,
-                        });
-                    }
+            if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
+                if (svar.vtype.rcCandidate) {
+                    try self.buf.pushOp1(.loadRetain, svar.local);
                 } else {
-                    try self.genLoadLocal(info);
+                    try self.genLoadLocal(svar.local);
                 }
-                return info.vtype;
+                return svar.vtype;
             } else {
                 try self.buf.pushOp(.pushNone);
                 return AnyType;
@@ -1373,23 +1381,25 @@ pub const VMcompiler = struct {
             }
 
             return AnyType;
+        } else if (node.node_t == .if_expr) {
+            return self.genIfExpr(nodeId, discardTopExprReg, true);
         } else {
             return self.genExpr(nodeId, discardTopExprReg);
         }
     }
 
     fn genMethodDecl(self: *VMcompiler, structId: cy.StructId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
+        // log.debug("gen method {s}", .{name});
         const methodId = try self.vm.ensureMethodSymKey(name);
 
         const jumpPc = try self.pushEmptyJump();
 
         try self.pushBlock();
-        const prevId = self.nextSemaBlock();
+        self.nextSemaBlock();
 
         const opStart = @intCast(u32, self.buf.ops.items.len);
-        try self.reserveMethodParams(func);
-
-        try self.genVarInits();
+        try self.reserveFuncParams();
+        try self.genInitLocals();
         try self.genStatements(node.head.func.body_head, false);
         // TODO: Check last statement to skip adding ret.
         try self.endLocals();
@@ -1397,9 +1407,9 @@ pub const VMcompiler = struct {
 
         // Reserve another local for the call return info.
         const numParams = func.params.end - func.params.start;
-        const numLocals = self.blockNumLocals() + 1 - numParams;
+        const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
 
-        self.restoreSemaBlock(prevId);
+        self.prevSemaBlock();
         self.popBlock();
 
         self.patchJumpToCurrent(jumpPc);
@@ -1416,13 +1426,12 @@ pub const VMcompiler = struct {
         const jumpPc = try self.pushEmptyJump();
 
         try self.pushBlock();
-        const prevId = self.nextSemaBlock();
+        self.nextSemaBlock();
         self.curBlock.frameLoc = nodeId;
 
         const opStart = @intCast(u32, self.buf.ops.items.len);
-        try self.reserveFuncParams(func);
-
-        try self.genVarInits();
+        try self.reserveFuncParams();
+        try self.genInitLocals();
         try self.genStatements(node.head.func.body_head, false);
         // TODO: Check last statement to skip adding ret.
         try self.endLocals();
@@ -1430,14 +1439,46 @@ pub const VMcompiler = struct {
 
         // Reserve another local for the call return info.
         const numParams = func.params.end - func.params.start;
-        const numLocals = self.blockNumLocals() + 1 - numParams;
-        self.restoreSemaBlock(prevId);
+        const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
+        self.prevSemaBlock();
         self.popBlock();
 
         self.patchJumpToCurrent(jumpPc);
 
         const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
         self.vm.setFuncSym(symId, sym);
+    }
+
+    fn genIfExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool, comptime maybeRetain: bool) !Type {
+        const node = self.nodes[nodeId];
+        _ = try self.genExpr(node.head.if_expr.cond, false);
+
+        var jumpNotPc = try self.pushEmptyJumpNotCond();
+
+        if (maybeRetain) {
+            _ = try self.genMaybeRetainExpr(node.head.if_expr.body_expr, discardTopExprReg);
+        } else {
+            _ = try self.genExpr(node.head.if_expr.body_expr, discardTopExprReg);
+        }
+
+        const jumpPc = try self.pushEmptyJump();
+
+        self.patchJumpToCurrent(jumpNotPc);
+        if (node.head.if_expr.else_clause != NullId) {
+            const else_clause = self.nodes[node.head.if_expr.else_clause];
+            if (maybeRetain) {
+                _ = try self.genMaybeRetainExpr(else_clause.head.child_head, discardTopExprReg);
+            } else {
+                _ = try self.genExpr(else_clause.head.child_head, discardTopExprReg);
+            }
+        } else {
+            if (!discardTopExprReg) {
+                try self.buf.pushOp(.pushNone);
+            }
+        }
+        self.patchJumpToCurrent(jumpPc);
+
+        return AnyType;
     }
 
     fn genExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
@@ -1643,37 +1684,16 @@ pub const VMcompiler = struct {
                 return StringType;
             },
             .ident => {
-                const token = self.tokens[node.start_token];
-                const name = self.src[token.start_pos..token.data.end_pos];
-                if (try self.readScopedVar(name)) |info| {
-                    try self.genLoadLocal(info);
-                    return info.vtype;
+                if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
+                    try self.genLoadLocal(svar.local);
+                    return svar.vtype;
                 } else {
                     try self.buf.pushOp(.pushNone);
                     return AnyType;
                 }
             },
             .if_expr => {
-                _ = try self.genExpr(node.head.if_expr.cond, false);
-
-                var jumpNotPc = try self.pushEmptyJumpNotCond();
-
-                _ = try self.genExpr(node.head.if_expr.body_expr, discardTopExprReg);
-
-                const jumpPc = try self.pushEmptyJump();
-
-                self.patchJumpToCurrent(jumpNotPc);
-                if (node.head.if_expr.else_clause != NullId) {
-                    const else_clause = self.nodes[node.head.if_expr.else_clause];
-                    _ = try self.genExpr(else_clause.head.child_head, discardTopExprReg);
-                } else {
-                    if (!discardTopExprReg) {
-                        try self.buf.pushOp(.pushNone);
-                    }
-                }
-                self.patchJumpToCurrent(jumpPc);
-
-                return AnyType;
+                return self.genIfExpr(nodeId, discardTopExprReg, false);
             },
             .arr_range_expr => {
                 _ = try self.genExpr(node.head.arr_range_expr.arr, discardTopExprReg);
@@ -1814,9 +1834,8 @@ pub const VMcompiler = struct {
                         var leftVar: u8 = 255;
                         const leftN = self.nodes[left];
                         if (leftN.node_t == .ident) {
-                            const name = self.getNodeTokenString(leftN);
-                            if (try self.readScopedVar(name)) |info| {
-                                leftVar = info.local;
+                            if (self.genGetVar(leftN.head.ident.semaVarId)) |svar| {
+                                leftVar = svar.local;
                             }
                         }
                         if (leftVar == 255) {
@@ -1825,9 +1844,8 @@ pub const VMcompiler = struct {
                         var rightVar: u8 = 255;
                         const rightN = self.nodes[right];
                         if (rightN.node_t == .ident) {
-                            const name = self.getNodeTokenString(rightN);
-                            if (try self.readScopedVar(name)) |info| {
-                                rightVar = info.local;
+                            if (self.genGetVar(rightN.head.ident.semaVarId)) |svar| {
+                                rightVar = svar.local;
                             }
                         }
                         if (rightVar == 255) {
@@ -1998,10 +2016,10 @@ pub const VMcompiler = struct {
                         const token = self.tokens[callee.start_token];
                         const name = self.src[token.start_pos..token.data.end_pos];
 
-                        if (try self.readScopedVar(name)) |info| {
+                        if (self.genGetVar(callee.head.ident.semaVarId)) |svar| {
                             // Load callee first so it gets overwritten by the retInfo
                             // and avoids a copy operation on the first arg.
-                            try self.genLoadLocal(info);
+                            try self.genLoadLocal(svar.local);
 
                             var numArgs: u32 = 1;
                             var arg_id = node.head.func_call.arg_head;
@@ -2052,40 +2070,39 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     const jumpPc = try self.pushEmptyJump();
 
+                    self.nextSemaBlock();
                     try self.pushBlock();
                     const opStart = @intCast(u32, self.buf.ops.items.len);
 
                     // Generate function body.
-                    const loadStackSave = @intCast(u32, self.loadStack.items.len);
                     const func = self.funcDecls[node.head.func.decl_id];
-                    try self.reserveFuncParams(func);
+                    try self.reserveFuncParams();
+                    try self.genInitLocals();
                     const numParams = @intCast(u8, func.params.end - func.params.start);
                     _ = try self.genMaybeRetainExpr(node.head.func.body_head, false);
                     try self.endLocals();
                     try self.buf.pushOp(.ret1);
                     self.patchJumpToCurrent(jumpPc);
 
-                    // Reserve captured var locals together and push them onto execution stack.
-                    for (self.curBlock.capturedVars.items) |*capVar| {
-                        capVar.local = try self.curBlock.reserveLocal();
-                        const info = self.getScopedVarInfo(capVar.name).?;
-                        if (info.vtype.rcCandidate) {
-                            try self.buf.pushOp1(.loadRetain, capVar.parentLocal);
-                        } else {
-                            try self.buf.pushOp1(.load, capVar.parentLocal);
+                    // Push captured vars onto the stack.
+                    const sblock = self.curSemaBlock();
+                    for (sblock.params.items) |varId| {
+                        const svar = self.vars.items[varId];
+                        if (svar.isCaptured) {
+                            const pId = self.capVarParents.get(varId).?;
+                            const pvar = self.vars.items[pId];
+                            if (svar.vtype.rcCandidate) {
+                                try self.buf.pushOp1(.loadRetain, pvar.local);
+                            } else {
+                                try self.buf.pushOp1(.load, pvar.local);
+                            }
                         }
                     }
 
-                    // Patch captured var load ops.
-                    for (self.loadStack.items[loadStackSave..]) |load| {
-                        const capVar = self.curBlock.capturedVars.items[load.tempOffset];
-                        self.buf.setOpArgs1(load.pc, capVar.local);
-                    }
-                    self.loadStack.items.len = loadStackSave;
-
                     const numLocals = @intCast(u8, self.blockNumLocals() + 1 - numParams);
-                    const numCaptured = @intCast(u8, self.curBlock.capturedVars.items.len);
+                    const numCaptured = @intCast(u8, self.curSemaBlock().params.items.len - numParams);
                     self.popBlock();
+                    self.prevSemaBlock();
 
                     const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                     if (numCaptured == 0) {
@@ -2128,54 +2145,27 @@ pub const ResultView = struct {
     hasError: bool,
 };
 
-const CapturedVar = struct {
-    name: []const u8,
-    parentLocal: LocalId,
-    local: LocalId,
-};
-
 const LocalId = u8;
 
+// TODO: Rename to GenBlock
 const Block = struct {
-    stackLen: u32,
-
-    /// All the vars used in the block.
-    vars: std.StringHashMapUnmanaged(VarInfo),
-
-    /// Quickly determine whether a var is defined at the current position to the root level.
-    defLocals: std.AutoHashMapUnmanaged(LocalId, void),
-
-    capturedVars: std.ArrayListUnmanaged(CapturedVar),
-
-    /// See `SemaBlock.varsToInit`.
-    /// Copied to SemaBlock when this block is popped from sema.
-    varsToInit: std.ArrayListUnmanaged(LocalId),
-
-    /// Depth of iteration blocks.
-    iterBlockDepth: u8,
-
+    numLocals: u32,
     frameLoc: cy.NodeId = NullId,
 
     fn init() Block {
         return .{
-            .stackLen = 0,
-            .vars = .{},
-            .defLocals = .{},
-            .capturedVars = .{},
-            .varsToInit = .{},
-            .iterBlockDepth = 0,
+            .numLocals = 0,
         };
     }
 
     fn deinit(self: *Block, alloc: std.mem.Allocator) void {
-        self.vars.deinit(alloc);
-        self.defLocals.deinit(alloc);
-        self.capturedVars.deinit(alloc);
+        _ = self;
+        _ = alloc;
     }
 
     fn reserveLocal(self: *Block) !u8 {
-        const idx = self.stackLen;
-        self.stackLen += 1;
+        const idx = self.numLocals;
+        self.numLocals += 1;
         if (idx <= std.math.maxInt(u8)) {
             return @intCast(u8, idx);
         } else {
@@ -2185,27 +2175,51 @@ const Block = struct {
     }
 };
 
-const VarInfo = struct {
-    /// The current type of the local in the traversed block.
-    /// This is updated when there is a variable reassignment or a child block returns.
+const SemaVarId = u32;
+
+const SemaVar = struct {
+    /// The current type of the var as the ast is traversed.
+    /// This is updated when there is a variable assignment or a child block returns.
     vtype: Type,
 
-    /// Local offset relative to te stack frame's start position.
-    local: LocalId,
+    /// The ending type inside an iter block.
+    /// When reaching the end of an iter block, a continue, or break statement,
+    /// the current type of the variable is combined with the existing endsIterAsType.
+    endsIterAsType: Type,
 
-    /// Maybe points to a ref counted object throughout the local's lifetime.
-    /// Once this is true, it can not be reverted to false.
-    /// The end of the block will emit release ops for any locals that are rc candidates.
-    rcCandidate: bool,
+    /// Whether this var is a captured function param.
+    /// Currently, captured variables can not be reassigned to another value.
+    /// This restriction avoids an extra retain/release op for closure calls.
+    isCaptured: bool = false,
+
+    /// Whether this is a function param. (Does not include captured vars.)
+    isParam: bool = false,
+
+    /// Indicates that at some point during the vars lifetime it was an rcCandidate.
+    /// Since all exit paths jump to the same release inst, this flag is used to determine
+    /// which vars need a release.
+    lifetimeRcCandidate: bool,
+
+    /// There are two cases where the compiler needs to implicitly generate var initializers.
+    /// 1. Var is first assigned in a branched block. eg. Assigned inside if block.
+    ///    Since the var needs to be released at the end of the root block,
+    ///    it needs to have a defined value.
+    /// 2. Var is first assigned in an iteration block.
+    /// At the beginning of codegen for this block, these vars will be inited to the `none` value.
+    genInitializer: bool = false,
+
+    /// Local register offset assigned to this var.
+    /// Locals are relative to the stack frame's start position.
+    local: LocalId = undefined,
+
+    /// Since the same sema var is used later by codegen,
+    /// use a flag to indicate whether the var has been defined in the block. (eg. assigned to lvalue)
+    genIsDefined: bool = false,
+};
+
+const VarInfo = struct {
+
     hasStaticType: bool,
-
-    /// Whether this variable is captured.
-    /// Captured variables can not be reassigned to another value. This restriction avoids
-    /// an extra retain/release op for closure calls.
-    isCapturedVar: bool,
-
-    /// Whether this variable will generate an implicit initializer at start of block.
-    genInitializer: bool,
 };
 
 const TypeTag = enum {
@@ -2299,37 +2313,80 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
     return replacements;
 }
 
-const SubBlock = struct {
-    /// Start of defLocals in `defLocalStack`.
-    defLocalsStart: u32,
+const VarAndType = struct {
+    id: SemaVarId,
+    vtype: Type,
+};
 
-    fn init(defLocalsStart: usize) SubBlock {
+const SemaSubBlockId = u32;
+
+const SemaSubBlock = struct {
+    /// Save var end types for entering a codegen iter block.
+    /// This is used when entering the same iter block to initialize the
+    /// var type so that the first `genSetVar` produces the correct `set` op.
+    iterVarEndTypes: std.ArrayListUnmanaged(VarAndType),
+
+    /// Start of vars assigned in this block in `defLocalStack`.
+    /// When leaving this block, this is used to remove the relevant entries in the
+    /// root block's defLocals map to keep it updated for subsequent blocks.
+    definedVarStart: u32,
+
+    /// Previous sema sub block.
+    /// When this sub block ends, the previous sub block id is set as the current.
+    prevSubBlockId: SemaSubBlockId,
+
+    fn init(prevSubBlockId: SemaSubBlockId, definedVarStart: usize) SemaSubBlock {
         return .{
-            .defLocalsStart = @intCast(u32, defLocalsStart),
+            .definedVarStart = @intCast(u32, definedVarStart),
+            .iterVarEndTypes = .{},
+            .prevSubBlockId = prevSubBlockId,
         };
+    }
+
+    fn deinit(self: *SemaSubBlock, alloc: std.mem.Allocator) void {
+        self.iterVarEndTypes.deinit(alloc);
     }
 };
 
+const SemaBlockId = u32;
+
 const SemaBlock = struct {
-    /// There two cases where the compiler needs to implicitly generate var initializers.
-    /// 1. Var is first assigned in a branched block. eg. Assigned inside if block.
-    ///    Since the var needs to be released at the end of the root block,
-    ///    it needs to have a defined value.
-    /// 2. Var is first assigned in an iteration block.
-    /// At the beginning of codegen for this block, these vars will be inited to the `none` value.
-    varsToInit: std.ArrayListUnmanaged(LocalId),
+    /// Local vars defined in this block. Does not include function params.
+    locals: std.ArrayListUnmanaged(SemaVarId),
 
-    subBlockStart: u32,
+    /// Quickly determine whether a var is defined at the current position to the block root.
+    /// This can be deinited after ending the sema block.
+    definedVars: std.AutoHashMapUnmanaged(SemaVarId, void),
 
-    fn init(subBlockStart: usize) SemaBlock {
+    /// Param vars for function blocks. Includes captured vars for closures.
+    /// Codegen will reserve these first for the calling convention layout.
+    params: std.ArrayListUnmanaged(SemaVarId),
+
+    /// Name to var.
+    /// This can be deinited after ending the sema block.
+    nameToVar: std.StringHashMapUnmanaged(SemaVarId),
+
+    /// Current sub block depth.
+    subBlockDepth: u32,
+
+    /// Previous sema block.
+    /// When this block ends, the previous block id is set as the current.
+    prevBlockId: SemaBlockId,
+
+    fn init(prevBlockId: SemaBlockId) SemaBlock {
         return .{
-            .varsToInit = .{},
-            .subBlockStart = @intCast(u32, subBlockStart),
+            .definedVars = .{},
+            .nameToVar = .{},
+            .locals = .{},
+            .params = .{},
+            .subBlockDepth = 0,
+            .prevBlockId = prevBlockId,
         };
     }
 
     fn deinit(self: *SemaBlock, alloc: std.mem.Allocator) void {
-        self.varsToInit.deinit(alloc);
+        self.locals.deinit(alloc);
+        self.params.deinit(alloc);
     }
 };
 

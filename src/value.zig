@@ -276,6 +276,39 @@ pub const Value = packed union {
             }
         }
     }
+
+    pub fn getUserTag(self: *const Value) ValueUserTag {
+        if (self.isNumber()) {
+            return .number;
+        } else {
+            if (self.isPointer()) {
+                const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+                switch (obj.common.structId) {
+                    cy.ListS => return .list,
+                    cy.MapS => return .map,
+                    cy.StringS => return .string,
+                    else => {
+                        return .object;
+                    },
+                }
+            } else {
+                switch (self.getTag()) {
+                    TagBoolean => return .bool,
+                    else => unreachable,
+                }
+            }
+        }
+    }
+};
+
+const ValueUserTag = enum {
+    number,
+    object,
+    list,
+    map,
+    string,
+    constString,
+    bool,
 };
 
 test "floatCanBeInteger" {

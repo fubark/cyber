@@ -443,7 +443,7 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.peekToken();
         if (token.token_t == .ident) {
-            const name = self.pushNode(.ident, self.next_pos);
+            const name = self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
             token = self.peekToken();
@@ -451,7 +451,7 @@ pub const Parser = struct {
                 const nameToken = self.tokens.items[self.next_pos];
                 const typeName = self.src.items[nameToken.start_pos .. nameToken.data.end_pos];
                 if (std.mem.eql(u8, typeName, "any")) {
-                    const typeN = self.pushNode(.ident, self.next_pos);
+                    const typeN = self.pushIdentNode(self.next_pos);
                     self.advanceToken();
 
                     token = self.peekToken();
@@ -497,7 +497,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         var name: NodeId = NullId;
         if (token.token_t == .ident) {
-            name = self.pushNode(.ident, self.next_pos);
+            name = self.pushIdentNode(self.next_pos);
             self.advanceToken();
         } else return self.reportTokenError2(error.SyntaxError, "Expected struct name identifier.", .{}, token);
 
@@ -600,12 +600,12 @@ pub const Parser = struct {
         token = self.peekToken();
         if (token.token_t == .dot) {
             // Parse lambda assign decl.
-            var left = self.pushNode(.ident, left_pos);
+            var left = self.pushIdentNode(left_pos);
             self.advanceToken();
             while (true) {
                 token = self.peekToken();
                 if (token.token_t == .ident) {
-                    const ident = self.pushNode(.ident, self.next_pos);
+                    const ident = self.pushIdentNode(self.next_pos);
                     const expr = self.pushNode(.access_expr, left_pos);
                     self.nodes.items[expr].head = .{
                         .left_right = .{
@@ -1000,7 +1000,7 @@ pub const Parser = struct {
     fn parseBlock(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the ident.
-        const name = self.pushNode(.ident, start);
+        const name = self.pushIdentNode(start);
         self.advanceToken();
         // Assumes second token is colon.
         self.advanceToken();
@@ -1059,7 +1059,7 @@ pub const Parser = struct {
                     const name = self.src.items[name_token.start_pos .. name_token.data.end_pos];
                     var skip_compile = false;
 
-                    const ident = self.pushNode(.ident, self.next_pos);
+                    const ident = self.pushIdentNode(self.next_pos);
                     self.advanceToken();
                     const at_ident = self.pushNode(.at_ident, start);
                     self.nodes.items[at_ident].head = .{
@@ -1367,7 +1367,7 @@ pub const Parser = struct {
         if (token.token_t == .ident) {
             if (self.peekTokenAhead(1).token_t == .colon) {
                 // Named arg.
-                const name = self.pushNode(.ident, start);
+                const name = self.pushIdentNode(start);
                 _ = self.consumeToken();
                 _ = self.consumeToken();
                 var arg = (try self.parseExpr(.{})) orelse {
@@ -1453,7 +1453,7 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.consumeToken();
         var last_arg_id = switch (token.token_t) {
-            .ident => self.pushNode(.ident, start),
+            .ident => self.pushIdentNode(start),
             .string => self.pushNode(.string, start),
             .number => self.pushNode(.number, start),
             else => return self.reportTokenError2(error.BadToken, "Expected arg token", .{}, token),
@@ -1469,7 +1469,7 @@ pub const Parser = struct {
         while (true) {
             token = self.peekToken();
             const arg_id = switch (token.token_t) {
-                .ident => self.pushNode(.ident, self.next_pos),
+                .ident => self.pushIdentNode(self.next_pos),
                 .string => self.pushNode(.string, self.next_pos),
                 .number => self.pushNode(.number, self.next_pos),
                 .new_line => break,
@@ -1654,7 +1654,7 @@ pub const Parser = struct {
         var left_id = switch (token.token_t) {
             .ident => b: {
                 self.advanceToken();
-                const id = self.pushNode(.ident, start);
+                const id = self.pushIdentNode(start);
 
                 const name_token = self.tokens.items[start];
                 const name = self.src.items[name_token.start_pos..name_token.data.end_pos];
@@ -1694,7 +1694,7 @@ pub const Parser = struct {
                 self.advanceToken();
                 token = self.peekToken();
                 if (token.token_t == .ident) {
-                    const ident = self.pushNode(.ident, self.next_pos);
+                    const ident = self.pushIdentNode(self.next_pos);
                     self.advanceToken();
                     const at_ident = self.pushNode(.at_ident, start);
                     self.nodes.items[at_ident].head = .{
@@ -1821,7 +1821,7 @@ pub const Parser = struct {
                     self.advanceToken();
                     const next2 = self.peekToken();
                     if (next2.token_t == .ident) {
-                        const right_id = self.pushNode(.ident, self.next_pos);
+                        const right_id = self.pushIdentNode(self.next_pos);
                         const expr_id = self.pushNode(.access_expr, start);
                         self.nodes.items[expr_id].head = .{
                             .left_right = .{
@@ -2202,6 +2202,16 @@ pub const Parser = struct {
         return @intCast(NodeId, id);
     }
 
+    fn pushIdentNode(self: *Parser, start: u32) NodeId {
+        const id = self.pushNode(.ident, start);
+        self.nodes.items[id].head = .{
+            .ident = .{
+                .semaVarId = NullId,
+            },
+        };
+        return id;
+    }
+
     inline fn pushIdentToken(self: *Parser, start_pos: u32, end_pos: u32) void {
         self.tokens.append(self.alloc, .{
             .token_t = .ident,
@@ -2496,6 +2506,9 @@ pub const Node = struct {
             callee: NodeId,
             arg_head: NodeId,
             has_named_arg: bool,
+        },
+        ident: struct {
+            semaVarId: u32,
         },
         unary: struct {
             child: NodeId,

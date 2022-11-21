@@ -1328,7 +1328,7 @@ pub const VM = struct {
                             stdx.panic("TODO: big object");
                         }
                     } else {
-                        return self.getFieldOther(obj, symMap.name);
+                        return self.getAndRetainFieldFallback(obj, symMap.name);
                     }
                 },
                 .manyStructs => {
@@ -1336,7 +1336,7 @@ pub const VM = struct {
                     stdx.fatal();
                 },
                 .empty => {
-                    return self.getFieldOther(obj, symMap.name);
+                    return self.getAndRetainFieldFallback(obj, symMap.name);
                 },
             } 
         } else {
@@ -1376,6 +1376,20 @@ pub const VM = struct {
         } else {
             try self.getFieldMissingSymbolError();
             unreachable;
+        }
+    }
+
+    fn getAndRetainFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(".eval") Value {
+        @setCold(true);
+        if (obj.common.structId == MapS) {
+            const map = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
+            if (map.getByString(self, name)) |val| {
+                self.retain(val);
+                return val;
+            } else return Value.initNone();
+        } else {
+            log.debug("Missing symbol for object: {}", .{obj.common.structId});
+            return Value.initNone();
         }
     }
 
@@ -1450,7 +1464,7 @@ pub const VM = struct {
         switch (sym.entryT) {
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
-                self.pc += 3;
+                // self.pc += 3;
                 const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
                 const res = sym.inner.nativeFunc1(.{}, args.ptr, @intCast(u8, args.len));
                 if (reqNumRetVals == 1) {
@@ -1483,7 +1497,8 @@ pub const VM = struct {
                     return error.StackOverflow;
                 }
 
-                const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
+                const retInfo = self.buildReturnInfo(reqNumRetVals, true);
+                // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 self.pc = sym.inner.func.pc;
                 self.framePtr = self.stack.top - numArgs;
 
@@ -1502,8 +1517,7 @@ pub const VM = struct {
             //     return error.MissingSymbol;
             // },
             else => {
-                log.debug("unsupported callsym", .{});
-                stdx.fatal();
+                return self.panic("unsupported callsym");
             },
         }
     }
@@ -2321,6 +2335,7 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
+                    self.pc += 3;
 
                     try self.callSym(symId, numArgs, 0);
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, false });
@@ -2330,6 +2345,7 @@ pub const VM = struct {
                     @setRuntimeSafety(debug);
                     const symId = self.ops[self.pc+1].arg;
                     const numArgs = self.ops[self.pc+2].arg;
+                    self.pc += 3;
 
                     try self.callSym(symId, numArgs, 1);
                     // try @call(.{ .modifier = .always_inline }, self.callSym, .{ symId, vals, true });
@@ -2426,7 +2442,7 @@ pub const VM = struct {
                 .forIter => {
                     @setRuntimeSafety(debug);
                     const local = self.ops[self.pc+1].arg;
-                    self.pc += 3;
+                    self.pc += 4;
 
                     const val = self.stack.buf[self.stack.top-1];
                     try self.callObjSym(val, self.iteratorObjSym, 1, 1);
@@ -2466,7 +2482,9 @@ pub const VM = struct {
                             if (next.isNone()) {
                                 break;
                             }
-                            self.setLocal(local, next);
+                            const localPtr = &self.stack.buf[self.framePtr + local];
+                            self.release(localPtr.*);
+                            localPtr.* = next;
                             @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                                 if (err == error.BreakLoop) {
                                     break;
@@ -2476,14 +2494,14 @@ pub const VM = struct {
                     }
                     self.release(recv);
                     self.stack.top -= 1;
-                    self.pc = self.pc + self.ops[self.pc-1].arg - 3;
+                    self.pc = self.pc + @ptrCast(*const align(1) u16, &self.ops[self.pc-2]).* - 4;
                     continue;
                 },
                 .forRange => {
                     @setRuntimeSafety(debug);
                     const local = self.ops[self.pc+1].arg;
-                    const endPc = self.pc + self.ops[self.pc+2].arg;
-                    self.pc += 3;
+                    const endPc = self.pc + @ptrCast(*const align(1) u16, &self.ops[self.pc+2]).*;
+                    self.pc += 4;
 
                     self.stack.top -= 3;
                     const step = self.stack.buf[self.stack.top+2].toF64();

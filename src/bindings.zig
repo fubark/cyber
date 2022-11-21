@@ -153,9 +153,9 @@ fn listSort(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
             ctx_.vm.stack.top += 3;
             ctx_.vm.retain(a);
             ctx_.vm.retain(b);
-            ctx_.vm.stack.buf[ctx_.vm.stack.top-3] = a;
+            ctx_.vm.stack.buf[ctx_.vm.stack.top-1] = a;
             ctx_.vm.stack.buf[ctx_.vm.stack.top-2] = b;
-            ctx_.vm.stack.buf[ctx_.vm.stack.top-1] = ctx_.lessFn;
+            ctx_.vm.stack.buf[ctx_.vm.stack.top-3] = ctx_.lessFn;
             const retInfo = ctx_.vm.buildReturnInfo(1, false);
             ctx_.vm.call(ctx_.lessFn, 3, retInfo) catch stdx.fatal();
             @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
@@ -186,7 +186,9 @@ fn listNext(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     if (list.retainedList.nextIterIdx < list.retainedList.list.len) {
         defer list.retainedList.nextIterIdx += 1;
-        return list.retainedList.list.ptr[list.retainedList.nextIterIdx];
+        const val = list.retainedList.list.ptr[list.retainedList.nextIterIdx];
+        gvm.retain(val);
+        return val;
     } else return Value.initNone();
 }
 

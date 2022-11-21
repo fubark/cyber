@@ -546,6 +546,9 @@ pub const VM = struct {
                 .extra = 0,
             },
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
 
         const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
         for (keys) |key, i| {
@@ -666,6 +669,9 @@ pub const VM = struct {
             .ptr = str.ptr,
             .len = str.len,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -679,6 +685,9 @@ pub const VM = struct {
             .ptr = dupe.ptr,
             .len = dupe.len,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -704,6 +713,9 @@ pub const VM = struct {
             .ptr = buf.ptr,
             .len = buf.len,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -719,6 +731,9 @@ pub const VM = struct {
             .ptr = buf.ptr,
             .len = buf.len,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -735,6 +750,9 @@ pub const VM = struct {
             },
             .nextIterIdx = 0,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -1170,6 +1188,11 @@ pub const VM = struct {
         // val.dump();
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
+            if (builtin.mode == .Debug or builtin.is_test) {
+                if (obj.retainedCommon.structId == NullId) {
+                    stdx.panic("object already freed.");
+                }
+            }
             obj.retainedCommon.rc -= 1;
             if (TraceEnabled) {
                 self.trace.numReleases += 1;

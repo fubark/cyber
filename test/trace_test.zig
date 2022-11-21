@@ -85,6 +85,30 @@ test "Automatic reference counting." {
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
+    // Map entry access expression retains the entry.
+    val = try run.traceEval(
+        \\a = { foo: 'abc' + 123 }
+        \\b = a.foo
+    );
+    try t.eq(trace.numRetains, 3);
+    try t.eq(trace.numReleases, 3);
+
+    // Non-initializer expr in if expr true branch is retained.
+    val = try run.traceEval(
+        \\a = [ 123 ]
+        \\b = if true then a else 234
+    );
+    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numReleases, 2);
+
+    // Non-initializer expr in if expr false branch is retained.
+    val = try run.traceEval(
+        \\a = [ 123 ]
+        \\b = if false then 234 else a
+    );
+    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numReleases, 2);
+
     // vm.checkMemory is able to detect retain cycle.
     val = try run.traceEval(
         \\a = []

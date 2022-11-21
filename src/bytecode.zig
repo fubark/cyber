@@ -216,8 +216,6 @@ pub const ByteCodeBuffer = struct {
                 .pushCallObjSym1,
                 .pushCallSym0,
                 .pushCallSym1,
-                .forIter,
-                .forRange,
                 .pushMinus2,
                 .pushMinus1 => {
                     try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
@@ -226,6 +224,8 @@ pub const ByteCodeBuffer = struct {
                 .call => {
                     stdx.unsupported();
                 },
+                .forIter,
+                .forRange,
                 .pushLambda => {
                     try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
                     pc += 4;

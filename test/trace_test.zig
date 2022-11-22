@@ -13,7 +13,7 @@ test "Automatic reference counting." {
     const trace = &run.trace;
 
     // List literal does not escape expression. No ref count.
-    var val = try run.traceEval(
+    var val = try run.eval(
         \\[1, 2]
         \\return
     );
@@ -21,14 +21,14 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 0);
 
     // List literal is assigned to a local. Increase ref count.
-    val = try run.traceEval(
+    val = try run.eval(
         \\a = [1, 2]
     );
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
     // Assigning to another variable increases the ref count.
-    val = try run.traceEval(
+    val = try run.eval(
         \\a = [1, 2]
         \\b = a
     );
@@ -36,7 +36,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 2);
 
     // Object is retained when assigned to struct literal.
-    val = try run.traceEval(
+    val = try run.eval(
         \\struct S:
         \\  value
         \\func foo():
@@ -50,7 +50,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 3);
 
     // Object is retained when returned from non-literal expression in return clause.
-    val = try run.traceEval(
+    val = try run.eval(
         \\struct S:
         \\  value
         \\func foo():
@@ -64,7 +64,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 2);
 
     // Object is released when returned from a function if no followup assignment.
-    val = try run.traceEval(
+    val = try run.eval(
         \\struct S:
         \\  value
         \\func foo():
@@ -76,7 +76,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 1);
 
     // Object is released when returned rvalue field access.
-    val = try run.traceEval(
+    val = try run.eval(
         \\struct S:
         \\  value
         \\1 + S{ value: 123 }.value
@@ -86,7 +86,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 1);
 
     // Map entry access expression retains the entry.
-    val = try run.traceEval(
+    val = try run.eval(
         \\a = { foo: 'abc' + 123 }
         \\b = a.foo
     );
@@ -94,7 +94,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 3);
 
     // Non-initializer expr in if expr true branch is retained.
-    val = try run.traceEval(
+    val = try run.eval(
         \\a = [ 123 ]
         \\b = if true then a else 234
     );
@@ -102,7 +102,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 2);
 
     // Non-initializer expr in if expr false branch is retained.
-    val = try run.traceEval(
+    val = try run.eval(
         \\a = [ 123 ]
         \\b = if false then 234 else a
     );
@@ -110,7 +110,7 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 2);
 
     // vm.checkMemory is able to detect retain cycle.
-    val = try run.traceEval(
+    val = try run.eval(
         \\a = []
         \\b = []
         \\a.add(b)
@@ -123,6 +123,26 @@ test "Automatic reference counting." {
     try t.eq(trace.numRetainCycles, 1);
     try t.eq(trace.numRetainCycleRoots, 2);
     try t.eq(trace.numForceReleases, 2);
+}
+
+test "ARC in loops." {
+    var run: VMrunner = undefined;
+    run.init();
+    defer run.deinit();
+
+    const trace = &run.trace;
+
+    t.setLogLevel(.debug);
+
+    // A non-rc var is reassigned to a rc var inside a loop.
+    _ = try run.eval(
+        \\a = 123
+        \\for 0..3:
+        \\  a = 'abc' + 123
+    );
+    try t.eq(trace.numRetains, 3);
+    // The inner set inst should be a releaseSet.
+    try t.eq(trace.numReleases, 3);
 }
 
 const VMrunner = struct {
@@ -148,14 +168,6 @@ const VMrunner = struct {
 
     fn checkMemory(self: *VMrunner) !bool {
         return self.vm.checkMemory();
-    }
-
-    fn traceEval(self: *VMrunner, src: []const u8) !cy.Value {
-        // Eval with new env.
-        self.vm.deinit();
-        try self.vm.init(t.alloc);
-        self.vm.setTrace(&self.trace);
-        return self.vm.eval(src);
     }
 
     fn compile(self: *VMrunner, src: []const u8) !cy.ByteCodeBuffer {

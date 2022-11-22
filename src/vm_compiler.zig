@@ -31,14 +31,14 @@ pub const VMcompiler = struct {
     blocks: std.ArrayListUnmanaged(Block),
     jumpStack: std.ArrayListUnmanaged(Jump),
     nodeStack: std.ArrayListUnmanaged(cy.NodeId),
-    definedVarStack: std.ArrayListUnmanaged(SemaVarId),
+    assignedVarStack: std.ArrayListUnmanaged(SemaVarId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
     curBlock: *Block,
     curSemaBlockId: SemaBlockId,
     semaBlockDepth: u32,
     curSemaSubBlockId: SemaSubBlockId,
 
-    // Used during codegen to advance to the next processed sema block.
+    // Used during codegen to advance to the next saved sema block.
     nextSemaBlockId: u32,
     nextSemaSubBlockId: u32,
 
@@ -61,7 +61,7 @@ pub const VMcompiler = struct {
             .blocks = .{},
             .jumpStack = .{},
             .nodeStack = .{},
-            .definedVarStack = .{},
+            .assignedVarStack = .{},
             .operandStack = .{},
             .curBlock = undefined,
             .curSemaBlockId = undefined,
@@ -90,7 +90,7 @@ pub const VMcompiler = struct {
         self.blocks.deinit(self.alloc);
         self.buf.deinit();
         self.jumpStack.deinit(self.alloc);
-        self.definedVarStack.deinit(self.alloc);
+        self.assignedVarStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
         self.nodeStack.deinit(self.alloc);
@@ -575,6 +575,12 @@ pub const VMcompiler = struct {
     fn nextSemaSubBlock(self: *VMcompiler) void {
         self.curSemaSubBlockId = self.nextSemaSubBlockId;
         self.nextSemaSubBlockId += 1;
+
+        const ssblock = self.curSemaSubBlock();
+        for (ssblock.iterVarBeginTypes.items) |varAndType| {
+            const svar = &self.vars.items[varAndType.id];
+            svar.vtype = varAndType.vtype;
+        }
     }
 
     fn prevSemaSubBlock(self: *VMcompiler) void {
@@ -730,21 +736,11 @@ pub const VMcompiler = struct {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
     }
 
-    fn semaUpdateIterVarEndTypes(self: *VMcompiler) void {
-        const ssblock = self.curSemaSubBlock();
-        for (self.definedVarStack.items[ssblock.definedVarStart..]) |varId| {
-            const svar = &self.vars.items[varId];
-            if (svar.endsIterAsType.typeT != svar.vtype.typeT) {
-                svar.endsIterAsType = AnyType;
-            }
-        }
-    }
-
     fn pushSemaSubBlock(self: *VMcompiler) !void {
         self.curSemaBlock().subBlockDepth += 1;
         const prev = self.curSemaSubBlockId;
         self.curSemaSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
-        try self.semaSubBlocks.append(self.alloc, SemaSubBlock.init(prev, self.definedVarStack.items.len));
+        try self.semaSubBlocks.append(self.alloc, SemaSubBlock.init(prev, self.assignedVarStack.items.len));
     }
 
     fn pushSemaIterSubBlock(self: *VMcompiler) !void {
@@ -753,11 +749,15 @@ pub const VMcompiler = struct {
 
     fn endSemaIterSubBlock(self: *VMcompiler) !void {
         const ssblock = self.curSemaSubBlock();
-        for (self.definedVarStack.items[ssblock.definedVarStart..]) |varId| {
-            try ssblock.iterVarEndTypes.append(self.alloc, .{
-                .id = varId,
-                .vtype = self.vars.items[varId].endsIterAsType,
-            });
+        for (self.assignedVarStack.items[ssblock.assignedVarStart..]) |varId| {
+            const svar = self.vars.items[varId];
+            if (svar.vtype.typeT != ssblock.prevVarTypes.get(varId).?.typeT) {
+                // Only types that are different are saved for the codegen iter block.
+                try ssblock.iterVarBeginTypes.append(self.alloc, .{
+                    .id = varId,
+                    .vtype = AnyType,
+                });
+            }
         }
         self.endSemaSubBlock();
     }
@@ -766,10 +766,17 @@ pub const VMcompiler = struct {
         const sblock = self.curSemaBlock();
         sblock.subBlockDepth -= 1;
         const ssblock = self.curSemaSubBlock();
-        for (self.definedVarStack.items[ssblock.definedVarStart..]) |varId| {
-            _ = sblock.definedVars.remove(varId);
+
+        // Merge types back to parent scope.
+        for (self.assignedVarStack.items[ssblock.assignedVarStart..]) |varId| {
+            const svar = &self.vars.items[varId];
+            if (svar.vtype.typeT != ssblock.prevVarTypes.get(varId).?.typeT) {
+                svar.vtype = AnyType;
+            }
         }
+        ssblock.prevVarTypes.deinit(self.alloc);
         self.curSemaSubBlockId = ssblock.prevSubBlockId;
+        self.assignedVarStack.items.len = ssblock.assignedVarStart;
     }
 
     fn curSemaSubBlock(self: *VMcompiler) *SemaSubBlock {
@@ -792,7 +799,6 @@ pub const VMcompiler = struct {
     fn endSemaBlock(self: *VMcompiler) void {
         self.endSemaSubBlock();
         const sblock = self.curSemaBlock();
-        sblock.definedVars.deinit(self.alloc);
         sblock.nameToVar.deinit(self.alloc);
         self.curSemaBlockId = sblock.prevBlockId;
         self.popBlock();
@@ -822,6 +828,15 @@ pub const VMcompiler = struct {
         // log.debug("set var {s}", .{name});
         if (self.curSemaBlock().nameToVar.get(name)) |varId| {
             const svar = &self.vars.items[varId];
+
+            const ssblock = self.curSemaSubBlock();
+            if (!ssblock.prevVarTypes.contains(varId)) {
+                // Same variable but branched to sub block.
+                try ssblock.prevVarTypes.put(self.alloc, varId, svar.vtype);
+                try self.assignedVarStack.append(self.alloc, varId);
+            }
+
+            // Update current type after checking for branched assignment.
             if (svar.vtype.typeT != vtype.typeT) {
                 svar.vtype = vtype;
                 if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
@@ -829,11 +844,6 @@ pub const VMcompiler = struct {
                 }
             }
 
-            // if (!self.curBlock.defLocals.contains(info.local)) {
-            //     // Possibly undefined. Add var to sub block.
-            //     try self.defLocalStack.append(self.alloc, info.local);
-            //     try self.curBlock.defLocals.put(self.alloc, info.local, {});
-            // }
             self.nodes[ident].head.ident.semaVarId = varId;
         } else {
             const id = try self.pushSemaLocalVar(name, vtype);
@@ -953,11 +963,8 @@ pub const VMcompiler = struct {
             res.value_ptr.* = id;
             try self.vars.append(self.alloc, .{
                 .vtype = vtype,
-                .endsIterAsType = undefined,
                 .lifetimeRcCandidate = vtype.rcCandidate,
             });
-            try self.definedVarStack.append(self.alloc, id);
-            try sblock.definedVars.put(self.alloc, id, {});
             return id;
         }
     }
@@ -1265,8 +1272,6 @@ pub const VMcompiler = struct {
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
                 try self.pushContTo(bodyPc);
                 self.buf.setOpArgU16(forPc+2, @intCast(u16, self.buf.ops.items.len - forPc));
-
-                self.semaUpdateIterVarEndTypes();
             },
             .if_stmt => {
                 _ = try self.genExpr(node.head.left_right.left, false);
@@ -2182,11 +2187,6 @@ const SemaVar = struct {
     /// This is updated when there is a variable assignment or a child block returns.
     vtype: Type,
 
-    /// The ending type inside an iter block.
-    /// When reaching the end of an iter block, a continue, or break statement,
-    /// the current type of the variable is combined with the existing endsIterAsType.
-    endsIterAsType: Type,
-
     /// Whether this var is a captured function param.
     /// Currently, captured variables can not be reassigned to another value.
     /// This restriction avoids an extra retain/release op for closure calls.
@@ -2321,30 +2321,38 @@ const VarAndType = struct {
 const SemaSubBlockId = u32;
 
 const SemaSubBlock = struct {
-    /// Save var end types for entering a codegen iter block.
-    /// This is used when entering the same iter block to initialize the
-    /// var type so that the first `genSetVar` produces the correct `set` op.
-    iterVarEndTypes: std.ArrayListUnmanaged(VarAndType),
+    /// Save var start types for entering a codegen iter block.
+    /// This can only be determined after the sema pass.
+    /// This is used to initialize the var type when entering the codegen iter block so
+    /// that the first `genSetVar` produces the correct `set` op.
+    iterVarBeginTypes: std.ArrayListUnmanaged(VarAndType),
 
-    /// Start of vars assigned in this block in `defLocalStack`.
-    /// When leaving this block, this is used to remove the relevant entries in the
-    /// root block's defLocals map to keep it updated for subsequent blocks.
-    definedVarStart: u32,
+    /// Track which vars were assigned to in the current sub block.
+    /// If the var was first assigned in a parent sub block, the type is saved in the map to
+    /// be merged later with the ending var type.
+    /// Can be freed after the end of block.
+    prevVarTypes: std.AutoHashMapUnmanaged(SemaVarId, Type),
+
+    /// Start of vars assigned in this block in `assignedVarStack`.
+    /// When leaving this block, all assigned var types in this block are merged
+    /// back to the parent scope.
+    assignedVarStart: u32,
 
     /// Previous sema sub block.
     /// When this sub block ends, the previous sub block id is set as the current.
     prevSubBlockId: SemaSubBlockId,
 
-    fn init(prevSubBlockId: SemaSubBlockId, definedVarStart: usize) SemaSubBlock {
+    fn init(prevSubBlockId: SemaSubBlockId, assignedVarStart: usize) SemaSubBlock {
         return .{
-            .definedVarStart = @intCast(u32, definedVarStart),
-            .iterVarEndTypes = .{},
+            .assignedVarStart = @intCast(u32, assignedVarStart),
+            .iterVarBeginTypes = .{},
+            .prevVarTypes = .{},
             .prevSubBlockId = prevSubBlockId,
         };
     }
 
     fn deinit(self: *SemaSubBlock, alloc: std.mem.Allocator) void {
-        self.iterVarEndTypes.deinit(alloc);
+        self.iterVarBeginTypes.deinit(alloc);
     }
 };
 
@@ -2353,10 +2361,6 @@ const SemaBlockId = u32;
 const SemaBlock = struct {
     /// Local vars defined in this block. Does not include function params.
     locals: std.ArrayListUnmanaged(SemaVarId),
-
-    /// Quickly determine whether a var is defined at the current position to the block root.
-    /// This can be deinited after ending the sema block.
-    definedVars: std.AutoHashMapUnmanaged(SemaVarId, void),
 
     /// Param vars for function blocks. Includes captured vars for closures.
     /// Codegen will reserve these first for the calling convention layout.
@@ -2375,7 +2379,6 @@ const SemaBlock = struct {
 
     fn init(prevBlockId: SemaBlockId) SemaBlock {
         return .{
-            .definedVars = .{},
             .nameToVar = .{},
             .locals = .{},
             .params = .{},

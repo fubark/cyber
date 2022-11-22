@@ -132,8 +132,6 @@ test "ARC in loops." {
 
     const trace = &run.trace;
 
-    t.setLogLevel(.debug);
-
     // A non-rc var is reassigned to a rc var inside a loop.
     _ = try run.eval(
         \\a = 123

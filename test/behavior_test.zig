@@ -494,7 +494,7 @@ test "Indentation." {
     val = try run.eval(
         \\func foo():
         \\  return 123
-        \\  // Comment.
+        \\  -- Comment.
         \\foo()
     );
     try t.eq(val.asI32(), 123);
@@ -611,16 +611,21 @@ test "Comments" {
 
     // Single line comment.
     var val = try run.eval(
-        \\// 1
+        \\-- 1
         \\2
+    );
+    try t.eq(val.asI32(), 2);
+    val = try run.eval(
+        \\2
+        \\-- 1
     );
     try t.eq(val.asI32(), 2);
 
     // Multiple single line comments.
     val = try run.eval(
-        \\// 1
-        \\// 2
-        \\// 3
+        \\-- 1
+        \\-- 2
+        \\-- 3
         \\4
     );
     try t.eq(val.asI32(), 4);

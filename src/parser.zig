@@ -2975,7 +2975,22 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 },
                 ':' => p.pushToken(.colon, start),
                 '@' => p.pushToken(.at, start),
-                '-' => p.pushOpToken(.minus, start),
+                '-' => {
+                    if (peekChar(p) == '-') {
+                        advanceChar(p);
+                        // Single line comment. Ignore chars until eol.
+                        while (!isAtEndChar(p)) {
+                            if (peekChar(p) == '\n') {
+                                // Don't consume new line or the current indentation could augment with the next line.
+                                return tokenizeOne(p, state);
+                            }
+                            advanceChar(p);
+                        }
+                        return .{ .stateT = .end };
+                    } else {
+                        p.pushOpToken(.minus, start);
+                    }
+                },
                 '%' => p.pushOpToken(.percent, start),
                 '&' => p.pushOpToken(.ampersand, start),
                 '+' => {
@@ -2998,20 +3013,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     }
                 },
                 '/' => {
-                    if (peekChar(p) == '/') {
-                        advanceChar(p);
-                        // Single line comment. Ignore chars until eol.
-                        while (!isAtEndChar(p)) {
-                            if (peekChar(p) == '\n') {
-                                // Don't consume new line or the current indentation could augment with the next line.
-                                return tokenizeOne(p, state);
-                            }
-                            advanceChar(p);
-                        }
-                        return .{ .stateT = .end };
-                    } else {
-                        p.pushOpToken(.slash, start);
-                    }
+                    p.pushOpToken(.slash, start);
                 },
                 '!' => {
                     if (isNextChar(p, '=')) {

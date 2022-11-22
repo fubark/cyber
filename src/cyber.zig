@@ -16,10 +16,6 @@ pub const TokenType = parser.TokenType;
 const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
 
-const js_compiler = @import("js_compiler.zig");
-pub const JsTargetCompiler = js_compiler.JsTargetCompiler;
-pub const JsTargetResultView = js_compiler.ResultView;
-
 const value = @import("value.zig");
 pub const Value = value.Value;
 pub const ValuePair = value.ValuePair;
@@ -61,13 +57,6 @@ pub const OpCode = bytecode.OpCode;
 pub const OpData = bytecode.OpData;
 pub const Const = bytecode.Const;
 pub const OpDebug = bytecode.OpDebug;
-
-// const js_rt = @import("js_rt.zig");
-// pub const JsEngine = js_rt.JsEngine;
-// pub const JsValue = js_rt.JsValue;
-// pub const JsValueType = js_rt.JsValueType;
-// pub const WebJsValue = js_rt.WebJsValue;
-// pub const QJS = js_rt.QJS;
 
 const cdata = @import("cdata.zig");
 pub const encodeCyon = cdata.encode;

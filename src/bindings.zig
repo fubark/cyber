@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const cy = @import("cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("vm.zig");
+const TrackGlobalRC = vm_.TrackGlobalRC;
 const gvm = &vm_.gvm;
 
 const debug = builtin.mode == .Debug;
@@ -196,8 +197,12 @@ fn listIterator(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    list.retainedList.rc += 1;
-    list.retainedList.nextIterIdx = 0;
+    list.list.rc += 1;
+    if (TrackGlobalRC) {
+        gvm.refCounts += 1;
+    }
+
+    list.list.nextIterIdx = 0;
     return Value.initPtr(ptr);
 }
 

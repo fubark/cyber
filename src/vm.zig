@@ -10,6 +10,8 @@ const TraceEnabled = @import("build_options").trace;
 
 const log = stdx.log.scoped(.vm);
 
+pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
+
 /// Reserved symbols known at comptime.
 pub const ListS: StructId = 0;
 pub const MapS: StructId = 1;
@@ -48,6 +50,8 @@ pub const VM = struct {
     /// Object heap pages.
     heapPages: cy.List(*HeapPage),
     heapFreeHead: ?*HeapObject,
+
+    refCounts: if (TrackGlobalRC) usize else void,
 
     /// Symbol table used to lookup object methods.
     /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
@@ -115,6 +119,7 @@ pub const VM = struct {
             .u8Buf = .{},
             .stackTrace = .{},
             .debugTable = undefined,
+            .refCounts = if (TrackGlobalRC) 0 else undefined,
             .panicMsg = "",
         };
         try self.compiler.init(self);
@@ -132,6 +137,12 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *VM) void {
+        if (TrackGlobalRC) {
+            if (self.refCounts != 0) {
+                stdx.panicFmt("Number of unreleased references: {}", .{self.refCounts});
+            }
+        }
+
         self.parser.deinit();
         self.compiler.deinit();
         self.stack.deinit(self.alloc);
@@ -504,6 +515,9 @@ pub const VM = struct {
         if (TraceEnabled) {
             self.trace.numRetains += 1;
         }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -520,6 +534,9 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
         }
 
         const dst = @ptrCast([*]Value, &obj.smallObject.val0);
@@ -548,6 +565,9 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
         }
 
         const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
@@ -672,6 +692,9 @@ pub const VM = struct {
         if (TraceEnabled) {
             self.trace.numRetains += 1;
         }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -687,6 +710,9 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -716,6 +742,9 @@ pub const VM = struct {
         if (TraceEnabled) {
             self.trace.numRetains += 1;
         }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -733,6 +762,9 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -769,6 +801,9 @@ pub const VM = struct {
             },
             .nextIterIdx = 0,
         };
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
         }
@@ -1155,6 +1190,9 @@ pub const VM = struct {
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer());
             obj.retainedCommon.rc += 1;
+            if (TrackGlobalRC) {
+                gvm.refCounts += 1;
+            }
             if (TraceEnabled) {
                 self.trace.numRetains += 1;
             }
@@ -1194,6 +1232,9 @@ pub const VM = struct {
                 }
             }
             obj.retainedCommon.rc -= 1;
+            if (TrackGlobalRC) {
+                gvm.refCounts -= 1;
+            }
             if (TraceEnabled) {
                 self.trace.numReleases += 1;
             }
@@ -1558,6 +1599,9 @@ pub const VM = struct {
 
                 // Retain receiver.
                 obj.retainedCommon.rc += 1;
+                if (TrackGlobalRC) {
+                    gvm.refCounts += 1;
+                }
 
                 // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 const retInfo = self.buildReturnInfo(reqNumRetVals, true);

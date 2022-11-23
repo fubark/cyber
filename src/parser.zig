@@ -185,7 +185,7 @@ pub const Parser = struct {
         self.func_params.clearRetainingCapacity();
         self.cur_indent = 0;
 
-        const root_id = self.pushNode(.root, 0);
+        const root_id = try self.pushNode(.root, 0);
 
         try self.pushBlock();
         defer self.popBlock();
@@ -298,7 +298,7 @@ pub const Parser = struct {
         const decl_id = @intCast(u32, self.func_decls.items.len);
         try self.func_decls.append(self.alloc, decl);
 
-        const id = self.pushNode(.lambda_expr, start);
+        const id = try self.pushNode(.lambda_expr, start);
         self.nodes.items[id].head = .{
             .func = .{
                 .decl_id = decl_id,
@@ -327,7 +327,7 @@ pub const Parser = struct {
         const decl_id = @intCast(u32, self.func_decls.items.len);
         try self.func_decls.append(self.alloc, decl);
 
-        const id = self.pushNode(.lambda_expr, start);
+        const id = try self.pushNode(.lambda_expr, start);
         self.nodes.items[id].head = .{
             .func = .{
                 .decl_id = decl_id,
@@ -362,7 +362,7 @@ pub const Parser = struct {
         const decl_id = @intCast(u32, self.func_decls.items.len);
         try self.func_decls.append(self.alloc, decl);
 
-        const id = self.pushNode(.lambda_expr, start);
+        const id = try self.pushNode(.lambda_expr, start);
         self.nodes.items[id].head = .{
             .func = .{
                 .decl_id = decl_id,
@@ -443,7 +443,7 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.peekToken();
         if (token.token_t == .ident) {
-            const name = self.pushIdentNode(self.next_pos);
+            const name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
             token = self.peekToken();
@@ -451,7 +451,7 @@ pub const Parser = struct {
                 const nameToken = self.tokens.items[self.next_pos];
                 const typeName = self.src.items[nameToken.start_pos .. nameToken.data.end_pos];
                 if (std.mem.eql(u8, typeName, "any")) {
-                    const typeN = self.pushIdentNode(self.next_pos);
+                    const typeN = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
 
                     token = self.peekToken();
@@ -461,7 +461,7 @@ pub const Parser = struct {
                         return self.reportTokenError("Expected new line.", .{});
                     }
 
-                    const field = self.pushNode(.structField, start);
+                    const field = try self.pushNode(.structField, start);
                     self.nodes.items[field].head = .{
                         .structField = .{
                             .name = name,
@@ -474,7 +474,7 @@ pub const Parser = struct {
                 }
             } else if (token.token_t == .new_line) {
                 self.advanceToken();
-                const field = self.pushNode(.structField, start);
+                const field = try self.pushNode(.structField, start);
                 self.nodes.items[field].head = .{
                     .structField = .{
                         .name = name,
@@ -497,7 +497,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         var name: NodeId = NullId;
         if (token.token_t == .ident) {
-            name = self.pushIdentNode(self.next_pos);
+            name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
         } else return self.reportTokenError2(error.SyntaxError, "Expected struct name identifier.", .{}, token);
 
@@ -526,7 +526,7 @@ pub const Parser = struct {
                     lastField = id;
                 } else if (indent <= prevIndent) {
                     self.next_pos = start2;
-                    const id = self.pushNode(.structDecl, start);
+                    const id = try self.pushNode(.structDecl, start);
                     self.nodes.items[id].head = .{
                         .structDecl = .{
                             .name = name,
@@ -564,7 +564,7 @@ pub const Parser = struct {
                 }
             }
 
-            const id = self.pushNode(.structDecl, start);
+            const id = try self.pushNode(.structDecl, start);
             self.nodes.items[id].head = .{
                 .structDecl = .{
                     .name = name,
@@ -600,13 +600,13 @@ pub const Parser = struct {
         token = self.peekToken();
         if (token.token_t == .dot) {
             // Parse lambda assign decl.
-            var left = self.pushIdentNode(left_pos);
+            var left = try self.pushIdentNode(left_pos);
             self.advanceToken();
             while (true) {
                 token = self.peekToken();
                 if (token.token_t == .ident) {
-                    const ident = self.pushIdentNode(self.next_pos);
-                    const expr = self.pushNode(.access_expr, left_pos);
+                    const ident = try self.pushIdentNode(self.next_pos);
+                    const expr = try self.pushNode(.access_expr, left_pos);
                     self.nodes.items[expr].head = .{
                         .left_right = .{
                             .left = left,
@@ -639,7 +639,7 @@ pub const Parser = struct {
             const decl_id = @intCast(u32, self.func_decls.items.len);
             try self.func_decls.append(self.alloc, decl);
 
-            const id = self.pushNode(.lambda_assign_decl, start);
+            const id = try self.pushNode(.lambda_assign_decl, start);
             self.nodes.items[id].head = .{
                 .lambda_assign_decl = .{
                     .decl_id = decl_id,
@@ -663,7 +663,7 @@ pub const Parser = struct {
             const decl_id = @intCast(u32, self.func_decls.items.len);
             try self.func_decls.append(self.alloc, decl);
 
-            const id = self.pushNode(.func_decl, start);
+            const id = try self.pushNode(.func_decl, start);
             self.nodes.items[id].head = .{
                 .func = .{
                     .decl_id = decl_id,
@@ -686,7 +686,7 @@ pub const Parser = struct {
 
         var token = self.peekToken();
         if (token.token_t == .else_k) {
-            const else_clause = self.pushNode(.else_clause, self.next_pos);
+            const else_clause = try self.pushNode(.else_clause, self.next_pos);
             self.advanceToken();
 
             token = self.peekToken();
@@ -767,7 +767,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         if (token.token_t == .then_k) {
             const if_expr = try self.parseIfThenExpr(if_cond, start);
-            const expr_stmt = self.pushNode(.expr_stmt, start);
+            const expr_stmt = try self.pushNode(.expr_stmt, start);
             self.nodes.items[expr_stmt].head = .{
                 .child_head = if_expr,
             };
@@ -777,7 +777,7 @@ pub const Parser = struct {
         }
         self.advanceToken();
 
-        const if_stmt = self.pushNode(.if_stmt, start);
+        const if_stmt = try self.pushNode(.if_stmt, start);
 
         // TODO: Parse statements on the same line.
 
@@ -820,7 +820,7 @@ pub const Parser = struct {
             const first_stmt = try self.parseIndentedBodyStatements();
             self.popBlock();
 
-            const for_stmt = self.pushNode(.for_inf_stmt, start);
+            const for_stmt = try self.pushNode(.for_inf_stmt, start);
             self.nodes.items[for_stmt].head = .{
                 .child_head = first_stmt,
             };
@@ -839,7 +839,7 @@ pub const Parser = struct {
                 const first_stmt = try self.parseIndentedBodyStatements();
                 self.popBlock();
 
-                const for_stmt = self.pushNode(.for_cond_stmt, start);
+                const for_stmt = try self.pushNode(.for_cond_stmt, start);
                 self.nodes.items[for_stmt].head = .{
                     .left_right = .{
                         .left = expr_id,
@@ -852,7 +852,7 @@ pub const Parser = struct {
                 const right_range_expr = (try self.parseExpr(.{})) orelse {
                     return self.reportTokenError2(error.SyntaxError, "Expected right range expression.", .{}, token);
                 };
-                const range_clause = self.pushNode(.range_clause, expr_pos);
+                const range_clause = try self.pushNode(.range_clause, expr_pos);
                 self.nodes.items[range_clause].head = .{
                     .left_right = .{
                         .left = expr_id,
@@ -868,7 +868,7 @@ pub const Parser = struct {
                     const first_stmt = try self.parseIndentedBodyStatements();
                     self.popBlock();
 
-                    const for_stmt = self.pushNode(.for_range_stmt, start);
+                    const for_stmt = try self.pushNode(.for_range_stmt, start);
                     self.nodes.items[for_stmt].head = .{
                         .for_range_stmt = .{
                             .range_clause = range_clause,
@@ -893,7 +893,7 @@ pub const Parser = struct {
                             const first_stmt = try self.parseIndentedBodyStatements();
                             self.popBlock();
 
-                            const as_clause = self.pushNode(.as_range_clause, start);
+                            const as_clause = try self.pushNode(.as_range_clause, start);
                             self.nodes.items[as_clause].head = .{
                                 .as_range_clause = .{
                                     .ident = ident,
@@ -902,7 +902,7 @@ pub const Parser = struct {
                                 }
                             };
 
-                            const for_stmt = self.pushNode(.for_range_stmt, start);
+                            const for_stmt = try self.pushNode(.for_range_stmt, start);
                             self.nodes.items[for_stmt].head = .{
                                 .for_range_stmt = .{
                                     .range_clause = range_clause,
@@ -924,7 +924,7 @@ pub const Parser = struct {
                                 const first_stmt = try self.parseIndentedBodyStatements();
                                 self.popBlock();
 
-                                const as_clause = self.pushNode(.as_range_clause, start);
+                                const as_clause = try self.pushNode(.as_range_clause, start);
                                 self.nodes.items[as_clause].head = .{
                                     .as_range_clause = .{
                                         .ident = ident,
@@ -933,7 +933,7 @@ pub const Parser = struct {
                                     }
                                 };
 
-                                const for_stmt = self.pushNode(.for_range_stmt, start);
+                                const for_stmt = try self.pushNode(.for_range_stmt, start);
                                 self.nodes.items[for_stmt].head = .{
                                     .for_range_stmt = .{
                                         .range_clause = range_clause,
@@ -968,7 +968,7 @@ pub const Parser = struct {
                         const body_head = try self.parseIndentedBodyStatements();
                         self.popBlock();
 
-                        const as_clause = self.pushNode(.as_iter_clause, start);
+                        const as_clause = try self.pushNode(.as_iter_clause, start);
                         self.nodes.items[as_clause].head = .{
                             .as_iter_clause = .{
                                 .value = ident,
@@ -976,7 +976,7 @@ pub const Parser = struct {
                             }
                         };
 
-                        const for_stmt = self.pushNode(.for_iter_stmt, start);
+                        const for_stmt = try self.pushNode(.for_iter_stmt, start);
                         self.nodes.items[for_stmt].head = .{
                             .for_iter_stmt = .{
                                 .iterable = expr_id,
@@ -1000,7 +1000,7 @@ pub const Parser = struct {
     fn parseBlock(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the ident.
-        const name = self.pushIdentNode(start);
+        const name = try self.pushIdentNode(start);
         self.advanceToken();
         // Assumes second token is colon.
         self.advanceToken();
@@ -1010,7 +1010,7 @@ pub const Parser = struct {
         const first_stmt = try self.parseIndentedBodyStatements();
         self.popBlock();
         
-        const id = self.pushNode(.label_decl, start);
+        const id = try self.pushNode(.label_decl, start);
         self.nodes.items[id].head = .{
             .left_right = .{
                 .left = name,
@@ -1059,9 +1059,9 @@ pub const Parser = struct {
                     const name = self.src.items[name_token.start_pos .. name_token.data.end_pos];
                     var skip_compile = false;
 
-                    const ident = self.pushIdentNode(self.next_pos);
+                    const ident = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
-                    const at_ident = self.pushNode(.at_ident, start);
+                    const at_ident = try self.pushNode(.at_ident, start);
                     self.nodes.items[at_ident].head = .{
                         .annotation = .{
                             .child = ident,
@@ -1090,7 +1090,7 @@ pub const Parser = struct {
                         break :b call_id;
                     };
 
-                    const id = self.pushNode(.at_stmt, start);
+                    const id = try self.pushNode(.at_stmt, start);
                     self.nodes.items[id].head = .{
                         .at_stmt = .{
                             .child = child,
@@ -1126,7 +1126,7 @@ pub const Parser = struct {
                 return try self.parseForStatement();
             },
             .pass_k => {
-                const id = self.pushNode(.pass_stmt, self.next_pos);
+                const id = try self.pushNode(.pass_stmt, self.next_pos);
                 self.advanceToken();
                 token = self.peekToken();
                 switch (token.token_t) {
@@ -1141,7 +1141,7 @@ pub const Parser = struct {
                 }
             },
             .break_k => {
-                const id = self.pushNode(.break_stmt, self.next_pos);
+                const id = try self.pushNode(.break_stmt, self.next_pos);
                 self.advanceToken();
                 token = self.peekToken();
                 switch (token.token_t) {
@@ -1202,8 +1202,8 @@ pub const Parser = struct {
         const val_id = (try self.parseExpr(.{})) orelse {
             return self.reportTokenError2(error.SyntaxError, "Expected map value.", .{}, token);
         };
-        const key_id = self.pushNode(key_node_t, start);
-        const entry_id = self.pushNode(.map_entry, start);
+        const key_id = try self.pushNode(key_node_t, start);
+        const entry_id = try self.pushNode(.map_entry, start);
         self.nodes.items[entry_id].head = .{
             .left_right = .{
                 .left = key_id,
@@ -1271,7 +1271,7 @@ pub const Parser = struct {
             }
         }
 
-        const arr_id = self.pushNode(.arr_literal, start);
+        const arr_id = try self.pushNode(.arr_literal, start);
         self.nodes.items[arr_id].head = .{
             .child_head = first_entry,
         };
@@ -1347,7 +1347,7 @@ pub const Parser = struct {
             }
         }
 
-        const map_id = self.pushNode(.map_literal, start);
+        const map_id = try self.pushNode(.map_literal, start);
         self.nodes.items[map_id].head = .{
             .child_head = first_entry,
         };
@@ -1367,13 +1367,13 @@ pub const Parser = struct {
         if (token.token_t == .ident) {
             if (self.peekTokenAhead(1).token_t == .colon) {
                 // Named arg.
-                const name = self.pushIdentNode(start);
+                const name = try self.pushIdentNode(start);
                 _ = self.consumeToken();
                 _ = self.consumeToken();
                 var arg = (try self.parseExpr(.{})) orelse {
                     return self.reportTokenError2(error.SyntaxError, "Expected arg expression.", .{}, self.peekToken());
                 };
-                const named_arg = self.pushNode(.named_arg, start);
+                const named_arg = try self.pushNode(.named_arg, start);
                 self.nodes.items[named_arg].head = .{
                     .left_right = .{
                         .left = name,
@@ -1401,7 +1401,7 @@ pub const Parser = struct {
         self.advanceToken();
 
         const expr_start = self.nodes.items[left_id].start_token;
-        const expr_id = self.pushNode(.call_expr, expr_start);
+        const expr_id = try self.pushNode(.call_expr, expr_start);
 
         var has_named_arg = false;
         var first: NodeId = NullId;
@@ -1448,14 +1448,14 @@ pub const Parser = struct {
     /// Assumes first arg exists.
     fn parseNoParenCallExpression(self: *Parser, left_id: NodeId) !NodeId {
         const expr_start = self.nodes.items[left_id].start_token;
-        const expr_id = self.pushNode(.call_expr, expr_start);
+        const expr_id = try self.pushNode(.call_expr, expr_start);
 
         const start = self.next_pos;
         var token = self.consumeToken();
         var last_arg_id = switch (token.token_t) {
-            .ident => self.pushIdentNode(start),
-            .string => self.pushNode(.string, start),
-            .number => self.pushNode(.number, start),
+            .ident => try self.pushIdentNode(start),
+            .string => try self.pushNode(.string, start),
+            .number => try self.pushNode(.number, start),
             else => return self.reportTokenError2(error.BadToken, "Expected arg token", .{}, token),
         };
         self.nodes.items[expr_id].head = .{
@@ -1469,9 +1469,9 @@ pub const Parser = struct {
         while (true) {
             token = self.peekToken();
             const arg_id = switch (token.token_t) {
-                .ident => self.pushIdentNode(self.next_pos),
-                .string => self.pushNode(.string, self.next_pos),
-                .number => self.pushNode(.number, self.next_pos),
+                .ident => try self.pushIdentNode(self.next_pos),
+                .string => try self.pushNode(.string, self.next_pos),
+                .number => try self.pushNode(.number, self.next_pos),
                 .new_line => break,
                 .none => break,
                 else => return self.reportTokenError2(error.BadToken, "Expected arg token", .{}, token),
@@ -1500,7 +1500,7 @@ pub const Parser = struct {
                 start = self.next_pos;
                 const right_id = try self.parseRightExpression(right_op);
 
-                const bin_expr = self.pushNode(.bin_expr, start);
+                const bin_expr = try self.pushNode(.bin_expr, start);
                 self.nodes.items[bin_expr].head = .{
                     .left_right = .{
                         .left = expr_id,
@@ -1521,7 +1521,7 @@ pub const Parser = struct {
                         if (right2_op_prec == right_op_prec) {
                             self.advanceToken();
                             const rightExpr = try self.parseRightExpression(right_op);
-                            const newBinExpr = self.pushNode(.bin_expr, start);
+                            const newBinExpr = try self.pushNode(.bin_expr, start);
                             self.nodes.items[newBinExpr].head = .{
                                 .left_right = .{
                                     .left = left,
@@ -1556,7 +1556,7 @@ pub const Parser = struct {
         // Assume first token is `then`
         self.advanceToken();
 
-        const if_expr = self.pushNode(.if_expr, start);
+        const if_expr = try self.pushNode(.if_expr, start);
 
         const if_body = (try self.parseExpr(.{})) orelse {
             return self.reportTokenError2(error.SyntaxError, "Expected if body.", .{}, self.peekToken());
@@ -1571,7 +1571,7 @@ pub const Parser = struct {
 
         const token = self.peekToken();
         if (token.token_t == .else_k) {
-            const else_clause = self.pushNode(.else_clause, self.next_pos);
+            const else_clause = try self.pushNode(.else_clause, self.next_pos);
             self.advanceToken();
 
             const else_body = (try self.parseExpr(.{})) orelse {
@@ -1590,14 +1590,14 @@ pub const Parser = struct {
     fn parseStringTemplate(self: *Parser) !NodeId {
         const start = self.next_pos;
 
-        const id = self.pushNode(.stringTemplate, start);
+        const id = try self.pushNode(.stringTemplate, start);
 
         // First determine the first token type.
         var expectType: TokenType = undefined;
         var first: NodeId = undefined;
         var token = self.peekToken();
         if (token.token_t == .templateString) {
-            first = self.pushNode(.string, start);
+            first = try self.pushNode(.string, start);
             expectType = .templateExprStart;
         } else if (token.token_t == .templateExprStart) {
             self.advanceToken();
@@ -1624,7 +1624,7 @@ pub const Parser = struct {
 
         while (token.token_t == expectType) {
             if (expectType == .templateString) {
-                const str = self.pushNode(.string, self.next_pos);
+                const str = try self.pushNode(.string, self.next_pos);
                 self.nodes.items[last].next = str;
                 last = str;
                 expectType = .templateExprStart;
@@ -1654,7 +1654,7 @@ pub const Parser = struct {
         var left_id = switch (token.token_t) {
             .ident => b: {
                 self.advanceToken();
-                const id = self.pushIdentNode(start);
+                const id = try self.pushIdentNode(start);
 
                 const name_token = self.tokens.items[start];
                 const name = self.src.items[name_token.start_pos..name_token.data.end_pos];
@@ -1666,23 +1666,23 @@ pub const Parser = struct {
             },
             .true_k => {
                 self.advanceToken();
-                return self.pushNode(.true_literal, start);
+                return try self.pushNode(.true_literal, start);
             },
             .false_k => {
                 self.advanceToken();
-                return self.pushNode(.false_literal, start);
+                return try self.pushNode(.false_literal, start);
             },
             .none_k => {
                 self.advanceToken();
-                return self.pushNode(.none, start);
+                return try self.pushNode(.none, start);
             },
             .number => b: {
                 self.advanceToken();
-                break :b self.pushNode(.number, start);
+                break :b try self.pushNode(.number, start);
             },
             .string => b: {
                 self.advanceToken();
-                break :b self.pushNode(.string, start);
+                break :b try self.pushNode(.string, start);
             },
             .templateString => {
                 return self.parseStringTemplate();
@@ -1694,9 +1694,9 @@ pub const Parser = struct {
                 self.advanceToken();
                 token = self.peekToken();
                 if (token.token_t == .ident) {
-                    const ident = self.pushIdentNode(self.next_pos);
+                    const ident = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
-                    const at_ident = self.pushNode(.at_ident, start);
+                    const at_ident = try self.pushNode(.at_ident, start);
                     self.nodes.items[at_ident].head = .{
                         .annotation = .{
                             .child = ident,
@@ -1709,7 +1709,7 @@ pub const Parser = struct {
             },
             .await_k => {
                 // Await expression.
-                const expr_id = self.pushNode(.await_expr, start);
+                const expr_id = try self.pushNode(.await_expr, start);
                 self.advanceToken();
                 const term_id = try self.parseTermExpr();
                 self.nodes.items[expr_id].head = .{
@@ -1776,7 +1776,7 @@ pub const Parser = struct {
             },
             .not_k => {
                 self.advanceToken();
-                const expr = self.pushNode(.unary_expr, start);
+                const expr = try self.pushNode(.unary_expr, start);
                 const child = try self.parseTermExpr();
                 self.nodes.items[expr].head = .{
                     .unary = .{
@@ -1789,7 +1789,7 @@ pub const Parser = struct {
             .operator => {
                 if (token.data.operator_t == .minus) {
                     self.advanceToken();
-                    const expr_id = self.pushNode(.unary_expr, start);
+                    const expr_id = try self.pushNode(.unary_expr, start);
                     const term_id = try self.parseTermExpr();
                     self.nodes.items[expr_id].head = .{
                         .unary = .{
@@ -1821,8 +1821,8 @@ pub const Parser = struct {
                     self.advanceToken();
                     const next2 = self.peekToken();
                     if (next2.token_t == .ident) {
-                        const right_id = self.pushIdentNode(self.next_pos);
-                        const expr_id = self.pushNode(.access_expr, start);
+                        const right_id = try self.pushIdentNode(self.next_pos);
+                        const expr_id = try self.pushNode(.access_expr, start);
                         self.nodes.items[expr_id].head = .{
                             .left_right = .{
                                 .left = left_id,
@@ -1852,7 +1852,7 @@ pub const Parser = struct {
                             token = self.peekToken();
                             if (token.token_t == .right_bracket) {
                                 self.advanceToken();
-                                const res = self.pushNode(.arr_range_expr, start);
+                                const res = try self.pushNode(.arr_range_expr, start);
                                 self.nodes.items[res].head = .{
                                     .arr_range_expr = .{
                                         .arr = left_id,
@@ -1873,7 +1873,7 @@ pub const Parser = struct {
                             token = self.peekToken();
                             if (token.token_t == .right_bracket) {
                                 self.advanceToken();
-                                const access_id = self.pushNode(.arr_access_expr, start);
+                                const access_id = try self.pushNode(.arr_access_expr, start);
                                 self.nodes.items[access_id].head = .{
                                     .left_right = .{
                                         .left = left_id,
@@ -1888,7 +1888,7 @@ pub const Parser = struct {
                                 if (token.token_t == .right_bracket) {
                                     // Start index to end of list slice.
                                     self.advanceToken();
-                                    const res = self.pushNode(.arr_range_expr, start);
+                                    const res = try self.pushNode(.arr_range_expr, start);
                                     self.nodes.items[res].head = .{
                                         .arr_range_expr = .{
                                             .arr = left_id,
@@ -1905,7 +1905,7 @@ pub const Parser = struct {
                                     token = self.peekToken();
                                     if (token.token_t == .right_bracket) {
                                         self.advanceToken();
-                                        const res = self.pushNode(.arr_range_expr, start);
+                                        const res = try self.pushNode(.arr_range_expr, start);
                                         self.nodes.items[res].head = .{
                                             .arr_range_expr = .{
                                                 .arr = left_id,
@@ -1936,7 +1936,7 @@ pub const Parser = struct {
                 .left_brace => {
                     if (self.nodes.items[left_id].node_t == .ident) {
                         const props = try self.parseMapLiteral();
-                        const initN = self.pushNode(.structInit, start);
+                        const initN = try self.pushNode(.structInit, start);
                         self.nodes.items[initN].head = .{
                             .structInit = .{
                                 .structType = left_id,
@@ -2022,7 +2022,7 @@ pub const Parser = struct {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(bin_op);
 
-                    const bin_expr = self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.bin_expr, start);
                     self.nodes.items[bin_expr].head = .{
                         .left_right = .{
                             .left = left_id,
@@ -2035,7 +2035,7 @@ pub const Parser = struct {
                 .and_k => {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(.and_op);
-                    const bin_expr = self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.bin_expr, start);
                     self.nodes.items[bin_expr].head = .{
                         .left_right = .{
                             .left = left_id,
@@ -2048,7 +2048,7 @@ pub const Parser = struct {
                 .or_k => {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(.or_op);
-                    const bin_expr = self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.bin_expr, start);
                     self.nodes.items[bin_expr].head = .{
                         .left_right = .{
                             .left = left_id,
@@ -2065,7 +2065,7 @@ pub const Parser = struct {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(bin_op);
 
-                    const bin_expr = self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.bin_expr, start);
                     self.nodes.items[bin_expr].head = .{
                         .left_right = .{
                             .left = left_id,
@@ -2085,7 +2085,7 @@ pub const Parser = struct {
                     }
                     const right_id = try self.parseRightExpression(binOp);
 
-                    const bin_expr = self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.bin_expr, start);
                     self.nodes.items[bin_expr].head = .{
                         .left_right = .{
                             .left = left_id,
@@ -2118,10 +2118,10 @@ pub const Parser = struct {
         self.advanceToken();
         const token = self.peekToken();
         if (token.token_t == .new_line or token.token_t == .none) {
-            return self.pushNode(.return_stmt, start);
+            return try self.pushNode(.return_stmt, start);
         } else {
             const expr = try self.parseExpr(.{}) orelse return self.reportTokenError("Expected expression.", .{});
-            const id = self.pushNode(.return_expr_stmt, start);
+            const id = try self.pushNode(.return_expr_stmt, start);
             self.nodes.items[id].head = .{
                 .child_head = expr,
             };
@@ -2142,8 +2142,8 @@ pub const Parser = struct {
             };
             const start = self.nodes.items[expr_id].start_token;
             const id = switch (token.token_t) {
-                .equal => self.pushNode(.assign_stmt, start),
-                .plus_equal => self.pushNode(.add_assign_stmt, start),
+                .equal => try self.pushNode(.assign_stmt, start),
+                .plus_equal => try self.pushNode(.add_assign_stmt, start),
                 else => return self.reportTokenError2(error.Unsupported, "Unsupported assignment operator.", .{}, token),
             };
             self.nodes.items[id].head = .{
@@ -2176,7 +2176,7 @@ pub const Parser = struct {
             } else return self.reportTokenError2(error.BadToken, "Expected end of line or file", .{}, token);
         } else {
             const start = self.nodes.items[expr_id].start_token;
-            const id = self.pushNode(.expr_stmt, start);
+            const id = try self.pushNode(.expr_stmt, start);
             self.nodes.items[id].head = .{
                 .child_head = expr_id,
             };
@@ -2191,19 +2191,19 @@ pub const Parser = struct {
         }
     }
 
-    pub fn pushNode(self: *Parser, node_t: NodeType, start: u32) NodeId {
+    pub fn pushNode(self: *Parser, node_t: NodeType, start: u32) !NodeId {
         const id = self.nodes.items.len;
-        self.nodes.append(self.alloc, .{
+        try self.nodes.append(self.alloc, .{
             .node_t = node_t,
             .start_token = start,
             .next = NullId,
             .head = undefined,
-        }) catch fatal();
+        });
         return @intCast(NodeId, id);
     }
 
-    fn pushIdentNode(self: *Parser, start: u32) NodeId {
-        const id = self.pushNode(.ident, start);
+    fn pushIdentNode(self: *Parser, start: u32) !NodeId {
+        const id = try self.pushNode(.ident, start);
         self.nodes.items[id].head = .{
             .ident = .{
                 .semaVarId = NullId,

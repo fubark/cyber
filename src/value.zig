@@ -111,6 +111,7 @@ pub const Value = packed union {
                 TagNone => return false,
                 TagBoolean => return self.asBool(),
                 else => {
+                    log.debug("tag {}", .{self.getTag()});
                     stdx.panic("unexpected tag");
                 },
             }
@@ -258,7 +259,7 @@ pub const Value = packed union {
             if (self.isPointer()) {
                 const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
                 switch (obj.common.structId) {
-                    cy.ListS => log.info("List {*} len={}", .{obj, obj.retainedList.list.len}),
+                    cy.ListS => log.info("List {*} len={}", .{obj, obj.list.list.len}),
                     cy.MapS => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
                     cy.StringS => {
                         if (obj.string.len > 20) {
@@ -287,13 +288,15 @@ pub const Value = packed union {
                     cy.ListS => return .list,
                     cy.MapS => return .map,
                     cy.StringS => return .string,
+                    cy.ClosureS => return .closure,
+                    cy.LambdaS => return .lambda,
                     else => {
                         return .object;
                     },
                 }
             } else {
                 switch (self.getTag()) {
-                    TagBoolean => return .bool,
+                    TagBoolean => return .boolean,
                     else => unreachable,
                 }
             }
@@ -308,7 +311,9 @@ const ValueUserTag = enum {
     map,
     string,
     constString,
-    bool,
+    closure,
+    lambda,
+    boolean,
 };
 
 test "floatCanBeInteger" {

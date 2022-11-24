@@ -684,6 +684,12 @@ pub const VMcompiler = struct {
 
     fn endLocals(self: *VMcompiler) !void {
         const sblock = self.curSemaBlock();
+        for (sblock.params.items) |varId| {
+            const svar = self.vars.items[varId];
+            if (svar.lifetimeRcCandidate and !svar.isCaptured) {
+                try self.buf.pushOp1(.release, svar.local);
+            }
+        }
         for (sblock.locals.items) |varId| {
             const svar = self.vars.items[varId];
             if (svar.lifetimeRcCandidate) {

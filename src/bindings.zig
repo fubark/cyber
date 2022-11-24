@@ -55,9 +55,10 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.ensureGlobalFuncSym("toString", "std.toString");
 }
 
-fn stdToString(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
+fn stdToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const val = args[0];
+    defer vm_.release(args[0]);
     if (val.isString()) {
         return val;
     } else {
@@ -66,23 +67,23 @@ fn stdToString(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
-fn stdPrint(_: cy.UserVM, args: [*]const Value, nargs: u8) Value {
+fn stdPrint(_: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
-    gvm.release(args[0]);
+    vm_.release(args[0]);
     return Value.initNone();
 }
 
-fn stdReadInput(_: cy.UserVM, _: [*]const Value, _: u8) Value {
+fn stdReadInput(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const input = std.io.getStdIn().readToEndAlloc(gvm.alloc, 10e8) catch stdx.fatal();
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 
-fn stdParseCyon(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
+fn stdParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueAsString(args[0]);
-    defer gvm.release(args[0]);
+    defer vm_.release(args[0]);
 
     var parser = cy.Parser.init(gvm.alloc);
     defer parser.deinit();
@@ -90,7 +91,7 @@ fn stdParseCyon(vm: cy.UserVM, args: [*]const Value, nargs: u8) Value {
     return fromCyonValue(vm, val) catch stdx.fatal();
 }
 
-fn fromCyonValue(self: cy.UserVM, val: cy.DecodeValueIR) !Value {
+fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
     switch (val.getValueType()) {
         .list => {
             var dlist = val.asList() catch stdx.fatal();
@@ -117,7 +118,6 @@ fn fromCyonValue(self: cy.UserVM, val: cy.DecodeValueIR) !Value {
         },
         .string => {
             const str = val.allocString();
-            log.debug("cyon string {s}", .{str});
             return try gvm.allocOwnedString(str);
         },
         .number => {
@@ -126,74 +126,71 @@ fn fromCyonValue(self: cy.UserVM, val: cy.DecodeValueIR) !Value {
     }
 }
 
-fn stdMapPut(_: cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
+fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
     const map = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner); 
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
-fn listSort(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
 
-    const vm = gvm;
     const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.retainedList.list);
-    const Context = struct {
+    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+    const LessContext = struct {
         lessFn: Value,
-        vm: *cy.VM,
     };
-    var ctx = Context{
+    var lessCtx = LessContext{
         .lessFn = args[0],
-        .vm = vm,
     };
     const S = struct {
-        fn less(ctx_: *Context, a: Value, b: Value) bool {
-            ctx_.vm.ensureUnusedStackSpace(3) catch stdx.fatal();
-            ctx_.vm.stack.top += 3;
-            ctx_.vm.retain(a);
-            ctx_.vm.retain(b);
-            ctx_.vm.stack.buf[ctx_.vm.stack.top-1] = a;
-            ctx_.vm.stack.buf[ctx_.vm.stack.top-2] = b;
-            ctx_.vm.stack.buf[ctx_.vm.stack.top-3] = ctx_.lessFn;
-            const retInfo = ctx_.vm.buildReturnInfo(1, false);
-            ctx_.vm.call(ctx_.lessFn, 3, retInfo) catch stdx.fatal();
+        fn less(ctx_: *LessContext, a: Value, b: Value) bool {
+            gvm.ensureUnusedStackSpace(3) catch stdx.fatal();
+            gvm.stack.top += 3;
+            gvm.retain(a);
+            gvm.retain(b);
+            gvm.stack.buf[gvm.stack.top-1] = a;
+            gvm.stack.buf[gvm.stack.top-2] = b;
+            gvm.stack.buf[gvm.stack.top-3] = ctx_.lessFn;
+            const retInfo = gvm.buildReturnInfo2(gvm.pc, 1, false);
+            vm_.callNoInline(&gvm.pc, ctx_.lessFn, 3, retInfo) catch stdx.fatal();
             @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
-            const res = ctx_.vm.popRegister();
+            const res = gvm.popRegister();
             return res.toBool();
         }
     };
-    std.sort.sort(Value, list.items, &ctx, S.less);
-    vm.release(ctx.lessFn);
+    std.sort.sort(Value, list.items, &lessCtx, S.less);
+    vm_.release(args[0]);
     return Value.initNone();
 }
 
-fn listAdd(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.retainedList.list);
+    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
     inner.append(gvm.alloc, args[0]) catch stdx.fatal();
     return Value.initNone();
 }
 
-fn listNext(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    if (list.retainedList.nextIterIdx < list.retainedList.list.len) {
-        defer list.retainedList.nextIterIdx += 1;
-        const val = list.retainedList.list.ptr[list.retainedList.nextIterIdx];
+    if (list.list.nextIterIdx < list.list.list.len) {
+        defer list.list.nextIterIdx += 1;
+        const val = list.list.list.ptr[list.list.nextIterIdx];
         gvm.retain(val);
         return val;
     } else return Value.initNone();
 }
 
-fn listIterator(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
@@ -206,18 +203,18 @@ fn listIterator(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     return Value.initPtr(ptr);
 }
 
-fn listResize(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.retainedList.list);
+    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
     inner.resize(gvm.alloc, size) catch stdx.fatal();
     return Value.initNone();
 }
 
-fn mapRemove(_: cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");

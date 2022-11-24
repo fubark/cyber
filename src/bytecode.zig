@@ -193,6 +193,7 @@ pub const ByteCodeBuffer = struct {
                 .pushSlice,
                 .setIndex,
                 .pushStringTemplate,
+                .coreturn,
                 .pushNeg,
                 .pushTrue,
                 .pushFalse => {
@@ -227,7 +228,9 @@ pub const ByteCodeBuffer = struct {
                 .pushCallObjSym1,
                 .pushCallSym0,
                 .pushCallSym1,
+                .pushCostart,
                 .pushMinus2,
+                .coyield,
                 .pushMinus1 => {
                     try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
                     pc += 3;
@@ -431,12 +434,15 @@ pub const OpCode = enum(u8) {
     jumpNotCondKeep,
     pushFieldRetainParentRelease,
     pushFieldParentRelease,
+    pushCostart,
+    coyield,
+    coreturn,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 63);
+    try t.eq(@enumToInt(OpCode.end), 66);
     try t.eq(@sizeOf(OpData), 1);
 }

@@ -30,6 +30,8 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "struct", .struct_k },
     .{ "none", .none_k },
     .{ "is", .is_k },
+    .{ "costart", .costart_k },
+    .{ "coyield", .coyield_k },
 });
 
 const BlockState = struct {
@@ -1717,6 +1719,26 @@ pub const Parser = struct {
                 };
                 return expr_id;
             },
+            .coyield_k => {
+                self.advanceToken();
+                const coyield = try self.pushNode(.coyield, start);
+                return coyield;
+            },
+            .costart_k => {
+                self.advanceToken();
+                const callExprId = try self.parseExpr(.{}) orelse {
+                    return self.reportTokenError("Expected call expression.", .{});
+                };
+                const callExpr = self.nodes.items[callExprId];
+                if (callExpr.node_t != .call_expr) {
+                    return self.reportTokenError("Expected call expression.", .{});
+                }
+                const costart = try self.pushNode(.costart, start);
+                self.nodes.items[costart].head = .{
+                    .child_head = callExprId,
+                };
+                return costart;
+            },
             .func_k => {
                 // Lambda function.
                 return self.parseLambdaFunction();
@@ -2399,6 +2421,8 @@ pub const TokenType = enum {
     struct_k,
     func_k,
     is_k,
+    costart_k,
+    coyield_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -2465,6 +2489,8 @@ pub const NodeType = enum {
     map_literal,
     map_entry,
     arr_literal,
+    costart,
+    coyield,
 };
 
 pub const BinaryExprOp = enum {
@@ -2525,6 +2551,7 @@ pub const Node = struct {
         func: struct {
             decl_id: FuncDeclId,
             body_head: NodeId,
+            genEndLocalsPc: u32 = NullId,
         },
         lambda_assign_decl: struct {
             decl_id: FuncDeclId,

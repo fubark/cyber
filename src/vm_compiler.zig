@@ -29,7 +29,8 @@ pub const VMcompiler = struct {
     vars: std.ArrayListUnmanaged(SemaVar),
     capVarParents: std.AutoHashMapUnmanaged(SemaVarId, SemaVarId),
     blocks: std.ArrayListUnmanaged(Block),
-    jumpStack: std.ArrayListUnmanaged(Jump),
+    blockJumpStack: std.ArrayListUnmanaged(BlockJump),
+    subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
     nodeStack: std.ArrayListUnmanaged(cy.NodeId),
     assignedVarStack: std.ArrayListUnmanaged(SemaVarId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
@@ -59,7 +60,8 @@ pub const VMcompiler = struct {
             .vars = .{},
             .capVarParents = .{},
             .blocks = .{},
-            .jumpStack = .{},
+            .blockJumpStack = .{},
+            .subBlockJumpStack = .{},
             .nodeStack = .{},
             .assignedVarStack = .{},
             .operandStack = .{},
@@ -89,7 +91,8 @@ pub const VMcompiler = struct {
 
         self.blocks.deinit(self.alloc);
         self.buf.deinit();
-        self.jumpStack.deinit(self.alloc);
+        self.blockJumpStack.deinit(self.alloc);
+        self.subBlockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
@@ -328,6 +331,13 @@ pub const VMcompiler = struct {
                     },
                     else => return self.reportError("Unsupported binary op: {}", .{op}, node),
                 }
+            },
+            .coyield => {
+                return AnyType;
+            },
+            .costart => {
+                _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
+                return FiberType;
             },
             .call_expr => {
                 const callee = self.nodes[node.head.func_call.callee];
@@ -692,14 +702,10 @@ pub const VMcompiler = struct {
         }
         for (sblock.locals.items) |varId| {
             const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate) {
+            if (svar.lifetimeRcCandidate and svar.genIsDefined) {
                 try self.buf.pushOp1(.release, svar.local);
             }
         }
-    }
-
-    fn pushJumpStack(self: *VMcompiler, pc: u32) !void {
-        try self.jumpStack.append(self.alloc, .{ .pc = pc });
     }
 
     fn pushContTo(self: *VMcompiler, toPc: usize) !void {
@@ -740,6 +746,22 @@ pub const VMcompiler = struct {
 
     fn patchJumpToCurrent(self: *VMcompiler, jumpPc: u32) void {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+    }
+
+    fn patchSubBlockJumps(self: *VMcompiler, jumpStackStart: usize) void {
+        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+            self.patchJumpToCurrent(jump.pc);
+        }
+    }
+
+    fn patchBlockJumps(self: *VMcompiler, jumpStackStart: usize) void {
+        for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
+            switch (jump.jumpT) {
+                .jumpToEndLocals => {
+                    self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, self.curBlock.endLocalsPc - jump.pc));
+                }
+            }
+        }
     }
 
     fn pushSemaSubBlock(self: *VMcompiler) !void {
@@ -1082,7 +1104,7 @@ pub const VMcompiler = struct {
             },
             .break_stmt => {
                 const pc = try self.pushEmptyJump();
-                try self.pushJumpStack(pc);
+                try self.subBlockJumpStack.append(self.alloc, .{ .pc = pc });
             },
             .add_assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
@@ -1202,10 +1224,14 @@ pub const VMcompiler = struct {
             },
             .for_inf_stmt => {
                 self.nextSemaSubBlock();
-                defer self.prevSemaSubBlock();
 
                 const pcSave = @intCast(u32, self.buf.ops.items.len);
-                const jumpStackSave = @intCast(u32, self.jumpStack.items.len);
+                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
+                defer {
+                    self.patchSubBlockJumps(jumpStackSave);
+                    self.subBlockJumpStack.items.len = jumpStackSave;
+                    self.prevSemaSubBlock();
+                }
 
                 // TODO: generate gas meter checks.
                 // if (self.opts.gas_meter != .none) {
@@ -1219,12 +1245,6 @@ pub const VMcompiler = struct {
 
                 try self.genStatements(node.head.child_head, false);
                 try self.pushJumpBackTo(pcSave);
-
-                // Patch break jumps.
-                for (self.jumpStack.items[jumpStackSave..]) |jump| {
-                    self.patchJumpToCurrent(jump.pc);
-                }
-                self.jumpStack.items.len = jumpStackSave;
             },
             .for_iter_stmt => {
                 self.nextSemaSubBlock();
@@ -1290,13 +1310,16 @@ pub const VMcompiler = struct {
 
                 var elseClauseId = node.head.left_right.extra;
                 if (elseClauseId != NullId) {
-                    const jumpsStart = @intCast(u32, self.jumpStack.items.len);
-                    defer self.jumpStack.items.len = jumpsStart;
+                    const jumpsStart = self.subBlockJumpStack.items.len;
+                    defer {
+                        self.patchSubBlockJumps(jumpsStart);
+                        self.subBlockJumpStack.items.len = jumpsStart;
+                    }
 
                     var endsWithElse = false;
                     while (elseClauseId != NullId) {
                         const pc = try self.pushEmptyJump();
-                        try self.pushJumpStack(pc);
+                        try self.subBlockJumpStack.append(self.alloc, .{ .pc = pc });
 
                         self.patchJumpToCurrent(lastCondJump);
 
@@ -1321,11 +1344,6 @@ pub const VMcompiler = struct {
 
                     if (!endsWithElse) {
                         self.patchJumpToCurrent(lastCondJump);
-                    }
-
-                    // Patch jumps.
-                    for (self.jumpStack.items[jumpsStart..]) |jump| {
-                        self.patchJumpToCurrent(jump.pc);
                     }
                 } else {
                     self.patchJumpToCurrent(lastCondJump);
@@ -1440,24 +1458,164 @@ pub const VMcompiler = struct {
         self.nextSemaBlock();
         self.curBlock.frameLoc = nodeId;
 
+        const jumpStackStart = self.blockJumpStack.items.len;
+        defer {
+            self.patchBlockJumps(jumpStackStart);
+            self.blockJumpStack.items.len = jumpStackStart;
+
+            self.prevSemaBlock();
+            self.popBlock();
+        }
+
         const opStart = @intCast(u32, self.buf.ops.items.len);
         try self.reserveFuncParams();
         try self.genInitLocals();
         try self.genStatements(node.head.func.body_head, false);
         // TODO: Check last statement to skip adding ret.
+        self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+        self.nodes[nodeId].head.func.genEndLocalsPc = self.curBlock.endLocalsPc;
+        
         try self.endLocals();
         try self.buf.pushOp(.ret0);
 
         // Reserve another local for the call return info.
         const numParams = func.params.end - func.params.start;
         const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
-        self.prevSemaBlock();
-        self.popBlock();
 
         self.patchJumpToCurrent(jumpPc);
 
         const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
         self.vm.setFuncSym(symId, sym);
+    }
+
+    fn genCallArgs(self: *VMcompiler, first: cy.NodeId) !u32 {
+        var numArgs: u32 = 0;
+        var argId = first;
+        while (argId != NullId) : (numArgs += 1) {
+            const arg = self.nodes[argId];
+            _ = try self.genMaybeRetainExpr(argId, false);
+            argId = arg.next;
+        }
+        return numArgs;
+    }
+
+    fn genCallExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool, comptime startFiber: bool) !Type {
+        const node = self.nodes[nodeId];
+        const callee = self.nodes[node.head.func_call.callee];
+        if (!node.head.func_call.has_named_arg) {
+            if (callee.node_t == .access_expr) {
+                const right = self.nodes[callee.head.left_right.right];
+                if (right.node_t == .ident) {
+                    const numArgs = 1 + try self.genCallArgs(node.head.func_call.arg_head);
+
+                    const rightName = self.getNodeTokenString(right);
+                    const methodId = try self.vm.ensureMethodSymKey(rightName);
+
+                    // var isStdCall = false;
+                    const left = self.nodes[callee.head.left_right.left];
+                    if (left.node_t == .ident) {
+                        // Check if it's a symbol path.
+                        const leftName = self.getNodeTokenString(left);
+                        try self.u8Buf.resize(self.alloc, leftName.len + rightName.len + 1);
+                        std.mem.copy(u8, self.u8Buf.items[0..leftName.len], leftName);
+                        self.u8Buf.items[leftName.len] = '.';
+                        std.mem.copy(u8, self.u8Buf.items[leftName.len+1..], rightName);
+
+                        if (self.vm.getFuncSym(self.u8Buf.items)) |symId| {
+                            if (discardTopExprReg) {
+                                try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs-1));
+                            } else {
+                                try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs-1));
+                            }
+                            return AnyType;
+                        }
+
+                        // if (try self.readScopedVar(leftName)) |info| {
+                        //     if (info.vtype.typeT == ListType.typeT) {
+                        //         if (self.vm.hasMethodSym(cy.ListS, methodId)) {
+                        //             isStdCall = true;
+                        //         } 
+                        //     }
+                        // }
+                    }
+                    
+                    // if (isStdCall) {
+                    //     // Avoid retain/release for std call.
+                    //     _ = try self.genExpr(left, false);
+                    // } else {
+                    //     _ = try self.genMaybeRetainExpr(left, false);
+                    // }
+
+                    // Retain is triggered during the function call if it ends up being a vm func.
+                    _ = try self.genExpr(callee.head.left_right.left, false);
+
+                    if (discardTopExprReg) {
+                        try self.buf.pushOp2(.pushCallObjSym0, @intCast(u8, methodId), @intCast(u8, numArgs));
+                        try self.pushDebugSym(nodeId);
+                    } else {
+                        try self.buf.pushOp2(.pushCallObjSym1, @intCast(u8, methodId), @intCast(u8, numArgs));
+                        try self.pushDebugSym(nodeId);
+                    }
+                    return AnyType;
+                } else return self.reportError("Unsupported callee", .{}, node);
+            } else if (callee.node_t == .ident) {
+                const token = self.tokens[callee.start_token];
+                const name = self.src[token.start_pos..token.data.end_pos];
+
+                if (self.genGetVar(callee.head.ident.semaVarId)) |svar| {
+                    // Load callee first so it gets overwritten by the retInfo
+                    // and avoids a copy operation on the first arg.
+                    try self.genLoadLocal(svar.local);
+
+                    var numArgs: u32 = 1;
+                    var arg_id = node.head.func_call.arg_head;
+                    // Second arg should be pushed first to match callSym layout.
+                    if (arg_id != NullId) {
+                        const arg = self.nodes[arg_id];
+                        arg_id = arg.next;
+                    }
+                    while (arg_id != NullId) : (numArgs += 1) {
+                        const arg = self.nodes[arg_id];
+                        _ = try self.genMaybeRetainExpr(arg_id, false);
+                        arg_id = arg.next;
+                    }
+                    if (node.head.func_call.arg_head != NullId) {
+                        _ = try self.genMaybeRetainExpr(node.head.func_call.arg_head, false);
+                        numArgs += 1;
+                    }
+
+                    if (discardTopExprReg) {
+                        try self.buf.pushOp1(.pushCall0, @intCast(u8, numArgs));
+                    } else {
+                        try self.buf.pushOp1(.pushCall1, @intCast(u8, numArgs));
+                    }
+                    return AnyType;
+                } else {
+                    const numArgs = try self.genCallArgs(node.head.func_call.arg_head);
+
+                    const costartPc = self.buf.ops.items.len;
+                    if (startFiber) {
+                        try self.buf.pushOp2(.pushCostart, @intCast(u8, numArgs), 0);
+                    }
+
+                    const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
+                    if (discardTopExprReg) {
+                        try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs));
+                        try self.pushDebugSym(nodeId);
+                    } else {
+                        try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs));
+                        try self.pushDebugSym(nodeId);
+                    }
+
+                    if (startFiber) {
+                        try self.buf.pushOp(.coreturn);
+                        self.buf.setOpArgs1(costartPc + 2, @intCast(u8, self.buf.ops.items.len - costartPc));
+                    }
+
+                    return AnyType;
+                }
+            } else return self.reportError("Unsupported callee", .{}, node);
+        } else return self.reportError("Unsupported named args", .{}, node);
     }
 
     fn genIfExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool, comptime maybeRetain: bool) !Type {
@@ -1959,123 +2117,23 @@ pub const VMcompiler = struct {
                     else => return self.reportError("Unsupported binary op: {}", .{op}, node),
                 }
             },
+            .coyield => {
+                const pc = self.buf.ops.items.len;
+                try self.buf.pushOp2(.coyield, 0, 0);
+                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc) });
+
+                // TODO: return coyield expression.
+                if (!discardTopExprReg) {
+                    try self.buf.pushOp(.pushNone);
+                }
+                return AnyType;
+            },
+            .costart => {
+                _ = try self.genCallExpr(node.head.child_head, discardTopExprReg, true);
+                return FiberType;
+            },
             .call_expr => {
-                const callee = self.nodes[node.head.func_call.callee];
-                if (!node.head.func_call.has_named_arg) {
-                    if (callee.node_t == .access_expr) {
-                        const right = self.nodes[callee.head.left_right.right];
-                        if (right.node_t == .ident) {
-                            var numArgs: u32 = 1;
-                            var arg_id = node.head.func_call.arg_head;
-                            while (arg_id != NullId) : (numArgs += 1) {
-                                const arg = self.nodes[arg_id];
-                                _ = try self.genMaybeRetainExpr(arg_id, false);
-                                arg_id = arg.next;
-                            }
-
-                            const rightName = self.getNodeTokenString(right);
-                            const methodId = try self.vm.ensureMethodSymKey(rightName);
-
-                            // var isStdCall = false;
-                            const left = self.nodes[callee.head.left_right.left];
-                            if (left.node_t == .ident) {
-                                // Check if it's a symbol path.
-                                const leftName = self.getNodeTokenString(left);
-                                try self.u8Buf.resize(self.alloc, leftName.len + rightName.len + 1);
-                                std.mem.copy(u8, self.u8Buf.items[0..leftName.len], leftName);
-                                self.u8Buf.items[leftName.len] = '.';
-                                std.mem.copy(u8, self.u8Buf.items[leftName.len+1..], rightName);
-
-                                if (self.vm.getFuncSym(self.u8Buf.items)) |symId| {
-                                    if (discardTopExprReg) {
-                                        try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs-1));
-                                    } else {
-                                        try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs-1));
-                                    }
-                                    return AnyType;
-                                }
-
-                                // if (try self.readScopedVar(leftName)) |info| {
-                                //     if (info.vtype.typeT == ListType.typeT) {
-                                //         if (self.vm.hasMethodSym(cy.ListS, methodId)) {
-                                //             isStdCall = true;
-                                //         } 
-                                //     }
-                                // }
-                            }
-                            
-                            // if (isStdCall) {
-                            //     // Avoid retain/release for std call.
-                            //     _ = try self.genExpr(left, false);
-                            // } else {
-                            //     _ = try self.genMaybeRetainExpr(left, false);
-                            // }
-
-                            // Retain is triggered during the function call if it ends up being a vm func.
-                            _ = try self.genExpr(callee.head.left_right.left, false);
-
-                            if (discardTopExprReg) {
-                                try self.buf.pushOp2(.pushCallObjSym0, @intCast(u8, methodId), @intCast(u8, numArgs));
-                                try self.pushDebugSym(nodeId);
-                            } else {
-                                try self.buf.pushOp2(.pushCallObjSym1, @intCast(u8, methodId), @intCast(u8, numArgs));
-                                try self.pushDebugSym(nodeId);
-                            }
-                            return AnyType;
-                        } else return self.reportError("Unsupported callee", .{}, node);
-                    } else if (callee.node_t == .ident) {
-                        const token = self.tokens[callee.start_token];
-                        const name = self.src[token.start_pos..token.data.end_pos];
-
-                        if (self.genGetVar(callee.head.ident.semaVarId)) |svar| {
-                            // Load callee first so it gets overwritten by the retInfo
-                            // and avoids a copy operation on the first arg.
-                            try self.genLoadLocal(svar.local);
-
-                            var numArgs: u32 = 1;
-                            var arg_id = node.head.func_call.arg_head;
-                            // Second arg should be pushed first to match callSym layout.
-                            if (arg_id != NullId) {
-                                const arg = self.nodes[arg_id];
-                                arg_id = arg.next;
-                            }
-                            while (arg_id != NullId) : (numArgs += 1) {
-                                const arg = self.nodes[arg_id];
-                                _ = try self.genMaybeRetainExpr(arg_id, false);
-                                arg_id = arg.next;
-                            }
-                            if (node.head.func_call.arg_head != NullId) {
-                                _ = try self.genMaybeRetainExpr(node.head.func_call.arg_head, false);
-                                numArgs += 1;
-                            }
-
-                            if (discardTopExprReg) {
-                                try self.buf.pushOp1(.pushCall0, @intCast(u8, numArgs));
-                            } else {
-                                try self.buf.pushOp1(.pushCall1, @intCast(u8, numArgs));
-                            }
-                            return AnyType;
-                        } else {
-                            var numArgs: u32 = 0;
-                            var arg_id = node.head.func_call.arg_head;
-                            while (arg_id != NullId) : (numArgs += 1) {
-                                const arg = self.nodes[arg_id];
-                                _ = try self.genMaybeRetainExpr(arg_id, false);
-                                arg_id = arg.next;
-                            }
-
-                            const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
-                            if (discardTopExprReg) {
-                                try self.buf.pushOp2(.pushCallSym0, @intCast(u8, symId), @intCast(u8, numArgs));
-                                try self.pushDebugSym(nodeId);
-                            } else {
-                                try self.buf.pushOp2(.pushCallSym1, @intCast(u8, symId), @intCast(u8, numArgs));
-                                try self.pushDebugSym(nodeId);
-                            }
-                            return AnyType;
-                        }
-                    } else return self.reportError("Unsupported callee", .{}, node);
-                } else return self.reportError("Unsupported named args", .{}, node);
+                return self.genCallExpr(nodeId, discardTopExprReg, false);
             },
             .lambda_expr => {
                 if (!discardTopExprReg) {
@@ -2162,10 +2220,12 @@ const LocalId = u8;
 const Block = struct {
     numLocals: u32,
     frameLoc: cy.NodeId = NullId,
+    endLocalsPc: u32,
 
     fn init() Block {
         return .{
             .numLocals = 0,
+            .endLocalsPc = 0,
         };
     }
 
@@ -2233,6 +2293,8 @@ const TypeTag = enum {
     boolean,
     number,
     list,
+    map,
+    fiber,
     string,
 };
 
@@ -2266,13 +2328,18 @@ const StringType = Type{
     .rcCandidate = true,
 };
 
+const FiberType = Type{
+    .typeT = .fiber,
+    .rcCandidate = true,
+};
+
 const ListType = Type{
     .typeT = .list,
     .rcCandidate = true,
 };
 
 const MapType = Type{
-    .typeT = .list,
+    .typeT = .map,
     .rcCandidate = true,
 };
 
@@ -2287,7 +2354,16 @@ const ValueAddr = struct {
     },
 };
 
-const Jump = struct {
+const BlockJumpType = enum {
+    jumpToEndLocals,
+};
+
+const BlockJump = struct {
+    jumpT: BlockJumpType,
+    pc: u32,
+};
+
+const SubBlockJump = struct {
     pc: u32,
 };
 

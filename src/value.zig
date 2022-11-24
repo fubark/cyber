@@ -290,6 +290,7 @@ pub const Value = packed union {
                     cy.StringS => return .string,
                     cy.ClosureS => return .closure,
                     cy.LambdaS => return .lambda,
+                    cy.FiberS => return .fiber,
                     else => {
                         return .object;
                     },
@@ -306,6 +307,7 @@ pub const Value = packed union {
 
 const ValueUserTag = enum {
     number,
+    boolean,
     object,
     list,
     map,
@@ -313,7 +315,7 @@ const ValueUserTag = enum {
     constString,
     closure,
     lambda,
-    boolean,
+    fiber,
 };
 
 test "floatCanBeInteger" {

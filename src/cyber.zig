@@ -39,6 +39,7 @@ pub const MapInner = vm.MapInner;
 pub const ClosureS = vm.ClosureS;
 pub const LambdaS = vm.LambdaS;
 pub const StringS = vm.StringS;
+pub const FiberS = vm.FiberS;
 pub const StructId = vm.StructId;
 pub const EvalError = vm.EvalError;
 pub const StackTrace = vm.StackTrace;

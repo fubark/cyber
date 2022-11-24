@@ -18,6 +18,7 @@ pub const MapS: StructId = 1;
 pub const ClosureS: StructId = 2;
 pub const LambdaS: StructId = 3;
 pub const StringS: StructId = 4;
+pub const FiberS: StructId = 5;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -87,6 +88,9 @@ pub const VM = struct {
     debugTable: []const cy.OpDebug,
     panicMsg: []const u8,
 
+    curFiber: *Fiber,
+    mainFiber: Fiber,
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -121,7 +125,11 @@ pub const VM = struct {
             .debugTable = undefined,
             .refCounts = if (TrackGlobalRC) 0 else undefined,
             .panicMsg = "",
+            .mainFiber = undefined,
+            .curFiber = undefined,
         };
+        // Pointer offset from gvm to avoid deoptimization.
+        self.curFiber = &gvm.mainFiber;
         try self.compiler.init(self);
 
         // Perform big allocation for hot data paths since the allocator
@@ -1905,6 +1913,7 @@ pub fn release(val: Value) linksection(".eval") void {
             gvm.trace.numReleases += 1;
         }
         if (obj.retainedCommon.rc == 0) {
+            log.debug("free {}", .{val.getUserTag()});
             switch (obj.retainedCommon.structId) {
                 ListS => {
                     const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
@@ -1940,6 +1949,10 @@ pub fn release(val: Value) linksection(".eval") void {
                 },
                 StringS => {
                     gvm.alloc.free(obj.string.ptr[0..obj.string.len]);
+                    gvm.freeObject(obj);
+                },
+                FiberS => {
+                    releaseFiberStack(&obj.fiber);
                     gvm.freeObject(obj);
                 },
                 else => {
@@ -2321,6 +2334,17 @@ const Map = packed struct {
     // nextIterIdx: u32,
 };
 
+const Fiber = packed struct {
+    structId: StructId,
+    rc: u32,
+    stackPtr: [*]Value,
+    stackLen: u32,
+    stackTop: u32,
+    pc: u32,
+    framePtr: u32,
+    prevFiber: ?*Fiber,
+};
+
 const List = packed struct {
     structId: StructId,
     rc: u32,
@@ -2355,6 +2379,7 @@ pub const HeapObject = packed union {
         rc: u32,
     },
     list: List,
+    fiber: Fiber,
     map: Map,
     closure: Closure,
     lambda: Lambda,
@@ -2426,6 +2451,7 @@ const FieldSymbolMap = struct {
 };
 
 test "Internals." {
+    try t.eq(@alignOf(VM), 8);
     try t.eq(@sizeOf(SymbolMap), 40);
     try t.eq(@sizeOf(SymbolEntry), 16);
     try t.eq(@sizeOf(MapInner), 32);
@@ -2627,6 +2653,7 @@ pub fn evalLoopGrowStack() linksection(".eval") error{StackOverflow, OutOfMemory
     while (true) {
         @call(.{ .modifier = .always_inline }, evalLoop, .{}) catch |err| {
             if (err == error.StackOverflow) {
+                log.debug("grow stack", .{});
                 try gvm.stack.growTotalCapacity(gvm.alloc, gvm.stack.buf.len + 1);
                 continue;
             } else if (err == error.End) {
@@ -3354,6 +3381,39 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc = endPc;
                 continue;
             },
+            .coreturn => {
+                @setRuntimeSafety(debug);
+                pc += 1;
+                if (gvm.curFiber != &gvm.mainFiber) {
+                    pc = popFiber(pc);
+                }
+                continue;
+            },
+            .coyield => {
+                @setRuntimeSafety(debug);
+                if (gvm.curFiber != &gvm.mainFiber) {
+                    // Only yield on user fiber.
+                    pc = popFiber(pc);
+                } else {
+                    pc += 3;
+                }
+                continue;
+            },
+            .pushCostart => {
+                @setRuntimeSafety(debug);
+                // numArgs can be 0, so check for space.
+                try gvm.checkStackHasOneSpace();
+                const numArgs = gvm.ops[pc+1].arg;
+                const jump = gvm.ops[pc+2].arg;
+
+                const args = gvm.stack.buf[gvm.stack.top-numArgs..gvm.stack.top];
+                const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pc + 3, args});
+                gvm.stack.top = gvm.stack.top - numArgs + 1;
+                gvm.stack.buf[gvm.stack.top - 1] = fiber;
+                const ptr = stdx.ptrAlignCast(*Fiber, fiber.asPointer().?);
+                pc = pushFiber(pc + jump, ptr);
+                continue;
+            },
             .cont => {
                 @setRuntimeSafety(debug);
                 pc -= @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
@@ -3680,4 +3740,125 @@ fn callSymEntryNoInline(pc: usize, sym: SymbolEntry, obj: *HeapObject, numArgs: 
         // },
     }
     return pc;
+}
+
+fn popFiber(curFiberEndPc: usize) usize {
+    @setRuntimeSafety(debug);
+    gvm.curFiber.stackPtr = gvm.stack.buf.ptr;
+    gvm.curFiber.stackLen = @intCast(u32, gvm.stack.buf.len);
+    gvm.curFiber.stackTop = @intCast(u32, gvm.stack.top);
+    gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
+    gvm.curFiber.framePtr = @intCast(u32, gvm.framePtr);
+
+    gvm.curFiber = gvm.curFiber.prevFiber.?;
+    gvm.stack = .{
+        .buf = gvm.curFiber.stackPtr[0..gvm.curFiber.stackLen],
+        .top = gvm.curFiber.stackTop,
+    };
+    gvm.framePtr = gvm.curFiber.framePtr;
+    log.debug("fiber set to {} {}", .{gvm.curFiber.pc, gvm.framePtr});
+    return gvm.curFiber.pc;
+}
+
+fn pushFiber(curFiberEndPc: usize, fiber: *Fiber) usize {
+    @setRuntimeSafety(debug);
+    // Save current fiber.
+    gvm.curFiber.stackPtr = gvm.stack.buf.ptr;
+    gvm.curFiber.stackLen = @intCast(u32, gvm.stack.buf.len);
+    gvm.curFiber.stackTop = @intCast(u32, gvm.stack.top);
+    gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
+    gvm.curFiber.framePtr = @intCast(u32, gvm.framePtr);
+
+    // Push new fiber.
+    fiber.prevFiber = gvm.curFiber;
+    gvm.curFiber = fiber;
+    gvm.stack = .{
+        .buf = fiber.stackPtr[0..fiber.stackLen],
+        .top = fiber.stackTop,
+    };
+    log.debug("fiber set to {} {}", .{fiber.pc, fiber.framePtr});
+    gvm.framePtr = fiber.framePtr;
+    return fiber.pc;
+}
+
+fn allocFiber(pc: usize, args: []const Value) linksection(".eval") !Value {
+    @setRuntimeSafety(debug);
+
+    // Args are copied over to the new stack.
+    var stack: stdx.Stack(Value) = .{};
+    try stack.growTotalCapacity(gvm.alloc, args.len);
+    std.mem.copy(Value, stack.buf[0..args.len], args);
+
+    const obj = try gvm.allocObject();
+    obj.fiber = .{
+        .structId = FiberS,
+        .rc = 1,
+        .stackPtr = stack.buf.ptr,
+        .stackLen = @intCast(u32, stack.buf.len),
+        .stackTop = @intCast(u32, args.len),
+        .pc = @intCast(u32, pc),
+        .framePtr = 0,
+        .prevFiber = undefined,
+    };
+    if (TraceEnabled) {
+        gvm.trace.numRetains += 1;
+    }
+    if (TrackGlobalRC) {
+        gvm.refCounts += 1;
+    }
+
+    return Value.initPtr(obj);
+}
+
+fn runReleaseOps(stack: []const Value, framePtr: usize, startPc: usize) void {
+    var pc = startPc;
+    while (gvm.ops[pc].code == .release) {
+        const local = gvm.ops[pc+1].arg;
+        release(stack[framePtr + local]);
+        pc += 2;
+    }
+}
+
+/// Unwinds the stack and releases the locals.
+/// This also releases the initial captured vars since it's on the stack.
+fn releaseFiberStack(fiber: *Fiber) void {
+    log.debug("release fiber stack", .{});
+    var stack = stdx.Stack(Value){
+        .buf = fiber.stackPtr[0..fiber.stackLen],
+        .top = fiber.stackTop,
+    };
+    var framePtr = fiber.framePtr;
+    var pc = fiber.pc;
+    if (gvm.ops[pc].code == .coyield) {
+        const jump = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
+        log.debug("release on frame {} {}", .{pc, pc + jump});
+        // The yield statement already contains the end locals pc.
+        runReleaseOps(stack.buf, framePtr, pc + jump);
+    }
+    // Unwind stack and release all locals.
+    while (framePtr > 0) {
+        pc = stack.buf[framePtr].retInfo.pc;
+        framePtr = stack.buf[framePtr].retInfo.framePtr;
+
+        const endLocalsPc = pcToEndLocalsPc(pc);
+        log.debug("release on frame {} {}", .{pc, endLocalsPc});
+        if (endLocalsPc != NullId) {
+            runReleaseOps(stack.buf, framePtr, endLocalsPc);
+        }
+    }
+    // Finally free stack.
+    stack.deinit(gvm.alloc);
+}
+
+/// Given pc position, return the end locals pc in the same frame.
+/// TODO: Memoize this function.
+fn pcToEndLocalsPc(pc: usize) u32 {
+    const idx = gvm.indexOfDebugSym(pc) orelse {
+        stdx.panic("Missing debug symbol.");
+    };
+    const sym = gvm.debugTable[idx];
+    if (sym.frameLoc != NullId) {
+        const node = gvm.compiler.nodes[sym.frameLoc];
+        return node.head.func.genEndLocalsPc;
+    } else return NullId;
 }

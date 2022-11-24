@@ -25,6 +25,8 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
     const sort = try self.ensureMethodSymKey("sort");
     try self.addMethodSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
+    const size = try self.ensureMethodSymKey("size");
+    try self.addMethodSym(cy.ListS, size, cy.SymbolEntry.initNativeFunc1(listSize));
 
     id = try self.addStruct("Map");
     std.debug.assert(id == cy.MapS);
@@ -39,6 +41,9 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("String");
     std.debug.assert(id == cy.StringS);
+
+    id = try self.addStruct("Fiber");
+    std.debug.assert(id == cy.FiberS);
 
     id = try self.ensureFuncSym("std.readInput");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
@@ -223,4 +228,13 @@ fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(gvm, args[0]);
     return Value.initNone();
+}
+
+fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+    @setRuntimeSafety(debug);
+    _ = nargs;
+    _ = args;
+    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
+    return Value.initF64(@intToFloat(f64, inner.items.len));
 }

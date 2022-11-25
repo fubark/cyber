@@ -805,6 +805,9 @@ pub const VM = struct {
         if (TraceEnabled) {
             self.trace.numRetains += 1;
         }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
         return Value.initPtr(obj);
     }
 
@@ -2608,7 +2611,11 @@ pub const UserVM = struct {
     }
 
     pub fn dumpPanicStackTrace(_: UserVM) void {
-        std.debug.print("panic: {s}\n", .{gvm.panicMsg});
+        if (builtin.is_test) {
+            log.debug("panic: {s}", .{gvm.panicMsg});
+        } else {
+            std.debug.print("panic: {s}\n", .{gvm.panicMsg});
+        }
         const trace = gvm.getStackTrace();
         trace.dump();
     }
@@ -3560,7 +3567,11 @@ pub const StackTrace = struct {
 
     pub fn dump(self: *const StackTrace) void {
         for (self.frames) |frame| {
-            std.debug.print("{s}:{}:{}\n", .{frame.name, frame.line + 1, frame.col + 1});
+            if (builtin.is_test) {
+                log.debug("{s}:{}:{}", .{frame.name, frame.line + 1, frame.col + 1});
+            } else {
+                std.debug.print("{s}:{}:{}\n", .{frame.name, frame.line + 1, frame.col + 1});
+            }
         }
     }
 };

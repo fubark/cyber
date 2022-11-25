@@ -141,6 +141,15 @@ test "ARC in loops." {
     try t.eq(trace.numRetains, 3);
     // The inner set inst should be a releaseSet.
     try t.eq(trace.numReleases, 3);
+
+    // An rc var first used inside a loop.
+    _ = try run.eval(
+        \\for 0..3:
+        \\  a = 'abc' + 123
+    );
+    try t.eq(trace.numRetains, 3);
+    // The inner set inst should be a releaseSet.
+    try t.eq(trace.numReleases, 3);
 }
 
 const VMrunner = struct {

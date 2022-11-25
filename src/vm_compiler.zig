@@ -590,6 +590,7 @@ pub const VMcompiler = struct {
         for (ssblock.iterVarBeginTypes.items) |varAndType| {
             const svar = &self.vars.items[varAndType.id];
             svar.vtype = varAndType.vtype;
+            svar.genIsDefined = true;
         }
     }
 
@@ -789,11 +790,19 @@ pub const VMcompiler = struct {
         const ssblock = self.curSemaSubBlock();
         for (self.assignedVarStack.items[ssblock.assignedVarStart..]) |varId| {
             const svar = self.vars.items[varId];
-            if (svar.vtype.typeT != ssblock.prevVarTypes.get(varId).?.typeT) {
-                // Only types that are different are saved for the codegen iter block.
+            if (ssblock.prevVarTypes.get(varId)) |prevt| {
+                if (svar.vtype.typeT != prevt.typeT) {
+                    // Type differs from prev scope type. Record change for iter block codegen.
+                    try ssblock.iterVarBeginTypes.append(self.alloc, .{
+                        .id = varId,
+                        .vtype = AnyType,
+                    });
+                }
+            } else {
+                // First assigned in iter block. Record change for iter block codegen.
                 try ssblock.iterVarBeginTypes.append(self.alloc, .{
                     .id = varId,
-                    .vtype = AnyType,
+                    .vtype = svar.vtype,
                 });
             }
         }
@@ -808,8 +817,10 @@ pub const VMcompiler = struct {
         // Merge types back to parent scope.
         for (self.assignedVarStack.items[ssblock.assignedVarStart..]) |varId| {
             const svar = &self.vars.items[varId];
-            if (svar.vtype.typeT != ssblock.prevVarTypes.get(varId).?.typeT) {
-                svar.vtype = AnyType;
+            if (ssblock.prevVarTypes.get(varId)) |prevt| {
+                if (svar.vtype.typeT != prevt.typeT) {
+                    svar.vtype = AnyType;
+                }
             }
         }
         ssblock.prevVarTypes.deinit(self.alloc);
@@ -890,6 +901,8 @@ pub const VMcompiler = struct {
                 self.vars.items[id].genInitializer = true;
             }
             self.nodes[ident].head.ident.semaVarId = id;
+
+            try self.assignedVarStack.append(self.alloc, id);
         }
     }
 
@@ -1000,6 +1013,7 @@ pub const VMcompiler = struct {
         } else {
             res.value_ptr.* = id;
             try self.vars.append(self.alloc, .{
+                .name = name,
                 .vtype = vtype,
                 .lifetimeRcCandidate = vtype.rcCandidate,
             });
@@ -2263,6 +2277,8 @@ const SemaVar = struct {
     /// This is updated when there is a variable assignment or a child block returns.
     vtype: Type,
 
+    name: []const u8,
+
     /// Whether this var is a captured function param.
     /// Currently, captured variables can not be reassigned to another value.
     /// This restriction avoids an extra retain/release op for closure calls.
@@ -2289,7 +2305,9 @@ const SemaVar = struct {
     local: LocalId = undefined,
 
     /// Since the same sema var is used later by codegen,
-    /// use a flag to indicate whether the var has been defined in the block. (eg. assigned to lvalue)
+    /// use a flag to indicate whether the var has been loosely defined in the block. (eg. assigned to lvalue)
+    /// Note that assigning inside a branch counts as defined.
+    /// Entering an iter block will auto mark those as defined since the var could have been assigned by a previous iteration.
     genIsDefined: bool = false,
 };
 

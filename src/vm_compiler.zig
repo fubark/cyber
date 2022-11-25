@@ -686,6 +686,16 @@ pub const VMcompiler = struct {
         self.popBlock();
         self.buf.mainLocalSize = @intCast(u32, self.blockNumLocals());
 
+        // Merge inst and const buffers.
+        var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
+        if (self.buf.ops.capacity < reqLen) {
+            try self.buf.ops.ensureTotalCapacityPrecise(self.alloc, reqLen);
+        }
+        const constAddr = std.mem.alignForward(@ptrToInt(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
+        const constDst = @intToPtr([*]cy.Const, constAddr)[0..self.buf.consts.items.len];
+        std.mem.copy(cy.Const, constDst, self.buf.consts.toOwnedSlice(self.alloc));
+        self.buf.mconsts = constDst;
+
         return ResultView{
             .buf = self.buf,
             .hasError = false,

@@ -12,6 +12,11 @@ pub const ByteCodeBuffer = struct {
     mainLocalSize: u32,
     ops: std.ArrayListUnmanaged(OpData),
     consts: std.ArrayListUnmanaged(Const),
+
+    /// After compilation, consts is merged into the ops buffer.
+    /// This should be used by the interpreter to read const values.
+    mconsts: []const Const,
+
     /// Contiguous constant strings in a buffer.
     strBuf: std.ArrayListUnmanaged(u8),
     /// Tracks the start index of strings that are already in strBuf.
@@ -31,9 +36,9 @@ pub const ByteCodeBuffer = struct {
             .strBuf = .{},
             .strMap = .{},
             .debugTable = .{},
+            .mconsts = &.{},
         };
         // Perform big allocation for instruction buffer for more consistent heap allocation.
-        // TODO: consts should be adjacent to instruction buffer.
         try new.ops.ensureTotalCapacityPrecise(alloc, 4096);
         return new;
     }
@@ -277,7 +282,7 @@ pub const ByteCodeBuffer = struct {
         }
 
         buf.clearRetainingCapacity();
-        for (self.consts.items) |extra| {
+        for (self.mconsts) |extra| {
             const ww = buf.writer();
             const val = cy.Value{ .val = extra.val };
             if (val.isNumber()) {
@@ -445,4 +450,6 @@ pub const OpCode = enum(u8) {
 test "Internals." {
     try t.eq(@enumToInt(OpCode.end), 66);
     try t.eq(@sizeOf(OpData), 1);
+    try t.eq(@sizeOf(Const), 8);
+    try t.eq(@alignOf(Const), 8);
 }

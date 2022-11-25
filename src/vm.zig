@@ -452,7 +452,7 @@ pub const VM = struct {
         self.panicMsg = "";
         self.stack.clearRetainingCapacity();
         self.ops = buf.ops.items;
-        self.consts = buf.consts.items;
+        self.consts = buf.mconsts;
         self.strBuf = buf.strBuf.items;
         self.debugTable = buf.debugTable.items;
         self.pc = 0;

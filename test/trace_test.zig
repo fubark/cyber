@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 
 const cy = @import("../src/cyber.zig");
+const log = stdx.log.scoped(.trace_test);
 
 test "Automatic reference counting." {
     var run: VMrunner = undefined;
@@ -68,7 +69,7 @@ test "Automatic reference counting." {
         \\struct S:
         \\  value
         \\func foo():
-        \\  return S{ value: a }
+        \\  return S{ value: 123 }
         \\foo()
         \\return
     );
@@ -116,13 +117,29 @@ test "Automatic reference counting." {
         \\a.add(b)
         \\b.add(a)
     );
-    try t.eq(trace.numRetains, 4);
-    try t.eq(trace.numReleases, 2);
+    try t.eq(trace.numRetains, 6);
+    try t.eq(trace.numReleases, 4);
     try t.eq(trace.numForceReleases, 0);
     try t.eq(try run.checkMemory(), false);
     try t.eq(trace.numRetainCycles, 1);
     try t.eq(trace.numRetainCycleRoots, 2);
     try t.eq(trace.numForceReleases, 2);
+}
+
+test "ARC in expressions." {
+    var run: VMrunner = undefined;
+    run.init();
+    defer run.deinit();
+
+    const trace = &run.trace;
+
+    // Only the object literals are retained and freed at the end of the expr.
+    var val = try run.eval(
+        \\{ a: [123] }.a[0]
+    );
+    try run.valueIsI32(val, 123);
+    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numReleases, 2);
 }
 
 test "ARC in loops." {
@@ -185,7 +202,12 @@ const VMrunner = struct {
         return self.vm.getStackTrace();
     }
 
-    fn eval(self: *VMrunner, src: []const u8) cy.EvalError!cy.Value {
+    fn eval(self: *VMrunner, src: []const u8) !cy.Value {
+        const rc = self.vm.getGlobalRC();
+        if (rc != 0) {
+            log.debug("{} unreleased objects from previous eval", .{rc});
+            return error.UnreleasedObjects;
+        }
         // Eval with new env.
         self.vm.deinit();
         try self.vm.init(t.alloc);
@@ -203,6 +225,18 @@ const VMrunner = struct {
         _ = src;
         _ = embed_interrupts;
         return undefined;
+    }
+
+    pub fn valueIsI32(self: *VMrunner, act: cy.Value, exp: i32) !void {
+        _ = self;
+        if (act.isNumber()) {
+            const actf = act.asF64();
+            if (cy.Value.floatCanBeInteger(actf)) {
+                try t.eq(act.asI32(), exp);
+                return;
+            }
+        }
+        return error.NotI32;
     }
 
     pub fn assertValueString(self: *VMrunner, val: cy.Value) ![]const u8 {

@@ -169,105 +169,118 @@ pub const ByteCodeBuffer = struct {
         var buf = std.ArrayList(u8).init(self.alloc);
         defer buf.deinit();
         const w = buf.writer();
+            
+        try w.print("Bytecode:\n", .{});
 
         while (pc < ops.len) {
             const name = @tagName(ops[pc].code);
             try w.print("{} {s} ", .{pc, name});
             switch (ops[pc].code) {
-                .pushLess,
-                .pushGreater,
-                .pushLessEqual,
-                .pushGreaterEqual,
-                .pushMultiply,
-                .pushAdd,
-                .pushPower,
-                .pushMinus,
-                .pushDivide,
-                .pushMod,
+                .minus,
+                .mul,
+                .div,
+                .pow,
+                .mod,
+                .less,
+                .compare,
+                .compareNot,
+                .list,
+                .add => {
+                    try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
+                    pc += 4;
+                },
+                .greater,
+                .lessEqual,
+                .greaterEqual,
                 // .ret2,
-                .ret1,
                 .ret0,
-                .end,
-                .pushCompare,
-                .pushNotCompare,
-                .pushNot,
-                .pushNone,
-                .pushIndex,
-                .pushReverseIndex,
-                .pushMapEmpty,
-                .pushSlice,
-                .setIndex,
-                .pushStringTemplate,
-                .coreturn,
-                .pushNeg,
-                .pushTrue,
-                .pushFalse => {
+                .ret1,
+                .coreturn => {
                     pc += 1;
                 },
-                .releaseSet,
-                .set,
-                .addSet,
-                .releaseSetField,
+                .setIndex,
+                .copy,
+                .not,
+                .neg,
+                .copyRetainSrc,
+                .copyReleaseDst,
+                .constI8,
+                .call0,
+                .call1,
+                .constOp => {
+                    try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
+                    pc += 3;
+                },
                 .setField,
-                .pushList,
-                .load,
+                .retain,
+                .end,
                 .release,
-                .pushCall0,
-                .pushCall1,
-                .loadRetain,
-                .pushField,
-                .pushFieldRetain,
-                .pushFieldParentRelease,
-                .pushFieldRetainParentRelease,
-                .pushConst => {
+                .none,
+                .true,
+                .false,
+                .mapEmpty => {
                     try w.print("{}", .{ops[pc+1].arg});
                     pc += 2;
+                },
+                .indexRetain,
+                .reverseIndexRetain,
+                .setFieldRelease,
+                .fieldRetain,
+                .fieldRetainRelease,
+                .field,
+                .callSym0,
+                .callSym1,
+                .callObjSym0,
+                .callObjSym1,
+                .stringTemplate,
+                // .jumpCondNone,
+                .jumpCond,
+                .jumpNotCond => {
+                    try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
+                    pc += 4;
                 },
                 .cont,
                 .jumpBack,
                 .jump,
-                .jumpNotCond,
-                .jumpCondKeep,
-                .jumpNotCondKeep,
-                .pushCallObjSym0,
-                .pushCallObjSym1,
-                .pushCallSym0,
-                .pushCallSym1,
                 .pushCostart,
-                .pushMinus2,
-                .coyield,
-                .pushMinus1 => {
+                .coyield => {
                     try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
                     pc += 3;
                 },
-                .call => {
-                    stdx.unsupported();
-                },
-                .forIter,
-                .forRange,
-                .pushLambda => {
-                    try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
-                    pc += 4;
-                },
-                .pushClosure => {
+                .slice,
+                .lambda => {
                     try w.print("{} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
                     pc += 5;
                 },
-                .pushMap => {
-                    const numEntries = ops[pc+1].arg;
-                    try w.print("{}", .{numEntries});
-                    pc += 2 + numEntries;
+                .closure => {
+                    try w.print("{} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
+                    pc += 7;
                 },
-                .pushStructInitSmall => {
-                    _ = ops[pc+1].arg;
+                .forIter => {
+                    try w.print("{} {} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
+                    pc += 6;
+                },
+                .map => {
+                    const startLocal = ops[pc+1].arg;
                     const numEntries = ops[pc+2].arg;
+                    const dst = ops[pc+3].arg;
+                    try w.print("{} {} {}", .{startLocal, numEntries, dst});
+                    pc += 4 + numEntries;
+                },
+                .structSmall => {
+                    _ = ops[pc+1].arg;
+                    const numEntries = ops[pc+3].arg;
                     try w.print("{}", .{numEntries});
-                    pc += 3 + numEntries;
+                    pc += 5 + numEntries;
                 },
                 .setInitN => {
                     const numVars = ops[pc+1].arg;
                     try w.print("{}", .{numVars});
                     pc += 2 + numVars;
+                },
+                .forRange => {
+                    try w.print("{} {} {} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
+                    pc += 7;
                 },
                 else => {
                     stdx.panicFmt("unsupported {}", .{ops[pc].code});
@@ -357,35 +370,40 @@ pub const OpDebug = struct {
 };
 
 pub const OpCode = enum(u8) {
-    /// Push constant value onto register stack.
-    pushConst,
-    /// Loads a value from address relative to the local frame onto the register stack.
-    load,
-    /// Pops top two registers, performs addition, and pushes result onto stack.
-    pushAdd,
-    pushMinus,
-    pushMinus1,
+    /// Copies a constant value from `consts` to a dst local.
+    constOp,
+    /// Sets an immediate i8 value as a number to a dst local.
+    constI8,
+    /// Add first two locals and stores result to a dst local.
+    add,
+    // addNumber,
+    /// Subtracts second local from first local and stores result to a dst local.
+    minus,
     /// Push boolean onto register stack.
-    pushTrue,
-    pushFalse,
-    /// Push none value onto register stack.
-    pushNone,
+    true,
+    false,
+    /// Sets the `none` value to a dst local.
+    none,
     /// Pops top register, performs not, and pushes result onto stack.
-    pushNot,
-    /// Pops top register and copies value to address relative to the local frame.
-    set,
-    releaseSet,
+    not,
+    /// Copies a local from src to dst.
+    copy,
+    copyReleaseDst,
     /// Pops right, index, left registers, sets right value to address of left[index].
     setIndex,
-    loadRetain,
-    pushIndex,
-    /// Pops specifc number of registers to allocate a new list on the heap. Pointer to new list is pushed onto the stack.
-    pushList,
-    pushMap,
-    pushMapEmpty,
-    pushSlice,
+    copyRetainSrc,
+    index,
+    indexRetain,
+    /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
+    list,
+    /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
+    /// Const key indexes follow the size operand.
+    map,
+    mapEmpty,
+    slice,
     /// Pops top register, if value evals to false, jumps the pc forward by an offset.
     jumpNotCond,
+    jumpCond,
     /// Jumps the pc forward by an offset.
     jump,
     jumpBack,
@@ -393,62 +411,65 @@ pub const OpCode = enum(u8) {
 
     // releaseMany,
     release,
-    /// Like pushCall but does not push the result onto the stack.
-    call,
     /// Num args includes the receiver.
-    callStr,
-    /// Num args includes the receiver.
-    pushCallObjSym0,
-    pushCallObjSym1,
-    pushCallSym0,
-    pushCallSym1,
+    callObjSym0,
+    callObjSym1,
+    callSym0,
+    callSym1,
     // ret2,
     ret1,
     ret0,
-    /// Pops callee and args, performs a function call, and ensures no return values.
-    pushCall0,
-    /// Pops callee and args, performs a function call, and ensures one return value.
-    pushCall1,
-    pushField,
-    pushLambda,
-    pushClosure,
-    addSet,
-    pushCompare,
-    pushLess,
-    pushGreater,
-    pushLessEqual,
-    pushGreaterEqual,
-    pushMinus2,
+    /// Calls a lambda and ensures 0 return values.
+    call0,
+    /// Calls a lambda and ensures 1 return value.
+    call1,
+    field,
+    lambda,
+    closure,
+    compare,
+    less,
+    // lessNumber,
+    greater,
+    lessEqual,
+    greaterEqual,
     forRange,
     forIter,
-    pushMultiply,
-    pushDivide,
-    pushPower,
-    pushMod,
-    pushReverseIndex,
-    pushNotCompare,
-    pushStringTemplate,
-    pushNeg,
+
+    /// Multiplies first two locals and stores result to a dst local.
+    mul,
+    /// Divides second local from first local and stores result to a dst local.
+    div,
+    /// Raises first local's power to the value of the second local and stores result to a dst local.
+    pow,
+    /// Perform modulus on the two locals and stores result to a dst local.
+    mod,
+
+    reverseIndex,
+    reverseIndexRetain,
+    compareNot,
+    stringTemplate,
+    neg,
     setInitN,
-    pushStructInitSmall,
+    structSmall,
     setField,
-    releaseSetField,
-    pushBitwiseAnd,
-    pushFieldRetain,
-    jumpCondKeep,
-    jumpNotCondKeep,
-    pushFieldRetainParentRelease,
-    pushFieldParentRelease,
+    setFieldRelease,
+    bitwiseAnd,
+    fieldRetain,
+    fieldRetainRelease,
+    fieldRelease,
     pushCostart,
     coyield,
     coreturn,
+    retain,
+    copyRetainRelease,
+    // jumpCondNone,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 66);
+    try t.eq(@enumToInt(OpCode.end), 64);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -54,6 +54,10 @@ pub const Value = packed union {
     //     high: u32,
     // },
 
+    pub const None = Value.initNone();
+    pub const True = Value.initTrue();
+    pub const False = Value.initFalse();
+
     pub inline fn asI32(self: *const Value) i32 {
         @setRuntimeSafety(debug);
         return @floatToInt(i32, self.asF64());
@@ -268,12 +272,21 @@ pub const Value = packed union {
                             log.info("String {*} len={} str={s}", .{obj, obj.string.len, obj.string.ptr[0..obj.string.len]});
                         }
                     },
+                    cy.LambdaS => log.info("Lambda {*}", .{obj}),
+                    cy.ClosureS => log.info("Closure {*}", .{obj}),
                     else => {
                         log.info("HeapObject {*} {}", .{obj, obj.common.structId});
                     },
                 }
             } else {
-                log.info("{}", .{self.val});
+                switch (self.getTag()) {
+                    TagNone => {
+                        log.info("None", .{});
+                    },
+                    else => {
+                        log.info("{}", .{self.val});
+                    },
+                }
             }
         }
     }
@@ -305,7 +318,7 @@ pub const Value = packed union {
     }
 };
 
-const ValueUserTag = enum {
+pub const ValueUserTag = enum {
     number,
     boolean,
     object,

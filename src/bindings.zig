@@ -160,14 +160,14 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
             gvm.stack.buf[gvm.stack.top-2] = b;
             gvm.stack.buf[gvm.stack.top-3] = ctx_.lessFn;
             const retInfo = gvm.buildReturnInfo2(gvm.pc, 1, false);
-            vm_.callNoInline(&gvm.pc, ctx_.lessFn, 3, retInfo) catch stdx.fatal();
+            vm_.callNoInline(&gvm.pc, ctx_.lessFn, 0, 3, retInfo) catch stdx.fatal();
             @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
             const res = gvm.popRegister();
             return res.toBool();
         }
     };
     std.sort.sort(Value, list.items, &lessCtx, S.less);
-    vm_.release(args[0]);
+    vm_.releaseObject(obj);
     return Value.initNone();
 }
 
@@ -179,6 +179,7 @@ fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
     inner.append(gvm.alloc, args[0]) catch stdx.fatal();
+    vm_.releaseObject(list);
     return Value.initNone();
 }
 
@@ -216,6 +217,7 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
     inner.resize(gvm.alloc, size) catch stdx.fatal();
+    vm_.releaseObject(list);
     return Value.initNone();
 }
 

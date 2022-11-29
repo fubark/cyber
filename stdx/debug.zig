@@ -67,7 +67,11 @@ const TimerTrace = struct {
     pub fn endPrint(self: *TimerTrace, msg: []const u8) void {
         if (EnableTimerTrace) {
             const now = self.timer.read();
-            log.info("{s}: {d:.3}ms", .{ msg, @intToFloat(f32, now) / 1e6 });
+            if (builtin.mode == .ReleaseFast) {
+                std.debug.print("{s}: {d:.3}ms\n", .{ msg, @intToFloat(f32, now) / 1e6 });
+            } else {
+                log.info("{s}: {d:.3}ms", .{ msg, @intToFloat(f32, now) / 1e6 });
+            }
         }
     }
 };

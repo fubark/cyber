@@ -91,6 +91,10 @@ pub const VM = struct {
     curFiber: *Fiber,
     mainFiber: Fiber,
 
+    /// Local to be returned back to eval caller.
+    /// 255 indicates no return value.
+    endLocal: u8,
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -127,6 +131,7 @@ pub const VM = struct {
             .panicMsg = "",
             .mainFiber = undefined,
             .curFiber = undefined,
+            .endLocal = undefined,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -145,12 +150,6 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *VM) void {
-        if (TrackGlobalRC) {
-            if (self.refCounts != 0) {
-                stdx.panicFmt("Number of unreleased references: {}", .{self.refCounts});
-            }
-        }
-
         self.parser.deinit();
         self.compiler.deinit();
         self.stack.deinit(self.alloc);
@@ -350,6 +349,91 @@ pub const VM = struct {
         }
     }
 
+    fn popStackFrameLocal0(self: *VM, pc: *usize) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
+        const retInfo = self.stack.buf[self.framePtr + 1];
+        const reqNumArgs = retInfo.retInfo.numRetVals;
+        if (reqNumArgs == 0) {
+            // Restore pc.
+            self.framePtr = retInfo.retInfo.framePtr;
+            pc.* = retInfo.retInfo.pc;
+            return retInfo.retInfo.retFlag == 0;
+        } else {
+            switch (reqNumArgs) {
+                0 => unreachable,
+                1 => {
+                    @setRuntimeSafety(debug);
+                    self.stack.buf[self.framePtr] = Value.initNone();
+                },
+                2 => {
+                    @setRuntimeSafety(debug);
+                    self.stack.buf[self.framePtr] = Value.initNone();
+                    self.stack.buf[self.framePtr+1] = Value.initNone();
+                },
+                3 => {
+                    @setRuntimeSafety(debug);
+                    self.stack.buf[self.framePtr] = Value.initNone();
+                    self.stack.buf[self.framePtr+1] = Value.initNone();
+                    self.stack.buf[self.framePtr+2] = Value.initNone();
+                },
+            }
+            // Restore pc.
+            self.framePtr = retInfo.retInfo.framePtr;
+            pc.* = retInfo.retInfo.pc;
+            return retInfo.retInfo.retFlag == 0;
+        }
+    }
+
+    fn popStackFrameLocal1(self: *VM, pc: *usize) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
+        const retInfo = self.stack.buf[self.framePtr + 1];
+        const reqNumArgs = retInfo.retInfo.numRetVals;
+        if (reqNumArgs == 1) {
+            // Restore pc.
+            self.framePtr = retInfo.retInfo.framePtr;
+            pc.* = retInfo.retInfo.pc;
+            return retInfo.retInfo.retFlag == 0;
+        } else {
+            switch (reqNumArgs) {
+                0 => {
+                    @setRuntimeSafety(debug);
+                    release(self.stack.buf[self.framePtr]);
+                },
+                1 => unreachable,
+                2 => {
+                    @setRuntimeSafety(debug);
+                    self.stack.buf[self.framePtr + 1] = Value.initNone();
+                },
+                3 => {
+                    @setRuntimeSafety(debug);
+                    // Only start checking for space at 3 since function calls should have at least two slot after framePtr.
+                    // self.ensureStackTotalCapacity(self.stack.top + 1) catch stdx.fatal();
+                    self.stack.buf[self.framePtr + 1] = Value.initNone();
+                    self.stack.buf[self.framePtr + 2] = Value.initNone();
+                },
+            }
+            // Restore pc.
+            self.framePtr = retInfo.retInfo.framePtr;
+            pc.* = retInfo.retInfo.pc;
+            return retInfo.retInfo.retFlag == 0;
+        }
+    }
+
+    fn popStackFrameLocal(self: *VM, pc: *usize, retLocal: u8, comptime numRetVals: u2) linksection(".eval") bool {
+        @setRuntimeSafety(debug);
+        _ = retLocal;
+        _ = self;
+        _ = pc;
+
+        // If there are fewer return values than required from the function call, 
+        // fill the missing slots with the none value.
+        switch (numRetVals) {
+            0 => @compileError("Not supported."),
+            1 => @compileError("Not supported."),
+            else => @compileError("Unsupported num return values."),
+        }
+    }
+
     /// Returns whether to continue execution loop.
     pub fn popStackFrame(self: *VM, pc: *usize, comptime numRetVals: u2) linksection(".eval") bool {
         @setRuntimeSafety(debug);
@@ -466,15 +550,10 @@ pub const VM = struct {
             log.info("main local size: {}", .{buf.mainLocalSize});
         }
 
-        if (self.stack.top == buf.mainLocalSize) {
-            self.stack.top = 0;
+        if (self.endLocal == 255) {
             return Value.initNone();
-        } else if (self.stack.top == buf.mainLocalSize + 1) {
-            defer self.stack.top = 0;
-            return self.popRegister();
         } else {
-            log.debug("unexpected stack top: {}, expected: {}", .{self.stack.top, buf.mainLocalSize});
-            return error.BadTop;
+            return self.stack.buf[self.endLocal];
         }
     }
 
@@ -556,7 +635,7 @@ pub const VM = struct {
         return res;
     }
 
-    fn allocMap(self: *VM, keys: []const cy.Const, vals: []const Value) !Value {
+    fn allocMap(self: *VM, keyIdxs: []const cy.OpData, vals: []const Value) !Value {
         @setRuntimeSafety(debug);
         const obj = try self.allocObject();
         obj.map = .{
@@ -579,10 +658,10 @@ pub const VM = struct {
         }
 
         const inner = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-        for (keys) |key, i| {
+        for (keyIdxs) |idx, i| {
             const val = vals[i];
 
-            const keyVal = Value{ .val = key.val };
+            const keyVal = Value{ .val = self.consts[idx.arg].val };
             const res = try inner.getOrPut(self.alloc, self, keyVal);
             if (res.foundExisting) {
                 // TODO: Handle reference count.
@@ -722,6 +801,7 @@ pub const VM = struct {
         @setRuntimeSafety(debug);
         const obj = try self.allocObject();
         const dupe = try self.alloc.dupe(u8, str);
+        // log.debug("alloc str {*} {s}", .{dupe.ptr, dupe});
         obj.string = .{
             .structId = StringS,
             .rc = 1,
@@ -737,22 +817,24 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocStringTemplate(self: *VM, strs: []const Value, vals: []const Value) !Value {
+    pub fn allocStringTemplate(self: *VM, strs: []const cy.OpData, vals: []const Value) !Value {
         @setRuntimeSafety(debug);
 
-        const firstStr = self.valueAsString(strs[0]);
+        const firstStr = self.valueAsString(Value.initRaw(gvm.consts[strs[0].arg].val));
         try self.u8Buf.resize(self.alloc, firstStr.len);
         std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
         var writer = self.u8Buf.writer(self.alloc);
         for (vals) |val, i| {
             self.writeValueToString(writer, val);
-            try self.u8Buf.appendSlice(self.alloc, self.valueAsString(strs[i+1]));
+            release(val);
+            try self.u8Buf.appendSlice(self.alloc, self.valueAsString(Value.initRaw(gvm.consts[strs[i+1].arg].val)));
         }
 
         const obj = try self.allocObject();
         const buf = try self.alloc.alloc(u8, self.u8Buf.len);
         std.mem.copy(u8, buf, self.u8Buf.items());
+        // log.debug("alloc str template {*} {s}", .{buf.ptr, buf});
         obj.string = .{
             .structId = StringS,
             .rc = 1,
@@ -1070,6 +1152,7 @@ pub const VM = struct {
         }
     }
 
+    /// Assumes sign of index is preserved.
     fn getReverseIndex(self: *const VM, left: Value, index: Value) !Value {
         @setRuntimeSafety(debug);
         if (left.isPointer()) {
@@ -1078,9 +1161,9 @@ pub const VM = struct {
                 ListS => {
                     @setRuntimeSafety(debug);
                     const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
-                    const idx = list.items.len - @floatToInt(u32, index.toF64());
+                    const idx = @intCast(i32, list.items.len) + @floatToInt(i32, index.toF64());
                     if (idx < list.items.len) {
-                        return list.items[idx];
+                        return list.items[@intCast(u32, idx)];
                     } else {
                         return error.OutOfBounds;
                     }
@@ -1088,7 +1171,7 @@ pub const VM = struct {
                 MapS => {
                     @setRuntimeSafety(debug);
                     const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-                    const key = Value.initF64(-index.toF64());
+                    const key = Value.initF64(index.toF64());
                     if (map.get(self, key)) |val| {
                         return val;
                     } else return Value.initNone();
@@ -1139,6 +1222,14 @@ pub const VM = struct {
         self.panicMsg = try self.alloc.dupe(u8, msg);
         log.debug("{s}", .{self.panicMsg});
         return error.Panic;
+    }
+
+    pub fn getGlobalRC(self: *const VM) usize {
+        if (TrackGlobalRC) {
+            return self.refCounts;
+        } else {
+            stdx.panic("Enable TrackGlobalRC.");
+        }
     }
 
     /// Performs an iteration over the heap pages to check whether there are retain cycles.
@@ -1250,7 +1341,7 @@ pub const VM = struct {
         }
     }
 
-    fn releaseSetField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
+    fn setFieldRelease(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
@@ -1315,7 +1406,7 @@ pub const VM = struct {
         }
     }
 
-    fn getFieldMissingSymbolError(self: *VM) !void {
+    fn getFieldMissingSymbolError(self: *VM) error{Panic, OutOfMemory} {
         @setCold(true);
         return self.panic("Field not found in value.");
     }
@@ -1325,7 +1416,7 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    fn getAndRetainField(self: *const VM, symId: SymbolId, recv: Value) linksection(".eval") Value {
+    fn getAndRetainField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
@@ -1353,7 +1444,7 @@ pub const VM = struct {
                 },
             } 
         } else {
-            unreachable;
+            return self.getFieldMissingSymbolError();
         }
     }
 
@@ -1387,8 +1478,7 @@ pub const VM = struct {
                 // },
             } 
         } else {
-            try self.getFieldMissingSymbolError();
-            unreachable;
+            return self.getFieldMissingSymbolError();
         }
     }
 
@@ -1419,9 +1509,10 @@ pub const VM = struct {
         }
     }
 
-    /// Stack layout: arg0, arg1, ..., callee
+    /// Stack layout for lambda: arg0, arg1, ..., callee
+    /// Stack layout for closure: arg0, arg1, ..., callee, capturedVar0, capturedVar1, ...
     /// numArgs includes the callee.
-    pub fn call(self: *VM, pc: *usize, callee: Value, numArgs: u8, retInfo: Value) !void {
+    pub fn call(self: *VM, pc: *usize, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
         @setRuntimeSafety(debug);
         if (callee.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, callee.asPointer().?);
@@ -1431,23 +1522,21 @@ pub const VM = struct {
                         stdx.panic("params/args mismatch");
                     }
 
-                    if (self.stack.top + obj.closure.numLocals >= self.stack.buf.len) {
+                    if (self.framePtr + startLocal + obj.closure.numLocals >= self.stack.buf.len) {
                         return error.StackOverflow;
                     }
 
                     pc.* = obj.closure.funcPc;
-                    self.framePtr = self.stack.top - numArgs;
-                    self.stack.buf[self.framePtr] = retInfo;
+                    self.framePtr = self.framePtr + startLocal;
+                    self.stack.buf[self.framePtr + 1] = retInfo;
 
                     // Copy over captured vars to new call stack locals.
                     if (obj.closure.numCaptured <= 3) {
                         const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
-                        std.mem.copy(Value, self.stack.buf[self.stack.top..self.stack.top+obj.closure.numCaptured], src);
+                        std.mem.copy(Value, self.stack.buf[self.framePtr + numArgs + 2..self.framePtr + numArgs + 2 + obj.closure.numCaptured], src);
                     } else {
                         stdx.panic("unsupported closure > 3 captured args.");
                     }
-
-                    self.stack.top += obj.lambda.numLocals;
                 },
                 LambdaS => {
                     if (numArgs - 1 != obj.lambda.numParams) {
@@ -1455,14 +1544,13 @@ pub const VM = struct {
                         stdx.fatal();
                     }
 
-                    if (self.stack.top + obj.lambda.numLocals >= self.stack.buf.len) {
+                    if (self.framePtr + startLocal + obj.lambda.numLocals >= self.stack.buf.len) {
                         return error.StackOverflow;
                     }
 
                     pc.* = obj.lambda.funcPc;
-                    self.framePtr = self.stack.top - numArgs;
-                    self.stack.buf[self.framePtr] = retInfo;
-                    self.stack.top += obj.lambda.numLocals;
+                    self.framePtr = self.framePtr + startLocal;
+                    self.stack.buf[self.framePtr + 1] = retInfo;
                 },
                 else => {},
             }
@@ -1471,29 +1559,27 @@ pub const VM = struct {
         }
     }
 
-    /// Current stack top is already pointing past the last arg.
-    fn callSym(self: *VM, pc: *usize, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    /// startLocal points to the first arg in the current stack frame.
+    fn callSym(self: *VM, pc: *usize, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
                 // self.pc += 3;
-                const args = self.stack.buf[self.stack.top - numArgs..self.stack.top];
-                const res = sym.inner.nativeFunc1(undefined, args.ptr, @intCast(u8, args.len));
+                const newFramePtr = self.framePtr + startLocal;
+                const res = sym.inner.nativeFunc1(undefined, @ptrCast([*]const Value, &self.stack.buf[newFramePtr+2]), numArgs);
                 if (reqNumRetVals == 1) {
-                    const newTop = self.stack.top - numArgs + 1;
-                    if (newTop >= self.stack.buf.len) {
+                    if (newFramePtr >= self.stack.buf.len) {
                         // Already made state changes, so grow stack here instead of
                         // returning StackOverflow.
-                        try self.stack.growTotalCapacity(self.alloc, newTop);
+                        try self.stack.growTotalCapacity(self.alloc, newFramePtr);
                     }
-                    self.stack.top = newTop;
-                    self.stack.buf[self.stack.top-1] = res;
+                    self.stack.buf[newFramePtr] = res;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
-                            self.stack.top = self.stack.top - numArgs;
+                            // Nop.
                         },
                         1 => stdx.panic("not possible"),
                         2 => {
@@ -1507,78 +1593,50 @@ pub const VM = struct {
             },
             .func => {
                 @setRuntimeSafety(debug);
-                if (self.stack.top + sym.inner.func.numLocals >= self.stack.buf.len) {
+                if (self.framePtr + startLocal + sym.inner.func.numLocals >= self.stack.buf.len) {
                     return error.StackOverflow;
                 }
 
                 const retInfo = self.buildReturnInfo2(pc.*, reqNumRetVals, true);
                 // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 pc.* = sym.inner.func.pc;
-                self.framePtr = self.stack.top - numArgs;
-
-                // Move first arg. 
-                const retInfoDst = &self.stack.buf[self.framePtr];
-                self.stack.buf[self.stack.top] = retInfoDst.*;
-                // Set retInfo last so it will copy over any undefined value for zero arg func calls.
-                retInfoDst.* = retInfo;
-
-                self.stack.top += sym.inner.func.numLocals;
+                self.framePtr = self.framePtr + startLocal;
+                self.stack.buf[self.framePtr + 1] = retInfo;
             },
-            // .none => {
-            //     // Function doesn't exist.
-            //     log.debug("Symbol {} doesn't exist.", .{symId});
-            //     // TODO: script panic.
-            //     return error.MissingSymbol;
-            // },
             else => {
                 return self.panic("unsupported callsym");
             },
         }
     }
 
-    inline fn callSymEntry(self: *VM, pc: *usize, sym: SymbolEntry, obj: *HeapObject, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    inline fn callSymEntry(self: *VM, pc: *usize, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
-        const argStart = self.stack.top - numArgs;
         switch (sym.entryT) {
             .func => {
                 @setRuntimeSafety(debug);
-                if (self.stack.top + sym.inner.func.numLocals >= self.stack.buf.len) {
+                if (self.framePtr + startLocal + sym.inner.func.numLocals >= self.stack.buf.len) {
                     return error.StackOverflow;
-                }
-
-                // Retain receiver.
-                obj.retainedCommon.rc += 1;
-                if (TrackGlobalRC) {
-                    gvm.refCounts += 1;
                 }
 
                 // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 const retInfo = self.buildReturnInfo2(pc.*, reqNumRetVals, true);
                 pc.* = sym.inner.func.pc;
-                self.framePtr = self.stack.top - numArgs;
-
-                // Move first arg. 
-                const retInfoDst = &self.stack.buf[self.framePtr];
-                self.stack.buf[self.stack.top] = retInfoDst.*;
-                // Set retInfo last so it will copy over any undefined value for zero arg func calls.
-                retInfoDst.* = retInfo;
-
-                self.stack.top += sym.inner.func.numLocals;
+                self.framePtr = self.framePtr + startLocal;
+                self.stack.buf[self.framePtr + 1] = retInfo;
             },
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
                 // self.pc += 3;
-                const args = self.stack.buf[argStart .. self.stack.top - 1];
+                const newFramePtr = self.framePtr + startLocal;
                 gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc1(undefined, obj, args.ptr, @intCast(u8, args.len));
+                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, &self.stack.buf[newFramePtr + 2]), numArgs);
                 pc.* = gvm.pc;
                 if (reqNumRetVals == 1) {
-                    self.stack.buf[argStart] = res;
-                    self.stack.top = argStart + 1;
+                    self.stack.buf[newFramePtr] = res;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
-                            self.stack.top = argStart;
+                            // Nop.
                         },
                         1 => stdx.panic("not possible"),
                         2 => {
@@ -1593,18 +1651,17 @@ pub const VM = struct {
             .nativeFunc2 => {
                 @setRuntimeSafety(debug);
                 // self.pc += 3;
-                const args = self.stack.buf[argStart .. self.stack.top - 1];
+                const newFramePtr = self.framePtr + startLocal;
                 gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc2(undefined, obj, args.ptr, @intCast(u8, args.len));
+                const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, &self.stack.buf[newFramePtr + 2]), numArgs);
                 pc.* = gvm.pc;
                 if (reqNumRetVals == 2) {
-                    self.stack.buf[argStart] = res.left;
-                    self.stack.buf[argStart+1] = res.right;
-                    self.stack.top = argStart + 2;
+                    self.stack.buf[newFramePtr] = res.left;
+                    self.stack.buf[newFramePtr+1] = res.right;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
-                            self.stack.top = argStart;
+                            // Nop.
                         },
                         1 => unreachable,
                         2 => {
@@ -1638,7 +1695,8 @@ pub const VM = struct {
                 if (map.inner.manyStructs.mruStructId == obj.retainedCommon.structId) {
                     return map.inner.manyStructs.mruSym;
                 } else {
-                    const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse return null;
+                    // Compiler wants to inline this function, but it causes a noticeable slow down in for.cy benchmark.
+                    const sym = @call(.{ .modifier = .never_inline }, self.methodTable.get, .{.{ .structId = obj.retainedCommon.structId, .methodId = symId }}) orelse return null;
                     self.methodSyms.buf[symId].inner.manyStructs = .{
                         .mruStructId = obj.retainedCommon.structId,
                         .mruSym = sym,
@@ -1660,7 +1718,7 @@ pub const VM = struct {
     /// Stack layout: arg0, arg1, ..., receiver
     /// numArgs includes the receiver.
     /// Return new pc to avoid deoptimization.
-    fn callObjSym(self: *VM, pc: usize, recv: Value, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !usize {
+    fn callObjSym(self: *VM, pc: usize, recv: Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !usize {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer().?);
@@ -1669,13 +1727,13 @@ pub const VM = struct {
                 .oneStruct => {
                     @setRuntimeSafety(debug);
                     if (obj.retainedCommon.structId == map.inner.oneStruct.id) {
-                        return try @call(.{.modifier = .never_inline }, callSymEntryNoInline, .{pc, map.inner.oneStruct.sym, obj, numArgs, reqNumRetVals});
+                        return try @call(.{.modifier = .never_inline }, callSymEntryNoInline, .{pc, map.inner.oneStruct.sym, obj, startLocal, numArgs, reqNumRetVals});
                     } else return self.panic("Symbol does not exist for receiver.");
                 },
                 .manyStructs => {
                     @setRuntimeSafety(debug);
                     if (map.inner.manyStructs.mruStructId == obj.retainedCommon.structId) {
-                        return try @call(.{ .modifier = .never_inline }, callSymEntryNoInline, .{pc, map.inner.manyStructs.mruSym, obj, numArgs, reqNumRetVals});
+                        return try @call(.{ .modifier = .never_inline }, callSymEntryNoInline, .{pc, map.inner.manyStructs.mruSym, obj, startLocal, numArgs, reqNumRetVals});
                     } else {
                         const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse {
                             log.debug("Symbol does not exist for receiver.", .{});
@@ -1685,12 +1743,12 @@ pub const VM = struct {
                             .mruStructId = obj.retainedCommon.structId,
                             .mruSym = sym,
                         };
-                        return try @call(.{ .modifier = .never_inline }, callSymEntryNoInline, .{pc, sym, obj, numArgs, reqNumRetVals});
+                        return try @call(.{ .modifier = .never_inline }, callSymEntryNoInline, .{pc, sym, obj, startLocal, numArgs, reqNumRetVals});
                     }
                 },
                 .empty => {
                     @setRuntimeSafety(debug);
-                    return try @call(.{ .modifier = .never_inline }, callObjSymOther, .{pc, obj, symId, numArgs, reqNumRetVals});
+                    return try @call(.{ .modifier = .never_inline }, callObjSymOther, .{pc, obj, symId, startLocal, numArgs, reqNumRetVals});
                 },
                 // else => {
                 //     unreachable;
@@ -1790,8 +1848,8 @@ pub const VM = struct {
                     .line = line,
                     .col = col,
                 });
-                pc = self.stack.buf[framePtr].retInfo.pc;
-                framePtr = self.stack.buf[framePtr].retInfo.framePtr;
+                pc = self.stack.buf[framePtr + 1].retInfo.pc;
+                framePtr = self.stack.buf[framePtr + 1].retInfo.framePtr;
             }
         }
 
@@ -1896,10 +1954,92 @@ pub const VM = struct {
     }
 };
 
+pub fn releaseObject(obj: *HeapObject) linksection(".eval") void {
+    if (builtin.mode == .Debug or builtin.is_test) {
+        if (obj.retainedCommon.structId == NullId) {
+            stdx.panic("object already freed.");
+        }
+    }
+    obj.retainedCommon.rc -= 1;
+    if (TrackGlobalRC) {
+        gvm.refCounts -= 1;
+    }
+    if (TraceEnabled) {
+        gvm.trace.numReleases += 1;
+    }
+    if (obj.retainedCommon.rc == 0) {
+        @call(.{ .modifier = .never_inline }, freeObject, .{obj});
+    }
+}
+
+fn freeObject(obj: *HeapObject) linksection(".eval") void {
+    log.debug("free {}", .{obj.getUserTag()});
+    switch (obj.retainedCommon.structId) {
+        ListS => {
+            const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+            for (list.items) |it| {
+                release(it);
+            }
+            list.deinit(gvm.alloc);
+            gvm.freeObject(obj);
+        },
+        MapS => {
+            const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
+            var iter = map.iterator();
+            while (iter.next()) |entry| {
+                release(entry.key);
+                release(entry.value);
+            }
+            map.deinit(gvm.alloc);
+            gvm.freeObject(obj);
+        },
+        ClosureS => {
+            if (obj.closure.numCaptured <= 3) {
+                const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
+                for (src) |capturedVal| {
+                    release(capturedVal);
+                }
+                gvm.freeObject(obj);
+            } else {
+                stdx.panic("unsupported");
+            }
+        },
+        LambdaS => {
+            gvm.freeObject(obj);
+        },
+        StringS => {
+            gvm.alloc.free(obj.string.ptr[0..obj.string.len]);
+            gvm.freeObject(obj);
+        },
+        FiberS => {
+            releaseFiberStack(&obj.fiber);
+            gvm.freeObject(obj);
+        },
+        else => {
+            // Struct deinit.
+            if (builtin.mode == .Debug) {
+                // Check range.
+                if (obj.retainedCommon.structId >= gvm.structs.len) {
+                    log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});
+                    stdx.fatal();
+                }
+            }
+            const numFields = gvm.structs.buf[obj.retainedCommon.structId].numFields;
+            if (numFields <= 4) {
+                for (obj.smallObject.getValuesConstPtr()[0..numFields]) |child| {
+                    release(child);
+                }
+                gvm.freeObject(obj);
+            } else {
+                log.debug("unsupported release big object", .{});
+                stdx.fatal();
+            }
+        },
+    }
+}
+
 pub fn release(val: Value) linksection(".eval") void {
     @setRuntimeSafety(debug);
-    // log.info("release", .{});
-    // val.dump();
     if (val.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
         if (builtin.mode == .Debug or builtin.is_test) {
@@ -1916,69 +2056,7 @@ pub fn release(val: Value) linksection(".eval") void {
             gvm.trace.numReleases += 1;
         }
         if (obj.retainedCommon.rc == 0) {
-            log.debug("free {}", .{val.getUserTag()});
-            switch (obj.retainedCommon.structId) {
-                ListS => {
-                    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
-                    for (list.items) |it| {
-                        release(it);
-                    }
-                    list.deinit(gvm.alloc);
-                    gvm.freeObject(obj);
-                },
-                MapS => {
-                    const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-                    var iter = map.iterator();
-                    while (iter.next()) |entry| {
-                        release(entry.key);
-                        release(entry.value);
-                    }
-                    map.deinit(gvm.alloc);
-                    gvm.freeObject(obj);
-                },
-                ClosureS => {
-                    if (obj.closure.numCaptured <= 3) {
-                        const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
-                        for (src) |capturedVal| {
-                            release(capturedVal);
-                        }
-                        gvm.freeObject(obj);
-                    } else {
-                        stdx.panic("unsupported");
-                    }
-                },
-                LambdaS => {
-                    gvm.freeObject(obj);
-                },
-                StringS => {
-                    gvm.alloc.free(obj.string.ptr[0..obj.string.len]);
-                    gvm.freeObject(obj);
-                },
-                FiberS => {
-                    releaseFiberStack(&obj.fiber);
-                    gvm.freeObject(obj);
-                },
-                else => {
-                    // Struct deinit.
-                    if (builtin.mode == .Debug) {
-                        // Check range.
-                        if (obj.retainedCommon.structId >= gvm.structs.len) {
-                            log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});
-                            stdx.fatal();
-                        }
-                    }
-                    const numFields = gvm.structs.buf[obj.retainedCommon.structId].numFields;
-                    if (numFields <= 4) {
-                        for (obj.smallObject.getValuesConstPtr()[0..numFields]) |child| {
-                            release(child);
-                        }
-                        gvm.freeObject(obj);
-                    } else {
-                        log.debug("unsupported release big object", .{});
-                        stdx.fatal();
-                    }
-                },
-            }
+            @call(.{ .modifier = .never_inline }, freeObject, .{obj});
         }
     }
 }
@@ -2011,12 +2089,12 @@ fn evalLess(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     return Value.initBool(left.toF64() < right.toF64());
 }
 
-inline fn evalNotCompareNumber(left: Value, right: Value) linksection(".eval") Value {
+inline fn evalCompareNotNumber(left: Value, right: Value) linksection(".eval") Value {
     @setRuntimeSafety(debug);
     return Value.initBool(left.asF64() != right.toF64());
 }
 
-fn evalNotCompareOther(vm: *const VM, left: cy.Value, right: cy.Value) cy.Value {
+fn evalCompareNotOther(vm: *const VM, left: cy.Value, right: cy.Value) cy.Value {
     @setCold(true);
     @setRuntimeSafety(debug);
     if (left.isPointer()) {
@@ -2411,6 +2489,20 @@ pub const HeapObject = packed union {
         val1: Value,
         val2: Value,
     },
+
+    fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
+        switch (self.common.structId) {
+            cy.ListS => return .list,
+            cy.MapS => return .map,
+            cy.StringS => return .string,
+            cy.ClosureS => return .closure,
+            cy.LambdaS => return .lambda,
+            cy.FiberS => return .fiber,
+            else => {
+                return .object;
+            },
+        }
+    }
 };
 
 const SymbolMapType = enum {
@@ -2632,6 +2724,10 @@ pub const UserVM = struct {
         Root.release(val);
     }
 
+    pub inline fn getGlobalRC(_: UserVM) usize {
+        return gvm.getGlobalRC();
+    }
+
     pub inline fn checkMemory(_: UserVM) !bool {
         return gvm.checkMemory();
     }
@@ -2689,264 +2785,227 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             dumpEvalOp(pc);
         }
         switch (gvm.ops[pc].code) {
-            .pushTrue => {
+            .true => {
                 @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                pc += 1;
-                gvm.pushValueNoCheck(Value.initTrue());
-                continue;
-            },
-            .pushFalse => {
-                @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                pc += 1;
-                gvm.pushValueNoCheck(Value.initFalse());
-                continue;
-            },
-            .pushNone => {
-                @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                pc += 1;
-                gvm.pushValueNoCheck(Value.initNone());
-                continue;
-            },
-            .pushConst => {
-                @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                const idx = gvm.ops[pc+1].arg;
+                gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg] = Value.True;
                 pc += 2;
-                gvm.pushValueNoCheck(Value.initRaw(gvm.consts[idx].val));
                 continue;
             },
-            .pushStringTemplate => {
+            .false => {
                 @setRuntimeSafety(debug);
-                const exprCount = gvm.ops[pc+1].arg;
+                gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg] = Value.False;
                 pc += 2;
-                const count = exprCount * 2 + 1;
-                const strs = gvm.stack.buf[gvm.stack.top-count..gvm.stack.top-exprCount];
-                const vals = gvm.stack.buf[gvm.stack.top-exprCount..gvm.stack.top];
+                continue;
+            },
+            .none => {
+                @setRuntimeSafety(debug);
+                gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg] = Value.None;
+                pc += 2;
+                continue;
+            },
+            .constOp => {
+                @setRuntimeSafety(debug);
+                gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg] = Value.initRaw(gvm.consts[gvm.ops[pc+1].arg].val);
+                pc += 3;
+                continue;
+            },
+            .constI8 => {
+                @setRuntimeSafety(debug);
+                gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, gvm.ops[pc+1].arg)));
+                pc += 3;
+                continue;
+            },
+            .stringTemplate => {
+                @setRuntimeSafety(debug);
+                const startLocal = gvm.ops[pc+1].arg;
+                const exprCount = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                const strCount = exprCount + 1;
+                const strs = gvm.ops[pc + 4 .. pc + 4 + strCount];
+                pc += 4 + strCount;
+                const vals = gvm.stack.buf[gvm.framePtr + startLocal .. gvm.framePtr + startLocal + exprCount];
                 const res = try @call(.{ .modifier = .never_inline }, gvm.allocStringTemplate, .{strs, vals});
-                gvm.stack.top = gvm.stack.top - count + 1;
-                gvm.stack.buf[gvm.stack.top-1] = res;
+                gvm.stack.buf[gvm.framePtr + dst] = res;
                 continue;
             },
-            .pushNeg => {
+            .neg => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                const val = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalNeg(val);
-                continue;
-            },
-            .pushNot => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                const val = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalNot(val);
-                continue;
-            },
-            .pushNotCompare => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                if (left.isNumber()) {
-                    gvm.stack.buf[gvm.stack.top-1] = evalNotCompareNumber(left, right);
-                } else {
-                    gvm.stack.buf[gvm.stack.top-1] = @call(.{.modifier = .never_inline }, evalNotCompareOther, .{&gvm, left, right});
-                }
-                continue;
-            },
-            .pushCompare => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                if (left.isNumber()) {
-                    gvm.stack.buf[gvm.stack.top-1] = evalCompareNumber(left, right);
-                } else {
-                    gvm.stack.buf[gvm.stack.top-1] = @call(.{.modifier = .never_inline }, evalCompareOther, .{&gvm, left, right});
-                }
-                continue;
-            },
-            .pushLess => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalLess(left, right);
-                continue;
-            },
-            .pushGreater => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalGreater(left, right);
-                continue;
-            },
-            .pushLessEqual => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalLessOrEqual(left, right);
-                continue;
-            },
-            .pushGreaterEqual => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalGreaterOrEqual(left, right);
-                continue;
-            },
-            .pushBitwiseAnd => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const right = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.buf[gvm.stack.top-1] = evalBitwiseAnd(left, right);
-                continue;
-            },
-            .pushAdd => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const right = gvm.stack.buf[gvm.stack.top];
-                if (left.isNumber() and right.isNumber()) {
-                    gvm.stack.buf[gvm.stack.top-1] = evalAddNumber(left, right);
-                } else {
-                    gvm.stack.buf[gvm.stack.top-1] = try evalAddFallback(&gvm, left, right);
-                }
-                continue;
-            },
-            .pushMinus => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const right = gvm.stack.buf[gvm.stack.top];
-                gvm.stack.buf[gvm.stack.top-1] = evalMinus(left, right);
-                continue;
-            },
-            .pushMinus1 => {
-                @setRuntimeSafety(debug);
-                const leftOffset = gvm.ops[pc+1].arg;
-                const rightOffset = gvm.ops[pc+2].arg;
+                const val = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const dst = gvm.ops[pc+2].arg;
                 pc += 3;
-
-                if (leftOffset == NullByteId) {
-                    const left = gvm.stack.buf[gvm.stack.top-1];
-                    const right = gvm.getLocal(rightOffset);
-                    gvm.stack.buf[gvm.stack.top-1] = evalMinus(left, right);
-                    continue;
-                } else {
-                    const left = gvm.getLocal(leftOffset);
-                    const right = gvm.stack.buf[gvm.stack.top-1];
-                    gvm.stack.buf[gvm.stack.top-1] = evalMinus(left, right);
-                    continue;
-                }
-            },
-            .pushMinus2 => {
-                @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                const leftOffset = gvm.ops[pc+1].arg;
-                const rightOffset = gvm.ops[pc+2].arg;
-                pc += 3;
-
-                const left = gvm.getLocal(leftOffset);
-                const right = gvm.getLocal(rightOffset);
-                gvm.pushValueNoCheck(@call(.{ .modifier = .never_inline }, evalMinus, .{left, right}));
+                gvm.stack.buf[gvm.framePtr + dst] = evalNeg(val);
                 continue;
             },
-            .pushList => {
+            .not => {
                 @setRuntimeSafety(debug);
-                const numElems = gvm.ops[pc+1].arg;
-                pc += 2;
-                const elems = gvm.stack.buf[gvm.stack.top-numElems..gvm.stack.top];
+                const val = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                gvm.stack.buf[gvm.framePtr + dst] = evalNot(val);
+                continue;
+            },
+            .compareNot => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                if (srcLeft.isNumber()) {
+                    gvm.stack.buf[gvm.framePtr + dstLocal] = evalCompareNotNumber(srcLeft, srcRight);
+                } else {
+                    gvm.stack.buf[gvm.framePtr + dstLocal] = @call(.{.modifier = .never_inline }, evalCompareNotOther, .{&gvm, srcLeft, srcRight});
+                }
+                continue;
+            },
+            .compare => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                if (srcLeft.isNumber()) {
+                    gvm.stack.buf[gvm.framePtr + dstLocal] = evalCompareNumber(srcLeft, srcRight);
+                } else {
+                    gvm.stack.buf[gvm.framePtr + dstLocal] = @call(.{.modifier = .never_inline }, evalCompareOther, .{&gvm, srcLeft, srcRight});
+                }
+                continue;
+            },
+            // .lessNumber => {
+            //     @setRuntimeSafety(debug);
+            //     const left = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+            //     const right = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+            //     const dst = gvm.ops[pc+3].arg;
+            //     pc += 4;
+            //     gvm.stack.buf[gvm.framePtr + dst] = Value.initBool(left.asF64() < right.asF64());
+            //     continue;
+            // },
+            .less => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = evalLess(srcLeft, srcRight);
+                continue;
+            },
+            .greater => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = evalGreater(srcLeft, srcRight);
+                continue;
+            },
+            .lessEqual => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = evalLessOrEqual(srcLeft, srcRight);
+                continue;
+            },
+            .greaterEqual => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
+                continue;
+            },
+            .bitwiseAnd => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = evalBitwiseAnd(srcLeft, srcRight);
+                continue;
+            },
+            // .addNumber => {
+            //     @setRuntimeSafety(debug);
+            //     const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+            //     const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+            //     const dstLocal = gvm.ops[pc+3].arg;
+            //     pc += 4;
+            //     gvm.stack.buf[gvm.framePtr + dstLocal] = evalAddNumber(srcLeft, srcRight);
+            //     continue;
+            // },
+            .add => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                if (srcLeft.isNumber() and srcRight.isNumber()) {
+                    gvm.stack.buf[gvm.framePtr + dstLocal] = evalAddNumber(srcLeft, srcRight);
+                } else {
+                    gvm.stack.buf[gvm.framePtr + dstLocal] = try @call(.{ .modifier = .never_inline }, evalAddFallback, .{ &gvm, srcLeft, srcRight });
+                }
+                continue;
+            },
+            .minus => {
+                @setRuntimeSafety(debug);
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = evalMinus(srcLeft, srcRight);
+                continue;
+            },
+            .list => {
+                @setRuntimeSafety(debug);
+                const startLocal = gvm.ops[pc+1].arg;
+                const numElems = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const elems = gvm.stack.buf[gvm.framePtr + startLocal..gvm.framePtr + startLocal + numElems];
                 const list = try gvm.allocList(elems);
-                gvm.stack.top = gvm.stack.top - numElems + 1;
-                gvm.stack.buf[gvm.stack.top-1] = list;
+                gvm.stack.buf[gvm.framePtr + dst] = list;
                 continue;
             },
-            .pushMapEmpty => {
+            .mapEmpty => {
                 @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                pc += 1;
-
-                const map = try gvm.allocEmptyMap();
-                gvm.pushValueNoCheck(map);
+                const dst = gvm.ops[pc+1].arg;
+                pc += 2;
+                gvm.stack.buf[gvm.framePtr + dst] = try gvm.allocEmptyMap();
                 continue;
             },
-            .pushStructInitSmall => {
+            .structSmall => {
                 @setRuntimeSafety(debug);
                 try gvm.checkStackHasOneSpace();
                 const sid = gvm.ops[pc+1].arg;
-                const numProps = gvm.ops[pc+2].arg;
-                const offsets = gvm.ops[pc+3..pc+3+numProps];
-                pc += 3 + numProps;
+                const startLocal = gvm.ops[pc+2].arg;
+                const numProps = gvm.ops[pc+3].arg;
+                const dst = gvm.ops[pc+4].arg;
+                const offsets = gvm.ops[pc+5..pc+5+numProps];
+                pc += 5 + numProps;
 
-                const props = gvm.stack.buf[gvm.stack.top - numProps..gvm.stack.top];
-                const obj = try gvm.allocSmallObject(sid, offsets, props);
-                gvm.stack.top = gvm.stack.top - numProps + 1;
-                gvm.stack.buf[gvm.stack.top-1] = obj;
+                const props = gvm.stack.buf[gvm.framePtr + startLocal .. gvm.framePtr + startLocal + numProps];
+                gvm.stack.buf[gvm.framePtr + dst] = try gvm.allocSmallObject(sid, offsets, props);
                 continue;
             },
-            .pushMap => {
+            .map => {
                 @setRuntimeSafety(debug);
-                const numEntries = gvm.ops[pc+1].arg;
-                const startConst = gvm.ops[pc+2].arg;
-                pc += 3;
-
-                const keys = gvm.consts[startConst..startConst+numEntries];
-                const vals = gvm.stack.buf[gvm.stack.top-numEntries..gvm.stack.top];
-                gvm.stack.top = gvm.stack.top-numEntries+1;
-
-                const map = try gvm.allocMap(keys, vals);
-                gvm.stack.buf[gvm.stack.top-1] = map;
+                const startLocal = gvm.ops[pc+1].arg;
+                const numEntries = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                const keyIdxes = gvm.ops[pc+4..pc+4+numEntries];
+                pc += 4 + numEntries;
+                const vals = gvm.stack.buf[gvm.framePtr + startLocal .. gvm.framePtr + startLocal + numEntries];
+                gvm.stack.buf[gvm.framePtr + dst] = try gvm.allocMap(keyIdxes, vals);
                 continue;
             },
-            .pushSlice => {
+            .slice => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 2;
-                const end = gvm.stack.buf[gvm.stack.top+1];
-                const start = gvm.stack.buf[gvm.stack.top];
-                const list = gvm.stack.buf[gvm.stack.top-1];
-                const newList = try gvm.sliceList(list, start, end);
-                gvm.stack.buf[gvm.stack.top-1] = newList;
-                continue;
-            },
-            .addSet => {
-                @setRuntimeSafety(debug);
-                const offset = gvm.ops[pc+1].arg;
-                pc += 2;
-                const val = gvm.popRegister();
-
-                const left = gvm.getLocal(offset);
-                if (left.isNumber() and val.isNumber()) {
-                    gvm.setLocal(offset, evalAddNumber(left, val));
-                } else {
-                    gvm.setLocal(offset, try evalAddFallback(&gvm, left, val));
-                }
-                continue;
-            },
-            .releaseSet => {
-                @setRuntimeSafety(debug);
-                const offset = gvm.ops[pc+1].arg;
-                pc += 2;
-                const val = gvm.popRegister();
-                const existing = gvm.getLocal(offset);
-                release(existing);
-                gvm.setLocal(offset, val);
+                const list = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const start = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const end = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+3].arg];
+                const dst = gvm.ops[pc+4].arg;
+                pc += 5;
+                gvm.stack.buf[gvm.framePtr + dst] = try gvm.sliceList(list, start, end);
                 continue;
             },
             .setInitN => {
@@ -2955,64 +3014,107 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const locals = gvm.ops[pc+2..pc+2+numLocals];
                 pc += 2 + numLocals;
                 for (locals) |local| {
-                    gvm.setLocal(local.arg, Value.initNone());
+                    gvm.setLocal(local.arg, Value.None);
                 }
-            },
-            .set => {
-                @setRuntimeSafety(debug);
-                const offset = gvm.ops[pc+1].arg;
-                pc += 2;
-                const val = gvm.popRegister();
-                gvm.setLocal(offset, val);
-                continue;
             },
             .setIndex => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 3;
-                const right = gvm.stack.buf[gvm.stack.top+2];
-                const index = gvm.stack.buf[gvm.stack.top+1];
-                const left = gvm.stack.buf[gvm.stack.top];
-                try gvm.setIndex(left, index, right);
+                const left = gvm.ops[pc+1].arg;
+                const index = gvm.ops[pc+2].arg;
+                const right = gvm.ops[pc+3].arg;
+                pc += 4;
+                const rightv = gvm.stack.buf[gvm.framePtr + right];
+                const indexv = gvm.stack.buf[gvm.framePtr + index];
+                const leftv = gvm.stack.buf[gvm.framePtr + left];
+                try gvm.setIndex(leftv, indexv, rightv);
                 continue;
             },
-            .load => {
+            .copy => {
                 @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                const offset = gvm.ops[pc+1].arg;
-                pc += 2;
-                const val = gvm.getLocal(offset);
-                gvm.pushValueNoCheck(val);
+                const src = gvm.ops[pc+1].arg;
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                gvm.stack.buf[gvm.framePtr + dst] = gvm.stack.buf[gvm.framePtr + src];
                 continue;
             },
-            .loadRetain => {
+            .copyRetainRelease => {
+                const src = gvm.ops[pc+1].arg;
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                gvm.retain(gvm.stack.buf[gvm.framePtr + src]);
+                release(gvm.stack.buf[gvm.framePtr + dst]);
+                gvm.stack.buf[gvm.framePtr + dst] = gvm.stack.buf[gvm.framePtr + src];
+            },
+            .copyReleaseDst => {
                 @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
-                const offset = gvm.ops[pc+1].arg;
-                pc += 2;
-                const val = gvm.getLocal(offset);
-                gvm.pushValueNoCheck(val);
+                const src = gvm.ops[pc+1].arg;
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                release(gvm.stack.buf[gvm.framePtr + dst]);
+                gvm.stack.buf[gvm.framePtr + dst] = gvm.stack.buf[gvm.framePtr + src];
+                continue;
+            },
+            .copyRetainSrc => {
+                @setRuntimeSafety(debug);
+                const src = gvm.ops[pc+1].arg;
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                const val = gvm.stack.buf[gvm.framePtr + src];
+                gvm.stack.buf[gvm.framePtr + dst] = val;
                 gvm.retain(val);
                 continue;
             },
-            .pushIndex => {
+            .retain => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const index = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const val = try @call(.{.modifier = .never_inline}, gvm.getIndex, .{left, index});
-                gvm.stack.buf[gvm.stack.top - 1] = val;
+                const local = gvm.ops[pc+1].arg;
+                pc += 2;
+                gvm.retain(gvm.getLocal(local));
                 continue;
             },
-            .pushReverseIndex => {
+            .index => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const index = gvm.stack.buf[gvm.stack.top];
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const val = try @call(.{.modifier = .never_inline}, gvm.getReverseIndex, .{left, index});
-                gvm.stack.buf[gvm.stack.top - 1] = val;
+                const left = gvm.ops[pc+1].arg;
+                const index = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const indexv = gvm.stack.buf[gvm.framePtr + index];
+                const leftv = gvm.stack.buf[gvm.framePtr + left];
+                gvm.stack.buf[gvm.framePtr + dst] = try @call(.{.modifier = .never_inline}, gvm.getIndex, .{leftv, indexv});
+                continue;
+            },
+            .indexRetain => {
+                @setRuntimeSafety(debug);
+                const left = gvm.ops[pc+1].arg;
+                const index = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const indexv = gvm.stack.buf[gvm.framePtr + index];
+                const leftv = gvm.stack.buf[gvm.framePtr + left];
+                gvm.stack.buf[gvm.framePtr + dst] = try @call(.{.modifier = .never_inline}, gvm.getIndex, .{leftv, indexv});
+                gvm.retain(gvm.stack.buf[gvm.framePtr + dst]);
+                continue;
+            },
+            .reverseIndex => {
+                @setRuntimeSafety(debug);
+                const left = gvm.ops[pc+1].arg;
+                const index = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const indexv = gvm.stack.buf[gvm.framePtr + index];
+                const leftv = gvm.stack.buf[gvm.framePtr + left];
+                gvm.stack.buf[gvm.framePtr + dst] = try @call(.{.modifier = .never_inline}, gvm.getReverseIndex, .{leftv, indexv});
+                continue;
+            },
+            .reverseIndexRetain => {
+                @setRuntimeSafety(debug);
+                const left = gvm.ops[pc+1].arg;
+                const index = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const indexv = gvm.stack.buf[gvm.framePtr + index];
+                const leftv = gvm.stack.buf[gvm.framePtr + left];
+                gvm.stack.buf[gvm.framePtr + dst] = try @call(.{.modifier = .never_inline}, gvm.getReverseIndex, .{leftv, indexv});
+                gvm.retain(gvm.stack.buf[gvm.framePtr + dst]);
                 continue;
             },
             .jumpBack => {
@@ -3025,44 +3127,39 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
                 continue;
             },
-            .jumpNotCondKeep => {
+            // .jumpCondNone => {
+            //     @setRuntimeSafety(debug);
+            //     const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
+            //     const local = gvm.ops[pc+3].arg;
+            //     if (gvm.getLocal(local).isNone()) {
+            //         pc += pcOffset;
+            //     } else {
+            //         pc += 4;
+            //     }
+            //     continue;
+            // },
+            .jumpCond => {
                 @setRuntimeSafety(debug);
                 const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
-                const expr = gvm.stack.buf[gvm.stack.top-1];
-                const condVal = if (expr.isBool()) b: {
-                    break :b expr.asBool();
+                const local = gvm.ops[pc+3].arg;
+                const cond = gvm.getLocal(local);
+                const condVal = if (cond.isBool()) b: {
+                    break :b cond.asBool();
                 } else b: {
-                    break :b @call(.{ .modifier = .never_inline }, expr.toBool, .{});
-                };
-                if (!condVal) {
-                    pc += pcOffset;
-                } else {
-                    pc += 3;
-                    gvm.stack.top -= 1;
-                }
-                continue;
-            },
-            .jumpCondKeep => {
-                @setRuntimeSafety(debug);
-                const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
-                const expr = gvm.stack.buf[gvm.stack.top-1];
-                const condVal = if (expr.isBool()) b: {
-                    break :b expr.asBool();
-                } else b: {
-                    break :b @call(.{ .modifier = .never_inline }, expr.toBool, .{});
+                    break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
                 };
                 if (condVal) {
                     pc += pcOffset;
                 } else {
-                    pc += 3;
-                    gvm.stack.top -= 1;
+                    pc += 4;
                 }
                 continue;
             },
             .jumpNotCond => {
                 @setRuntimeSafety(debug);
                 const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
-                const cond = gvm.popRegister();
+                const local = gvm.ops[pc+3].arg;
+                const cond = gvm.getLocal(local);
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
@@ -3071,7 +3168,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 if (!condVal) {
                     pc += pcOffset;
                 } else {
-                    pc += 3;
+                    pc += 4;
                 }
                 continue;
             },
@@ -3083,60 +3180,46 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 @call(.{ .modifier = .never_inline }, release, .{gvm.getLocal(local)});
                 continue;
             },
-            .pushCall0 => {
+            .call0 => {
                 @setRuntimeSafety(debug);
-                const numArgs = gvm.ops[pc+1].arg;
-                pc += 2;
-
-                const callee = gvm.stack.buf[gvm.stack.top - numArgs];
-                const retInfo = gvm.buildReturnInfo2(pc, 0, true);
-                // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
-                try @call(.{ .modifier = .always_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
-                continue;
-            },
-            .pushCall1 => {
-                @setRuntimeSafety(debug);
-                const numArgs = gvm.ops[pc+1].arg;
-                pc += 2;
-
-                const callee = gvm.stack.buf[gvm.stack.top - numArgs];
-                const retInfo = gvm.buildReturnInfo2(pc, 1, true);
-                // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
-                try @call(.{ .modifier = .always_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
-                continue;
-            },
-            .call => {
-                @setRuntimeSafety(debug);
-                pc += 1;
-                continue;
-            },
-            .callStr => {
-                @setRuntimeSafety(debug);
-                // const numArgs = gvm.ops[pc+1].arg;
-                // const str = gvm.extras[gvm.extraPc].two;
-                pc += 3;
-
-                // const top = gvm.registers.items.len;
-                // const vals = gvm.registers.items[top-numArgs..top];
-                // gvm.registers.items.len = top-numArgs;
-
-                // gvm.callStr(vals[0], gvm.strBuf[str[0]..str[1]], vals[1..]);
-                continue;
-            },
-            .pushCallObjSym0 => {
-                @setRuntimeSafety(debug);
-                const symId = gvm.ops[pc+1].arg;
+                const startLocal = gvm.ops[pc+1].arg;
                 const numArgs = gvm.ops[pc+2].arg;
                 pc += 3;
 
-                const recv = gvm.stack.buf[gvm.stack.top-1];
+                const callee = gvm.stack.buf[gvm.framePtr + startLocal + numArgs + 2 - 1];
+                const retInfo = gvm.buildReturnInfo2(pc, 0, true);
+                // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
+                try @call(.{ .modifier = .always_inline }, gvm.call, .{&pc, callee, startLocal, numArgs, retInfo});
+                continue;
+            },
+            .call1 => {
+                @setRuntimeSafety(debug);
+                const startLocal = gvm.ops[pc+1].arg;
+                const numArgs = gvm.ops[pc+2].arg;
+                pc += 3;
+
+                const callee = gvm.stack.buf[gvm.framePtr + startLocal + numArgs + 2 - 1];
+                const retInfo = gvm.buildReturnInfo2(pc, 1, true);
+                // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
+                try @call(.{ .modifier = .always_inline }, gvm.call, .{&pc, callee, startLocal, numArgs, retInfo});
+                continue;
+            },
+            .callObjSym0 => {
+                @setRuntimeSafety(debug);
+                const symId = gvm.ops[pc+1].arg;
+                const startLocal = gvm.ops[pc+2].arg;
+                const numArgs = gvm.ops[pc+3].arg;
+                pc += 4;
+
+                const recv = gvm.stack.buf[gvm.framePtr + startLocal + numArgs + 2 - 1];
                 if (recv.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                    // if (@call(.{ .modifier = .never_inline }, gvm.getCallObjSym, .{obj, symId})) |sym| {
                     if (gvm.getCallObjSym(obj, symId)) |sym| {
-                        // try @call(.{ .modifier = .always_inline }, gvm.callSymEntry, .{&pc, sym, obj, numArgs, 0});
-                        try gvm.callSymEntry(&pc, sym, obj, numArgs, 0);
+                        // try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{&pc, sym, obj, startLocal, numArgs, 0});
+                        try gvm.callSymEntry(&pc, sym, obj, startLocal, numArgs, 0);
                     } else {
-                        pc = try @call(.{ .modifier = .never_inline }, callObjSymOther, .{pc, obj, symId, numArgs, 0});
+                        pc = try @call(.{ .modifier = .never_inline }, callObjSymOther, .{pc, obj, symId, startLocal, numArgs, 0});
                     }
                 } else {
                     return gvm.panic("Missing function symbol in value.");
@@ -3145,20 +3228,22 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 // try @call(.{.modifier = .always_inline }, gvm.callObjSym, .{recv, symId, numArgs, 0});
                 continue;
             },
-            .pushCallObjSym1 => {
+            .callObjSym1 => {
                 @setRuntimeSafety(debug);
                 const symId = gvm.ops[pc+1].arg;
-                const numArgs = gvm.ops[pc+2].arg;
-                pc += 3;
+                const startLocal = gvm.ops[pc+2].arg;
+                const numArgs = gvm.ops[pc+3].arg;
+                pc += 4;
 
-                const recv = gvm.stack.buf[gvm.stack.top-1];
+                const recv = gvm.stack.buf[gvm.framePtr + startLocal + numArgs + 2 - 1];
                 if (recv.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                    // if (@call(.{ .modifier = .never_inline }, gvm.getCallObjSym, .{obj, symId})) |sym| {
                     if (gvm.getCallObjSym(obj, symId)) |sym| {
-                        // try @call(.{ .modifier = .always_inline }, gvm.callSymEntry, .{&pc, sym, obj, numArgs, 1});
-                        try gvm.callSymEntry(&pc, sym, obj, numArgs, 1);
+                        // try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{&pc, sym, obj, startLocal, numArgs, 1});
+                        try gvm.callSymEntry(&pc, sym, obj, startLocal, numArgs, 1);
                     } else {
-                        pc = try @call(.{ .modifier = .never_inline }, callObjSymOther, .{pc, obj, symId, numArgs, 1});
+                        pc = try @call(.{ .modifier = .never_inline }, callObjSymOther, .{pc, obj, symId, startLocal, numArgs, 1});
                     }
                 } else {
                     return gvm.panic("Missing function symbol in value.");
@@ -3167,35 +3252,36 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 // try @call(.{.modifier = .always_inline }, gvm.callObjSym, .{recv, symId, numArgs, 1});
                 continue;
             },
-            .pushCallSym0 => {
+            .callSym0 => {
                 @setRuntimeSafety(debug);
                 const symId = gvm.ops[pc+1].arg;
-                const numArgs = gvm.ops[pc+2].arg;
-                pc += 3;
+                const startLocal = gvm.ops[pc+2].arg;
+                const numArgs = gvm.ops[pc+3].arg;
+                pc += 4;
 
-                try gvm.callSym(&pc, symId, numArgs, 0);
-                // try @call(.{ .modifier = .always_inline }, gvm.callSym, .{ symId, vals, false });
+                try gvm.callSym(&pc, symId, startLocal, numArgs, 0);
                 continue;
             },
-            .pushCallSym1 => {
+            .callSym1 => {
                 @setRuntimeSafety(debug);
                 const symId = gvm.ops[pc+1].arg;
-                const numArgs = gvm.ops[pc+2].arg;
-                pc += 3;
+                const startLocal = gvm.ops[pc+2].arg;
+                const numArgs = gvm.ops[pc+3].arg;
+                pc += 4;
 
-                try gvm.callSym(&pc, symId, numArgs, 1);
-                // try @call(.{ .modifier = .always_inline }, gvm.callSym, .{ symId, vals, true });
+                try gvm.callSym(&pc, symId, startLocal, numArgs, 1);
                 continue;
             },
-            .releaseSetField => {
+            .setFieldRelease => {
                 @setRuntimeSafety(debug);
                 const fieldId = gvm.ops[pc+1].arg;
-                pc += 2;
+                const left = gvm.ops[pc+2].arg;
+                const right = gvm.ops[pc+3].arg;
+                pc += 4;
 
-                const recv = gvm.stack.buf[gvm.stack.top-2];
-                const val = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.top -= 2;
-                try gvm.releaseSetField(recv, fieldId, val);
+                const recv = gvm.stack.buf[gvm.framePtr + left];
+                const val = gvm.stack.buf[gvm.framePtr + right];
+                try gvm.setFieldRelease(recv, fieldId, val);
             },
             .setField => {
                 @setRuntimeSafety(debug);
@@ -3207,95 +3293,104 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 gvm.stack.top -= 2;
                 try gvm.setField(recv, fieldId, val);
             },
-            .pushFieldParentRelease => {
+            .fieldRelease => {
                 @setRuntimeSafety(debug);
                 const fieldId = gvm.ops[pc+1].arg;
-                pc += 2;
-
-                const recv = gvm.stack.buf[gvm.stack.top-1];
+                const left = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const recv = gvm.stack.buf[gvm.framePtr + left];
                 const val = try gvm.getField(fieldId, recv);
-                gvm.stack.buf[gvm.stack.top-1] = val;
+                gvm.stack.buf[gvm.framePtr + dst] = val;
                 release(recv);
                 continue;
             },
-            .pushField => {
+            .field => {
                 @setRuntimeSafety(debug);
                 const fieldId = gvm.ops[pc+1].arg;
-                pc += 2;
-
-                const recv = gvm.stack.buf[gvm.stack.top-1];
+                const left = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const recv = gvm.stack.buf[gvm.framePtr + left];
                 const val = try gvm.getField(fieldId, recv);
-                gvm.stack.buf[gvm.stack.top-1] = val;
+                gvm.stack.buf[gvm.framePtr + dst] = val;
                 continue;
             },
-            .pushFieldRetainParentRelease => {
+            .fieldRetainRelease => {
                 @setRuntimeSafety(debug);
                 const fieldId = gvm.ops[pc+1].arg;
-                pc += 2;
-
-                const recv = gvm.stack.buf[gvm.stack.top-1];
-                const val = gvm.getAndRetainField(fieldId, recv);
-                gvm.stack.buf[gvm.stack.top-1] = val;
+                const left = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
+                const recv = gvm.stack.buf[gvm.framePtr + left];
+                const val = try gvm.getAndRetainField(fieldId, recv);
+                gvm.stack.buf[gvm.framePtr + dst] = val;
                 release(recv);
                 continue;
             },
-            .pushFieldRetain => {
+            .fieldRetain => {
                 @setRuntimeSafety(debug);
                 const fieldId = gvm.ops[pc+1].arg;
-                pc += 2;
+                const left = gvm.ops[pc+2].arg;
+                const dst = gvm.ops[pc+3].arg;
+                pc += 4;
 
-                const recv = gvm.stack.buf[gvm.stack.top-1];
-                const val = gvm.getAndRetainField(fieldId, recv);
-                gvm.stack.buf[gvm.stack.top-1] = val;
+                const recv = gvm.stack.buf[gvm.framePtr + left];
+                const val = try gvm.getAndRetainField(fieldId, recv);
+                gvm.stack.buf[gvm.framePtr + dst] = val;
                 continue;
             },
-            .pushLambda => {
+            .lambda => {
                 @setRuntimeSafety(debug);
-                try gvm.checkStackHasOneSpace();
                 const funcPc = pc - gvm.ops[pc+1].arg;
                 const numParams = gvm.ops[pc+2].arg;
                 const numLocals = gvm.ops[pc+3].arg;
-                pc += 4;
-
-                const lambda = try gvm.allocLambda(funcPc, numParams, numLocals);
-                gvm.pushValueNoCheck(lambda);
+                const dst = gvm.ops[pc+4].arg;
+                pc += 5;
+                gvm.stack.buf[gvm.framePtr + dst] = try gvm.allocLambda(funcPc, numParams, numLocals);
                 continue;
             },
-            .pushClosure => {
+            .closure => {
                 @setRuntimeSafety(debug);
                 const funcPc = pc - gvm.ops[pc+1].arg;
-                const numParams = gvm.ops[pc+2].arg;
-                const numCaptured = gvm.ops[pc+3].arg;
-                const numLocals = gvm.ops[pc+4].arg;
-                pc += 5;
+                const startLocal = gvm.ops[pc+2].arg;
+                const numParams = gvm.ops[pc+3].arg;
+                const numCaptured = gvm.ops[pc+4].arg;
+                const numLocals = gvm.ops[pc+5].arg;
+                const dst = gvm.ops[pc+6].arg;
+                pc += 7;
 
-                const capturedVals = gvm.stack.buf[gvm.stack.top-numCaptured..gvm.stack.top];
-                const closure = try gvm.allocClosure(funcPc, numParams, numLocals, capturedVals);
-                gvm.stack.top = gvm.stack.top-numCaptured+1;
-                gvm.stack.buf[gvm.stack.top-1] = closure;
+                const capturedVals = gvm.stack.buf[gvm.framePtr + startLocal .. gvm.framePtr + startLocal + numCaptured];
+                gvm.stack.buf[gvm.framePtr + dst] = try gvm.allocClosure(funcPc, numParams, numLocals, capturedVals);
                 continue;
             },
             .forIter => {
                 @setRuntimeSafety(debug);
-                const local = gvm.ops[pc+1].arg;
-                pc += 4;
+                const startLocal = gvm.ops[pc+1].arg;
+                const iterable = gvm.ops[pc+2].arg;
+                const local = gvm.ops[pc+3].arg;
+                pc += 6;
 
-                const val = gvm.stack.buf[gvm.stack.top-1];
-                pc = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, val, gvm.iteratorObjSym, 1, 1});
-                const recv = gvm.stack.buf[gvm.stack.top-1];
-                if (!recv.isPointer()) {
+                const iterableVal = gvm.stack.buf[gvm.framePtr + iterable];
+                gvm.stack.buf[gvm.framePtr + startLocal + 2] = iterableVal;
+                pc = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, iterableVal, gvm.iteratorObjSym, startLocal, 1, 1});
+                const iter = gvm.stack.buf[gvm.framePtr + startLocal];
+
+                if (!iter.isPointer()) {
                     return gvm.panic("Not an iterator.");
                 }
                 if (local == 255) {
                     while (true) {
                         // try gvm.callObjSym(recv, gvm.nextObjSym, 1, 1);
-                        // try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{recv, gvm.nextObjSym, 1, 1});
-                        const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                        gvm.stack.buf[gvm.framePtr + startLocal + 2] = iter;
+                        // pc = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, iter, gvm.nextObjSym, startLocal, 1, 1});
+                        const obj = stdx.ptrAlignCast(*HeapObject, iter.asPointer().?);
                         if (gvm.getCallObjSym(obj, gvm.nextObjSym)) |sym| {
-                            try gvm.callSymEntry(&pc, sym, obj, 1, 1);
+                            gvm.stack.buf[gvm.framePtr + startLocal + 2] = iter;
+                            try gvm.callSymEntry(&pc, sym, obj, startLocal, 1, 1);
                         } else return gvm.panic("Missing function symbol in value.");
 
-                        const next = gvm.stack.buf[gvm.stack.top-1];
+                        const next = gvm.stack.buf[gvm.framePtr + startLocal];
                         if (next.isNone()) {
                             break;
                         }
@@ -3309,13 +3404,15 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     gvm.pc = pc;
                     while (true) {
                         // try gvm.callObjSym(recv, gvm.nextObjSym, 1, 1);
-                        // try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{recv, gvm.nextObjSym, 1, 1});
-                        const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                        gvm.stack.buf[gvm.framePtr + startLocal + 2] = iter;
+                        // pc = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, iter, gvm.nextObjSym, startLocal, 1, 1});
+                        const obj = stdx.ptrAlignCast(*HeapObject, iter.asPointer().?);
                         if (gvm.getCallObjSym(obj, gvm.nextObjSym)) |sym| {
-                            try gvm.callSymEntry(&pc, sym, obj, 1, 1);
+                            gvm.stack.buf[gvm.framePtr + startLocal + 2] = iter;
+                            try gvm.callSymEntry(&pc, sym, obj, startLocal, 1, 1);
                         } else return gvm.panic("Missing function symbol in value.");
 
-                        const next = gvm.stack.buf[gvm.stack.top-1];
+                        const next = gvm.stack.buf[gvm.framePtr + startLocal];
                         if (next.isNone()) {
                             break;
                         }
@@ -3329,21 +3426,22 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         };
                     }
                 }
-                release(recv);
-                gvm.stack.top -= 1;
-                pc = pc + @ptrCast(*const align(1) u16, &gvm.ops[pc-2]).* - 4;
+                release(iter);
+                pc = pc + @ptrCast(*const align(1) u16, &gvm.ops[pc-2]).* - 6;
                 continue;
             },
             .forRange => {
                 @setRuntimeSafety(debug);
                 const local = gvm.ops[pc+1].arg;
-                const endPc = pc + @ptrCast(*const align(1) u16, &gvm.ops[pc+2]).*;
-                pc += 4;
+                const startValueLocal = gvm.ops[pc+2].arg;
+                const endValueLocal = gvm.ops[pc+3].arg;
+                const stepValueLocal = gvm.ops[pc+4].arg;
+                const endPc = pc + @ptrCast(*const align(1) u16, &gvm.ops[pc+5]).*;
+                pc += 7;
 
-                gvm.stack.top -= 3;
-                const step = gvm.stack.buf[gvm.stack.top+2].toF64();
-                const rangeEnd = gvm.stack.buf[gvm.stack.top+1].toF64();
-                var i = gvm.stack.buf[gvm.stack.top].toF64();
+                const step = gvm.stack.buf[gvm.framePtr + stepValueLocal].toF64();
+                const rangeEnd = gvm.stack.buf[gvm.framePtr + endValueLocal].toF64();
+                var i = gvm.stack.buf[gvm.framePtr + startValueLocal].toF64();
 
                 gvm.pc = pc;
                 if (i <= rangeEnd) {
@@ -3435,7 +3533,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             // },
             .ret1 => {
                 @setRuntimeSafety(debug);
-                if (@call(.{ .modifier = .always_inline }, gvm.popStackFrame, .{&pc, 1})) {
+                if (@call(.{ .modifier = .always_inline }, gvm.popStackFrameLocal1, .{&pc})) {
                     continue;
                 } else {
                     return;
@@ -3443,49 +3541,53 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .ret0 => {
                 @setRuntimeSafety(debug);
-                if (@call(.{ .modifier = .always_inline }, gvm.popStackFrame, .{&pc, 0})) {
+                if (@call(.{ .modifier = .always_inline }, gvm.popStackFrameLocal0, .{&pc})) {
                     continue;
                 } else {
                     return;
                 }
             },
-            .pushMultiply => {
+            .mul => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const right = gvm.stack.buf[gvm.stack.top];
-                gvm.stack.buf[gvm.stack.top-1] = @call(.{ .modifier = .never_inline }, evalMultiply, .{left, right});
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = @call(.{ .modifier = .never_inline }, evalMultiply, .{srcLeft, srcRight});
                 continue;
             },
-            .pushDivide => {
+            .div => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const right = gvm.stack.buf[gvm.stack.top];
-                gvm.stack.buf[gvm.stack.top-1] = @call(.{ .modifier = .never_inline }, evalDivide, .{left, right});
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = @call(.{ .modifier = .never_inline }, evalDivide, .{srcLeft, srcRight});
                 continue;
             },
-            .pushMod => {
+            .mod => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const right = gvm.stack.buf[gvm.stack.top];
-                gvm.stack.buf[gvm.stack.top-1] = @call(.{ .modifier = .never_inline }, evalMod, .{left, right});
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = @call(.{ .modifier = .never_inline }, evalMod, .{srcLeft, srcRight});
                 continue;
             },
-            .pushPower => {
+            .pow => {
                 @setRuntimeSafety(debug);
-                pc += 1;
-                gvm.stack.top -= 1;
-                const left = gvm.stack.buf[gvm.stack.top-1];
-                const right = gvm.stack.buf[gvm.stack.top];
-                gvm.stack.buf[gvm.stack.top-1] = @call(.{ .modifier = .never_inline }, evalPower, .{left, right});
+                const srcLeft = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+1].arg];
+                const srcRight = gvm.stack.buf[gvm.framePtr + gvm.ops[pc+2].arg];
+                const dstLocal = gvm.ops[pc+3].arg;
+                pc += 4;
+                gvm.stack.buf[gvm.framePtr + dstLocal] = @call(.{ .modifier = .never_inline }, evalPower, .{srcLeft, srcRight});
                 continue;
             },
             .end => {
+                @setRuntimeSafety(debug);
+                gvm.endLocal = gvm.ops[pc + 1].arg;
+                pc += 2;
+                gvm.curFiber.pc = @intCast(u32, pc);
                 return error.End;
             },
         }
@@ -3494,42 +3596,68 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
 
 fn dumpEvalOp(pc: usize) void {
     switch (gvm.ops[pc].code) {
-        .pushCallObjSym0 => {
+        .callObjSym0 => {
             const methodId = gvm.ops[pc+1].arg;
-            const numArgs = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), methodId, numArgs});
+            const startLocal = gvm.ops[pc+2].arg;
+            const numArgs = gvm.ops[pc+3].arg;
+            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), methodId, startLocal, numArgs});
         },
-        .pushCallSym1 => {
-            const funcId = gvm.ops[pc+1].arg;
-            const numArgs = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), funcId, numArgs});
+        .callObjSym1 => {
+            const methodId = gvm.ops[pc+1].arg;
+            const startLocal = gvm.ops[pc+2].arg;
+            const numArgs = gvm.ops[pc+3].arg;
+            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), methodId, startLocal, numArgs});
         },
-        .pushCallSym0 => {
+        .callSym1 => {
             const funcId = gvm.ops[pc+1].arg;
-            const numArgs = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), funcId, numArgs});
+            const startLocal = gvm.ops[pc+2].arg;
+            const numArgs = gvm.ops[pc+3].arg;
+            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), funcId, startLocal, numArgs});
+        },
+        .callSym0 => {
+            const funcId = gvm.ops[pc+1].arg;
+            const startLocal = gvm.ops[pc+2].arg;
+            const numArgs = gvm.ops[pc+3].arg;
+            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), funcId, startLocal, numArgs});
         },
         .release => {
             const local = gvm.ops[pc+1].arg;
             log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), local});
         },
-        .load => {
+        .copy => {
             const local = gvm.ops[pc+1].arg;
-            log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), local});
+            const dst = gvm.ops[pc+2].arg;
+            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), local, dst});
         },
-        .pushFieldRetain => {
+        .copyRetainSrc => {
+            const src = gvm.ops[pc+1].arg;
+            const dst = gvm.ops[pc+2].arg;
+            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), src, dst});
+        },
+        .fieldRetain => {
             const fieldId = gvm.ops[pc+1].arg;
             log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), fieldId});
         },
-        .pushMap => {
-            const numEntries = gvm.ops[pc+1].arg;
-            const startConst = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), numEntries, startConst});
+        .map => {
+            const startLocal = gvm.ops[pc+1].arg;
+            const numEntries = gvm.ops[pc+2].arg;
+            const startConst = gvm.ops[pc+3].arg;
+            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), startLocal, numEntries, startConst});
         },
-        .pushConst => {
+        .constI8 => {
+            const val = gvm.ops[pc+1].arg;
+            const dst = gvm.ops[pc+2].arg;
+            log.debug("{} op: {s} [{}] -> %{}", .{pc, @tagName(gvm.ops[pc].code), @bitCast(i8, val), dst});
+        },
+        .constOp => {
             const idx = gvm.ops[pc+1].arg;
+            const dst = gvm.ops[pc+2].arg;
             const val = Value{ .val = gvm.consts[idx].val };
-            log.debug("{} op: {s} [{s}]", .{pc, @tagName(gvm.ops[pc].code), gvm.valueToTempString(val)});
+            log.debug("{} op: {s} [{s}] -> %{}", .{pc, @tagName(gvm.ops[pc].code), gvm.valueToTempString(val), dst});
+        },
+        .end => {
+            const endLocal = gvm.ops[pc+1].arg;
+            log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), endLocal});
         },
         .setInitN => {
             const numLocals = gvm.ops[pc+1].arg;
@@ -3554,7 +3682,6 @@ pub const EvalError = error{
     End,
     OutOfBounds,
     StackOverflow,
-    BadTop,
     NoDebugSym,
 };
 
@@ -3589,7 +3716,7 @@ const MethodKey = struct {
     methodId: SymbolId,
 };
 
-pub fn callNoInline(pc: *usize, callee: Value, numArgs: u8, retInfo: Value) !void {
+pub fn callNoInline(pc: *usize, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     @setRuntimeSafety(debug);
     if (callee.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, callee.asPointer().?);
@@ -3599,23 +3726,21 @@ pub fn callNoInline(pc: *usize, callee: Value, numArgs: u8, retInfo: Value) !voi
                     stdx.panic("params/args mismatch");
                 }
 
-                if (gvm.stack.top + obj.closure.numLocals >= gvm.stack.buf.len) {
+                if (gvm.framePtr + startLocal + obj.closure.numLocals >= gvm.stack.buf.len) {
                     return error.StackOverflow;
                 }
 
                 pc.* = obj.closure.funcPc;
-                gvm.framePtr = gvm.stack.top - numArgs;
-                gvm.stack.buf[gvm.framePtr] = retInfo;
+                gvm.framePtr = gvm.framePtr + startLocal;
+                gvm.stack.buf[gvm.framePtr + 1] = retInfo;
 
                 // Copy over captured vars to new call stack locals.
                 if (obj.closure.numCaptured <= 3) {
                     const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
-                    std.mem.copy(Value, gvm.stack.buf[gvm.stack.top..gvm.stack.top+obj.closure.numCaptured], src);
+                    std.mem.copy(Value, gvm.stack.buf[gvm.framePtr + numArgs + 2..gvm.framePtr + numArgs + 2 + obj.closure.numCaptured], src);
                 } else {
                     stdx.panic("unsupported closure > 3 captured args.");
                 }
-
-                gvm.stack.top += obj.lambda.numLocals;
             },
             LambdaS => {
                 if (numArgs - 1 != obj.lambda.numParams) {
@@ -3623,14 +3748,13 @@ pub fn callNoInline(pc: *usize, callee: Value, numArgs: u8, retInfo: Value) !voi
                     stdx.fatal();
                 }
 
-                if (gvm.stack.top + obj.lambda.numLocals >= gvm.stack.buf.len) {
+                if (gvm.framePtr + startLocal + obj.lambda.numLocals >= gvm.stack.buf.len) {
                     return error.StackOverflow;
                 }
 
                 pc.* = obj.lambda.funcPc;
-                gvm.framePtr = gvm.stack.top - numArgs;
-                gvm.stack.buf[gvm.framePtr] = retInfo;
-                gvm.stack.top += obj.lambda.numLocals;
+                gvm.framePtr = gvm.framePtr + startLocal;
+                gvm.stack.buf[gvm.framePtr + 1] = retInfo;
             },
             else => {},
         }
@@ -3653,61 +3777,50 @@ fn getObjectFunctionFallback(obj: *const HeapObject, symId: SymbolId) !Value {
 }
 
 // Use new pc local to avoid deoptimization.
-fn callObjSymOther(pc: usize, obj: *const HeapObject, symId: SymbolId, numArgs: u8, comptime reqNumRetVals: u2) !usize {
+fn callObjSymOther(pc: usize, obj: *HeapObject, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) !usize {
     @setCold(true);
     @setRuntimeSafety(debug);
     const func = try getObjectFunctionFallback(obj, symId);
+
+    gvm.retain(func);
+    release(Value.initPtr(obj));
+
     // Replace receiver with function.
-    gvm.stack.buf[gvm.stack.top-1] = func;
-    // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
+    gvm.stack.buf[gvm.framePtr + startLocal + 2 + numArgs - 1] = func;
+    // const retInfo = gvm.buildReturnInfo2(gvm.pc + 3, reqNumRetVals, true);
     const retInfo = gvm.buildReturnInfo2(pc, reqNumRetVals, true);
     var newPc = pc;
-    try @call(.{ .modifier = .always_inline }, callNoInline, .{&newPc, func, numArgs, retInfo});
+    try @call(.{ .modifier = .always_inline }, callNoInline, .{&newPc, func, startLocal, numArgs, retInfo});
     return newPc;
 }
 
-fn callSymEntryNoInline(pc: usize, sym: SymbolEntry, obj: *HeapObject, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !usize {
+fn callSymEntryNoInline(pc: usize, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !usize {
     @setRuntimeSafety(debug);
-    const argStart = gvm.stack.top - numArgs;
     switch (sym.entryT) {
         .func => {
             @setRuntimeSafety(debug);
-            if (gvm.stack.top + sym.inner.func.numLocals >= gvm.stack.buf.len) {
+            if (gvm.framePtr + startLocal + sym.inner.func.numLocals >= gvm.stack.buf.len) {
                 return error.StackOverflow;
-            }
-
-            // Retain receiver.
-            obj.retainedCommon.rc += 1;
-            if (TrackGlobalRC) {
-                gvm.refCounts += 1;
             }
 
             // const retInfo = gvm.buildReturnInfo2(gvm.pc + 3, reqNumRetVals, true);
             const retInfo = gvm.buildReturnInfo2(pc, reqNumRetVals, true);
-            gvm.framePtr = gvm.stack.top - numArgs;
-
-            // Move first arg. 
-            const retInfoDst = &gvm.stack.buf[gvm.framePtr];
-            gvm.stack.buf[gvm.stack.top] = retInfoDst.*;
-            // Set retInfo last so it will copy over any undefined value for zero arg func calls.
-            retInfoDst.* = retInfo;
-
-            gvm.stack.top += sym.inner.func.numLocals;
+            gvm.framePtr = gvm.framePtr + startLocal;
+            gvm.stack.buf[gvm.framePtr + 1] = retInfo;
             return sym.inner.func.pc;
         },
         .nativeFunc1 => {
             @setRuntimeSafety(debug);
             // gvm.pc += 3;
-            const args = gvm.stack.buf[argStart .. gvm.stack.top - 1];
+            const newFramePtr = gvm.framePtr + startLocal;
             gvm.pc = pc;
-            const res = sym.inner.nativeFunc1(undefined, obj, args.ptr, @intCast(u8, args.len));
+            const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, &gvm.stack.buf[newFramePtr+2]), numArgs);
             if (reqNumRetVals == 1) {
-                gvm.stack.buf[argStart] = res;
-                gvm.stack.top = argStart + 1;
+                gvm.stack.buf[newFramePtr] = res;
             } else {
                 switch (reqNumRetVals) {
                     0 => {
-                        gvm.stack.top = argStart;
+                        // Nop.
                     },
                     1 => stdx.panic("not possible"),
                     2 => {
@@ -3723,17 +3836,16 @@ fn callSymEntryNoInline(pc: usize, sym: SymbolEntry, obj: *HeapObject, numArgs: 
         .nativeFunc2 => {
             @setRuntimeSafety(debug);
             // gvm.pc += 3;
-            const args = gvm.stack.buf[argStart .. gvm.stack.top - 1];
-            const func = @ptrCast(std.meta.FnPtr(fn (*VM, *anyopaque, []const Value) cy.ValuePair), sym.inner.nativeFunc2);
-            const res = func(&gvm, obj, args);
+            const newFramePtr = gvm.framePtr + startLocal;
+            gvm.pc = pc;
+            const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, &gvm.stack.buf[newFramePtr+2]), numArgs);
             if (reqNumRetVals == 2) {
-                gvm.stack.buf[argStart] = res.left;
-                gvm.stack.buf[argStart+1] = res.right;
-                gvm.stack.top = argStart + 2;
+                gvm.stack.buf[newFramePtr] = res.left;
+                gvm.stack.buf[newFramePtr+1] = res.right;
             } else {
                 switch (reqNumRetVals) {
                     0 => {
-                        gvm.stack.top = argStart;
+                        // Nop.
                     },
                     1 => unreachable,
                     2 => {

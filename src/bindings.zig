@@ -152,17 +152,16 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     };
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
-            gvm.ensureUnusedStackSpace(3) catch stdx.fatal();
-            gvm.stack.top += 3;
+            gvm.stackEnsureUnusedCapacity(3) catch stdx.fatal();
             gvm.retain(a);
             gvm.retain(b);
-            gvm.stack.buf[gvm.stack.top-1] = a;
-            gvm.stack.buf[gvm.stack.top-2] = b;
-            gvm.stack.buf[gvm.stack.top-3] = ctx_.lessFn;
+            gvm.stack[gvm.framePtr + 2] = a;
+            gvm.stack[gvm.framePtr + 3] = b;
+            gvm.stack[gvm.framePtr + 4] = ctx_.lessFn;
             const retInfo = gvm.buildReturnInfo2(gvm.pc, 1, false);
             vm_.callNoInline(&gvm.pc, ctx_.lessFn, 0, 3, retInfo) catch stdx.fatal();
             @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
-            const res = gvm.popRegister();
+            const res = gvm.stack[gvm.framePtr];
             return res.toBool();
         }
     };

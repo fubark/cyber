@@ -133,13 +133,23 @@ test "ARC in expressions." {
 
     const trace = &run.trace;
 
-    // Only the object literals are retained and freed at the end of the expr.
+    // Only the map literal is retained and released at the end of the arc expression.
     var val = try run.eval(
         \\{ a: [123] }.a[0]
     );
     try run.valueIsI32(val, 123);
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
+
+    // The string template literal is released at the end of the arc expression.
+    val = try run.eval(
+        \\foo = 'World'
+        \\`Hello \(foo) ` + 123
+    );
+    try run.valueIsString(val, "Hello World 123");
+    run.deinitValue(val);
+    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numRetains, 2);
 }
 
 test "ARC in loops." {

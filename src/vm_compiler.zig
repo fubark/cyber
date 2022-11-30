@@ -2877,6 +2877,7 @@ fn isArcTempNode(nodeT: cy.NodeType) bool {
         .call_expr,
         .arr_literal,
         .map_literal,
+        .stringTemplate,
         .costart,
         .structInit => return true,
         else => return false,

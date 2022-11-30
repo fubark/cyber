@@ -8,7 +8,7 @@ const cy = @import("../src/cyber.zig");
 const log = stdx.log.scoped(.behavior_test);
 
 test "Fibers" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Start fiber with yield at start.
@@ -48,7 +48,7 @@ test "Fibers" {
 }
 
 test "Structs" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Initialization.
@@ -101,7 +101,7 @@ test "Structs" {
 }
 
 test "Struct methods." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // self param.
@@ -169,7 +169,7 @@ test "Struct methods." {
 }
 
 test "Stack trace unwinding." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var res = run.eval(
@@ -214,7 +214,7 @@ fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
 }
 
 test "Optionals" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -225,7 +225,7 @@ test "Optionals" {
 }
 
 // test "Binary expr with generator function call." {
-//     const run = Runner.create();
+//     const run = VMrunner.create();
 //     defer run.destroy();
 
 //     var val = try run.eval2(
@@ -238,7 +238,7 @@ test "Optionals" {
 // }
 
 test "Comparison ops." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -349,7 +349,7 @@ test "Comparison ops." {
 }
 
 test "Not equal comparison." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Using `is not` op.
@@ -381,7 +381,7 @@ test "Not equal comparison." {
 }
 
 test "Logic operators" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -445,7 +445,7 @@ test "Logic operators" {
 }
 
 test "boolean" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -460,7 +460,7 @@ test "boolean" {
 }
 
 // test "@name" {
-//     const run = Runner.create();
+//     const run = VMrunner.create();
 //     defer run.destroy();
 
 //     const parse_res = try run.parse(
@@ -478,7 +478,7 @@ test "boolean" {
 // }
 
 // test "implicit await" {
-//     const run = Runner.create();
+//     const run = VMrunner.create();
 //     defer run.destroy();
 
 //     var val = try run.eval(
@@ -493,7 +493,7 @@ test "boolean" {
 // }
 
 // test "await" {
-//     const run = Runner.create();
+//     const run = VMrunner.create();
 //     defer run.destroy();
 
 //     var val = try run.eval(
@@ -517,7 +517,7 @@ test "boolean" {
 // }
 
 test "Indentation." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Detect end of block.
@@ -568,7 +568,7 @@ test "Indentation." {
 }
 
 test "Numbers." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -583,7 +583,7 @@ test "Numbers." {
 }
 
 test "Parentheses" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Parentheses at left of binary expression.
@@ -606,7 +606,7 @@ test "Parentheses" {
 }
 
 test "Operator precedence." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Multiplication before addition.
@@ -644,7 +644,7 @@ test "Operator precedence." {
 }
 
 test "Comments" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Single line comment.
@@ -670,7 +670,7 @@ test "Comments" {
 }
 
 test "Strings" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Const string with single quotes.
@@ -743,7 +743,7 @@ test "Strings" {
 }
 
 test "Lists" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Index access.
@@ -801,7 +801,7 @@ test "Lists" {
 }
 
 test "Maps" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Number entry.
@@ -864,7 +864,7 @@ test "Maps" {
 }
 
 test "Variables and scope" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Variable declaration.
@@ -946,9 +946,9 @@ test "Variables and scope" {
     // the function. This test sets freed object values along the undefined stack space.
     // If the initializers were generated, the release on `a` would succeed.
     // If not `a` would refer to a freed object value and fail the release op.
-    try run.inner.resetEnv();
-    run.inner.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
-    val = try run.inner.evalNoReset(
+    try run.resetEnv();
+    run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+    val = try run.evalNoReset(
         \\struct S:
         \\  value
         \\if false:
@@ -956,9 +956,9 @@ test "Variables and scope" {
     );
 
     // Same test in method scope.
-    try run.inner.resetEnv();
-    run.inner.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
-    val = try run.inner.evalNoReset(
+    try run.resetEnv();
+    run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+    val = try run.evalNoReset(
         \\struct S:
         \\  value
         \\  func foo(self):
@@ -970,7 +970,7 @@ test "Variables and scope" {
 }
 
 test "if expression" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -987,7 +987,7 @@ test "if expression" {
 }
 
 test "Return statement." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // If/else.
@@ -1020,7 +1020,7 @@ test "Return statement." {
 }
 
 test "if statement" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // If/else.
@@ -1056,7 +1056,7 @@ test "if statement" {
 }
 
 test "Infinite for loop." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Infinite loop clause.
@@ -1072,7 +1072,7 @@ test "Infinite for loop." {
 }
 
 test "Conditional for loop." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // `for` with condition expression.
@@ -1086,7 +1086,7 @@ test "Conditional for loop." {
 }
 
 test "For loop over list." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Basic.
@@ -1101,7 +1101,7 @@ test "For loop over list." {
 }
 
 test "For iterator." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -1127,7 +1127,7 @@ test "For iterator." {
 }
 
 test "For loop over range." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Basic.
@@ -1217,7 +1217,7 @@ test "For loop over range." {
 }
 
 test "Native function call." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -1230,7 +1230,7 @@ test "Native function call." {
 }
 
 test "Closures." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // Closure over number in main scope.
@@ -1294,7 +1294,7 @@ test "Closures." {
 }
 
 test "Function recursion." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -1334,7 +1334,7 @@ test "Function recursion." {
 }
 
 test "function declaration" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -1373,7 +1373,7 @@ test "function declaration" {
 }
 
 test "Lambdas." {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // No params.
@@ -1408,7 +1408,7 @@ test "Lambdas." {
 }
 
 // test "Function named parameters call." {
-//     const run = Runner.create();
+//     const run = VMrunner.create();
 //     defer run.destroy();
 
 //     var val = try run.eval(
@@ -1441,7 +1441,7 @@ test "Lambdas." {
 // }
 
 test "access expression" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     // One level of access from parent.
@@ -1459,8 +1459,26 @@ test "access expression" {
     try t.eq(val.asI32(), 5);
 }
 
+test "Math" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Infinity.
+    var val = try run.eval(
+        \\1 / 0
+    );
+    try run.valueIsF64(val, std.math.inf_f64);
+
+    // NaN.
+    val = try run.eval(
+        \\0 * (1 / 0)
+    );
+    try t.expect(val.isNumber());
+    try t.expect(std.math.isNan(val.asF64()));
+}
+
 test "Binary Expressions" {
-    const run = Runner.create();
+    const run = VMrunner.create();
     defer run.destroy();
 
     var val = try run.eval(
@@ -1509,69 +1527,20 @@ test "Binary Expressions" {
     try t.eq(val.asI32(), 124);
 }
 
-const RunnerImpl = switch (build_options.cyEngine) {
-    .vm => VMrunner,
-    else => void,
-};
-
-const Runner = struct {
-    inner: RunnerImpl,
-
-    fn create() *Runner {
-        var new = t.alloc.create(Runner) catch fatal();
-        new.inner.init();
-        return new;
-    }
-
-    fn destroy(self: *Runner) void {
-        self.inner.deinit();
-        t.alloc.destroy(self);
-    }
-
-    fn deinitValue(self: *Runner, val: cy.Value) void {
-        self.inner.deinitValue(val);
-    }
-
-    fn parse(self: *Runner, src: []const u8) !cy.ParseResultView {
-        return self.inner.parse(src);
-    }
-
-    fn getTrace(self: *Runner) *cy.TraceInfo {
-        return &self.inner.trace;
-    }
-
-    fn checkMemory(self: *Runner) !bool {
-        return self.inner.checkMemory();
-    }
-
-    fn getStackTrace(self: *Runner) *const cy.StackTrace {
-        return self.inner.getStackTrace();
-    }
-
-    fn eval(self: *Runner, src: []const u8) !cy.Value {
-        return self.inner.eval(src);
-    }
-
-    fn compile(self: *Runner, src: []const u8) !cy.ByteCodeBuffer {
-        return self.inner.compile(src);
-    }
-
-    fn eval2(self: *Runner, src: []const u8, embed_interrupts: bool) !cy.Value {
-        return self.inner.eval2(src, embed_interrupts);
-    }
-
-    pub fn assertValueString(self: *Runner, val: cy.Value) ![]const u8 {
-        return self.inner.assertValueString(val);
-    }
-
-    pub fn valueToIntSlice(self: *Runner, val: cy.Value) ![]const i32 {
-        return self.inner.valueToIntSlice(val);
-    }
-};
-
 const VMrunner = struct {
     vm: cy.UserVM,
     trace: cy.TraceInfo,
+
+    fn create() *VMrunner {
+        var new = t.alloc.create(VMrunner) catch fatal();
+        new.init();
+        return new;
+    }
+
+    fn destroy(self: *VMrunner) void {
+        self.deinit();
+        t.alloc.destroy(self);
+    }
 
     fn init(self: *VMrunner) void {
         self.* = .{
@@ -1642,6 +1611,27 @@ const VMrunner = struct {
         _ = src;
         _ = embed_interrupts;
         return undefined;
+    }
+
+    pub fn valueIsF64(self: *VMrunner, act: cy.Value, exp: f64) !void {
+        _ = self;
+        if (act.isNumber()) {
+            try t.eq(act.asF64(), exp);
+            return;
+        }
+        return error.NotF64;
+    }
+
+    pub fn valueIsI32(self: *VMrunner, act: cy.Value, exp: i32) !void {
+        _ = self;
+        if (act.isNumber()) {
+            const actf = act.asF64();
+            if (cy.Value.floatCanBeInteger(actf)) {
+                try t.eq(act.asI32(), exp);
+                return;
+            }
+        }
+        return error.NotI32;
     }
 
     pub fn assertValueString(self: *VMrunner, val: cy.Value) ![]const u8 {

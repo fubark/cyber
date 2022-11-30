@@ -143,7 +143,7 @@ pub const ByteCodeBuffer = struct {
     pub fn pushStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
         const slice = try self.getStringConst(str);
         const idx = @intCast(u32, self.consts.items.len);
-        const val = cy.Value.initConstStr(slice.start, @intCast(u16, slice.end - slice.start));
+        const val = cy.Value.initConstStr(slice.start, @intCast(u15, slice.end - slice.start));
         try self.consts.append(self.alloc, Const.init(val.val));
         return idx;
     }

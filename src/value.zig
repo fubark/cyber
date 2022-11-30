@@ -10,22 +10,22 @@ const cy = @import("cyber.zig");
 /// Most significant bit.
 const SignMask: u64 = 1 << 63;
 
-/// Quiet NaN mask.
-const QNANmask: u64 = 0x7ff8000000000000;
+/// QNAN and one extra bit to the right.
+const TaggedValueMask: u64 = 0x7ffc000000000000;
 
-/// QNAN + Sign bit indicates a pointer value.
-const PointerMask: u64 = QNANmask | SignMask;
+/// TaggedMask + Sign bit indicates a pointer value.
+const PointerMask: u64 = TaggedValueMask | SignMask;
 
-const BooleanMask: u64 = QNANmask | (TagBoolean << 32);
+const BooleanMask: u64 = TaggedValueMask | (TagBoolean << 32);
 const FalseMask: u64 = BooleanMask;
 const TrueMask: u64 = BooleanMask | TrueBitMask;
 const TrueBitMask: u64 = 1;
-const NoneMask: u64 = QNANmask | (TagNone << 32);
-const ErrorMask: u64 = QNANmask | (TagError << 32);
-const ConstStringMask: u64 = QNANmask | (TagConstString << 32);
+const NoneMask: u64 = TaggedValueMask | (TagNone << 32);
+const ErrorMask: u64 = TaggedValueMask | (TagError << 32);
+const ConstStringMask: u64 = TaggedValueMask | (TagConstString << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
-const BeforeTagMask: u32 = 0xffff << 3;
+const BeforeTagMask: u32 = 0x7fff << 3;
 pub const TagNone = 0;
 pub const TagBoolean = 1;
 pub const TagError = 2;
@@ -39,7 +39,8 @@ pub const ValuePair = struct {
 /// NaN tagging over a f64 value.
 /// Represents a f64 value if not a quiet nan.
 /// Otherwise, the sign bit represents either a pointer value or a special value (true, false, none, etc).
-/// Pointer values can be at most 51 bits since the sign bit and quiet nan take up 13 bits.
+/// Pointer values can be at most 50 bits since the sign bit (1), quiet nan (12),
+/// and one more bit (so that QNANs can also be a number value) take up 13 bits.
 pub const Value = packed union {
     val: u64,
     /// Call frame return info.
@@ -134,8 +135,8 @@ pub const Value = packed union {
 
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
-        // Only a number(f64) if nan bits are not set.
-        return self.val & QNANmask != QNANmask;
+        // Only a number(f64) if not all tagged bits are set.
+        return self.val & TaggedValueMask != TaggedValueMask;
     }
 
     pub inline fn isPointer(self: *const Value) linksection(".eval") bool {
@@ -217,7 +218,7 @@ pub const Value = packed union {
         return .{ .val = PointerMask | @ptrToInt(ptr) };
     }
 
-    pub inline fn initConstStr(start: u32, len: u16) Value {
+    pub inline fn initConstStr(start: u32, len: u15) Value {
         return .{ .val = ConstStringMask | (@as(u64, len) << 35) | start };
     }
 

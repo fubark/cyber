@@ -32,6 +32,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "is", .is_k },
     .{ "costart", .costart_k },
     .{ "coyield", .coyield_k },
+    .{ "coresume", .coresume_k },
 });
 
 const BlockState = struct {
@@ -1723,6 +1724,15 @@ pub const Parser = struct {
                 };
                 return expr_id;
             },
+            .coresume_k => {
+                self.advanceToken();
+                const coresume = try self.pushNode(.coresume, start);
+                const fiberExpr = try self.parseTermExpr();
+                self.nodes.items[coresume].head = .{
+                    .child_head = fiberExpr,
+                };
+                return coresume;
+            },
             .coyield_k => {
                 self.advanceToken();
                 const coyield = try self.pushNode(.coyield, start);
@@ -2427,6 +2437,7 @@ pub const TokenType = enum {
     is_k,
     costart_k,
     coyield_k,
+    coresume_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -2495,6 +2506,7 @@ pub const NodeType = enum {
     arr_literal,
     costart,
     coyield,
+    coresume,
 };
 
 pub const BinaryExprOp = enum {

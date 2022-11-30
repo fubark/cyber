@@ -275,6 +275,7 @@ pub const Value = packed union {
                     },
                     cy.LambdaS => log.info("Lambda {*}", .{obj}),
                     cy.ClosureS => log.info("Closure {*}", .{obj}),
+                    cy.FiberS => log.info("Fiber {*}", .{obj}),
                     else => {
                         log.info("HeapObject {*} {}", .{obj, obj.common.structId});
                     },

@@ -338,8 +338,12 @@ pub const VMcompiler = struct {
             .coyield => {
                 return AnyType;
             },
+            .coresume => {
+                _ = try self.semaExpr(node.head.child_head, false);
+                return AnyType;
+            },
             .costart => {
-                _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
+                _ = try self.semaExpr(node.head.child_head, false);
                 return FiberType;
             },
             .call_expr => {
@@ -2552,6 +2556,11 @@ pub const VMcompiler = struct {
                 } else {
                     return GenValue.initNoValue();
                 }
+            },
+            .coresume => {
+                const fiber = try self.genRetainedTempExpr(node.head.child_head, false);
+                try self.buf.pushOp2(.coresume, fiber.local, dst);
+                return self.initGenValue(dst, AnyType);
             },
             .coyield => {
                 const pc = self.buf.ops.items.len;

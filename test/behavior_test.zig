@@ -45,6 +45,19 @@ test "Fibers" {
         \\list.size()
     );
     try t.eq(val.asI32(), 0);
+
+    // coresume.
+    val = try run.eval(
+        \\func foo(list):
+        \\  list.add(123)
+        \\  coyield
+        \\  list.add(234)
+        \\list = []
+        \\f = costart foo(list)
+        \\coresume f
+        \\list.size()
+    );
+    try t.eq(val.asI32(), 2);
 }
 
 test "Structs" {

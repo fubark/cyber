@@ -3536,6 +3536,22 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 }
                 continue;
             },
+            .coresume => {
+                @setRuntimeSafety(debug);
+                const fiber = gvm.stack[gvm.framePtr + gvm.ops[pc+1].arg];
+                // const dst = gvm.ops[pc+2];
+                if (fiber.isPointer()) {
+                    const obj = stdx.ptrAlignCast(*HeapObject, fiber.asPointer().?);
+                    if (obj.common.structId == FiberS) {
+                        if (&obj.fiber != gvm.curFiber) {
+                            pc = pushFiber(pc + 3, &obj.fiber);
+                            continue;
+                        }
+                    }
+                }
+                pc += 3;
+                continue;
+            },
             .coyield => {
                 @setRuntimeSafety(debug);
                 if (gvm.curFiber != &gvm.mainFiber) {
@@ -3558,6 +3574,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pc + 5, args});
                 gvm.stack[gvm.framePtr + dst] = fiber;
                 const ptr = stdx.ptrAlignCast(*Fiber, fiber.asPointer().?);
+                gvm.retain(fiber);
                 pc = pushFiber(pc + jump, ptr);
                 continue;
             },
@@ -3914,7 +3931,13 @@ fn popFiber(curFiberEndPc: usize) usize {
     gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
     gvm.curFiber.framePtr = @intCast(u32, gvm.framePtr);
 
-    gvm.curFiber = gvm.curFiber.prevFiber.?;
+    // Release current fiber.
+    const nextFiber = gvm.curFiber.prevFiber.?;
+    releaseObject(@ptrCast(*HeapObject, gvm.curFiber));
+
+    // Set to next fiber.
+    gvm.curFiber = nextFiber;
+
     gvm.stack = gvm.curFiber.stackPtr[0..gvm.curFiber.stackLen];
     gvm.framePtr = gvm.curFiber.framePtr;
     log.debug("fiber set to {} {}", .{gvm.curFiber.pc, gvm.framePtr});
@@ -3933,9 +3956,15 @@ fn pushFiber(curFiberEndPc: usize, fiber: *Fiber) usize {
     fiber.prevFiber = gvm.curFiber;
     gvm.curFiber = fiber;
     gvm.stack = fiber.stackPtr[0..fiber.stackLen];
-    log.debug("fiber set to {} {}", .{fiber.pc, fiber.framePtr});
     gvm.framePtr = fiber.framePtr;
-    return fiber.pc;
+    // Check if fiber was previously yielded.
+    if (gvm.ops[fiber.pc].code == .coyield) {
+        log.debug("fiber set to {} {}", .{fiber.pc + 3, fiber.framePtr});
+        return fiber.pc + 3;
+    } else {
+        log.debug("fiber set to {} {}", .{fiber.pc, fiber.framePtr});
+        return fiber.pc;
+    }
 }
 
 fn allocFiber(pc: usize, args: []const Value) linksection(".eval") !Value {
@@ -3971,7 +4000,7 @@ fn runReleaseOps(stack: []const Value, framePtr: usize, startPc: usize) void {
     var pc = startPc;
     while (gvm.ops[pc].code == .release) {
         const local = gvm.ops[pc+1].arg;
-        stack[framePtr + local].dump();
+        // stack[framePtr + local].dump();
         release(stack[framePtr + local]);
         pc += 2;
     }
@@ -3984,6 +4013,8 @@ fn releaseFiberStack(fiber: *Fiber) void {
     var stack = fiber.stackPtr[0..fiber.stackLen];
     var framePtr = fiber.framePtr;
     var pc = fiber.pc;
+
+    // Check if fiber was previously on a yield op.
     if (gvm.ops[pc].code == .coyield) {
         const jump = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
         log.debug("release on frame {} {}", .{pc, pc + jump});

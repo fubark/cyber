@@ -213,6 +213,7 @@ pub const ByteCodeBuffer = struct {
                 .jumpBack,
                 .jump,
                 .coyield,
+                .coresume,
                 .constOp => {
                     println("{} {s} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg});
                     pc += 3;
@@ -449,6 +450,7 @@ pub const OpCode = enum(u8) {
     costart,
     coyield,
     coreturn,
+    coresume,
     retain,
     copyRetainRelease,
     // jumpCondNone,
@@ -458,7 +460,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 63);
+    try t.eq(@enumToInt(OpCode.end), 64);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

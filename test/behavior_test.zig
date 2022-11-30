@@ -7,45 +7,45 @@ const t = stdx.testing;
 const cy = @import("../src/cyber.zig");
 const log = stdx.log.scoped(.behavior_test);
 
-// test "Fibers" {
-//     const run = Runner.create();
-//     defer run.destroy();
+test "Fibers" {
+    const run = Runner.create();
+    defer run.destroy();
 
-//     // Start fiber with yield at start.
-//     var val = try run.eval(
-//         \\func foo(list):
-//         \\  coyield
-//         \\  list.add(123)
-//         \\list = []
-//         \\f = costart foo(list)
-//         \\list.size()
-//     );
-//     try t.eq(val.asI32(), 0);
+    // Start fiber with yield at start.
+    var val = try run.eval(
+        \\func foo(list):
+        \\  coyield
+        \\  list.add(123)
+        \\list = []
+        \\f = costart foo(list)
+        \\list.size()
+    );
+    try t.eq(val.asI32(), 0);
 
-//     // Start fiber without yield.
-//     val = try run.eval(
-//         \\func foo(list):
-//         \\  list.add(123)
-//         \\list = []
-//         \\f = costart foo(list)
-//         \\list[0]
-//     );
-//     try t.eq(val.asI32(), 123);
+    // Start fiber without yield.
+    val = try run.eval(
+        \\func foo(list):
+        \\  list.add(123)
+        \\list = []
+        \\f = costart foo(list)
+        \\list[0]
+    );
+    try t.eq(val.asI32(), 123);
 
-//     // Start fiber with yield in nested function.
-//     val = try run.eval(
-//         \\func bar():
-//         \\  alist = [] --This should be released after fiber is freed.
-//         \\  coyield
-//         \\func foo(list):
-//         \\  bar()
-//         \\  list.add(123)
-//         \\list = []
-//         \\f = costart foo(list)
-//         \\list.size()
-//     );
-//     try t.eq(val.asI32(), 0);
-// }
+    // Start fiber with yield in nested function.
+    val = try run.eval(
+        \\func bar():
+        \\  alist = [] --This should be released after fiber is freed.
+        \\  coyield
+        \\func foo(list):
+        \\  bar()
+        \\  list.add(123)
+        \\list = []
+        \\f = costart foo(list)
+        \\list.size()
+    );
+    try t.eq(val.asI32(), 0);
+}
 
 test "Structs" {
     const run = Runner.create();
@@ -1583,6 +1583,10 @@ const VMrunner = struct {
     }
 
     fn deinit(self: *VMrunner) void {
+        const rc = self.vm.getGlobalRC();
+        if (rc != 0) {
+            stdx.panicFmt("{} unreleased objects from previous eval", .{rc});
+        }
         self.vm.deinit();
     }
 

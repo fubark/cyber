@@ -238,5 +238,6 @@ fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     _ = args;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
+    vm_.releaseObject(list);
     return Value.initF64(@intToFloat(f64, inner.items.len));
 }

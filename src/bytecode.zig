@@ -162,41 +162,43 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
+    fn println(comptime fmt: []const u8, args: anytype) void {
+        if (builtin.is_test) {
+            log.info(fmt, args);
+        } else {
+            std.debug.print(fmt ++ "\n", args);
+        }
+    }
+
     pub fn dump(self: ByteCodeBuffer) !void {
         var pc: usize = 0;
         const ops = self.ops.items;
 
-        var buf = std.ArrayList(u8).init(self.alloc);
-        defer buf.deinit();
-        const w = buf.writer();
-            
-        try w.print("Bytecode:\n", .{});
-
+        println("Bytecode:", .{});
         while (pc < ops.len) {
             const name = @tagName(ops[pc].code);
-            try w.print("{} {s} ", .{pc, name});
             switch (ops[pc].code) {
-                .minus,
-                .mul,
-                .div,
-                .pow,
-                .mod,
-                .less,
-                .compare,
-                .compareNot,
-                .list,
-                .add => {
-                    try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
-                    pc += 4;
-                },
-                .greater,
-                .lessEqual,
-                .greaterEqual,
                 // .ret2,
                 .ret0,
                 .ret1,
                 .coreturn => {
+                    println("{} {s}", .{pc, name});
                     pc += 1;
+                },
+                .retain,
+                .end,
+                .release,
+                .none,
+                .true,
+                .false,
+                .mapEmpty => {
+                    println("{} {s} {}", .{pc, name, ops[pc+1].arg});
+                    pc += 2;
+                },
+                .setInitN => {
+                    const numVars = ops[pc+1].arg;
+                    println("{} {s} {}", .{pc, name, numVars});
+                    pc += 2 + numVars;
                 },
                 .setIndex,
                 .copy,
@@ -207,20 +209,13 @@ pub const ByteCodeBuffer = struct {
                 .constI8,
                 .call0,
                 .call1,
+                .cont,
+                .jumpBack,
+                .jump,
+                .coyield,
                 .constOp => {
-                    try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
+                    println("{} {s} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg});
                     pc += 3;
-                },
-                .setField,
-                .retain,
-                .end,
-                .release,
-                .none,
-                .true,
-                .false,
-                .mapEmpty => {
-                    try w.print("{}", .{ops[pc+1].arg});
-                    pc += 2;
                 },
                 .indexRetain,
                 .reverseIndexRetain,
@@ -232,82 +227,75 @@ pub const ByteCodeBuffer = struct {
                 .callSym1,
                 .callObjSym0,
                 .callObjSym1,
-                .stringTemplate,
                 // .jumpCondNone,
                 .jumpCond,
+                .minus,
+                .mul,
+                .div,
+                .setField,
+                .pow,
+                .mod,
+                .less,
+                .greater,
+                .lessEqual,
+                .greaterEqual,
+                .compare,
+                .compareNot,
+                .list,
+                .add,
                 .jumpNotCond => {
-                    try w.print("{} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
+                    println("{} {s} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
                     pc += 4;
                 },
-                .cont,
-                .jumpBack,
-                .jump,
-                .pushCostart,
-                .coyield => {
-                    try w.print("{} {}", .{ops[pc+1].arg, ops[pc+2].arg});
-                    pc += 3;
-                },
-                .slice,
-                .lambda => {
-                    try w.print("{} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
-                    pc += 5;
-                },
-                .closure => {
-                    try w.print("{} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
-                    pc += 7;
-                },
-                .forIter => {
-                    try w.print("{} {} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
-                    pc += 6;
+                .stringTemplate => {
+                    println("{} {s} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
+                    const numExprs = ops[pc+2].arg;
+                    pc += 4 + numExprs + 1;
                 },
                 .map => {
                     const startLocal = ops[pc+1].arg;
                     const numEntries = ops[pc+2].arg;
                     const dst = ops[pc+3].arg;
-                    try w.print("{} {} {}", .{startLocal, numEntries, dst});
+                    println("{} {s} {} {} {}", .{pc, name, startLocal, numEntries, dst});
                     pc += 4 + numEntries;
                 },
+                .slice,
+                .costart,
+                .lambda => {
+                    println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
+                    pc += 5;
+                },
                 .structSmall => {
-                    _ = ops[pc+1].arg;
                     const numEntries = ops[pc+3].arg;
-                    try w.print("{}", .{numEntries});
+                    println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, numEntries, ops[pc+4].arg});
                     pc += 5 + numEntries;
                 },
-                .setInitN => {
-                    const numVars = ops[pc+1].arg;
-                    try w.print("{}", .{numVars});
-                    pc += 2 + numVars;
+                .forIter => {
+                    println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
+                    pc += 6;
+                },
+                .closure => {
+                    println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
+                    pc += 7;
                 },
                 .forRange => {
-                    try w.print("{} {} {} {} {} {}", .{ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
+                    println("{} {s} {} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
                     pc += 7;
                 },
                 else => {
                     stdx.panicFmt("unsupported {}", .{ops[pc].code});
                 },
             }
-            _ = try w.write("\n");
-        }
-        if (builtin.is_test) {
-            log.info("{s}", .{buf.items});
-        } else {
-            std.debug.print("{s}\n", .{buf.items});
         }
 
-        buf.clearRetainingCapacity();
+        println("\nConstants:", .{});
         for (self.mconsts) |extra| {
-            const ww = buf.writer();
             const val = cy.Value{ .val = extra.val };
             if (val.isNumber()) {
-                try ww.print("{}\n", .{val.asF64()});
+                println("{}", .{val.asF64()});
             } else {
-                try w.print("{}\n", .{extra});
+                println("{}", .{extra});
             }
-        }
-        if (builtin.is_test) {
-            log.info("Constants:\n{s}", .{buf.items});
-        } else {
-            std.debug.print("Constants:\n{s}", .{buf.items});
         }
     }
 };
@@ -457,7 +445,7 @@ pub const OpCode = enum(u8) {
     fieldRetain,
     fieldRetainRelease,
     fieldRelease,
-    pushCostart,
+    costart,
     coyield,
     coreturn,
     retain,

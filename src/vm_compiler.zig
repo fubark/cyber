@@ -1654,6 +1654,8 @@ pub const VMcompiler = struct {
         }
         _ = try self.nextFreeTempLocal();
 
+        const genCallStartLocal = if (startFiber) 0 else callStartLocal;
+
         const node = self.nodes[nodeId];
         const callee = self.nodes[node.head.func_call.callee];
         if (!node.head.func_call.has_named_arg) {
@@ -1737,25 +1739,25 @@ pub const VMcompiler = struct {
 
                     const numArgs = try self.genCallArgs(node.head.func_call.arg_head);
 
-                    _ = startFiber;
-                    // const costartPc = self.buf.ops.items.len;
-                    // if (startFiber) {
-                    //     try self.buf.pushOp2(.pushCostart, @intCast(u8, numArgs), 0);
-                    // }
+                    const costartPc = self.buf.ops.items.len;
+                    if (startFiber) {
+                        // Precompute first arg local since costart doesn't need the startLocal.
+                        try self.buf.pushOpSlice(.costart, &.{ callStartLocal + 2, @intCast(u8, numArgs), 0, dst });
+                    }
 
                     const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
                     if (discardTopExprReg) {
-                        try self.buf.pushOp3(.callSym0, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
+                        try self.buf.pushOp3(.callSym0, @intCast(u8, symId), genCallStartLocal, @intCast(u8, numArgs));
                         try self.pushDebugSym(nodeId);
                     } else {
-                        try self.buf.pushOp3(.callSym1, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
+                        try self.buf.pushOp3(.callSym1, @intCast(u8, symId), genCallStartLocal, @intCast(u8, numArgs));
                         try self.pushDebugSym(nodeId);
                     }
 
-                    // if (startFiber) {
-                    //     try self.buf.pushOp(.coreturn);
-                    //     self.buf.setOpArgs1(costartPc + 2, @intCast(u8, self.buf.ops.items.len - costartPc));
-                    // }
+                    if (startFiber) {
+                        try self.buf.pushOp(.coreturn);
+                        self.buf.setOpArgs1(costartPc + 3, @intCast(u8, self.buf.ops.items.len - costartPc));
+                    }
 
                     return GenValue.initTempValue(callStartLocal, AnyType);
                 }
@@ -1785,7 +1787,7 @@ pub const VMcompiler = struct {
             falsev = try self.genExprTo(else_clause.head.child_head, dst, retainEscapeTop, discardTopExprReg);
         } else {
             if (!discardTopExprReg) {
-                falsev = try self.genPushNone(null);
+                falsev = try self.genNone(dst);
             }
         }
 
@@ -1817,15 +1819,9 @@ pub const VMcompiler = struct {
         return self.initGenValue(dst, NumberType);
     }
 
-    fn genPushNone(self: *VMcompiler, mbLocal: ?LocalId) !GenValue {
-        if (mbLocal) |local| {
-            try self.buf.pushOp1(.none, local);
-            return self.initGenValue(local, AnyType);
-        } else {
-            const dst = try self.nextFreeTempLocal();
-            try self.buf.pushOp1(.none, dst);
-            return GenValue.initTempValue(dst, AnyType);
-        }
+    fn genNone(self: *VMcompiler, dst: LocalId) !GenValue {
+        try self.buf.pushOp1(.none, dst);
+        return self.initGenValue(dst, AnyType);
     }
 
     fn isArcTempLocal(self: *const VMcompiler, local: LocalId) bool {
@@ -1982,7 +1978,7 @@ pub const VMcompiler = struct {
                         return self.initGenValue(dst, svar.vtype);
                     }
                 } else {
-                    return self.genPushNone(dst);
+                    return self.genNone(dst);
                 }
             },
             .true_literal => {
@@ -2089,7 +2085,7 @@ pub const VMcompiler = struct {
             },
             .none => {
                 if (!discardTopExprReg) {
-                    return self.genPushNone(dst);
+                    return self.genNone(dst);
                 } else return GenValue.initNoValue();
             },
             .structInit => {
@@ -2523,21 +2519,22 @@ pub const VMcompiler = struct {
                     return GenValue.initNoValue();
                 }
             },
-            // .coyield => {
-            //     const pc = self.buf.ops.items.len;
-            //     try self.buf.pushOp2(.coyield, 0, 0);
-            //     try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc) });
+            .coyield => {
+                const pc = self.buf.ops.items.len;
+                try self.buf.pushOp2(.coyield, 0, 0);
+                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc) });
 
-            //     // TODO: return coyield expression.
-            //     if (!discardTopExprReg) {
-            //         try self.buf.pushOp(.pushNone);
-            //     }
-            //     return AnyType;
-            // },
-            // .costart => {
-            //     _ = try self.genCallExpr(node.head.child_head, discardTopExprReg, true);
-            //     return FiberType;
-            // },
+                // TODO: return coyield expression.
+                if (!discardTopExprReg) {
+                    return try self.genNone(dst);
+                } else {
+                    return GenValue.initNoValue();
+                }
+            },
+            .costart => {
+                _ = try self.genCallExpr(node.head.child_head, dst, discardTopExprReg, true);
+                return self.initGenValue(dst, FiberType);
+            },
             else => {
                 return self.reportDebugError("Unsupported {}", .{node.node_t});
             }
@@ -2867,6 +2864,7 @@ fn isArcTempNode(nodeT: cy.NodeType) bool {
         .call_expr,
         .arr_literal,
         .map_literal,
+        .costart,
         .structInit => return true,
         else => return false,
     }

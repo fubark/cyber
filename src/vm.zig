@@ -1566,7 +1566,7 @@ pub const VM = struct {
         switch (sym.entryT) {
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
-                // self.pc += 3;
+                pc.* += 4;
                 const newFramePtr = self.framePtr + startLocal;
                 const res = sym.inner.nativeFunc1(undefined, @ptrCast([*]const Value, &self.stack.buf[newFramePtr+2]), numArgs);
                 if (reqNumRetVals == 1) {
@@ -1597,7 +1597,7 @@ pub const VM = struct {
                     return error.StackOverflow;
                 }
 
-                const retInfo = self.buildReturnInfo2(pc.*, reqNumRetVals, true);
+                const retInfo = self.buildReturnInfo2(pc.* + 4, reqNumRetVals, true);
                 // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 pc.* = sym.inner.func.pc;
                 self.framePtr = self.framePtr + startLocal;
@@ -1960,6 +1960,7 @@ pub fn releaseObject(obj: *HeapObject) linksection(".eval") void {
             stdx.panic("object already freed.");
         }
     }
+    log.debug("release {}", .{obj.getUserTag()});
     obj.retainedCommon.rc -= 1;
     if (TrackGlobalRC) {
         gvm.refCounts -= 1;
@@ -2418,12 +2419,11 @@ const Map = packed struct {
 const Fiber = packed struct {
     structId: StructId,
     rc: u32,
+    prevFiber: ?*Fiber,
     stackPtr: [*]Value,
     stackLen: u32,
-    stackTop: u32,
     pc: u32,
     framePtr: u32,
-    prevFiber: ?*Fiber,
 };
 
 const List = packed struct {
@@ -3257,7 +3257,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const symId = gvm.ops[pc+1].arg;
                 const startLocal = gvm.ops[pc+2].arg;
                 const numArgs = gvm.ops[pc+3].arg;
-                pc += 4;
+                // pc += 4;
 
                 try gvm.callSym(&pc, symId, startLocal, numArgs, 0);
                 continue;
@@ -3267,7 +3267,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const symId = gvm.ops[pc+1].arg;
                 const startLocal = gvm.ops[pc+2].arg;
                 const numArgs = gvm.ops[pc+3].arg;
-                pc += 4;
+                // pc += 4;
 
                 try gvm.callSym(&pc, symId, startLocal, numArgs, 1);
                 continue;
@@ -3286,11 +3286,12 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             .setField => {
                 @setRuntimeSafety(debug);
                 const fieldId = gvm.ops[pc+1].arg;
-                pc += 2;
+                const left = gvm.ops[pc+2].arg;
+                const right = gvm.ops[pc+3].arg;
+                pc += 4;
 
-                const recv = gvm.stack.buf[gvm.stack.top-2];
-                const val = gvm.stack.buf[gvm.stack.top-1];
-                gvm.stack.top -= 2;
+                const recv = gvm.stack.buf[gvm.framePtr + left];
+                const val = gvm.stack.buf[gvm.framePtr + right];
                 try gvm.setField(recv, fieldId, val);
             },
             .fieldRelease => {
@@ -3504,17 +3505,17 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 }
                 continue;
             },
-            .pushCostart => {
+            .costart => {
                 @setRuntimeSafety(debug);
-                // numArgs can be 0, so check for space.
-                try gvm.checkStackHasOneSpace();
-                const numArgs = gvm.ops[pc+1].arg;
-                const jump = gvm.ops[pc+2].arg;
+                const startArgsLocal = gvm.ops[pc+1].arg;
+                const numArgs = gvm.ops[pc+2].arg;
+                const jump = gvm.ops[pc+3].arg;
+                const dst = gvm.ops[pc+4].arg;
+                // log.debug("costart {} {} {} {}", .{startArgsLocal, numArgs, jump, dst});
 
-                const args = gvm.stack.buf[gvm.stack.top-numArgs..gvm.stack.top];
-                const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pc + 3, args});
-                gvm.stack.top = gvm.stack.top - numArgs + 1;
-                gvm.stack.buf[gvm.stack.top - 1] = fiber;
+                const args = gvm.stack.buf[gvm.framePtr + startArgsLocal..gvm.framePtr + startArgsLocal + numArgs];
+                const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pc + 5, args});
+                gvm.stack.buf[gvm.framePtr + dst] = fiber;
                 const ptr = stdx.ptrAlignCast(*Fiber, fiber.asPointer().?);
                 pc = pushFiber(pc + jump, ptr);
                 continue;
@@ -3869,14 +3870,13 @@ fn popFiber(curFiberEndPc: usize) usize {
     @setRuntimeSafety(debug);
     gvm.curFiber.stackPtr = gvm.stack.buf.ptr;
     gvm.curFiber.stackLen = @intCast(u32, gvm.stack.buf.len);
-    gvm.curFiber.stackTop = @intCast(u32, gvm.stack.top);
     gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
     gvm.curFiber.framePtr = @intCast(u32, gvm.framePtr);
 
     gvm.curFiber = gvm.curFiber.prevFiber.?;
     gvm.stack = .{
         .buf = gvm.curFiber.stackPtr[0..gvm.curFiber.stackLen],
-        .top = gvm.curFiber.stackTop,
+        .top = undefined,
     };
     gvm.framePtr = gvm.curFiber.framePtr;
     log.debug("fiber set to {} {}", .{gvm.curFiber.pc, gvm.framePtr});
@@ -3888,7 +3888,6 @@ fn pushFiber(curFiberEndPc: usize, fiber: *Fiber) usize {
     // Save current fiber.
     gvm.curFiber.stackPtr = gvm.stack.buf.ptr;
     gvm.curFiber.stackLen = @intCast(u32, gvm.stack.buf.len);
-    gvm.curFiber.stackTop = @intCast(u32, gvm.stack.top);
     gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
     gvm.curFiber.framePtr = @intCast(u32, gvm.framePtr);
 
@@ -3897,7 +3896,7 @@ fn pushFiber(curFiberEndPc: usize, fiber: *Fiber) usize {
     gvm.curFiber = fiber;
     gvm.stack = .{
         .buf = fiber.stackPtr[0..fiber.stackLen],
-        .top = fiber.stackTop,
+        .top = undefined,
     };
     log.debug("fiber set to {} {}", .{fiber.pc, fiber.framePtr});
     gvm.framePtr = fiber.framePtr;
@@ -3909,8 +3908,8 @@ fn allocFiber(pc: usize, args: []const Value) linksection(".eval") !Value {
 
     // Args are copied over to the new stack.
     var stack: stdx.Stack(Value) = .{};
-    try stack.growTotalCapacity(gvm.alloc, args.len);
-    std.mem.copy(Value, stack.buf[0..args.len], args);
+    try stack.growTotalCapacity(gvm.alloc, args.len + 2);
+    std.mem.copy(Value, stack.buf[2..2+args.len], args);
 
     const obj = try gvm.allocObject();
     obj.fiber = .{
@@ -3918,7 +3917,6 @@ fn allocFiber(pc: usize, args: []const Value) linksection(".eval") !Value {
         .rc = 1,
         .stackPtr = stack.buf.ptr,
         .stackLen = @intCast(u32, stack.buf.len),
-        .stackTop = @intCast(u32, args.len),
         .pc = @intCast(u32, pc),
         .framePtr = 0,
         .prevFiber = undefined,
@@ -3937,6 +3935,7 @@ fn runReleaseOps(stack: []const Value, framePtr: usize, startPc: usize) void {
     var pc = startPc;
     while (gvm.ops[pc].code == .release) {
         const local = gvm.ops[pc+1].arg;
+        stack[framePtr + local].dump();
         release(stack[framePtr + local]);
         pc += 2;
     }
@@ -3948,7 +3947,7 @@ fn releaseFiberStack(fiber: *Fiber) void {
     log.debug("release fiber stack", .{});
     var stack = stdx.Stack(Value){
         .buf = fiber.stackPtr[0..fiber.stackLen],
-        .top = fiber.stackTop,
+        .top = undefined,
     };
     var framePtr = fiber.framePtr;
     var pc = fiber.pc;
@@ -3960,9 +3959,8 @@ fn releaseFiberStack(fiber: *Fiber) void {
     }
     // Unwind stack and release all locals.
     while (framePtr > 0) {
-        pc = stack.buf[framePtr].retInfo.pc;
-        framePtr = stack.buf[framePtr].retInfo.framePtr;
-
+        pc = stack.buf[framePtr + 1].retInfo.pc;
+        framePtr = stack.buf[framePtr + 1].retInfo.framePtr;
         const endLocalsPc = pcToEndLocalsPc(pc);
         log.debug("release on frame {} {}", .{pc, endLocalsPc});
         if (endLocalsPc != NullId) {

@@ -213,7 +213,7 @@ pub const Parser = struct {
                 self.advanceToken();
                 continue;
             } else if (token.token_t == .none) {
-                return res;
+                return 0;
             } else {
                 return res;
             }
@@ -1188,8 +1188,12 @@ pub const Parser = struct {
     fn reportTokenError2(self: *Parser, err: anyerror, fmt: []const u8, args: anytype, token: Token) anyerror {
         _ = args;
         self.alloc.free(self.last_err);
-        self.last_err = std.fmt.allocPrint(self.alloc, "{s}: {} at {}", .{fmt, token.token_t, token.start_pos}) catch fatal();
-        self.last_err_pos = token.start_pos;
+        self.last_err = std.fmt.allocPrint(self.alloc, "{s}: {} at pos: {}", .{fmt, token.token_t, token.start_pos}) catch fatal();
+        if (token.token_t == .none) {
+            self.last_err_pos = @intCast(u32, self.src.items.len);
+        } else {
+            self.last_err_pos = token.start_pos;
+        }
         return err;
     }
 

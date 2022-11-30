@@ -537,6 +537,13 @@ test "Indentation." {
     );
     try t.eq(val.asI32(), 123);
 
+    // Indented comment at the end of the source.
+    _ = try run.eval(
+        \\func foo():
+        \\  return 123
+        \\     -- Comment.
+    );
+
     // New block requires at least one statement.
     // const parse_res = try run.parse(
     //     \\if true:

@@ -2326,14 +2326,12 @@ fn toF64OrPanic(vm: *VM, val: Value) linksection(".eval") !f64 {
 
 fn convToF64OrPanic(vm: *VM, val: Value) linksection(".eval") !f64 {
     if (val.isPointer()) {
-        log.debug("right pointer", .{});
         const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
         if (obj.common.structId == cy.StringS) {
             const str = obj.string.ptr[0..obj.string.len];
             return std.fmt.parseFloat(f64, str) catch 0;
         } else return vm.panic("Cannot convert struct to number");
     } else {
-        log.debug("right value", .{});
         switch (val.getTag()) {
             cy.TagNone => return 0,
             cy.TagBoolean => return if (val.asBool()) 1 else 0,
@@ -2497,7 +2495,7 @@ pub const HeapObject = packed union {
         val2: Value,
     },
 
-    fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
+    pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
             cy.ListS => return .list,
             cy.MapS => return .map,
@@ -3321,18 +3319,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const recv = gvm.stack[gvm.framePtr + left];
                 const val = try gvm.getField(fieldId, recv);
                 gvm.stack[gvm.framePtr + dst] = val;
-                continue;
-            },
-            .fieldRetainRelease => {
-                @setRuntimeSafety(debug);
-                const fieldId = gvm.ops[pc+1].arg;
-                const left = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
-                pc += 4;
-                const recv = gvm.stack[gvm.framePtr + left];
-                const val = try gvm.getAndRetainField(fieldId, recv);
-                gvm.stack[gvm.framePtr + dst] = val;
-                release(recv);
                 continue;
             },
             .fieldRetain => {

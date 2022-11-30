@@ -219,9 +219,10 @@ pub const ByteCodeBuffer = struct {
                 },
                 .indexRetain,
                 .reverseIndexRetain,
+                .index,
+                .reverseIndex,
                 .setFieldRelease,
                 .fieldRetain,
-                .fieldRetainRelease,
                 .field,
                 .callSym0,
                 .callSym1,
@@ -444,7 +445,6 @@ pub const OpCode = enum(u8) {
     setFieldRelease,
     bitwiseAnd,
     fieldRetain,
-    fieldRetainRelease,
     fieldRelease,
     costart,
     coyield,
@@ -458,7 +458,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 64);
+    try t.eq(@enumToInt(OpCode.end), 63);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

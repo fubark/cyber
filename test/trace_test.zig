@@ -159,14 +159,36 @@ test "ARC in loops." {
 
     const trace = &run.trace;
 
-    // A non-rc var is reassigned to a rc var inside a loop.
+    // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop.
     _ = try run.eval(
         \\a = 123
         \\for 0..3:
-        \\  a = 'abc' + 123
+        \\  a = 'abc' + 123 -- copyReleaseDst
     );
     try t.eq(trace.numRetains, 3);
-    // The inner set inst should be a releaseSet.
+    try t.eq(trace.numReleases, 3);
+
+    // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop and if branch.
+    _ = try run.eval(
+        \\a = 123
+        \\for 0..3:
+        \\  if true:
+        \\    a = 'abc' + 123 -- copyReleaseDst
+    );
+    try t.eq(trace.numRetains, 3);
+    try t.eq(trace.numReleases, 3);
+
+    // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
+    _ = try run.eval(
+        \\struct S:
+        \\  foo
+        \\a = 123
+        \\for 0..3:
+        \\  a = S{ foo: 123 }.foo
+    );
+    try t.eq(trace.numRetainAttempts, 6);
+    try t.eq(trace.numRetains, 3);
+    try t.eq(trace.numReleaseAttempts, 10);
     try t.eq(trace.numReleases, 3);
 
     // An rc var first used inside a loop.
@@ -177,6 +199,29 @@ test "ARC in loops." {
     try t.eq(trace.numRetains, 3);
     // The inner set inst should be a releaseSet.
     try t.eq(trace.numReleases, 3);
+
+    // For iter initializes the temp value as the `any` type if the iterator has an `any` type,
+    // so using it as a call arg will attempt to retain it.
+    _ = try run.eval(
+        \\func foo(it):
+        \\  pass
+        \\list = [123, 234] -- +1
+        \\for list as it:   -- +3
+        \\  foo(it)         -- +2
+    );
+    try t.eq(trace.numRetainAttempts, 6);
+    try t.eq(trace.numRetains, 2);
+
+    // For iter with `any` temp value, the last temp value is released at the end of the block.
+    _ = try run.eval(
+        \\list = [{a: 123}, {a: 234}] -- +3
+        \\for list as it:             -- +3 -2
+        \\  pass                      
+        \\                            --    -4    
+    );
+    try t.eq(trace.numRetainAttempts, 6);
+    try t.eq(trace.numRetains, 6);
+    try t.eq(trace.numReleases, 6);
 }
 
 const VMrunner = struct {
@@ -249,9 +294,9 @@ const VMrunner = struct {
         return error.NotI32;
     }
 
-    pub fn assertValueString(self: *VMrunner, val: cy.Value) ![]const u8 {
+    pub fn valueIsString(self: *VMrunner, val: cy.Value, exp: []const u8) !void {
         if (val.isString()) {
-            return self.vm.valueAsString(val);
+            try t.eqStr(self.vm.valueAsString(val), exp);
         } else {
             return error.NotAString;
         }

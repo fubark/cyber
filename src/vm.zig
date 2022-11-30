@@ -1488,7 +1488,7 @@ pub const VM = struct {
                 return val;
             } else return Value.initNone();
         } else {
-            log.debug("Missing symbol for object: {}", .{obj.common.structId});
+            log.debug("Missing symbol for object: {} {s}", .{obj.common.structId, name});
             return Value.initNone();
         }
     }
@@ -1883,6 +1883,10 @@ pub const VM = struct {
                 const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
                 if (obj.common.structId == StringS) {
                     return obj.string.ptr[0..obj.string.len];
+                } else if (obj.common.structId == ListS) {
+                    return std.fmt.bufPrint(&tempU8Buf, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
+                } else if (obj.common.structId == MapS) {
+                    return std.fmt.bufPrint(&tempU8Buf, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
                 } else {
                     return self.structs.buf[obj.common.structId].name;
                 }
@@ -2324,23 +2328,31 @@ fn evalAddFallback(vm: *VM, left: cy.Value, right: cy.Value) linksection(".eval"
     if (left.isNumber()) {
         return Value.initF64(left.asF64() + try toF64OrPanic(vm, right));
     } else {
-        switch (left.getTag()) {
-            cy.TagBoolean => {
-                if (left.asBool()) {
-                    return Value.initF64(1 + right.toF64());
-                } else {
-                    return Value.initF64(right.toF64());
-                }
-            },
-            cy.TagNone => return Value.initF64(right.toF64()),
-            cy.TagError => stdx.fatal(),
-            cy.TagConstString => {
-                // Convert into heap string.
-                const slice = left.asConstStr();
-                const str = vm.strBuf[slice.start..slice.end];
+        if (left.isPointer()) {
+            const obj = stdx.ptrAlignCast(*cy.HeapObject, left.asPointer().?);
+            if (obj.common.structId == cy.StringS) {
+                const str = obj.string.ptr[0..obj.string.len];
                 return vm.allocStringConcat(str, vm.valueToTempString(right)) catch stdx.fatal();
-            },
-            else => stdx.panic("unexpected tag"),
+            } else return vm.panic("Cannot add struct instance.");
+        } else {
+            switch (left.getTag()) {
+                cy.TagBoolean => {
+                    if (left.asBool()) {
+                        return Value.initF64(1 + right.toF64());
+                    } else {
+                        return Value.initF64(right.toF64());
+                    }
+                },
+                cy.TagNone => return Value.initF64(right.toF64()),
+                cy.TagError => stdx.fatal(),
+                cy.TagConstString => {
+                    // Convert into heap string.
+                    const slice = left.asConstStr();
+                    const str = vm.strBuf[slice.start..slice.end];
+                    return vm.allocStringConcat(str, vm.valueToTempString(right)) catch stdx.fatal();
+                },
+                else => stdx.panic("unexpected tag"),
+            }
         }
     }
 }

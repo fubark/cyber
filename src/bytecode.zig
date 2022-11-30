@@ -241,6 +241,7 @@ pub const ByteCodeBuffer = struct {
                 .greaterEqual,
                 .compare,
                 .compareNot,
+                .bitwiseAnd,
                 .list,
                 .add,
                 .jumpNotCond => {

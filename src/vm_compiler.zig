@@ -1207,6 +1207,8 @@ pub const VMcompiler = struct {
     fn genStatement(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
         // log.debug("gen stmt {}", .{node.node_t});
 
+        self.resetNextFreeTemp();
+
         const node = self.nodes[nodeId];
         switch (node.node_t) {
             .pass_stmt => {
@@ -1899,6 +1901,10 @@ pub const VMcompiler = struct {
         }
     }
 
+    fn resetNextFreeTemp(self: *VMcompiler) void {
+        self.curBlock.firstFreeTempLocal = @intCast(u8, self.curBlock.numLocals);
+    }
+
     fn setFirstFreeTempLocal(self: *VMcompiler, local: LocalId) void {
         self.curBlock.firstFreeTempLocal = local;
     }
@@ -1930,6 +1936,10 @@ pub const VMcompiler = struct {
         return self.genExprTo(nodeId, dst, false, discardTopExprReg);
     }
 
+    fn canUseLocalAsTemp(self: *const VMcompiler, local: LocalId) bool {
+        return local == 0 or local >= self.curBlock.numLocals;
+    }
+
     fn isTempLocal(self: *const VMcompiler, local: LocalId) bool {
         return local >= self.curBlock.numLocals;
     }
@@ -1946,7 +1956,7 @@ pub const VMcompiler = struct {
         const startTempLocal = self.curBlock.firstFreeTempLocal;
         defer self.computeNextTempLocalFrom(startTempLocal);
 
-        var usedDstAsTemp = false;
+        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
         const leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
         const rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
         if (!discardTopExprReg) {
@@ -2223,7 +2233,7 @@ pub const VMcompiler = struct {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
 
-                var usedDstAsTemp = false;
+                var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
 
                 // Parent value.
                 const parentv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.arr, dst, &usedDstAsTemp, discardTopExprReg);
@@ -2274,7 +2284,7 @@ pub const VMcompiler = struct {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
 
-                var usedDstAsTemp = false;
+                var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
 
                 // Gen left.
                 const leftv = try self.genExprToDestOrTempLocal(node.head.left_right.left, dst, &usedDstAsTemp, discardTopExprReg);
@@ -2307,7 +2317,7 @@ pub const VMcompiler = struct {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
 
-                var usedDstAsTemp = false;
+                var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
 
                 // Left side.
                 const leftv = try self.genExprToDestOrTempLocal(node.head.left_right.left, dst, &usedDstAsTemp, discardTopExprReg);
@@ -2369,7 +2379,10 @@ pub const VMcompiler = struct {
                         return self.genPushBinOp(.mul, left, right, NumberType, dst, discardTopExprReg);
                     },
                     .plus => {
-                        var usedDstAsTemp = false;
+                        const startTempLocal = self.curBlock.firstFreeTempLocal;
+                        defer self.computeNextTempLocalFrom(startTempLocal);
+
+                        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
                         const leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
                         const rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
                         if (!discardTopExprReg) {

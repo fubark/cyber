@@ -1282,6 +1282,18 @@ pub const VM = struct {
         return true;
     }
 
+    pub inline fn retainObject(self: *const VM, obj: *HeapObject) void {
+        @setRuntimeSafety(debug);
+        obj.retainedCommon.rc += 1;
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+    }
+
     pub inline fn retain(self: *const VM, val: Value) void {
         @setRuntimeSafety(debug);
         if (TraceEnabled) {
@@ -1612,16 +1624,20 @@ pub const VM = struct {
             .nativeFunc1 => {
                 @setRuntimeSafety(debug);
                 // self.pc += 3;
-                const newFramePtr = self.framePtr + startLocal;
+                // const newFramePtr = self.framePtr + startLocal;
+                const framePtrSave = self.framePtr;
+                gvm.framePtr = self.framePtr + startLocal;
                 gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, &self.stack[newFramePtr + 2]), numArgs);
+                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, &self.stack[gvm.framePtr + 2]), numArgs);
                 pc.* = gvm.pc;
                 if (reqNumRetVals == 1) {
-                    self.stack[newFramePtr] = res;
+                    self.stack[gvm.framePtr] = res;
+                    gvm.framePtr = framePtrSave;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
                             // Nop.
+                            gvm.framePtr = framePtrSave;
                         },
                         1 => stdx.panic("not possible"),
                         2 => {
@@ -2075,8 +2091,8 @@ pub fn release(val: Value) linksection(".eval") void {
                 stdx.panic("object already freed.");
             }
         }
-        log.debug("release {}", .{val.getUserTag()});
         obj.retainedCommon.rc -= 1;
+        log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
             gvm.refCounts -= 1;
         }

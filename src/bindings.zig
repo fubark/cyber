@@ -150,11 +150,12 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     var lessCtx = LessContext{
         .lessFn = args[0],
     };
+    gvm.stackEnsureUnusedCapacity(5) catch stdx.fatal();
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
-            gvm.stackEnsureUnusedCapacity(3) catch stdx.fatal();
             gvm.retain(a);
             gvm.retain(b);
+            gvm.retain(ctx_.lessFn);
             gvm.stack[gvm.framePtr + 2] = a;
             gvm.stack[gvm.framePtr + 3] = b;
             gvm.stack[gvm.framePtr + 4] = ctx_.lessFn;
@@ -199,11 +200,7 @@ fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    list.list.rc += 1;
-    if (TrackGlobalRC) {
-        gvm.refCounts += 1;
-    }
-
+    gvm.retainObject(list);
     list.list.nextIterIdx = 0;
     return Value.initPtr(ptr);
 }

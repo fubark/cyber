@@ -44,21 +44,31 @@ pub fn build(b: *std.build.Builder) !void {
         }
         step.addPackage(stdxPkg);
 
-        const traceTest = b.addTest("./test/trace_test.zig");
-        traceTest.setBuildMode(mode);
-        traceTest.setTarget(target);
-        traceTest.setMainPkgPath(".");
-        {
-            const build_options = b.addOptions();
-            build_options.addOption(cy_config.Engine, "cyEngine", .vm);
-            build_options.addOption(bool, "trace", true);
-            traceTest.addPackage(build_options.getPackage("build_options"));
-        }
-        traceTest.addPackage(stdxPkg);
-
+        const traceTest = addTraceTest(b, mode, target);
         traceTest.step.dependOn(&step.step);
         b.step("test", "Run tests.").dependOn(&traceTest.step);
     }
+
+    {
+        // Just trace test.
+        const traceTest = addTraceTest(b, mode, target);
+        b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
+    }
+}
+
+fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget) *std.build.LibExeObjStep {
+    const ttest = b.addTest("./test/trace_test.zig");
+    ttest.setBuildMode(mode);
+    ttest.setTarget(target);
+    ttest.setMainPkgPath(".");
+    {
+        const build_options = b.addOptions();
+        build_options.addOption(cy_config.Engine, "cyEngine", .vm);
+        build_options.addOption(bool, "trace", true);
+        ttest.addPackage(build_options.getPackage("build_options"));
+    }
+    ttest.addPackage(stdxPkg);
+    return ttest;
 }
 
 const stdxPkg = std.build.Pkg{

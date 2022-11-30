@@ -280,8 +280,10 @@ pub const VM = struct {
             }
             self.trace.totalOpCounts = 0;
             self.trace.numReleases = 0;
+            self.trace.numReleaseAttempts = 0;
             self.trace.numForceReleases = 0;
             self.trace.numRetains = 0;
+            self.trace.numRetainAttempts = 0;
             self.trace.numRetainCycles = 0;
             self.trace.numRetainCycleRoots = 0;
         }
@@ -600,6 +602,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -620,6 +623,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -651,6 +655,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -728,6 +733,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             gvm.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -752,6 +758,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             gvm.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -789,6 +796,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -809,6 +817,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -842,6 +851,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -863,6 +873,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -885,6 +896,7 @@ pub const VM = struct {
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
@@ -910,6 +922,7 @@ pub const VM = struct {
         }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
         }
         const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
         try list.appendSlice(self.alloc, elems);
@@ -1271,6 +1284,9 @@ pub const VM = struct {
 
     pub inline fn retain(self: *const VM, val: Value) void {
         @setRuntimeSafety(debug);
+        if (TraceEnabled) {
+            self.trace.numRetainAttempts += 1;
+        }
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer());
             obj.retainedCommon.rc += 1;
@@ -1974,6 +1990,7 @@ pub fn releaseObject(obj: *HeapObject) linksection(".eval") void {
     }
     if (TraceEnabled) {
         gvm.trace.numReleases += 1;
+        gvm.trace.numReleaseAttempts += 1;
     }
     if (obj.retainedCommon.rc == 0) {
         @call(.{ .modifier = .never_inline }, freeObject, .{obj});
@@ -2048,6 +2065,9 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
 
 pub fn release(val: Value) linksection(".eval") void {
     @setRuntimeSafety(debug);
+    if (TraceEnabled) {
+        gvm.trace.numReleaseAttempts += 1;
+    }
     if (val.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
         if (builtin.mode == .Debug or builtin.is_test) {
@@ -2286,7 +2306,6 @@ fn evalAddFallback(vm: *VM, left: cy.Value, right: cy.Value) linksection(".eval"
     @setRuntimeSafety(debug);
     @setCold(true);
     if (left.isNumber()) {
-        log.debug("left num", .{});
         return Value.initF64(left.asF64() + try toF64OrPanic(vm, right));
     } else {
         switch (left.getTag()) {
@@ -2665,7 +2684,9 @@ pub const TraceInfo = struct {
     opCounts: []OpCount,
     totalOpCounts: u32,
     numRetains: u32,
+    numRetainAttempts: u32,
     numReleases: u32,
+    numReleaseAttempts: u32,
     numForceReleases: u32,
     numRetainCycles: u32,
     numRetainCycleRoots: u32,
@@ -3908,6 +3929,7 @@ fn allocFiber(pc: usize, args: []const Value) linksection(".eval") !Value {
         .prevFiber = undefined,
     };
     if (TraceEnabled) {
+        gvm.trace.numRetainAttempts += 1;
         gvm.trace.numRetains += 1;
     }
     if (TrackGlobalRC) {

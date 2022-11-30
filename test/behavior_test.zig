@@ -883,6 +883,29 @@ test "Maps" {
     try t.eq(val.asI32(), 2);
 }
 
+test "Assignment statements" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Assign to variable.
+    var val = try run.eval(
+        \\a = 1
+        \\a += 10
+        \\a
+    );
+    try t.eq(val.asI32(), 11);
+
+    // Assign to field.
+    val = try run.eval(
+        \\struct S:
+        \\  foo
+        \\s = S{ foo: 1 }
+        \\s.foo += 10
+        \\s.foo
+    );
+    try t.eq(val.asI32(), 11);
+}
+
 test "Variables and scope" {
     const run = VMrunner.create();
     defer run.destroy();

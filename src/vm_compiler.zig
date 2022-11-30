@@ -429,6 +429,13 @@ pub const VMcompiler = struct {
                             return self.reportError("Type mismatch: Expected {}", .{svar.vtype.typeT}, node);
                         }
                     } else stdx.panic("variable not declared");
+                } else if (left.node_t == .access_expr) {
+                    const accessLeft = try self.semaExpr(left.head.left_right.left, false);
+                    const accessRight = try self.semaExpr(left.head.left_right.right, false);
+                    const right = try self.semaExpr(node.head.left_right.right, false);
+                    _ = accessLeft;
+                    _ = accessRight;
+                    _ = right;
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
@@ -1223,6 +1230,31 @@ pub const VMcompiler = struct {
         return val.local;
     }
 
+    fn genBinOpAssignToField(self: *VMcompiler, code: cy.OpCode, leftId: cy.NodeId, rightId: cy.NodeId) !void {
+        const left = self.nodes[leftId];
+
+        const startTempLocal = self.curBlock.firstFreeTempLocal;
+        defer self.computeNextTempLocalFrom(startTempLocal);
+
+        const accessRight = self.nodes[left.head.left_right.right];
+        if (accessRight.node_t != .ident) {
+            log.debug("Expected ident.", .{});
+            return error.CompileError;
+        }
+        const fieldName = self.getNodeTokenString(accessRight);
+        const fieldId = try self.vm.ensureFieldSym(fieldName);
+
+        const accessLeftv = try self.genExpr(left.head.left_right.left, false);
+        const accessLocal = try self.nextFreeTempLocal();
+        try self.buf.pushOp3(.field, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
+
+        const rightv = try self.genExpr(rightId, false);
+        try self.buf.pushOp3(code, accessLocal, rightv.local, accessLocal);
+
+        try self.buf.pushOp3(.setField, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
+        try self.pushDebugSym(leftId);
+    }
+
     /// discardTopExprReg is usually true since statements aren't expressions and evaluating child expressions
     /// would just grow the register stack unnecessarily. However, the last main statement requires the
     /// resulting expr to persist to return from `eval`.
@@ -1253,6 +1285,8 @@ pub const VMcompiler = struct {
                         }
                         try self.buf.pushOp3(.add, svar.local, right.local, svar.local);
                     } else stdx.panic("variable not declared");
+                } else if (left.node_t == .access_expr) {
+                    try self.genBinOpAssignToField(.add, node.head.left_right.left, node.head.left_right.right);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }

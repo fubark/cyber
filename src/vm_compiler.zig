@@ -604,7 +604,7 @@ pub const VMcompiler = struct {
         const ssblock = self.curSemaSubBlock();
         for (ssblock.iterVarBeginTypes.items) |varAndType| {
             const svar = &self.vars.items[varAndType.id];
-            // log.debug("{s} is defined", .{self.getVarName(varAndType.id)});
+            // log.debug("{s} iter var", .{self.getVarName(varAndType.id)});
             svar.vtype = varAndType.vtype;
             svar.genIsDefined = true;
         }
@@ -1803,7 +1803,11 @@ pub const VMcompiler = struct {
                     const costartPc = self.buf.ops.items.len;
                     if (startFiber) {
                         // Precompute first arg local since costart doesn't need the startLocal.
-                        try self.buf.pushOpSlice(.costart, &.{ callStartLocal + 2, @intCast(u8, numArgs), 0, dst });
+                        var initialStackSize = numArgs + 2;
+                        if (initialStackSize < 16) {
+                            initialStackSize = 16;
+                        }
+                        try self.buf.pushOpSlice(.costart, &.{ callStartLocal + 2, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
                     }
 
                     const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));

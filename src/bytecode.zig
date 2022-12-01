@@ -263,7 +263,6 @@ pub const ByteCodeBuffer = struct {
                     pc += 4 + numEntries;
                 },
                 .slice,
-                .costart,
                 .lambda => {
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
                     pc += 5;
@@ -273,6 +272,7 @@ pub const ByteCodeBuffer = struct {
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, numEntries, ops[pc+4].arg});
                     pc += 5 + numEntries;
                 },
+                .costart,
                 .forIter => {
                     println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
                     pc += 6;

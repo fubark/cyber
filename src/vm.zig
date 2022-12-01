@@ -562,22 +562,22 @@ pub const VM = struct {
         if (listV.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, listV.asPointer().?);
             if (obj.retainedCommon.structId == ListS) {
-                const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+                const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
                 var start = @floatToInt(i32, startV.toF64());
                 if (start < 0) {
-                    start = @intCast(i32, list.items.len) + start + 1;
+                    start = @intCast(i32, list.len) + start + 1;
                 }
                 var end = @floatToInt(i32, endV.toF64());
                 if (end < 0) {
-                    end = @intCast(i32, list.items.len) + end + 1;
+                    end = @intCast(i32, list.len) + end + 1;
                 }
-                if (start < 0 or start > list.items.len) {
+                if (start < 0 or start > list.len) {
                     return self.panic("Index out of bounds");
                 }
-                if (end < start or end > list.items.len) {
+                if (end < start or end > list.len) {
                     return self.panic("Index out of bounds");
                 }
-                return self.allocList(list.items[@intCast(u32, start)..@intCast(u32, end)]);
+                return self.allocList(list.buf[@intCast(u32, start)..@intCast(u32, end)]);
             } else {
                 stdx.panic("expected list");
             }
@@ -924,7 +924,7 @@ pub const VM = struct {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
-        const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+        const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
         try list.appendSlice(self.alloc, elems);
         return Value.initPtr(obj);
     }
@@ -1107,10 +1107,10 @@ pub const VM = struct {
             const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
                 ListS => {
-                    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+                    const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
-                    if (idx < list.items.len) {
-                        list.items[idx] = right;
+                    if (idx < list.len) {
+                        list.buf[idx] = right;
                     } else {
                         // var i: u32 = @intCast(u32, list.val.items.len);
                         // try list.val.resize(self.alloc, idx + 1);
@@ -1142,10 +1142,10 @@ pub const VM = struct {
             switch (obj.retainedCommon.structId) {
                 ListS => {
                     @setRuntimeSafety(debug);
-                    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
-                    const idx = @intCast(i32, list.items.len) + @floatToInt(i32, index.toF64());
-                    if (idx < list.items.len) {
-                        return list.items[@intCast(u32, idx)];
+                    const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
+                    const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
+                    if (idx < list.len) {
+                        return list.buf[@intCast(u32, idx)];
                     } else {
                         return error.OutOfBounds;
                     }
@@ -1174,10 +1174,10 @@ pub const VM = struct {
             switch (obj.retainedCommon.structId) {
                 ListS => {
                     @setRuntimeSafety(debug);
-                    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+                    const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
-                    if (idx < list.items.len) {
-                        return list.items[idx];
+                    if (idx < list.len) {
+                        return list.buf[idx];
                     } else {
                         return error.OutOfBounds;
                     }
@@ -1246,7 +1246,7 @@ pub const VM = struct {
 
                 switch (obj.retainedCommon.structId) {
                     ListS => {
-                        const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+                        const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
                         for (list.items) |it| {
                             if (it.isPointer()) {
                                 const ptr = stdx.ptrCastAlign(*HeapObject, it.asPointer().?);
@@ -1317,7 +1317,7 @@ pub const VM = struct {
         }
         switch (obj.retainedCommon.structId) {
             ListS => {
-                const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+                const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
                 list.deinit(self.alloc);
                 self.freeObject(obj);
                 if (TrackGlobalRC) {
@@ -2029,8 +2029,8 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
     log.debug("free {}", .{obj.getUserTag()});
     switch (obj.retainedCommon.structId) {
         ListS => {
-            const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
-            for (list.items) |it| {
+            const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
+            for (list.items()) |it| {
                 release(it);
             }
             list.deinit(gvm.alloc);
@@ -2489,11 +2489,10 @@ const Fiber = packed struct {
 const List = packed struct {
     structId: StructId,
     rc: u32,
-    // inner: std.ArrayListUnmanaged(Value),
     list: packed struct {
         ptr: [*]Value,
-        len: usize,
         cap: usize,
+        len: usize,
     },
     nextIterIdx: u32,
 };

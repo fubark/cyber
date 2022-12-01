@@ -143,7 +143,7 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     }
 
     const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &obj.list.list);
+    const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
         lessFn: Value,
     };
@@ -166,7 +166,7 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
             return res.toBool();
         }
     };
-    std.sort.sort(Value, list.items, &lessCtx, S.less);
+    std.sort.sort(Value, list.items(), &lessCtx, S.less);
     vm_.releaseObject(obj);
     return Value.initNone();
 }
@@ -177,7 +177,7 @@ fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
         stdx.panic("Args mismatch");
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
+    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
     inner.append(gvm.alloc, args[0]) catch stdx.fatal();
     vm_.releaseObject(list);
     return Value.initNone();
@@ -210,7 +210,7 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
         stdx.panic("Args mismatch");
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
+    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
     inner.resize(gvm.alloc, size) catch stdx.fatal();
     vm_.releaseObject(list);
@@ -233,7 +233,7 @@ fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     _ = nargs;
     _ = args;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*std.ArrayListUnmanaged(Value), &list.list.list);
+    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
     vm_.releaseObject(list);
-    return Value.initF64(@intToFloat(f64, inner.items.len));
+    return Value.initF64(@intToFloat(f64, inner.len));
 }

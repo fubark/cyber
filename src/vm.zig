@@ -1801,12 +1801,12 @@ pub const VM = struct {
         var line: u32 = 0;
         var lineStart: u32 = 0;
         for (self.compiler.tokens) |token| {
-            if (token.token_t == .new_line) {
+            if (token.tag() == .new_line) {
                 line += 1;
-                lineStart = token.start_pos + 1;
+                lineStart = token.pos() + 1;
                 continue;
             }
-            if (token.start_pos == loc) {
+            if (token.pos() == loc) {
                 outLine.* = line;
                 outCol.* = loc - lineStart;
                 return;
@@ -1828,7 +1828,7 @@ pub const VM = struct {
                 const node = self.compiler.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
-                self.computeLinePos(self.compiler.tokens[node.start_token].start_pos, &line, &col);
+                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col);
                 try frames.append(self.alloc, .{
                     .name = "main",
                     .line = line,
@@ -1843,7 +1843,7 @@ pub const VM = struct {
                 const node = self.compiler.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
-                self.computeLinePos(self.compiler.tokens[node.start_token].start_pos, &line, &col);
+                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col);
                 try frames.append(self.alloc, .{
                     .name = name,
                     .line = line,

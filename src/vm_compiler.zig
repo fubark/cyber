@@ -2078,7 +2078,7 @@ pub const VMcompiler = struct {
             .string => {
                 if (!discardTopExprReg) {
                     const token = self.tokens[node.start_token];
-                    const literal = self.src[token.start_pos+1..token.data.end_pos-1];
+                    const literal = self.src[token.pos()+1..token.data.end_pos-1];
 
                     // Unescape single quotes.
                     _ = try replaceIntoShorterList(u8, literal, "\\'", "'", &self.u8Buf, self.alloc);
@@ -2240,7 +2240,7 @@ pub const VMcompiler = struct {
                         switch (key.node_t) {
                             .ident => {
                                 const token = self.tokens[key.start_token];
-                                const name = self.src[token.start_pos..token.data.end_pos];
+                                const name = self.src[token.pos()..token.data.end_pos];
                                 const idx = try self.buf.pushStringConst(name);
                                 try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                             },
@@ -2634,13 +2634,13 @@ pub const VMcompiler = struct {
         const customMsg = try std.fmt.allocPrint(self.alloc, fmt, args);
         defer self.alloc.free(customMsg);
         self.alloc.free(self.lastErr);
-        self.lastErr = try std.fmt.allocPrint(self.alloc, "{s}: {} at {}", .{customMsg, node.node_t, token.start_pos});
+        self.lastErr = try std.fmt.allocPrint(self.alloc, "{s}: {} at {}", .{customMsg, node.node_t, token.pos()});
         return error.CompileError;
     }
 
     fn getNodeTokenString(self: *const VMcompiler, node: cy.Node) []const u8 {
         const token = self.tokens[node.start_token];
-        return self.src[token.start_pos..token.data.end_pos];
+        return self.src[token.pos()..token.data.end_pos];
     }
 
     fn pushDebugSym(self: *VMcompiler, nodeId: cy.NodeId) !void {

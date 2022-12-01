@@ -1854,7 +1854,7 @@ pub const VM = struct {
             }
         }
 
-        self.stackTrace.frames = frames.toOwnedSlice(self.alloc);
+        self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
     }
 
     pub fn valueAsString(self: *const VM, val: Value) []const u8 {
@@ -1988,12 +1988,20 @@ pub const VM = struct {
                 break;
             }
         }
-        self.stack = try self.alloc.reallocAtLeast(self.stack, betterCap);
+        if (self.alloc.resize(self.stack, betterCap)) {
+            self.stack.len = betterCap;
+        } else {
+            self.stack = try self.alloc.realloc(self.stack, betterCap);
+        }
     }
 
     pub fn stackGrowTotalCapacityPrecise(self: *VM, newCap: usize) !void {
         @setRuntimeSafety(debug);
-        self.stack = try self.alloc.reallocAtLeast(self.stack, newCap);
+        if (self.alloc.resize(self.stack, newCap)) {
+            self.stack.len = newCap;
+        } else {
+            self.stack = try self.alloc.realloc(self.stack, newCap);
+        }
     }
 };
 

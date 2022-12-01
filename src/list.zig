@@ -66,7 +66,14 @@ pub fn List(comptime T: type) type {
                     break;
                 }
             }
-            self.buf = try alloc.reallocAtLeast(self.buf, betterCap);
+            if (alloc.resize(self.buf, betterCap)) {
+                self.buf.len = betterCap;
+            } else {
+                const old = self.buf;
+                self.buf = try alloc.alloc(T, betterCap);
+                std.mem.copy(T, self.buf[0..self.len], old);
+                alloc.free(old);
+            }
         }
     };
 }

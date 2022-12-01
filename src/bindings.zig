@@ -122,7 +122,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             return mapVal;
         },
         .string => {
-            const str = val.allocString();
+            const str = try val.allocString();
             return try gvm.allocOwnedString(str);
         },
         .number => {

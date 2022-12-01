@@ -714,7 +714,7 @@ pub const VMcompiler = struct {
         }
         const constAddr = std.mem.alignForward(@ptrToInt(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
         const constDst = @intToPtr([*]cy.Const, constAddr)[0..self.buf.consts.items.len];
-        const constSrc = self.buf.consts.toOwnedSlice(self.alloc);
+        const constSrc = try self.buf.consts.toOwnedSlice(self.alloc);
         std.mem.copy(cy.Const, constDst, constSrc);
         self.alloc.free(constSrc);
         self.buf.mconsts = constDst;

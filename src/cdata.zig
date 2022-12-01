@@ -259,7 +259,7 @@ pub const DecodeListIR = struct {
             try buf.append(alloc, item_id);
             item_id = item.next;
         }
-        new.arr = buf.toOwnedSlice(alloc);
+        new.arr = try buf.toOwnedSlice(alloc);
         return new;
     }
 
@@ -476,7 +476,7 @@ pub const DecodeValueIR = struct {
         return DecodeMapIR.init(self.alloc, self.res, self.exprId);
     }
 
-    pub fn allocString(self: DecodeValueIR) []u8 {
+    pub fn allocString(self: DecodeValueIR) ![]u8 {
         const node = self.res.nodes.items[self.exprId];
         const token_s = self.res.getTokenString(node.start_token);
         var buf = std.ArrayList(u8).init(self.alloc);
@@ -484,7 +484,7 @@ pub const DecodeValueIR = struct {
         _ = replaceIntoList(u8, token_s[1..token_s.len-1], "\\'", "'", &buf);
         const replaces = std.mem.replace(u8, buf.items, "\\`", "`", buf.items);
         buf.items.len -= replaces;
-        return buf.toOwnedSlice();
+        return try buf.toOwnedSlice();
     }
 
     pub fn asF64(self: DecodeValueIR) !f64 {

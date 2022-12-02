@@ -593,7 +593,7 @@ test "decodeMap" {
                 item.field = try item_map.getU32("field");
                 try list.append(t.alloc, item);
             }
-            root.list = list.toOwnedSlice(t.alloc);
+            root.list = try list.toOwnedSlice(t.alloc);
 
             var map_items: std.ArrayListUnmanaged(TestMapItem) = .{};
             var map_ = try map.decodeMap("map");
@@ -604,7 +604,7 @@ test "decodeMap" {
                 const value = try map_.allocString(entry.key_ptr.*);
                 try map_items.append(t.alloc, .{ .id = key, .val = value });
             }
-            root.map = map_items.toOwnedSlice(t.alloc);
+            root.map = try map_items.toOwnedSlice(t.alloc);
         }
     };
 

@@ -58,6 +58,23 @@ pub fn List(comptime T: type) type {
             }
         }
 
+        pub inline fn ensureTotalCapacityPrecise(self: *ListT, alloc: std.mem.Allocator, newCap: usize) !void {
+            if (newCap > self.buf.len) {
+                try self.growTotalCapacityPrecise(alloc, newCap);
+            }
+        }
+
+        pub fn growTotalCapacityPrecise(self: *ListT, alloc: std.mem.Allocator, newCap: usize) !void {
+            if (alloc.resize(self.buf, newCap)) {
+                self.buf.len = newCap;
+            } else {
+                const old = self.buf;
+                self.buf = try alloc.alloc(T, newCap);
+                std.mem.copy(T, self.buf[0..self.len], old);
+                alloc.free(old);
+            }
+        }
+
         pub fn growTotalCapacity(self: *ListT, alloc: std.mem.Allocator, newCap: usize) !void {
             var betterCap = newCap;
             while (true) {
@@ -66,14 +83,7 @@ pub fn List(comptime T: type) type {
                     break;
                 }
             }
-            if (alloc.resize(self.buf, betterCap)) {
-                self.buf.len = betterCap;
-            } else {
-                const old = self.buf;
-                self.buf = try alloc.alloc(T, betterCap);
-                std.mem.copy(T, self.buf[0..self.len], old);
-                alloc.free(old);
-            }
+            try self.growTotalCapacityPrecise(alloc, betterCap);
         }
     };
 }

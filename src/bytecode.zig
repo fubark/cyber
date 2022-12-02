@@ -8,8 +8,8 @@ const log = stdx.log.scoped(.bytecode);
 /// Holds vm instructions.
 pub const ByteCodeBuffer = struct {
     alloc: std.mem.Allocator,
-    /// The number of local vars in the main block to reserve space for.
-    mainLocalSize: u32,
+    /// The required stack size for the main frame.
+    mainStackSize: u32,
     ops: std.ArrayListUnmanaged(OpData),
     consts: std.ArrayListUnmanaged(Const),
 
@@ -30,7 +30,7 @@ pub const ByteCodeBuffer = struct {
     pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
         var new = ByteCodeBuffer{
             .alloc = alloc,
-            .mainLocalSize = 0,
+            .mainStackSize = 0,
             .ops = .{},
             .consts = .{},
             .strBuf = .{},

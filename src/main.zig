@@ -5,8 +5,8 @@ const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
 
-/// Trace collects debug info.
-const UseMimalloc = false;
+/// Use mimalloc for fast builds.
+const UseMimalloc = builtin.mode == .ReleaseFast;
 
 var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
 var miAlloc: mi.Allocator = undefined;
@@ -95,7 +95,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
-    const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
+    const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e10, 4096, @alignOf(u8), null);
     defer alloc.free(src);
 
     const vm = cy.getUserVM();

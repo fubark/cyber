@@ -36,6 +36,14 @@ pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
         //     // Compile with some optimization or number of function locals will exceed max limit in browsers.
         //     c_flags.append("-O1") catch @panic("error");
         // }
+    } else {
+        c_flags.append("-DNDEBUG=1") catch @panic("error");
+        c_flags.append("-DMI_SECURE=0") catch @panic("error");
+
+        // Use with MIMALLOC_SHOW_STATS=1 env variable to show stats summary.
+        // MI_STAT=2 includes bucket info.
+        // c_flags.append("-DMI_STAT=2") catch @panic("error");
+        c_flags.append("-DMI_STAT=0") catch @panic("error");
     }
 
     var sources = std.ArrayList([]const u8).init(b.allocator);

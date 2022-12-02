@@ -460,7 +460,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(@enumToInt(OpCode.end), 64);
+    try t.eq(std.enums.values(OpCode).len, 65);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

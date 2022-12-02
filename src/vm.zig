@@ -137,10 +137,15 @@ pub const VM = struct {
         self.curFiber = &gvm.mainFiber;
         try self.compiler.init(self);
 
-        // Perform big allocation for hot data paths since the allocator
+        // Perform decently sized allocation for hot data paths since the allocator
         // will likely use a more consistent allocation.
-        try self.stackEnsureTotalCapacityPrecise(512);
-        try self.methodTable.ensureTotalCapacity(self.alloc, 512);
+        // Also try to allocate them in the same bucket.
+        try self.stackEnsureTotalCapacityPrecise(511);
+        try self.methodTable.ensureTotalCapacity(self.alloc, 96);
+        try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
+        try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 102);
+
+        try self.parser.tokens.ensureTotalCapacityPrecise(alloc, 511);
 
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
@@ -2497,8 +2502,9 @@ const List = packed struct {
     nextIterIdx: u32,
 };
 
+// Keep it just under 4kb page.
 const HeapPage = struct {
-    objects: [1600]HeapObject,
+    objects: [102]HeapObject,
 };
 
 const HeapObjectId = u32;
@@ -2606,12 +2612,15 @@ const FieldSymbolMap = struct {
 
 test "Internals." {
     try t.eq(@alignOf(VM), 8);
+    try t.eq(@alignOf(SymbolMap), 8);
     try t.eq(@sizeOf(SymbolMap), 40);
     try t.eq(@sizeOf(SymbolEntry), 16);
     try t.eq(@sizeOf(MapInner), 32);
     try t.eq(@sizeOf(HeapObject), 40);
-    try t.eq(@sizeOf(HeapPage), 40 * 1600);
+    try t.eq(@alignOf(HeapObject), 8);
+    try t.eq(@sizeOf(HeapPage), 40 * 102);
     try t.eq(@alignOf(HeapPage), 8);
+    try t.eq(@sizeOf(FuncSymbolEntry), 16);
 }
 
 const SymbolEntryType = enum {
@@ -2674,7 +2683,8 @@ pub const FuncSymbolEntry = struct {
     inner: packed union {
         nativeFunc1: std.meta.FnPtr(fn (*UserVM, [*]const Value, u8) Value),
         func: packed struct {
-            pc: usize,
+            // pc: usize,
+            pc: u32,
             /// Includes locals, and return info slot. Does not include params.
             numLocals: u32,
         },
@@ -2689,7 +2699,7 @@ pub const FuncSymbolEntry = struct {
         };
     }
 
-    pub fn initFunc(pc: usize, numLocals: u32) FuncSymbolEntry {
+    pub fn initFunc(pc: u32, numLocals: u32) FuncSymbolEntry {
         return .{
             .entryT = .func,
             .inner = .{

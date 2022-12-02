@@ -25,8 +25,8 @@ pub fn build(b: *std.build.Builder) !void {
 
         // exe.linkLibC();
         exe.addPackage(stdxPkg);
-        // mimalloc.addPackage(exe);
-        // mimalloc.buildAndLink(exe, .{});
+        mimalloc.addPackage(exe);
+        mimalloc.buildAndLink(exe, .{});
 
         b.step("cli", "Build main cli.").dependOn(&exe.step);
     }

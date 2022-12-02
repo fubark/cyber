@@ -7,6 +7,14 @@ const c = @cImport({
 
 pub usingnamespace c;
 
+pub fn collect(force: bool) void {
+    c.mi_collect(force);
+}
+
+const kb = 1024;
+const BigSize = 4 * kb;
+
+// Uses page allocator for objects > 4kb, otherwise mimalloc is used.
 pub const Allocator = struct {
     dummy: bool,
 
@@ -20,6 +28,8 @@ pub const Allocator = struct {
         self.* = .{
             .dummy = false,
         };
+
+        // Don't eagerly commit segments.
         c.mi_option_disable(c.mi_option_eager_commit);
     }
 
@@ -40,10 +50,14 @@ pub const Allocator = struct {
         log2_align: u8,
         ret_addr: usize,
     ) ?[*]u8 {
-        _ = ret_addr;
         _ = ptr;
         const alignment = @as(usize, 1) << @intCast(u6, log2_align);
-        return @ptrCast(?[*]u8, c.mi_malloc_aligned(len, alignment));
+        const effLen = len + alignment - 1;
+        if (effLen > BigSize) {
+            return std.heap.page_allocator.rawAlloc(len, log2_align, ret_addr);
+        } else {
+            return @ptrCast(?[*]u8, c.mi_malloc_aligned(len, alignment));
+        }
     }
 
     fn resize(
@@ -54,18 +68,28 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) bool {
         _ = ptr;
-        _ = ret_addr;
-        _ = log2_align;
-        if (new_len > buf.len) {
-            const available = c.mi_usable_size(buf.ptr);
-            if (available > new_len) {
-                if (c.mi_expand(buf.ptr, new_len)) |_| {
-                    return true;
-                }
+        const alignment = @as(usize, 1) << @intCast(u6, log2_align);
+        const effLen = buf.len + alignment - 1;
+        if (effLen > BigSize) {
+            if (new_len > buf.len) {
+                return std.heap.page_allocator.rawResize(buf, log2_align, new_len, ret_addr);
+            } else if (new_len == buf.len) {
+                return true;
+            } else {
+                return false;
             }
-            return false;
         } else {
-            return true;
+            if (new_len > buf.len) {
+                const available = c.mi_usable_size(buf.ptr);
+                if (available > new_len) {
+                    if (c.mi_expand(buf.ptr, new_len)) |_| {
+                        return true;
+                    }
+                }
+                return false;
+            } else {
+                return true;
+            }
         }
     }
 
@@ -75,10 +99,13 @@ pub const Allocator = struct {
         log2_align: u8,
         ret_addr: usize,
     ) void {
-        _ = ret_addr;
-        _ = log2_align;
         _ = ptr;
-        // const self = @ptrCast(*Allocator, @alignCast(@sizeOf(usize), ptr));
-        c.mi_free(buf.ptr);
+        const alignment = @as(usize, 1) << @intCast(u6, log2_align);
+        const effLen = buf.len + alignment - 1;
+        if (effLen > BigSize) {
+            std.heap.page_allocator.rawFree(buf, log2_align, ret_addr);
+        } else {
+            c.mi_free(buf.ptr);
+        }
     }
 };

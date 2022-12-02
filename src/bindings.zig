@@ -178,7 +178,10 @@ fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     }
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
-    inner.append(gvm.alloc, args[0]) catch stdx.fatal();
+    if (inner.len == inner.buf.len) {
+        inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
+    }
+    inner.appendAssumeCapacity(args[0]);
     vm_.releaseObject(list);
     return Value.initNone();
 }

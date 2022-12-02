@@ -24,6 +24,12 @@ pub fn List(comptime T: type) type {
             self.len += 1;
         }
 
+        pub fn appendAssumeCapacity(self: *ListT, val: T) linksection(eval2) void {
+            @setRuntimeSafety(debug);
+            self.buf[self.len] = val;
+            self.len += 1;
+        }
+
         pub fn appendSlice(self: *ListT, alloc: std.mem.Allocator, slice: []const T) linksection(eval2) !void {
             @setRuntimeSafety(debug);
             try self.ensureTotalCapacity(alloc, self.len + slice.len);
@@ -70,7 +76,7 @@ pub fn List(comptime T: type) type {
             } else {
                 const old = self.buf;
                 self.buf = try alloc.alloc(T, newCap);
-                std.mem.copy(T, self.buf[0..self.len], old);
+                std.mem.copy(T, self.buf[0..self.len], old[0..self.len]);
                 alloc.free(old);
             }
         }

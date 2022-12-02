@@ -705,7 +705,7 @@ pub const VMcompiler = struct {
             };
         };
         self.popBlock();
-        self.buf.mainLocalSize = @intCast(u32, self.blockNumLocals());
+        self.buf.mainStackSize = @intCast(u32, self.curBlock.getRequiredStackSize());
 
         // Merge inst and const buffers.
         var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
@@ -2693,6 +2693,10 @@ const Block = struct {
     fn deinit(self: *Block, alloc: std.mem.Allocator) void {
         _ = self;
         _ = alloc;
+    }
+
+    fn getRequiredStackSize(self: *const Block) u8 {
+        return @intCast(u8, self.numLocals + self.numTempLocals);
     }
 
     fn reserveLocal(self: *Block) !u8 {

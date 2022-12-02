@@ -548,12 +548,12 @@ pub const VM = struct {
         self.debugTable = buf.debugTable.items;
         self.pc = 0;
 
-        try self.stackEnsureTotalCapacity(buf.mainLocalSize);
+        try self.stackEnsureTotalCapacity(buf.mainStackSize);
         self.framePtr = 0;
 
         try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{});
         if (TraceEnabled) {
-            log.info("main local size: {}", .{buf.mainLocalSize});
+            log.info("main stack size: {}", .{buf.mainStackSize});
         }
 
         if (self.endLocal == 255) {
@@ -1252,7 +1252,7 @@ pub const VM = struct {
                 switch (obj.retainedCommon.structId) {
                     ListS => {
                         const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
-                        for (list.items) |it| {
+                        for (list.items()) |it| {
                             if (it.isPointer()) {
                                 const ptr = stdx.ptrCastAlign(*HeapObject, it.asPointer().?);
                                 if (visit(alloc, graph, cycleRoots_, ptr, graph.getPtr(ptr).?)) {

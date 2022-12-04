@@ -2280,7 +2280,7 @@ pub const VMcompiler = struct {
                 } else return GenValue.initNoValue();
             },
             .structInit => {
-                const stype = self.nodes[node.head.structInit.structType];
+                const stype = self.nodes[node.head.structInit.name];
                 const sname = self.getNodeTokenString(stype);
                 const sid = self.vm.getStruct(sname) orelse {
                     log.debug("Missing struct {s}", .{sname});

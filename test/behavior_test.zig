@@ -75,13 +75,13 @@ test "Fibers" {
     try run.valueIsI32(val, 2);
 }
 
-test "Structs" {
+test "Structs." {
     const run = VMrunner.create();
     defer run.destroy();
 
     // Initialization.
     var val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\n = Node{ value: 123 }
         \\n.value
@@ -90,16 +90,16 @@ test "Structs" {
 
     // Initialize with heap value field.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\n = Node{ value: [123] }
         \\n.value[0]
     );
     try t.eq(val.asI32(), 123);
 
-    // Set to object field.
+    // Set to struct field.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\n = Node{ value: 123 }
         \\n.value = 234
@@ -109,7 +109,7 @@ test "Structs" {
 
     // Set to field with heap value.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\n = Node{ value: [123] }
         \\n.value = 234
@@ -117,9 +117,9 @@ test "Structs" {
     );
     try t.eq(val.asI32(), 234);
 
-    // Struct to string returns struct name. 
+    // Struct to string returns struct's name. 
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\n = Node{ value: 123 }
         \\toString(n)
@@ -134,7 +134,7 @@ test "Struct methods." {
 
     // self param.
     var val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\  func get(self):
         \\    return self.value
@@ -145,7 +145,7 @@ test "Struct methods." {
 
     // self param with regular param.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\  func get(self, param):
         \\    return self.value + param
@@ -156,7 +156,7 @@ test "Struct methods." {
 
     // self param with many regular param.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\  func get(self, param, param2):
         \\    return self.value + param - param2
@@ -167,7 +167,7 @@ test "Struct methods." {
 
     // Static method, no params.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\  func get():
         \\    return 123
@@ -177,7 +177,7 @@ test "Struct methods." {
 
     // Static method, one params.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\  func get(param):
         \\    return 123 + param
@@ -187,7 +187,7 @@ test "Struct methods." {
 
     // Static method, many params.
     val = try run.eval(
-        \\struct Node:
+        \\type Node:
         \\  value
         \\  func get(param, param2):
         \\    return 123 + param - param2
@@ -359,7 +359,7 @@ test "Comparison ops." {
 
     // Object equals.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\s = S{ value: 123 }
         \\a = S{ value: 123 }
@@ -367,7 +367,7 @@ test "Comparison ops." {
     );
     try t.eq(val.asBool(), false);
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\s = S{ value: 123 }
         \\a = s
@@ -390,16 +390,16 @@ test "Not equal comparison." {
     );
     try t.eq(val.asBool(), false);
 
-    // Comparing struct.
+    // Comparing objects.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\s = S{ value: 3 }
         \\s != 123
     );
     try t.eq(val.asBool(), true);
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\s = S{ value: 3 }
         \\t = s
@@ -912,7 +912,7 @@ test "Assignment statements" {
 
     // Assign to field.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  foo
         \\s = S{ foo: 1 }
         \\s.foo += 10
@@ -1007,7 +1007,7 @@ test "Variables and scope" {
     try run.resetEnv();
     run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
     val = try run.evalNoReset(
-        \\struct S:
+        \\type S:
         \\  value
         \\if false:
         \\  a = S{ value: 123 }
@@ -1017,7 +1017,7 @@ test "Variables and scope" {
     try run.resetEnv();
     run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
     val = try run.evalNoReset(
-        \\struct S:
+        \\type S:
         \\  value
         \\  func foo(self):
         \\    if false:
@@ -1404,7 +1404,7 @@ test "Function recursion." {
 
     // Recursion with long lived object.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  n
         \\func foo(o):
         \\  if o.n is 0:
@@ -1418,7 +1418,7 @@ test "Function recursion." {
 
     // Recursion with new objects.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  n
         \\func foo(o):
         \\  if o.n is 0:

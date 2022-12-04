@@ -38,7 +38,7 @@ test "Automatic reference counting." {
 
     // Object is retained when assigned to struct literal.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\func foo():
         \\  a = [123]
@@ -52,7 +52,7 @@ test "Automatic reference counting." {
 
     // Object is retained when returned from non-literal expression in return clause.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\func foo():
         \\  a = S{ value: 123 }
@@ -66,7 +66,7 @@ test "Automatic reference counting." {
 
     // Object is released when returned from a function if no followup assignment.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\func foo():
         \\  return S{ value: 123 }
@@ -78,7 +78,7 @@ test "Automatic reference counting." {
 
     // Object is released when returned rvalue field access.
     val = try run.eval(
-        \\struct S:
+        \\type S:
         \\  value
         \\1 + S{ value: 123 }.value
     );
@@ -180,7 +180,7 @@ test "ARC in loops." {
 
     // A non-rcCandidate var is reassigned to a rcCandidate var (field access on the right) inside a loop.
     _ = try run.eval(
-        \\struct S:
+        \\type S:
         \\  foo
         \\a = 123
         \\for 0..3:

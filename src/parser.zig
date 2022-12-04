@@ -27,7 +27,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "not", .not_k },
     .{ "as", .as_k },
     .{ "pass", .pass_k },
-    .{ "struct", .struct_k },
+    .{ "type", .type_k },
     .{ "none", .none_k },
     .{ "is", .is_k },
     .{ "coinit", .coinit_k },
@@ -1148,7 +1148,7 @@ pub const Parser = struct {
                     return id;
                 }
             },
-            .struct_k => {
+            .type_k => {
                 return try self.parseStructDecl();
             },
             .func_k => {
@@ -2003,7 +2003,7 @@ pub const Parser = struct {
                         const initN = try self.pushNode(.structInit, start);
                         self.nodes.items[initN].head = .{
                             .structInit = .{
-                                .structType = left_id,
+                                .name = left_id,
                                 .initializer = props,
                             },
                         };
@@ -2481,7 +2481,7 @@ pub const TokenType = enum(u6) {
     as_k,
     pass_k,
     none_k,
-    struct_k,
+    type_k,
     func_k,
     is_k,
     coinit_k,
@@ -2632,7 +2632,7 @@ pub const Node = struct {
             assign_expr: NodeId,
         },
         structInit: struct {
-            structType: NodeId,
+            name: NodeId,
             initializer: NodeId,
         },
         structField: struct {

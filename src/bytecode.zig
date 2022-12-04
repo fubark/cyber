@@ -260,6 +260,13 @@ pub const ByteCodeBuffer = struct {
                     const numExprs = ops[pc+2].arg;
                     pc += 4 + numExprs + 1;
                 },
+                .funcSymClosure => {
+                    const symId = ops[pc+2].arg;
+                    const numParams = ops[pc+2].arg;
+                    const numCaptured = ops[pc+3].arg;
+                    println("{} {s} {} {} {}", .{pc, name, symId, numParams, numCaptured});
+                    pc += 4 + numCaptured;
+                },
                 .map => {
                     const startLocal = ops[pc+1].arg;
                     const numEntries = ops[pc+2].arg;
@@ -283,8 +290,9 @@ pub const ByteCodeBuffer = struct {
                     pc += 6;
                 },
                 .closure => {
+                    const numCaptured = ops[pc+3].arg;
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
-                    pc += 7;
+                    pc += 6 + numCaptured;
                 },
                 .forRange => {
                     println("{} {s} {} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
@@ -464,13 +472,14 @@ pub const OpCode = enum(u8) {
     setBoxValueRelease,
     boxValue,
     boxValueRetain,
+    funcSymClosure,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 70);
+    try t.eq(std.enums.values(OpCode).len, 71);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

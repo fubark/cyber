@@ -1276,15 +1276,34 @@ test "Closures." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Closure read over number in main scope function value.
+    // Closure read over number in main block static function.
     var val = try run.eval(
+        \\a = 123
+        \\func foo():
+        \\  return a
+        \\foo()
+    );
+    try run.valueIsI32(val, 123);
+
+    // Closure write over number in main block static function.
+    val = try run.eval(
+        \\a = 123
+        \\func foo():
+        \\  a = 234
+        \\foo()
+        \\a
+    );
+    try run.valueIsI32(val, 234);
+
+    // Closure read over number in main block function value.
+    val = try run.eval(
         \\a = 123
         \\foo = () => a
         \\foo()
     );
     try run.valueIsI32(val, 123);
 
-    // Closure write over number in main scope function value.
+    // Closure write over number in main block function value.
     val = try run.eval(
         \\a = 123
         \\foo = func():
@@ -1604,11 +1623,11 @@ const VMrunner = struct {
     }
 
     fn deinit(self: *VMrunner) void {
+        self.vm.deinit();
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
             stdx.panicFmt("{} unreleased objects from previous eval", .{rc});
         }
-        self.vm.deinit();
     }
 
     fn deinitValue(self: *VMrunner, val: cy.Value) void {
@@ -1639,12 +1658,12 @@ const VMrunner = struct {
     }
 
     fn resetEnv(self: *VMrunner) !void {
+        self.vm.deinit();
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
             log.debug("{} unreleased objects from previous eval", .{rc});
             return error.UnreleasedObjects;
         }
-        self.vm.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);
     }

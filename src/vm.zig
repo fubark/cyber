@@ -170,6 +170,11 @@ pub const VM = struct {
         self.methodSymSigs.deinit(self.alloc);
         self.methodTable.deinit(self.alloc);
 
+        for (self.funcSyms.items()) |sym| {
+            if (sym.entryT == .closure) {
+                releaseObject(@ptrCast(*HeapObject, sym.inner.closure));
+            }
+        }
         self.funcSyms.deinit(self.alloc);
         self.funcSymSignatures.deinit(self.alloc);
         for (self.funcSymNames.items()) |name| {
@@ -681,7 +686,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocClosure(self: *VM, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const Value) !Value {
+    fn allocClosure(self: *VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const cy.OpData) !Value {
         @setRuntimeSafety(debug);
         const obj = try self.allocObject();
         obj.closure = .{
@@ -706,16 +711,16 @@ pub const VM = struct {
         switch (capturedVals.len) {
             0 => unreachable,
             1 => {
-                obj.closure.capturedVal0 = capturedVals[0];
+                obj.closure.capturedVal0 = framePtr[capturedVals[0].arg];
             },
             2 => {
-                obj.closure.capturedVal0 = capturedVals[0];
-                obj.closure.capturedVal1 = capturedVals[1];
+                obj.closure.capturedVal0 = framePtr[capturedVals[0].arg];
+                obj.closure.capturedVal1 = framePtr[capturedVals[1].arg];
             },
             3 => {
-                obj.closure.capturedVal0 = capturedVals[0];
-                obj.closure.capturedVal1 = capturedVals[1];
-                obj.closure.extra.capturedVal2 = capturedVals[2];
+                obj.closure.capturedVal0 = framePtr[capturedVals[0].arg];
+                obj.closure.capturedVal1 = framePtr[capturedVals[1].arg];
+                obj.closure.extra.capturedVal2 = framePtr[capturedVals[2].arg];
             },
             else => {
                 log.debug("Unsupported number of closure captured values: {}", .{capturedVals.len});
@@ -1485,7 +1490,8 @@ pub const VM = struct {
             },
             .func => {
                 @setRuntimeSafety(debug);
-                if (self.framePtr + startLocal + sym.inner.func.numLocals >= self.stack.len) {
+                log.debug("req stack: {} {}", .{self.framePtr + startLocal + sym.inner.func.numLocals, self.stack.len});
+                if (@ptrToInt(framePtr.* + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * self.stack.len) {
                     return error.StackOverflow;
                 }
 
@@ -1497,6 +1503,25 @@ pub const VM = struct {
 
                 // self.stack[self.framePtr + 1] = retInfo;
                 framePtr.*[1] = retInfo;
+            },
+            .closure => {
+                @setRuntimeSafety(debug);
+                if (@ptrToInt(framePtr.* + startLocal + sym.inner.closure.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * self.stack.len) {
+                    return error.StackOverflow;
+                }
+
+                const retInfo = buildReturnInfo(pc.* + 4, (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
+                pc.* = sym.inner.closure.funcPc;
+                framePtr.* += startLocal;
+                framePtr.*[1] = retInfo;
+
+                // Copy over captured vars to new call stack locals.
+                if (sym.inner.closure.numCaptured <= 3) {
+                    const src = @ptrCast([*]Value, &sym.inner.closure.capturedVal0)[0..sym.inner.closure.numCaptured];
+                    std.mem.copy(Value, framePtr.*[numArgs + 2..numArgs + 2 + sym.inner.closure.numCaptured], src);
+                } else {
+                    stdx.panic("unsupported closure > 3 captured args.");
+                }
             },
             else => {
                 return self.panic("unsupported callsym");
@@ -1666,18 +1691,6 @@ pub const VM = struct {
         return PcFramePtr{
             .pc = pc,
             .framePtr = undefined,
-        };
-    }
-
-    pub inline fn buildReturnInfo2(self: *const VM, pc: usize, comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
-        @setRuntimeSafety(debug);
-        return Value{
-            .retInfo = .{
-                .pc = @intCast(u32, pc),
-                .framePtr = @intCast(u29, self.framePtr),
-                .numRetVals = numRetVals,
-                .retFlag = if (cont) 0 else 1,
-            },
         };
     }
 
@@ -2568,6 +2581,7 @@ pub const SymbolEntry = struct {
 const FuncSymbolEntryType = enum {
     nativeFunc1,
     func,
+    closure,
     none,
 };
 
@@ -2581,6 +2595,7 @@ pub const FuncSymbolEntry = struct {
             /// Includes locals, and return info slot. Does not include params.
             numLocals: u32,
         },
+        closure: *Closure,
     },
 
     pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*UserVM, [*]const Value, u8) Value)) FuncSymbolEntry {
@@ -3157,7 +3172,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 3;
 
                 const callee = framePtr[startLocal + numArgs + 2 - 1];
-                const retInfo = gvm.buildReturnInfo2(pc, 0, true);
+                const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), 0, true);
                 // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
@@ -3169,7 +3184,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 3;
 
                 const callee = framePtr[startLocal + numArgs + 2 - 1];
-                const retInfo = gvm.buildReturnInfo2(pc, 1, true);
+                const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), 1, true);
                 // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
@@ -3318,15 +3333,14 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             .closure => {
                 @setRuntimeSafety(debug);
                 const funcPc = pc - gvm.ops[pc+1].arg;
-                const startLocal = gvm.ops[pc+2].arg;
-                const numParams = gvm.ops[pc+3].arg;
-                const numCaptured = gvm.ops[pc+4].arg;
-                const numLocals = gvm.ops[pc+5].arg;
-                const dst = gvm.ops[pc+6].arg;
-                pc += 7;
+                const numParams = gvm.ops[pc+2].arg;
+                const numCaptured = gvm.ops[pc+3].arg;
+                const numLocals = gvm.ops[pc+4].arg;
+                const dst = gvm.ops[pc+5].arg;
+                const capturedVals = gvm.ops[pc+6..pc+6+numCaptured];
+                pc += 6 + numCaptured;
 
-                const capturedVals = framePtr[startLocal .. startLocal + numCaptured];
-                framePtr[dst] = try gvm.allocClosure(funcPc, numParams, numLocals, capturedVals);
+                framePtr[dst] = try gvm.allocClosure(framePtr, funcPc, numParams, numLocals, capturedVals);
                 continue;
             },
             .forIter => {
@@ -3650,6 +3664,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 // pc += 3;
                 framePtr[gvm.ops[pc+2].arg] = @call(.{ .modifier = .never_inline }, boxValueRetain, .{box});
                 pc += 3;
+                continue;
+            },
+            .funcSymClosure => {
+                @setRuntimeSafety(debug);
+                const symId = gvm.ops[pc+1].arg;
+                const numParams = gvm.ops[pc+2].arg;
+                const numCaptured = gvm.ops[pc+3].arg;
+                const captured = gvm.ops[pc+4..pc+4+numCaptured];
+                pc += 4 + numCaptured;
+                try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
                 continue;
             },
             .end => {
@@ -3992,17 +4016,17 @@ fn callSymEntryNoInline(pc: usize, framePtr: [*]Value, sym: SymbolEntry, obj: *H
     switch (sym.entryT) {
         .func => {
             @setRuntimeSafety(debug);
-            if (gvm.framePtr + startLocal + sym.inner.func.numLocals >= gvm.stack.len) {
+            if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * gvm.stack.len) {
                 return error.StackOverflow;
             }
 
             // const retInfo = gvm.buildReturnInfo2(gvm.pc + 3, reqNumRetVals, true);
-            const retInfo = gvm.buildReturnInfo2(pc, reqNumRetVals, true);
-            gvm.framePtr = gvm.framePtr + startLocal;
-            gvm.stack[gvm.framePtr + 1] = retInfo;
+            const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), reqNumRetVals, true);
+            const newFramePtr = framePtr + startLocal;
+            newFramePtr[1] = retInfo;
             return PcFramePtr{
                 .pc = sym.inner.func.pc,
-                .framePtr = undefined,
+                .framePtr = newFramePtr,
             };
         },
         .nativeFunc1 => {
@@ -4255,4 +4279,14 @@ fn allocBox(val: Value) !Value {
     }
 
     return Value.initPtr(obj);
+}
+
+fn funcSymClosure(framePtr: [*]Value, symId: SymbolId, numParams: u8, capturedLocals: []const cy.OpData) !void {
+    const sym = gvm.funcSyms.buf[symId];
+    const pc = sym.inner.func.pc;
+    const numLocals = @intCast(u8, sym.inner.func.numLocals);
+
+    const closure = try gvm.allocClosure(framePtr, pc, numParams, numLocals, capturedLocals);
+    gvm.funcSyms.buf[symId].entryT = .closure;
+    gvm.funcSyms.buf[symId].inner.closure = stdx.ptrAlignCast(*Closure, closure.asPointer().?);
 }

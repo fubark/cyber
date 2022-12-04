@@ -1721,13 +1721,6 @@ pub const VMcompiler = struct {
         self.curBlock.frameLoc = nodeId;
 
         const jumpStackStart = self.blockJumpStack.items.len;
-        defer {
-            self.patchBlockJumps(jumpStackStart);
-            self.blockJumpStack.items.len = jumpStackStart;
-
-            self.prevSemaBlock();
-            self.popBlock();
-        }
 
         const opStart = @intCast(u32, self.buf.ops.items.len);
         try self.reserveFuncParams();
@@ -1741,10 +1734,53 @@ pub const VMcompiler = struct {
         try self.buf.pushOp(.ret0);
 
         // Reserve another local for the call return info.
+        const sblock = self.curSemaBlock();
         const numLocals = @intCast(u32, self.curBlock.numLocals + self.curBlock.numTempLocals);
+        const func = self.funcDecls[node.head.func.decl_id];
+        const numParams = @intCast(u8, func.params.end - func.params.start);
+        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
 
         self.patchJumpToCurrent(jumpPc);
 
+        self.patchBlockJumps(jumpStackStart);
+        self.blockJumpStack.items.len = jumpStackStart;
+
+        self.prevSemaBlock();
+        self.popBlock();
+
+        if (numCaptured > 0) {
+            const operandStart = self.operandStack.items.len;
+            defer self.operandStack.items.len = operandStart;
+
+            // Push register operands to op.
+            for (sblock.params.items) |varId| {
+                const svar = self.vars.items[varId];
+                if (svar.isCaptured) {
+                    const pId = self.capVarParents.get(varId).?;
+                    const pvar = &self.vars.items[pId];
+
+                    if (svar.isBoxed and !pvar.isBoxed) {
+                        // Lift var to boxed.
+                        try self.buf.pushOp2(.box, pvar.local, pvar.local);
+                        pvar.isBoxed = true;
+                        pvar.vtype = BoxType;
+                        pvar.lifetimeRcCandidate = true;
+
+                        try self.buf.pushOp1(.retain, pvar.local);
+                        try self.pushTempOperand(pvar.local);
+                    } else {
+                        if (svar.vtype.rcCandidate) {
+                            try self.buf.pushOp1(.retain, pvar.local);
+                        }
+                        try self.pushTempOperand(pvar.local);
+                    }
+                }
+            }
+            try self.buf.pushOp3(.funcSymClosure, @intCast(u8, symId), @intCast(u8, numParams), numCaptured);
+            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+        }
+
+        // A closure would update the symbol at runtime.
         const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
         self.vm.setFuncSym(symId, sym);
     }
@@ -2086,6 +2122,10 @@ pub const VMcompiler = struct {
             try self.buf.pushOp3(code, leftv.local, rightv.local, dst);
             return self.initGenValue(dst, vtype);
         } else return GenValue.initNoValue();
+    }
+
+    fn pushTempOperand(self: *VMcompiler, operand: u8) !void {
+        try self.operandStack.append(self.alloc, cy.OpData.initArg(operand));
     }
 
     /// `dst` indicates the local of the resulting value.
@@ -2632,47 +2672,45 @@ pub const VMcompiler = struct {
                     self.popBlock();
                     self.prevSemaBlock();
 
-                    const startTempLocal = self.curBlock.firstFreeTempLocal;
-                    defer self.computeNextTempLocalFrom(startTempLocal);
-
-                    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-                    // Push captured vars into stack memory.
-                    for (sblock.params.items) |varId| {
-                        const svar = self.vars.items[varId];
-                        if (svar.isCaptured) {
-                            const pId = self.capVarParents.get(varId).?;
-                            const pvar = &self.vars.items[pId];
-
-                            if (svar.isBoxed and !pvar.isBoxed) {
-                                // Lift var to boxed.
-                                try self.buf.pushOp2(.box, pvar.local, pvar.local);
-                                pvar.isBoxed = true;
-                                pvar.vtype = BoxType;
-                                pvar.lifetimeRcCandidate = true;
-
-                                const copyDst = try self.nextFreeTempLocal();
-                                try self.buf.pushOp2(.copyRetainSrc, pvar.local, copyDst);
-                            } else {
-                                const copyDst = try self.nextFreeTempLocal();
-                                if (svar.vtype.rcCandidate) {
-                                    try self.buf.pushOp2(.copyRetainSrc, pvar.local, copyDst);
-                                } else {
-                                    try self.buf.pushOp2(.copy, pvar.local, copyDst);
-                                }
-                            }
-                        }
-                    }
-
-                    const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                     if (numCaptured == 0) {
+                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                         try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
                             try self.arcTempLocalStack.append(self.alloc, dst);
                         }
                         return self.initGenValue(dst, AnyType);
                     } else {
-                        try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, argStartLocal, numParams, numCaptured, numLocals, dst });
+                        const operandStart = self.operandStack.items.len;
+                        defer self.operandStack.items.len = operandStart;
+
+                        // Retain captured vars.
+                        for (sblock.params.items) |varId| {
+                            const svar = self.vars.items[varId];
+                            if (svar.isCaptured) {
+                                const pId = self.capVarParents.get(varId).?;
+                                const pvar = &self.vars.items[pId];
+
+                                if (svar.isBoxed and !pvar.isBoxed) {
+                                    // Lift var to boxed.
+                                    try self.buf.pushOp2(.box, pvar.local, pvar.local);
+                                    pvar.isBoxed = true;
+                                    pvar.vtype = BoxType;
+                                    pvar.lifetimeRcCandidate = true;
+
+                                    try self.buf.pushOp1(.retain, pvar.local);
+                                    try self.pushTempOperand(pvar.local);
+                                } else {
+                                    if (svar.vtype.rcCandidate) {
+                                        try self.buf.pushOp1(.retain, pvar.local);
+                                    }
+                                    try self.pushTempOperand(pvar.local);
+                                }
+                            }
+                        }
+
+                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+                        try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
+                        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
                             try self.arcTempLocalStack.append(self.alloc, dst);
                         }
@@ -2707,36 +2745,45 @@ pub const VMcompiler = struct {
                     self.popBlock();
                     self.prevSemaBlock();
 
-                    const startTempLocal = self.curBlock.firstFreeTempLocal;
-                    defer self.computeNextTempLocalFrom(startTempLocal);
-
-                    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-                    // Push captured vars into stack memory.
-                    for (sblock.params.items) |varId| {
-                        const svar = self.vars.items[varId];
-                        if (svar.isCaptured) {
-                            const pId = self.capVarParents.get(varId).?;
-                            const pvar = self.vars.items[pId];
-
-                            const copyDst = try self.nextFreeTempLocal();
-                            if (svar.vtype.rcCandidate) {
-                                try self.buf.pushOp2(.copyRetainSrc, pvar.local, copyDst);
-                            } else {
-                                try self.buf.pushOp2(.copy, pvar.local, copyDst);
-                            }
-                        }
-                    }
-
-                    const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                     if (numCaptured == 0) {
+                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                         try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
                             try self.arcTempLocalStack.append(self.alloc, dst);
                         }
                         return self.initGenValue(dst, AnyType);
                     } else {
-                        try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, argStartLocal, numParams, numCaptured, numLocals, dst });
+                        const operandStart = self.operandStack.items.len;
+                        defer self.operandStack.items.len = operandStart;
+
+                        // Retain captured vars.
+                        for (sblock.params.items) |varId| {
+                            const svar = self.vars.items[varId];
+                            if (svar.isCaptured) {
+                                const pId = self.capVarParents.get(varId).?;
+                                const pvar = &self.vars.items[pId];
+
+                                if (svar.isBoxed and !pvar.isBoxed) {
+                                    // Lift var to boxed.
+                                    try self.buf.pushOp2(.box, pvar.local, pvar.local);
+                                    pvar.isBoxed = true;
+                                    pvar.vtype = BoxType;
+                                    pvar.lifetimeRcCandidate = true;
+
+                                    try self.buf.pushOp1(.retain, pvar.local);
+                                    try self.pushTempOperand(pvar.local);
+                                } else {
+                                    if (svar.vtype.rcCandidate) {
+                                        try self.buf.pushOp1(.retain, pvar.local);
+                                    }
+                                    try self.pushTempOperand(pvar.local);
+                                }
+                            }
+                        }
+
+                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+                        try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
+                        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
                             try self.arcTempLocalStack.append(self.alloc, dst);
                         }

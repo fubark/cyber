@@ -1295,6 +1295,16 @@ test "Closures." {
     );
     try run.valueIsI32(val, 234);
 
+    // Closure add assign over number in main block static function.
+    val = try run.eval(
+        \\a = 123
+        \\func foo():
+        \\  a += 1
+        \\foo()
+        \\a
+    );
+    try run.valueIsI32(val, 124);
+
     // Closure read over number in main block function value.
     val = try run.eval(
         \\a = 123

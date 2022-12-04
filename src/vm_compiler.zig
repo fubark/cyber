@@ -1343,12 +1343,22 @@ pub const VMcompiler = struct {
             .add_assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    if (self.genGetVar(left.head.ident.semaVarId)) |svar| {
-                        const right = try self.genExpr(node.head.left_right.right, false);
-                        if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and right.vtype.typeT != svar.vtype.typeT) {
-                            return self.reportError("Type mismatch: Expected {}", .{svar.vtype.typeT}, node);
+                    if (self.genGetVarPtr(left.head.ident.semaVarId)) |svar| {
+                        if (svar.isCaptured and !svar.isBoxed) {
+                            svar.isBoxed = true;
+                            svar.vtype = BoxType;
                         }
-                        try self.buf.pushOp3(.add, svar.local, right.local, svar.local);
+
+                        const right = try self.genExpr(node.head.left_right.right, false);
+                        if (svar.isBoxed) {
+                            const tempLocal = try self.nextFreeTempLocal();
+                            try self.buf.pushOp2(.boxValue, svar.local, tempLocal);
+                            try self.buf.pushOp3(.add, tempLocal, right.local, tempLocal);
+                            try self.buf.pushOp2(.setBoxValue, svar.local, tempLocal);
+                            return;
+                        } else {
+                            try self.buf.pushOp3(.add, svar.local, right.local, svar.local);
+                        }
                     } else stdx.panic("variable not declared");
                 } else if (left.node_t == .access_expr) {
                     try self.genBinOpAssignToField(.add, node.head.left_right.left, node.head.left_right.right);

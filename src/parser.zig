@@ -340,6 +340,38 @@ pub const Parser = struct {
         return id;
     }
 
+    fn parseMultilineLambdaFunction(self: *Parser) !NodeId {
+        const start = self.next_pos;
+
+        // Assume first token is `func`.
+        self.advanceToken();
+
+        var decl = FuncDecl{
+            .name = undefined,
+            .params = undefined,
+            .return_type = null,
+        };
+
+        decl.params = try self.parseFunctionParams();
+        decl.return_type = try self.parseFunctionReturn();
+
+        try self.pushBlock();
+        const first_stmt = try self.parseIndentedBodyStatements();
+        self.popBlock();
+            
+        const decl_id = @intCast(u32, self.func_decls.items.len);
+        try self.func_decls.append(self.alloc, decl);
+
+        const id = try self.pushNode(.lambda_multi, start);
+        self.nodes.items[id].head = .{
+            .func = .{
+                .decl_id = decl_id,
+                .body_head = first_stmt,
+            },
+        };
+        return id;
+    }
+
     fn parseLambdaFunction(self: *Parser) !NodeId {
         const start = self.next_pos;
 
@@ -1753,10 +1785,6 @@ pub const Parser = struct {
                 };
                 return costart;
             },
-            .func_k => {
-                // Lambda function.
-                return self.parseLambdaFunction();
-            },
             .if_k => {
                 self.advanceToken();
                 const if_cond = (try self.parseExpr(.{})) orelse {
@@ -2171,21 +2199,38 @@ pub const Parser = struct {
 
         if (is_assign_stmt) {
             var token = self.peekToken();
+            const assignTag = token.tag();
             // Assumes next token is an assignment operator: =, +=.
             self.advanceToken();
-            const right_expr_id = (try self.parseExpr(.{ .allowMultilineLambda = true })) orelse {
-                return self.reportTokenError2(error.SyntaxError, "Expected right expression for assignment statement.", .{}, self.peekToken());
-            };
+
             const start = self.nodes.items[expr_id].start_token;
-            const id = switch (token.tag()) {
-                .equal => try self.pushNode(.assign_stmt, start),
-                .plus_equal => try self.pushNode(.add_assign_stmt, start),
+            var assignStmt: NodeId = undefined;
+            var rightExpr: NodeId = undefined;
+            switch (assignTag) {
+                .equal => {
+                    assignStmt = try self.pushNode(.assign_stmt, start);
+                    if (self.peekToken().tag() == .func_k) {
+                        // Multi-line lambda.
+                        rightExpr = try self.parseMultilineLambdaFunction();
+                    } else {
+                        rightExpr = (try self.parseExpr(.{})) orelse {
+                            return self.reportTokenError2(error.SyntaxError, "Expected right expression for assignment statement.", .{}, self.peekToken());
+                        };
+                    }
+                },
+                .plus_equal => {
+                    assignStmt = try self.pushNode(.add_assign_stmt, start);
+                    rightExpr = (try self.parseExpr(.{})) orelse {
+                        return self.reportTokenError2(error.SyntaxError, "Expected right expression for assignment statement.", .{}, self.peekToken());
+                    };
+                },
                 else => return self.reportTokenError2(error.Unsupported, "Unsupported assignment operator.", .{}, token),
-            };
-            self.nodes.items[id].head = .{
+            }
+
+            self.nodes.items[assignStmt].head = .{
                 .left_right = .{
                     .left = expr_id,
-                    .right = right_expr_id,
+                    .right = rightExpr,
                 },
             };
 
@@ -2203,13 +2248,17 @@ pub const Parser = struct {
                 try block.vars.put(self.alloc, name, {});
             }
 
-            token = self.peekToken();
-            if (token.tag() == .new_line) {
-                self.advanceToken();
-                return id;
-            } else if (token.tag() == .none) {
-                return id;
-            } else return self.reportTokenError2(error.BadToken, "Expected end of line or file", .{}, token);
+            if (self.nodes.items[rightExpr].node_t != .lambda_multi) {
+                token = self.peekToken();
+                if (token.tag() == .new_line) {
+                    self.advanceToken();
+                    return assignStmt;
+                } else if (token.tag() == .none) {
+                    return assignStmt;
+                } else return self.reportTokenError2(error.BadToken, "Expected end of line or file {}", .{}, token);
+            } else {
+                return assignStmt;
+            }
         } else {
             const start = self.nodes.items[expr_id].start_token;
             const id = try self.pushNode(.expr_stmt, start);
@@ -3442,7 +3491,6 @@ const TokenizeOptions = struct {
 };
 
 const ParseExprOptions = struct {
-    allowMultilineLambda: bool = false,
     returnLeftAssignExpr: bool = false,
     outIsAssignStmt: *bool = undefined,
 };

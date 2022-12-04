@@ -20,7 +20,7 @@ test "Fibers" {
         \\f = costart foo(list)
         \\list.size()
     );
-    try t.eq(val.asI32(), 0);
+    try run.valueIsI32(val, 0);
 
     // Start fiber without yield.
     val = try run.eval(
@@ -30,7 +30,7 @@ test "Fibers" {
         \\f = costart foo(list)
         \\list[0]
     );
-    try t.eq(val.asI32(), 123);
+    try run.valueIsI32(val, 123);
 
     // Start fiber with yield in nested function.
     val = try run.eval(
@@ -44,7 +44,7 @@ test "Fibers" {
         \\f = costart foo(list)
         \\list.size()
     );
-    try t.eq(val.asI32(), 0);
+    try run.valueIsI32(val, 0);
 
     // coresume.
     val = try run.eval(
@@ -57,7 +57,7 @@ test "Fibers" {
         \\coresume f
         \\list.size()
     );
-    try t.eq(val.asI32(), 2);
+    try run.valueIsI32(val, 2);
 }
 
 test "Structs" {
@@ -1276,24 +1276,33 @@ test "Closures." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Closure over number in main scope.
-    // var val = try run.eval(
-    //     \\a = 123
-    //     \\func foo():
-    //     \\  return a
-    //     \\foo()
-    // );
-    // try t.eq(val.asI32(), 123);
+    // Closure read over number in main scope function value.
+    var val = try run.eval(
+        \\a = 123
+        \\foo = () => a
+        \\foo()
+    );
+    try run.valueIsI32(val, 123);
+
+    // Closure write over number in main scope function value.
+    val = try run.eval(
+        \\a = 123
+        \\foo = func():
+        \\  a = 234
+        \\foo()
+        \\a
+    );
+    try run.valueIsI32(val, 234);
 
     // Closure over local number in function.
-    var val = try run.eval(
+    val = try run.eval(
         \\func foo():
         \\  a = 123
         \\  return () => a
         \\fn = foo()
         \\fn()
     );
-    try t.eq(val.asI32(), 123);
+    try run.valueIsI32(val, 123);
 
     // Closure over local number in function using a param.
     val = try run.eval(
@@ -1303,7 +1312,7 @@ test "Closures." {
         \\fn = foo()
         \\fn(1)
     );
-    try t.eq(val.asI32(), 124);
+    try run.valueIsI32(val, 124);
 
     // Closure over local number in function using a param in parentheses.
     val = try run.eval(
@@ -1313,7 +1322,7 @@ test "Closures." {
         \\fn = foo()
         \\fn(1)
     );
-    try t.eq(val.asI32(), 124);
+    try run.valueIsI32(val, 124);
 
     // Closure over local number in function using a multiple params.
     val = try run.eval(
@@ -1323,7 +1332,7 @@ test "Closures." {
         \\fn = foo()
         \\fn(1, 2)
     );
-    try t.eq(val.asI32(), 126);
+    try run.valueIsI32(val, 126);
 
     // Closure over local retained object in function.
     val = try run.eval(
@@ -1333,7 +1342,7 @@ test "Closures." {
         \\fn = foo()
         \\fn()
     );
-    try t.eq(val.asI32(), 123);
+    try run.valueIsI32(val, 123);
 }
 
 test "Function recursion." {

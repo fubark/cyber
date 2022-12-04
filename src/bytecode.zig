@@ -214,6 +214,11 @@ pub const ByteCodeBuffer = struct {
                 .jump,
                 .coyield,
                 .coresume,
+                .box,
+                .setBoxValue,
+                .setBoxValueRelease,
+                .boxValue,
+                .boxValueRetain,
                 .constOp => {
                     println("{} {s} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg});
                     pc += 3;
@@ -454,13 +459,18 @@ pub const OpCode = enum(u8) {
     retain,
     copyRetainRelease,
     // jumpCondNone,
+    box,
+    setBoxValue,
+    setBoxValueRelease,
+    boxValue,
+    boxValueRetain,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 65);
+    try t.eq(std.enums.values(OpCode).len, 70);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

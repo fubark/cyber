@@ -45,6 +45,9 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
 
+    id = try self.addStruct("Box");
+    std.debug.assert(id == cy.BoxS);
+
     id = try self.ensureFuncSym("std.readInput");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
     id = try self.ensureFuncSym("std.parseCyon");

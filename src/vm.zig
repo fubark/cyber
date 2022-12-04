@@ -19,6 +19,7 @@ pub const ClosureS: StructId = 2;
 pub const LambdaS: StructId = 3;
 pub const StringS: StructId = 4;
 pub const FiberS: StructId = 5;
+pub const BoxS: StructId = 6;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -1964,6 +1965,10 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
             releaseFiberStack(&obj.fiber);
             gvm.freeObject(obj);
         },
+        BoxS => {
+            release(obj.box.val);
+            gvm.freeObject(obj);
+        },
         else => {
             // Struct deinit.
             if (builtin.mode == .Debug) {
@@ -2359,6 +2364,12 @@ const Map = packed struct {
     // nextIterIdx: u32,
 };
 
+const Box = packed struct {
+    structId: StructId,
+    rc: u32,
+    val: Value,
+};
+
 const Fiber = packed struct {
     structId: StructId,
     rc: u32,
@@ -2432,6 +2443,7 @@ pub const HeapObject = packed union {
         val1: Value,
         val2: Value,
     },
+    box: Box,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
@@ -3564,7 +3576,80 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const srcRight = framePtr[gvm.ops[pc+2].arg];
                 const dstLocal = gvm.ops[pc+3].arg;
                 pc += 4;
-                gvm.stack[gvm.framePtr + dstLocal] = @call(.{ .modifier = .never_inline }, evalPower, .{srcLeft, srcRight});
+                framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalPower, .{srcLeft, srcRight});
+                continue;
+            },
+            .box => {
+                @setRuntimeSafety(debug);
+                const value = framePtr[gvm.ops[pc+1].arg];
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                gvm.retain(value);
+                framePtr[dst] = try allocBox(value);
+                continue;
+            },
+            .setBoxValue => {
+                @setRuntimeSafety(debug);
+                const box = framePtr[gvm.ops[pc+1].arg];
+                const rval = framePtr[gvm.ops[pc+2].arg];
+                pc += 3;
+                if (builtin.mode == .Debug) {
+                    std.debug.assert(box.isPointer());
+                }
+                const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+                if (builtin.mode == .Debug) {
+                    std.debug.assert(obj.common.structId == BoxS);
+                }
+                obj.box.val = rval;
+                continue;
+            },
+            .setBoxValueRelease => {
+                @setRuntimeSafety(debug);
+                const box = framePtr[gvm.ops[pc+1].arg];
+                const rval = framePtr[gvm.ops[pc+2].arg];
+                pc += 3;
+                if (builtin.mode == .Debug) {
+                    std.debug.assert(box.isPointer());
+                }
+                const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+                if (builtin.mode == .Debug) {
+                    std.debug.assert(obj.common.structId == BoxS);
+                }
+                @call(.{ .modifier = .never_inline }, release, .{obj.box.val});
+                obj.box.val = rval;
+                continue;
+            },
+            .boxValue => {
+                @setRuntimeSafety(debug);
+                const box = framePtr[gvm.ops[pc+1].arg];
+                const dst = gvm.ops[pc+2].arg;
+                pc += 3;
+                if (builtin.mode == .Debug) {
+                    std.debug.assert(box.isPointer());
+                }
+                const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+                if (builtin.mode == .Debug) {
+                    std.debug.assert(obj.common.structId == BoxS);
+                }
+                framePtr[dst] = obj.box.val;
+                continue;
+            },
+            .boxValueRetain => {
+                @setRuntimeSafety(debug);
+                const box = framePtr[gvm.ops[pc+1].arg];
+                // if (builtin.mode == .Debug) {
+                //     std.debug.assert(box.isPointer());
+                // }
+                // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+                // if (builtin.mode == .Debug) {
+                //     // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+                //     std.debug.assert(obj.common.structId == BoxS);
+                // }
+                // gvm.stack[gvm.framePtr + gvm.ops[pc+2].arg] = obj.box.val;
+                // gvm.retain(obj.box.val);
+                // pc += 3;
+                framePtr[gvm.ops[pc+2].arg] = @call(.{ .modifier = .never_inline }, boxValueRetain, .{box});
+                pc += 3;
                 continue;
             },
             .end => {
@@ -4139,3 +4224,35 @@ const PcFramePtr = struct {
     pc: usize,
     framePtr: [*]Value,
 };
+
+fn boxValueRetain(box: Value) linksection(".eval") Value {
+    @setCold(true);
+    if (builtin.mode == .Debug) {
+        std.debug.assert(box.isPointer());
+    }
+    const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+    if (builtin.mode == .Debug) {
+        std.debug.assert(obj.common.structId == BoxS);
+    }
+    gvm.retain(obj.box.val);
+    return obj.box.val;
+}
+
+fn allocBox(val: Value) !Value {
+    @setRuntimeSafety(debug);
+    const obj = try gvm.allocObject();
+    obj.box = .{
+        .structId = BoxS,
+        .rc = 1,
+        .val = val,
+    };
+    if (TraceEnabled) {
+        gvm.trace.numRetainAttempts += 1;
+        gvm.trace.numRetains += 1;
+    }
+    if (TrackGlobalRC) {
+        gvm.refCounts += 1;
+    }
+
+    return Value.initPtr(obj);
+}

@@ -343,7 +343,7 @@ pub const VMcompiler = struct {
                 _ = try self.semaExpr(node.head.child_head, false);
                 return AnyType;
             },
-            .costart => {
+            .coinit => {
                 _ = try self.semaExpr(node.head.child_head, false);
                 return FiberType;
             },
@@ -1906,14 +1906,14 @@ pub const VMcompiler = struct {
 
                     const numArgs = try self.genCallArgs(node.head.func_call.arg_head);
 
-                    const costartPc = self.buf.ops.items.len;
+                    const coinitPc = self.buf.ops.items.len;
                     if (startFiber) {
-                        // Precompute first arg local since costart doesn't need the startLocal.
+                        // Precompute first arg local since coinit doesn't need the startLocal.
                         var initialStackSize = numArgs + 2;
                         if (initialStackSize < 16) {
                             initialStackSize = 16;
                         }
-                        try self.buf.pushOpSlice(.costart, &.{ callStartLocal + 2, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
+                        try self.buf.pushOpSlice(.coinit, &.{ callStartLocal + 2, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
                     }
 
                     const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
@@ -1927,7 +1927,7 @@ pub const VMcompiler = struct {
 
                     if (startFiber) {
                         try self.buf.pushOp(.coreturn);
-                        self.buf.setOpArgs1(costartPc + 3, @intCast(u8, self.buf.ops.items.len - costartPc));
+                        self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
                     }
 
                     return GenValue.initTempValue(callStartLocal, AnyType);
@@ -2820,7 +2820,7 @@ pub const VMcompiler = struct {
                     return GenValue.initNoValue();
                 }
             },
-            .costart => {
+            .coinit => {
                 _ = try self.genCallExpr(node.head.child_head, dst, discardTopExprReg, true);
                 return self.initGenValue(dst, FiberType);
             },
@@ -3170,7 +3170,7 @@ fn isArcTempNode(nodeT: cy.NodeType) bool {
         .arr_literal,
         .map_literal,
         .stringTemplate,
-        .costart,
+        .coinit,
         .structInit => return true,
         else => return false,
     }

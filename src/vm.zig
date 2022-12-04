@@ -1230,6 +1230,7 @@ pub const VM = struct {
     pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(".eval") void {
         @setRuntimeSafety(debug);
         obj.retainedCommon.rc += 1;
+        log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
         }
@@ -1247,6 +1248,7 @@ pub const VM = struct {
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer());
             obj.retainedCommon.rc += 1;
+            log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
             if (TrackGlobalRC) {
                 gvm.refCounts += 1;
             }
@@ -1921,8 +1923,8 @@ pub fn releaseObject(obj: *HeapObject) linksection(".eval") void {
             stdx.panic("object already freed.");
         }
     }
-    log.debug("release {}", .{obj.getUserTag()});
     obj.retainedCommon.rc -= 1;
+    log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
     if (TrackGlobalRC) {
         gvm.refCounts -= 1;
     }
@@ -3511,7 +3513,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 }
                 continue;
             },
-            .costart => {
+            .coinit => {
                 @setRuntimeSafety(debug);
                 const startArgsLocal = gvm.ops[pc+1].arg;
                 const numArgs = gvm.ops[pc+2].arg;
@@ -3522,11 +3524,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const args = framePtr[startArgsLocal..startArgsLocal + numArgs];
                 const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pc + 6, args, initialStackSize});
                 framePtr[dst] = fiber;
-                const ptr = stdx.ptrAlignCast(*Fiber, fiber.asPointer().?);
-                gvm.retain(fiber);
-                const res = pushFiber(pc + jump, framePtr, ptr);
-                pc = res.pc;
-                framePtr = res.framePtr;
+                pc += jump;
                 continue;
             },
             .cont => {
@@ -4113,6 +4111,7 @@ fn popFiber(curFiberEndPc: usize, curFramePtr: [*]Value) PcFramePtr {
     };
 }
 
+/// Since this is called from a coresume expression, the fiber should already be retained.
 fn pushFiber(curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber) PcFramePtr {
     @setRuntimeSafety(debug);
     // Save current fiber.
@@ -4188,6 +4187,20 @@ fn releaseFiberStack(fiber: *Fiber) void {
     var stack = fiber.stackPtr[0..fiber.stackLen];
     var framePtr = (@ptrToInt(fiber.framePtr) - @ptrToInt(stack.ptr)) >> 3;
     var pc = fiber.pc;
+
+    // Check if fiber is still in init state.
+    switch (gvm.ops[pc].code) {
+        .callSym0,
+        .callSym1 => {
+            if (gvm.ops[pc + 4].code == .coreturn) {
+                const numArgs = gvm.ops[pc - 4].arg;
+                for (fiber.framePtr[2..2 + numArgs]) |arg| {
+                    release(arg);
+                }
+            }
+        },
+        else => {},
+    }
 
     // Check if fiber was previously on a yield op.
     if (gvm.ops[pc].code == .coyield) {
@@ -4282,6 +4295,7 @@ fn allocBox(val: Value) !Value {
 }
 
 fn funcSymClosure(framePtr: [*]Value, symId: SymbolId, numParams: u8, capturedLocals: []const cy.OpData) !void {
+    @setCold(true);
     const sym = gvm.funcSyms.buf[symId];
     const pc = sym.inner.func.pc;
     const numLocals = @intCast(u8, sym.inner.func.numLocals);

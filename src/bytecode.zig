@@ -284,7 +284,11 @@ pub const ByteCodeBuffer = struct {
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, numEntries, ops[pc+4].arg});
                     pc += 5 + numEntries;
                 },
-                .costart,
+                .coinit => {
+                    const jump = ops[pc+3].arg;
+                    println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
+                    pc += jump;
+                },
                 .forIter => {
                     println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
                     pc += 6;
@@ -460,7 +464,7 @@ pub const OpCode = enum(u8) {
     bitwiseAnd,
     fieldRetain,
     fieldRelease,
-    costart,
+    coinit,
     coyield,
     coreturn,
     coresume,

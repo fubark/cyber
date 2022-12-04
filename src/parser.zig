@@ -30,7 +30,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "struct", .struct_k },
     .{ "none", .none_k },
     .{ "is", .is_k },
-    .{ "costart", .costart_k },
+    .{ "coinit", .coinit_k },
     .{ "coyield", .coyield_k },
     .{ "coresume", .coresume_k },
 });
@@ -1770,7 +1770,7 @@ pub const Parser = struct {
                 const coyield = try self.pushNode(.coyield, start);
                 return coyield;
             },
-            .costart_k => {
+            .coinit_k => {
                 self.advanceToken();
                 const callExprId = try self.parseExpr(.{}) orelse {
                     return self.reportTokenError("Expected call expression.", .{});
@@ -1779,11 +1779,11 @@ pub const Parser = struct {
                 if (callExpr.node_t != .call_expr) {
                     return self.reportTokenError("Expected call expression.", .{});
                 }
-                const costart = try self.pushNode(.costart, start);
-                self.nodes.items[costart].head = .{
+                const coinit = try self.pushNode(.coinit, start);
+                self.nodes.items[coinit].head = .{
                     .child_head = callExprId,
                 };
-                return costart;
+                return coinit;
             },
             .if_k => {
                 self.advanceToken();
@@ -2484,7 +2484,7 @@ pub const TokenType = enum(u6) {
     struct_k,
     func_k,
     is_k,
-    costart_k,
+    coinit_k,
     coyield_k,
     coresume_k,
     // Error token, returned if ignoreErrors = true.
@@ -2561,7 +2561,7 @@ pub const NodeType = enum {
     map_literal,
     map_entry,
     arr_literal,
-    costart,
+    coinit,
     coyield,
     coresume,
 };

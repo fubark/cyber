@@ -11,13 +11,25 @@ test "Fibers" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Start fiber with yield at start.
+    // Init fiber without starting.
     var val = try run.eval(
         \\func foo(list):
         \\  coyield
         \\  list.add(123)
         \\list = []
-        \\f = costart foo(list)
+        \\f = coinit foo(list)
+        \\list.size()
+    );
+    try run.valueIsI32(val, 0);
+
+    // Start fiber with yield at start.
+    val = try run.eval(
+        \\func foo(list):
+        \\  coyield
+        \\  list.add(123)
+        \\list = []
+        \\f = coinit foo(list)
+        \\coresume f
         \\list.size()
     );
     try run.valueIsI32(val, 0);
@@ -27,7 +39,8 @@ test "Fibers" {
         \\func foo(list):
         \\  list.add(123)
         \\list = []
-        \\f = costart foo(list)
+        \\f = coinit foo(list)
+        \\coresume f
         \\list[0]
     );
     try run.valueIsI32(val, 123);
@@ -41,19 +54,21 @@ test "Fibers" {
         \\  bar()
         \\  list.add(123)
         \\list = []
-        \\f = costart foo(list)
+        \\f = coinit foo(list)
+        \\coresume f
         \\list.size()
     );
     try run.valueIsI32(val, 0);
 
-    // coresume.
+    // Continue to resume fiber.
     val = try run.eval(
         \\func foo(list):
         \\  list.add(123)
         \\  coyield
         \\  list.add(234)
         \\list = []
-        \\f = costart foo(list)
+        \\f = coinit foo(list)
+        \\coresume f
         \\coresume f
         \\list.size()
     );

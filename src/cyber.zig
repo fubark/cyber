@@ -45,6 +45,8 @@ pub const StructId = vm.StructId;
 pub const EvalError = vm.EvalError;
 pub const StackTrace = vm.StackTrace;
 pub const StackFrame = vm.StackFrame;
+pub const buildReturnInfo = vm.buildReturnInfo;
+pub const framePtrOffset = vm.framePtrOffset;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;

@@ -56,8 +56,8 @@ pub const Value = packed union {
     // },
 
     pub const None = Value.initNone();
-    pub const True = Value.initTrue();
-    pub const False = Value.initFalse();
+    pub const True = Value{ .val = TrueMask };
+    pub const False = Value{ .val = FalseMask };
 
     pub inline fn asI32(self: *const Value) i32 {
         @setRuntimeSafety(debug);
@@ -133,6 +133,10 @@ pub const Value = packed union {
         }
     }
 
+    pub inline fn bothNumbers(a: Value, b: Value) linksection(".eval") bool {
+        return a.isNumber() and b.isNumber();
+    }
+
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         // Only a number(f64) if not all tagged bits are set.
@@ -159,14 +163,6 @@ pub const Value = packed union {
         return self.val == NoneMask;
     }
 
-    pub inline fn isFalse(self: *const Value) bool {
-        return self.val == FalseMask;
-    }
-
-    pub inline fn isTrue(self: *const Value) bool {
-        return self.val == TrueMask;
-    }
-
     pub inline fn isBool(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         return self.val & BooleanMask == BooleanMask;
@@ -180,14 +176,6 @@ pub const Value = packed union {
         // } else {
         //     return @intCast(u3, self.two[0] & TagMask);
         // }
-    }
-
-    pub inline fn initFalse() Value {
-        return .{ .val = FalseMask };
-    }
-
-    pub inline fn initTrue() Value {
-        return .{ .val = TrueMask };
     }
 
     pub inline fn initF64(val: f64) Value {
@@ -207,9 +195,9 @@ pub const Value = packed union {
 
     pub inline fn initBool(b: bool) linksection(".eval") Value {
         if (b) {
-            return .{ .val = TrueMask };
+            return True;
         } else {
-            return .{ .val = FalseMask };
+            return False;
         }
     }
 

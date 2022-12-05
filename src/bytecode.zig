@@ -359,6 +359,7 @@ pub const Const = packed union {
 
 const ConstStringTag: u2 = 0b00;
 
+/// TODO: Rename to InstData.
 pub const OpData = packed union {
     code: OpCode,
     arg: u8,

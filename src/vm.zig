@@ -37,17 +37,17 @@ pub const VM = struct {
 
     /// [Eval context]
 
-    /// Program counter. Index to the next instruction op in `ops`.
-    pc: usize,
-    /// Current stack frame ptr. Previous stack frame info is saved as a Value after all the reserved locals.
-    framePtr: usize,
+    /// Program counter. Pointer to the current instruction data in `ops`.
+    pc: [*]const cy.OpData,
+    /// Current stack frame ptr.
+    framePtr: [*]Value,
+
+    /// Value stack.
+    stack: []Value,
 
     ops: []const cy.OpData,
     consts: []const cy.Const,
     strBuf: []const u8,
-
-    /// Value stack.
-    stack: []Value,
 
     /// Object heap pages.
     heapPages: cy.List(*HeapPage),
@@ -107,8 +107,8 @@ pub const VM = struct {
             .stack = &.{},
             .heapPages = .{},
             .heapFreeHead = null,
-            .pc = 0,
-            .framePtr = 0,
+            .pc = undefined,
+            .framePtr = undefined,
             .methodSymExtras = .{},
             .methodSyms = .{},
             .methodSymSigs = .{},
@@ -331,7 +331,7 @@ pub const VM = struct {
     pub fn dumpInfo(self: *VM) void {
         const print = if (builtin.is_test) log.debug else std.debug.print;
         print("stack size: {}\n", .{self.stack.len});
-        print("stack framePtr: {}\n", .{self.framePtr});
+        print("stack framePtr: {}\n", .{framePtrOffset(self.framePtr)});
         print("heap pages: {}\n", .{self.heapPages.len});
 
         // Dump object symbols.
@@ -382,99 +382,6 @@ pub const VM = struct {
         }
     }
 
-    /// Returns whether to continue execution loop.
-    pub fn popStackFrame(self: *VM, pc: *usize, comptime numRetVals: u2) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
-
-        // If there are fewer return values than required from the function call, 
-        // fill the missing slots with the none value.
-        switch (numRetVals) {
-            0 => {
-                @setRuntimeSafety(debug);
-                const retInfo = self.stack[self.framePtr];
-                const reqNumArgs = retInfo.retInfo.numRetVals;
-                if (reqNumArgs == 0) {
-                    self.stack.top = self.framePtr;
-                    // Restore pc.
-                    self.framePtr = retInfo.retInfo.framePtr;
-                    pc.* = retInfo.retInfo.pc;
-                    return retInfo.retInfo.retFlag == 0;
-                } else {
-                    switch (reqNumArgs) {
-                        0 => unreachable,
-                        1 => {
-                            @setRuntimeSafety(debug);
-                            self.stack[self.framePtr] = Value.initNone();
-                            self.stack.top = self.framePtr + 1;
-                        },
-                        2 => {
-                            @setRuntimeSafety(debug);
-                            // Only start checking for space after 2 since function calls should have at least one slot after framePtr.
-                            self.ensureStackTotalCapacity(self.stack.top + 1) catch stdx.fatal();
-                            self.stack[self.framePtr] = Value.initNone();
-                            self.stack[self.framePtr+1] = Value.initNone();
-                            self.stack.top = self.framePtr + 2;
-                        },
-                        3 => {
-                            @setRuntimeSafety(debug);
-                            self.ensureStackTotalCapacity(self.stack.top + 2) catch stdx.fatal();
-                            self.stack[self.framePtr] = Value.initNone();
-                            self.stack[self.framePtr+1] = Value.initNone();
-                            self.stack[self.framePtr+2] = Value.initNone();
-                            self.stack.top = self.framePtr + 3;
-                        },
-                    }
-                    // Restore pc.
-                    self.framePtr = retInfo.retInfo.framePtr;
-                    pc.* = retInfo.retInfo.pc;
-                    return retInfo.retInfo.retFlag == 0;
-                }
-            },
-            1 => {
-                @setRuntimeSafety(debug);
-                const retInfo = self.stack[self.framePtr];
-                const reqNumArgs = retInfo.retInfo.numRetVals;
-                if (reqNumArgs == 1) {
-                    // Copy return value to framePtr.
-                    self.stack[self.framePtr] = self.stack[self.stack.top-1];
-                    self.stack.top = self.framePtr + 1;
-
-                    // Restore pc.
-                    self.framePtr = retInfo.retInfo.framePtr;
-                    pc.* = retInfo.retInfo.pc;
-                    return retInfo.retInfo.retFlag == 0;
-                } else {
-                    switch (reqNumArgs) {
-                        0 => {
-                            @setRuntimeSafety(debug);
-                            release(self.stack[self.stack.top-1]);
-                            self.stack.top = self.framePtr;
-                        },
-                        1 => unreachable,
-                        2 => {
-                            @setRuntimeSafety(debug);
-                            self.stack[self.framePtr+1] = Value.initNone();
-                            self.stack.top = self.framePtr + 2;
-                        },
-                        3 => {
-                            @setRuntimeSafety(debug);
-                            // Only start checking for space at 3 since function calls should have at least two slot after framePtr.
-                            // self.ensureStackTotalCapacity(self.stack.top + 1) catch stdx.fatal();
-                            self.stack[self.framePtr+1] = Value.initNone();
-                            self.stack[self.framePtr+2] = Value.initNone();
-                            self.stack.top = self.framePtr + 3;
-                        },
-                    }
-                    // Restore pc.
-                    self.framePtr = retInfo.retInfo.framePtr;
-                    pc.* = retInfo.retInfo.pc;
-                    return retInfo.retInfo.retFlag == 0;
-                }
-            },
-            else => @compileError("Unsupported num return values."),
-        }
-    }
-
     pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer) !Value {
         if (buf.ops.items.len == 0) {
             return error.NoEndOp;
@@ -482,14 +389,16 @@ pub const VM = struct {
 
         self.alloc.free(self.panicMsg);
         self.panicMsg = "";
+        self.debugTable = buf.debugTable.items;
+
         self.ops = buf.ops.items;
         self.consts = buf.mconsts;
         self.strBuf = buf.strBuf.items;
-        self.debugTable = buf.debugTable.items;
-        self.pc = 0;
 
+        // Set these last to hint location to cache before eval.
+        self.pc = @ptrCast([*]const cy.OpData, buf.ops.items.ptr);
         try self.stackEnsureTotalCapacity(buf.mainStackSize);
-        self.framePtr = 0;
+        self.framePtr = @ptrCast([*]Value, self.stack.ptr);
 
         try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{});
         if (TraceEnabled) {
@@ -1454,7 +1363,7 @@ pub const VM = struct {
     }
 
     /// startLocal points to the first arg in the current stack frame.
-    fn callSym(self: *VM, pc: *usize, framePtr: *[*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    fn callSym(self: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
@@ -1492,14 +1401,14 @@ pub const VM = struct {
             },
             .func => {
                 @setRuntimeSafety(debug);
-                log.debug("req stack: {} {}", .{self.framePtr + startLocal + sym.inner.func.numLocals, self.stack.len});
+                log.debug("req stack: {} {}", .{framePtrOffset(self.framePtr) + startLocal + sym.inner.func.numLocals, self.stack.len});
                 if (@ptrToInt(framePtr.* + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * self.stack.len) {
                     return error.StackOverflow;
                 }
 
-                const retInfo = buildReturnInfo(pc.* + 4, (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
+                const retInfo = buildReturnInfo(pcOffset(pc.* + 4), (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
                 // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
-                pc.* = sym.inner.func.pc;
+                pc.* = toPc(sym.inner.func.pc);
                 // self.framePtr = self.framePtr + startLocal;
                 framePtr.* += startLocal;
 
@@ -1512,8 +1421,8 @@ pub const VM = struct {
                     return error.StackOverflow;
                 }
 
-                const retInfo = buildReturnInfo(pc.* + 4, (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
-                pc.* = sym.inner.closure.funcPc;
+                const retInfo = buildReturnInfo(pcOffset(pc.* + 4), (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
+                pc.* = toPc(sym.inner.closure.funcPc);
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
 
@@ -1531,7 +1440,7 @@ pub const VM = struct {
         }
     }
 
-    inline fn callSymEntry(self: *VM, pc: *usize, framePtr: *[*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    inline fn callSymEntry(self: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         @setRuntimeSafety(debug);
         switch (sym.entryT) {
             .func => {
@@ -1545,8 +1454,8 @@ pub const VM = struct {
 
                 // const retInfo = self.buildReturnInfo2(self.pc + 3, reqNumRetVals, true);
                 // const retInfo = self.buildReturnInfo2(pc.*, reqNumRetVals, true);
-                const retInfo = buildReturnInfo(pc.*, (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr)) / 8, reqNumRetVals, true);
-                pc.* = sym.inner.func.pc;
+                const retInfo = buildReturnInfo(pcOffset(pc.*), (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr)) / 8, reqNumRetVals, true);
+                pc.* = toPc(sym.inner.func.pc);
                 // self.framePtr = self.framePtr + startLocal;
                 framePtr.* += startLocal;
                 // self.stack[self.framePtr + 1] = retInfo;
@@ -1559,12 +1468,12 @@ pub const VM = struct {
 
                 // const framePtrSave = self.framePtr;
                 // gvm.framePtr = self.framePtr + startLocal;
-                gvm.framePtr = framePtrOffset(framePtr.*) + startLocal;
+                gvm.framePtr = framePtr.* + startLocal;
                 gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, &self.stack[gvm.framePtr + 2]), numArgs);
+                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, gvm.framePtr + 2), numArgs);
                 pc.* = gvm.pc;
                 if (reqNumRetVals == 1) {
-                    self.stack[gvm.framePtr] = res;
+                    gvm.framePtr[0] = res;
                     // gvm.framePtr = framePtrSave;
                 } else {
                     switch (reqNumRetVals) {
@@ -1587,7 +1496,7 @@ pub const VM = struct {
                 // self.pc += 3;
                 const newFramePtr = self.framePtr + startLocal;
                 gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, &self.stack[newFramePtr + 2]), numArgs);
+                const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, newFramePtr + 2), numArgs);
                 pc.* = gvm.pc;
                 if (reqNumRetVals == 2) {
                     self.stack[newFramePtr] = res.left;
@@ -1727,11 +1636,12 @@ pub const VM = struct {
     }
 
     pub fn buildStackTrace(self: *VM) !void {
+        @setCold(true);
         self.stackTrace.deinit(self.alloc);
         var frames: std.ArrayListUnmanaged(StackFrame) = .{};
 
-        var framePtr = self.framePtr;
-        var pc = self.pc;
+        var framePtr = framePtrOffset(self.framePtr);
+        var pc = pcOffset(self.pc);
         while (true) {
             const idx = self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
             const sym = self.debugTable[idx];
@@ -1872,8 +1782,8 @@ pub const VM = struct {
 
     pub inline fn stackEnsureUnusedCapacity(self: *VM, unused: u32) linksection(".eval") !void {
         @setRuntimeSafety(debug);
-        if (self.framePtr + unused >= self.stack.len) {
-            try self.stackGrowTotalCapacity(self.framePtr + unused);
+        if (@ptrToInt(self.framePtr) + 8 * unused >= @ptrToInt(self.stack.ptr + self.stack.len)) {
+            try self.stackGrowTotalCapacity((@ptrToInt(self.framePtr) + 8 * unused) / 8);
         }
     }
 
@@ -2754,59 +2664,59 @@ pub fn evalLoopGrowStack() linksection(".eval") error{StackOverflow, OutOfMemory
 fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     @setRuntimeSafety(debug);
     var pc = gvm.pc;
-    var framePtr = @ptrCast([*]Value, &gvm.stack[gvm.framePtr]);
+    var framePtr = gvm.framePtr;
     defer {
         gvm.pc = pc;
-        gvm.framePtr = (@ptrToInt(framePtr) - @ptrToInt(gvm.stack.ptr)) / 8;
+        gvm.framePtr = framePtr;
     }
 
     while (true) {
         if (TraceEnabled) {
-            const op = gvm.ops[pc].code;
+            const op = pc[0].code;
             gvm.trace.opCounts[@enumToInt(op)].count += 1;
             gvm.trace.totalOpCounts += 1;
         }
         if (builtin.mode == .Debug) {
             dumpEvalOp(pc);
         }
-        switch (gvm.ops[pc].code) {
+        switch (pc[0].code) {
             .true => {
                 @setRuntimeSafety(debug);
-                framePtr[gvm.ops[pc+1].arg] = Value.True;
+                framePtr[pc[1].arg] = Value.True;
                 pc += 2;
                 continue;
             },
             .false => {
                 @setRuntimeSafety(debug);
-                framePtr[gvm.ops[pc+1].arg] = Value.False;
+                framePtr[pc[1].arg] = Value.False;
                 pc += 2;
                 continue;
             },
             .none => {
                 @setRuntimeSafety(debug);
-                framePtr[gvm.ops[pc+1].arg] = Value.None;
+                framePtr[pc[1].arg] = Value.None;
                 pc += 2;
                 continue;
             },
             .constOp => {
                 @setRuntimeSafety(debug);
-                framePtr[gvm.ops[pc+2].arg] = Value.initRaw(gvm.consts[gvm.ops[pc+1].arg].val);
+                framePtr[pc[2].arg] = Value.initRaw(gvm.consts[pc[1].arg].val);
                 pc += 3;
                 continue;
             },
             .constI8 => {
                 @setRuntimeSafety(debug);
-                framePtr[gvm.ops[pc+2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, gvm.ops[pc+1].arg)));
+                framePtr[pc[2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, pc[1].arg)));
                 pc += 3;
                 continue;
             },
             .stringTemplate => {
                 @setRuntimeSafety(debug);
-                const startLocal = gvm.ops[pc+1].arg;
-                const exprCount = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const startLocal = pc[1].arg;
+                const exprCount = pc[2].arg;
+                const dst = pc[3].arg;
                 const strCount = exprCount + 1;
-                const strs = gvm.ops[pc + 4 .. pc + 4 + strCount];
+                const strs = pc[4 .. 4 + strCount];
                 pc += 4 + strCount;
                 const vals = framePtr[startLocal .. startLocal + exprCount];
                 const res = try @call(.{ .modifier = .never_inline }, gvm.allocStringTemplate, .{strs, vals});
@@ -2815,60 +2725,60 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .neg => {
                 @setRuntimeSafety(debug);
-                const val = framePtr[gvm.ops[pc+1].arg];
-                // gvm.stack[gvm.framePtr + gvm.ops[pc+2].arg] = if (val.isNumber())
+                const val = framePtr[pc[1].arg];
+                // gvm.stack[gvm.framePtr + pc[2].arg] = if (val.isNumber())
                 //     Value.initF64(-val.asF64())
                 // else 
                     // @call(.{ .modifier = .never_inline }, evalNegFallback, .{val});
-                framePtr[gvm.ops[pc+2].arg] = evalNeg(val);
+                framePtr[pc[2].arg] = evalNeg(val);
                 pc += 3;
                 continue;
             },
             .not => {
                 @setRuntimeSafety(debug);
-                const val = framePtr[gvm.ops[pc+1].arg];
-                framePtr[gvm.ops[pc+2].arg] = evalNot(val);
+                const val = framePtr[pc[1].arg];
+                framePtr[pc[2].arg] = evalNot(val);
                 pc += 3;
                 continue;
             },
             .compareNot => {
                 @setRuntimeSafety(debug);
-                const left = framePtr[gvm.ops[pc+1].arg];
-                const right = framePtr[gvm.ops[pc+2].arg];
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    framePtr[gvm.ops[pc+3].arg] = Value.initBool(left.asF64() != right.asF64());
+                    framePtr[pc[3].arg] = Value.initBool(left.asF64() != right.asF64());
                 } else {
-                    framePtr[gvm.ops[pc+3].arg] = @call(.{.modifier = .never_inline }, evalCompareNotFallback, .{left, right});
+                    framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompareNotFallback, .{left, right});
                 }
                 pc += 4;
                 continue;
             },
             .compare => {
                 @setRuntimeSafety(debug);
-                const left = framePtr[gvm.ops[pc+1].arg];
-                const right = framePtr[gvm.ops[pc+2].arg];
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    framePtr[gvm.ops[pc+3].arg] = Value.initBool(left.asF64() == right.asF64());
+                    framePtr[pc[3].arg] = Value.initBool(left.asF64() == right.asF64());
                 } else {
-                    framePtr[gvm.ops[pc+3].arg] = @call(.{.modifier = .never_inline }, evalCompareFallback, .{left, right});
+                    framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompareFallback, .{left, right});
                 }
                 pc += 4;
                 continue;
             },
             // .lessNumber => {
             //     @setRuntimeSafety(debug);
-            //     const left = gvm.stack[gvm.framePtr + gvm.ops[pc+1].arg];
-            //     const right = gvm.stack[gvm.framePtr + gvm.ops[pc+2].arg];
-            //     const dst = gvm.ops[pc+3].arg;
+            //     const left = gvm.stack[gvm.framePtr + pc[1].arg];
+            //     const right = gvm.stack[gvm.framePtr + pc[2].arg];
+            //     const dst = pc[3].arg;
             //     pc += 4;
             //     gvm.stack[gvm.framePtr + dst] = Value.initBool(left.asF64() < right.asF64());
             //     continue;
             // },
             .less => {
                 @setRuntimeSafety(debug);
-                const left = framePtr[gvm.ops[pc+1].arg];
-                const right = framePtr[gvm.ops[pc+2].arg];
-                framePtr[gvm.ops[pc+3].arg] = if (Value.bothNumbers(left, right))
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initBool(left.asF64() < right.asF64())
                 else
                     @call(.{ .modifier = .never_inline }, evalLessFallback, .{left, right});
@@ -2877,66 +2787,66 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .greater => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalGreater(srcLeft, srcRight);
                 continue;
             },
             .lessEqual => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalLessOrEqual(srcLeft, srcRight);
                 continue;
             },
             .greaterEqual => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
                 continue;
             },
             .bitwiseAnd => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalBitwiseAnd(srcLeft, srcRight);
                 continue;
             },
             // .addNumber => {
             //     @setRuntimeSafety(debug);
-            //     const srcLeft = gvm.stack[gvm.framePtr + gvm.ops[pc+1].arg];
-            //     const srcRight = gvm.stack[gvm.framePtr + gvm.ops[pc+2].arg];
-            //     const dstLocal = gvm.ops[pc+3].arg;
+            //     const srcLeft = gvm.stack[gvm.framePtr + pc[1].arg];
+            //     const srcRight = gvm.stack[gvm.framePtr + pc[2].arg];
+            //     const dstLocal = pc[3].arg;
             //     pc += 4;
             //     gvm.stack[gvm.framePtr + dstLocal] = evalAddNumber(srcLeft, srcRight);
             //     continue;
             // },
             .add => {
                 @setRuntimeSafety(debug);
-                const left = framePtr[gvm.ops[pc+1].arg];
-                const right = framePtr[gvm.ops[pc+2].arg];
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    framePtr[gvm.ops[pc+3].arg] = Value.initF64(left.asF64() + right.asF64());
+                    framePtr[pc[3].arg] = Value.initF64(left.asF64() + right.asF64());
                 } else {
-                    framePtr[gvm.ops[pc+3].arg] = try @call(.{ .modifier = .never_inline }, evalAddFallback, .{ left, right });
+                    framePtr[pc[3].arg] = try @call(.{ .modifier = .never_inline }, evalAddFallback, .{ left, right });
                 }
                 pc += 4;
                 continue;
             },
             .minus => {
                 @setRuntimeSafety(debug);
-                const left = framePtr[gvm.ops[pc+1].arg];
-                const right = framePtr[gvm.ops[pc+2].arg];
-                framePtr[gvm.ops[pc+3].arg] = if (Value.bothNumbers(left, right))
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initF64(left.asF64() - right.asF64())
                 else @call(.{ .modifier = .never_inline }, evalMinusFallback, .{left, right});
                 pc += 4;
@@ -2944,9 +2854,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .list => {
                 @setRuntimeSafety(debug);
-                const startLocal = gvm.ops[pc+1].arg;
-                const numElems = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const startLocal = pc[1].arg;
+                const numElems = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const elems = framePtr[startLocal..startLocal + numElems];
                 const list = try gvm.allocList(elems);
@@ -2955,18 +2865,18 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .mapEmpty => {
                 @setRuntimeSafety(debug);
-                const dst = gvm.ops[pc+1].arg;
+                const dst = pc[1].arg;
                 pc += 2;
                 framePtr[dst] = try gvm.allocEmptyMap();
                 continue;
             },
             .structSmall => {
                 @setRuntimeSafety(debug);
-                const sid = gvm.ops[pc+1].arg;
-                const startLocal = gvm.ops[pc+2].arg;
-                const numProps = gvm.ops[pc+3].arg;
-                const dst = gvm.ops[pc+4].arg;
-                const offsets = gvm.ops[pc+5..pc+5+numProps];
+                const sid = pc[1].arg;
+                const startLocal = pc[2].arg;
+                const numProps = pc[3].arg;
+                const dst = pc[4].arg;
+                const offsets = pc[5..5+numProps];
                 pc += 5 + numProps;
 
                 const props = framePtr[startLocal .. startLocal + numProps];
@@ -2975,10 +2885,10 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .map => {
                 @setRuntimeSafety(debug);
-                const startLocal = gvm.ops[pc+1].arg;
-                const numEntries = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
-                const keyIdxes = gvm.ops[pc+4..pc+4+numEntries];
+                const startLocal = pc[1].arg;
+                const numEntries = pc[2].arg;
+                const dst = pc[3].arg;
+                const keyIdxes = pc[4..4+numEntries];
                 pc += 4 + numEntries;
                 const vals = framePtr[startLocal .. startLocal + numEntries];
                 framePtr[dst] = try gvm.allocMap(keyIdxes, vals);
@@ -2986,18 +2896,18 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .slice => {
                 @setRuntimeSafety(debug);
-                const list = framePtr[gvm.ops[pc+1].arg];
-                const start = framePtr[gvm.ops[pc+2].arg];
-                const end = framePtr[gvm.ops[pc+3].arg];
-                const dst = gvm.ops[pc+4].arg;
+                const list = framePtr[pc[1].arg];
+                const start = framePtr[pc[2].arg];
+                const end = framePtr[pc[3].arg];
+                const dst = pc[4].arg;
                 pc += 5;
                 framePtr[dst] = try gvm.sliceList(list, start, end);
                 continue;
             },
             .setInitN => {
                 @setRuntimeSafety(debug);
-                const numLocals = gvm.ops[pc+1].arg;
-                const locals = gvm.ops[pc+2..pc+2+numLocals];
+                const numLocals = pc[1].arg;
+                const locals = pc[2..2+numLocals];
                 pc += 2 + numLocals;
                 for (locals) |local| {
                     framePtr[local.arg] = Value.None;
@@ -3006,9 +2916,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .setIndex => {
                 @setRuntimeSafety(debug);
-                const left = gvm.ops[pc+1].arg;
-                const index = gvm.ops[pc+2].arg;
-                const right = gvm.ops[pc+3].arg;
+                const left = pc[1].arg;
+                const index = pc[2].arg;
+                const right = pc[3].arg;
                 pc += 4;
                 const rightv = framePtr[right];
                 const indexv = framePtr[index];
@@ -3018,16 +2928,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .copy => {
                 @setRuntimeSafety(debug);
-                const src = gvm.ops[pc+1].arg;
-                const dst = gvm.ops[pc+2].arg;
+                const src = pc[1].arg;
+                const dst = pc[2].arg;
                 pc += 3;
                 framePtr[dst] = framePtr[src];
                 continue;
             },
             .copyRetainRelease => {
                 @setRuntimeSafety(debug);
-                const src = gvm.ops[pc+1].arg;
-                const dst = gvm.ops[pc+2].arg;
+                const src = pc[1].arg;
+                const dst = pc[2].arg;
                 pc += 3;
                 gvm.retain(framePtr[src]);
                 release(framePtr[dst]);
@@ -3036,8 +2946,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .copyReleaseDst => {
                 @setRuntimeSafety(debug);
-                const src = gvm.ops[pc+1].arg;
-                const dst = gvm.ops[pc+2].arg;
+                const src = pc[1].arg;
+                const dst = pc[2].arg;
                 pc += 3;
                 release(framePtr[dst]);
                 framePtr[dst] = framePtr[src];
@@ -3045,8 +2955,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .copyRetainSrc => {
                 @setRuntimeSafety(debug);
-                const src = gvm.ops[pc+1].arg;
-                const dst = gvm.ops[pc+2].arg;
+                const src = pc[1].arg;
+                const dst = pc[2].arg;
                 pc += 3;
                 const val = framePtr[src];
                 framePtr[dst] = val;
@@ -3055,16 +2965,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .retain => {
                 @setRuntimeSafety(debug);
-                const local = gvm.ops[pc+1].arg;
+                const local = pc[1].arg;
                 pc += 2;
                 gvm.retain(framePtr[local]);
                 continue;
             },
             .index => {
                 @setRuntimeSafety(debug);
-                const left = gvm.ops[pc+1].arg;
-                const index = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const left = pc[1].arg;
+                const index = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
@@ -3073,9 +2983,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .indexRetain => {
                 @setRuntimeSafety(debug);
-                const left = gvm.ops[pc+1].arg;
-                const index = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const left = pc[1].arg;
+                const index = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
@@ -3085,9 +2995,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .reverseIndex => {
                 @setRuntimeSafety(debug);
-                const left = gvm.ops[pc+1].arg;
-                const index = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const left = pc[1].arg;
+                const index = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
@@ -3096,9 +3006,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .reverseIndexRetain => {
                 @setRuntimeSafety(debug);
-                const left = gvm.ops[pc+1].arg;
-                const index = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const left = pc[1].arg;
+                const index = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
@@ -3108,18 +3018,18 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .jumpBack => {
                 @setRuntimeSafety(debug);
-                pc -= @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
+                pc -= @ptrCast(*const align(1) u16, &pc[1]).*;
                 continue;
             },
             .jump => {
                 @setRuntimeSafety(debug);
-                pc += @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
+                pc += @ptrCast(*const align(1) u16, &pc[1]).*;
                 continue;
             },
             // .jumpCondNone => {
             //     @setRuntimeSafety(debug);
-            //     const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
-            //     const local = gvm.ops[pc+3].arg;
+            //     const pcOffset = @ptrCast(*const align(1) u16, &pc[1]).*;
+            //     const local = pc[3].arg;
             //     if (gvm.getLocal(local).isNone()) {
             //         pc += pcOffset;
             //     } else {
@@ -3129,15 +3039,15 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             // },
             .jumpCond => {
                 @setRuntimeSafety(debug);
-                const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
-                const cond = framePtr[gvm.ops[pc+3].arg];
+                const jump = @ptrCast(*const align(1) u16, pc + 1).*;
+                const cond = framePtr[pc[3].arg];
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
                     break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
                 };
                 if (condVal) {
-                    pc += pcOffset;
+                    pc += jump;
                 } else {
                     pc += 4;
                 }
@@ -3145,15 +3055,15 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .jumpNotCond => {
                 @setRuntimeSafety(debug);
-                const pcOffset = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
-                const cond = framePtr[gvm.ops[pc+3].arg];
+                const jump = @ptrCast(*const align(1) u16, pc + 1).*;
+                const cond = framePtr[pc[3].arg];
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
                     break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
                 };
                 if (!condVal) {
-                    pc += pcOffset;
+                    pc += jump;
                 } else {
                     pc += 4;
                 }
@@ -3161,7 +3071,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .release => {
                 @setRuntimeSafety(debug);
-                const local = gvm.ops[pc+1].arg;
+                const local = pc[1].arg;
                 pc += 2;
                 // TODO: Inline if heap object.
                 @call(.{ .modifier = .never_inline }, release, .{framePtr[local]});
@@ -3169,33 +3079,33 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .call0 => {
                 @setRuntimeSafety(debug);
-                const startLocal = gvm.ops[pc+1].arg;
-                const numArgs = gvm.ops[pc+2].arg;
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
                 pc += 3;
 
                 const callee = framePtr[startLocal + numArgs + 2 - 1];
-                const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), 0, true);
+                const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 0, true);
                 // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
             .call1 => {
                 @setRuntimeSafety(debug);
-                const startLocal = gvm.ops[pc+1].arg;
-                const numArgs = gvm.ops[pc+2].arg;
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
                 pc += 3;
 
                 const callee = framePtr[startLocal + numArgs + 2 - 1];
-                const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), 1, true);
+                const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 1, true);
                 // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
             .callObjSym0 => {
                 @setRuntimeSafety(debug);
-                const symId = gvm.ops[pc+1].arg;
-                const startLocal = gvm.ops[pc+2].arg;
-                const numArgs = gvm.ops[pc+3].arg;
+                const symId = pc[1].arg;
+                const startLocal = pc[2].arg;
+                const numArgs = pc[3].arg;
                 pc += 4;
 
                 const recv = framePtr[startLocal + numArgs + 2 - 1];
@@ -3206,8 +3116,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         // try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{&pc, sym, obj, startLocal, numArgs, 0});
                         try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, numArgs, 0);
                     } else {
-                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, 0});
-                        pc = res.pc;
+                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pcOffset(pc), framePtr, obj, symId, startLocal, numArgs, 0});
+                        pc = toPc(res.pc);
                         framePtr = res.framePtr;
                     }
                 } else {
@@ -3219,9 +3129,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .callObjSym1 => {
                 @setRuntimeSafety(debug);
-                const symId = gvm.ops[pc+1].arg;
-                const startLocal = gvm.ops[pc+2].arg;
-                const numArgs = gvm.ops[pc+3].arg;
+                const symId = pc[1].arg;
+                const startLocal = pc[2].arg;
+                const numArgs = pc[3].arg;
                 pc += 4;
 
                 const recv = framePtr[startLocal + numArgs + 2 - 1];
@@ -3232,8 +3142,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         // try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{&pc, sym, obj, startLocal, numArgs, 1});
                         try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, numArgs, 1);
                     } else {
-                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, 1});
-                        pc = res.pc;
+                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pcOffset(pc), framePtr, obj, symId, startLocal, numArgs, 1});
+                        pc = toPc(res.pc);
                         framePtr = res.framePtr;
                     }
                 } else {
@@ -3245,9 +3155,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .callSym0 => {
                 @setRuntimeSafety(debug);
-                const symId = gvm.ops[pc+1].arg;
-                const startLocal = gvm.ops[pc+2].arg;
-                const numArgs = gvm.ops[pc+3].arg;
+                const symId = pc[1].arg;
+                const startLocal = pc[2].arg;
+                const numArgs = pc[3].arg;
                 // pc += 4;
 
                 try gvm.callSym(&pc, &framePtr, symId, startLocal, numArgs, 0);
@@ -3255,9 +3165,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .callSym1 => {
                 @setRuntimeSafety(debug);
-                const symId = gvm.ops[pc+1].arg;
-                const startLocal = gvm.ops[pc+2].arg;
-                const numArgs = gvm.ops[pc+3].arg;
+                const symId = pc[1].arg;
+                const startLocal = pc[2].arg;
+                const numArgs = pc[3].arg;
                 // pc += 4;
 
                 try gvm.callSym(&pc, &framePtr, symId, startLocal, numArgs, 1);
@@ -3265,9 +3175,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .setFieldRelease => {
                 @setRuntimeSafety(debug);
-                const fieldId = gvm.ops[pc+1].arg;
-                const left = gvm.ops[pc+2].arg;
-                const right = gvm.ops[pc+3].arg;
+                const fieldId = pc[1].arg;
+                const left = pc[2].arg;
+                const right = pc[3].arg;
                 pc += 4;
 
                 const recv = framePtr[left];
@@ -3277,9 +3187,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .setField => {
                 @setRuntimeSafety(debug);
-                const fieldId = gvm.ops[pc+1].arg;
-                const left = gvm.ops[pc+2].arg;
-                const right = gvm.ops[pc+3].arg;
+                const fieldId = pc[1].arg;
+                const left = pc[2].arg;
+                const right = pc[3].arg;
                 pc += 4;
 
                 const recv = framePtr[left];
@@ -3289,9 +3199,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .fieldRelease => {
                 @setRuntimeSafety(debug);
-                const fieldId = gvm.ops[pc+1].arg;
-                const left = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const fieldId = pc[1].arg;
+                const left = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const recv = framePtr[left];
                 const val = try gvm.getField(fieldId, recv);
@@ -3301,9 +3211,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .field => {
                 @setRuntimeSafety(debug);
-                const fieldId = gvm.ops[pc+1].arg;
-                const left = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const fieldId = pc[1].arg;
+                const left = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
                 const recv = framePtr[left];
                 const val = try gvm.getField(fieldId, recv);
@@ -3312,9 +3222,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .fieldRetain => {
                 @setRuntimeSafety(debug);
-                const fieldId = gvm.ops[pc+1].arg;
-                const left = gvm.ops[pc+2].arg;
-                const dst = gvm.ops[pc+3].arg;
+                const fieldId = pc[1].arg;
+                const left = pc[2].arg;
+                const dst = pc[3].arg;
                 pc += 4;
 
                 const recv = framePtr[left];
@@ -3324,22 +3234,22 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .lambda => {
                 @setRuntimeSafety(debug);
-                const funcPc = pc - gvm.ops[pc+1].arg;
-                const numParams = gvm.ops[pc+2].arg;
-                const numLocals = gvm.ops[pc+3].arg;
-                const dst = gvm.ops[pc+4].arg;
+                const funcPc = pcOffset(pc) - pc[1].arg;
+                const numParams = pc[2].arg;
+                const numLocals = pc[3].arg;
+                const dst = pc[4].arg;
                 pc += 5;
                 framePtr[dst] = try gvm.allocLambda(funcPc, numParams, numLocals);
                 continue;
             },
             .closure => {
                 @setRuntimeSafety(debug);
-                const funcPc = pc - gvm.ops[pc+1].arg;
-                const numParams = gvm.ops[pc+2].arg;
-                const numCaptured = gvm.ops[pc+3].arg;
-                const numLocals = gvm.ops[pc+4].arg;
-                const dst = gvm.ops[pc+5].arg;
-                const capturedVals = gvm.ops[pc+6..pc+6+numCaptured];
+                const funcPc = pcOffset(pc) - pc[1].arg;
+                const numParams = pc[2].arg;
+                const numCaptured = pc[3].arg;
+                const numLocals = pc[4].arg;
+                const dst = pc[5].arg;
+                const capturedVals = pc[6..6+numCaptured];
                 pc += 6 + numCaptured;
 
                 framePtr[dst] = try gvm.allocClosure(framePtr, funcPc, numParams, numLocals, capturedVals);
@@ -3347,15 +3257,15 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .forIter => {
                 @setRuntimeSafety(debug);
-                const startLocal = gvm.ops[pc+1].arg;
-                const iterable = gvm.ops[pc+2].arg;
-                const local = gvm.ops[pc+3].arg;
+                const startLocal = pc[1].arg;
+                const iterable = pc[2].arg;
+                const local = pc[3].arg;
                 pc += 6;
 
                 const iterableVal = framePtr[iterable];
                 framePtr[startLocal + 2] = iterableVal;
-                const res = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, framePtr, iterableVal, gvm.iteratorObjSym, startLocal, 1, 1});
-                pc = res.pc;
+                const res = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pcOffset(pc), framePtr, iterableVal, gvm.iteratorObjSym, startLocal, 1, 1});
+                pc = toPc(res.pc);
                 framePtr = res.framePtr;
                 const iter = framePtr[startLocal];
 
@@ -3375,11 +3285,11 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                             try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, 1, 1);
                         } else return gvm.panic("Missing function symbol in value.");
 
-                        const next = gvm.stack[gvm.framePtr + startLocal];
+                        const next = framePtr[startLocal];
                         if (next.isNone()) {
                             break;
                         }
-                        gvm.framePtr = framePtrOffset(framePtr);
+                        gvm.framePtr = framePtr;
                         @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                             if (err == error.BreakLoop) {
                                 break;
@@ -3404,7 +3314,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         const localPtr = &framePtr[local];
                         release(localPtr.*);
                         localPtr.* = next;
-                        gvm.framePtr = framePtrOffset(framePtr);
+                        gvm.framePtr = framePtr;
                         @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
                             if (err == error.BreakLoop) {
                                 break;
@@ -3413,16 +3323,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     }
                 }
                 release(iter);
-                pc = pc + @ptrCast(*const align(1) u16, &gvm.ops[pc-2]).* - 6;
+                pc = pc + @ptrCast(*const align(1) u16, pc-2).* - 6;
                 continue;
             },
             .forRange => {
                 @setRuntimeSafety(debug);
-                const local = gvm.ops[pc+1].arg;
-                const startValueLocal = gvm.ops[pc+2].arg;
-                const endValueLocal = gvm.ops[pc+3].arg;
-                const stepValueLocal = gvm.ops[pc+4].arg;
-                const endPc = pc + @ptrCast(*const align(1) u16, &gvm.ops[pc+5]).*;
+                const local = pc[1].arg;
+                const startValueLocal = pc[2].arg;
+                const endValueLocal = pc[3].arg;
+                const stepValueLocal = pc[4].arg;
+                const endPc = pc + @ptrCast(*const align(1) u16, &pc[5]).*;
                 pc += 7;
 
                 const step = framePtr[stepValueLocal].toF64();
@@ -3430,7 +3340,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 var i = framePtr[startValueLocal].toF64();
 
                 gvm.pc = pc;
-                gvm.framePtr = framePtrOffset(framePtr);
+                gvm.framePtr = framePtr;
                 if (i <= rangeEnd) {
                     if (local == 255) {
                         while (i < rangeEnd) : (i += step) {
@@ -3477,22 +3387,22 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 @setRuntimeSafety(debug);
                 pc += 1;
                 if (gvm.curFiber != &gvm.mainFiber) {
-                    const res = popFiber(pc, framePtr);
-                    pc = res.pc;
+                    const res = popFiber(pcOffset(pc), framePtr);
+                    pc = toPc(res.pc);
                     framePtr = res.framePtr;
                 }
                 continue;
             },
             .coresume => {
                 @setRuntimeSafety(debug);
-                const fiber = framePtr[gvm.ops[pc+1].arg];
-                // const dst = gvm.ops[pc+2];
+                const fiber = framePtr[pc[1].arg];
+                // const dst = pc[2];
                 if (fiber.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, fiber.asPointer().?);
                     if (obj.common.structId == FiberS) {
                         if (&obj.fiber != gvm.curFiber) {
-                            const res = pushFiber(pc + 3, framePtr, &obj.fiber);
-                            pc = res.pc;
+                            const res = pushFiber(pcOffset(pc + 3), framePtr, &obj.fiber);
+                            pc = toPc(res.pc);
                             framePtr = res.framePtr;
                             continue;
                         }
@@ -3505,8 +3415,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 @setRuntimeSafety(debug);
                 if (gvm.curFiber != &gvm.mainFiber) {
                     // Only yield on user fiber.
-                    const res = popFiber(pc, framePtr);
-                    pc = res.pc;
+                    const res = popFiber(pcOffset(pc), framePtr);
+                    pc = toPc(res.pc);
                     framePtr = res.framePtr;
                 } else {
                     pc += 3;
@@ -3515,21 +3425,21 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .coinit => {
                 @setRuntimeSafety(debug);
-                const startArgsLocal = gvm.ops[pc+1].arg;
-                const numArgs = gvm.ops[pc+2].arg;
-                const jump = gvm.ops[pc+3].arg;
-                const initialStackSize = gvm.ops[pc+4].arg;
-                const dst = gvm.ops[pc+5].arg;
+                const startArgsLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
+                const jump = pc[3].arg;
+                const initialStackSize = pc[4].arg;
+                const dst = pc[5].arg;
 
                 const args = framePtr[startArgsLocal..startArgsLocal + numArgs];
-                const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pc + 6, args, initialStackSize});
+                const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pcOffset(pc + 6), args, initialStackSize});
                 framePtr[dst] = fiber;
                 pc += jump;
                 continue;
             },
             .cont => {
                 @setRuntimeSafety(debug);
-                pc -= @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
+                pc -= @ptrCast(*const align(1) u16, &pc[1]).*;
                 return;
             },
             // .ret2 => {
@@ -3557,44 +3467,44 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .mul => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalMultiply, .{srcLeft, srcRight});
                 continue;
             },
             .div => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalDivide, .{srcLeft, srcRight});
                 continue;
             },
             .mod => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalMod, .{srcLeft, srcRight});
                 continue;
             },
             .pow => {
                 @setRuntimeSafety(debug);
-                const srcLeft = framePtr[gvm.ops[pc+1].arg];
-                const srcRight = framePtr[gvm.ops[pc+2].arg];
-                const dstLocal = gvm.ops[pc+3].arg;
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalPower, .{srcLeft, srcRight});
                 continue;
             },
             .box => {
                 @setRuntimeSafety(debug);
-                const value = framePtr[gvm.ops[pc+1].arg];
-                const dst = gvm.ops[pc+2].arg;
+                const value = framePtr[pc[1].arg];
+                const dst = pc[2].arg;
                 pc += 3;
                 gvm.retain(value);
                 framePtr[dst] = try allocBox(value);
@@ -3602,8 +3512,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .setBoxValue => {
                 @setRuntimeSafety(debug);
-                const box = framePtr[gvm.ops[pc+1].arg];
-                const rval = framePtr[gvm.ops[pc+2].arg];
+                const box = framePtr[pc[1].arg];
+                const rval = framePtr[pc[2].arg];
                 pc += 3;
                 if (builtin.mode == .Debug) {
                     std.debug.assert(box.isPointer());
@@ -3617,8 +3527,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .setBoxValueRelease => {
                 @setRuntimeSafety(debug);
-                const box = framePtr[gvm.ops[pc+1].arg];
-                const rval = framePtr[gvm.ops[pc+2].arg];
+                const box = framePtr[pc[1].arg];
+                const rval = framePtr[pc[2].arg];
                 pc += 3;
                 if (builtin.mode == .Debug) {
                     std.debug.assert(box.isPointer());
@@ -3633,8 +3543,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .boxValue => {
                 @setRuntimeSafety(debug);
-                const box = framePtr[gvm.ops[pc+1].arg];
-                const dst = gvm.ops[pc+2].arg;
+                const box = framePtr[pc[1].arg];
+                const dst = pc[2].arg;
                 pc += 3;
                 if (builtin.mode == .Debug) {
                     std.debug.assert(box.isPointer());
@@ -3648,7 +3558,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .boxValueRetain => {
                 @setRuntimeSafety(debug);
-                const box = framePtr[gvm.ops[pc+1].arg];
+                const box = framePtr[pc[1].arg];
                 // if (builtin.mode == .Debug) {
                 //     std.debug.assert(box.isPointer());
                 // }
@@ -3657,42 +3567,42 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 //     // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
                 //     std.debug.assert(obj.common.structId == BoxS);
                 // }
-                // gvm.stack[gvm.framePtr + gvm.ops[pc+2].arg] = obj.box.val;
+                // gvm.stack[gvm.framePtr + pc[2].arg] = obj.box.val;
                 // gvm.retain(obj.box.val);
                 // pc += 3;
-                framePtr[gvm.ops[pc+2].arg] = @call(.{ .modifier = .never_inline }, boxValueRetain, .{box});
+                framePtr[pc[2].arg] = @call(.{ .modifier = .never_inline }, boxValueRetain, .{box});
                 pc += 3;
                 continue;
             },
             .funcSymClosure => {
                 @setRuntimeSafety(debug);
-                const symId = gvm.ops[pc+1].arg;
-                const numParams = gvm.ops[pc+2].arg;
-                const numCaptured = gvm.ops[pc+3].arg;
-                const captured = gvm.ops[pc+4..pc+4+numCaptured];
+                const symId = pc[1].arg;
+                const numParams = pc[2].arg;
+                const numCaptured = pc[3].arg;
+                const captured = pc[4..4+numCaptured];
                 pc += 4 + numCaptured;
                 try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
                 continue;
             },
             .end => {
                 @setRuntimeSafety(debug);
-                gvm.endLocal = gvm.ops[pc + 1].arg;
+                gvm.endLocal = pc[1].arg;
                 pc += 2;
-                gvm.curFiber.pc = @intCast(u32, pc);
+                gvm.curFiber.pc = @intCast(u32, pcOffset(pc));
                 return error.End;
             },
         }
     }
 }
 
-fn popStackFrameLocal0(pc: *usize, framePtr: *[*]Value) linksection(".eval") bool {
+fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(".eval") bool {
     @setRuntimeSafety(debug);
     const retInfo = framePtr.*[1];
     const reqNumArgs = retInfo.retInfo.numRetVals;
     if (reqNumArgs == 0) {
         // Restore pc.
         framePtr.* = toFramePtr(retInfo.retInfo.framePtr);
-        pc.* = retInfo.retInfo.pc;
+        pc.* = toPc(retInfo.retInfo.pc);
         return retInfo.retInfo.retFlag == 0;
     } else {
         switch (reqNumArgs) {
@@ -3715,19 +3625,19 @@ fn popStackFrameLocal0(pc: *usize, framePtr: *[*]Value) linksection(".eval") boo
         }
         // Restore pc.
         framePtr.* = toFramePtr(retInfo.retInfo.framePtr);
-        pc.* = retInfo.retInfo.pc;
+        pc.* = toPc(retInfo.retInfo.pc);
         return retInfo.retInfo.retFlag == 0;
     }
 }
 
-fn popStackFrameLocal1(pc: *usize, framePtr: *[*]Value) linksection(".eval") bool {
+fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(".eval") bool {
     @setRuntimeSafety(debug);
     const retInfo = framePtr.*[1];
     const reqNumArgs = retInfo.retInfo.numRetVals;
     if (reqNumArgs == 1) {
         // Restore pc.
         framePtr.* = toFramePtr(retInfo.retInfo.framePtr);
-        pc.* = retInfo.retInfo.pc;
+        pc.* = toPc(retInfo.retInfo.pc);
         return retInfo.retInfo.retFlag == 0;
     } else {
         switch (reqNumArgs) {
@@ -3750,86 +3660,87 @@ fn popStackFrameLocal1(pc: *usize, framePtr: *[*]Value) linksection(".eval") boo
         }
         // Restore pc.
         framePtr.* = toFramePtr(retInfo.retInfo.framePtr);
-        pc.* = retInfo.retInfo.pc;
+        pc.* = toPc(retInfo.retInfo.pc);
         return retInfo.retInfo.retFlag == 0;
     }
 }
 
-fn dumpEvalOp(pc: usize) void {
-    switch (gvm.ops[pc].code) {
+fn dumpEvalOp(pc: [*]const cy.OpData) void {
+    const offset = pcOffset(pc);
+    switch (pc[0].code) {
         .callObjSym0 => {
-            const methodId = gvm.ops[pc+1].arg;
-            const startLocal = gvm.ops[pc+2].arg;
-            const numArgs = gvm.ops[pc+3].arg;
-            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), methodId, startLocal, numArgs});
+            const methodId = pc[1].arg;
+            const startLocal = pc[2].arg;
+            const numArgs = pc[3].arg;
+            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), methodId, startLocal, numArgs});
         },
         .callObjSym1 => {
-            const methodId = gvm.ops[pc+1].arg;
-            const startLocal = gvm.ops[pc+2].arg;
-            const numArgs = gvm.ops[pc+3].arg;
-            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), methodId, startLocal, numArgs});
+            const methodId = pc[1].arg;
+            const startLocal = pc[2].arg;
+            const numArgs = pc[3].arg;
+            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), methodId, startLocal, numArgs});
         },
         .callSym1 => {
-            const funcId = gvm.ops[pc+1].arg;
-            const startLocal = gvm.ops[pc+2].arg;
-            const numArgs = gvm.ops[pc+3].arg;
-            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), funcId, startLocal, numArgs});
+            const funcId = pc[1].arg;
+            const startLocal = pc[2].arg;
+            const numArgs = pc[3].arg;
+            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), funcId, startLocal, numArgs});
         },
         .callSym0 => {
-            const funcId = gvm.ops[pc+1].arg;
-            const startLocal = gvm.ops[pc+2].arg;
-            const numArgs = gvm.ops[pc+3].arg;
-            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), funcId, startLocal, numArgs});
+            const funcId = pc[1].arg;
+            const startLocal = pc[2].arg;
+            const numArgs = pc[3].arg;
+            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), funcId, startLocal, numArgs});
         },
         .release => {
-            const local = gvm.ops[pc+1].arg;
-            log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), local});
+            const local = pc[1].arg;
+            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), local});
         },
         .copy => {
-            const local = gvm.ops[pc+1].arg;
-            const dst = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), local, dst});
+            const local = pc[1].arg;
+            const dst = pc[2].arg;
+            log.debug("{} op: {s} {} {}", .{offset, @tagName(pc[0].code), local, dst});
         },
         .copyRetainSrc => {
-            const src = gvm.ops[pc+1].arg;
-            const dst = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} {} {}", .{pc, @tagName(gvm.ops[pc].code), src, dst});
+            const src = pc[1].arg;
+            const dst = pc[2].arg;
+            log.debug("{} op: {s} {} {}", .{offset, @tagName(pc[0].code), src, dst});
         },
         .fieldRetain => {
-            const fieldId = gvm.ops[pc+1].arg;
-            log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), fieldId});
+            const fieldId = pc[1].arg;
+            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), fieldId});
         },
         .map => {
-            const startLocal = gvm.ops[pc+1].arg;
-            const numEntries = gvm.ops[pc+2].arg;
-            const startConst = gvm.ops[pc+3].arg;
-            log.debug("{} op: {s} {} {} {}", .{pc, @tagName(gvm.ops[pc].code), startLocal, numEntries, startConst});
+            const startLocal = pc[1].arg;
+            const numEntries = pc[2].arg;
+            const startConst = pc[3].arg;
+            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), startLocal, numEntries, startConst});
         },
         .constI8 => {
-            const val = gvm.ops[pc+1].arg;
-            const dst = gvm.ops[pc+2].arg;
-            log.debug("{} op: {s} [{}] -> %{}", .{pc, @tagName(gvm.ops[pc].code), @bitCast(i8, val), dst});
+            const val = pc[1].arg;
+            const dst = pc[2].arg;
+            log.debug("{} op: {s} [{}] -> %{}", .{offset, @tagName(pc[0].code), @bitCast(i8, val), dst});
         },
         .constOp => {
-            const idx = gvm.ops[pc+1].arg;
-            const dst = gvm.ops[pc+2].arg;
+            const idx = pc[1].arg;
+            const dst = pc[2].arg;
             const val = Value{ .val = gvm.consts[idx].val };
-            log.debug("{} op: {s} [{s}] -> %{}", .{pc, @tagName(gvm.ops[pc].code), gvm.valueToTempString(val), dst});
+            log.debug("{} op: {s} [{s}] -> %{}", .{offset, @tagName(pc[0].code), gvm.valueToTempString(val), dst});
         },
         .end => {
-            const endLocal = gvm.ops[pc+1].arg;
-            log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), endLocal});
+            const endLocal = pc[1].arg;
+            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), endLocal});
         },
         .setInitN => {
-            const numLocals = gvm.ops[pc+1].arg;
-            const locals = gvm.ops[pc+2..pc+2+numLocals];
-            log.debug("{} op: {s} {}", .{pc, @tagName(gvm.ops[pc].code), numLocals});
+            const numLocals = pc[1].arg;
+            const locals = pc[2..2+numLocals];
+            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), numLocals});
             for (locals) |local| {
                 log.debug("{}", .{local.arg});
             }
         },
         else => {
-            log.debug("{} op: {s}", .{pc, @tagName(gvm.ops[pc].code)});
+            log.debug("{} op: {s}", .{offset, @tagName(pc[0].code)});
         },
     }
 }
@@ -3880,7 +3791,7 @@ const MethodKey = struct {
 /// Stack layout for lambda: arg0, arg1, ..., callee
 /// Stack layout for closure: arg0, arg1, ..., callee, capturedVar0, capturedVar1, ...
 /// numArgs includes the callee.
-pub fn call(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     @setRuntimeSafety(debug);
     if (callee.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, callee.asPointer().?);
@@ -3894,7 +3805,7 @@ pub fn call(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: u8, numA
                     return error.StackOverflow;
                 }
 
-                pc.* = obj.closure.funcPc;
+                pc.* = toPc(obj.closure.funcPc);
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
 
@@ -3916,7 +3827,7 @@ pub fn call(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: u8, numA
                     return error.StackOverflow;
                 }
 
-                pc.* = obj.lambda.funcPc;
+                pc.* = toPc(obj.lambda.funcPc);
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
             },
@@ -3927,7 +3838,7 @@ pub fn call(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: u8, numA
     }
 }
 
-pub fn callNoInline(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+pub fn callNoInline(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     @setRuntimeSafety(debug);
     if (callee.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, callee.asPointer().?);
@@ -3941,7 +3852,7 @@ pub fn callNoInline(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: 
                     return error.StackOverflow;
                 }
 
-                pc.* = obj.closure.funcPc;
+                pc.* = toPc(obj.closure.funcPc);
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
 
@@ -3963,7 +3874,7 @@ pub fn callNoInline(pc: *usize, framePtr: *[*]Value, callee: Value, startLocal: 
                     return error.StackOverflow;
                 }
 
-                pc.* = obj.lambda.funcPc;
+                pc.* = toPc(obj.lambda.funcPc);
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
             },
@@ -4000,11 +3911,11 @@ fn callObjSymFallback(pc: usize, framePtr: [*]Value, obj: *HeapObject, symId: Sy
     framePtr[startLocal + 2 + numArgs - 1] = func;
     // const retInfo = gvm.buildReturnInfo2(gvm.pc + 3, reqNumRetVals, true);
     const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), reqNumRetVals, true);
-    var newPc = pc;
+    var newPc = toPc(pc);
     var newFramePtr = framePtr;
     try @call(.{ .modifier = .always_inline }, callNoInline, .{&newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
     return PcFramePtr{
-        .pc = newPc,
+        .pc = pcOffset(newPc),
         .framePtr = newFramePtr,
     };
 }
@@ -4032,8 +3943,8 @@ fn callSymEntryNoInline(pc: usize, framePtr: [*]Value, sym: SymbolEntry, obj: *H
             // gvm.pc += 3;
             // const newFramePtr = gvm.framePtr + startLocal;
             const newFramePtr = framePtr + startLocal;
-            gvm.pc = pc;
-            gvm.framePtr = framePtrOffset(framePtr);
+            gvm.pc = toPc(pc);
+            gvm.framePtr = framePtr;
             const res = sym.inner.nativeFunc1(undefined, obj, newFramePtr+2, numArgs);
             if (reqNumRetVals == 1) {
                 newFramePtr[0] = res;
@@ -4052,7 +3963,7 @@ fn callSymEntryNoInline(pc: usize, framePtr: [*]Value, sym: SymbolEntry, obj: *H
                 }
             }
             return PcFramePtr{
-                .pc = gvm.pc,
+                .pc = pcOffset(gvm.pc),
                 .framePtr = framePtr,
             };
         },
@@ -4060,8 +3971,8 @@ fn callSymEntryNoInline(pc: usize, framePtr: [*]Value, sym: SymbolEntry, obj: *H
             @setRuntimeSafety(debug);
             // gvm.pc += 3;
             const newFramePtr = gvm.framePtr + startLocal;
-            gvm.pc = pc;
-            const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, &gvm.stack[newFramePtr+2]), numArgs);
+            gvm.pc = toPc(pc);
+            const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, newFramePtr+2), numArgs);
             if (reqNumRetVals == 2) {
                 gvm.stack[newFramePtr] = res.left;
                 gvm.stack[newFramePtr+1] = res.right;
@@ -4103,8 +4014,8 @@ fn popFiber(curFiberEndPc: usize, curFramePtr: [*]Value) PcFramePtr {
     gvm.curFiber = nextFiber;
 
     gvm.stack = gvm.curFiber.stackPtr[0..gvm.curFiber.stackLen];
-    gvm.framePtr = framePtrOffset(gvm.curFiber.framePtr);
-    log.debug("fiber set to {} {}", .{gvm.curFiber.pc, gvm.framePtr});
+    gvm.framePtr = gvm.curFiber.framePtr;
+    log.debug("fiber set to {} {*}", .{gvm.curFiber.pc, gvm.framePtr});
     return PcFramePtr{
         .pc = gvm.curFiber.pc,
         .framePtr = gvm.curFiber.framePtr,
@@ -4124,16 +4035,16 @@ fn pushFiber(curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber) PcFrame
     fiber.prevFiber = gvm.curFiber;
     gvm.curFiber = fiber;
     gvm.stack = fiber.stackPtr[0..fiber.stackLen];
-    gvm.framePtr = framePtrOffset(fiber.framePtr);
+    gvm.framePtr = fiber.framePtr;
     // Check if fiber was previously yielded.
     if (gvm.ops[fiber.pc].code == .coyield) {
-        log.debug("fiber set to {} {}", .{fiber.pc + 3, gvm.framePtr});
+        log.debug("fiber set to {} {*}", .{fiber.pc + 3, gvm.framePtr});
         return .{
             .pc = fiber.pc + 3,
             .framePtr = fiber.framePtr,
         };
     } else {
-        log.debug("fiber set to {} {}", .{fiber.pc, gvm.framePtr});
+        log.debug("fiber set to {} {*}", .{fiber.pc, gvm.framePtr});
         return .{
             .pc = fiber.pc,
             .framePtr = fiber.framePtr,
@@ -4246,6 +4157,15 @@ pub inline fn buildReturnInfo(pc: usize, framePtr: usize, comptime numRetVals: u
             .retFlag = if (cont) 0 else 1,
         },
     };
+}
+
+pub inline fn pcOffset(pc: [*]const cy.OpData) u32 {
+    // Divide by eight.
+    return @intCast(u32, @ptrToInt(pc) - @ptrToInt(gvm.ops.ptr));
+}
+
+pub inline fn toPc(offset: usize) [*]const cy.OpData {
+    return @ptrCast([*]const cy.OpData, &gvm.ops.ptr[offset]);
 }
 
 pub inline fn framePtrOffset(framePtr: [*]Value) usize {

@@ -144,7 +144,7 @@ test "ARC in expressions." {
     // The string template literal is released at the end of the arc expression.
     val = try run.eval(
         \\foo = 'World'
-        \\`Hello \(foo) ` + 123
+        \\`Hello {foo} ` + 123
     );
     try run.valueIsString(val, "Hello World 123");
     run.deinitValue(val);

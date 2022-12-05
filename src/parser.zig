@@ -134,6 +134,9 @@ pub const Parser = struct {
         };
         Tokenizer(.{ .user = false }).tokenize(self, tokenizeOpts) catch |err| {
             log.debug("tokenize error: {}", .{err});
+            if (dumpParseErrorStackTrace) {
+                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+            }
             return ResultView{
                 .has_error = true,
                 .err_msg = self.last_err,
@@ -1644,8 +1647,8 @@ pub const Parser = struct {
                 return self.reportTokenError2(error.SyntaxError, "Expected expression.", .{}, token);
             };
             token = self.peekToken();
-            if (token.tag() != .right_paren) {
-                return self.reportTokenError2(error.SyntaxError, "Expected right parenthesis.", .{}, token);
+            if (token.tag() != .right_brace) {
+                return self.reportTokenError2(error.SyntaxError, "Expected right brace.", .{}, token);
             }
             expectType = .templateString;
         } else return self.reportTokenError("Expected template string or expression.", .{});
@@ -1673,8 +1676,8 @@ pub const Parser = struct {
                     return self.reportTokenError2(error.SyntaxError, "Expected expression.", .{}, token);
                 };
                 token = self.peekToken();
-                if (token.tag() != .right_paren) {
-                    return self.reportTokenError2(error.SyntaxError, "Expected right parenthesis.", .{}, token);
+                if (token.tag() != .right_brace) {
+                    return self.reportTokenError2(error.SyntaxError, "Expected right brace.", .{}, token);
                 }
                 self.nodes.items[last].next = expr;
                 last = expr;
@@ -2933,9 +2936,12 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
 
 pub const TokenizeState = struct {
     stateT: TokenizeStateTag,
-    
-    /// For string interpolation, open parens can accumulate so the end of a template expression can be determined.
-    openParens: u32 = 0,
+
+    /// For string interpolation, open braces can accumulate so the end of a template expression can be determined.
+    openBraces: u8 = 0,
+
+    /// For string interpolation, if true the delim is a double quote otherwise it's a backtick.
+    doubleQuoteDelim: bool = true,
 };
 
 pub const TokenizeStateTag = enum {
@@ -3032,36 +3038,38 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     .stateT = .end,
                 };
             }
+
             const start = p.next_pos;
             const ch = consumeChar(p);
             switch (ch) {
                 '(' => {
                     p.pushToken(.left_paren, start);
-                    if (state.stateT == .templateToken) {
-                        return .{
-                            .stateT = .templateToken,
-                            .openParens = state.openParens + 1,
-                        };
-                    }
                 },
                 ')' => {
                     p.pushToken(.right_paren, start);
+                },
+                '{' => {
+                    p.pushToken(.left_brace, start);
                     if (state.stateT == .templateToken) {
-                        if (state.openParens == 0) {
-                            return .{
-                                .stateT = .templateStart,
-                                .openParens = 0,
-                            };
+                        var next = state;
+                        next.openBraces += 1;
+                        return next;
+                    }
+                },
+                '}' => {
+                    p.pushToken(.right_brace, start);
+                    if (state.stateT == .templateToken) {
+                        var next = state;
+                        if (state.openBraces == 0) {
+                            next.stateT = .templateStart;
+                            next.openBraces = 0;
+                            return next;
                         } else {
-                            return .{
-                                .stateT = .templateToken,
-                                .openParens = state.openParens - 1,
-                            };
+                            next.openBraces -= 1;
+                            return next;
                         }
                     }
                 },
-                '{' => p.pushToken(.left_brace, start),
-                '}' => p.pushToken(.right_brace, start),
                 '[' => p.pushToken(.left_bracket, start),
                 ']' => p.pushToken(.right_bracket, start),
                 ',' => p.pushToken(.comma, start),
@@ -3177,8 +3185,17 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     p.pushToken(.new_line, start);
                     return .{ .stateT = .start };
                 },
+                '"' => {
+                    return tokenizeTemplateStartOne(p, .{
+                        .stateT = state.stateT,
+                        .doubleQuoteDelim = true,
+                    });
+                },
                 '`' => {
-                    return tokenizeTemplateStartOne(p);
+                    return tokenizeTemplateStartOne(p, .{
+                        .stateT = state.stateT,
+                        .doubleQuoteDelim = false,
+                    });
                 },
                 '\'' => {
                     savePos(p);
@@ -3321,7 +3338,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         }
                     },
                     .templateStart => {
-                        state = try tokenizeTemplateStartOne(p);
+                        state = try tokenizeTemplateStartOne(p, state);
                     },
                     .templateToken => {
                         while (true) {
@@ -3340,28 +3357,21 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
         }
 
         /// Returns the next tokenizer state.
-        fn tokenizeTemplateStartOne(p: *Parser) !TokenizeState {
+        fn tokenizeTemplateStartOne(p: *Parser, state: TokenizeState) !TokenizeState {
             const start = p.next_pos;
             savePos(p);
 
             var ch = peekChar(p);
-            if (ch == '\\') {
-                if (peekCharAhead(p, 1)) |next| {
-                    if (next == '(') {
-                        // Parse template expr.
-                        advanceChar(p);
-                        advanceChar(p);
-                        p.pushToken(.templateExprStart, p.next_pos);
-                        return .{ .stateT = .templateToken };
-                    }
-                } else {
-                    if (p.tokenizeOpts.ignoreErrors) {
-                        restorePos(p);
-                        p.pushToken(.err, start);
-                        return .{ .stateT = .token };
-                    } else return error.UnterminatedString;
-                }
+            if (ch == '{') {
+                // Parse template expr.
+                advanceChar(p);
+                p.pushToken(.templateExprStart, p.next_pos);
+                var next = state;
+                next.stateT = .templateToken;
+                next.openBraces = 0;
+                return next;
             }
+
             // Parse template string.
             while (true) {
                 if (isAtEndChar(p)) {
@@ -3374,17 +3384,31 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 ch = peekChar(p);
                 switch (ch) {
                     '`' => {
+                        if (!state.doubleQuoteDelim) {
+                            p.pushTemplateStringToken(start, p.next_pos);
+                            _ = consumeChar(p);
+                            return .{ .stateT = .token };
+                        } else {
+                            _ = consumeChar(p);
+                        }
+                    },
+                    '"' => {
+                        if (state.doubleQuoteDelim) {
+                            p.pushTemplateStringToken(start, p.next_pos);
+                            _ = consumeChar(p);
+                            return .{ .stateT = .token };
+                        } else {
+                            _ = consumeChar(p);
+                        }
+                    },
+                    '{' => {
                         p.pushTemplateStringToken(start, p.next_pos);
-                        _ = consumeChar(p);
-                        return .{ .stateT = .token };
+                        var next = state;
+                        next.stateT = .templateStart;
+                        next.openBraces = 0;
+                        return next;
                     },
                     '\\' => {
-                        if (peekCharAhead(p, 1)) |next| {
-                            if (next == '(') {
-                                p.pushTemplateStringToken(start, p.next_pos);
-                                return .{ .stateT = .templateStart };
-                            }
-                        }
                         // Escape the next character.
                         _ = consumeChar(p);
                         if (isAtEndChar(p)) {
@@ -3499,6 +3523,7 @@ test "Internals." {
     try t.eq(@sizeOf(Token), 8);
     try t.eq(@alignOf(Token), 8);
     try t.eq(@sizeOf(Node), 28);
+    try t.eq(@sizeOf(TokenizeState), 3);
 
     try t.eq(std.enums.values(TokenType).len, 47);
 }

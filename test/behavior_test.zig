@@ -750,11 +750,21 @@ test "Strings" {
     try t.eqStr(str, "abcxyz");
     run.deinitValue(val);
 
-    // String interpolation.
+    // String interpolation using double quotes.
     val = try run.eval(
         \\a = 'World'
         \\b = 123
-        \\`Hello \(a) \(b)`
+        \\"Hello {a} {b}"
+    );
+    str = try run.assertValueString(val);
+    try t.eqStr(str, "Hello World 123");
+    run.deinitValue(val);
+
+    // String interpolation using back ticks.
+    val = try run.eval(
+        \\a = 'World'
+        \\b = 123
+        \\`Hello {a} {b}`
     );
     str = try run.assertValueString(val);
     try t.eqStr(str, "Hello World 123");
@@ -762,7 +772,7 @@ test "Strings" {
 
     // String interpolation with expr at start.
     val = try run.eval(
-        \\`\(10)`
+        \\"{10}"
     );
     str = try run.assertValueString(val);
     try t.eqStr(str, "10");
@@ -770,7 +780,7 @@ test "Strings" {
 
     // String interpolation with nested paren group.
     val = try run.eval(
-        \\`\((1 + 2) * 3)`
+        \\"{(1 + 2) * 3}"
     );
     str = try run.assertValueString(val);
     try t.eqStr(str, "9");

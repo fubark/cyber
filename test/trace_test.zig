@@ -233,11 +233,13 @@ const VMrunner = struct {
             .vm = cy.getUserVM(),
             .trace = undefined,
         };
+        self.trace.opCounts = &.{};
         self.vm.init(t.alloc) catch stdx.fatal();
         self.vm.setTrace(&self.trace);
     }
 
     fn deinit(self: *VMrunner) void {
+        t.alloc.free(self.trace.opCounts);
         self.vm.deinit();
     }
 
@@ -264,6 +266,7 @@ const VMrunner = struct {
             return error.UnreleasedObjects;
         }
         // Eval with new env.
+        t.alloc.free(self.trace.opCounts);
         self.vm.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);

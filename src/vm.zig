@@ -10,6 +10,7 @@ const TraceEnabled = @import("build_options").trace;
 
 const log = stdx.log.scoped(.vm);
 
+const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 
 /// Reserved symbols known at comptime.
@@ -84,8 +85,8 @@ pub const VM = struct {
 
     u8Buf: cy.List(u8),
 
-    trace: *TraceInfo,
     stackTrace: StackTrace,
+
     debugTable: []const cy.OpDebug,
     panicMsg: []const u8,
 
@@ -95,6 +96,8 @@ pub const VM = struct {
     /// Local to be returned back to eval caller.
     /// 255 indicates no return value.
     endLocal: u8,
+
+    trace: if (TraceEnabled) *TraceInfo else void,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -283,9 +286,8 @@ pub const VM = struct {
 
         if (TraceEnabled) {
             try res.buf.dump();
-            const numOps = @enumToInt(cy.OpCode.end) + 1;
-            var opCounts: [numOps]cy.OpCount = undefined;
-            self.trace.opCounts = &opCounts;
+            const numOps = comptime std.enums.values(cy.OpCode).len;
+            self.trace.opCounts = try self.alloc.alloc(cy.OpCount, numOps);
             var i: u32 = 0;
             while (i < numOps) : (i += 1) {
                 self.trace.opCounts[i] = .{
@@ -307,25 +309,29 @@ pub const VM = struct {
             tt.endPrint("eval");
             if (TraceEnabled) {
                 self.dumpInfo();
-                const S = struct {
-                    fn opCountLess(_: void, a: cy.OpCount, b: cy.OpCount) bool {
-                        return a.count > b.count;
-                    }
-                };
-                log.info("total ops evaled: {}", .{self.trace.totalOpCounts});
-                std.sort.sort(cy.OpCount, self.trace.opCounts, {}, S.opCountLess);
-                var i: u32 = 0;
-                const numOps = @enumToInt(cy.OpCode.end) + 1;
-                while (i < numOps) : (i += 1) {
-                    if (self.trace.opCounts[i].count > 0) {
-                        const op = std.meta.intToEnum(cy.OpCode, self.trace.opCounts[i].code) catch continue;
-                        log.info("\t{s} {}", .{@tagName(op), self.trace.opCounts[i].count});
-                    }
-                }
             }
         }
 
         return self.evalByteCode(res.buf);
+    }
+
+    pub fn dumpStats(self: *const VM) void {
+        const S = struct {
+            fn opCountLess(_: void, a: cy.OpCount, b: cy.OpCount) bool {
+                return a.count > b.count;
+            }
+        };
+        std.debug.print("total ops evaled: {}\n", .{self.trace.totalOpCounts});
+        std.sort.sort(cy.OpCount, self.trace.opCounts, {}, S.opCountLess);
+        var i: u32 = 0;
+
+        const numOps = comptime std.enums.values(cy.OpCode).len;
+        while (i < numOps) : (i += 1) {
+            if (self.trace.opCounts[i].count > 0) {
+                const op = std.meta.intToEnum(cy.OpCode, self.trace.opCounts[i].code) catch continue;
+                std.debug.print("\t{s} {}\n", .{@tagName(op), self.trace.opCounts[i].count});
+            }
+        }
     }
 
     pub fn dumpInfo(self: *VM) void {
@@ -382,23 +388,28 @@ pub const VM = struct {
         }
     }
 
+    fn prepareEvalCold(self: *VM, buf: cy.ByteCodeBuffer) void {
+        @setCold(true);
+        self.alloc.free(self.panicMsg);
+        self.panicMsg = "";
+        self.debugTable = buf.debugTable.items;
+    }
+
     pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer) !Value {
         if (buf.ops.items.len == 0) {
             return error.NoEndOp;
         }
 
-        self.alloc.free(self.panicMsg);
-        self.panicMsg = "";
-        self.debugTable = buf.debugTable.items;
-
-        self.ops = buf.ops.items;
-        self.consts = buf.mconsts;
-        self.strBuf = buf.strBuf.items;
+        @call(.{ .modifier = .never_inline }, self.prepareEvalCold, .{buf});
 
         // Set these last to hint location to cache before eval.
         self.pc = @ptrCast([*]const cy.OpData, buf.ops.items.ptr);
         try self.stackEnsureTotalCapacity(buf.mainStackSize);
         self.framePtr = @ptrCast([*]Value, self.stack.ptr);
+
+        self.ops = buf.ops.items;
+        self.consts = buf.mconsts;
+        self.strBuf = buf.strBuf.items;
 
         try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{});
         if (TraceEnabled) {
@@ -822,10 +833,19 @@ pub const VM = struct {
             .name = name,
             .numFields = 0,
         };
-        const id = @intCast(u32, self.structs.len);
-        try self.structs.append(self.alloc, s);
-        try self.structSignatures.put(self.alloc, name, id);
+        const vm = self.getVM();
+        const id = @intCast(u32, vm.structs.len);
+        try vm.structs.append(vm.alloc, s);
+        try vm.structSignatures.put(vm.alloc, name, id);
         return id;
+    }
+
+    inline fn getVM(self: *VM) *VM {
+        if (UseGlobalVM) {
+            return &gvm;
+        } else {
+            return self;
+        }
     }
 
     pub fn ensureGlobalFuncSym(self: *VM, ident: []const u8, funcSymName: []const u8) !void {
@@ -2546,7 +2566,7 @@ const Struct = struct {
 const SymbolId = u32;
 
 pub const TraceInfo = struct {
-    opCounts: []OpCount,
+    opCounts: []OpCount = &.{},
     totalOpCounts: u32,
     numRetains: u32,
     numRetainAttempts: u32,
@@ -2582,6 +2602,9 @@ pub const UserVM = struct {
     }
 
     pub fn setTrace(_: UserVM, trace: *TraceInfo) void {
+        if (!TraceEnabled) {
+            return;
+        }
         gvm.trace = trace;
     }
 
@@ -2605,6 +2628,10 @@ pub const UserVM = struct {
 
     pub fn dumpInfo(_: UserVM) void {
         gvm.dumpInfo();
+    }
+
+    pub fn dumpStats(_: UserVM) void {
+        gvm.dumpStats();
     }
 
     pub fn fillUndefinedStackSpace(_: UserVM, val: Value) void {
@@ -2710,17 +2737,47 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 3;
                 continue;
             },
-            .stringTemplate => {
-                @setRuntimeSafety(debug);
-                const startLocal = pc[1].arg;
-                const exprCount = pc[2].arg;
+            .release => {
+                const local = pc[1].arg;
+                pc += 2;
+                // TODO: Inline if heap object.
+                @call(.{ .modifier = .never_inline }, release, .{framePtr[local]});
+                continue;
+            },
+            .field => {
+                const fieldId = pc[1].arg;
+                const left = pc[2].arg;
                 const dst = pc[3].arg;
-                const strCount = exprCount + 1;
-                const strs = pc[4 .. 4 + strCount];
-                pc += 4 + strCount;
-                const vals = framePtr[startLocal .. startLocal + exprCount];
-                const res = try @call(.{ .modifier = .never_inline }, gvm.allocStringTemplate, .{strs, vals});
-                framePtr[dst] = res;
+                pc += 4;
+                const recv = framePtr[left];
+                const val = try gvm.getField(fieldId, recv);
+                framePtr[dst] = val;
+                continue;
+            },
+            .copyRetainSrc => {
+                @setRuntimeSafety(debug);
+                const src = pc[1].arg;
+                const dst = pc[2].arg;
+                pc += 3;
+                const val = framePtr[src];
+                framePtr[dst] = val;
+                gvm.retain(val);
+                continue;
+            },
+            .jumpNotCond => {
+                @setRuntimeSafety(debug);
+                const jump = @ptrCast(*const align(1) u16, pc + 1).*;
+                const cond = framePtr[pc[3].arg];
+                const condVal = if (cond.isBool()) b: {
+                    break :b cond.asBool();
+                } else b: {
+                    break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
+                };
+                if (!condVal) {
+                    pc += jump;
+                } else {
+                    pc += 4;
+                }
                 continue;
             },
             .neg => {
@@ -2812,15 +2869,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
                 continue;
             },
-            .bitwiseAnd => {
-                @setRuntimeSafety(debug);
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
-                pc += 4;
-                framePtr[dstLocal] = evalBitwiseAnd(srcLeft, srcRight);
-                continue;
-            },
             // .addNumber => {
             //     @setRuntimeSafety(debug);
             //     const srcLeft = gvm.stack[gvm.framePtr + pc[1].arg];
@@ -2850,6 +2898,19 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     Value.initF64(left.asF64() - right.asF64())
                 else @call(.{ .modifier = .never_inline }, evalMinusFallback, .{left, right});
                 pc += 4;
+                continue;
+            },
+            .stringTemplate => {
+                @setRuntimeSafety(debug);
+                const startLocal = pc[1].arg;
+                const exprCount = pc[2].arg;
+                const dst = pc[3].arg;
+                const strCount = exprCount + 1;
+                const strs = pc[4 .. 4 + strCount];
+                pc += 4 + strCount;
+                const vals = framePtr[startLocal .. startLocal + exprCount];
+                const res = try @call(.{ .modifier = .never_inline }, gvm.allocStringTemplate, .{strs, vals});
+                framePtr[dst] = res;
                 continue;
             },
             .list => {
@@ -2953,16 +3014,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dst] = framePtr[src];
                 continue;
             },
-            .copyRetainSrc => {
-                @setRuntimeSafety(debug);
-                const src = pc[1].arg;
-                const dst = pc[2].arg;
-                pc += 3;
-                const val = framePtr[src];
-                framePtr[dst] = val;
-                gvm.retain(val);
-                continue;
-            },
             .retain => {
                 @setRuntimeSafety(debug);
                 const local = pc[1].arg;
@@ -3051,30 +3102,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 } else {
                     pc += 4;
                 }
-                continue;
-            },
-            .jumpNotCond => {
-                @setRuntimeSafety(debug);
-                const jump = @ptrCast(*const align(1) u16, pc + 1).*;
-                const cond = framePtr[pc[3].arg];
-                const condVal = if (cond.isBool()) b: {
-                    break :b cond.asBool();
-                } else b: {
-                    break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
-                };
-                if (!condVal) {
-                    pc += jump;
-                } else {
-                    pc += 4;
-                }
-                continue;
-            },
-            .release => {
-                @setRuntimeSafety(debug);
-                const local = pc[1].arg;
-                pc += 2;
-                // TODO: Inline if heap object.
-                @call(.{ .modifier = .never_inline }, release, .{framePtr[local]});
                 continue;
             },
             .call0 => {
@@ -3207,17 +3234,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const val = try gvm.getField(fieldId, recv);
                 framePtr[dst] = val;
                 release(recv);
-                continue;
-            },
-            .field => {
-                @setRuntimeSafety(debug);
-                const fieldId = pc[1].arg;
-                const left = pc[2].arg;
-                const dst = pc[3].arg;
-                pc += 4;
-                const recv = framePtr[left];
-                const val = try gvm.getField(fieldId, recv);
-                framePtr[dst] = val;
                 continue;
             },
             .fieldRetain => {
@@ -3582,6 +3598,15 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const captured = pc[4..4+numCaptured];
                 pc += 4 + numCaptured;
                 try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
+                continue;
+            },
+            .bitwiseAnd => {
+                @setRuntimeSafety(debug);
+                const srcLeft = framePtr[pc[1].arg];
+                const srcRight = framePtr[pc[2].arg];
+                const dstLocal = pc[3].arg;
+                pc += 4;
+                framePtr[dstLocal] = evalBitwiseAnd(srcLeft, srcRight);
                 continue;
             },
             .end => {

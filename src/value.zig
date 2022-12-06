@@ -23,6 +23,8 @@ const TrueBitMask: u64 = 1;
 const NoneMask: u64 = TaggedValueMask | (TagNone << 32);
 const ErrorMask: u64 = TaggedValueMask | (TagError << 32);
 const ConstStringMask: u64 = TaggedValueMask | (TagConstString << 32);
+const UserTagMask: u64 = TaggedValueMask | (TagUserTag << 32);
+const UserTagLiteralMask: u64 = TaggedValueMask | (TagUserTagLiteral << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
 const BeforeTagMask: u32 = 0x7fff << 3;
@@ -30,6 +32,8 @@ pub const TagNone = 0;
 pub const TagBoolean = 1;
 pub const TagError = 2;
 pub const TagConstString = 3;
+pub const TagUserTag = 4;
+pub const TagUserTagLiteral = 5;
 
 pub const ValuePair = struct {
     left: Value,
@@ -176,6 +180,14 @@ pub const Value = packed union {
         // } else {
         //     return @intCast(u3, self.two[0] & TagMask);
         // }
+    }
+
+    pub inline fn initTag(tag: u8, val: u8) linksection(".eval") Value {
+        return .{ .val = UserTagMask | (@as(u32, tag) << 8) | val };
+    }
+
+    pub inline fn initTagLiteral(symId: u8) linksection(".eval") Value {
+        return .{ .val = UserTagLiteralMask | symId };
     }
 
     pub inline fn initF64(val: f64) Value {

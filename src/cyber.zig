@@ -23,6 +23,9 @@ pub const TagBoolean = value.TagBoolean;
 pub const TagNone = value.TagNone;
 pub const TagError = value.TagError;
 pub const TagConstString = value.TagConstString;
+pub const TagUserTag = value.TagUserTag;
+pub const TagUserTagLiteral = value.TagUserTagLiteral;
+
 pub const ValueUserTag = value.ValueUserTag;
 
 const vm = @import("vm.zig");

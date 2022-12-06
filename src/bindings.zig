@@ -56,11 +56,35 @@ pub fn bindCore(self: *cy.VM) !void {
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdPrint));
     id = try self.ensureFuncSym("std.toString");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdToString));
+    // id = try self.ensureFuncSym("std.dump");
+    // self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdDump));
+    id = try self.ensureFuncSym("number");
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(castNumber));
 
     try self.ensureGlobalFuncSym("readInput", "std.readInput");
     try self.ensureGlobalFuncSym("parseCyon", "std.parseCyon");
     try self.ensureGlobalFuncSym("print", "std.print");
     try self.ensureGlobalFuncSym("toString", "std.toString");
+    // try self.ensureGlobalFuncSym("dump", "std.dump");
+}
+
+fn castNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = vm;
+    _ = nargs;
+    const val = args[0];
+    if (val.isNumber()) {
+        return val;
+    } else {
+        if (val.isPointer()) {
+            return Value.initF64(1);
+        } else {
+            switch (val.getTag()) {
+                cy.TagUserTag => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+                cy.TagUserTagLiteral => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+                else => return Value.initF64(1),
+            }
+        }
+    }
 }
 
 fn stdToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {

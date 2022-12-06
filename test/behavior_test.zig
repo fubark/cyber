@@ -75,6 +75,50 @@ test "Fibers" {
     try run.valueIsI32(val, 2);
 }
 
+test "Tag types." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // TagType to number.
+    var val = try run.eval(
+        \\tagtype Animal:
+        \\  Bear
+        \\  Tiger
+        \\n = Animal#Tiger
+        \\number(n)
+    );
+    try t.eq(val.asI32(), 1);
+
+    // Using TagType declared afterwards.
+    val = try run.eval(
+        \\n = Animal#Tiger
+        \\tagtype Animal:
+        \\  Bear
+        \\  Tiger
+        \\number(n)
+    );
+    try t.eq(val.asI32(), 1);
+
+    // Reassign using tag literal.
+    val = try run.eval(
+        \\tagtype Animal:
+        \\  Bear
+        \\  Tiger
+        \\  Dragon
+        \\n = Animal#Tiger
+        \\n = #Dragon
+        \\number(n)
+    );
+    try t.eq(val.asI32(), 2);
+
+    // Tag literal.
+    val = try run.eval(
+        \\n = #Tiger
+        \\number(n)
+    );
+    try t.eq(val.asI32(), 0);
+}
+
 test "Structs." {
     const run = VMrunner.create();
     defer run.destroy();

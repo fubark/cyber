@@ -28,6 +28,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "as", .as_k },
     .{ "pass", .pass_k },
     .{ "type", .type_k },
+    .{ "tagtype", .tagtype_k },
     .{ "none", .none_k },
     .{ "is", .is_k },
     .{ "coinit", .coinit_k },
@@ -477,6 +478,29 @@ pub const Parser = struct {
         }
     }
 
+    fn parseTagMember(self: *Parser) !?NodeId {
+        const start = self.next_pos;
+        var token = self.peekToken();
+        if (token.tag() == .ident) {
+            const name = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+
+            token = self.peekToken();
+            if (token.tag() == .new_line) {
+                self.advanceToken();
+                const field = try self.pushNode(.tagMember, start);
+                self.nodes.items[field].head = .{
+                    .tagMember = .{
+                        .name = name,
+                    },
+                };
+                return field;
+            } else {
+                return self.reportTokenError("Unexpected token.", .{});
+            }
+        } else return null;
+    }
+
     fn parseStructField(self: *Parser) !?NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
@@ -526,9 +550,63 @@ pub const Parser = struct {
         } else return null;
     }
 
+    fn parseTagDecl(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is the `tagtype` keyword.
+        self.advanceToken();
+
+        // Parse tag name.
+        var token = self.peekToken();
+        var name: NodeId = NullId;
+        if (token.tag() == .ident) {
+            name = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+        } else return self.reportTokenError2(error.SyntaxError, "Expected tag name identifier.", .{}, token);
+
+        token = self.peekToken();
+        if (token.tag() == .colon) {
+            self.advanceToken();
+        } else {
+            return self.reportTokenError2(error.SyntaxError, "Expected colon.", .{}, token);
+        }
+
+        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+        const prevIndent = self.cur_indent;
+        self.cur_indent = reqIndent;
+        defer self.cur_indent = prevIndent;
+
+        var firstMember = (try self.parseTagMember()) orelse {
+            return self.reportTokenError("Expected tag member.", .{});
+        };
+        var lastMember = firstMember;
+
+        while (true) {
+            const start2 = self.next_pos;
+            const indent = self.consumeIndentBeforeStmt();
+            if (indent == reqIndent) {
+                const id = (try self.parseTagMember()) orelse break;
+                self.nodes.items[lastMember].next = id;
+                lastMember = id;
+            } else if (indent <= prevIndent) {
+                self.next_pos = start2;
+                const id = try self.pushNode(.tagDecl, start);
+                self.nodes.items[id].head = .{
+                    .tagDecl = .{
+                        .name = name,
+                        .memberHead = firstMember,
+                    },
+                };
+                return id;
+            } else {
+                return self.reportTokenError("Unexpected indentation.", .{});
+            }
+        }
+        unreachable;
+    }
+
     fn parseStructDecl(self: *Parser) !NodeId {
         const start = self.next_pos;
-        // Assumes first token is the `struct` keyword.
+        // Assumes first token is the `type` keyword.
         self.advanceToken();
 
         // Parse struct name.
@@ -537,7 +615,7 @@ pub const Parser = struct {
         if (token.tag() == .ident) {
             name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
-        } else return self.reportTokenError2(error.SyntaxError, "Expected struct name identifier.", .{}, token);
+        } else return self.reportTokenError2(error.SyntaxError, "Expected type name identifier.", .{}, token);
 
         token = self.peekToken();
         if (token.tag() == .colon) {
@@ -1154,6 +1232,9 @@ pub const Parser = struct {
             .type_k => {
                 return try self.parseStructDecl();
             },
+            .tagtype_k => {
+                return try self.parseTagDecl();
+            },
             .func_k => {
                 return try self.parseFunctionDecl();
             },
@@ -1722,6 +1803,10 @@ pub const Parser = struct {
                 self.advanceToken();
                 break :b try self.pushNode(.number, start);
             },
+            .tag => {
+                self.advanceToken();
+                return try self.pushNode(.tagLiteral, start);
+            },
             .string => b: {
                 self.advanceToken();
                 break :b try self.pushNode(.string, start);
@@ -1881,6 +1966,27 @@ pub const Parser = struct {
                         return self.parseLambdaFuncWithParam(left_id);
                     } else {
                         return self.reportTokenError2(error.SyntaxError, "Unexpected `=>` token", .{}, next);
+                    }
+                },
+                .tag => {
+                    // Tag init.
+                    const left = self.nodes.items[left_id];
+                    if (left.node_t == .ident) {
+                        const tagLiteral = try self.pushNode(.tagLiteral, self.next_pos);
+                        self.advanceToken();
+
+                        const tt = self.tokens.items[self.next_pos];
+                        log.debug("{} {}", .{tt.start_pos, tt.data.end_pos});
+                        const tagInit = try self.pushNode(.tagInit, start);
+                        self.nodes.items[tagInit].head = .{
+                            .left_right = .{
+                                .left = left_id,
+                                .right = tagLiteral,
+                            },
+                        };
+                        return tagInit;
+                    } else {
+                        return self.reportTokenError("Expected left ident.", .{});
                     }
                 },
                 .dot => {
@@ -2300,6 +2406,16 @@ pub const Parser = struct {
         return id;
     }
 
+    inline fn pushTagToken(self: *Parser, start_pos: u32, end_pos: u32) void {
+        self.tokens.append(self.alloc, .{
+            .token_t = .tag,
+            .start_pos = @intCast(u26, start_pos),
+            .data = .{
+                .end_pos = end_pos,
+            },
+        }) catch fatal();
+    }
+
     inline fn pushIdentToken(self: *Parser, start_pos: u32, end_pos: u32) void {
         self.tokens.append(self.alloc, .{
             .token_t = .ident,
@@ -2485,11 +2601,13 @@ pub const TokenType = enum(u6) {
     pass_k,
     none_k,
     type_k,
+    tagtype_k,
     func_k,
     is_k,
     coinit_k,
     coyield_k,
     coresume_k,
+    tag,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -2558,6 +2676,10 @@ pub const NodeType = enum {
     structDecl,
     structField,
     structInit,
+    tagDecl,
+    tagMember,
+    tagInit,
+    tagLiteral,
     lambda_assign_decl,
     lambda_expr, 
     lambda_multi,
@@ -2646,6 +2768,13 @@ pub const Node = struct {
             name: NodeId,
             fieldsHead: NodeId,
             funcsHead: NodeId,
+        },
+        tagMember: struct {
+            name: NodeId,
+        },
+        tagDecl: struct {
+            name: NodeId,
+            memberHead: NodeId,
         },
         for_range_stmt: struct {
             range_clause: NodeId,
@@ -3236,6 +3365,10 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         }
                     }
                 },
+                '#' => {
+                    tokenizeTag(p, p.next_pos);
+                    return .{ .stateT = .token };
+                },
                 else => {
                     if (std.ascii.isAlpha(ch)) {
                         tokenizeKeywordOrIdent(p, start);
@@ -3428,6 +3561,27 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
         }
 
+        fn tokenizeTag(p: *Parser, start: u32) void {
+            // Consume alpha, numeric, underscore.
+            while (true) {
+                if (isAtEndChar(p)) {
+                    p.pushTagToken(start, p.next_pos);
+                    return;
+                }
+                const ch = peekChar(p);
+                if (std.ascii.isAlNum(ch)) {
+                    advanceChar(p);
+                    continue;
+                }
+                if (ch == '_') {
+                    advanceChar(p);
+                    continue;
+                }
+                p.pushTagToken(start, p.next_pos);
+                return;
+            }
+        }
+
         fn tokenizeKeywordOrIdent(p: *Parser, start: u32) void {
             // Consume alpha.
             while (true) {
@@ -3525,5 +3679,5 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 3);
 
-    try t.eq(std.enums.values(TokenType).len, 47);
+    try t.eq(std.enums.values(TokenType).len, 49);
 }

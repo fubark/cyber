@@ -129,6 +129,15 @@ pub const VMcompiler = struct {
 
                 return ListType;
             },
+            .tagLiteral => {
+                return TagLiteralType;
+            },
+            .tagInit => {
+                const nameN = self.nodes[node.head.left_right.left];
+                const name = self.getNodeTokenString(nameN);
+                const tid = try self.vm.ensureTagType(name);
+                return initTagType(tid);
+            },
             .structInit => {
                 const initializer = self.nodes[node.head.structInit.initializer];
 
@@ -470,6 +479,31 @@ pub const VMcompiler = struct {
                     _ = try self.semaExpr(node.head.left_right.right, false);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                }
+            },
+            .tagDecl => {
+                const nameN = self.nodes[node.head.tagDecl.name];
+                const name = self.getNodeTokenString(nameN);
+
+                const tid = try self.vm.ensureTagType(name);
+
+                var i: u32 = 0;
+                var memberId = node.head.tagDecl.memberHead;
+                while (memberId != NullId) : (i += 1) {
+                    const member = self.nodes[memberId];
+                    memberId = member.next;
+                }
+                const numMembers = i;
+                self.vm.tagTypes.buf[tid].numMembers = numMembers;
+
+                i = 0;
+                memberId = node.head.tagDecl.memberHead;
+                while (memberId != NullId) : (i += 1) {
+                    const member = self.nodes[memberId];
+                    const mName = self.getNodeTokenString(member);
+                    const symId = try self.vm.ensureTagLitSym(mName);
+                    self.vm.setTagLitSym(tid, symId, i);
+                    memberId = member.next;
                 }
             },
             .structDecl => {
@@ -1182,19 +1216,30 @@ pub const VMcompiler = struct {
                     svar.genIsDefined = true;
                     svar.vtype = exprv.vtype;
                 }
-            } else {
-                // Retain rval.
-                if (!svar.genIsDefined or !svar.vtype.rcCandidate) {
-                    const exprv = try self.genRetainedExprTo(exprId, svar.local, false);
-                    svar.vtype = exprv.vtype;
-                    if (!svar.genIsDefined) {
-                        svar.genIsDefined = true;
+                return;
+            } else if (expr.node_t == .tagLiteral) {
+                if (svar.vtype.typeT == .tag) {
+                    const name = self.getNodeTokenString(expr);
+                    const symId = try self.vm.ensureTagLitSym(name);
+                    const sym = self.vm.tagLitSyms.buf[symId];
+                    if (sym.symT == .one and sym.inner.one.id == svar.vtype.inner.tagId) {
+                        try self.buf.pushOp3(.tag, svar.vtype.inner.tagId, @intCast(u8, sym.inner.one.val), svar.local);
+                        return;
                     }
-                } else {
-                    const exprv = try self.genRetainedTempExpr(exprId, false);
-                    try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
-                    svar.vtype = exprv.vtype;
                 }
+            }
+
+            // Retain rval.
+            if (!svar.genIsDefined or !svar.vtype.rcCandidate) {
+                const exprv = try self.genRetainedExprTo(exprId, svar.local, false);
+                svar.vtype = exprv.vtype;
+                if (!svar.genIsDefined) {
+                    svar.genIsDefined = true;
+                }
+            } else {
+                const exprv = try self.genRetainedTempExpr(exprId, false);
+                try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
+                svar.vtype = exprv.vtype;
             }
         } else {
             log.debug("Undefined var.", .{});
@@ -1399,6 +1444,9 @@ pub const VMcompiler = struct {
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
+            },
+            .tagDecl => {
+                // Nop.
             },
             .structDecl => {
                 const nameN = self.nodes[node.head.structDecl.name];
@@ -2193,6 +2241,12 @@ pub const VMcompiler = struct {
                     return GenValue.initNoValue();
                 }
             },
+            .tagLiteral => {
+                const name = self.getNodeTokenString(node);
+                const symId = try self.vm.ensureTagLitSym(name);
+                try self.buf.pushOp2(.tagLiteral, @intCast(u8, symId), dst);
+                return self.initGenValue(dst, TagLiteralType);
+            },
             .string => {
                 if (!discardTopExprReg) {
                     const token = self.tokens[node.start_token];
@@ -2278,6 +2332,32 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     return self.genNone(dst);
                 } else return GenValue.initNoValue();
+            },
+            .tagInit => {
+                const name = self.nodes[node.head.left_right.left];
+                const tname = self.getNodeTokenString(name);
+                const tid = self.vm.tagTypeSignatures.get(tname) orelse {
+                    log.debug("Missing tag type {s}", .{tname});
+                    return error.CompileError;
+                };
+
+                const tagLit = self.nodes[node.head.left_right.right];
+                const lname = self.getNodeTokenString(tagLit);
+                const symId = self.vm.tagLitSymSignatures.get(lname) orelse {
+                    log.debug("Missing tag literal {s}", .{lname});
+                    return error.CompileError;
+                };
+                const sym = self.vm.tagLitSyms.buf[symId];
+                if (sym.symT == .one) {
+                    if (sym.inner.one.id == tid) {
+                        try self.buf.pushOp3(.tag, @intCast(u8, tid), @intCast(u8, sym.inner.one.val), dst);
+                        const vtype = initTagType(tid);
+                        return self.initGenValue(dst, vtype);
+                    }
+                }
+
+                log.debug("Tag {s} does not have member {s}", .{tname, lname});
+                return error.CompileError;
             },
             .structInit => {
                 const stype = self.nodes[node.head.structInit.name];
@@ -2980,11 +3060,16 @@ const TypeTag = enum {
     fiber,
     string,
     box,
+    tag,
+    tagLiteral,
 };
 
 const Type = struct {
     typeT: TypeTag,
     rcCandidate: bool,
+    inner: packed union {
+        tagId: u8,
+    } = undefined,
 };
 
 const BoxType = Type{
@@ -3026,6 +3111,21 @@ const ListType = Type{
     .typeT = .list,
     .rcCandidate = true,
 };
+
+const TagLiteralType = Type{
+    .typeT = .tagLiteral,
+    .rcCandidate = false,
+};
+
+fn initTagType(tagId: u32) Type {
+    return .{
+        .typeT = .tag,
+        .rcCandidate = false,
+        .inner = .{
+            .tagId = @intCast(u8, tagId),
+        },
+    };
+}
 
 const MapType = Type{
     .typeT = .map,
@@ -3216,4 +3316,5 @@ const GenValue = struct {
 
 test "Internals." {
     try t.eq(@sizeOf(SemaVar), 32);
+    try t.eq(@sizeOf(Type), 3);
 }

@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
+const TraceEnabled = @import("build_options").trace;
 
 /// Use mimalloc for fast builds.
 const UseMimalloc = builtin.mode == .ReleaseFast;
@@ -115,5 +116,8 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
         vm.dumpInfo();
+        if (TraceEnabled) {
+            vm.dumpStats();
+        }
     }
 }

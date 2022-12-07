@@ -1,6 +1,7 @@
 const std = @import("std");
 const stdx = @import("stdx");
 const builtin = @import("builtin");
+const tcc = @import("tcc");
 
 const cy = @import("cyber.zig");
 const Value = cy.Value;
@@ -10,6 +11,8 @@ const gvm = &vm_.gvm;
 
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.bindings);
+
+const TagLitInt = 0;
 
 pub fn bindCore(self: *cy.VM) !void {
     // Init compile time builtins.
@@ -48,6 +51,12 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("Box");
     std.debug.assert(id == cy.BoxS);
 
+    id = try self.addStruct("NativeFunc1");
+    std.debug.assert(id == cy.NativeFunc1S);
+
+    id = try self.addStruct("TccState");
+    std.debug.assert(id == cy.TccStateS);
+
     id = try self.ensureFuncSym("std.readInput");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
     id = try self.ensureFuncSym("std.parseCyon");
@@ -58,6 +67,8 @@ pub fn bindCore(self: *cy.VM) !void {
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdToString));
     // id = try self.ensureFuncSym("std.dump");
     // self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdDump));
+    id = try self.ensureFuncSym("std.bindLib");
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdBindLib));
     id = try self.ensureFuncSym("number");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(castNumber));
 
@@ -65,7 +76,182 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.ensureGlobalFuncSym("parseCyon", "std.parseCyon");
     try self.ensureGlobalFuncSym("print", "std.print");
     try self.ensureGlobalFuncSym("toString", "std.toString");
+    try self.ensureGlobalFuncSym("bindLib", "std.bindLib");
     // try self.ensureGlobalFuncSym("dump", "std.dump");
+
+    const sid = try self.ensureStruct("CFunc");
+    self.structs.buf[sid].numFields = 3;
+    id = try self.ensureFieldSym("sym");
+    self.setFieldSym(sid, id, 0, true);
+    id = try self.ensureFieldSym("args");
+    self.setFieldSym(sid, id, 1, true);
+    id = try self.ensureFieldSym("ret");
+    self.setFieldSym(sid, id, 2, true);
+
+    id = try self.ensureTagLitSym("int");
+    std.debug.assert(id == TagLitInt);
+}
+
+export fn printInt(n: i32) void {
+    std.debug.print("zig print int: {}\n", .{n});
+}
+
+export fn printU64(n: u64) void {
+    std.debug.print("zig print u64: {}\n", .{n});
+}
+
+export fn printF64(n: f64) void {
+    std.debug.print("zig print f64: {}\n", .{n});
+}
+
+fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = nargs;
+    const path = args[0];
+    const alloc = vm.allocator();
+
+    var lib: std.DynLib = undefined;
+    if (path.isNone()) {
+        lib = std.DynLib.openZ("") catch stdx.fatal();
+        log.debug("loaded main exe", .{});
+    } else {
+        lib = std.DynLib.open(gvm.valueToTempString(path)) catch stdx.fatal();
+    }
+    defer lib.close();
+
+    // Check that symbols exist.
+    const cfuncs = stdx.ptrAlignCast(*cy.CyList, args[1].asPointer().?);
+    var cfuncPtrs = alloc.alloc(*anyopaque, cfuncs.items().len) catch stdx.fatal();
+    defer alloc.free(cfuncPtrs);
+    const symf = gvm.ensureFieldSym("sym") catch stdx.fatal();
+    for (cfuncs.items()) |cfunc, i| {
+        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const symz = std.cstr.addNullByte(alloc, sym) catch stdx.fatal();
+        defer alloc.free(symz);
+        if (lib.lookup(*anyopaque, symz)) |ptr| {
+            cfuncPtrs[i] = ptr;
+        } else stdx.panicFmt("Missing sym: {s}", .{sym});
+    }
+
+    // Generate c code.
+    var csrc: std.ArrayListUnmanaged(u8) = .{};
+    defer csrc.deinit(alloc);
+    const w = csrc.writer(alloc);
+
+    w.print("#define uint64_t unsigned long long\n", .{}) catch stdx.fatal();
+
+    const argsf = gvm.ensureFieldSym("args") catch stdx.fatal();
+    const retf = gvm.ensureFieldSym("ret") catch stdx.fatal();
+    for (cfuncs.items()) |cfunc| {
+        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const cargsv = gvm.getField(argsf, cfunc) catch stdx.fatal();
+        const ret = gvm.getField(retf, cfunc) catch stdx.fatal();
+
+        const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?);
+        const lastArg = cargs.items().len - 1;
+        w.print("extern uint64_t {s}(", .{sym}) catch stdx.fatal();
+        for (cargs.items()) |carg, i| {
+            const argTag = carg.asTagLiteralId();
+            switch (argTag) {
+                TagLitInt => {
+                    w.print("int", .{}) catch stdx.fatal();
+                },
+                else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
+            }
+            if (i != lastArg) {
+                w.print(", ", .{}) catch stdx.fatal();
+            }
+        }
+        w.print(");\n", .{}) catch stdx.fatal();
+
+        w.print("uint64_t cy{s}(void* vm, uint64_t** args, char numArgs) {{\n", .{sym}) catch stdx.fatal();
+        // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
+        const retTag = ret.asTagLiteralId();
+        switch (retTag) {
+            TagLitInt => {
+                w.print("  int res = {s}(", .{sym}) catch stdx.fatal();
+            },
+            else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
+        }
+
+        // Gen args.
+        for (cargs.items()) |carg, i| {
+            const argTag = carg.asTagLiteralId();
+            switch (argTag) {
+                TagLitInt => {
+                    w.print("(int)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
+            }
+            if (i != lastArg) {
+                w.print(", ", .{}) catch stdx.fatal();
+            }
+        }
+
+        // End of args.
+        w.print(");\n", .{}) catch stdx.fatal();
+
+        // Gen return.
+        switch (retTag) {
+            TagLitInt => {
+                w.print("  double dres = (double)res;\n", .{}) catch stdx.fatal();
+                w.print("  return *(uint64_t*)&dres;\n", .{}) catch stdx.fatal();
+            },
+            else => stdx.fatal(),
+        }
+        w.print("}}\n", .{}) catch stdx.fatal();
+    }
+
+    w.writeByte(0) catch stdx.fatal();
+    // log.debug("{s}", .{csrc.items});
+
+    const state = tcc.tcc_new();
+    // Don't include libtcc1.a.
+    tcc.tcc_set_options(state, "-nostdlib");
+    _ = tcc.tcc_set_output_type(state, tcc.TCC_OUTPUT_MEMORY);
+
+    if (tcc.tcc_compile_string(state, csrc.items.ptr) == -1) {
+        stdx.panic("Failed to compile c source.");
+    }
+
+    // const __fixunsdfdi = @extern(*anyopaque, .{ .name = "__fixunsdfdi", .linkage = .Strong });
+    // _ = tcc.tcc_add_symbol(state, "__fixunsdfdi", __fixunsdfdi);
+    _ = tcc.tcc_add_symbol(state, "printU64", printU64);
+    _ = tcc.tcc_add_symbol(state, "printF64", printF64);
+    _ = tcc.tcc_add_symbol(state, "printInt", printInt);
+
+    // Add binded symbols.
+    for (cfuncs.items()) |cfunc, i| {
+        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const symz = std.cstr.addNullByte(alloc, sym) catch stdx.fatal();
+        defer alloc.free(symz);
+        _ = tcc.tcc_add_symbol(state, symz.ptr, cfuncPtrs[i]);
+    }
+
+    if (tcc.tcc_relocate(state, tcc.TCC_RELOCATE_AUTO) < 0) {
+        stdx.panic("Failed to relocate compiled code.");
+    }
+
+    // Create vm function pointers and put in map.
+    const map = gvm.allocEmptyMap() catch stdx.fatal();
+    const cyState = gvm.allocTccState(state.?) catch stdx.fatal();
+    gvm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
+    for (cfuncs.items()) |cfunc| {
+        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const cySym = std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0}) catch stdx.fatal();
+        defer alloc.free(cySym);
+        const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
+            stdx.panic("Failed to get symbol.");
+        };
+
+        const func = @ptrCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
+        const key = gvm.allocString(sym) catch stdx.fatal();
+        const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
+        gvm.setIndex(map, key, val) catch stdx.fatal();
+    }
+
+    vm_.release(args[0]);
+    vm_.release(args[1]);
+    return map;
 }
 
 fn castNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {

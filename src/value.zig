@@ -78,6 +78,10 @@ pub const Value = packed union {
         return @bitCast(f64, self.val);
     }
 
+    pub inline fn asTagLiteralId(self: *const Value) linksection(".eval") u32 {
+        return @intCast(u32, self.val & @as(u64, 0xFFFFFFFF));
+    }
+
     pub inline fn asError(self: *const Value) u32 {
         if (endian == .Little) {
             return self.two[0];
@@ -307,6 +311,8 @@ pub const Value = packed union {
                     cy.LambdaS => return .lambda,
                     cy.FiberS => return .fiber,
                     cy.BoxS => return .box,
+                    cy.NativeFunc1S => return .nativeFunc,
+                    cy.TccStateS => return .tccState,
                     else => {
                         return .object;
                     },
@@ -333,6 +339,8 @@ pub const ValueUserTag = enum {
     lambda,
     fiber,
     box,
+    nativeFunc,
+    tccState,
 };
 
 test "floatCanBeInteger" {

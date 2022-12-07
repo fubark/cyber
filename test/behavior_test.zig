@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const fatal = stdx.fatal;
 const t = stdx.testing;
 
+const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
 const log = stdx.log.scoped(.behavior_test);
 
@@ -75,6 +76,26 @@ test "Fibers" {
     try run.valueIsI32(val, 2);
 }
 
+test "FFI." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    const S = struct {
+        export fn testAdd(a: i32, b: i32) i32 {
+            return a + b;
+        }
+    };
+    _ = S;
+
+    var val = try run.eval(
+        \\lib = bindLib(none, [
+        \\  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+        \\])
+        \\lib.testAdd(123, 321)
+    );
+    try run.valueIsI32(val, 444);
+}
+
 test "Tag types." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -116,7 +137,8 @@ test "Tag types." {
         \\n = #Tiger
         \\number(n)
     );
-    try t.eq(val.asI32(), 0);
+    const id = try vm_.gvm.ensureTagLitSym("Tiger");
+    try t.eq(val.asI32(), @intCast(i32, id));
 }
 
 test "Structs." {

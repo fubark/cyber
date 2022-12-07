@@ -2,6 +2,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
+const tcc = @import("tcc");
+
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const Value = cy.Value;
@@ -21,6 +23,8 @@ pub const LambdaS: StructId = 3;
 pub const StringS: StructId = 4;
 pub const FiberS: StructId = 5;
 pub const BoxS: StructId = 6;
+pub const NativeFunc1S: StructId = 7;
+pub const TccStateS: StructId = 8;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -677,6 +681,47 @@ pub const VM = struct {
             .ptr = str.ptr,
             .len = str.len,
         };
+        log.debug("alloc owned str {*} {s}", .{str.ptr, str});
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocTccState(self: *VM, state: *tcc.TCCState) !Value {
+        const obj = try self.allocObject();
+        obj.tccState = .{
+            .structId = TccStateS,
+            .rc = 1,
+            .state = state,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocNativeFunc1(self: *VM, func: *const fn (*UserVM, [*]Value, u8) Value, tccState: ?Value) !Value {
+        const obj = try self.allocObject();
+        obj.nativeFunc1 = .{
+            .structId = NativeFunc1S,
+            .rc = 1,
+            .func = func,
+            .tccState = undefined,
+            .hasTccState = false,
+        };
+        if (tccState) |state| {
+            obj.nativeFunc1.tccState = state;
+            obj.nativeFunc1.hasTccState = true;
+        }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
@@ -914,6 +959,10 @@ pub const VM = struct {
         }
     }
 
+    pub fn getTagLitName(self: *const VM, id: u32) []const u8 {
+        return self.tagLitSyms.buf[id].name;
+    }
+
     pub fn ensureTagLitSym(self: *VM, name: []const u8) !SymbolId {
         _ = self;
         const res = try gvm.tagLitSymSignatures.getOrPut(gvm.alloc, name);
@@ -922,6 +971,7 @@ pub const VM = struct {
             try gvm.tagLitSyms.append(gvm.alloc, .{
                 .symT = .empty,
                 .inner = undefined,
+                .name = name,
             });
             res.value_ptr.* = id;
             return id;
@@ -982,13 +1032,11 @@ pub const VM = struct {
     }
 
     pub inline fn setTagLitSym(self: *VM, tid: TagTypeId, symId: SymbolId, val: u32) void {
-        self.tagLitSyms.buf[symId] = .{
-            .symT = .one,
-            .inner = .{
-                .one = .{
-                    .id = tid,
-                    .val = val,
-                },
+        self.tagLitSyms.buf[symId].symT = .one;
+        self.tagLitSyms.buf[symId].inner = .{
+            .one = .{
+                .id = tid,
+                .val = val,
             },
         };
     }
@@ -1041,7 +1089,7 @@ pub const VM = struct {
         }
     }
 
-    fn setIndex(self: *VM, left: Value, index: Value, right: Value) !void {
+    pub fn setIndex(self: *VM, left: Value, index: Value, right: Value) !void {
         @setRuntimeSafety(debug);
         if (left.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
@@ -1253,6 +1301,24 @@ pub const VM = struct {
         }
     }
 
+    pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(".eval") void {
+        @setRuntimeSafety(debug);
+        if (TraceEnabled) {
+            self.trace.numRetainAttempts += inc;
+        }
+        if (val.isPointer()) {
+            const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer());
+            obj.retainedCommon.rc += inc;
+            log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+            if (TrackGlobalRC) {
+                gvm.refCounts += inc;
+            }
+            if (TraceEnabled) {
+                self.trace.numRetains += inc;
+            }
+        }
+    }
+
     pub fn forceRelease(self: *VM, obj: *HeapObject) void {
         if (TraceEnabled) {
             self.trace.numForceReleases += 1;
@@ -1387,7 +1453,7 @@ pub const VM = struct {
         }
     }
 
-    fn getField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
+    pub fn getField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
         @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
@@ -1980,6 +2046,16 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
             release(obj.box.val);
             gvm.freeObject(obj);
         },
+        NativeFunc1S => {
+            if (obj.nativeFunc1.hasTccState) {
+                releaseObject(stdx.ptrAlignCast(*HeapObject, obj.nativeFunc1.tccState.asPointer().?));
+            }
+            gvm.freeObject(obj);
+        },
+        TccStateS => {
+            tcc.tcc_delete(obj.tccState.state);
+            gvm.freeObject(obj);
+        },
         else => {
             // Struct deinit.
             if (builtin.mode == .Debug) {
@@ -2334,6 +2410,20 @@ const String = packed struct {
     len: usize,
 };
 
+const TccState = packed struct {
+    structId: StructId,
+    rc: u32,
+    state: *tcc.TCCState,
+};
+
+const NativeFunc1 = packed struct {
+    structId: StructId,
+    rc: u32,
+    func: *const fn (*UserVM, [*]Value, u8) Value,
+    tccState: Value,
+    hasTccState: bool,
+};
+
 const Lambda = packed struct {
     structId: StructId,
     rc: u32,
@@ -2391,7 +2481,7 @@ const Fiber = packed struct {
     framePtr: [*]Value,
 };
 
-const List = packed struct {
+pub const List = packed struct {
     structId: StructId,
     rc: u32,
     list: packed struct {
@@ -2400,6 +2490,10 @@ const List = packed struct {
         len: usize,
     },
     nextIterIdx: u32,
+
+    pub inline fn items(self: *const List) []Value {
+        return self.list.ptr[0..self.list.len];
+    }
 };
 
 // Keep it just under 4kb page.
@@ -2455,6 +2549,8 @@ pub const HeapObject = packed union {
         val2: Value,
     },
     box: Box,
+    nativeFunc1: NativeFunc1,
+    tccState: TccState,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
@@ -2464,6 +2560,8 @@ pub const HeapObject = packed union {
             cy.ClosureS => return .closure,
             cy.LambdaS => return .lambda,
             cy.FiberS => return .fiber,
+            cy.NativeFunc1S => return .nativeFunc,
+            cy.TccStateS => return .tccState,
             else => {
                 return .object;
             },
@@ -2507,6 +2605,7 @@ const TagLitSym = struct {
             val: u32,
         },
     },
+    name: []const u8,
 };
 
 const FieldSymbolMap = struct {
@@ -2738,6 +2837,10 @@ pub const UserVM = struct {
 
     pub inline fn eval(_: UserVM, src: []const u8) !Value {
         return gvm.eval(src);
+    }
+
+    pub inline fn allocator(_: UserVM) std.mem.Allocator {
+        return gvm.alloc;
     }
 
     pub inline fn allocString(_: UserVM, str: []const u8) !Value {
@@ -3998,6 +4101,14 @@ pub fn callNoInline(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value,
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
             },
+            NativeFunc1S => {
+                gvm.pc = pc.*;
+                const newFramePtr = framePtr.* + startLocal;
+                gvm.framePtr = newFramePtr;
+                const res = obj.nativeFunc1.func(undefined, newFramePtr + 2, numArgs);
+                newFramePtr[0] = res;
+                releaseObject(obj);
+            },
             else => {},
         }
     } else {
@@ -4025,7 +4136,7 @@ fn callObjSymFallback(pc: usize, framePtr: [*]Value, obj: *HeapObject, symId: Sy
     const func = try getObjectFunctionFallback(obj, symId);
 
     gvm.retain(func);
-    release(Value.initPtr(obj));
+    releaseObject(obj);
 
     // Replace receiver with function.
     framePtr[startLocal + 2 + numArgs - 1] = func;

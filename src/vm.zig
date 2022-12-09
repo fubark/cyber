@@ -25,6 +25,7 @@ pub const FiberS: StructId = 5;
 pub const BoxS: StructId = 6;
 pub const NativeFunc1S: StructId = 7;
 pub const TccStateS: StructId = 8;
+pub const OpaquePtrS: StructId = 9;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -682,6 +683,23 @@ pub const VM = struct {
             .len = str.len,
         };
         log.debug("alloc owned str {*} {s}", .{str.ptr, str});
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocOpaquePtr(self: *VM, ptr: ?*anyopaque) !Value {
+        const obj = try self.allocObject();
+        obj.opaquePtr = .{
+            .structId = OpaquePtrS,
+            .rc = 1,
+            .ptr = ptr,
+        };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
@@ -2056,6 +2074,9 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
             tcc.tcc_delete(obj.tccState.state);
             gvm.freeObject(obj);
         },
+        OpaquePtrS => {
+            gvm.freeObject(obj);
+        },
         else => {
             // Struct deinit.
             if (builtin.mode == .Debug) {
@@ -2410,6 +2431,12 @@ const String = packed struct {
     len: usize,
 };
 
+pub const OpaquePtr = packed struct {
+    structId: StructId,
+    rc: u32,
+    ptr: ?*anyopaque,
+};
+
 const TccState = packed struct {
     structId: StructId,
     rc: u32,
@@ -2551,6 +2578,7 @@ pub const HeapObject = packed union {
     box: Box,
     nativeFunc1: NativeFunc1,
     tccState: TccState,
+    opaquePtr: OpaquePtr,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
@@ -2562,6 +2590,7 @@ pub const HeapObject = packed union {
             cy.FiberS => return .fiber,
             cy.NativeFunc1S => return .nativeFunc,
             cy.TccStateS => return .tccState,
+            cy.OpaquePtrS => return .opaquePtr,
             else => {
                 return .object;
             },
@@ -3953,6 +3982,12 @@ fn dumpEvalOp(pc: [*]const cy.OpData) void {
             const val = pc[1].arg;
             const dst = pc[2].arg;
             log.debug("{} op: {s} [{}] -> %{}", .{offset, @tagName(pc[0].code), @bitCast(i8, val), dst});
+        },
+        .add => {
+            const left = pc[1].arg;
+            const right = pc[2].arg;
+            const dst = pc[3].arg;
+            log.debug("{} op: {s} {} {} -> %{}", .{offset, @tagName(pc[0].code), left, right, dst});
         },
         .constOp => {
             const idx = pc[1].arg;

@@ -12,8 +12,20 @@ const gvm = &vm_.gvm;
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.bindings);
 
-const TagLitInt = 0;
-const TagLitAssertError = 1;
+const TagLit_int = 0;
+const TagLit_i8 = 1;
+const TagLit_u8 = 2;
+const TagLit_i16 = 3;
+const TagLit_u16 = 4;
+const TagLit_i32 = 5;
+const TagLit_u32 = 6;
+const TagLit_f32 = 7;
+const TagLit_f64 = 8;
+const TagLit_float = 9;
+const TagLit_double = 10;
+const TagLit_charPtrZ = 11;
+const TagLit_ptr = 12;
+const TagLit_AssertError = 13;
 
 pub fn bindCore(self: *cy.VM) !void {
     // Init compile time builtins.
@@ -58,6 +70,9 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("TccState");
     std.debug.assert(id == cy.TccStateS);
 
+    id = try self.addStruct("OpaquePtr");
+    std.debug.assert(id == cy.OpaquePtrS);
+
     id = try self.ensureFuncSym("std.readInput");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
     id = try self.ensureFuncSym("std.parseCyon");
@@ -72,6 +87,8 @@ pub fn bindCore(self: *cy.VM) !void {
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdBindLib));
     id = try self.ensureFuncSym("number");
     self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(castNumber));
+    id = try self.ensureFuncSym("opaque");
+    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(toOpaque));
 
     try self.ensureGlobalFuncSym("readInput", "std.readInput");
     try self.ensureGlobalFuncSym("parseCyon", "std.parseCyon");
@@ -90,10 +107,61 @@ pub fn bindCore(self: *cy.VM) !void {
     self.setFieldSym(sid, id, 2, true);
 
     id = try self.ensureTagLitSym("int");
-    std.debug.assert(id == TagLitInt);
+    std.debug.assert(id == TagLit_int);
+    id = try self.ensureTagLitSym("i8");
+    std.debug.assert(id == TagLit_i8);
+    id = try self.ensureTagLitSym("u8");
+    std.debug.assert(id == TagLit_u8);
+    id = try self.ensureTagLitSym("i16");
+    std.debug.assert(id == TagLit_i16);
+    id = try self.ensureTagLitSym("u16");
+    std.debug.assert(id == TagLit_u16);
+    id = try self.ensureTagLitSym("i32");
+    std.debug.assert(id == TagLit_i32);
+    id = try self.ensureTagLitSym("u32");
+    std.debug.assert(id == TagLit_u32);
+    id = try self.ensureTagLitSym("f32");
+    std.debug.assert(id == TagLit_f32);
+    id = try self.ensureTagLitSym("f64");
+    std.debug.assert(id == TagLit_f64);
+    id = try self.ensureTagLitSym("float");
+    std.debug.assert(id == TagLit_float);
+    id = try self.ensureTagLitSym("double");
+    std.debug.assert(id == TagLit_double);
+    id = try self.ensureTagLitSym("charPtrZ");
+    std.debug.assert(id == TagLit_charPtrZ);
+    id = try self.ensureTagLitSym("ptr");
+    std.debug.assert(id == TagLit_ptr);
 
     id = try self.ensureTagLitSym("AssertError");
-    std.debug.assert(id == TagLitAssertError);
+    std.debug.assert(id == TagLit_AssertError);
+}
+
+pub fn testEqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = vm;
+    _ = nargs;
+    const act = args[0];
+    const exp = args[1];
+
+    const actType = act.getUserTag();
+    const expType = exp.getUserTag();
+    if (actType == expType) {
+        if (actType == .number) {
+            if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
+                return Value.True;
+            } else {
+                println("actual: {} != {}", .{act.asF64(), exp.asF64()});
+                return Value.initErrorTagLit(TagLit_AssertError);
+            }
+        } else {
+            println("Expected number, actual: {}", .{actType});
+            return Value.initErrorTagLit(TagLit_AssertError);
+        }
+    } else {
+        println("Types do not match:", .{});
+        println("actual: {} != {}", .{actType, expType});
+        return Value.initErrorTagLit(TagLit_AssertError);
+    }
 }
 
 pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
@@ -101,6 +169,10 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const act = args[0];
     const exp = args[1];
+    defer {
+        vm_.release(act);
+        vm_.release(exp);
+    }
 
     const actType = act.getUserTag();
     const expType = exp.getUserTag();
@@ -111,7 +183,25 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: {} != {}", .{act.asF64(), exp.asF64()});
-                    return Value.initErrorTagLit(TagLitAssertError);
+                    return Value.initErrorTagLit(TagLit_AssertError);
+                }
+            },
+            .string => {
+                if (std.mem.eql(u8, gvm.valueAsString(act), gvm.valueAsString(exp))) {
+                    return Value.True;
+                } else {
+                    println("actual: '{s}' != '{s}'", .{gvm.valueAsString(act), gvm.valueAsString(exp)});
+                    return Value.initErrorTagLit(TagLit_AssertError);
+                }
+            },
+            .opaquePtr => {
+                const actPtr = stdx.ptrAlignCast(*cy.OpaquePtr, act.asPointer().?).ptr;
+                const expPtr = stdx.ptrAlignCast(*cy.OpaquePtr, exp.asPointer().?).ptr;
+                if (actPtr == expPtr) {
+                    return Value.True;
+                } else {
+                    println("actual: '{*}' != '{*}'", .{actPtr, expPtr});
+                    return Value.initErrorTagLit(TagLit_AssertError);
                 }
             },
             else => {
@@ -121,7 +211,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     } else {
         println("Types do not match:", .{});
         println("actual: {} != {}", .{actType, expType});
-        return Value.initErrorTagLit(TagLitAssertError);
+        return Value.initErrorTagLit(TagLit_AssertError);
     }
 }
 
@@ -136,15 +226,54 @@ fn println(comptime fmt: []const u8, args: anytype) void {
 }
 
 export fn printInt(n: i32) void {
-    std.debug.print("zig print int: {}\n", .{n});
+    std.debug.print("print int: {}\n", .{n});
 }
 
 export fn printU64(n: u64) void {
-    std.debug.print("zig print u64: {}\n", .{n});
+    std.debug.print("print u64: {}\n", .{n});
 }
 
 export fn printF64(n: f64) void {
-    std.debug.print("zig print f64: {}\n", .{n});
+    std.debug.print("print f64: {}\n", .{n});
+}
+
+export fn printF32(n: f32) void {
+    std.debug.print("print f32: {}\n", .{n});
+}
+
+export fn freeCStr(ptr: [*:0]const u8, len: u32) void {
+    gvm.alloc.free(ptr[0..len+1]);
+}
+
+export fn fromCStr(ptr: [*:0]const u8) Value {
+    const slice = std.mem.span(ptr);
+    return gvm.allocString(slice) catch stdx.fatal();
+}
+
+export fn cGetPtr(val: Value) ?*anyopaque {
+    return stdx.ptrAlignCast(*cy.OpaquePtr, val.asPointer().?).ptr;
+}
+
+export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {
+    return gvm.allocOpaquePtr(ptr) catch stdx.fatal();
+}
+
+export fn cRelease(val: Value) void {
+    vm_.release(val);
+}
+
+export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
+    if (val.isPointer()) {
+        const obj = stdx.ptrCastAlign(*cy.HeapObject, val.asPointer().?);
+        const dupe = std.cstr.addNullByte(gvm.alloc, obj.string.ptr[0..obj.string.len]) catch stdx.fatal();
+        len.* = @intCast(u32, obj.string.len);
+        return dupe.ptr;
+    } else {
+        const slice = val.asConstStr();
+        const dupe = std.cstr.addNullByte(gvm.alloc, gvm.strBuf[slice.start..slice.end]) catch stdx.fatal();
+        len.* = slice.len();
+        return dupe.ptr;
+    }
 }
 
 fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
@@ -180,7 +309,22 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     defer csrc.deinit(alloc);
     const w = csrc.writer(alloc);
 
-    w.print("#define uint64_t unsigned long long\n", .{}) catch stdx.fatal();
+    w.print(
+        \\#define uint64_t unsigned long long
+        \\#define int8_t signed char
+        \\#define uint8_t unsigned char
+        \\#define int16_t short
+        \\#define uint16_t unsigned short
+        \\#define uint32_t unsigned int
+        // \\float printF32(float);
+        \\extern char* icyToCStr(uint64_t, uint32_t*);
+        \\extern void icyFreeCStr(char*, uint32_t);
+        \\extern uint64_t icyFromCStr(char*);
+        \\extern void icyRelease(uint64_t);
+        \\extern void* icyGetPtr(uint64_t);
+        \\extern uint64_t icyAllocOpaquePtr(void*);
+        \\
+    , .{}) catch stdx.fatal();
 
     const argsf = gvm.ensureFieldSym("args") catch stdx.fatal();
     const retf = gvm.ensureFieldSym("ret") catch stdx.fatal();
@@ -191,12 +335,82 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 
         const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?);
         const lastArg = cargs.items().len - 1;
-        w.print("extern uint64_t {s}(", .{sym}) catch stdx.fatal();
+
+        // Emit extern declaration.
+        w.print("extern ", .{}) catch stdx.fatal();
+        const retTag = ret.asTagLiteralId();
+        switch (retTag) {
+            TagLit_i32,
+            TagLit_int => {
+                w.print("int", .{}) catch stdx.fatal();
+            },
+            TagLit_i8 => {
+                w.print("int8_t", .{}) catch stdx.fatal();
+            },
+            TagLit_u8 => {
+                w.print("uint8_t", .{}) catch stdx.fatal();
+            },
+            TagLit_i16 => {
+                w.print("int16_t", .{}) catch stdx.fatal();
+            },
+            TagLit_u16 => {
+                w.print("uint16_t", .{}) catch stdx.fatal();
+            },
+            TagLit_u32 => {
+                w.print("uint32_t", .{}) catch stdx.fatal();
+            },
+            TagLit_float,
+            TagLit_f32 => {
+                w.print("float", .{}) catch stdx.fatal();
+            },
+            TagLit_double,
+            TagLit_f64 => {
+                w.print("double", .{}) catch stdx.fatal();
+            },
+            TagLit_charPtrZ => {
+                w.print("char*", .{}) catch stdx.fatal();
+            },
+            TagLit_ptr => {
+                w.print("void*", .{}) catch stdx.fatal();
+            },
+            else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
+        }
+        w.print(" {s}(", .{sym}) catch stdx.fatal();
         for (cargs.items()) |carg, i| {
             const argTag = carg.asTagLiteralId();
             switch (argTag) {
-                TagLitInt => {
+                TagLit_i32,
+                TagLit_int => {
                     w.print("int", .{}) catch stdx.fatal();
+                },
+                TagLit_i8 => {
+                    w.print("int8_t", .{}) catch stdx.fatal();
+                },
+                TagLit_u8 => {
+                    w.print("uint8_t", .{}) catch stdx.fatal();
+                },
+                TagLit_i16 => {
+                    w.print("int16_t", .{}) catch stdx.fatal();
+                },
+                TagLit_u16 => {
+                    w.print("uint16_t", .{}) catch stdx.fatal();
+                },
+                TagLit_u32 => {
+                    w.print("uint32_t", .{}) catch stdx.fatal();
+                },
+                TagLit_float,
+                TagLit_f32 => {
+                    w.print("float", .{}) catch stdx.fatal();
+                },
+                TagLit_double,
+                TagLit_f64 => {
+                    w.print("double", .{}) catch stdx.fatal();
+                },
+                TagLit_charPtrZ => {
+                    w.print("char*", .{}) catch stdx.fatal();
+                },
+                TagLit_ptr => {
+                    w.print("void*", .{}) catch stdx.fatal();
                 },
                 else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
             }
@@ -206,12 +420,40 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         }
         w.print(");\n", .{}) catch stdx.fatal();
 
-        w.print("uint64_t cy{s}(void* vm, uint64_t** args, char numArgs) {{\n", .{sym}) catch stdx.fatal();
+        w.print("uint64_t cy{s}(void* vm, uint64_t* args, char numArgs) {{\n", .{sym}) catch stdx.fatal();
         // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
-        const retTag = ret.asTagLiteralId();
+        for (cargs.items()) |carg, i| {
+            const argTag = carg.asTagLiteralId();
+            switch (argTag) {
+                TagLit_charPtrZ => {
+                    w.print("  uint32_t strLen{};\n", .{i}) catch stdx.fatal();
+                    w.print("  char* str{} = icyToCStr(args[{}], &strLen{});\n", .{i, i, i}) catch stdx.fatal();
+                },
+                else => {},
+            }
+        }
+
         switch (retTag) {
-            TagLitInt => {
-                w.print("  int res = {s}(", .{sym}) catch stdx.fatal();
+            TagLit_i8,
+            TagLit_u8,
+            TagLit_i16,
+            TagLit_u16,
+            TagLit_i32,
+            TagLit_u32,
+            TagLit_f32,
+            TagLit_float,
+            TagLit_int => {
+                w.print("  double res = (double){s}(", .{sym}) catch stdx.fatal();
+            },
+            TagLit_f64,
+            TagLit_double => {
+                w.print("  double res = {s}(", .{sym}) catch stdx.fatal();
+            },
+            TagLit_charPtrZ => {
+                w.print("  char* res = {s}(", .{sym}) catch stdx.fatal();
+            },
+            TagLit_ptr => {
+                w.print("  void* res = {s}(", .{sym}) catch stdx.fatal();
             },
             else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
         }
@@ -220,8 +462,38 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         for (cargs.items()) |carg, i| {
             const argTag = carg.asTagLiteralId();
             switch (argTag) {
-                TagLitInt => {
+                TagLit_i32,
+                TagLit_int => {
                     w.print("(int)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_i8 => {
+                    w.print("(int8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_u8 => {
+                    w.print("(uint8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_i16 => {
+                    w.print("(int16_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_u16 => {
+                    w.print("(uint16_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_u32 => {
+                    w.print("(uint32_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_float,
+                TagLit_f32 => {
+                    w.print("(float)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_double,
+                TagLit_f64 => {
+                    w.print("*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                },
+                TagLit_charPtrZ => {
+                    w.print("str{}", .{i}) catch stdx.fatal();
+                },
+                TagLit_ptr => {
+                    w.print("icyGetPtr(args[{}])", .{i}) catch stdx.fatal();
                 },
                 else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
             }
@@ -233,11 +505,40 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         // End of args.
         w.print(");\n", .{}) catch stdx.fatal();
 
+        for (cargs.items()) |carg, i| {
+            const argTag = carg.asTagLiteralId();
+            switch (argTag) {
+                TagLit_charPtrZ => {
+                    w.print("  icyFreeCStr(str{}, strLen{});\n", .{i, i}) catch stdx.fatal();
+                    w.print("  icyRelease(args[{}]);\n", .{i}) catch stdx.fatal();
+                },
+                TagLit_ptr => {
+                    w.print("  icyRelease(args[{}]);\n", .{i}) catch stdx.fatal();
+                },
+                else => {},
+            }
+        }
+
         // Gen return.
         switch (retTag) {
-            TagLitInt => {
-                w.print("  double dres = (double)res;\n", .{}) catch stdx.fatal();
-                w.print("  return *(uint64_t*)&dres;\n", .{}) catch stdx.fatal();
+            TagLit_i8,
+            TagLit_u8,
+            TagLit_i16,
+            TagLit_u16,
+            TagLit_i32,
+            TagLit_u32,
+            TagLit_f32,
+            TagLit_float,
+            TagLit_f64,
+            TagLit_double,
+            TagLit_int => {
+                w.print("  return *(uint64_t*)&res;\n", .{}) catch stdx.fatal();
+            },
+            TagLit_charPtrZ => {
+                w.print("  return icyFromCStr(res);\n", .{}) catch stdx.fatal();
+            },
+            TagLit_ptr => {
+                w.print("  return icyAllocOpaquePtr(res);\n", .{}) catch stdx.fatal();
             },
             else => stdx.fatal(),
         }
@@ -256,11 +557,18 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         stdx.panic("Failed to compile c source.");
     }
 
-    // const __fixunsdfdi = @extern(*anyopaque, .{ .name = "__fixunsdfdi", .linkage = .Strong });
-    // _ = tcc.tcc_add_symbol(state, "__fixunsdfdi", __fixunsdfdi);
-    _ = tcc.tcc_add_symbol(state, "printU64", printU64);
-    _ = tcc.tcc_add_symbol(state, "printF64", printF64);
-    _ = tcc.tcc_add_symbol(state, "printInt", printInt);
+    // const __floatundisf = @extern(*anyopaque, .{ .name = "__floatundisf", .linkage = .Strong });
+    // _ = tcc.tcc_add_symbol(state, "__floatundisf", __floatundisf);
+    // _ = tcc.tcc_add_symbol(state, "printU64", printU64);
+    // _ = tcc.tcc_add_symbol(state, "printF64", printF64);
+    // _ = tcc.tcc_add_symbol(state, "printF32", printF32);
+    // _ = tcc.tcc_add_symbol(state, "printInt", printInt);
+    _ = tcc.tcc_add_symbol(state, "icyFromCStr", fromCStr);
+    _ = tcc.tcc_add_symbol(state, "icyToCStr", toCStr);
+    _ = tcc.tcc_add_symbol(state, "icyFreeCStr", freeCStr);
+    _ = tcc.tcc_add_symbol(state, "icyRelease", cRelease);
+    _ = tcc.tcc_add_symbol(state, "icyGetPtr", cGetPtr);
+    _ = tcc.tcc_add_symbol(state, "icyAllocOpaquePtr", cAllocOpaquePtr);
 
     // Add binded symbols.
     for (cfuncs.items()) |cfunc, i| {
@@ -295,6 +603,17 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     vm_.release(args[0]);
     vm_.release(args[1]);
     return map;
+}
+
+fn toOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = vm;
+    _ = nargs;
+    const val = args[0];
+    if (val.isNumber()) {
+        return gvm.allocOpaquePtr(@intToPtr(?*anyopaque, @floatToInt(u64, val.asF64()))) catch stdx.fatal();
+    } else {
+        stdx.panicFmt("Unsupported conversion", .{});
+    }
 }
 
 fn castNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {

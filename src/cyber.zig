@@ -47,6 +47,7 @@ pub const FiberS = vm.FiberS;
 pub const BoxS = vm.BoxS;
 pub const NativeFunc1S = vm.NativeFunc1S;
 pub const TccStateS = vm.TccStateS;
+pub const OpaquePtrS = vm.OpaquePtrS;
 pub const StructId = vm.StructId;
 pub const EvalError = vm.EvalError;
 pub const StackTrace = vm.StackTrace;
@@ -54,6 +55,7 @@ pub const StackFrame = vm.StackFrame;
 pub const buildReturnInfo = vm.buildReturnInfo;
 pub const framePtrOffset = vm.framePtrOffset;
 pub const CyList = vm.List;
+pub const OpaquePtr = vm.OpaquePtr;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;

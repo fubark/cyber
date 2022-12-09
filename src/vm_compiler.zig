@@ -748,6 +748,14 @@ pub const VMcompiler = struct {
                     },
                 },
             });
+            try mod.syms.put(self.alloc, "eqNear", .{
+                .symT = .nativeFunc1,
+                .inner = .{
+                    .nativeFunc1 = .{
+                        .func = bindings.testEqNear,
+                    },
+                },
+            });
             return mod;
         } else {
             return self.reportDebugError("Unsupported import. {s}", .{spec});

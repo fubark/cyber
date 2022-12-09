@@ -84,16 +84,77 @@ test "FFI." {
         export fn testAdd(a: i32, b: i32) i32 {
             return a + b;
         }
+        export fn testI8(n: i8) i8 {
+            return n;
+        }
+        export fn testU8(n: u8) u8 {
+            return n;
+        }
+        export fn testI16(n: i16) i16 {
+            return n;
+        }
+        export fn testU16(n: u16) u16 {
+            return n;
+        }
+        export fn testI32(n: i32) i32 {
+            return n;
+        }
+        export fn testU32(n: u32) u32 {
+            return n;
+        }
+        export fn testF32(n: f32) f32 {
+            return n;
+        }
+        export fn testF64(n: f64) f64 {
+            return n;
+        }
+        export fn testCharPtrZ(ptr: [*:0]const u8) [*:0]const u8 {
+            const S = struct {
+                var buf: [10]u8 = undefined;
+            };
+            const slice = std.mem.span(ptr);
+            std.mem.copy(u8, &S.buf, slice);
+            S.buf[slice.len] = 0;
+            return @ptrCast([*:0]const u8, &S.buf);
+        }
+        export fn testPtr(ptr: *anyopaque) *anyopaque {
+            return ptr;
+        }
     };
     _ = S;
 
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t from 'test'
+        \\
         \\lib = bindLib(none, [
         \\  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+        \\  CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }
+        \\  CFunc{ sym: 'testU8', args: [#u8], ret: #u8 }
+        \\  CFunc{ sym: 'testI16', args: [#i16], ret: #i16 }
+        \\  CFunc{ sym: 'testU16', args: [#u16], ret: #u16 }
+        \\  CFunc{ sym: 'testI32', args: [#i32], ret: #i32 }
+        \\  CFunc{ sym: 'testU32', args: [#u32], ret: #u32 }
+        \\  CFunc{ sym: 'testF32', args: [#f32], ret: #f32 }
+        \\  CFunc{ sym: 'testF64', args: [#f64], ret: #f64 }
+        \\  CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
+        \\  CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
         \\])
-        \\lib.testAdd(123, 321)
+        \\try t.eq(lib.testAdd(123, 321), 444)
+        \\try t.eq(lib.testI8(-128), -128)
+        \\try t.eq(lib.testU8(255), 255)
+        \\try t.eq(lib.testI16(-32768), -32768)
+        \\try t.eq(lib.testU16(65535), 65535)
+        \\try t.eq(lib.testI32(-2147483648), -2147483648)
+        \\try t.eq(lib.testU32(4294967295), 4294967295)
+        \\try t.eqNear(lib.testF32(1.2345), 1.2345)
+        \\try t.eq(lib.testF64(1.2345), 1.2345)
+        \\-- pass in const string
+        \\try t.eq(lib.testCharPtrZ('foo'), 'foo')
+        \\-- pass in heap string
+        \\str = 'foo' + 123
+        \\try t.eq(lib.testCharPtrZ(str), 'foo123')
+        \\try t.eq(lib.testPtr(opaque(123)), opaque(123))
     );
-    try run.valueIsI32(val, 444);
 }
 
 test "Tag types." {
@@ -154,6 +215,7 @@ test "test module" {
     var val = try run.eval(
         \\import t from 'test'
         \\t.eq(123, 123)
+        \\t.eq(1.2345, 1.2345)
     );
     try t.expect(val.isTrue());
 }

@@ -229,6 +229,10 @@ pub const Value = packed union {
         return .{ .val = ConstStringMask | (@as(u64, len) << 35) | start };
     }
 
+    pub inline fn assumeNotPtrIsConstStr(self: *const Value) bool {
+        return self.val & ConstStringMask == ConstStringMask;
+    }
+
     pub inline fn asConstStr(self: *const Value) stdx.IndexSlice(u32) {
         @setRuntimeSafety(debug);
         const len = (@intCast(u32, self.val >> 32) & BeforeTagMask) >> 3;
@@ -316,6 +320,7 @@ pub const Value = packed union {
                     cy.BoxS => return .box,
                     cy.NativeFunc1S => return .nativeFunc,
                     cy.TccStateS => return .tccState,
+                    cy.OpaquePtrS => return .opaquePtr,
                     else => {
                         return .object;
                     },
@@ -323,6 +328,7 @@ pub const Value = packed union {
             } else {
                 switch (self.getTag()) {
                     TagBoolean => return .boolean,
+                    TagConstString => return .string,
                     else => unreachable,
                 }
             }
@@ -344,6 +350,7 @@ pub const ValueUserTag = enum {
     box,
     nativeFunc,
     tccState,
+    opaquePtr,
 };
 
 test "floatCanBeInteger" {
@@ -363,4 +370,8 @@ test "asF64" {
     // -Inf.
     val = Value{ .val = 0xfff0000000000000 };
     try t.eq(val.asF64(), -std.math.inf_f64);
+}
+
+test "Masks" {
+    try t.eq(ConstStringMask, 0x7FFC000300000000);
 }

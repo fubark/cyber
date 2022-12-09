@@ -439,7 +439,7 @@ pub const VM = struct {
         }
 
         if (self.endLocal == 255) {
-            return Value.initNone();
+            return Value.None;
         } else {
             return self.stack[self.endLocal];
         }
@@ -1103,7 +1103,7 @@ pub const VM = struct {
                         // var i: u32 = @intCast(u32, list.val.items.len);
                         // try list.val.resize(self.alloc, idx + 1);
                         // while (i < idx) : (i += 1) {
-                        //     list.val.items[i] = Value.none();
+                        //     list.val.items[i] = Value.None;
                         // }
                         // list.val.items[idx] = right;
                         return self.panic("Index out of bounds.");
@@ -1144,7 +1144,7 @@ pub const VM = struct {
                     const key = Value.initF64(index.toF64());
                     if (map.get(self, key)) |val| {
                         return val;
-                    } else return Value.initNone();
+                    } else return Value.None;
                 },
                 else => {
                     stdx.panic("expected map or list");
@@ -1175,7 +1175,7 @@ pub const VM = struct {
                     const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
                     if (map.get(self, index)) |val| {
                         return val;
-                    } else return Value.initNone();
+                    } else return Value.None;
                 },
                 else => {
                     return stdx.panic("expected map or list");
@@ -1494,10 +1494,10 @@ pub const VM = struct {
             if (map.getByString(self, name)) |val| {
                 self.retain(val);
                 return val;
-            } else return Value.initNone();
+            } else return Value.None;
         } else {
             log.debug("Missing symbol for object: {} {s}", .{obj.common.structId, name});
-            return Value.initNone();
+            return Value.None;
         }
     }
 
@@ -1507,10 +1507,10 @@ pub const VM = struct {
             const map = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
             if (map.getByString(self, name)) |val| {
                 return val;
-            } else return Value.initNone();
+            } else return Value.None;
         } else {
             log.debug("Missing symbol for object: {}", .{obj.common.structId});
-            return Value.initNone();
+            return Value.None;
         }
     }
 
@@ -3807,6 +3807,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 3;
                 continue;
             },
+            .tryValue => {
+                const val = framePtr[pc[1].arg];
+                if (!val.isError()) {
+                    framePtr[pc[2].arg] = val;
+                    pc += 3;
+                    continue;
+                } else {
+                    return error.Panic;
+                }
+            },
             .end => {
                 @setRuntimeSafety(debug);
                 gvm.endLocal = pc[1].arg;
@@ -3832,18 +3842,18 @@ fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
             0 => unreachable,
             1 => {
                 @setRuntimeSafety(debug);
-                framePtr.*[0] = Value.initNone();
+                framePtr.*[0] = Value.None;
             },
             2 => {
                 @setRuntimeSafety(debug);
-                framePtr.*[0] = Value.initNone();
-                framePtr.*[1] = Value.initNone();
+                framePtr.*[0] = Value.None;
+                framePtr.*[1] = Value.None;
             },
             3 => {
                 @setRuntimeSafety(debug);
-                framePtr.*[0] = Value.initNone();
-                framePtr.*[1] = Value.initNone();
-                framePtr.*[2] = Value.initNone();
+                framePtr.*[0] = Value.None;
+                framePtr.*[1] = Value.None;
+                framePtr.*[2] = Value.None;
             },
         }
         // Restore pc.
@@ -3871,14 +3881,14 @@ fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
             1 => unreachable,
             2 => {
                 @setRuntimeSafety(debug);
-                framePtr.*[1] = Value.initNone();
+                framePtr.*[1] = Value.None;
             },
             3 => {
                 @setRuntimeSafety(debug);
                 // Only start checking for space at 3 since function calls should have at least two slot after framePtr.
                 // self.ensureStackTotalCapacity(self.stack.top + 1) catch stdx.fatal();
-                framePtr.*[1] = Value.initNone();
-                framePtr.*[2] = Value.initNone();
+                framePtr.*[1] = Value.None;
+                framePtr.*[2] = Value.None;
             },
         }
         // Restore pc.

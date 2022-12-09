@@ -6,6 +6,7 @@ const fatal = stdx.fatal;
 
 pub const NodeId = u32;
 const NullId = std.math.maxInt(u32);
+const NullIdU16 = std.math.maxInt(u16);
 const log = stdx.log.scoped(.parser);
 const IndexSlice = stdx.IndexSlice(u32);
 
@@ -34,6 +35,9 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "coinit", .coinit_k },
     .{ "coyield", .coyield_k },
     .{ "coresume", .coresume_k },
+    .{ "import", .import_k },
+    .{ "from", .from_k },
+    .{ "try", .try_k },
 });
 
 const BlockState = struct {
@@ -722,9 +726,9 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() == .ident) {
                     const ident = try self.pushIdentNode(self.next_pos);
-                    const expr = try self.pushNode(.access_expr, left_pos);
+                    const expr = try self.pushNode(.accessExpr, left_pos);
                     self.nodes.items[expr].head = .{
-                        .left_right = .{
+                        .accessExpr = .{
                             .left = left,
                             .right = ident,
                         },
@@ -919,6 +923,43 @@ pub const Parser = struct {
             return if_stmt;
         } else {
             return if_stmt;
+        }
+    }
+
+    fn parseImportStmt(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is the `import` keyword.
+        self.advanceToken();
+
+        const exprId = (try self.parseExpr(.{})) orelse {
+            return self.reportTokenError("Expected import clause.", .{});
+        };
+        const expr = self.nodes.items[exprId];
+        if (expr.node_t == .ident) {
+            if (self.peekToken().token_t == .from_k) {
+                self.advanceToken();
+                const fromId = (try self.parseExpr(.{})) orelse {
+                    return self.reportTokenError("Expected from identifier.", .{});
+                };
+                const from = self.nodes.items[fromId];
+                if (from.node_t == .string) {
+                    try self.consumeNewLineOrEnd();
+                    const import = try self.pushNode(.importStmt, start);
+                    self.nodes.items[import].head = .{
+                        .left_right = .{
+                            .left = exprId,
+                            .right = fromId,
+                        },
+                    };
+                    return import;
+                } else {
+                    return self.reportTokenError("Expected from identifier to be a string.", .{});
+                }
+            } else {
+                return self.reportTokenError("Expected from clause.", .{});
+            }
+        } else {
+            return self.reportTokenError("Expected import clause.", .{});
         }
     }
 
@@ -1244,6 +1285,9 @@ pub const Parser = struct {
             .for_k => {
                 return try self.parseForStatement();
             },
+            .import_k => {
+                return try self.parseImportStmt();
+            },
             .pass_k => {
                 const id = try self.pushNode(.pass_stmt, self.next_pos);
                 self.advanceToken();
@@ -1334,6 +1378,18 @@ pub const Parser = struct {
             }
         };
         return entry_id;
+    }
+
+    fn consumeNewLineOrEnd(self: *Parser) !void {
+        var tag = self.peekToken().tag();
+        if (tag == .new_line) {
+            self.advanceToken();
+            return;
+        }
+        if (tag == .none) {
+            return;
+        }
+        return self.reportTokenError("Expected new line or end.", .{});
     }
 
     fn consumeWhitespaceTokens(self: *Parser) void {
@@ -1938,6 +1994,15 @@ pub const Parser = struct {
                 };
                 return expr;
             },
+            .try_k => {
+                self.advanceToken();
+                const expr = try self.pushNode(.tryExpr, start);
+                const child = try self.parseTermExpr();
+                self.nodes.items[expr].head = .{
+                    .child_head = child,
+                };
+                return expr;
+            },
             .operator => {
                 if (token.data.operator_t == .minus) {
                     self.advanceToken();
@@ -1995,9 +2060,9 @@ pub const Parser = struct {
                     const next2 = self.peekToken();
                     if (next2.tag() == .ident) {
                         const right_id = try self.pushIdentNode(self.next_pos);
-                        const expr_id = try self.pushNode(.access_expr, start);
+                        const expr_id = try self.pushNode(.accessExpr, start);
                         self.nodes.items[expr_id].head = .{
-                            .left_right = .{
+                            .accessExpr = .{
                                 .left = left_id,
                                 .right = right_id,
                             },
@@ -2010,7 +2075,7 @@ pub const Parser = struct {
                 .left_bracket => {
                     // If left is an accessor expression or identifier, parse as access expression.
                     const left_t = self.nodes.items[left_id].node_t;
-                    if (left_t == .ident or left_t == .access_expr) {
+                    if (left_t == .ident or left_t == .accessExpr) {
                         // Consume left bracket.
                         self.advanceToken();
 
@@ -2101,7 +2166,7 @@ pub const Parser = struct {
                 .left_paren => {
                     // If left is an accessor expression or identifier, parse as call expression.
                     const left_t = self.nodes.items[left_id].node_t;
-                    if (left_t == .ident or left_t == .access_expr or left_t == .at_ident) {
+                    if (left_t == .ident or left_t == .accessExpr or left_t == .at_ident) {
                         const call_id = try self.parseCallExpression(left_id);
                         left_id = call_id;
                     } else return self.reportTokenError2(error.SyntaxError, "Expected variable to left of call expression.", .{}, next);
@@ -2136,6 +2201,7 @@ pub const Parser = struct {
                 .and_k,
                 .logic_op,
                 .then_k,
+                .from_k,
                 .as_k => break,
                 .ident,
                 .number,
@@ -2174,7 +2240,7 @@ pub const Parser = struct {
                     // If left is an accessor expression or identifier, parse as assignment statement.
                     if (opts.returnLeftAssignExpr) {
                         switch (self.nodes.items[left_id].node_t) {
-                            .access_expr,
+                            .accessExpr,
                             .arr_access_expr,
                             .ident => {
                                 opts.outIsAssignStmt.* = true;
@@ -2278,6 +2344,7 @@ pub const Parser = struct {
                 .dot_dot,
                 .as_k,
                 .new_line,
+                .from_k,
                 .none => break,
                 else => return self.reportTokenError2(error.UnknownToken, "Unknown token", .{}, next),
             }
@@ -2399,9 +2466,7 @@ pub const Parser = struct {
     fn pushIdentNode(self: *Parser, start: u32) !NodeId {
         const id = try self.pushNode(.ident, start);
         self.nodes.items[id].head = .{
-            .ident = .{
-                .semaVarId = NullId,
-            },
+            .ident = .{},
         };
         return id;
     }
@@ -2608,6 +2673,9 @@ pub const TokenType = enum(u6) {
     coyield_k,
     coresume_k,
     tag,
+    import_k,
+    from_k,
+    try_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -2653,7 +2721,7 @@ pub const NodeType = enum {
     string,
     stringTemplate,
     await_expr,
-    access_expr,
+    accessExpr,
     arr_access_expr,
     arr_range_expr,
     call_expr,
@@ -2689,6 +2757,8 @@ pub const NodeType = enum {
     coinit,
     coyield,
     coresume,
+    importStmt,
+    tryExpr,
 };
 
 pub const BinaryExprOp = enum {
@@ -2726,13 +2796,20 @@ pub const Node = struct {
             right: NodeId,
             extra: u32 = NullId,
         },
+        accessExpr: struct {
+            left: NodeId,
+            right: NodeId,
+            /// Symbol id of a var or func. NullIdU16 if it does not point to a symbol.
+            semaSymId: u32 = NullId,
+        },
         func_call: struct {
             callee: NodeId,
             arg_head: NodeId,
             has_named_arg: bool,
         },
         ident: struct {
-            semaVarId: u32,
+            semaVarId: u32 = NullId,
+            semaSymId: u32 = NullId,
         },
         unary: struct {
             child: NodeId,
@@ -3679,5 +3756,5 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 3);
 
-    try t.eq(std.enums.values(TokenType).len, 49);
+    try t.eq(std.enums.values(TokenType).len, 52);
 }

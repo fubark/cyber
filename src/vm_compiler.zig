@@ -3,11 +3,13 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const bindings = @import("bindings.zig");
 
 const log = stdx.log.scoped(.vm_compiler);
 
 const NullId = std.math.maxInt(u32);
-const NullByteId = std.math.maxInt(u8);
+const NullIdU16 = std.math.maxInt(u16);
+const NullIdU8 = std.math.maxInt(u8);
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
 
@@ -49,6 +51,21 @@ pub const VMcompiler = struct {
 
     u8Buf: std.ArrayListUnmanaged(u8),
 
+    /// Local paths to syms.
+    semaSyms: std.ArrayListUnmanaged(SemaSym),
+    semaSymMap: std.StringHashMapUnmanaged(SemaSymId),
+    
+    /// Absolute path to syms and shared among modules.
+    semaResolvedSyms: std.ArrayListUnmanaged(SemaResolvedSym),
+    semaResolvedSymMap: std.StringHashMapUnmanaged(SemaResolvedSymId),
+
+    semaSymToMod: std.AutoArrayHashMapUnmanaged(SemaSymId, ModuleId),
+
+    /// Modules.
+    modules: std.ArrayListUnmanaged(Module),
+    /// Specifier to module.
+    moduleMap: std.StringHashMapUnmanaged(ModuleId),
+
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -77,6 +94,13 @@ pub const VMcompiler = struct {
             .semaBlockDepth = undefined,
             .src = undefined,
             .u8Buf = .{},
+            .semaSyms = .{},
+            .semaSymMap = .{},
+            .semaResolvedSyms = .{},
+            .semaResolvedSymMap = .{},
+            .modules = .{},
+            .moduleMap = .{},
+            .semaSymToMod = .{},
         };
     }
 
@@ -103,6 +127,25 @@ pub const VMcompiler = struct {
         self.arcTempLocalStack.deinit(self.alloc);
         self.vars.deinit(self.alloc);
         self.capVarParents.deinit(self.alloc);
+
+        for (self.semaSyms.items) |sym| {
+            self.alloc.free(sym.path);
+        }
+        self.semaSyms.deinit(self.alloc);
+        self.semaSymMap.deinit(self.alloc);
+
+        for (self.semaResolvedSyms.items) |sym| {
+            self.alloc.free(sym.path);
+        }
+        self.semaResolvedSyms.deinit(self.alloc);
+        self.semaResolvedSymMap.deinit(self.alloc);
+
+        for (self.modules.items) |*mod| {
+            mod.deinit(self.alloc);
+        }
+        self.modules.deinit(self.alloc);
+        self.moduleMap.deinit(self.alloc);
+        self.semaSymToMod.deinit(self.alloc);
     }
 
     fn semaExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
@@ -224,8 +267,35 @@ pub const VMcompiler = struct {
 
                 return ListType;
             },
-            .access_expr => {
-                _ = try self.semaExpr(node.head.left_right.left, discardTopExprReg);
+            .accessExpr => {
+                _ = try self.semaExpr(node.head.accessExpr.left, discardTopExprReg);
+                const right = self.nodes[node.head.accessExpr.right];
+                if (right.node_t == .ident) {
+                    const left = self.nodes[node.head.accessExpr.left];
+                    if (left.node_t == .ident) {
+                        if (left.head.ident.semaSymId != NullId) {
+                            const leftSym = self.semaSyms.items[left.head.ident.semaSymId];
+                            const rightName = self.getNodeTokenString(right);
+                            self.u8Buf.clearRetainingCapacity();
+                            const w = self.u8Buf.writer(self.alloc);
+                            try std.fmt.format(w, "{s}.{s}", .{leftSym.path, rightName });
+
+                            const symId = try self.ensureSemaSym(self.u8Buf.items, leftSym.leadSymId);
+                            self.nodes[nodeId].head.accessExpr.semaSymId = symId;
+                        }
+                    } else if (left.node_t == .accessExpr) {
+                        if (left.head.accessExpr.semaSymId != NullId) {
+                            const leftSym = self.semaSyms.items[left.head.ident.semaSymId];
+                            const rightName = self.getNodeTokenString(right);
+                            self.u8Buf.clearRetainingCapacity();
+                            const w = self.u8Buf.writer(self.alloc);
+                            try std.fmt.format(w, "{s}.{s}", .{leftSym.path, rightName });
+
+                            const symId = try self.ensureSemaSym(self.u8Buf.items, leftSym.leadSymId);
+                            self.nodes[nodeId].head.accessExpr.semaSymId = symId;
+                        }
+                    }
+                }
                 return AnyType;
             },
             .arr_access_expr => {
@@ -237,6 +307,10 @@ pub const VMcompiler = struct {
                 } else {
                     _ = try self.semaExpr(node.head.left_right.right, discardTopExprReg);
                 }
+                return AnyType;
+            },
+            .tryExpr => {
+                _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
                 return AnyType;
             },
             .unary_expr => {
@@ -359,21 +433,18 @@ pub const VMcompiler = struct {
             .call_expr => {
                 const callee = self.nodes[node.head.func_call.callee];
                 if (!node.head.func_call.has_named_arg) {
-                    if (callee.node_t == .access_expr) {
-                        const right = self.nodes[callee.head.left_right.right];
-                        if (right.node_t == .ident) {
-                            var numArgs: u32 = 1;
-                            var arg_id = node.head.func_call.arg_head;
-                            while (arg_id != NullId) : (numArgs += 1) {
-                                const arg = self.nodes[arg_id];
-                                _ = try self.semaExpr(arg_id, false);
-                                arg_id = arg.next;
-                            }
+                    if (callee.node_t == .accessExpr) {
+                        _ = try self.semaExpr(node.head.func_call.callee, false);
 
-                            _ = try self.semaExpr(callee.head.left_right.left, false);
+                        var numArgs: u32 = 0;
+                        var arg_id = node.head.func_call.arg_head;
+                        while (arg_id != NullId) : (numArgs += 1) {
+                            const arg = self.nodes[arg_id];
+                            _ = try self.semaExpr(arg_id, false);
+                            arg_id = arg.next;
+                        }
 
-                            return AnyType;
-                        } else return self.reportError("Unsupported callee", .{}, node);
+                        return AnyType;
                     } else if (callee.node_t == .ident) {
                         if (try self.semaIdentLocalVarOrNull(node.head.func_call.callee)) |varId| {
                             _ = varId;
@@ -453,9 +524,9 @@ pub const VMcompiler = struct {
                             return self.reportError("Type mismatch: Expected {}", .{svar.vtype.typeT}, node);
                         }
                     } else stdx.panic("variable not declared");
-                } else if (left.node_t == .access_expr) {
-                    const accessLeft = try self.semaExpr(left.head.left_right.left, false);
-                    const accessRight = try self.semaExpr(left.head.left_right.right, false);
+                } else if (left.node_t == .accessExpr) {
+                    const accessLeft = try self.semaExpr(left.head.accessExpr.left, false);
+                    const accessRight = try self.semaExpr(left.head.accessExpr.right, false);
                     const right = try self.semaExpr(node.head.left_right.right, false);
                     _ = accessLeft;
                     _ = accessRight;
@@ -473,9 +544,9 @@ pub const VMcompiler = struct {
                     _ = try self.semaExpr(left.head.left_right.left, false);
                     _ = try self.semaExpr(left.head.left_right.right, false);
                     _ = try self.semaExpr(node.head.left_right.right, false);
-                } else if (left.node_t == .access_expr) {
-                    _ = try self.semaExpr(left.head.left_right.left, false);
-                    _ = try self.semaExpr(left.head.left_right.right, false);
+                } else if (left.node_t == .accessExpr) {
+                    _ = try self.semaExpr(left.head.accessExpr.left, false);
+                    _ = try self.semaExpr(left.head.accessExpr.right, false);
                     _ = try self.semaExpr(node.head.left_right.right, false);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
@@ -533,6 +604,20 @@ pub const VMcompiler = struct {
                             continue;
                         }
                     }
+
+                    // Struct function.
+
+                    self.u8Buf.clearRetainingCapacity();
+                    const w = self.u8Buf.writer(self.alloc);
+                    const funcName = self.src[decl.name.start..decl.name.end];
+                    try std.fmt.format(w, "{s}.{s}", .{name, funcName});
+                    if (self.getSemaSym(self.u8Buf.items) == null) {
+                        const symId = try self.ensureSemaSym(self.u8Buf.items, null);
+                        self.semaSyms.items[symId].symT = .func;
+                    } else {
+                        return self.reportDebugError("Symbol already declared: {s}", .{self.u8Buf.items});
+                    }
+
                     try self.pushSemaBlock();
                     try self.pushSemaFuncParamVars(decl);
                     try self.semaStmts(func.head.func.body_head, false);
@@ -613,6 +698,17 @@ pub const VMcompiler = struct {
                     }
                 }
             },
+            .importStmt => {
+                const ident = self.nodes[node.head.left_right.left];
+                const name = self.getNodeTokenString(ident);
+                const symId = try self.ensureSemaSym(name, null);
+
+                const spec = self.nodes[node.head.left_right.right];
+                const specPath = self.getNodeTokenString(spec);
+
+                const modId = try self.getOrLoadModule(specPath[1..specPath.len-1]);
+                try self.semaSymToMod.put(self.alloc, symId, modId);
+            },
             .return_stmt => {
                 return;
             },
@@ -620,6 +716,41 @@ pub const VMcompiler = struct {
                 _ = try self.semaExpr(node.head.child_head, false);
             },
             else => return self.reportError("Unsupported node", .{}, node),
+        }
+    }
+
+    fn getOrLoadModule(self: *VMcompiler, spec: []const u8) !ModuleId {
+        const res = try self.moduleMap.getOrPut(self.alloc, spec);
+        if (res.found_existing) {
+            return res.value_ptr.*;
+        } else {
+            const mod = try self.loadModule(spec);
+            const id = @intCast(u32, self.modules.items.len);
+            try self.modules.append(self.alloc, mod);
+            res.key_ptr.* = spec;
+            res.value_ptr.* = id;
+            return id;
+        }
+    }
+
+    fn loadModule(self: *VMcompiler, spec: []const u8) !Module {
+        // Builtin modules.
+        if (std.mem.eql(u8, "test", spec)) {
+            var mod = Module{
+                .syms = .{},
+                .prefix = spec,
+            };
+            try mod.syms.put(self.alloc, "eq", .{
+                .symT = .nativeFunc1,
+                .inner = .{
+                    .nativeFunc1 = .{
+                        .func = bindings.testEq,
+                    },
+                },
+            });
+            return mod;
+        } else {
+            return self.reportDebugError("Unsupported import. {s}", .{spec});
         }
     }
 
@@ -735,6 +866,28 @@ pub const VMcompiler = struct {
             };
         };
         try self.endSemaBlock();
+
+        // After sema pass, resolve used syms.
+        for (self.semaSyms.items) |*sym| {
+            if (self.semaSymToMod.get(sym.leadSymId)) |modId| {
+                const modPrefix = self.modules.items[modId].prefix;
+                if (std.mem.indexOfScalar(u8, sym.path, '.')) |idx| {
+                    self.u8Buf.clearRetainingCapacity();
+                    const w = self.u8Buf.writer(self.alloc);
+                    try std.fmt.format(w, "{s}.{s}", .{ modPrefix, sym.path[idx+1..] });
+
+                    if (try self.getOrTryResolveSym(self.u8Buf.items, modId)) |resolvedId| {
+                        sym.resolvedSymId = resolvedId;
+                        // log.debug("resolve {s} {} {}", .{sym.path, sym.leadSymId, modId});
+                    }
+                } else {
+                    if (try self.getOrTryResolveSym(modPrefix, modId)) |resolvedId| {
+                        sym.resolvedSymId = resolvedId;
+                        // log.debug("resolve {s} {} {}", .{sym.path, sym.leadSymId, modId});
+                    }
+                }
+            }
+        }
 
         self.nextSemaBlockId = 1;
         self.nextSemaSubBlockId = 1;
@@ -890,7 +1043,7 @@ pub const VMcompiler = struct {
             // Merge types to parent sub block.
             for (curAssignedVars) |varId| {
                 const svar = &self.vars.items[varId];
-                log.debug("merging {s}", .{self.getVarName(varId)});
+                // log.debug("merging {s}", .{self.getVarName(varId)});
                 if (ssblock.prevVarTypes.get(varId)) |prevt| {
                     // Update current var type by merging.
                     if (svar.vtype.typeT != prevt.typeT) {
@@ -1043,7 +1196,60 @@ pub const VMcompiler = struct {
             }
         } else {
             self.nodes[ident].head.ident.semaVarId = NullId;
+
+            // Assume reference to global sym.
+            const symId = try self.ensureSemaSym(name, null);
+            self.nodes[ident].head.ident.semaSymId = symId;
             return null;
+        }
+    }
+
+    fn getOrTryResolveSym(self: *VMcompiler, path: []const u8, modId: ModuleId) !?SemaResolvedSymId {
+        if (self.semaResolvedSymMap.get(path)) |id| {
+            return id;
+        } else {
+            const idx = std.mem.indexOfScalar(u8, path, '.') orelse return null;
+            const subpath = path[idx+1..];
+            if (self.modules.items[modId].syms.get(subpath)) |modSym| {
+                const id = @intCast(u32, self.semaResolvedSyms.items.len);
+                if (modSym.symT == .nativeFunc1) {
+                    const pathDupe = try self.alloc.dupe(u8, path);
+                    const rtSymId = try self.vm.ensureFuncSym(pathDupe);
+                    const rtSym = cy.FuncSymbolEntry.initNativeFunc1(modSym.inner.nativeFunc1.func);
+                    self.vm.setFuncSym(rtSymId, rtSym);
+                    try self.semaResolvedSyms.append(self.alloc, .{
+                        .symT = .func,
+                        .path = pathDupe,
+                    });
+                    try self.semaResolvedSymMap.put(self.alloc, pathDupe, id);
+                } else {
+                    return self.reportDebugError("Unsupported module sym {}", .{modSym.symT});
+                }
+                return id;
+            }
+            return null;
+        }
+    }
+
+    fn getSemaSym(self: *const VMcompiler, path: []const u8) ?SemaSymId {
+        return self.semaSymMap.get(path);
+    }
+
+    fn ensureSemaSym(self: *VMcompiler, path: []const u8, leadSymId: ?SemaSymId) !SemaSymId {
+        const res = try self.semaSymMap.getOrPut(self.alloc, path);
+        if (res.found_existing) {
+            return res.value_ptr.*;
+        } else {
+            const id = @intCast(u32, self.semaSyms.items.len);
+            const ownPath = try self.alloc.dupe(u8, path);
+            try self.semaSyms.append(self.alloc, .{
+                .symT = .undefined,
+                .path = ownPath,
+                .leadSymId = leadSymId orelse id,
+            });
+            res.key_ptr.* = ownPath;
+            res.value_ptr.* = id;
+            return id;
         }
     }
 
@@ -1346,7 +1552,7 @@ pub const VMcompiler = struct {
         const startTempLocal = self.curBlock.firstFreeTempLocal;
         defer self.computeNextTempLocalFrom(startTempLocal);
 
-        const accessRight = self.nodes[left.head.left_right.right];
+        const accessRight = self.nodes[left.head.accessExpr.right];
         if (accessRight.node_t != .ident) {
             log.debug("Expected ident.", .{});
             return error.CompileError;
@@ -1354,7 +1560,7 @@ pub const VMcompiler = struct {
         const fieldName = self.getNodeTokenString(accessRight);
         const fieldId = try self.vm.ensureFieldSym(fieldName);
 
-        const accessLeftv = try self.genExpr(left.head.left_right.left, false);
+        const accessLeftv = try self.genExpr(left.head.accessExpr.left, false);
         const accessLocal = try self.nextFreeTempLocal();
         try self.buf.pushOp3(.field, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
 
@@ -1405,7 +1611,7 @@ pub const VMcompiler = struct {
                             try self.buf.pushOp3(.add, svar.local, right.local, svar.local);
                         }
                     } else stdx.panic("variable not declared");
-                } else if (left.node_t == .access_expr) {
+                } else if (left.node_t == .accessExpr) {
                     try self.genBinOpAssignToField(.add, node.head.left_right.left, node.head.left_right.right);
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
@@ -1423,13 +1629,13 @@ pub const VMcompiler = struct {
                     const indexv = try self.genExpr(left.head.left_right.right, false);
                     const rightv = try self.genExpr(node.head.left_right.right, false);
                     try self.buf.pushOp3(.setIndex, leftv.local, indexv.local, rightv.local);
-                } else if (left.node_t == .access_expr) {
+                } else if (left.node_t == .accessExpr) {
                     const startTempLocal = self.curBlock.firstFreeTempLocal;
                     defer self.setFirstFreeTempLocal(startTempLocal);
 
-                    const leftv = try self.genExpr(left.head.left_right.left, false);
+                    const leftv = try self.genExpr(left.head.accessExpr.left, false);
 
-                    const accessRight = self.nodes[left.head.left_right.right];
+                    const accessRight = self.nodes[left.head.accessExpr.right];
                     if (accessRight.node_t != .ident) {
                         log.debug("Expected ident.", .{});
                         return error.CompileError;
@@ -1586,7 +1792,7 @@ pub const VMcompiler = struct {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.setFirstFreeTempLocal(startTempLocal);
 
-                var local: u8 = NullByteId;
+                var local: u8 = NullIdU8;
                 if (node.head.for_range_stmt.as_clause != NullId) {
                     const asClause = self.nodes[node.head.for_range_stmt.as_clause];
                     const ident = self.nodes[asClause.head.as_range_clause.ident];
@@ -1680,6 +1886,20 @@ pub const VMcompiler = struct {
                 } else {
                     self.patchJumpToCurrent(lastCondJump);
                 }
+            },
+            .importStmt => {
+                const ident = self.nodes[node.head.left_right.left];
+                const name = self.getNodeTokenString(ident);
+
+                const spec = self.nodes[node.head.left_right.right];
+                const specPath = self.getNodeTokenString(spec);
+
+                _ = name;
+                _ = specPath;
+
+                // const modId = try self.getOrLoadModule(specPath);
+                // const leadSym = try self.ensureSemaSym(name);
+                // try self.semaSymToMod.put(self.alloc, leadSym, modId);
             },
             .return_stmt => {
                 if (self.blocks.items.len == 1) {
@@ -1854,6 +2074,25 @@ pub const VMcompiler = struct {
         return numArgs;
     }
 
+    fn genGetResolvedSym(self: *const VMcompiler, semaSymId: SemaSymId) ?SemaResolvedSym {
+        const sym = self.semaSyms.items[semaSymId];
+        if (sym.resolvedSymId != NullId) {
+            return self.semaResolvedSyms.items[sym.resolvedSymId];
+        } else {
+            if (sym.symT == .undefined) {
+                return null;
+            } else {
+                return SemaResolvedSym{
+                    .symT = switch (sym.symT) {
+                        .func => .func,
+                        .undefined => stdx.fatal(),
+                    },
+                    .path = sym.path,
+                };
+            }
+        }
+    }
+
     fn genCallExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, comptime discardTopExprReg: bool, comptime startFiber: bool) !GenValue {
         const startTempLocal = self.curBlock.firstFreeTempLocal;
         // Can assume temps after startTempLocal are not arc temps.
@@ -1874,61 +2113,68 @@ pub const VMcompiler = struct {
         const node = self.nodes[nodeId];
         const callee = self.nodes[node.head.func_call.callee];
         if (!node.head.func_call.has_named_arg) {
-            if (callee.node_t == .access_expr) {
-                const right = self.nodes[callee.head.left_right.right];
-                if (right.node_t == .ident) {
-                    // One more arg for receiver.
-                    const numArgs = 1 + try self.genCallArgs(node.head.func_call.arg_head);
-
-                    const rightName = self.getNodeTokenString(right);
-                    const methodId = try self.vm.ensureMethodSymKey(rightName);
-
-                    // var isStdCall = false;
-                    const left = self.nodes[callee.head.left_right.left];
-                    if (left.node_t == .ident) {
-                        // Check if it's a symbol path.
-                        const leftName = self.getNodeTokenString(left);
-                        try self.u8Buf.resize(self.alloc, leftName.len + rightName.len + 1);
-                        std.mem.copy(u8, self.u8Buf.items[0..leftName.len], leftName);
-                        self.u8Buf.items[leftName.len] = '.';
-                        std.mem.copy(u8, self.u8Buf.items[leftName.len+1..], rightName);
-
-                        if (self.vm.getFuncSym(self.u8Buf.items)) |symId| {
-                            if (discardTopExprReg) {
-                                try self.buf.pushOp3(.callSym0, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs-1));
+            if (callee.node_t == .accessExpr) {
+                if (callee.head.accessExpr.semaSymId != NullId) {
+                    if (self.genGetResolvedSym(callee.head.accessExpr.semaSymId)) |semaSym| {
+                        if (semaSym.symT == .func) {
+                            // Symbol func call.
+                            const numArgs = try self.genCallArgs(node.head.func_call.arg_head);
+                            // var isStdCall = false;
+                            if (self.vm.getFuncSym(semaSym.path)) |symId| {
+                                if (discardTopExprReg) {
+                                    try self.buf.pushOp3(.callSym0, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
+                                    try self.pushDebugSym(nodeId);
+                                } else {
+                                    try self.buf.pushOp3(.callSym1, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
+                                    try self.pushDebugSym(nodeId);
+                                }
+                                return GenValue.initTempValue(callStartLocal, AnyType);
                             } else {
-                                try self.buf.pushOp3(.callSym1, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs-1));
+                                return self.reportError("Unsupported callee", .{}, node);
                             }
-                            return GenValue.initTempValue(callStartLocal, AnyType);
+
+                            // if (try self.readScopedVar(leftName)) |info| {
+                            //     if (info.vtype.typeT == ListType.typeT) {
+                            //         if (self.vm.hasMethodSym(cy.ListS, methodId)) {
+                            //             isStdCall = true;
+                            //         } 
+                            //     }
+                            // }
+                            
+                            // if (isStdCall) {
+                            //     // Avoid retain/release for std call.
+                            //     _ = try self.genExpr(left, false);
+                            // } else {
+                            //     _ = try self.genMaybeRetainExpr(left, false);
+                            // }
+                        } else {
+                            return self.reportError("Unsupported callee", .{}, node);
                         }
-
-                        // if (try self.readScopedVar(leftName)) |info| {
-                        //     if (info.vtype.typeT == ListType.typeT) {
-                        //         if (self.vm.hasMethodSym(cy.ListS, methodId)) {
-                        //             isStdCall = true;
-                        //         } 
-                        //     }
-                        // }
-                    }
-                    
-                    // if (isStdCall) {
-                    //     // Avoid retain/release for std call.
-                    //     _ = try self.genExpr(left, false);
-                    // } else {
-                    //     _ = try self.genMaybeRetainExpr(left, false);
-                    // }
-
-                    _ = try self.genRetainedTempExpr(callee.head.left_right.left, false);
-
-                    if (discardTopExprReg) {
-                        try self.buf.pushOp3(.callObjSym0, @intCast(u8, methodId), callStartLocal, @intCast(u8, numArgs));
-                        try self.pushDebugSym(nodeId);
                     } else {
-                        try self.buf.pushOp3(.callObjSym1, @intCast(u8, methodId), callStartLocal, @intCast(u8, numArgs));
-                        try self.pushDebugSym(nodeId);
+                        const symPath = self.semaSyms.items[callee.head.accessExpr.semaSymId].path;
+                        return self.reportError("Unsupported callee: {s}", .{symPath}, node);
                     }
-                    return GenValue.initTempValue(callStartLocal, AnyType);
-                } else return self.reportError("Unsupported callee", .{}, node);
+                } else {
+                    const right = self.nodes[callee.head.accessExpr.right];
+                    if (right.node_t == .ident) {
+                        // One more arg for receiver.
+                        const numArgs = 1 + try self.genCallArgs(node.head.func_call.arg_head);
+
+                        const rightName = self.getNodeTokenString(right);
+                        const methodId = try self.vm.ensureMethodSymKey(rightName);
+
+                        _ = try self.genRetainedTempExpr(callee.head.accessExpr.left, false);
+
+                        if (discardTopExprReg) {
+                            try self.buf.pushOp3(.callObjSym0, @intCast(u8, methodId), callStartLocal, @intCast(u8, numArgs));
+                            try self.pushDebugSym(nodeId);
+                        } else {
+                            try self.buf.pushOp3(.callObjSym1, @intCast(u8, methodId), callStartLocal, @intCast(u8, numArgs));
+                            try self.pushDebugSym(nodeId);
+                        }
+                        return GenValue.initTempValue(callStartLocal, AnyType);
+                    } else return self.reportError("Unsupported callee", .{}, node);
+                }
             } else if (callee.node_t == .ident) {
                 if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
                     var numArgs: u32 = 1;
@@ -2574,17 +2820,17 @@ pub const VMcompiler = struct {
                     return GenValue.initNoValue();
                 }
             },
-            .access_expr => {
+            .accessExpr => {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
 
                 var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
 
                 // Left side.
-                const leftv = try self.genExprToDestOrTempLocal(node.head.left_right.left, dst, &usedDstAsTemp, discardTopExprReg);
+                const leftv = try self.genExprToDestOrTempLocal(node.head.accessExpr.left, dst, &usedDstAsTemp, discardTopExprReg);
 
                 // Right should be an ident.
-                const right = self.nodes[node.head.left_right.right];
+                const right = self.nodes[node.head.accessExpr.right];
 
                 const name = self.getNodeTokenString(right);
                 const fieldId = try self.vm.ensureFieldSym(name);
@@ -2600,6 +2846,11 @@ pub const VMcompiler = struct {
                 } else {
                     return GenValue.initNoValue();
                 }
+            },
+            .tryExpr => {
+                const child = try self.genExpr(node.head.child_head, false);
+                try self.buf.pushOp2(.tryValue, child.local, dst);
+                return self.initGenValue(dst, AnyType);
             },
             .unary_expr => {
                 const op = node.head.unary.op;
@@ -3001,6 +3252,7 @@ const Block = struct {
 
 const SemaVarId = u32;
 
+/// TODO: Rename to SemaLocal to indicate a local var rather than a global var.
 const SemaVar = struct {
     /// The current type of the var as the ast is traversed.
     /// This is updated when there is a variable assignment or a child block returns.
@@ -3318,3 +3570,53 @@ test "Internals." {
     try t.eq(@sizeOf(SemaVar), 32);
     try t.eq(@sizeOf(Type), 3);
 }
+
+const SemaSymId = u32;
+const SemaSymType = enum {
+    func,
+    undefined,
+};
+
+const SemaSym = struct {
+    symT: SemaSymType,
+    path: []const u8,
+
+    /// Points to the first symId that starts the path.
+    leadSymId: SemaSymId,
+
+    /// After the sema pass, all semaSyms are resolved.
+    resolvedSymId: SemaResolvedSymId = NullId,
+};
+
+const SemaResolvedSymId = u32;
+const SemaResolvedSym = struct {
+    symT: ResolvedSymType,
+    path: []const u8,
+};
+
+const ResolvedSymType = enum {
+    func,
+};
+
+const ModuleSymType = enum {
+    nativeFunc1,
+};
+
+const ModuleSym = struct {
+    symT: ModuleSymType,
+    inner: union {
+        nativeFunc1: struct {
+            func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value,
+        },
+    },
+};
+
+const ModuleId = u32;
+const Module = struct {
+    syms: std.StringHashMapUnmanaged(ModuleSym), 
+    prefix: []const u8,
+
+    fn deinit(self: *Module, alloc: std.mem.Allocator) void {
+        self.syms.deinit(alloc);
+    }
+};

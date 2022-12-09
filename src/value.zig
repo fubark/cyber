@@ -59,7 +59,7 @@ pub const Value = packed union {
     //     high: u32,
     // },
 
-    pub const None = Value.initNone();
+    pub const None = Value{ .val = NoneMask };
     pub const True = Value{ .val = TrueMask };
     pub const False = Value{ .val = FalseMask };
 
@@ -145,6 +145,10 @@ pub const Value = packed union {
         return a.isNumber() and b.isNumber();
     }
 
+    pub inline fn isError(self: *const Value) linksection(".eval") bool {
+        return self.val & ErrorMask == ErrorMask;
+    }
+
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         // Only a number(f64) if not all tagged bits are set.
@@ -169,6 +173,10 @@ pub const Value = packed union {
 
     pub inline fn isNone(self: *const Value) linksection(".eval") bool {
         return self.val == NoneMask;
+    }
+
+    pub inline fn isTrue(self: *const Value) linksection(".eval") bool {
+        return self.val == TrueMask;
     }
 
     pub inline fn isBool(self: *const Value) linksection(".eval") bool {
@@ -202,11 +210,6 @@ pub const Value = packed union {
     pub inline fn initRaw(val: u64) Value {
         @setRuntimeSafety(debug);
         return .{ .val = val };
-    }
-
-    pub inline fn initNone() linksection(".eval") Value {
-        @setRuntimeSafety(debug);
-        return .{ .val = NoneMask };
     }
 
     pub inline fn initBool(b: bool) linksection(".eval") Value {
@@ -257,8 +260,8 @@ pub const Value = packed union {
         return std.math.floor(val) == val;
     }
 
-    pub inline fn initError(id: u32) Value {
-        return .{ .val = ErrorMask | id };
+    pub inline fn initErrorTagLit(id: u8) Value {
+        return .{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | id };
     }
 
     pub fn dump(self: *const Value) void {

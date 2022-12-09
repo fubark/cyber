@@ -141,6 +141,23 @@ test "Tag types." {
     try t.eq(val.asI32(), @intCast(i32, id));
 }
 
+test "test module" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    const res = run.eval(
+        \\import t from 'test'
+        \\try t.eq(123, 234)
+    );
+    try t.expectError(res, error.Panic);
+
+    var val = try run.eval(
+        \\import t from 'test'
+        \\t.eq(123, 123)
+    );
+    try t.expect(val.isTrue());
+}
+
 test "Structs." {
     const run = VMrunner.create();
     defer run.destroy();

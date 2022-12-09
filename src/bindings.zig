@@ -13,6 +13,7 @@ const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.bindings);
 
 const TagLitInt = 0;
+const TagLitAssertError = 1;
 
 pub fn bindCore(self: *cy.VM) !void {
     // Init compile time builtins.
@@ -90,6 +91,48 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.ensureTagLitSym("int");
     std.debug.assert(id == TagLitInt);
+
+    id = try self.ensureTagLitSym("AssertError");
+    std.debug.assert(id == TagLitAssertError);
+}
+
+pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = vm;
+    _ = nargs;
+    const act = args[0];
+    const exp = args[1];
+
+    const actType = act.getUserTag();
+    const expType = exp.getUserTag();
+    if (actType == expType) {
+        switch (actType) {
+            .number => {
+                if (act.asF64() == exp.asF64()) {
+                    return Value.True;
+                } else {
+                    println("actual: {} != {}", .{act.asF64(), exp.asF64()});
+                    return Value.initErrorTagLit(TagLitAssertError);
+                }
+            },
+            else => {
+                stdx.panicFmt("Unsupported type {}", .{actType});
+            }
+        }
+    } else {
+        println("Types do not match:", .{});
+        println("actual: {} != {}", .{actType, expType});
+        return Value.initErrorTagLit(TagLitAssertError);
+    }
+}
+
+const testStdOutLog = stdx.log.scoped(.stdout);
+fn println(comptime fmt: []const u8, args: anytype) void {
+    if (builtin.is_test) {
+        testStdOutLog.debug(fmt, args);
+    } else {
+        const stdout = std.io.getStdOut().writer();
+        stdout.print(fmt ++ "\n", args) catch stdx.fatal();
+    }
 }
 
 export fn printInt(n: i32) void {
@@ -290,7 +333,7 @@ fn stdPrint(_: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     const str = gvm.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
     vm_.release(args[0]);
-    return Value.initNone();
+    return Value.None;
 }
 
 fn stdReadInput(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
@@ -383,7 +426,7 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     };
     std.sort.sort(Value, list.items(), &lessCtx, S.less);
     vm_.releaseObject(obj);
-    return Value.initNone();
+    return Value.None;
 }
 
 fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
@@ -398,7 +441,7 @@ fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     }
     inner.appendAssumeCapacity(args[0]);
     vm_.releaseObject(list);
-    return Value.initNone();
+    return Value.None;
 }
 
 fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
@@ -411,7 +454,7 @@ fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
         const val = list.list.list.ptr[list.list.nextIterIdx];
         gvm.retain(val);
         return val;
-    } else return Value.initNone();
+    } else return Value.None;
 }
 
 fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
@@ -432,7 +475,7 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     const size = @floatToInt(u32, args[0].toF64());
     inner.resize(gvm.alloc, size) catch stdx.fatal();
     vm_.releaseObject(list);
-    return Value.initNone();
+    return Value.None;
 }
 
 fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
@@ -443,7 +486,7 @@ fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(gvm, args[0]);
-    return Value.initNone();
+    return Value.None;
 }
 
 fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {

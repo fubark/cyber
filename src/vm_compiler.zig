@@ -326,6 +326,10 @@ pub const VMcompiler = struct {
                         _ = try self.semaExpr(node.head.unary.child, discardTopExprReg);
                         return BoolType;
                     },
+                    .bitwiseNot => {
+                        _ = try self.semaExpr(node.head.unary.child, discardTopExprReg);
+                        return NumberType;
+                    },
                     // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
                 }
             },
@@ -370,6 +374,26 @@ pub const VMcompiler = struct {
                         return NumberType;
                     },
                     .bitwiseAnd => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .bitwiseOr => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .bitwiseXor => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .bitwiseLeftShift => {
+                        _ = try self.semaExpr(left, discardTopExprReg);
+                        _ = try self.semaExpr(right, discardTopExprReg);
+                        return NumberType;
+                    },
+                    .bitwiseRightShift => {
                         _ = try self.semaExpr(left, discardTopExprReg);
                         _ = try self.semaExpr(right, discardTopExprReg);
                         return NumberType;
@@ -2881,6 +2905,13 @@ pub const VMcompiler = struct {
                             return self.initGenValue(dst, BoolType);
                         } else return GenValue.initNoValue();
                     },
+                    .bitwiseNot => {
+                        const child = try self.genExpr(node.head.unary.child, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            try self.buf.pushOp2(.bitwiseNot, child.local, dst);
+                            return self.initGenValue(dst, NumberType);
+                        } else return GenValue.initNoValue();
+                    },
                     // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
                 }
             },
@@ -2944,6 +2975,18 @@ pub const VMcompiler = struct {
                     },
                     .bitwiseAnd => {
                         return self.genPushBinOp(.bitwiseAnd, left, right, NumberType, dst, discardTopExprReg);
+                    },
+                    .bitwiseOr => {
+                        return self.genPushBinOp(.bitwiseOr, left, right, NumberType, dst, discardTopExprReg);
+                    },
+                    .bitwiseXor => {
+                        return self.genPushBinOp(.bitwiseXor, left, right, NumberType, dst, discardTopExprReg);
+                    },
+                    .bitwiseLeftShift => {
+                        return self.genPushBinOp(.bitwiseLeftShift, left, right, NumberType, dst, discardTopExprReg);
+                    },
+                    .bitwiseRightShift => {
+                        return self.genPushBinOp(.bitwiseRightShift, left, right, NumberType, dst, discardTopExprReg);
                     },
                     .and_op => {
                         const startTempLocal = self.curBlock.firstFreeTempLocal;

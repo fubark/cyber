@@ -2126,10 +2126,65 @@ pub fn release(val: Value) linksection(".eval") void {
     }
 }
 
-fn evalBitwiseAnd(left: Value, right: Value) Value {
-    @setRuntimeSafety(debug);
+fn evalBitwiseOr(left: Value, right: Value) linksection(".eval") Value {
+    @setCold(true);
+    if (left.isNumber()) {
+       const f = @intToFloat(f64, left.asI32() | @floatToInt(i32, right.toF64()));
+       return Value.initF64(f);
+    } else {
+        log.debug("unsupported", .{});
+        unreachable;
+    }
+}
+
+fn evalBitwiseXor(left: Value, right: Value) linksection(".eval") Value {
+    @setCold(true);
+    if (left.isNumber()) {
+       const f = @intToFloat(f64, left.asI32() ^ @floatToInt(i32, right.toF64()));
+       return Value.initF64(f);
+    } else {
+        log.debug("unsupported", .{});
+        unreachable;
+    }
+}
+
+fn evalBitwiseAnd(left: Value, right: Value) linksection(".eval") Value {
+    @setCold(true);
     if (left.isNumber()) {
        const f = @intToFloat(f64, left.asI32() & @floatToInt(i32, right.toF64()));
+       return Value.initF64(f);
+    } else {
+        log.debug("unsupported", .{});
+        unreachable;
+    }
+}
+
+fn evalBitwiseLeftShift(left: Value, right: Value) linksection(".eval") Value {
+    @setCold(true);
+    if (left.isNumber()) {
+       const f = @intToFloat(f64, left.asI32() << @floatToInt(u5, right.toF64()));
+       return Value.initF64(f);
+    } else {
+        log.debug("unsupported", .{});
+        unreachable;
+    }
+}
+
+fn evalBitwiseRightShift(left: Value, right: Value) linksection(".eval") Value {
+    @setCold(true);
+    if (left.isNumber()) {
+       const f = @intToFloat(f64, left.asI32() >> @floatToInt(u5, right.toF64()));
+       return Value.initF64(f);
+    } else {
+        log.debug("unsupported", .{});
+        unreachable;
+    }
+}
+
+fn evalBitwiseNot(val: Value) linksection(".eval") Value {
+    @setCold(true);
+    if (val.isNumber()) {
+       const f = @intToFloat(f64, ~val.asI32());
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -3804,25 +3859,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 3;
                 continue;
             },
-            .funcSymClosure => {
-                @setRuntimeSafety(debug);
-                const symId = pc[1].arg;
-                const numParams = pc[2].arg;
-                const numCaptured = pc[3].arg;
-                const captured = pc[4..4+numCaptured];
-                pc += 4 + numCaptured;
-                try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
-                continue;
-            },
-            .bitwiseAnd => {
-                @setRuntimeSafety(debug);
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
-                pc += 4;
-                framePtr[dstLocal] = evalBitwiseAnd(srcLeft, srcRight);
-                continue;
-            },
             .tag => {
                 const tagId = pc[1].arg;
                 const val = pc[2].arg;
@@ -3845,6 +3881,57 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 } else {
                     return error.Panic;
                 }
+            },
+            .bitwiseAnd => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseAnd, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .bitwiseOr => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseOr, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .bitwiseXor => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseXor, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .bitwiseNot => {
+                const val = framePtr[pc[1].arg];
+                framePtr[pc[2].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseNot, .{val});
+                pc += 3;
+                continue;
+            },
+            .bitwiseLeftShift => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseLeftShift, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .bitwiseRightShift => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseRightShift, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .funcSymClosure => {
+                @setRuntimeSafety(debug);
+                const symId = pc[1].arg;
+                const numParams = pc[2].arg;
+                const numCaptured = pc[3].arg;
+                const captured = pc[4..4+numCaptured];
+                pc += 4 + numCaptured;
+                try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
+                continue;
             },
             .end => {
                 @setRuntimeSafety(debug);

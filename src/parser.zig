@@ -1636,35 +1636,27 @@ pub const Parser = struct {
         const expr_start = self.nodes.items[left_id].start_token;
         const expr_id = try self.pushNode(.call_expr, expr_start);
 
-        const start = self.next_pos;
-        var token = self.consumeToken();
-        var last_arg_id = switch (token.tag()) {
-            .ident => try self.pushIdentNode(start),
-            .string => try self.pushNode(.string, start),
-            .number => try self.pushNode(.number, start),
-            else => return self.reportTokenError2(error.BadToken, "Expected arg token", .{}, token),
-        };
+        const firstArg = try self.parseTightTermExpr();
+        var last_arg_id = firstArg;
         self.nodes.items[expr_id].head = .{
             .func_call = .{
                 .callee = left_id,
-                .arg_head = last_arg_id,
+                .arg_head = firstArg,
                 .has_named_arg = false,
             },
         };
 
         while (true) {
-            token = self.peekToken();
-            const arg_id = switch (token.tag()) {
-                .ident => try self.pushIdentNode(self.next_pos),
-                .string => try self.pushNode(.string, self.next_pos),
-                .number => try self.pushNode(.number, self.next_pos),
+            const token = self.peekToken();
+            switch (token.tag()) {
                 .new_line => break,
                 .none => break,
-                else => return self.reportTokenError2(error.BadToken, "Expected arg token", .{}, token),
-            };
-            self.nodes.items[last_arg_id].next = arg_id;
-            last_arg_id = arg_id;
-            self.advanceToken();
+                else => {
+                    const arg = try self.parseTightTermExpr();
+                    self.nodes.items[last_arg_id].next = arg;
+                    last_arg_id = arg;
+                },
+            }
         }
         return expr_id;
     }
@@ -1833,7 +1825,80 @@ pub const Parser = struct {
         return id;
     }
 
+    /// An expression term doesn't contain a binary expression at the top.
     fn parseTermExpr(self: *Parser) anyerror!NodeId {
+        const start = self.next_pos;
+        const token = self.peekToken();
+        switch (token.tag()) {
+            .await_k => {
+                // Await expression.
+                const expr_id = try self.pushNode(.await_expr, start);
+                self.advanceToken();
+                const term_id = try self.parseTermExpr();
+                self.nodes.items[expr_id].head = .{
+                    .child_head = term_id,
+                };
+                return expr_id;
+            },
+            .not_k => {
+                self.advanceToken();
+                const expr = try self.pushNode(.unary_expr, start);
+                const child = try self.parseTermExpr();
+                self.nodes.items[expr].head = .{
+                    .unary = .{
+                        .child = child,
+                        .op = .not,
+                    },
+                };
+                return expr;
+            },
+            .try_k => {
+                self.advanceToken();
+                const expr = try self.pushNode(.tryExpr, start);
+                const child = try self.parseTermExpr();
+                self.nodes.items[expr].head = .{
+                    .child_head = child,
+                };
+                return expr;
+            },
+            .coresume_k => {
+                self.advanceToken();
+                const coresume = try self.pushNode(.coresume, start);
+                const fiberExpr = try self.parseTermExpr();
+                self.nodes.items[coresume].head = .{
+                    .child_head = fiberExpr,
+                };
+                return coresume;
+            },
+            .coyield_k => {
+                self.advanceToken();
+                const coyield = try self.pushNode(.coyield, start);
+                return coyield;
+            },
+            .coinit_k => {
+                self.advanceToken();
+                const callExprId = try self.parseExpr(.{}) orelse {
+                    return self.reportTokenError("Expected call expression.", .{});
+                };
+                const callExpr = self.nodes.items[callExprId];
+                if (callExpr.node_t != .call_expr) {
+                    return self.reportTokenError("Expected call expression.", .{});
+                }
+                const coinit = try self.pushNode(.coinit, start);
+                self.nodes.items[coinit].head = .{
+                    .child_head = callExprId,
+                };
+                return coinit;
+            },
+            else => {
+                return self.parseTightTermExpr();
+            },
+        }
+    }
+
+    /// A tight term expr also doesn't include various top expressions
+    /// that are separated by whitespace. eg. coinit <expr>
+    fn parseTightTermExpr(self: *Parser) anyerror!NodeId {
         var start = self.next_pos;
         var token = self.peekToken();
 
@@ -1897,45 +1962,6 @@ pub const Parser = struct {
                     return self.reportTokenError2(error.SyntaxError, "Expected identifier.", .{}, token);
                 }
             },
-            .await_k => {
-                // Await expression.
-                const expr_id = try self.pushNode(.await_expr, start);
-                self.advanceToken();
-                const term_id = try self.parseTermExpr();
-                self.nodes.items[expr_id].head = .{
-                    .child_head = term_id,
-                };
-                return expr_id;
-            },
-            .coresume_k => {
-                self.advanceToken();
-                const coresume = try self.pushNode(.coresume, start);
-                const fiberExpr = try self.parseTermExpr();
-                self.nodes.items[coresume].head = .{
-                    .child_head = fiberExpr,
-                };
-                return coresume;
-            },
-            .coyield_k => {
-                self.advanceToken();
-                const coyield = try self.pushNode(.coyield, start);
-                return coyield;
-            },
-            .coinit_k => {
-                self.advanceToken();
-                const callExprId = try self.parseExpr(.{}) orelse {
-                    return self.reportTokenError("Expected call expression.", .{});
-                };
-                const callExpr = self.nodes.items[callExprId];
-                if (callExpr.node_t != .call_expr) {
-                    return self.reportTokenError("Expected call expression.", .{});
-                }
-                const coinit = try self.pushNode(.coinit, start);
-                self.nodes.items[coinit].head = .{
-                    .child_head = callExprId,
-                };
-                return coinit;
-            },
             .if_k => {
                 self.advanceToken();
                 const if_cond = (try self.parseExpr(.{})) orelse {
@@ -1989,27 +2015,6 @@ pub const Parser = struct {
                 const arr_id = try self.parseArrayLiteral();
                 break :b arr_id;
             },
-            .not_k => {
-                self.advanceToken();
-                const expr = try self.pushNode(.unary_expr, start);
-                const child = try self.parseTermExpr();
-                self.nodes.items[expr].head = .{
-                    .unary = .{
-                        .child = child,
-                        .op = .not,
-                    },
-                };
-                return expr;
-            },
-            .try_k => {
-                self.advanceToken();
-                const expr = try self.pushNode(.tryExpr, start);
-                const child = try self.parseTermExpr();
-                self.nodes.items[expr].head = .{
-                    .child_head = child,
-                };
-                return expr;
-            },
             .operator => {
                 if (token.data.operator_t == .minus) {
                     self.advanceToken();
@@ -2019,6 +2024,17 @@ pub const Parser = struct {
                         .unary = .{
                             .child = term_id,
                             .op = .minus,
+                        },
+                    };
+                    return expr_id;
+                } else if (token.data.operator_t == .tilde) {
+                    self.advanceToken();
+                    const expr_id = try self.pushNode(.unary_expr, start);
+                    const term_id = try self.parseTermExpr();
+                    self.nodes.items[expr_id].head = .{
+                        .unary = .{
+                            .child = term_id,
+                            .op = .bitwiseNot,
                         },
                     };
                     return expr_id;
@@ -2207,14 +2223,8 @@ pub const Parser = struct {
                 .logic_op,
                 .then_k,
                 .from_k,
-                .as_k => break,
-                .ident,
-                .number,
-                .string => {
-                    // CallExpression.
-                    left_id = try self.parseNoParenCallExpression(left_id);
-                    start = self.next_pos;
-                },
+                .as_k,
+                .templateString,
                 .new_line,
                 .none => break,
                 else => return self.reportTokenError2(error.UnknownToken, "Unknown token", .{}, next),
@@ -2227,15 +2237,15 @@ pub const Parser = struct {
         var start = self.next_pos;
         var token = self.peekToken();
 
-        var left_id = switch (token.tag()) {
-            .if_k => {
-                return try self.parseTermExpr();
-            },
+        var left_id: NodeId = undefined;
+        switch (token.tag()) {
             .none => return null,
             .right_paren => return null,
             .right_bracket => return null,
-            else => try self.parseTermExpr(),
-        };
+            else => {
+                left_id = try self.parseTermExpr();
+            },
+        }
 
         while (true) {
             const next = self.peekToken();
@@ -2351,7 +2361,18 @@ pub const Parser = struct {
                 .new_line,
                 .from_k,
                 .none => break,
-                else => return self.reportTokenError2(error.UnknownToken, "Unknown token", .{}, next),
+                else => {
+                    // Attempt to parse as no paren call expr.
+                    const left = self.nodes.items[left_id];
+                    switch (left.node_t) {
+                        .ident => {
+                            return try self.parseNoParenCallExpression(left_id);
+                        },
+                        else => {
+                            return self.reportTokenError2(error.UnknownToken, "Unknown token", .{}, next);
+                        }
+                    }
+                }
             }
         }
         return left_id;
@@ -2618,6 +2639,11 @@ pub const OperatorType = enum {
     slash,
     percent,
     ampersand,
+    verticalBar,
+    doubleVerticalBar,
+    tilde,
+    lessLess,
+    greaterGreater,
 };
 
 const LogicOpType = enum {
@@ -2774,6 +2800,10 @@ pub const BinaryExprOp = enum {
     slash,
     percent,
     bitwiseAnd,
+    bitwiseOr,
+    bitwiseXor,
+    bitwiseLeftShift,
+    bitwiseRightShift,
     bang_equal,
     less,
     less_equal,
@@ -2788,6 +2818,7 @@ pub const BinaryExprOp = enum {
 const UnaryOp = enum {
     minus,
     not,
+    bitwiseNot,
 };
 
 pub const Node = struct {
@@ -3036,6 +3067,11 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
         .slash => .slash,
         .percent => .percent,
         .ampersand => .bitwiseAnd,
+        .verticalBar => .bitwiseOr,
+        .doubleVerticalBar => .bitwiseXor,
+        .lessLess => .bitwiseLeftShift,
+        .greaterGreater => .bitwiseRightShift,
+        .tilde => unreachable,
     };
 }
 
@@ -3319,6 +3355,15 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 },
                 '%' => p.pushOpToken(.percent, start),
                 '&' => p.pushOpToken(.ampersand, start),
+                '|' => {
+                    if (peekChar(p) == '|') {
+                        advanceChar(p);
+                        p.pushOpToken(.doubleVerticalBar, start);
+                    } else {
+                        p.pushOpToken(.verticalBar, start);
+                    }
+                },
+                '~' => p.pushOpToken(.tilde, start),
                 '+' => {
                     if (peekChar(p) == '=') {
                         advanceChar(p);
@@ -3369,16 +3414,24 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     }
                 },
                 '<' => {
-                    if (isNextChar(p, '=')) {
+                    const ch2 = peekChar(p);
+                    if (ch2 == '=') {
                         p.pushLogicOpToken(.less_equal, start);
+                        advanceChar(p);
+                    } else if (ch2 == '<') {
+                        p.pushOpToken(.lessLess, start);
                         advanceChar(p);
                     } else {
                         p.pushLogicOpToken(.less, start);
                     }
                 },
                 '>' => {
-                    if (isNextChar(p, '=')) {
+                    const ch2 = peekChar(p);
+                    if (ch2 == '=') {
                         p.pushLogicOpToken(.greater_equal, start);
+                        advanceChar(p);
+                    } else if (ch2 == '>') {
+                        p.pushOpToken(.greaterGreater, start);
                         advanceChar(p);
                     } else {
                         p.pushLogicOpToken(.greater, start);
@@ -3777,4 +3830,5 @@ test "Internals." {
     try t.eq(@sizeOf(TokenizeState), 4);
 
     try t.eq(std.enums.values(TokenType).len, 52);
+    try t.eq(keywords.kvs.len, 25);
 }

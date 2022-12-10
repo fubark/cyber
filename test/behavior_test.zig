@@ -751,15 +751,12 @@ test "Numbers." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var val = try run.eval(
-        \\1
+    _ = try run.eval(
+        \\import t from 'test'
+        \\try t.eq(1, 1)
+        \\try t.eq(-1, -1)
+        \\try t.eq(-(-1), 1)
     );
-    try t.eq(val.asI32(), 1);
-
-    val = try run.eval(
-        \\-1
-    );
-    try t.eq(val.asI32(), -1);
 }
 
 test "Parentheses" {
@@ -1715,6 +1712,29 @@ test "Math" {
     );
     try t.expect(val.isNumber());
     try t.expect(std.math.isNan(val.asF64()));
+}
+
+test "Bitwise operators." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t from 'test'
+        \\-- Bitwise and
+        \\try t.eq(4 & 2, 0)
+        \\try t.eq(4 & 4, 4)
+        \\try t.eq(7 & 2, 2)
+        \\-- Bitwise or
+        \\try t.eq(4 | 2, 6)
+        \\try t.eq(4 | 4, 4)
+        \\-- Bitwise xor
+        \\try t.eq(4 || 2, 6)
+        \\try t.eq(4 || 4, 0)
+        \\-- Bitwise not
+        \\try t.eq(~0, -1)
+        \\try t.eq(~-1, 0)
+        \\try t.eq(~1, -2)
+    );
 }
 
 test "Binary Expressions" {

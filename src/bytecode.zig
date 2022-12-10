@@ -203,6 +203,7 @@ pub const ByteCodeBuffer = struct {
                 .setIndex,
                 .copy,
                 .not,
+                .bitwiseNot,
                 .neg,
                 .copyRetainSrc,
                 .copyReleaseDst,
@@ -251,6 +252,10 @@ pub const ByteCodeBuffer = struct {
                 .compare,
                 .compareNot,
                 .bitwiseAnd,
+                .bitwiseOr,
+                .bitwiseXor,
+                .bitwiseLeftShift,
+                .bitwiseRightShift,
                 .list,
                 .add,
                 .tag,
@@ -465,7 +470,6 @@ pub const OpCode = enum(u8) {
     structSmall,
     setField,
     setFieldRelease,
-    bitwiseAnd,
     fieldRetain,
     fieldRelease,
     coinit,
@@ -484,13 +488,19 @@ pub const OpCode = enum(u8) {
     tag,
     tagLiteral,
     tryValue,
+    bitwiseAnd,
+    bitwiseOr,
+    bitwiseXor,
+    bitwiseNot,
+    bitwiseLeftShift,
+    bitwiseRightShift,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 74);
+    try t.eq(std.enums.values(OpCode).len, 79);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

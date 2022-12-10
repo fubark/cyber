@@ -1734,6 +1734,11 @@ test "Bitwise operators." {
         \\try t.eq(~0, -1)
         \\try t.eq(~-1, 0)
         \\try t.eq(~1, -2)
+        \\-- Bitwise right shift
+        \\try t.eq(16 >> 2, 4)
+        \\try t.eq(2 >> 2, 0)
+        \\-- Bitwise left shift
+        \\try t.eq(2 << 4, 32)
     );
 }
 

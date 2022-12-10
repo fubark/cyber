@@ -15,6 +15,8 @@ const f64One = cy.Value.initF64(1);
 
 const dumpCompileErrorStackTrace = builtin.mode == .Debug and true;
 
+const Root = @This();
+
 pub const VMcompiler = struct {
     alloc: std.mem.Allocator,
     vm: *cy.VM,
@@ -706,7 +708,7 @@ pub const VMcompiler = struct {
                 const spec = self.nodes[node.head.left_right.right];
                 const specPath = self.getNodeTokenString(spec);
 
-                const modId = try self.getOrLoadModule(specPath[1..specPath.len-1]);
+                const modId = try self.getOrLoadModule(specPath);
                 try self.semaSymToMod.put(self.alloc, symId, modId);
             },
             .return_stmt => {
@@ -2440,6 +2442,11 @@ pub const VMcompiler = struct {
         try self.operandStack.append(self.alloc, cy.OpData.initArg(operand));
     }
 
+    fn unescapeString(self: *VMcompiler, literal: []const u8) ![]const u8 {
+        try self.u8Buf.resize(self.alloc, literal.len);
+        return Root.unescapeString(self.u8Buf.items, literal);
+    }
+
     /// `dst` indicates the local of the resulting value.
     /// `retainEscapeTop` indicates that the resulting val is meant to be used to escape the current scope. (eg. call args)
     /// If `retainEscapeTop` is false, the dst is a temp local, and the expr requires a retain (eg. call expr), it is added as an arcTempLocal.
@@ -2503,12 +2510,9 @@ pub const VMcompiler = struct {
             },
             .string => {
                 if (!discardTopExprReg) {
-                    const token = self.tokens[node.start_token];
-                    const literal = self.src[token.pos()+1..token.data.end_pos-1];
-
-                    // Unescape single quotes.
-                    _ = try replaceIntoShorterList(u8, literal, "\\'", "'", &self.u8Buf, self.alloc);
-                    return self.genString(self.u8Buf.items, dst);
+                    const literal = self.getNodeTokenString(node);
+                    const str = try self.unescapeString(literal);
+                    return self.genString(str, dst);
                 } else {
                     return GenValue.initNoValue();
                 }
@@ -3628,3 +3632,25 @@ const Module = struct {
         self.syms.deinit(alloc);
     }
 };
+
+/// `buf` is assumed to be big enough.
+pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
+    var newIdx: u32 = 0; 
+    var i: u32 = 0;
+    while (i < literal.len) {
+        if (literal[i] == '\\') {
+            if (literal[i + 1] == 'n') {
+                buf[newIdx] = '\n';
+            } else {
+                buf[newIdx] = literal[i + 1];
+            }
+            i += 2;
+            newIdx += 1;
+        } else {
+            buf[newIdx] = literal[i];
+            i += 1;
+            newIdx += 1;
+        }
+    }
+    return buf[0..newIdx];
+}

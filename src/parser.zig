@@ -118,6 +118,12 @@ pub const Parser = struct {
         self.deps.deinit(self.alloc);
     }
 
+    fn dumpTokensToCurrent(self: *Parser) void {
+        for (self.tokens.items[0..self.next_pos+1]) |token| {
+            log.debug("{}", .{token.token_t});
+        }
+    }
+
     pub fn parseNoErr(self: *Parser, src: []const u8) !ResultView {
         const res = try self.parse(src);
         if (res.has_error) {
@@ -157,6 +163,7 @@ pub const Parser = struct {
         };
         const root_id = self.parseRoot() catch |err| {
             log.debug("parse error: {} {s}", .{err, self.last_err});
+            // self.dumpTokensToCurrent();
             logSrcPos(self.src.items, self.last_err_pos, 20);
             if (dumpParseErrorStackTrace) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
@@ -2040,8 +2047,6 @@ pub const Parser = struct {
                         const tagLiteral = try self.pushNode(.tagLiteral, self.next_pos);
                         self.advanceToken();
 
-                        const tt = self.tokens.items[self.next_pos];
-                        log.debug("{} {}", .{tt.start_pos, tt.data.end_pos});
                         const tagInit = try self.pushNode(.tagInit, start);
                         self.nodes.items[tagInit].head = .{
                             .left_right = .{
@@ -3140,6 +3145,12 @@ pub fn logSrcPos(src: []const u8, start: u32, len: u32) void {
     }
 }
 
+const StringDelim = enum(u2) {
+    single,
+    double,
+    triple,
+};
+
 pub const TokenizeState = struct {
     stateT: TokenizeStateTag,
 
@@ -3147,7 +3158,8 @@ pub const TokenizeState = struct {
     openBraces: u8 = 0,
 
     /// For string interpolation, if true the delim is a double quote otherwise it's a backtick.
-    doubleQuoteDelim: bool = true,
+    stringDelim: StringDelim = .single,
+    hadTemplateExpr: u1 = 0,
 };
 
 pub const TokenizeStateTag = enum {
@@ -3394,53 +3406,26 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 '"' => {
                     return tokenizeTemplateStartOne(p, .{
                         .stateT = state.stateT,
-                        .doubleQuoteDelim = true,
-                    });
-                },
-                '`' => {
-                    return tokenizeTemplateStartOne(p, .{
-                        .stateT = state.stateT,
-                        .doubleQuoteDelim = false,
+                        .stringDelim = .double,
                     });
                 },
                 '\'' => {
-                    savePos(p);
-                    while (true) {
-                        if (isAtEndChar(p)) {
-                            if (p.tokenizeOpts.ignoreErrors) {
-                                restorePos(p);
-                                p.pushToken(.err, start);
-                                return .{ .stateT = .token };
-                            } else return error.UnterminatedString;
-                        }
-                        const ch_ = consumeChar(p);
-                        switch (ch_) {
-                            '\'' => {
-                                p.pushStringToken(start, p.next_pos);
-                                break;
-                            },
-                            '\\' => {
-                                // Escape the next character.
-                                if (isAtEndChar(p)) {
-                                    if (p.tokenizeOpts.ignoreErrors) {
-                                        restorePos(p);
-                                        p.pushToken(.err, start);
-                                        return .{ .stateT = .token };
-                                    } else return error.UnterminatedString;
-                                }
+                    if (peekChar(p) == '\'') {
+                        if (peekCharAhead(p, 1)) |ch2| {
+                            if (ch2 == '\'') {
                                 _ = consumeChar(p);
-                                continue;
-                            },
-                            '\n' => {
-                                if (p.tokenizeOpts.ignoreErrors) {
-                                    restorePos(p);
-                                    p.pushToken(.err, start);
-                                    return .{ .stateT = .token };
-                                } else return error.UnterminatedString;
-                            },
-                            else => {},
+                                _ = consumeChar(p);
+                                return tokenizeTemplateStartOne(p, .{
+                                    .stateT = state.stateT,
+                                    .stringDelim = .triple,
+                                });
+                            }
                         }
                     }
+                    return tokenizeTemplateStartOne(p, .{
+                        .stateT = state.stateT,
+                        .stringDelim = .single,
+                    });
                 },
                 '#' => {
                     tokenizeTag(p, p.next_pos);
@@ -3579,6 +3564,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 var next = state;
                 next.stateT = .templateToken;
                 next.openBraces = 0;
+                next.hadTemplateExpr = 1;
                 return next;
             }
 
@@ -3593,18 +3579,41 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 }
                 ch = peekChar(p);
                 switch (ch) {
-                    '`' => {
-                        if (!state.doubleQuoteDelim) {
-                            p.pushTemplateStringToken(start, p.next_pos);
+                    '\'' => {
+                        if (state.stringDelim == .single) {
+                            if (state.hadTemplateExpr == 1) {
+                                p.pushTemplateStringToken(start, p.next_pos);
+                            } else {
+                                p.pushStringToken(start, p.next_pos);
+                            }
                             _ = consumeChar(p);
                             return .{ .stateT = .token };
-                        } else {
-                            _ = consumeChar(p);
+                        } else if (state.stringDelim == .triple) {
+                            var ch2 = peekCharAhead(p, 1) orelse 0;
+                            if (ch2 == '\'') {
+                                ch2 = peekCharAhead(p, 2) orelse 0;
+                                if (ch2 == '\'') {
+                                    if (state.hadTemplateExpr == 1) {
+                                        p.pushTemplateStringToken(start, p.next_pos);
+                                    } else {
+                                        p.pushStringToken(start, p.next_pos);
+                                    }
+                                    _ = consumeChar(p);
+                                    _ = consumeChar(p);
+                                    _ = consumeChar(p);
+                                    return .{ .stateT = .token };
+                                }
+                            }
                         }
+                        _ = consumeChar(p);
                     },
                     '"' => {
-                        if (state.doubleQuoteDelim) {
-                            p.pushTemplateStringToken(start, p.next_pos);
+                        if (state.stringDelim == .double) {
+                            if (state.hadTemplateExpr == 1) {
+                                p.pushTemplateStringToken(start, p.next_pos);
+                            } else {
+                                p.pushStringToken(start, p.next_pos);
+                            }
                             _ = consumeChar(p);
                             return .{ .stateT = .token };
                         } else {
@@ -3616,6 +3625,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         var next = state;
                         next.stateT = .templateStart;
                         next.openBraces = 0;
+                        next.hadTemplateExpr = 1;
                         return next;
                     },
                     '\\' => {
@@ -3630,6 +3640,16 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         }
                         _ = consumeChar(p);
                         continue;
+                    },
+                    '\n' => {
+                        if (state.stringDelim == .single) {
+                            if (p.tokenizeOpts.ignoreErrors) {
+                                restorePos(p);
+                                p.pushToken(.err, start);
+                                return .{ .stateT = .token };
+                            } else return error.UnterminatedString;
+                        }
+                        _ = consumeChar(p);
                     },
                     else => {
                         _ = consumeChar(p);
@@ -3754,7 +3774,7 @@ test "Internals." {
     try t.eq(@sizeOf(Token), 8);
     try t.eq(@alignOf(Token), 8);
     try t.eq(@sizeOf(Node), 28);
-    try t.eq(@sizeOf(TokenizeState), 3);
+    try t.eq(@sizeOf(TokenizeState), 4);
 
     try t.eq(std.enums.values(TokenType).len, 52);
 }

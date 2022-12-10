@@ -877,14 +877,18 @@ test "Strings" {
     str = try run.assertValueString(val);
     try t.eqStr(str, "ab'c");
 
-    // Const string multi-line backtick literal.
-    val = try run.eval(
-        \\str = `abc
-        \\abc`
-        \\str
+    // Multi-lines.
+    _ = try run.eval(
+        \\import t from 'test'
+        \\-- Const string multi-line double quote literal.
+        \\str = "abc
+        \\abc"
+        \\try t.eq(str, 'abc\nabc')
+        \\-- Const string multi-line triple quote literal.
+        \\str = '''abc
+        \\abc'''
+        \\try t.eq(str, 'abc\nabc')
     );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "abc\nabc");
 
     // Heap string. 
     val = try run.eval(
@@ -894,42 +898,27 @@ test "Strings" {
     str = try run.assertValueString(val);
     try t.eqStr(str, "abcxyz");
     run.deinitValue(val);
+}
 
-    // String interpolation using double quotes.
-    val = try run.eval(
+test "String interpolation." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t from 'test'
+        \\-- Using single quotes.
         \\a = 'World'
         \\b = 123
-        \\"Hello {a} {b}"
+        \\try t.eq('Hello {a} {b}', 'Hello World 123')
+        \\-- Using double quotes.
+        \\try t.eq("Hello {a} {b}", 'Hello World 123')
+        \\-- Using triple quotes.
+        \\try t.eq('''Hello {a} {b}''', 'Hello World 123')
+        \\-- With expr at start.
+        \\try t.eq('{10}', '10')
+        \\-- With nested paren group.
+        \\try t.eq('{(1 + 2) * 3}', '9')
     );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "Hello World 123");
-    run.deinitValue(val);
-
-    // String interpolation using back ticks.
-    val = try run.eval(
-        \\a = 'World'
-        \\b = 123
-        \\`Hello {a} {b}`
-    );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "Hello World 123");
-    run.deinitValue(val);
-
-    // String interpolation with expr at start.
-    val = try run.eval(
-        \\"{10}"
-    );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "10");
-    run.deinitValue(val);
-
-    // String interpolation with nested paren group.
-    val = try run.eval(
-        \\"{(1 + 2) * 3}"
-    );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "9");
-    run.deinitValue(val);
 }
 
 test "Lists" {

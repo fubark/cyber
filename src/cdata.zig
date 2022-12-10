@@ -2,9 +2,9 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 
-const parser_ = @import("parser.zig");
-const NodeId = parser_.NodeId;
-const Parser = parser_.Parser;
+const cy = @import("cyber.zig");
+const NodeId = cy.NodeId;
+const Parser = cy.Parser;
 const log = stdx.log.scoped(.cdata);
 
 pub const EncodeListContext = struct {
@@ -236,10 +236,10 @@ pub fn encode(alloc: std.mem.Allocator, user_ctx: ?*anyopaque, val: anytype, enc
 
 pub const DecodeListIR = struct {
     alloc: std.mem.Allocator,
-    res: parser_.ResultView,
-    arr: []const parser_.NodeId,
+    res: cy.ParseResultView,
+    arr: []const NodeId,
 
-    fn init(alloc: std.mem.Allocator, res: parser_.ResultView, list_id: parser_.NodeId) !DecodeListIR {
+    fn init(alloc: std.mem.Allocator, res: cy.ParseResultView, list_id: NodeId) !DecodeListIR {
         const list = res.nodes.items[list_id];
         if (list.node_t != .arr_literal) {
             return error.NotAList;
@@ -252,7 +252,7 @@ pub const DecodeListIR = struct {
         };
 
         // Construct list.
-        var buf: std.ArrayListUnmanaged(parser_.NodeId) = .{};
+        var buf: std.ArrayListUnmanaged(NodeId) = .{};
         var item_id = list.head.child_head;
         while (item_id != NullId) {
             const item = res.nodes.items[item_id];
@@ -284,12 +284,12 @@ pub const DecodeListIR = struct {
 
 pub const DecodeMapIR = struct {
     alloc: std.mem.Allocator,
-    res: parser_.ResultView,
+    res: cy.ParseResultView,
 
     /// Preserve order of entries.
-    map: std.StringArrayHashMapUnmanaged(parser_.NodeId),
+    map: std.StringArrayHashMapUnmanaged(NodeId),
 
-    fn init(alloc: std.mem.Allocator, res: parser_.ResultView, map_id: NodeId) !DecodeMapIR {
+    fn init(alloc: std.mem.Allocator, res: cy.ParseResultView, map_id: NodeId) !DecodeMapIR {
         const map = res.nodes.items[map_id];
         if (map.node_t != .map_literal) {
             return error.NotAMap;
@@ -323,7 +323,7 @@ pub const DecodeMapIR = struct {
         self.map.deinit(self.alloc);
     }
 
-    pub fn iterator(self: DecodeMapIR) std.StringArrayHashMapUnmanaged(parser_.NodeId).Iterator {
+    pub fn iterator(self: DecodeMapIR) std.StringArrayHashMapUnmanaged(NodeId).Iterator {
         return self.map.iterator();
     }
 
@@ -342,9 +342,10 @@ pub const DecodeMapIR = struct {
                 const token_s = self.res.getTokenString(val_n.start_token);
                 var buf = std.ArrayList(u8).init(self.alloc);
                 defer buf.deinit();
-                _ = replaceIntoList(u8, token_s[1..token_s.len-1], "\\'", "'", &buf);
-                const replaces = std.mem.replace(u8, buf.items, "\\`", "`", buf.items);
-                buf.items.len -= replaces;
+
+                try buf.resize(token_s.len);
+                const str = cy.unescapeString(buf.items, token_s);
+                buf.items.len = str.len;
                 return buf.toOwnedSlice();
             } else if (val_n.node_t == .stringTemplate and val_n.head.stringTemplate.firstIsString) {
                 const str = self.res.nodes.items[val_n.head.stringTemplate.partsHead];
@@ -454,7 +455,7 @@ const ValueType = enum {
 
 pub const DecodeValueIR = struct {
     alloc: std.mem.Allocator,
-    res: parser_.ResultView,
+    res: cy.ParseResultView,
     exprId: NodeId,
 
     pub fn getValueType(self: DecodeValueIR) ValueType {
@@ -627,10 +628,10 @@ test "decodeMap" {
         \\        1: 'foo'
         \\        2: 'bar'
         \\        3: 'ba\'r'
-        \\        4: `bar
-        \\bar`
-        \\        5: `bar \`bar\`
-        \\bar`
+        \\        4: "bar
+        \\bar"
+        \\        5: "bar `bar`
+        \\bar"
         \\    }
         \\}
     );

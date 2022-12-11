@@ -2729,8 +2729,8 @@ const SymbolEntryType = enum {
 pub const SymbolEntry = struct {
     entryT: SymbolEntryType,
     inner: packed union {
-        nativeFunc1: std.meta.FnPtr(fn (*UserVM, *anyopaque, [*]const Value, u8) Value),
-        nativeFunc2: std.meta.FnPtr(fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair),
+        nativeFunc1: *const fn (*UserVM, *anyopaque, [*]const Value, u8) Value,
+        nativeFunc2: *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair,
         func: packed struct {
             pc: u32,
             /// Includes function params, locals, and return info slot.
@@ -2750,7 +2750,7 @@ pub const SymbolEntry = struct {
         };
     }
 
-    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*UserVM, *anyopaque, [*]const Value, u8) Value)) SymbolEntry {
+    pub fn initNativeFunc1(func: *const fn (*UserVM, *anyopaque, [*]const Value, u8) Value) SymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{
@@ -2759,7 +2759,7 @@ pub const SymbolEntry = struct {
         };
     }
 
-    fn initNativeFunc2(func: std.meta.FnPtr(fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair)) SymbolEntry {
+    fn initNativeFunc2(func: *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair) SymbolEntry {
         return .{
             .entryT = .nativeFunc2,
             .inner = .{
@@ -2779,7 +2779,7 @@ const FuncSymbolEntryType = enum {
 pub const FuncSymbolEntry = struct {
     entryT: FuncSymbolEntryType,
     inner: packed union {
-        nativeFunc1: std.meta.FnPtr(fn (*UserVM, [*]const Value, u8) Value),
+        nativeFunc1: *const fn (*UserVM, [*]const Value, u8) Value,
         func: packed struct {
             // pc: usize,
             pc: u32,
@@ -2789,7 +2789,7 @@ pub const FuncSymbolEntry = struct {
         closure: *Closure,
     },
 
-    pub fn initNativeFunc1(func: std.meta.FnPtr(fn (*UserVM, [*]const Value, u8) Value)) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value) FuncSymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{

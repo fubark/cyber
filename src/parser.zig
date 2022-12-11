@@ -77,13 +77,13 @@ pub const Parser = struct {
     /// For custom functions.
     user: struct {
         ctx: *anyopaque,
-        advanceChar: std.meta.FnPtr(fn (*anyopaque) void),
-        peekChar: std.meta.FnPtr(fn (*anyopaque) u8),
-        peekCharAhead: std.meta.FnPtr(fn (*anyopaque, u32) ?u8),
-        isAtEndChar: std.meta.FnPtr(fn (*anyopaque) bool),
-        getSubStrFromDelta: std.meta.FnPtr(fn (*anyopaque, u32) []const u8),
-        savePos: std.meta.FnPtr(fn (*anyopaque) void),
-        restorePos: std.meta.FnPtr(fn (*anyopaque) void),
+        advanceChar: *const fn (*anyopaque) void,
+        peekChar: *const fn (*anyopaque) u8,
+        peekCharAhead: *const fn (*anyopaque, u32) ?u8,
+        isAtEndChar: *const fn (*anyopaque) bool,
+        getSubStrFromDelta: *const fn (*anyopaque, u32) []const u8,
+        savePos: *const fn (*anyopaque) void,
+        restorePos: *const fn (*anyopaque) void,
     },
 
     pub fn init(alloc: std.mem.Allocator) Parser {
@@ -3485,7 +3485,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     return .{ .stateT = .token };
                 },
                 else => {
-                    if (std.ascii.isAlpha(ch)) {
+                    if (std.ascii.isAlphabetic(ch)) {
                         tokenizeKeywordOrIdent(p, start);
                         return .{ .stateT = .token };
                     }
@@ -3719,7 +3719,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     return;
                 }
                 const ch = peekChar(p);
-                if (std.ascii.isAlNum(ch)) {
+                if (std.ascii.isAlphanumeric(ch)) {
                     advanceChar(p);
                     continue;
                 }
@@ -3744,7 +3744,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     return;
                 }
                 const ch = peekChar(p);
-                if (std.ascii.isAlpha(ch)) {
+                if (std.ascii.isAlphabetic(ch)) {
                     advanceChar(p);
                     continue;
                 } else break;
@@ -3761,7 +3761,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     return;
                 }
                 const ch = peekChar(p);
-                if (std.ascii.isAlNum(ch)) {
+                if (std.ascii.isAlphanumeric(ch)) {
                     advanceChar(p);
                     continue;
                 }

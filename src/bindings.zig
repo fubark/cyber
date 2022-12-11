@@ -28,6 +28,8 @@ const TagLit_ptr = 12;
 const TagLit_AssertError = 13;
 
 pub fn bindCore(self: *cy.VM) !void {
+    @setCold(true);
+
     // Init compile time builtins.
     const resize = try self.ensureMethodSymKey("resize");
     var id = try self.addStruct("List");
@@ -39,6 +41,10 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.ListS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listNext));
     const add = try self.ensureMethodSymKey("add");
     try self.addMethodSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
+    const insert = try self.ensureMethodSymKey("insert");
+    try self.addMethodSym(cy.ListS, insert, cy.SymbolEntry.initNativeFunc1(listInsert));
+    const remove = try self.ensureMethodSymKey("remove");
+    try self.addMethodSym(cy.ListS, remove, cy.SymbolEntry.initNativeFunc1(listRemove));
     const sort = try self.ensureMethodSymKey("sort");
     try self.addMethodSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
     const size = try self.ensureMethodSymKey("size");
@@ -46,8 +52,8 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("Map");
     std.debug.assert(id == cy.MapS);
-    const remove = try self.ensureMethodSymKey("remove");
     try self.addMethodSym(cy.MapS, remove, cy.SymbolEntry.initNativeFunc1(mapRemove));
+    try self.addMethodSym(cy.MapS, size, cy.SymbolEntry.initNativeFunc1(mapSize));
 
     id = try self.addStruct("Closure");
     std.debug.assert(id == cy.ClosureS);
@@ -748,8 +754,31 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     return Value.None;
 }
 
+fn listRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+    _ = nargs;
+    const index = @floatToInt(usize, args[0].toF64());
+    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    inner.remove(index);
+    vm_.releaseObject(list);
+    return Value.None;
+}
+
+fn listInsert(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+    _ = nargs;
+    const index = @floatToInt(usize, args[0].toF64());
+    const value = args[1];
+    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    if (inner.len == inner.buf.len) {
+        inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
+    }
+    inner.insertAssumeCapacity(index, value);
+    vm_.releaseObject(list);
+    return Value.None;
+}
+
 fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
@@ -797,8 +826,16 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     return Value.None;
 }
 
+fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+    _ = nargs;
+    _ = args;
+    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
+    vm_.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, inner.size));
+}
+
 fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }

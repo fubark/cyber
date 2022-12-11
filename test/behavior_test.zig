@@ -922,31 +922,28 @@ test "Lists" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Index access.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t from 'test'
         \\a = [1, 2, 3]
-        \\a[0]
-    );
-    try t.eq(val.asI32(), 1);
-
-    // Negative index access.
-    val = try run.eval(
-        \\a = [1, 2, 3]
-        \\a[-1]
-    );
-    try t.eq(val.asI32(), 3);
-
-    // Set to index.
-    val = try run.eval(
+        \\-- Index access.
+        \\try t.eq(a[0], 1)
+        \\-- Reverse index access.
+        \\try t.eq(a[-1], 3)
+        \\
+        \\-- Set index
         \\a = []
         \\a.resize(3)
         \\a[2] = 3
-        \\a[2]
+        \\try t.eq(a[2], 3)
+        \\-- Insert at index
+        \\a.insert(1, 123)
+        \\try t.eq(a[1], 123)
+        \\-- Get size.
+        \\try t.eq(a.size(), 4)
     );
-    try t.eq(val.asI32(), 3);
 
     // Start to end index slice.
-    val = try run.eval(
+    var val = try run.eval(
         \\a = [1, 2, 3, 4, 5]
         \\a[1..4]
     );
@@ -979,6 +976,13 @@ test "Lists" {
 test "Maps" {
     const run = VMrunner.create();
     defer run.destroy();
+
+    _ = try run.eval(
+        \\import t from 'test'
+        \\a = { b: 123 }
+        \\-- Get size.
+        \\try t.eq(a.size(), 1)
+    );
 
     // Number entry.
     var val = try run.eval(

@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const debug = builtin.mode == .Debug;
 
-const eval2 = ".eval2";
+const section = ".eval";
 
 pub fn List(comptime T: type) type {
     return struct {
@@ -15,7 +15,7 @@ pub fn List(comptime T: type) type {
             alloc.free(self.buf);
         }
 
-        pub fn append(self: *ListT, alloc: std.mem.Allocator, val: T) linksection(eval2) !void {
+        pub fn append(self: *ListT, alloc: std.mem.Allocator, val: T) linksection(section) !void {
             @setRuntimeSafety(debug);
             if (self.len == self.buf.len) {
                 try self.growTotalCapacity(alloc, self.len + 1);
@@ -24,13 +24,24 @@ pub fn List(comptime T: type) type {
             self.len += 1;
         }
 
-        pub fn appendAssumeCapacity(self: *ListT, val: T) linksection(eval2) void {
+        pub fn remove(self: *ListT, idx: usize) linksection(section) void {
+            std.mem.copy(T, self.buf[idx+1..self.len+1], self.buf[idx..self.len]);
+            self.len -= 1;
+        }
+
+        pub fn insertAssumeCapacity(self: *ListT, idx: usize, val: T) linksection(section) void {
+            std.mem.copyBackwards(T, self.buf[idx+1..self.len+1], self.buf[idx..self.len]);
+            self.buf[idx] = val;
+            self.len += 1;
+        }
+
+        pub fn appendAssumeCapacity(self: *ListT, val: T) linksection(section) void {
             @setRuntimeSafety(debug);
             self.buf[self.len] = val;
             self.len += 1;
         }
 
-        pub fn appendSlice(self: *ListT, alloc: std.mem.Allocator, slice: []const T) linksection(eval2) !void {
+        pub fn appendSlice(self: *ListT, alloc: std.mem.Allocator, slice: []const T) linksection(section) !void {
             @setRuntimeSafety(debug);
             try self.ensureTotalCapacity(alloc, self.len + slice.len);
             const oldLen = self.len;
@@ -100,16 +111,16 @@ const Writer = struct {
 
     const WriterT = @This();
 
-    pub fn write(self: WriterT, data: []const u8) linksection(eval2) Error!usize {
+    pub fn write(self: WriterT, data: []const u8) linksection(section) Error!usize {
         try self.list.appendSlice(self.alloc, data);
         return data.len;
     }
 
-    pub fn writeAll(self: WriterT, data: []const u8) linksection(eval2) Error!void {
+    pub fn writeAll(self: WriterT, data: []const u8) linksection(section) Error!void {
         _ = try self.write(data);
     }
 
-    pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) linksection(eval2) Error!void {
+    pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) linksection(section) Error!void {
         var bytes: [256]u8 = undefined;
         std.mem.set(u8, bytes[0..], byte);
 

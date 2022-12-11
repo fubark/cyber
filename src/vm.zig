@@ -65,7 +65,6 @@ pub const VM = struct {
     /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
     methodSyms: cy.List(SymbolMap),
     methodTable: std.AutoHashMapUnmanaged(MethodKey, SymbolEntry),
-    methodSymExtras: cy.List([]const u8),
 
     /// Used to track which method symbols already exist. Only considers the name right now.
     methodSymSigs: std.StringHashMapUnmanaged(SymbolId),
@@ -100,6 +99,7 @@ pub const VM = struct {
 
     stackTrace: StackTrace,
 
+    methodSymExtras: cy.List([]const u8),
     debugTable: []const cy.OpDebug,
     panicMsg: []const u8,
 
@@ -176,7 +176,7 @@ pub const VM = struct {
         self.heapFreeHead = try self.growHeapPages(1);
 
         // Core bindings.
-        try bindings.bindCore(self);
+        try @call(.{ .modifier = .never_inline }, bindings.bindCore, .{self});
     }
 
     pub fn deinit(self: *VM) void {
@@ -4250,9 +4250,8 @@ pub fn callNoInline(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value,
 
 fn getObjectFunctionFallback(obj: *const HeapObject, symId: SymbolId) !Value {
     @setCold(true);
-    @setRuntimeSafety(debug);
-    const name = gvm.methodSymExtras.buf[symId];
     if (obj.common.structId == MapS) {
+        const name = gvm.methodSymExtras.buf[symId];
         const heapMap = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
         if (heapMap.getByString(&gvm, name)) |val| {
             return val;
@@ -4264,7 +4263,7 @@ fn getObjectFunctionFallback(obj: *const HeapObject, symId: SymbolId) !Value {
 // Use new pc local to avoid deoptimization.
 fn callObjSymFallback(pc: usize, framePtr: [*]Value, obj: *HeapObject, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) !PcFramePtr {
     @setCold(true);
-    @setRuntimeSafety(debug);
+    // const func = try @call(.{ .modifier = .never_inline }, getObjectFunctionFallback, .{obj, symId});
     const func = try getObjectFunctionFallback(obj, symId);
 
     gvm.retain(func);

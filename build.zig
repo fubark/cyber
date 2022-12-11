@@ -14,7 +14,7 @@ pub fn build(b: *std.build.Builder) !void {
     {
         const exe = b.addExecutable("cyber", "src/main.zig");
         exe.setBuildMode(mode);
-        if (mode == .ReleaseSafe) {
+        if (mode != .Debug) {
             exe.strip = true;
         }
         exe.setTarget(target);

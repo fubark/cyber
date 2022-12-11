@@ -296,6 +296,11 @@ pub const Value = packed union {
                     TagNone => {
                         log.info("None", .{});
                     },
+                    TagConstString => {
+                        const slice = self.asConstStr();
+                        // log.info("Const String {*} len={} str=\"{s}\"", .{&gvm.strBuf[slice.start], slice.len(), gvm.strBuf[slice.start..slice.end]});
+                        log.info("Const String len={}", .{slice.len()});
+                    },
                     else => {
                         log.info("{}", .{self.val});
                     },

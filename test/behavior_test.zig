@@ -979,9 +979,12 @@ test "Maps" {
 
     _ = try run.eval(
         \\import t from 'test'
-        \\a = { b: 123 }
+        \\a = {
+        \\  b: 123
+        \\  'c': 234
+        \\}
         \\-- Get size.
-        \\try t.eq(a.size(), 1)
+        \\try t.eq(a.size(), 2)
     );
 
     // Number entry.

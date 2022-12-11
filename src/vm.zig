@@ -14,6 +14,7 @@ const log = stdx.log.scoped(.vm);
 
 const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
+const section = ".eval";
 
 /// Reserved symbols known at comptime.
 pub const ListS: StructId = 0;
@@ -673,7 +674,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocOwnedString(self: *VM, str: []u8) !Value {
+    pub fn allocOwnedString(self: *VM, str: []u8) linksection(section) !Value {
         @setRuntimeSafety(debug);
         const obj = try self.allocObject();
         obj.string = .{
@@ -1174,12 +1175,10 @@ pub const VM = struct {
     }
 
     fn getIndex(self: *VM, left: Value, index: Value) !Value {
-        @setRuntimeSafety(debug);
         if (left.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
                 ListS => {
-                    @setRuntimeSafety(debug);
                     const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -1189,9 +1188,8 @@ pub const VM = struct {
                     }
                 },
                 MapS => {
-                    @setRuntimeSafety(debug);
                     const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
-                    if (map.get(self, index)) |val| {
+                    if (@call(.{ .modifier = .never_inline }, map.get, .{self, index})) |val| {
                         return val;
                     } else return Value.None;
                 },

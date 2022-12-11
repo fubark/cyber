@@ -482,9 +482,9 @@ pub const DecodeValueIR = struct {
         const token_s = self.res.getTokenString(node.start_token);
         var buf = std.ArrayList(u8).init(self.alloc);
         defer buf.deinit();
-        _ = replaceIntoList(u8, token_s[1..token_s.len-1], "\\'", "'", &buf);
-        const replaces = std.mem.replace(u8, buf.items, "\\`", "`", buf.items);
-        buf.items.len -= replaces;
+        try buf.resize(token_s.len);
+        const str = cy.unescapeString(buf.items, token_s);
+        buf.items.len = str.len;
         return try buf.toOwnedSlice();
     }
 

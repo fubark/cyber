@@ -2719,8 +2719,12 @@ pub const VMcompiler = struct {
                     if (!discardTopExprReg) {
                         switch (key.node_t) {
                             .ident => {
-                                const token = self.tokens[key.start_token];
-                                const name = self.src[token.pos()..token.data.end_pos];
+                                const name = self.getNodeTokenString(key);
+                                const idx = try self.buf.pushStringConst(name);
+                                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
+                            },
+                            .string => {
+                                const name = self.getNodeTokenString(key);
                                 const idx = try self.buf.pushStringConst(name);
                                 try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                             },
@@ -3680,7 +3684,7 @@ const Module = struct {
 pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
     var newIdx: u32 = 0; 
     var i: u32 = 0;
-    while (i < literal.len) {
+    while (i < literal.len) : (newIdx += 1) {
         if (literal[i] == '\\') {
             if (literal[i + 1] == 'n') {
                 buf[newIdx] = '\n';
@@ -3688,11 +3692,9 @@ pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
                 buf[newIdx] = literal[i + 1];
             }
             i += 2;
-            newIdx += 1;
         } else {
             buf[newIdx] = literal[i];
             i += 1;
-            newIdx += 1;
         }
     }
     return buf[0..newIdx];

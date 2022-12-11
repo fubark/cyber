@@ -34,7 +34,6 @@ pub const ValueMap = struct {
     }
 
     pub fn get(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(section) ?cy.Value {
-        @setRuntimeSafety(debug);
         if (self.getIndex(vm, key)) |idx| {
             return self.entries.?[idx].value;
         }
@@ -154,7 +153,6 @@ pub const ValueMap = struct {
     }
 
     fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(section) u64 {
-        @setRuntimeSafety(debug);
         if (key.isNumber()) {
             return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
         } else {
@@ -195,26 +193,36 @@ pub const ValueMap = struct {
     }
 
     fn keysEqual(vm: *const cy.VM, a: cy.Value, b: cy.Value) linksection(section) bool {
-        @setRuntimeSafety(debug);
         if (a.isNumber()) {
             return a.val == b.val;
         } else {
-            switch (a.getTag()) {
-                cy.TagConstString => {
-                    const bTag = b.getTag();
-                    if (bTag == cy.TagConstString) {
-                        const aSlice = a.asConstStr();
-                        const bSlice = b.asConstStr();
-                        const aStr = vm.strBuf[aSlice.start..aSlice.end];
-                        const bStr = vm.strBuf[bSlice.start..bSlice.end];
+            if (a.isPointer()) {
+                const aObj = stdx.ptrCastAlign(*cy.HeapObject, a.asPointer().?);
+                if (aObj.common.structId == cy.StringS) {
+                    const aStr = aObj.string.ptr[0..aObj.string.len];
+                    if (b.getUserTag() == .string) {
+                        const bStr = vm.valueAsString(b);
                         return std.mem.eql(u8, aStr, bStr);
-                    } else {
+                    } return false;
+                } else stdx.unsupported();
+            } else {
+                switch (a.getTag()) {
+                    cy.TagConstString => {
+                        const bTag = b.getTag();
+                        if (bTag == cy.TagConstString) {
+                            const aSlice = a.asConstStr();
+                            const bSlice = b.asConstStr();
+                            const aStr = vm.strBuf[aSlice.start..aSlice.end];
+                            const bStr = vm.strBuf[bSlice.start..bSlice.end];
+                            return std.mem.eql(u8, aStr, bStr);
+                        } else {
+                            stdx.unsupported();
+                        }
+                    },
+                    else => {
                         stdx.unsupported();
-                    }
-                },
-                else => {
-                    stdx.unsupported();
-                },
+                    },
+                }
             }
         }
     }
@@ -260,7 +268,6 @@ pub const ValueMap = struct {
     /// from this function.  To encourage that, this function is
     /// marked as inline.
     inline fn getIndex(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(section) ?usize {
-        @setRuntimeSafety(debug);
         const hash = computeHash(vm, key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);

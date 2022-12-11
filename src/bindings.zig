@@ -27,6 +27,8 @@ const TagLit_charPtrZ = 11;
 const TagLit_ptr = 12;
 const TagLit_AssertError = 13;
 
+const StdSection = ".std";
+
 pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
 
@@ -666,7 +668,7 @@ fn stdReadInput(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 
-fn stdParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+fn stdParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
     _ = nargs;
     const str = gvm.valueAsString(args[0]);
     defer vm_.release(args[0]);

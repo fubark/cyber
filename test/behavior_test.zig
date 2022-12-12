@@ -1329,7 +1329,7 @@ test "For iterator." {
         \\  pass
         \\elem
     );
-    try t.eq(val.asI32(), 3);
+    try t.expect(val.isNone());
 }
 
 test "For loop over range." {

@@ -999,10 +999,22 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn pushContTo(self: *VMcompiler, toPc: usize) !void {
+    fn pushJumpBackNotNone(self: *VMcompiler, toPc: usize, condLocal: LocalId) !void {
         const pc = self.buf.ops.items.len;
-        try self.buf.pushOp2(.cont, 0, 0);
-        self.buf.setOpArgU16(pc + 1, @intCast(u16, pc - toPc));
+        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
+        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+    }
+
+    fn pushEmptyJumpNotNone(self: *VMcompiler, condLocal: LocalId) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
+        return start;
+    }
+
+    fn pushEmptyJumpNotCond(self: *VMcompiler, condLocal: LocalId) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp3(.jumpNotCond, 0, 0, condLocal);
+        return start;
     }
 
     fn pushJumpBackCond(self: *VMcompiler, toPc: usize, condLocal: LocalId) !void {
@@ -1023,21 +1035,9 @@ pub const VMcompiler = struct {
         return start;
     }
 
-    fn pushEmptyJumpCondNone(self: *VMcompiler, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpCondNone, 0, 0, condLocal);
-        return start;
-    }
-
     fn pushEmptyJumpCond(self: *VMcompiler, condLocal: LocalId) !u32 {
         const start = @intCast(u32, self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
-        return start;
-    }
-
-    fn pushEmptyJumpNotCond(self: *VMcompiler, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNotCond, 0, 0, condLocal);
         return start;
     }
 
@@ -1604,15 +1604,30 @@ pub const VMcompiler = struct {
         self.curBlock.arcTempLocalStart = arcTempLocalStart;
     }
 
-    fn genExprStmt(self: *VMcompiler, nodeId: cy.NodeId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !LocalId {
+    fn genExprStmt(self: *VMcompiler, stmtId: cy.NodeId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !LocalId {
         const arcLocalStart = self.beginArcExpr();
 
-        const node = self.nodes[nodeId];
+        const stmt = self.nodes[stmtId];
         var val: GenValue = undefined;
         if (retainEscapeTop) {
-            val = try self.genRetainedTempExpr(node.head.child_head, discardTopExprReg);
+            const node = self.nodes[stmt.head.child_head];
+            var retLocal = false;
+            if (node.node_t == .ident) {
+                if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
+                    if (!svar.isBoxed) {
+                        if (svar.vtype.rcCandidate) {
+                            try self.buf.pushOp1(.retain, svar.local);
+                        }
+                        val = GenValue.initLocalValue(svar.local, svar.vtype);
+                        retLocal = true;
+                    }
+                }
+            }
+            if (!retLocal) {
+                val = try self.genRetainedTempExpr(stmt.head.child_head, discardTopExprReg);
+            }
         } else {
-            val = try self.genExpr(node.head.child_head, discardTopExprReg);
+            val = try self.genExpr(stmt.head.child_head, discardTopExprReg);
         }
 
         try self.endArcExpr(arcLocalStart);
@@ -1823,8 +1838,6 @@ pub const VMcompiler = struct {
                 self.nextSemaSubBlock();
                 defer self.prevSemaSubBlock();
 
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.setFirstFreeTempLocal(startTempLocal);
                 const iterable = try self.genExpr(node.head.for_iter_stmt.iterable, false);
 
                 const asClause = self.nodes[node.head.for_iter_stmt.as_clause];
@@ -1834,29 +1847,34 @@ pub const VMcompiler = struct {
                 // At this point the temp var is loosely defined.
                 self.vars.items[ident.head.ident.semaVarId].genIsDefined = true;
 
-                // // Reserve unreachable local for iterator.
-                // const iterLocal = try self.nextFreeTempLocal();
-                // try self.buf.pushOp2(.copy, iterable.local, iterLocal + 2);
-                // try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.iteratorObjSym), iterLocal, 1);
+                // Loop needs to reserve temp locals.
+                const reservedStart = self.reservedTempLocalStack.items.len;
+                defer self.reservedTempLocalStack.items.len = reservedStart;
 
-                const forPc = self.buf.ops.items.len;
+                // Reserve temp local for iterator.
+                const iterLocal = try self.nextFreeTempLocal();
+                try self.setReservedTempLocal(iterLocal);
+                try self.buf.pushOp2(.copy, iterable.local, iterLocal + 4);
+                try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.iteratorObjSym), iterLocal, 1);
 
-                // try self.buf.pushOp2(.copy, iterLocal, iterLocal + 3);
-                // try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.nextObjSym), iterLocal + 1, 1);
-                // try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
+                try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
+                try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.nextObjSym), iterLocal + 1, 1);
+                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
 
-                // const jumpNonePc = try self.pushEmptyJumpCondNone(val.local);
-                // self.setFirstFreeTempLocal(iterLocal + 1);
-                try self.buf.pushOpSlice(.forIter, &.{ startTempLocal, iterable.local, val.local, 0, 0 });
+                const skipSkipJump = try self.pushEmptyJumpNotNone(val.local);
+                const skipBodyJump = try self.pushEmptyJump();
+                self.patchJumpToCurrent(skipSkipJump);
 
                 const bodyPc = self.buf.ops.items.len;
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
-                try self.pushContTo(bodyPc);
-                // try self.pushJumpBackTo(forPc);
-                // self.patchJumpToCurrent(jumpNonePc);
 
-                self.buf.setOpArgU16(forPc+4, @intCast(u16, self.buf.ops.items.len - forPc));
-                // try self.buf.pushOp1(.release, iterLocal);
+                try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
+                try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.nextObjSym), iterLocal + 1, 1);
+                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
+
+                try self.pushJumpBackNotNone(bodyPc, val.local);
+                try self.buf.pushOp1(.release, iterLocal);
+                self.patchJumpToCurrent(skipBodyJump);
             },
             .for_range_stmt => {
                 self.nextSemaSubBlock();

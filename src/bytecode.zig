@@ -210,7 +210,6 @@ pub const ByteCodeBuffer = struct {
                 .constI8,
                 .call0,
                 .call1,
-                .cont,
                 .jumpBack,
                 .jump,
                 .coyield,
@@ -237,7 +236,7 @@ pub const ByteCodeBuffer = struct {
                 .callSym1,
                 .callObjSym0,
                 .callObjSym1,
-                // .jumpCondNone,
+                .jumpNotNone,
                 .jumpCond,
                 .minus,
                 .mul,
@@ -293,10 +292,6 @@ pub const ByteCodeBuffer = struct {
                     pc += 5 + numEntries;
                 },
                 .coinit => {
-                    println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
-                    pc += 6;
-                },
-                .forIter => {
                     println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
                     pc += 6;
                 },
@@ -419,7 +414,6 @@ pub const OpCode = enum(u8) {
     /// Jumps the pc forward by an offset.
     jump,
     jumpBack,
-    cont,
 
     // releaseMany,
     release,
@@ -444,7 +438,6 @@ pub const OpCode = enum(u8) {
     greater,
     lessEqual,
     greaterEqual,
-    forIter,
 
     /// Multiplies first two locals and stores result to a dst local.
     mul,
@@ -472,7 +465,6 @@ pub const OpCode = enum(u8) {
     coresume,
     retain,
     copyRetainRelease,
-    // jumpCondNone,
     box,
     setBoxValue,
     setBoxValueRelease,
@@ -488,13 +480,14 @@ pub const OpCode = enum(u8) {
     bitwiseNot,
     bitwiseLeftShift,
     bitwiseRightShift,
+    jumpNotNone,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 78);
+    try t.eq(std.enums.values(OpCode).len, 77);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

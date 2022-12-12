@@ -3276,7 +3276,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .copyReleaseDst => {
-                @setRuntimeSafety(debug);
                 const src = pc[1].arg;
                 const dst = pc[2].arg;
                 pc += 3;
@@ -3344,17 +3343,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += @ptrCast(*const align(1) u16, &pc[1]).*;
                 continue;
             },
-            // .jumpCondNone => {
-            //     @setRuntimeSafety(debug);
-            //     const pcOffset = @ptrCast(*const align(1) u16, &pc[1]).*;
-            //     const local = pc[3].arg;
-            //     if (gvm.getLocal(local).isNone()) {
-            //         pc += pcOffset;
-            //     } else {
-            //         pc += 4;
-            //     }
-            //     continue;
-            // },
             .jumpCond => {
                 const jump = @ptrCast(*const align(1) i16, pc + 1).*;
                 const cond = framePtr[pc[3].arg];
@@ -3366,6 +3354,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 if (condVal) {
                     @setRuntimeSafety(false);
                     pc += @intCast(usize, jump);
+                } else {
+                    pc += 4;
+                }
+                continue;
+            },
+            .jumpNotNone => {
+                const offset = @ptrCast(*const align(1) i16, &pc[1]).*;
+                if (!framePtr[pc[3].arg].isNone()) {
+                    @setRuntimeSafety(false);
+                    pc += @intCast(usize, offset);
                 } else {
                     pc += 4;
                 }
@@ -3535,76 +3533,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dst] = try gvm.allocClosure(framePtr, funcPc, numParams, numLocals, capturedVals);
                 continue;
             },
-            .forIter => {
-                const startLocal = pc[1].arg;
-                const iterable = pc[2].arg;
-                const local = pc[3].arg;
-                pc += 6;
-
-                const iterableVal = framePtr[iterable];
-                framePtr[startLocal + 4] = iterableVal;
-                const res = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, framePtr, iterableVal, gvm.iteratorObjSym, startLocal, 1, 1});
-                pc = res.pc;
-                framePtr = res.framePtr;
-                const iter = framePtr[startLocal];
-
-                if (!iter.isPointer()) {
-                    return gvm.panic("Not an iterator.");
-                }
-
-                gvm.pc = pc;
-                if (local == 255) {
-                    while (true) {
-                        // try gvm.callObjSym(recv, gvm.nextObjSym, 1, 1);
-                        framePtr[startLocal + 4] = iter;
-                        // pc = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, iter, gvm.nextObjSym, startLocal, 1, 1});
-                        const obj = stdx.ptrAlignCast(*HeapObject, iter.asPointer().?);
-                        if (gvm.getCallObjSym(obj, gvm.nextObjSym)) |sym| {
-                            framePtr[startLocal + 4] = iter;
-                            try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, 1, 1);
-                        } else return gvm.panic("Missing function symbol in value.");
-
-                        const next = framePtr[startLocal];
-                        if (next.isNone()) {
-                            break;
-                        }
-                        gvm.framePtr = framePtr;
-                        @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
-                            if (err == error.BreakLoop) {
-                                break;
-                            } else return err;
-                        };
-                    }
-                } else {
-                    while (true) {
-                        // try gvm.callObjSym(recv, gvm.nextObjSym, 1, 1);
-                        framePtr[startLocal + 4] = iter;
-                        // pc = try @call(.{ .modifier = .never_inline }, gvm.callObjSym, .{pc, iter, gvm.nextObjSym, startLocal, 1, 1});
-                        const obj = stdx.ptrAlignCast(*HeapObject, iter.asPointer().?);
-                        if (gvm.getCallObjSym(obj, gvm.nextObjSym)) |sym| {
-                            framePtr[startLocal + 4] = iter;
-                            try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, 1, 1);
-                        } else return gvm.panic("Missing function symbol in value.");
-
-                        const next = framePtr[startLocal];
-                        if (next.isNone()) {
-                            break;
-                        }
-                        const localPtr = &framePtr[local];
-                        release(localPtr.*);
-                        localPtr.* = next;
-                        gvm.framePtr = framePtr;
-                        @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{}) catch |err| {
-                            if (err == error.BreakLoop) {
-                                break;
-                            } else return err;
-                        };
-                    }
-                }
-                release(iter);
-                pc = pc + @ptrCast(*const align(1) u16, pc-2).* - 6;
-                continue;
-            },
             .coreturn => {
                 @setRuntimeSafety(debug);
                 pc += 1;
@@ -3657,11 +3585,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dst] = fiber;
                 pc += jump;
                 continue;
-            },
-            .cont => {
-                @setRuntimeSafety(debug);
-                pc -= @ptrCast(*const align(1) u16, &pc[1]).*;
-                return;
             },
             // .ret2 => {
             //     @setRuntimeSafety(debug);

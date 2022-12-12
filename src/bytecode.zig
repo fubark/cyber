@@ -293,9 +293,8 @@ pub const ByteCodeBuffer = struct {
                     pc += 5 + numEntries;
                 },
                 .coinit => {
-                    const jump = ops[pc+3].arg;
                     println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
-                    pc += jump;
+                    pc += 6;
                 },
                 .forIter => {
                     println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
@@ -305,10 +304,6 @@ pub const ByteCodeBuffer = struct {
                     const numCaptured = ops[pc+3].arg;
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
                     pc += 6 + numCaptured;
-                },
-                .forRange => {
-                    println("{} {s} {} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
-                    pc += 7;
                 },
                 else => {
                     stdx.panicFmt("unsupported {}", .{ops[pc].code});
@@ -449,7 +444,6 @@ pub const OpCode = enum(u8) {
     greater,
     lessEqual,
     greaterEqual,
-    forRange,
     forIter,
 
     /// Multiplies first two locals and stores result to a dst local.
@@ -500,7 +494,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 79);
+    try t.eq(std.enums.values(OpCode).len, 78);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

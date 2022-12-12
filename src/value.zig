@@ -49,11 +49,11 @@ pub const Value = packed union {
     val: u64,
     /// Call frame return info.
     retInfo: packed struct {
-        pc: u32,
-        framePtr: u29,
         numRetVals: u2,
         retFlag: u1,
     },
+    retPcPtr: [*]const cy.OpData,
+    retFramePtr: [*]Value,
     // two: packed struct {
     //     low: u32,
     //     high: u32,

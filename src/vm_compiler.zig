@@ -37,8 +37,8 @@ pub const VMcompiler = struct {
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
     subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
 
-    /// Tracks which temp locals need to be released at the end of the current ARC expression.
-    arcTempLocalStack: std.ArrayListUnmanaged(LocalId),
+    /// Tracks which temp locals are reserved. They are skipped for temp local allocations.
+    reservedTempLocalStack: std.ArrayListUnmanaged(ReservedTempLocal),
 
     assignedVarStack: std.ArrayListUnmanaged(SemaVarId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
@@ -85,7 +85,7 @@ pub const VMcompiler = struct {
             .blocks = .{},
             .blockJumpStack = .{},
             .subBlockJumpStack = .{},
-            .arcTempLocalStack = .{},
+            .reservedTempLocalStack = .{},
             .assignedVarStack = .{},
             .operandStack = .{},
             .curBlock = undefined,
@@ -126,7 +126,7 @@ pub const VMcompiler = struct {
         self.assignedVarStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
-        self.arcTempLocalStack.deinit(self.alloc);
+        self.reservedTempLocalStack.deinit(self.alloc);
         self.vars.deinit(self.alloc);
         self.capVarParents.deinit(self.alloc);
 
@@ -952,6 +952,31 @@ pub const VMcompiler = struct {
         self.alloc.free(constSrc);
         self.buf.mconsts = constDst;
 
+        // Final op address is known. Patch pc offsets.
+        // for (self.vm.funcSyms.items()) |*sym| {
+        //     if (sym.entryT == .func) {
+        //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset};
+        //     }
+        // }
+        // for (self.vm.methodSyms.items()) |*sym| {
+        //     if (sym.mapT == .one) {
+        //         if (sym.inner.one.sym.entryT == .func) {
+        //             sym.inner.one.sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.one.sym.inner.func.pc.offset };
+        //         }
+        //     } else if (sym.mapT == .many) {
+        //         if (sym.inner.many.mruSym.entryT == .func) {
+        //             sym.inner.many.mruSym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.many.mruSym.inner.func.pc.offset };
+        //         }
+        //     }
+        // }
+        // var iter = self.vm.methodTable.iterator();
+        // while (iter.next()) |entry| {
+        //     const sym = entry.value_ptr;
+        //     if (sym.entryT == .func) {
+        //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset };
+        //     }
+        // }
+
         return ResultView{
             .buf = self.buf,
             .hasError = false,
@@ -978,6 +1003,12 @@ pub const VMcompiler = struct {
         const pc = self.buf.ops.items.len;
         try self.buf.pushOp2(.cont, 0, 0);
         self.buf.setOpArgU16(pc + 1, @intCast(u16, pc - toPc));
+    }
+
+    fn pushJumpBackCond(self: *VMcompiler, toPc: usize, condLocal: LocalId) !void {
+        const pc = self.buf.ops.items.len;
+        try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
+        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
     }
 
     fn pushJumpBackTo(self: *VMcompiler, toPc: usize) !void {
@@ -1129,10 +1160,12 @@ pub const VMcompiler = struct {
     fn pushBlock(self: *VMcompiler) !void {
         try self.blocks.append(self.alloc, Block.init());
         self.curBlock = &self.blocks.items[self.blocks.items.len-1];
+        self.curBlock.reservedTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
     }
 
     fn popBlock(self: *VMcompiler) void {
         var last = self.blocks.pop();
+        self.reservedTempLocalStack.items.len = last.reservedTempLocalStart;
         last.deinit(self.alloc);
         if (self.blocks.items.len > 0) {
             self.curBlock = &self.blocks.items[self.blocks.items.len-1];
@@ -1540,7 +1573,12 @@ pub const VMcompiler = struct {
         _ = try self.curBlock.reserveLocal();
 
         // Second local is reserved for the return info.
-        // This allows the vm to unwind with just the framePtr.
+        _ = try self.curBlock.reserveLocal();
+
+        // Third local is reserved for the return address.
+        _ = try self.curBlock.reserveLocal();
+
+        // Fourth local is reserved for the previous frame pointer.
         _ = try self.curBlock.reserveLocal();
 
         const sblock = self.curSemaBlock();
@@ -1549,17 +1587,18 @@ pub const VMcompiler = struct {
         }
     }
 
+    /// ARC managed temps need to be released at the end of the current ARC expression.
     fn beginArcExpr(self: *VMcompiler) u32 {
-        self.curBlock.arcTempLocalStart = @intCast(u32, self.arcTempLocalStack.items.len);
+        self.curBlock.arcTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
         return self.curBlock.arcTempLocalStart;
     }
 
     fn endArcExpr(self: *VMcompiler, arcTempLocalStart: u32) !void {
         // Gen release ops.
-        for (self.arcTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |local| {
-            try self.buf.pushOp1(.release, local);
+        for (self.reservedTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |temp| {
+            try self.buf.pushOp1(.release, temp.local);
         }
-        self.arcTempLocalStack.items.len = self.curBlock.arcTempLocalStart;
+        self.reservedTempLocalStack.items.len = self.curBlock.arcTempLocalStart;
 
         // Restore current local start.
         self.curBlock.arcTempLocalStart = arcTempLocalStart;
@@ -1823,9 +1862,6 @@ pub const VMcompiler = struct {
                 self.nextSemaSubBlock();
                 defer self.prevSemaSubBlock();
 
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.setFirstFreeTempLocal(startTempLocal);
-
                 var local: u8 = NullIdU8;
                 if (node.head.for_range_stmt.as_clause != NullId) {
                     const asClause = self.nodes[node.head.for_range_stmt.as_clause];
@@ -1838,34 +1874,64 @@ pub const VMcompiler = struct {
                     // }
                 }
 
-                // Push range start/end.
+                // Loop needs to reserve temp locals.
+                const reservedStart = self.reservedTempLocalStack.items.len;
+                defer self.reservedTempLocalStack.items.len = reservedStart;
+
+                // Set range start/end.
                 const range_clause = self.nodes[node.head.for_range_stmt.range_clause];
+                const rangeStartN = self.nodes[range_clause.head.left_right.left];
+                const rangeEndN = self.nodes[range_clause.head.left_right.right];
+                var lessThanCond = true;
+                if (rangeStartN.node_t == .number and rangeEndN.node_t == .number) {
+                    const startLit = self.getNodeTokenString(rangeStartN);
+                    const endLit = self.getNodeTokenString(rangeEndN);
+                    const start = try std.fmt.parseFloat(f64, startLit);
+                    const end = try std.fmt.parseFloat(f64, endLit);
+                    if (start > end) {
+                        lessThanCond = false;
+                    }
+                }
+
                 const rangeStart = try self.genExpr(range_clause.head.left_right.left, false);
+                if (self.isTempLocal(rangeStart.local)) {
+                    try self.setReservedTempLocal(rangeStart.local);
+                }
                 const rangeEnd = try self.genExpr(range_clause.head.left_right.right, false);
+                if (self.isTempLocal(rangeEnd.local)) {
+                    try self.setReservedTempLocal(rangeEnd.local);
+                }
 
-                // Push custom step.
-                const stepConst = try self.buf.pushConst(.{ .val = f64One.val });
+                // Set custom step.
                 const rangeStep = try self.nextFreeTempLocal();
-                try self.buf.pushOp2(.constOp, @intCast(u8, stepConst), rangeStep);
+                try self.setReservedTempLocal(rangeStep);
+                _ = try self.genConst(1, rangeStep);
 
-                // try self.buf.pushOp2(.copy, rangeStart.local, local);
+                try self.buf.pushOp2(.copy, rangeStart.local, local);
 
-                // Push for range op with asLocal.
-                const forPc = self.buf.ops.items.len;
-
-                // Attempt to make use pure bytecode version of the for loop but it's still slower.
-                // try self.buf.pushOp3(.lessNumber, local, rangeEnd.local, rangeStart.local);
-                // const jumpNotCond = try self.pushEmptyJumpNotCond(rangeStart.local);
-                // try self.buf.pushOp3(.addNumber, local, rangeStep, local);
-
-                try self.buf.pushOpSlice(.forRange, &.{ local, rangeStart.local, rangeEnd.local, rangeStep, 0, 0 });
+                // Initial comparison to check against end range.
+                if (lessThanCond) {
+                    try self.buf.pushOp3(.less, local, rangeEnd.local, rangeStart.local);
+                } else {
+                    try self.buf.pushOp3(.greater, local, rangeEnd.local, rangeStart.local);
+                }
+                const jumpNotCond = try self.pushEmptyJumpNotCond(rangeStart.local);
 
                 const bodyPc = self.buf.ops.items.len;
+
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
-                try self.pushContTo(bodyPc);
-                self.buf.setOpArgU16(forPc+5, @intCast(u16, self.buf.ops.items.len - forPc));
-                // try self.pushJumpBackTo(forPc);
-                // self.patchJumpToCurrent(jumpNotCond);
+
+                // Perform counter update and perform check against end range.
+                if (lessThanCond) {
+                    try self.buf.pushOp3(.add, local, rangeStep, local);
+                    try self.buf.pushOp3(.less, local, rangeEnd.local, rangeStart.local);
+                } else {
+                    try self.buf.pushOp3(.minus, local, rangeStep, local);
+                    try self.buf.pushOp3(.greater, local, rangeEnd.local, rangeStart.local);
+                }
+                try self.pushJumpBackCond(bodyPc, rangeStart.local);
+
+                self.patchJumpToCurrent(jumpNotCond);
             },
             .if_stmt => {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -2018,7 +2084,7 @@ pub const VMcompiler = struct {
 
         self.patchJumpToCurrent(jumpPc);
 
-        const sym = cy.SymbolEntry.initFunc(opStart, numLocals);
+        const sym = cy.SymbolEntry.initFuncOffset(opStart, numLocals);
         try self.vm.addMethodSym(structId, methodId, sym);
     }
 
@@ -2093,7 +2159,7 @@ pub const VMcompiler = struct {
         }
 
         // A closure would update the symbol at runtime.
-        const sym = cy.FuncSymbolEntry.initFunc(opStart, numLocals);
+        const sym = cy.FuncSymbolEntry.initFuncOffset(opStart, numLocals);
         self.vm.setFuncSym(symId, sym);
     }
 
@@ -2140,6 +2206,8 @@ pub const VMcompiler = struct {
         } else {
             _ = try self.nextFreeTempLocal();
         }
+        _ = try self.nextFreeTempLocal();
+        _ = try self.nextFreeTempLocal();
         _ = try self.nextFreeTempLocal();
 
         const genCallStartLocal = if (startFiber) 0 else callStartLocal;
@@ -2237,11 +2305,11 @@ pub const VMcompiler = struct {
                     const coinitPc = self.buf.ops.items.len;
                     if (startFiber) {
                         // Precompute first arg local since coinit doesn't need the startLocal.
-                        var initialStackSize = numArgs + 2;
+                        var initialStackSize = numArgs + 4;
                         if (initialStackSize < 16) {
                             initialStackSize = 16;
                         }
-                        try self.buf.pushOpSlice(.coinit, &.{ callStartLocal + 2, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
+                        try self.buf.pushOpSlice(.coinit, &.{ callStartLocal + 4, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
                     }
 
                     const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
@@ -2323,9 +2391,9 @@ pub const VMcompiler = struct {
         return self.initGenValue(dst, AnyType);
     }
 
-    fn isArcTempLocal(self: *const VMcompiler, local: LocalId) bool {
-        for (self.arcTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |arcLocal| {
-            if (arcLocal == local) {
+    fn isReservedTempLocal(self: *const VMcompiler, local: LocalId) bool {
+        for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
+            if (temp.local == local) {
                 return true;
             }
         }
@@ -2358,10 +2426,10 @@ pub const VMcompiler = struct {
     }
 
     fn advanceNextTempLocalPastArcTemps(self: *VMcompiler) LocalId {
-        if (self.curBlock.arcTempLocalStart < self.arcTempLocalStack.items.len) {
-            for (self.arcTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |local| {
-                if (self.curBlock.firstFreeTempLocal < local) {
-                    self.curBlock.firstFreeTempLocal = local + 1;
+        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
+            for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
+                if (self.curBlock.firstFreeTempLocal < temp.local) {
+                    self.curBlock.firstFreeTempLocal = temp.local + 1;
                 }
             }
         }
@@ -2377,8 +2445,8 @@ pub const VMcompiler = struct {
             defer {
                 // Advance to the next free temp considering reserved arc temps.
                 self.curBlock.firstFreeTempLocal += 1;
-                if (self.curBlock.arcTempLocalStart < self.arcTempLocalStack.items.len) {
-                    while (self.isArcTempLocal(self.curBlock.firstFreeTempLocal)) {
+                if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
+                    while (self.isReservedTempLocal(self.curBlock.firstFreeTempLocal)) {
                         self.curBlock.firstFreeTempLocal += 1;
                     }
                 }
@@ -2391,15 +2459,21 @@ pub const VMcompiler = struct {
 
     fn computeNextTempLocalFrom(self: *VMcompiler, local: LocalId) void {
         self.curBlock.firstFreeTempLocal = local;
-        if (self.curBlock.arcTempLocalStart < self.arcTempLocalStack.items.len) {
-            while (self.isArcTempLocal(self.curBlock.firstFreeTempLocal)) {
+        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
+            while (self.isReservedTempLocal(self.curBlock.firstFreeTempLocal)) {
                 self.curBlock.firstFreeTempLocal += 1;
             }
         }
     }
 
+    /// Find first available temp starting from the beginning.
     fn resetNextFreeTemp(self: *VMcompiler) void {
         self.curBlock.firstFreeTempLocal = @intCast(u8, self.curBlock.numLocals);
+        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
+            while (self.isReservedTempLocal(self.curBlock.firstFreeTempLocal)) {
+                self.curBlock.firstFreeTempLocal += 1;
+            }
+        }
     }
 
     fn setFirstFreeTempLocal(self: *VMcompiler, local: LocalId) void {
@@ -2469,6 +2543,12 @@ pub const VMcompiler = struct {
     fn unescapeString(self: *VMcompiler, literal: []const u8) ![]const u8 {
         try self.u8Buf.resize(self.alloc, literal.len);
         return Root.unescapeString(self.u8Buf.items, literal);
+    }
+
+    fn setReservedTempLocal(self: *VMcompiler, local: LocalId) !void {
+        try self.reservedTempLocalStack.append(self.alloc, .{
+            .local = local,
+        });
     }
 
     /// `dst` indicates the local of the resulting value.
@@ -2602,8 +2682,7 @@ pub const VMcompiler = struct {
                     try self.buf.pushOperands(self.operandStack.items[operandStart..]);
 
                     if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        // Retain as arc temp.
-                        try self.arcTempLocalStack.append(self.alloc, dst);
+                        try self.setReservedTempLocal(dst);
                     }
                     return self.initGenValue(dst, StringType);
                 } else {
@@ -2690,8 +2769,7 @@ pub const VMcompiler = struct {
                     try self.buf.pushOperands(self.operandStack.items[operandStart..]);
                     // try self.buf.pushOp1(.pushStructInit, );
                     if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        // Retain as arc temp.
-                        try self.arcTempLocalStack.append(self.alloc, dst);
+                        try self.setReservedTempLocal(dst);
                     }
                     return GenValue.initTempValue(dst, AnyType);
                 } else {
@@ -2745,7 +2823,7 @@ pub const VMcompiler = struct {
                     }
 
                     if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.arcTempLocalStack.append(self.alloc, dst);
+                        try self.setReservedTempLocal(dst);
                     }
                     return self.initGenValue(dst, MapType);
                 } else {
@@ -2769,7 +2847,7 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     try self.buf.pushOp3(.list, argStartLocal, @intCast(u8, i), dst);
                     if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.arcTempLocalStack.append(self.alloc, dst);
+                        try self.setReservedTempLocal(dst);
                     }
                     return self.initGenValue(dst, ListType);
                 } else {
@@ -2820,7 +2898,7 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     try self.buf.pushOpSlice(.slice, &.{ parentv.local, leftv.local, rightv.local, dst });
                     if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.arcTempLocalStack.append(self.alloc, dst);
+                        try self.setReservedTempLocal(dst);
                     }
                     return self.initGenValue(dst, ListType);
                 } else {
@@ -3035,7 +3113,7 @@ pub const VMcompiler = struct {
                     try self.buf.pushOp2(.copy, val.local, dst);
                 }
                 if (!discardTopExprReg and !retainEscapeTop and self.isTempLocal(dst)) {
-                    try self.arcTempLocalStack.append(self.alloc, dst);
+                    try self.setReservedTempLocal(dst);
                 }
                 return self.initGenValue(dst, val.vtype);
             },
@@ -3076,7 +3154,7 @@ pub const VMcompiler = struct {
                         const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                         try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.arcTempLocalStack.append(self.alloc, dst);
+                            try self.setReservedTempLocal(dst);
                         }
                         return self.initGenValue(dst, AnyType);
                     } else {
@@ -3112,7 +3190,7 @@ pub const VMcompiler = struct {
                         try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
                         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.arcTempLocalStack.append(self.alloc, dst);
+                            try self.setReservedTempLocal(dst);
                         }
                         return self.initGenValue(dst, AnyType);
                     }
@@ -3149,7 +3227,7 @@ pub const VMcompiler = struct {
                         const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
                         try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.arcTempLocalStack.append(self.alloc, dst);
+                            try self.setReservedTempLocal(dst);
                         }
                         return self.initGenValue(dst, AnyType);
                     } else {
@@ -3185,7 +3263,7 @@ pub const VMcompiler = struct {
                         try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
                         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
                         if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.arcTempLocalStack.append(self.alloc, dst);
+                            try self.setReservedTempLocal(dst);
                         }
                         return self.initGenValue(dst, AnyType);
                     }
@@ -3273,6 +3351,9 @@ const Block = struct {
     /// Temp locals are allocated from the end of the user locals towards the right.
     firstFreeTempLocal: u8,
 
+    /// Start of the first reserved temp local.
+    reservedTempLocalStart: u32,
+
     /// Start of the first retained temp local of the current ARC expr.
     /// This must be kept updated as codegen walks the ast so that sub expressions
     /// knows which ARC expr they belong to.
@@ -3284,6 +3365,7 @@ const Block = struct {
             .endLocalsPc = 0,
             .numTempLocals = 0,
             .firstFreeTempLocal = 0,
+            .reservedTempLocalStart = 0,
             .arcTempLocalStart = 0,
         };
     }
@@ -3699,3 +3781,7 @@ pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
     }
     return buf[0..newIdx];
 }
+
+const ReservedTempLocal = struct {
+    local: LocalId,
+};

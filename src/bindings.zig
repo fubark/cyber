@@ -739,13 +739,11 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
             gvm.retain(a);
             gvm.retain(b);
             gvm.retain(ctx_.lessFn);
-            gvm.framePtr[2] = a;
-            gvm.framePtr[3] = b;
-            gvm.framePtr[4] = ctx_.lessFn;
-            const retInfo = cy.buildReturnInfo(@ptrToInt(gvm.pc) - @ptrToInt(gvm.ops.ptr), (@ptrToInt(gvm.framePtr) - @ptrToInt(gvm.stack.ptr))/8, 1, false);
-            var framePtr = gvm.framePtr;
-            vm_.callNoInline(&gvm.pc, &framePtr, ctx_.lessFn, 0, 3, retInfo) catch stdx.fatal();
-            gvm.framePtr = framePtr;
+            gvm.framePtr[4] = a;
+            gvm.framePtr[5] = b;
+            gvm.framePtr[6] = ctx_.lessFn;
+            const retInfo = cy.buildReturnInfo(1, false);
+            vm_.callNoInline(&gvm.pc, &gvm.framePtr, ctx_.lessFn, 0, 3, retInfo) catch stdx.fatal();
             @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
             const res = gvm.framePtr[0];
             return res.toBool();

@@ -1388,7 +1388,7 @@ test "For loop over range." {
         \\  sum += i
         \\i
     );
-    try t.eq(val.asI32(), 9);
+    try t.eq(val.asI32(), 10);
 
     // Reverse direction.
     val = try run.eval(

@@ -26,6 +26,7 @@ pub const TagError = value.TagError;
 pub const TagConstString = value.TagConstString;
 pub const TagUserTag = value.TagUserTag;
 pub const TagUserTagLiteral = value.TagUserTagLiteral;
+pub const TagInteger = value.TagInteger;
 
 pub const ValueUserTag = value.ValueUserTag;
 
@@ -57,6 +58,7 @@ pub const buildReturnInfo = vm.buildReturnInfo;
 pub const framePtrOffset = vm.framePtrOffset;
 pub const CyList = vm.List;
 pub const OpaquePtr = vm.OpaquePtr;
+pub const FuncSymDetail = vm.FuncSymDetail;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;

@@ -169,7 +169,7 @@ test "Tag types." {
         \\n = Animal#Tiger
         \\number(n)
     );
-    try t.eq(val.asI32(), 1);
+    try t.eq(val.asF64toI32(), 1);
 
     // Using TagType declared afterwards.
     val = try run.eval(
@@ -179,7 +179,7 @@ test "Tag types." {
         \\  Tiger
         \\number(n)
     );
-    try t.eq(val.asI32(), 1);
+    try t.eq(val.asF64toI32(), 1);
 
     // Reassign using tag literal.
     val = try run.eval(
@@ -191,7 +191,7 @@ test "Tag types." {
         \\n = #Dragon
         \\number(n)
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 
     // Tag literal.
     val = try run.eval(
@@ -199,7 +199,7 @@ test "Tag types." {
         \\number(n)
     );
     const id = try vm_.gvm.ensureTagLitSym("Tiger");
-    try t.eq(val.asI32(), @intCast(i32, id));
+    try t.eq(val.asF64toI32(), @intCast(i32, id));
 }
 
 test "test module" {
@@ -231,7 +231,7 @@ test "Structs." {
         \\n = Node{ value: 123 }
         \\n.value
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // Initialize with heap value field.
     val = try run.eval(
@@ -240,7 +240,7 @@ test "Structs." {
         \\n = Node{ value: [123] }
         \\n.value[0]
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // Set to struct field.
     val = try run.eval(
@@ -250,7 +250,7 @@ test "Structs." {
         \\n.value = 234
         \\n.value
     );
-    try t.eq(val.asI32(), 234);
+    try t.eq(val.asF64toI32(), 234);
 
     // Set to field with heap value.
     val = try run.eval(
@@ -260,7 +260,7 @@ test "Structs." {
         \\n.value = 234
         \\n.value
     );
-    try t.eq(val.asI32(), 234);
+    try t.eq(val.asF64toI32(), 234);
 
     // Struct to string returns struct's name. 
     val = try run.eval(
@@ -286,7 +286,7 @@ test "Struct methods." {
         \\n = Node{ value: 123 }
         \\n.get()
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // self param with regular param.
     val = try run.eval(
@@ -297,7 +297,7 @@ test "Struct methods." {
         \\n = Node{ value: 123 }
         \\n.get(321)
     );
-    try t.eq(val.asI32(), 444);
+    try t.eq(val.asF64toI32(), 444);
 
     // self param with many regular param.
     val = try run.eval(
@@ -308,7 +308,7 @@ test "Struct methods." {
         \\n = Node{ value: 123 }
         \\n.get(321, 1)
     );
-    try t.eq(val.asI32(), 443);
+    try t.eq(val.asF64toI32(), 443);
 
     // Static method, no params.
     val = try run.eval(
@@ -318,7 +318,7 @@ test "Struct methods." {
         \\    return 123
         \\Node.get()
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // Static method, one params.
     val = try run.eval(
@@ -328,7 +328,7 @@ test "Struct methods." {
         \\    return 123 + param
         \\Node.get(321)
     );
-    try t.eq(val.asI32(), 444);
+    try t.eq(val.asF64toI32(), 444);
 
     // Static method, many params.
     val = try run.eval(
@@ -338,7 +338,7 @@ test "Struct methods." {
         \\    return 123 + param - param2
         \\Node.get(321, 1)
     );
-    try t.eq(val.asI32(), 443);
+    try t.eq(val.asF64toI32(), 443);
 }
 
 test "Stack trace unwinding." {
@@ -406,7 +406,7 @@ test "Optionals" {
 //         \\  return 1
 //         \\foo() + 2
 //     , true);
-//     try t.eq(val.asI32(), 3);
+//     try t.eq(val.asF64toI32(), 3);
 //     run.deinitValue(val);
 // }
 
@@ -573,14 +573,14 @@ test "Logic operators" {
         \\a = none
         \\123 or a.foo
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // If first `or` operand evaluates to false, the second expression is evaluated and returned.
     val = try run.eval(
         \\a = 123
         \\0 or a
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     val = try run.eval(
         \\false and true
@@ -598,13 +598,13 @@ test "Logic operators" {
         \\a = none
         \\0 and a.foo
     );
-    try t.eq(val.asI32(), 0);
+    try t.eq(val.asF64toI32(), 0);
 
     // If first `and` operand evaluates to true, the second expression is evaluated and returned.
     val = try run.eval(
         \\123 and 234
     );
-    try t.eq(val.asI32(), 234);
+    try t.eq(val.asF64toI32(), 234);
 
     val = try run.eval(
         \\not false
@@ -661,7 +661,7 @@ test "boolean" {
 //         \\  return task.promise
 //         \\1 + foo()
 //     );
-//     try t.eq(val.asI32(), 124);
+//     try t.eq(val.asF64toI32(), 124);
 //     run.deinitValue(val);
 // }
 
@@ -676,7 +676,7 @@ test "boolean" {
 //         \\  return task.promise
 //         \\await foo()
 //     );
-//     try t.eq(val.asI32(), 123);
+//     try t.eq(val.asF64toI32(), 123);
 //     run.deinitValue(val);
 
 //     // await on value.
@@ -685,7 +685,7 @@ test "boolean" {
 //         \\  return 234
 //         \\await foo()
 //     );
-//     try t.eq(val.asI32(), 234);
+//     try t.eq(val.asF64toI32(), 234);
 //     run.deinitValue(val);
 // }
 
@@ -699,7 +699,7 @@ test "Indentation." {
         \\  return 123
         \\foo()
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // Comment before end of block.
     val = try run.eval(
@@ -708,7 +708,7 @@ test "Indentation." {
         \\  -- Comment.
         \\foo()
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // Indented comment at the end of the source.
     _ = try run.eval(
@@ -733,7 +733,7 @@ test "Indentation." {
         \\  return 123 
         \\foo()
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     // Continue from grand parent indentation.
     val = try run.eval(
@@ -744,7 +744,7 @@ test "Indentation." {
         \\  return 123 
         \\foo()
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 }
 
 test "Numbers." {
@@ -767,19 +767,19 @@ test "Parentheses" {
     var val = try run.eval(
         \\(2 + 3) * 4
     );
-    try t.eq(val.asI32(), 20);
+    try t.eq(val.asF64toI32(), 20);
 
     // Parentheses at right of binary expression.
     val = try run.eval(
         \\2 * (3 + 4)
     );
-    try t.eq(val.asI32(), 14);
+    try t.eq(val.asF64toI32(), 14);
 
     // Nested parentheses.
     val = try run.eval(
         \\2 + ((3 + 4) / 7)
     );
-    try t.eq(val.asI32(), 3);
+    try t.eq(val.asF64toI32(), 3);
 }
 
 test "Operator precedence." {
@@ -790,19 +790,19 @@ test "Operator precedence." {
     var val = try run.eval(
         \\2 + 3 * 4
     );
-    try t.eq(val.asI32(), 14);
+    try t.eq(val.asF64toI32(), 14);
 
     // Division before addition.
     val = try run.eval(
         \\2 + 4 / 4
     );
-    try t.eq(val.asI32(), 3);
+    try t.eq(val.asF64toI32(), 3);
 
     // Power before addition.
     val = try run.eval(
         \\2 + 3 ^ 2
     );
-    try t.eq(val.asI32(), 11);
+    try t.eq(val.asF64toI32(), 11);
 
     // Variables and parenthesis.
     val = try run.eval(
@@ -811,13 +811,13 @@ test "Operator precedence." {
         \\timeRange = 100
         \\5 + 90 * (time - minTime) / timeRange
     );
-    try t.eq(val.asI32(), 5);
+    try t.eq(val.asF64toI32(), 5);
 
     // Left recursion with different operators.
     val = try run.eval(
         \\5 + 2 * 3 / 3 
     );
-    try t.eq(val.asI32(), 7);
+    try t.eq(val.asF64toI32(), 7);
 }
 
 test "Comments" {
@@ -829,12 +829,12 @@ test "Comments" {
         \\-- 1
         \\2
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
     val = try run.eval(
         \\2
         \\-- 1
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 
     // Multiple single line comments.
     val = try run.eval(
@@ -843,7 +843,7 @@ test "Comments" {
         \\-- 3
         \\4
     );
-    try t.eq(val.asI32(), 4);
+    try t.eq(val.asF64toI32(), 4);
 }
 
 test "Strings" {
@@ -994,7 +994,7 @@ test "Maps" {
         \\}
         \\a['b']
     );
-    try t.eq(val.asI32(), 32);
+    try t.eq(val.asF64toI32(), 32);
 
     // Access expression.
     val = try run.eval(
@@ -1003,7 +1003,7 @@ test "Maps" {
         \\}
         \\a.b
     );
-    try t.eq(val.asI32(), 32);
+    try t.eq(val.asF64toI32(), 32);
 
     // String entry.
     val = try run.eval(
@@ -1022,7 +1022,7 @@ test "Maps" {
         \\a[123] = 234
         \\a[123]
     );
-    try t.eq(val.asI32(), 234);
+    try t.eq(val.asF64toI32(), 234);
 
     // Nested list.
     val = try run.eval(
@@ -1031,7 +1031,7 @@ test "Maps" {
         \\}
         \\a.b[1]
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 
     // Nested list with items separated by new line.
     val = try run.eval(
@@ -1043,7 +1043,7 @@ test "Maps" {
         \\}
         \\a.b[1]
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 }
 
 test "Assignment statements" {
@@ -1056,7 +1056,7 @@ test "Assignment statements" {
         \\a += 10
         \\a
     );
-    try t.eq(val.asI32(), 11);
+    try t.eq(val.asF64toI32(), 11);
 
     // Assign to field.
     val = try run.eval(
@@ -1066,7 +1066,7 @@ test "Assignment statements" {
         \\s.foo += 10
         \\s.foo
     );
-    try t.eq(val.asI32(), 11);
+    try t.eq(val.asF64toI32(), 11);
 }
 
 test "Variables and scope" {
@@ -1078,7 +1078,7 @@ test "Variables and scope" {
         \\a = 1
         \\a
     );
-    try t.eq(val.asI32(), 1);
+    try t.eq(val.asF64toI32(), 1);
 
     // Overwrite existing var.
     val = try run.eval(
@@ -1086,7 +1086,7 @@ test "Variables and scope" {
         \\a = 2
         \\a
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 
     // Use existing var.
     val = try run.eval(
@@ -1094,7 +1094,7 @@ test "Variables and scope" {
         \\b = a + 2
         \\b
     );
-    try t.eq(val.asI32(), 3);
+    try t.eq(val.asF64toI32(), 3);
 
     // Using a variable that was conditionally assigned.
     val = try run.eval(
@@ -1102,7 +1102,7 @@ test "Variables and scope" {
         \\  a = 1
         \\a
     );
-    try t.eq(val.asI32(), 1);
+    try t.eq(val.asF64toI32(), 1);
 
     // Using a variable that was conditionally not assigned.
     val = try run.eval(
@@ -1118,7 +1118,7 @@ test "Variables and scope" {
         \\  a = i
         \\a
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 
     // Using a variable that was not assigned in a loop.
     val = try run.eval(
@@ -1136,7 +1136,7 @@ test "Variables and scope" {
         \\  return a
         \\foo()
     );
-    try t.eq(val.asI32(), 1);
+    try t.eq(val.asF64toI32(), 1);
 
     // Using a variable that was conditionally not assigned in a function.
     val = try run.eval(
@@ -1183,13 +1183,13 @@ test "if expression" {
         \\foo = true
         \\if foo then 123 else 456
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     val = try run.eval(
         \\foo = false
         \\if foo then 123 else 456
     );
-    try t.eq(val.asI32(), 456);
+    try t.eq(val.asF64toI32(), 456);
 }
 
 test "Return statement." {
@@ -1202,7 +1202,7 @@ test "Return statement." {
         \\if foo:
         \\  return 123
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     val = try run.eval(
         \\foo = false
@@ -1211,7 +1211,7 @@ test "Return statement." {
         \\else:
         \\  return 456
     );
-    try t.eq(val.asI32(), 456);
+    try t.eq(val.asF64toI32(), 456);
 
     // else if condition.
     val = try run.eval(
@@ -1222,7 +1222,7 @@ test "Return statement." {
         \\else:
         \\  return 456
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 }
 
 test "if statement" {
@@ -1237,7 +1237,7 @@ test "if statement" {
         \\  foo = 456
         \\foo
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 
     val = try run.eval(
         \\if false:
@@ -1246,7 +1246,7 @@ test "if statement" {
         \\  foo = 456
         \\foo
     );
-    try t.eq(val.asI32(), 456);
+    try t.eq(val.asF64toI32(), 456);
 
     // else if condition.
     val = try run.eval(
@@ -1258,7 +1258,7 @@ test "if statement" {
         \\  foo = 456
         \\foo
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
 }
 
 test "Infinite for loop." {
@@ -1274,7 +1274,7 @@ test "Infinite for loop." {
         \\    break
         \\i
     );
-    try t.eq(val.asI32(), 10);
+    try t.eq(val.asF64toI32(), 10);
 }
 
 test "Conditional for loop." {
@@ -1288,7 +1288,7 @@ test "Conditional for loop." {
         \\  i += 1
         \\i
     );
-    try t.eq(val.asI32(), 10);
+    try t.eq(val.asF64toI32(), 10);
 }
 
 test "For loop over list." {
@@ -1303,7 +1303,7 @@ test "For loop over list." {
         \\   sum += it
         \\sum
     );
-    try t.eq(val.asI32(), 6);
+    try t.eq(val.asF64toI32(), 6);
 }
 
 test "For iterator." {
@@ -1319,7 +1319,7 @@ test "For iterator." {
         \\  sum += i
         \\sum
     );
-    try t.eq(val.asI32(), 45);
+    try t.eq(val.asF64toI32(), 45);
 
     // Loop iterator var overwrites the user var.
     val = try run.eval(
@@ -1343,7 +1343,7 @@ test "For loop over range." {
         \\   iters += 1
         \\iters
     );
-    try t.eq(val.asI32(), 10);
+    try t.eq(val.asF64toI32(), 10);
 
     // two `for` with range don't interfere with each other
     val = try run.eval(
@@ -1354,7 +1354,7 @@ test "For loop over range." {
         \\   iters += 1
         \\iters
     );
-    try t.eq(val.asI32(), 20);
+    try t.eq(val.asF64toI32(), 20);
 
     // two `for` with non const max value don't interfere with each other
     val = try run.eval(
@@ -1366,7 +1366,7 @@ test "For loop over range." {
         \\   iters += 1
         \\iters
     );
-    try t.eq(val.asI32(), 20);
+    try t.eq(val.asF64toI32(), 20);
 
     // Nested for loop.
     val = try run.eval(
@@ -1378,7 +1378,7 @@ test "For loop over range." {
         \\  count += inner
         \\count
     );
-    try t.eq(val.asI32(), 100);
+    try t.eq(val.asF64toI32(), 100);
 
     // Index vars overwrites user var.
     val = try run.eval(
@@ -1388,7 +1388,7 @@ test "For loop over range." {
         \\  sum += i
         \\i
     );
-    try t.eq(val.asI32(), 10);
+    try t.eq(val.asF64toI32(), 10);
 
     // Reverse direction.
     val = try run.eval(
@@ -1397,7 +1397,7 @@ test "For loop over range." {
         \\  sum += i
         \\sum
     );
-    try t.eq(val.asI32(), 55);
+    try t.eq(val.asF64toI32(), 55);
 
     // Custom step.
     // val = try run.eval(
@@ -1406,7 +1406,7 @@ test "For loop over range." {
     //     \\  sum += i
     //     \\sum
     // );
-    // try t.eq(val.asI32(), 20);
+    // try t.eq(val.asF64toI32(), 20);
 
     // Custom step variable.
     // val = try run.eval(
@@ -1418,7 +1418,7 @@ test "For loop over range." {
     //     \\   iters += 1
     //     \\iters
     // );
-    // try t.eq(val.asI32(), 8);
+    // try t.eq(val.asF64toI32(), 8);
     // run.deinitValue(val);
 }
 
@@ -1432,7 +1432,7 @@ test "Native function call." {
         \\   list.add(i)
         \\list[9]
     );
-    try t.eq(val.asI32(), 9);
+    try t.eq(val.asF64toI32(), 9);
 }
 
 test "Closures." {
@@ -1548,7 +1548,7 @@ test "Function recursion." {
         \\  return n + foo(n-1)
         \\foo(10)
     );
-    try t.eq(val.asI32(), 55);
+    try t.eq(val.asF64toI32(), 55);
 
     // Recursion with long lived object.
     val = try run.eval(
@@ -1562,7 +1562,7 @@ test "Function recursion." {
         \\  return n + foo(o)
         \\foo(S{ n: 10 })
     );
-    try t.eq(val.asI32(), 55);
+    try t.eq(val.asF64toI32(), 55);
 
     // Recursion with new objects.
     val = try run.eval(
@@ -1574,7 +1574,7 @@ test "Function recursion." {
         \\  return o.n + foo(S{ n: o.n - 1 })
         \\foo(S{ n: 10 })
     );
-    try t.eq(val.asI32(), 55);
+    try t.eq(val.asF64toI32(), 55);
 }
 
 test "function declaration" {
@@ -1589,7 +1589,7 @@ test "function declaration" {
         \\   sum += foo()
         \\sum
     );
-    try t.eq(val.asI32(), 40);
+    try t.eq(val.asF64toI32(), 40);
 
     // Function with no params.
     val = try run.eval(
@@ -1597,7 +1597,7 @@ test "function declaration" {
         \\    return 2 + 2
         \\foo()
     );
-    try t.eq(val.asI32(), 4);
+    try t.eq(val.asF64toI32(), 4);
 
     // Function with one param.
     val = try run.eval(
@@ -1605,7 +1605,7 @@ test "function declaration" {
         \\    return bar + 2
         \\foo(1)
     );
-    try t.eq(val.asI32(), 3);
+    try t.eq(val.asF64toI32(), 3);
 
     // Function with multiple param.
     val = try run.eval(
@@ -1613,7 +1613,7 @@ test "function declaration" {
         \\    return bar + inc
         \\foo(20, 10)
     );
-    try t.eq(val.asI32(), 30);
+    try t.eq(val.asF64toI32(), 30);
 }
 
 test "Lambdas." {
@@ -1625,21 +1625,21 @@ test "Lambdas." {
         \\foo = () => 2 + 2
         \\foo()
     );
-    try t.eq(val.asI32(), 4);
+    try t.eq(val.asF64toI32(), 4);
 
     // One param.
     val = try run.eval(
         \\foo = a => a + 1
         \\foo(10)
     );
-    try t.eq(val.asI32(), 11);
+    try t.eq(val.asF64toI32(), 11);
 
     // Lambda with multiple param.
     val = try run.eval(
         \\foo = (bar, inc) => bar + inc
         \\foo(20, 10)
     );
-    try t.eq(val.asI32(), 30);
+    try t.eq(val.asF64toI32(), 30);
 
 //     // Lambda assign declaration.
 //     val = try run.eval(
@@ -1648,7 +1648,7 @@ test "Lambdas." {
 //         \\  return 2
 //         \\foo.bar()
 //     );
-//     try t.eq(val.asI32(), 2);
+//     try t.eq(val.asF64toI32(), 2);
 }
 
 // test "Function named parameters call." {
@@ -1660,7 +1660,7 @@ test "Lambdas." {
 //         \\  return a - b
 //         \\foo(a: 3, b: 1)
 //     );
-//     try t.eq(val.asI32(), 2);
+//     try t.eq(val.asF64toI32(), 2);
 //     run.deinitValue(val);
 
 //     val = try run.eval(
@@ -1668,7 +1668,7 @@ test "Lambdas." {
 //         \\  return a - b
 //         \\foo(a: 1, b: 3)
 //     );
-//     try t.eq(val.asI32(), -2);
+//     try t.eq(val.asF64toI32(), -2);
 //     run.deinitValue(val);
 
 //     // New line as arg separation.
@@ -1680,7 +1680,7 @@ test "Lambdas." {
 //         \\  b: 1
 //         \\)
 //     );
-//     try t.eq(val.asI32(), 2);
+//     try t.eq(val.asF64toI32(), 2);
 //     run.deinitValue(val);
 // }
 
@@ -1693,14 +1693,14 @@ test "access expression" {
         \\map = { a: () => 5 }
         \\map.a()
     );
-    try t.eq(val.asI32(), 5);
+    try t.eq(val.asF64toI32(), 5);
 
     // Multiple levels of access from parent.
     val = try run.eval(
         \\map = { a: { b: () => 5 } }
         \\map.a.b()
     );
-    try t.eq(val.asI32(), 5);
+    try t.eq(val.asF64toI32(), 5);
 }
 
 test "Math" {
@@ -1756,39 +1756,39 @@ test "Binary Expressions" {
     var val = try run.eval(
         \\1 + 2
     );
-    try t.eq(val.asI32(), 3);
+    try t.eq(val.asF64toI32(), 3);
 
     val = try run.eval(
         \\1 + 2 + 3
     );
-    try t.eq(val.asI32(), 6);
+    try t.eq(val.asF64toI32(), 6);
 
     val = try run.eval(
         \\3 - 1
     );
-    try t.eq(val.asI32(), 2);
+    try t.eq(val.asF64toI32(), 2);
 
     val = try run.eval(
         \\3 * 4
     );
-    try t.eq(val.asI32(), 12);
+    try t.eq(val.asF64toI32(), 12);
 
     val = try run.eval(
         \\20 / 5
     );
-    try t.eq(val.asI32(), 4);
+    try t.eq(val.asF64toI32(), 4);
 
     // Power
     val = try run.eval(
         \\2 ^ 5
     );
-    try t.eq(val.asI32(), 32);
+    try t.eq(val.asF64toI32(), 32);
 
     // Modulus
     val = try run.eval(
         \\3 % 2
     );
-    try t.eq(val.asI32(), 1);
+    try t.eq(val.asF64toI32(), 1);
 
     // Right function call.
     val = try run.eval(
@@ -1796,7 +1796,7 @@ test "Binary Expressions" {
         \\  return 123
         \\1 + foo()
     );
-    try t.eq(val.asI32(), 124);
+    try t.eq(val.asF64toI32(), 124);
 }
 
 const VMrunner = struct {
@@ -1899,7 +1899,7 @@ const VMrunner = struct {
         if (act.isNumber()) {
             const actf = act.asF64();
             if (cy.Value.floatCanBeInteger(actf)) {
-                try t.eq(act.asI32(), exp);
+                try t.eq(act.asF64toI32(), exp);
                 return;
             }
         }

@@ -46,7 +46,7 @@ test "Automatic reference counting." {
         \\s = foo()
         \\s.value[0]
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
@@ -60,7 +60,7 @@ test "Automatic reference counting." {
         \\s = foo()
         \\s.value
     );
-    try t.eq(val.asI32(), 123);
+    try t.eq(val.asF64toI32(), 123);
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
@@ -82,7 +82,7 @@ test "Automatic reference counting." {
         \\  value
         \\1 + S{ value: 123 }.value
     );
-    try t.eq(val.asI32(), 124);
+    try t.eq(val.asF64toI32(), 124);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
@@ -290,7 +290,7 @@ const VMrunner = struct {
         if (act.isNumber()) {
             const actf = act.asF64();
             if (cy.Value.floatCanBeInteger(actf)) {
-                try t.eq(act.asI32(), exp);
+                try t.eq(act.asF64toI32(), exp);
                 return;
             }
         }

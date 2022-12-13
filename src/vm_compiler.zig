@@ -68,6 +68,8 @@ pub const VMcompiler = struct {
     /// Specifier to module.
     moduleMap: std.StringHashMapUnmanaged(ModuleId),
 
+    typeNames: std.StringHashMapUnmanaged(Type),
+
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -103,7 +105,9 @@ pub const VMcompiler = struct {
             .modules = .{},
             .moduleMap = .{},
             .semaSymToMod = .{},
+            .typeNames = .{},
         };
+        try self.typeNames.put(self.alloc, "int", IntegerType);
     }
 
     pub fn deinit(self: *VMcompiler) void {
@@ -148,6 +152,7 @@ pub const VMcompiler = struct {
         self.modules.deinit(self.alloc);
         self.moduleMap.deinit(self.alloc);
         self.semaSymToMod.deinit(self.alloc);
+        self.typeNames.deinit(self.alloc);
     }
 
     fn semaExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
@@ -207,6 +212,14 @@ pub const VMcompiler = struct {
                 return MapType;
             },
             .number => {
+                const literal = self.getNodeTokenString(node);
+                const val = try std.fmt.parseFloat(f64, literal);
+                if (cy.Value.floatCanBeInteger(val)) {
+                    const int = @floatToInt(i64, val);
+                    if (std.math.cast(i32, int) != null) {
+                        return NumberOrRequestIntegerType;
+                    }
+                }
                 return NumberType;
             },
             .string => {
@@ -333,11 +346,11 @@ pub const VMcompiler = struct {
                     // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
                 }
             },
-            .bin_expr => {
-                const left = node.head.left_right.left;
-                const right = node.head.left_right.right;
+            .binExpr => {
+                const left = node.head.binExpr.left;
+                const right = node.head.binExpr.right;
 
-                const op = @intToEnum(cy.BinaryExprOp, node.head.left_right.extra);
+                const op = node.head.binExpr.op;
                 switch (op) {
                     .plus => {
                         const ltype = try self.semaExpr(left, discardTopExprReg);
@@ -423,8 +436,13 @@ pub const VMcompiler = struct {
                         return BoolType;
                     },
                     .less => {
-                        _ = try self.semaExpr(left, discardTopExprReg);
-                        _ = try self.semaExpr(right, discardTopExprReg);
+                        const leftT = try self.semaExpr(left, discardTopExprReg);
+                        const rightT = try self.semaExpr(right, discardTopExprReg);
+                        const canRequestLeftInt = leftT.typeT == .int or (leftT.typeT == .number and leftT.inner.number.canRequestInteger);
+                        const canRequestRightInt = rightT.typeT == .int or (rightT.typeT == .number and rightT.inner.number.canRequestInteger);
+                        if (canRequestLeftInt and canRequestRightInt) {
+                            self.nodes[nodeId].head.binExpr.semaCanRequestIntegerOperands = true;
+                        }
                         return BoolType;
                     },
                     .less_equal => {
@@ -526,6 +544,27 @@ pub const VMcompiler = struct {
             },
             else => return self.reportError("Unsupported node", .{}, node),
         }
+    }
+
+    fn resolveLocalFuncSym(self: *VMcompiler, declId: u32, path: []const u8, retType: Type) !void {
+        // Resolve the symbol.
+        const symId = try self.ensureSemaSym(path, null);
+        self.semaSyms.items[symId].symT = .func;
+
+        const resolvedId = @intCast(u32, self.semaResolvedSyms.items.len);
+        const pathDupe = try self.alloc.dupe(u8, path);
+        try self.semaResolvedSyms.append(self.alloc, .{
+            .symT = .func,
+            .path = pathDupe,
+            .inner = .{
+                .func = .{
+                    .declId = declId,
+                    .retType = retType,
+                },
+            },
+        });
+        try @call(.{ .modifier = .never_inline }, self.semaResolvedSymMap.put, .{self.alloc, pathDupe, resolvedId});
+        self.semaSyms.items[symId].resolvedSymId = resolvedId;
     }
 
     fn semaStmt(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) !void {
@@ -647,17 +686,37 @@ pub const VMcompiler = struct {
                     try self.pushSemaBlock();
                     try self.pushSemaFuncParamVars(decl);
                     try self.semaStmts(func.head.func.body_head, false);
+                    const retType = self.curSemaBlock().getReturnType();
                     try self.endSemaBlock();
+
+                    try self.resolveLocalFuncSym(func.head.func.decl_id, self.u8Buf.items, retType);
+
                     funcId = func.next;
                 }
             },
             .func_decl => {
                 const func = self.funcDecls[node.head.func.decl_id];
+                var retType: ?Type = null;
+                if (func.return_type) |slice| {
+                    const retTypeName = self.src[slice.start..slice.end];
+                    if (self.typeNames.get(retTypeName)) |vtype| {
+                        retType = vtype;
+                    }
+                }
 
                 try self.pushSemaBlock();
+                if (retType == null) {
+                    self.curSemaBlock().inferRetType = true;
+                }
                 try self.pushSemaFuncParamVars(func);
                 try self.semaStmts(node.head.func.body_head, false);
+                if (retType == null) {
+                    retType = self.curSemaBlock().getReturnType();
+                }
                 try self.endSemaBlock();
+
+                const name = self.src[func.name.start..func.name.end];
+                try self.resolveLocalFuncSym(node.head.func.decl_id, name, retType.?);
             },
             .for_cond_stmt => {
                 try self.pushSemaIterSubBlock();
@@ -739,7 +798,20 @@ pub const VMcompiler = struct {
                 return;
             },
             .return_expr_stmt => {
-                _ = try self.semaExpr(node.head.child_head, false);
+                const childT = try self.semaExpr(node.head.child_head, false);
+                const block = self.curSemaBlock();
+                if (block.inferRetType) {
+                    if (block.hasRetType) {
+                        block.retType = childT;
+                        block.hasRetType = true;
+                    } else {
+                        if (block.retType.typeT != .any) {
+                            if (block.retType.typeT != childT.typeT) {
+                                block.retType = AnyType;
+                            }
+                        }
+                    }
+                }
             },
             else => return self.reportError("Unsupported node", .{}, node),
         }
@@ -1287,6 +1359,12 @@ pub const VMcompiler = struct {
                     try self.semaResolvedSyms.append(self.alloc, .{
                         .symT = .func,
                         .path = pathDupe,
+                        .inner = .{
+                            .func = .{
+                                .declId = NullId,
+                                .retType = AnyType,
+                            },
+                        },
                     });
                     try self.semaResolvedSymMap.put(self.alloc, pathDupe, id);
                 } else {
@@ -1495,8 +1573,8 @@ pub const VMcompiler = struct {
                     const name = self.getNodeTokenString(expr);
                     const symId = try self.vm.ensureTagLitSym(name);
                     const sym = self.vm.tagLitSyms.buf[symId];
-                    if (sym.symT == .one and sym.inner.one.id == svar.vtype.inner.tagId) {
-                        try self.buf.pushOp3(.tag, svar.vtype.inner.tagId, @intCast(u8, sym.inner.one.val), svar.local);
+                    if (sym.symT == .one and sym.inner.one.id == svar.vtype.inner.tag.tagId) {
+                        try self.buf.pushOp3(.tag, svar.vtype.inner.tag.tagId, @intCast(u8, sym.inner.one.val), svar.local);
                         return;
                     }
                 }
@@ -1560,7 +1638,13 @@ pub const VMcompiler = struct {
         if (func.params.end > func.params.start) {
             for (self.funcParams[func.params.start..func.params.end]) |param| {
                 const paramName = self.src[param.name.start..param.name.end];
-                const paramT = AnyType;
+                var paramT = AnyType;
+                if (param.typeName.len() > 0) {
+                    const typeName = self.src[param.typeName.start..param.typeName.end];
+                    if (self.typeNames.get(typeName)) |vtype| {
+                        paramT = vtype;
+                    }
+                }
                 const id = try self.pushSemaVar(paramName, paramT);
                 try sblock.params.append(self.alloc, id);
             }
@@ -1785,10 +1869,12 @@ pub const VMcompiler = struct {
                         }
                     }
 
-                    const symPath = try std.fmt.allocPrint(self.alloc, "{s}.{s}", .{name, funcName});
-                    try self.vm.funcSymNames.append(self.alloc, symPath);
+                    const detail = cy.FuncSymDetail{
+                        .name = try std.fmt.allocPrint(self.alloc, "{s}.{s}", .{name, funcName}),
+                    };
+                    try self.vm.funcSymDetails.append(self.alloc, detail);
 
-                    try self.genFuncDecl(funcId, symPath);
+                    try self.genFuncDecl(funcId, detail.name);
                 }
             },
             .func_decl => {
@@ -2032,7 +2118,13 @@ pub const VMcompiler = struct {
                 self.setFirstFreeTempLocal(@intCast(u8, self.curBlock.numLocals));
 
                 if (self.blocks.items.len == 1) {
-                    const val = try self.genRetainedTempExpr(node.head.child_head, false);
+                    var val: GenValue = undefined;
+                    if (self.curBlock.resolvedSymId != NullId) {
+                        const retType = self.semaResolvedSyms.items[self.curBlock.resolvedSymId].inner.func.retType;
+                        val = try self.genRetainedTempExpr2(node.head.child_head, retType, false);
+                    } else {
+                        val = try self.genRetainedTempExpr(node.head.child_head, false);
+                    }
                     try self.endLocals();
                     try self.buf.pushOp1(.end, @intCast(u8, val.local));
                 } else {
@@ -2046,13 +2138,17 @@ pub const VMcompiler = struct {
     }
 
     fn genExprToDestOrTempLocal(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !GenValue {
+        return self.genExprToDestOrTempLocal2(AnyType, nodeId, dst, usedDst, discardTopExprReg);
+    }
+
+    fn genExprToDestOrTempLocal2(self: *VMcompiler, requestedType: Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !GenValue {
         const node = self.nodes[nodeId];
         if (isArcTempNode(node.node_t) or usedDst.*) {
             const finalDst = try self.userLocalOrNextTempLocal(nodeId);
-            return self.genExprTo(nodeId, finalDst, false, discardTopExprReg);
+            return self.genExprTo2(nodeId, finalDst, requestedType, false, discardTopExprReg);
         } else {
             const finalDst = self.userLocalOrDst(nodeId, dst, usedDst);
-            return self.genExprTo(nodeId, finalDst, false, discardTopExprReg);
+            return self.genExprTo2(nodeId, finalDst, requestedType, false, discardTopExprReg);
         }
     }
 
@@ -2062,8 +2158,12 @@ pub const VMcompiler = struct {
         return try self.genExprTo(nodeId, dst, true, discardTopExprReg);
     }
 
+    fn genRetainedTempExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !GenValue {
+        return self.genRetainedTempExpr2(nodeId, AnyType, discardTopExprReg);
+    }
+
     /// Ensures that the expr value is retained and ends up in the next temp local.
-    fn genRetainedTempExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!GenValue {
+    fn genRetainedTempExpr2(self: *VMcompiler, nodeId: cy.NodeId, requiredType: Type, comptime discardTopExprReg: bool) anyerror!GenValue {
         const arcLocalStart = self.beginArcExpr();
 
         const dst = try self.nextFreeTempLocal();
@@ -2071,7 +2171,8 @@ pub const VMcompiler = struct {
         // so the next free temp is guaranteed to be after dst.
         defer self.setFirstFreeTempLocal(dst + 1);
 
-        const val = try self.genExprTo(nodeId, dst, true, discardTopExprReg);
+        const val = try self.genExprTo2(nodeId, dst, requiredType, true, discardTopExprReg);
+        try self.genEnsureRequiredType(val, requiredType);
         try self.endArcExpr(arcLocalStart);
         return val;
     }
@@ -2115,6 +2216,7 @@ pub const VMcompiler = struct {
         try self.pushBlock();
         self.nextSemaBlock();
         self.curBlock.frameLoc = nodeId;
+        self.curBlock.resolvedSymId = self.semaResolvedSymMap.get(symName).?;
 
         const jumpStackStart = self.blockJumpStack.items.len;
 
@@ -2181,6 +2283,26 @@ pub const VMcompiler = struct {
         self.vm.setFuncSym(symId, sym);
     }
 
+    fn genCallArgs2(self: *VMcompiler, func: cy.FuncDecl, first: cy.NodeId) !u32 {
+        const params = self.funcParams[func.params.start .. func.params.end];
+        var numArgs: u32 = 0;
+        var argId = first;
+        while (argId != NullId) : (numArgs += 1) {
+            const arg = self.nodes[argId];
+            var reqType = AnyType;
+            const param = params[numArgs];
+            if (param.typeName.len() > 0) {
+                const typeName = self.src[param.typeName.start..param.typeName.end];
+                if (self.typeNames.get(typeName)) |paramT| {
+                    reqType = paramT;
+                }
+            }
+            _ = try self.genRetainedTempExpr2(argId, reqType, false);
+            argId = arg.next;
+        }
+        return numArgs;
+    }
+
     fn genCallArgs(self: *VMcompiler, first: cy.NodeId) !u32 {
         var numArgs: u32 = 0;
         var argId = first;
@@ -2197,17 +2319,7 @@ pub const VMcompiler = struct {
         if (sym.resolvedSymId != NullId) {
             return self.semaResolvedSyms.items[sym.resolvedSymId];
         } else {
-            if (sym.symT == .undefined) {
-                return null;
-            } else {
-                return SemaResolvedSym{
-                    .symT = switch (sym.symT) {
-                        .func => .func,
-                        .undefined => stdx.fatal(),
-                    },
-                    .path = sym.path,
-                };
-            }
+            return null;
         }
     }
 
@@ -2238,7 +2350,15 @@ pub const VMcompiler = struct {
                     if (self.genGetResolvedSym(callee.head.accessExpr.semaSymId)) |semaSym| {
                         if (semaSym.symT == .func) {
                             // Symbol func call.
-                            const numArgs = try self.genCallArgs(node.head.func_call.arg_head);
+
+                            var numArgs: u32 = undefined;
+                            if (semaSym.inner.func.declId != NullId) {
+                                const func = self.funcDecls[semaSym.inner.func.declId];
+                                numArgs = try self.genCallArgs2(func, node.head.func_call.arg_head);
+                            } else {
+                                numArgs = try self.genCallArgs(node.head.func_call.arg_head);
+                            }
+
                             // var isStdCall = false;
                             if (self.vm.getFuncSym(semaSym.path)) |symId| {
                                 if (discardTopExprReg) {
@@ -2248,7 +2368,7 @@ pub const VMcompiler = struct {
                                     try self.buf.pushOp3(.callSym1, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
                                     try self.pushDebugSym(nodeId);
                                 }
-                                return GenValue.initTempValue(callStartLocal, AnyType);
+                                return GenValue.initTempValue(callStartLocal, semaSym.inner.func.retType);
                             } else {
                                 return self.reportError("Unsupported callee", .{}, node);
                             }
@@ -2318,7 +2438,28 @@ pub const VMcompiler = struct {
                 } else {
                     const name = self.getNodeTokenString(callee);
 
-                    const numArgs = try self.genCallArgs(node.head.func_call.arg_head);
+                    var genArgs = false;
+                    var numArgs: u32 = undefined;
+                    if (self.genGetResolvedSym(callee.head.ident.semaSymId)) |semaSym| {
+                        if (semaSym.symT == .func) {
+                            if (semaSym.inner.func.declId != NullId) {
+                                const func = self.funcDecls[semaSym.inner.func.declId];
+                                numArgs = try self.genCallArgs2(func, node.head.func_call.arg_head);
+                                genArgs = true;
+                            }
+                        } else {
+                            return self.reportError("Unsupported callee", .{}, node);
+                        }
+                    // } else {
+                    //     const symPath = self.semaSyms.items[callee.head.ident.semaSymId].path;
+                    //     log.debug("{} {s}", .{callee.head.ident.semaSymId, symPath});
+                    //     return self.reportError("Missing symbol: {s}", .{symPath}, node);
+                    // }
+                    }
+
+                    if (!genArgs) {
+                        numArgs = try self.genCallArgs(node.head.func_call.arg_head);
+                    }
 
                     const coinitPc = self.buf.ops.items.len;
                     if (startFiber) {
@@ -2344,7 +2485,11 @@ pub const VMcompiler = struct {
                         self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
                     }
 
-                    return GenValue.initTempValue(callStartLocal, AnyType);
+                    if (self.genGetResolvedSym(callee.head.ident.semaSymId)) |semaSym| {
+                        return GenValue.initTempValue(callStartLocal, semaSym.inner.func.retType);
+                    } else {
+                        return GenValue.initTempValue(callStartLocal, AnyType);
+                    }
                 }
             } else return self.reportDebugError("Unsupported callee {}", .{callee.node_t});
         } else return self.reportDebugError("Unsupported named args", .{});
@@ -2389,6 +2534,22 @@ pub const VMcompiler = struct {
         const idx = try self.buf.pushStringConst(str);
         try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
         return self.initGenValue(dst, ConstStringType);
+    }
+
+    fn genConstInt(self: *VMcompiler, val: f64, dst: LocalId) !GenValue {
+        if (cy.Value.floatCanBeInteger(val)) {
+            const i = @floatToInt(i64, val);
+            if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
+                try self.buf.pushOp2(.constI8Int, @bitCast(u8, @intCast(i8, i)), dst);
+                return self.initGenValue(dst, IntegerType);
+            }
+        } else {
+            return self.reportDebugError("TODO: coerce", .{});
+        }
+        const int = @floatToInt(i32, val);
+        const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initI32(int).val));
+        try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+        return self.initGenValue(dst, IntegerType);
     }
 
     fn genConst(self: *VMcompiler, val: f64, dst: LocalId) !GenValue {
@@ -2518,11 +2679,25 @@ pub const VMcompiler = struct {
         }
     }
 
+    fn genEnsureRequiredType(self: *VMcompiler, genValue: GenValue, requiredType: Type) !void {
+        if (requiredType.typeT != .any) {
+            if (genValue.vtype.typeT != requiredType.typeT) {
+                return self.reportDebugError("Type {} can not be auto converted to required type {}", .{genValue.vtype.typeT, requiredType.typeT});
+            }
+        }
+    }
+
+    fn genExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!GenValue {
+        return self.genExpr2(nodeId, AnyType, discardTopExprReg);
+    }
+
     /// If the expression is a user local, the local is returned.
     /// Otherwise, the expression is allocated a temp local on the stack.
-    fn genExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!GenValue {
+    fn genExpr2(self: *VMcompiler, nodeId: cy.NodeId, requiredType: Type, comptime discardTopExprReg: bool) anyerror!GenValue {
         const dst = try self.userLocalOrNextTempLocal(nodeId);
-        return self.genExprTo(nodeId, dst, false, discardTopExprReg);
+        const res = try self.genExprTo2(nodeId, dst, requiredType, false, discardTopExprReg);
+        try self.genEnsureRequiredType(res, requiredType);
+        return res;
     }
 
     fn canUseLocalAsTemp(self: *const VMcompiler, local: LocalId) bool {
@@ -2569,10 +2744,14 @@ pub const VMcompiler = struct {
         });
     }
 
+    fn genExprTo(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
+        return self.genExprTo2(nodeId, dst, AnyType, retainEscapeTop, discardTopExprReg);
+    }
+
     /// `dst` indicates the local of the resulting value.
     /// `retainEscapeTop` indicates that the resulting val is meant to be used to escape the current scope. (eg. call args)
     /// If `retainEscapeTop` is false, the dst is a temp local, and the expr requires a retain (eg. call expr), it is added as an arcTempLocal.
-    fn genExprTo(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
+    fn genExprTo2(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: Type, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
         const node = self.nodes[nodeId];
         // log.debug("gen reg expr {}", .{node.node_t});
         switch (node.node_t) {
@@ -2619,7 +2798,11 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     const literal = self.getNodeTokenString(node);
                     const val = try std.fmt.parseFloat(f64, literal);
-                    return try self.genConst(val, dst);
+                    if (requestedType.typeT == .int) {
+                        return try self.genConstInt(val, dst);
+                    } else {
+                        return try self.genConst(val, dst);
+                    }
                 } else {
                     return GenValue.initNoValue();
                 }
@@ -3015,11 +3198,11 @@ pub const VMcompiler = struct {
                     // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
                 }
             },
-            .bin_expr => {
-                const left = node.head.left_right.left;
-                const right = node.head.left_right.right;
+            .binExpr => {
+                const left = node.head.binExpr.left;
+                const right = node.head.binExpr.right;
 
-                const op = @intToEnum(cy.BinaryExprOp, node.head.left_right.extra);
+                const op = node.head.binExpr.op;
                 switch (op) {
                     .slash => {
                         return self.genPushBinOp(.div, left, right, NumberType, dst, discardTopExprReg);
@@ -3038,9 +3221,13 @@ pub const VMcompiler = struct {
                         defer self.computeNextTempLocalFrom(startTempLocal);
 
                         var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-                        const leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
-                        const rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
+                        const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, discardTopExprReg);
+                        const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, discardTopExprReg);
                         if (!discardTopExprReg) {
+                            if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
+                                try self.buf.pushOp3(.addInt, leftv.local, rightv.local, dst);
+                                return self.initGenValue(dst, IntegerType);
+                            }
                             try self.buf.pushOp3(.add, leftv.local, rightv.local, dst);
                             try self.pushDebugSym(nodeId);
                             if (leftv.vtype.typeT == .string) {
@@ -3053,7 +3240,21 @@ pub const VMcompiler = struct {
                         }
                     },
                     .minus => {
-                        return self.genPushBinOp(.minus, left, right, NumberType, dst, discardTopExprReg);
+                        const startTempLocal = self.curBlock.firstFreeTempLocal;
+                        defer self.computeNextTempLocalFrom(startTempLocal);
+
+                        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+                        const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, discardTopExprReg);
+                        const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, discardTopExprReg);
+                        if (!discardTopExprReg) {
+                            if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
+                                try self.buf.pushOp3(.minusInt, leftv.local, rightv.local, dst);
+                                return self.initGenValue(dst, IntegerType);
+                            }
+                            try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
+                            return self.initGenValue(dst, NumberType);
+                        } else return GenValue.initNoValue();
+                        // return self.genPushBinOp(.minus, left, right, NumberType, dst, discardTopExprReg);
                     },
                     .equal_equal => {
                         return self.genPushBinOp(.compare, left, right, BoolType, dst, discardTopExprReg);
@@ -3062,7 +3263,27 @@ pub const VMcompiler = struct {
                         return self.genPushBinOp(.compareNot, left, right, BoolType, dst, discardTopExprReg);
                     },
                     .less => {
-                        return self.genPushBinOp(.less, left, right, BoolType, dst, discardTopExprReg);
+                        const startTempLocal = self.curBlock.firstFreeTempLocal;
+                        defer self.computeNextTempLocalFrom(startTempLocal);
+
+                        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+                        var leftv: GenValue = undefined;
+                        var rightv: GenValue = undefined;
+                        if (node.head.binExpr.semaCanRequestIntegerOperands) {
+                            leftv = try self.genExprToDestOrTempLocal2(IntegerType, left, dst, &usedDstAsTemp, discardTopExprReg);
+                            rightv = try self.genExprToDestOrTempLocal2(IntegerType, right, dst, &usedDstAsTemp, discardTopExprReg);
+                        } else {
+                            leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
+                            rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
+                        }
+                        if (!discardTopExprReg) {
+                            if (node.head.binExpr.semaCanRequestIntegerOperands) {
+                                try self.buf.pushOp3(.lessInt, leftv.local, rightv.local, dst);
+                                return self.initGenValue(dst, BoolType);
+                            }
+                            try self.buf.pushOp3(.less, leftv.local, rightv.local, dst);
+                            return self.initGenValue(dst, BoolType);
+                        } else return GenValue.initNoValue();
                     },
                     .less_equal => {
                         return self.genPushBinOp(.lessEqual, left, right, BoolType, dst, discardTopExprReg);
@@ -3359,6 +3580,7 @@ const Block = struct {
     /// Does not include temp locals.
     numLocals: u32,
     frameLoc: cy.NodeId = NullId,
+    resolvedSymId: SemaResolvedSymId = NullId,
     endLocalsPc: u32,
 
     /// These are used for rvalues and function args.
@@ -3466,6 +3688,7 @@ const TypeTag = enum {
     any,
     boolean,
     number,
+    int,
     list,
     map,
     fiber,
@@ -3479,7 +3702,12 @@ const Type = struct {
     typeT: TypeTag,
     rcCandidate: bool,
     inner: packed union {
-        tagId: u8,
+        tag: packed struct {
+            tagId: u8,
+        },
+        number: packed struct {
+            canRequestInteger: bool,
+        },
     } = undefined,
 };
 
@@ -3498,9 +3726,29 @@ const BoolType = Type{
     .rcCandidate = false,
 };
 
+const IntegerType = Type{
+    .typeT = .int,
+    .rcCandidate = false,
+};
+
 const NumberType = Type{
     .typeT = .number,
     .rcCandidate = false,
+    .inner = .{
+        .number = .{
+            .canRequestInteger = false,
+        },
+    },
+};
+
+const NumberOrRequestIntegerType = Type{
+    .typeT = .number,
+    .rcCandidate = false,
+    .inner = .{
+        .number = .{
+            .canRequestInteger = true,
+        },
+    },
 };
 
 const ConstStringType = Type{
@@ -3533,7 +3781,9 @@ fn initTagType(tagId: u32) Type {
         .typeT = .tag,
         .rcCandidate = false,
         .inner = .{
-            .tagId = @intCast(u8, tagId),
+            .tag = .{
+                .tagId = @intCast(u8, tagId),
+            },
         },
     };
 }
@@ -3659,6 +3909,13 @@ const SemaBlock = struct {
     /// When this block ends, the previous block id is set as the current.
     prevBlockId: SemaBlockId,
 
+    /// If the return type is not provided, sema tries to infer it.
+    /// It won't try to infer non-trivial cases.
+    /// Return type is updated only if `inferRetType` is true while iterating the body statements.
+    retType: Type,
+    hasRetType: bool,
+    inferRetType: bool,
+
     fn init(prevBlockId: SemaBlockId) SemaBlock {
         return .{
             .nameToVar = .{},
@@ -3666,12 +3923,23 @@ const SemaBlock = struct {
             .params = .{},
             .subBlockDepth = 0,
             .prevBlockId = prevBlockId,
+            .hasRetType = false,
+            .inferRetType = false,
+            .retType = undefined,
         };
     }
 
     fn deinit(self: *SemaBlock, alloc: std.mem.Allocator) void {
         self.locals.deinit(alloc);
         self.params.deinit(alloc);
+    }
+    
+    fn getReturnType(self: *const SemaBlock) Type {
+        if (self.hasRetType) {
+            return self.retType;
+        } else {
+            return AnyType;
+        }
     }
 };
 
@@ -3747,14 +4015,22 @@ const SemaSym = struct {
     resolvedSymId: SemaResolvedSymId = NullId,
 };
 
+const ResolvedSymType = enum {
+    func,
+};
+
 const SemaResolvedSymId = u32;
 const SemaResolvedSym = struct {
     symT: ResolvedSymType,
     path: []const u8,
-};
-
-const ResolvedSymType = enum {
-    func,
+    inner: union {
+        func: struct {
+            // DeclId can be the NullId for native functions.
+            declId: u32,
+            // Return type.
+            retType: Type,
+        },
+    },
 };
 
 const ModuleSymType = enum {

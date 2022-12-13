@@ -25,6 +25,7 @@ const ErrorMask: u64 = TaggedValueMask | (TagError << 32);
 const ConstStringMask: u64 = TaggedValueMask | (TagConstString << 32);
 const UserTagMask: u64 = TaggedValueMask | (TagUserTag << 32);
 const UserTagLiteralMask: u64 = TaggedValueMask | (TagUserTagLiteral << 32);
+const IntegerMask: u64 = TaggedValueMask | (TagInteger << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
 const BeforeTagMask: u32 = 0x7fff << 3;
@@ -34,6 +35,7 @@ pub const TagError = 2;
 pub const TagConstString = 3;
 pub const TagUserTag = 4;
 pub const TagUserTagLiteral = 5;
+pub const TagInteger = 6;
 
 pub const ValuePair = struct {
     left: Value,
@@ -49,8 +51,10 @@ pub const Value = packed union {
     val: u64,
     /// Call frame return info.
     retInfo: packed struct {
-        numRetVals: u2,
-        retFlag: u1,
+        // numRetVals: u2,
+        // retFlag: u1,
+        numRetVals: u8,
+        retFlag: bool,
     },
     retPcPtr: [*]const cy.OpData,
     retFramePtr: [*]Value,
@@ -64,11 +68,14 @@ pub const Value = packed union {
     pub const False = Value{ .val = FalseMask };
 
     pub inline fn asI32(self: *const Value) i32 {
-        @setRuntimeSafety(debug);
+        return @bitCast(i32, @intCast(u32, self.val & 0xffffffff));
+    }
+
+    pub inline fn asF64toI32(self: *const Value) i32 {
         return @floatToInt(i32, self.asF64());
     }
 
-    pub inline fn asU32(self: *const Value) u32 {
+    pub inline fn asF64toU32(self: *const Value) u32 {
         @setRuntimeSafety(debug);
         return @floatToInt(u32, self.asF64());
     }
@@ -110,6 +117,7 @@ pub const Value = packed union {
             switch (self.getTag()) {
                 TagNone => return 0,
                 TagBoolean => return if (self.asBool()) 1 else 0,
+                TagInteger => return @intToFloat(f64, self.asI32()),
                 else => stdx.panicFmt("unexpected tag {}", .{self.getTag()}),
             }
         }
@@ -203,8 +211,11 @@ pub const Value = packed union {
     }
 
     pub inline fn initF64(val: f64) Value {
-        @setRuntimeSafety(debug);
         return .{ .val = @bitCast(u64, val) };
+    }
+
+    pub inline fn initI32(val: i32) Value {
+        return .{ .val = IntegerMask | @bitCast(u32, val) };
     }
 
     pub inline fn initRaw(val: u64) Value {

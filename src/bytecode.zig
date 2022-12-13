@@ -208,6 +208,7 @@ pub const ByteCodeBuffer = struct {
                 .copyRetainSrc,
                 .copyReleaseDst,
                 .constI8,
+                .constI8Int,
                 .call0,
                 .call1,
                 .jumpBack,
@@ -239,12 +240,14 @@ pub const ByteCodeBuffer = struct {
                 .jumpNotNone,
                 .jumpCond,
                 .minus,
+                .minusInt,
                 .mul,
                 .div,
                 .setField,
                 .pow,
                 .mod,
                 .less,
+                .lessInt,
                 .greater,
                 .lessEqual,
                 .greaterEqual,
@@ -257,6 +260,7 @@ pub const ByteCodeBuffer = struct {
                 .bitwiseRightShift,
                 .list,
                 .add,
+                .addInt,
                 .tag,
                 .jumpNotCond => {
                     println("{} {s} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
@@ -381,6 +385,8 @@ pub const OpCode = enum(u8) {
     constOp,
     /// Sets an immediate i8 value as a number to a dst local.
     constI8,
+    /// Sets an immediate i8 value as an integer to a dst local.
+    constI8Int,
     /// Add first two locals and stores result to a dst local.
     add,
     // addNumber,
@@ -481,13 +487,16 @@ pub const OpCode = enum(u8) {
     bitwiseLeftShift,
     bitwiseRightShift,
     jumpNotNone,
+    addInt,
+    minusInt,
+    lessInt,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 77);
+    try t.eq(std.enums.values(OpCode).len, 81);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

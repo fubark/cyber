@@ -306,6 +306,7 @@ pub const Parser = struct {
         const name = IndexSlice.init(token.pos(), token.data.end_pos);
         try self.func_params.append(self.alloc, .{
             .name = name,
+            .typeName = IndexSlice.init(0, 0),
         });
 
         // Parse body expr.
@@ -436,8 +437,18 @@ pub const Parser = struct {
             if (token.tag() == .ident) {
                 self.advanceToken();
                 const name = IndexSlice.init(token.pos(), token.data.end_pos);
+
+                // Check for type.
+                token = self.peekToken();
+                var typeName = IndexSlice.init(0, 0);
+                if (token.tag() == .ident) {
+                    self.advanceToken();
+                    typeName = IndexSlice.init(token.pos(), token.data.end_pos);
+                }
+
                 try self.func_params.append(self.alloc, .{
                     .name = name,
+                    .typeName = typeName,
                 });
             } else if (token.tag() == .right_paren) {
                 self.advanceToken();
@@ -462,8 +473,18 @@ pub const Parser = struct {
                 }
                 self.advanceToken();
                 const name = IndexSlice.init(token.pos(), token.data.end_pos);
+
+                // Check for type.
+                token = self.peekToken();
+                var typeName = IndexSlice.init(0, 0);
+                if (token.tag() == .ident) {
+                    self.advanceToken();
+                    typeName = IndexSlice.init(token.pos(), token.data.end_pos);
+                }
+
                 try self.func_params.append(self.alloc, .{
                     .name = name,
+                    .typeName = typeName,
                 });
             }
         }
@@ -1678,19 +1699,19 @@ pub const Parser = struct {
                 start = self.next_pos;
                 const right_id = try self.parseRightExpression(right_op);
 
-                const bin_expr = try self.pushNode(.bin_expr, start);
-                self.nodes.items[bin_expr].head = .{
-                    .left_right = .{
+                const binExpr = try self.pushNode(.binExpr, start);
+                self.nodes.items[binExpr].head = .{
+                    .binExpr = .{
                         .left = expr_id,
                         .right = right_id,
-                        .extra = @enumToInt(right_op),
+                        .op = right_op,
                     },
                 };
 
                 // Before returning, perform left recursion with the right if the op prec is the same.
                 // eg. a + b * c * d
                 // The result should be a + ((b * c) * d).
-                var left = bin_expr;
+                var left = binExpr;
                 while (true) {
                     token = self.peekToken();
                     if (token.tag() == .operator) {
@@ -1699,12 +1720,12 @@ pub const Parser = struct {
                         if (right2_op_prec == right_op_prec) {
                             self.advanceToken();
                             const rightExpr = try self.parseRightExpression(right_op);
-                            const newBinExpr = try self.pushNode(.bin_expr, start);
+                            const newBinExpr = try self.pushNode(.binExpr, start);
                             self.nodes.items[newBinExpr].head = .{
-                                .left_right = .{
+                                .binExpr = .{
                                     .left = left,
                                     .right = rightExpr,
-                                    .extra = @enumToInt(right2_op),
+                                    .op = right2_op,
                                 },
                             };
                             left = newBinExpr;
@@ -2276,12 +2297,12 @@ pub const Parser = struct {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(bin_op);
 
-                    const bin_expr = try self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.binExpr, start);
                     self.nodes.items[bin_expr].head = .{
-                        .left_right = .{
+                        .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .extra = @enumToInt(bin_op),
+                            .op = bin_op,
                         },
                     };
                     left_id = bin_expr;
@@ -2289,12 +2310,12 @@ pub const Parser = struct {
                 .and_k => {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(.and_op);
-                    const bin_expr = try self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.binExpr, start);
                     self.nodes.items[bin_expr].head = .{
-                        .left_right = .{
+                        .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .extra = @enumToInt(BinaryExprOp.and_op),
+                            .op = BinaryExprOp.and_op,
                         },
                     };
                     left_id = bin_expr;
@@ -2302,12 +2323,12 @@ pub const Parser = struct {
                 .or_k => {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(.or_op);
-                    const bin_expr = try self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.binExpr, start);
                     self.nodes.items[bin_expr].head = .{
-                        .left_right = .{
+                        .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .extra = @enumToInt(BinaryExprOp.or_op),
+                            .op = BinaryExprOp.or_op,
                         },
                     };
                     left_id = bin_expr;
@@ -2319,12 +2340,12 @@ pub const Parser = struct {
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(bin_op);
 
-                    const bin_expr = try self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.binExpr, start);
                     self.nodes.items[bin_expr].head = .{
-                        .left_right = .{
+                        .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .extra = @enumToInt(bin_op),
+                            .op = bin_op,
                         },
                     };
                     left_id = bin_expr;
@@ -2339,12 +2360,12 @@ pub const Parser = struct {
                     }
                     const right_id = try self.parseRightExpression(binOp);
 
-                    const bin_expr = try self.pushNode(.bin_expr, start);
+                    const bin_expr = try self.pushNode(.binExpr, start);
                     self.nodes.items[bin_expr].head = .{
-                        .left_right = .{
+                        .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .extra = @enumToInt(binOp),
+                            .op = binOp,
                         },
                     };
                     left_id = bin_expr;
@@ -2757,7 +2778,7 @@ pub const NodeType = enum {
     arr_range_expr,
     call_expr,
     named_arg,
-    bin_expr,
+    binExpr,
     unary_expr,
     number,
     if_expr,
@@ -2827,6 +2848,12 @@ pub const Node = struct {
     next: NodeId,
     /// Fixed size. TODO: Rename to `data`.
     head: union {
+        binExpr: struct {
+            left: NodeId,
+            right: NodeId,
+            op: BinaryExprOp,
+            semaCanRequestIntegerOperands: bool = false,
+        },
         left_right: struct {
             left: NodeId,
             right: NodeId,
@@ -3056,6 +3083,7 @@ pub const FuncDecl = struct {
 
 pub const FunctionParam = struct {
     name: IndexSlice,
+    typeName: IndexSlice,
 };
 
 fn toBinExprOp(op: OperatorType) BinaryExprOp {

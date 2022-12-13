@@ -74,7 +74,7 @@ pub const VM = struct {
     /// Regular function symbol table.
     funcSyms: cy.List(FuncSymbolEntry),
     funcSymSignatures: std.StringHashMapUnmanaged(SymbolId),
-    funcSymNames: cy.List([]const u8),
+    funcSymDetails: cy.List(FuncSymDetail),
 
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
@@ -134,7 +134,7 @@ pub const VM = struct {
             .methodTable = .{},
             .funcSyms = .{},
             .funcSymSignatures = .{},
-            .funcSymNames = .{},
+            .funcSymDetails = .{},
             .fieldSyms = .{},
             .fieldSymSignatures = .{},
             .structs = .{},
@@ -201,10 +201,10 @@ pub const VM = struct {
         }
         self.funcSyms.deinit(self.alloc);
         self.funcSymSignatures.deinit(self.alloc);
-        for (self.funcSymNames.items()) |name| {
-            self.alloc.free(name);
+        for (self.funcSymDetails.items()) |detail| {
+            self.alloc.free(detail.name);
         }
-        self.funcSymNames.deinit(self.alloc);
+        self.funcSymDetails.deinit(self.alloc);
 
         self.fieldSyms.deinit(self.alloc);
         self.fieldSymSignatures.deinit(self.alloc);
@@ -1886,6 +1886,7 @@ pub const VM = struct {
                         const slice = val.asConstStr();
                         return self.strBuf[slice.start..slice.end];
                     },
+                    cy.TagInteger => return std.fmt.bufPrint(&tempU8Buf, "{}", .{val.asI32()}) catch stdx.fatal(),
                     else => {
                         log.debug("unexpected tag {}", .{val.getTag()});
                         stdx.fatal();
@@ -2124,7 +2125,7 @@ pub fn release(val: Value) linksection(".eval") void {
 fn evalBitwiseOr(left: Value, right: Value) linksection(".eval") Value {
     @setCold(true);
     if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asI32() | @floatToInt(i32, right.toF64()));
+       const f = @intToFloat(f64, left.asF64toI32() | @floatToInt(i32, right.toF64()));
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -2135,7 +2136,7 @@ fn evalBitwiseOr(left: Value, right: Value) linksection(".eval") Value {
 fn evalBitwiseXor(left: Value, right: Value) linksection(".eval") Value {
     @setCold(true);
     if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asI32() ^ @floatToInt(i32, right.toF64()));
+       const f = @intToFloat(f64, left.asF64toI32() ^ @floatToInt(i32, right.toF64()));
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -2146,7 +2147,7 @@ fn evalBitwiseXor(left: Value, right: Value) linksection(".eval") Value {
 fn evalBitwiseAnd(left: Value, right: Value) linksection(".eval") Value {
     @setCold(true);
     if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asI32() & @floatToInt(i32, right.toF64()));
+       const f = @intToFloat(f64, left.asF64toI32() & @floatToInt(i32, right.toF64()));
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -2157,7 +2158,7 @@ fn evalBitwiseAnd(left: Value, right: Value) linksection(".eval") Value {
 fn evalBitwiseLeftShift(left: Value, right: Value) linksection(".eval") Value {
     @setCold(true);
     if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asI32() << @floatToInt(u5, right.toF64()));
+       const f = @intToFloat(f64, left.asF64toI32() << @floatToInt(u5, right.toF64()));
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -2168,7 +2169,7 @@ fn evalBitwiseLeftShift(left: Value, right: Value) linksection(".eval") Value {
 fn evalBitwiseRightShift(left: Value, right: Value) linksection(".eval") Value {
     @setCold(true);
     if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asI32() >> @floatToInt(u5, right.toF64()));
+       const f = @intToFloat(f64, left.asF64toI32() >> @floatToInt(u5, right.toF64()));
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -2179,7 +2180,7 @@ fn evalBitwiseRightShift(left: Value, right: Value) linksection(".eval") Value {
 fn evalBitwiseNot(val: Value) linksection(".eval") Value {
     @setCold(true);
     if (val.isNumber()) {
-       const f = @intToFloat(f64, ~val.asI32());
+       const f = @intToFloat(f64, ~val.asF64toI32());
        return Value.initF64(f);
     } else {
         log.debug("unsupported", .{});
@@ -2380,7 +2381,6 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
 }
 
 fn evalAddFallback(left: cy.Value, right: cy.Value) linksection(".eval") !cy.Value {
-    @setRuntimeSafety(debug);
     @setCold(true);
     if (left.isNumber()) {
         return Value.initF64(left.asF64() + try toF64OrPanic(right));
@@ -2776,6 +2776,10 @@ const FuncSymbolEntryType = enum {
     none,
 };
 
+pub const FuncSymDetail = struct {
+    name: []const u8,
+};
+
 pub const FuncSymbolEntry = struct {
     entryT: FuncSymbolEntryType,
     inner: packed union {
@@ -3004,8 +3008,12 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .constI8 => {
-                @setRuntimeSafety(debug);
                 framePtr[pc[2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, pc[1].arg)));
+                pc += 3;
+                continue;
+            },
+            .constI8Int => {
+                framePtr[pc[2].arg] = Value.initI32(@intCast(i32, @bitCast(i8, pc[1].arg)));
                 pc += 3;
                 continue;
             },
@@ -3082,7 +3090,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .compare => {
-                @setRuntimeSafety(debug);
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
@@ -3103,13 +3110,19 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             //     continue;
             // },
             .less => {
-                @setRuntimeSafety(debug);
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initBool(left.asF64() < right.asF64())
                 else
                     @call(.{ .modifier = .never_inline }, evalLessFallback, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .lessInt => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = Value.initBool(left.asI32() < right.asI32());
                 pc += 4;
                 continue;
             },
@@ -3140,15 +3153,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
                 continue;
             },
-            // .addNumber => {
-            //     @setRuntimeSafety(debug);
-            //     const srcLeft = gvm.stack[gvm.framePtr + pc[1].arg];
-            //     const srcRight = gvm.stack[gvm.framePtr + pc[2].arg];
-            //     const dstLocal = pc[3].arg;
-            //     pc += 4;
-            //     gvm.stack[gvm.framePtr + dstLocal] = evalAddNumber(srcLeft, srcRight);
-            //     continue;
-            // },
             .add => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
@@ -3160,13 +3164,26 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 4;
                 continue;
             },
+            .addInt => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = Value.initI32(left.asI32() + right.asI32());
+                pc += 4;
+                continue;
+            },
             .minus => {
-                @setRuntimeSafety(debug);
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initF64(left.asF64() - right.asF64())
                 else @call(.{ .modifier = .never_inline }, evalMinusFallback, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .minusInt => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = Value.initI32(left.asI32() - right.asI32());
                 pc += 4;
                 continue;
             },
@@ -3805,26 +3822,29 @@ fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     if (reqNumArgs == 0) {
         pc.* = framePtr.*[2].retPcPtr;
         framePtr.* = framePtr.*[3].retFramePtr;
-        return retFlag == 0;
+        // return retFlag == 0;
+        return !retFlag;
     } else {
         switch (reqNumArgs) {
             0 => unreachable,
             1 => {
                 framePtr.*[0] = Value.None;
             },
-            2 => {
-                framePtr.*[0] = Value.None;
-                framePtr.*[1] = Value.None;
-            },
-            3 => {
-                framePtr.*[0] = Value.None;
-                framePtr.*[1] = Value.None;
-                framePtr.*[2] = Value.None;
-            },
+            // 2 => {
+            //     framePtr.*[0] = Value.None;
+            //     framePtr.*[1] = Value.None;
+            // },
+            // 3 => {
+            //     framePtr.*[0] = Value.None;
+            //     framePtr.*[1] = Value.None;
+            //     framePtr.*[2] = Value.None;
+            // },
+            else => unreachable,
         }
         pc.* = framePtr.*[2].retPcPtr;
         framePtr.* = framePtr.*[3].retFramePtr;
-        return retFlag == 0;
+        // return retFlag == 0;
+        return !retFlag;
     }
 }
 
@@ -3834,24 +3854,27 @@ fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     if (reqNumArgs == 1) {
         pc.* = framePtr.*[2].retPcPtr;
         framePtr.* = framePtr.*[3].retFramePtr;
-        return retFlag == 0;
+        // return retFlag == 0;
+        return !retFlag;
     } else {
         switch (reqNumArgs) {
             0 => {
                 release(framePtr.*[0]);
             },
             1 => unreachable,
-            2 => {
-                framePtr.*[1] = Value.None;
-            },
-            3 => {
-                framePtr.*[1] = Value.None;
-                framePtr.*[2] = Value.None;
-            },
+            // 2 => {
+            //     framePtr.*[1] = Value.None;
+            // },
+            // 3 => {
+            //     framePtr.*[1] = Value.None;
+            //     framePtr.*[2] = Value.None;
+            // },
+            else => unreachable,
         }
         pc.* = framePtr.*[2].retPcPtr;
         framePtr.* = framePtr.*[3].retFramePtr;
-        return retFlag == 0;
+        // return retFlag == 0;
+        return !retFlag;
     }
 }
 
@@ -4356,7 +4379,8 @@ pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) link
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,
-            .retFlag = if (cont) 0 else 1,
+            // .retFlag = if (cont) 0 else 1,
+            .retFlag = !cont,
         },
     };
 }

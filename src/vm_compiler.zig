@@ -211,6 +211,21 @@ pub const VMcompiler = struct {
                 }
                 return MapType;
             },
+            .nonDecInt => {
+                const literal = self.getNodeTokenString(node);
+                var val: u64 = undefined;
+                if (literal[1] == 'x') {
+                    val = try std.fmt.parseInt(u64, literal[2..], 16);
+                } else if (literal[1] == 'o') {
+                    val = try std.fmt.parseInt(u64, literal[2..], 8);
+                } else if (literal[1] == 'b') {
+                    val = try std.fmt.parseInt(u64, literal[2..], 2);
+                }
+                if (std.math.cast(i32, val) != null) {
+                    return NumberOrRequestIntegerType;
+                }
+                return NumberType;
+            },
             .number => {
                 const literal = self.getNodeTokenString(node);
                 const val = try std.fmt.parseFloat(f64, literal);
@@ -2792,6 +2807,27 @@ pub const VMcompiler = struct {
                         return try self.genConstInt(val, dst);
                     } else {
                         return try self.genConst(val, dst);
+                    }
+                } else {
+                    return GenValue.initNoValue();
+                }
+            },
+            .nonDecInt => {
+                if (!discardTopExprReg) {
+                    const literal = self.getNodeTokenString(node);
+                    var val: u64 = undefined;
+                    if (literal[1] == 'x') {
+                        val = try std.fmt.parseInt(u64, literal[2..], 16);
+                    } else if (literal[1] == 'o') {
+                        val = try std.fmt.parseInt(u64, literal[2..], 8);
+                    } else if (literal[1] == 'b') {
+                        val = try std.fmt.parseInt(u64, literal[2..], 2);
+                    }
+                    const fval = @intToFloat(f64, val);
+                    if (requestedType.typeT == .int) {
+                        return try self.genConstInt(fval, dst);
+                    } else {
+                        return try self.genConst(fval, dst);
                     }
                 } else {
                     return GenValue.initNoValue();

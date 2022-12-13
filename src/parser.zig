@@ -1948,6 +1948,10 @@ pub const Parser = struct {
                 self.advanceToken();
                 break :b try self.pushNode(.number, start);
             },
+            .nonDecInt => b: {
+                self.advanceToken();
+                break :b try self.pushNode(.nonDecInt, start);
+            },
             .tag => {
                 self.advanceToken();
                 return try self.pushNode(.tagLiteral, start);
@@ -2531,6 +2535,16 @@ pub const Parser = struct {
         });
     }
 
+    inline fn pushNonDecimalIntegerToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
+        try self.tokens.append(self.alloc, .{
+            .token_t = .nonDecInt,
+            .start_pos = @intCast(u26, start_pos),
+            .data = .{
+                .end_pos = end_pos,
+            },
+        });
+    }
+
     inline fn pushNumberToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .number,
@@ -2673,6 +2687,7 @@ const LogicOpType = enum {
 pub const TokenType = enum(u6) {
     ident,
     number,
+    nonDecInt,
     string,
     templateString,
     templateExprStart,
@@ -2774,6 +2789,7 @@ pub const NodeType = enum {
     binExpr,
     unary_expr,
     number,
+    nonDecInt,
     if_expr,
     if_stmt,
     else_clause,
@@ -3829,10 +3845,9 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
         }
 
-        fn tokenizeNumber(p: *Parser, start: u32) !void {
+        fn consumeDigits(p: *Parser) void {
             while (true) {
                 if (isAtEndChar(p)) {
-                    try p.pushNumberToken(start, p.next_pos);
                     return;
                 }
                 const ch = peekChar(p);
@@ -3841,25 +3856,107 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     continue;
                 } else break;
             }
-            // Check for decimal.
-            if (peekCharAhead(p, 1)) |ch2| {
-                const ch = peekChar(p);
-                if (ch == '.' and ch2 >= '0' and ch2 <= '9') {
+        }
+
+        /// Assumes first digit is consumed.
+        fn tokenizeNumber(p: *Parser, start: u32) !void {
+            if (isAtEndChar(p)) {
+                try p.pushNumberToken(start, p.next_pos);
+                return;
+            }
+            var ch = peekChar(p);
+            if ((ch >= '0' and ch <= '9') or ch == '.') {
+                // Decimal notation.
+                consumeDigits(p);
+                if (isAtEndChar(p)) {
+                    try p.pushNumberToken(start, p.next_pos);
+                    return;
+                }
+                ch = peekChar(p);
+                const ch2 = peekCharAhead(p, 1) orelse 0;
+                // Differentiate decimal from range operator.
+                if (ch == '.' and (ch2 >= '0' and ch2 <= '9')) {
                     advanceChar(p);
                     advanceChar(p);
-                    while (true) {
+                    consumeDigits(p);
+                    if (isAtEndChar(p)) {
+                        try p.pushNumberToken(start, p.next_pos);
+                        return;
+                    }
+                    ch = peekChar(p);
+                }
+                if (ch == 'e') {
+                    advanceChar(p);
+                    if (isAtEndChar(p)) {
+                        return p.reportTokenError("Expected number.", .{});
+                    }
+                    ch = peekChar(p);
+                    if (ch == '-') {
+                        advanceChar(p);
                         if (isAtEndChar(p)) {
-                            break;
+                            return p.reportTokenError("Expected number.", .{});
                         }
-                        const ch_ = peekChar(p);
-                        if (ch_ >= '0' and ch_ <= '9') {
-                            advanceChar(p);
-                            continue;
-                        } else break;
+                        ch = peekChar(p);
+                    }
+                    if (ch < '0' and ch > '9') {
+                        return p.reportTokenError("Expected number.", .{});
+                    }
+                    consumeDigits(p);
+                }
+                try p.pushNumberToken(start, p.next_pos);
+                return;
+            } else {
+                if (p.src.items[p.next_pos-1] == '0') {
+                    if (ch == 'x') {
+                        // Hex integer.
+                        advanceChar(p);
+                        while (true) {
+                            if (isAtEndChar(p)) {
+                                break;
+                            }
+                            ch = peekChar(p);
+                            if ((ch >= '0' and ch <= '9') or (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z')) {
+                                advanceChar(p);
+                                continue;
+                            } else break;
+                        }
+                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                        return;
+                    } else if (ch == 'o') {
+                        // Oct integer.
+                        advanceChar(p);
+                        while (true) {
+                            if (isAtEndChar(p)) {
+                                break;
+                            }
+                            ch = peekChar(p);
+                            if (ch >= '0' and ch <= '8') {
+                                advanceChar(p);
+                                continue;
+                            } else break;
+                        }
+                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                        return;
+                    } else if (ch == 'b') {
+                        // Bin integer.
+                        advanceChar(p);
+                        while (true) {
+                            if (isAtEndChar(p)) {
+                                break;
+                            }
+                            ch = peekChar(p);
+                            if (ch == '0' or ch == '1') {
+                                advanceChar(p);
+                                continue;
+                            } else break;
+                        }
+                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                        return;
                     }
                 }
+                try p.pushNumberToken(start, p.next_pos);
+                return;
             }
-            try p.pushNumberToken(start, p.next_pos);
         }
     };
 }
@@ -3880,6 +3977,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 52);
+    try t.eq(std.enums.values(TokenType).len, 53);
     try t.eq(keywords.kvs.len, 25);
 }

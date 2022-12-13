@@ -151,7 +151,7 @@ test "FFI." {
         \\-- pass in const string
         \\try t.eq(lib.testCharPtrZ('foo'), 'foo')
         \\-- pass in heap string
-        \\str = 'foo' + 123
+        \\str = 'foo{123}'
         \\try t.eq(lib.testCharPtrZ(str), 'foo123')
         \\try t.eq(lib.testPtr(opaque(123)), opaque(123))
     );
@@ -489,15 +489,15 @@ test "Comparison ops." {
         \\'foo' == 'foo'
     );
     try t.eq(val.asBool(), true);
-
+    
     // Heap string equals.
     val = try run.eval(
-        \\foo = 'fo' + 'o'
+        \\foo = '{'fo'}{'o'}'
         \\foo == 'bar'
     );
     try t.eq(val.asBool(), false);
     val = try run.eval(
-        \\foo = 'fo' + 'o'
+        \\foo = '{'fo'}{'o'}'
         \\foo == 'foo'
     );
     try t.eq(val.asBool(), true);
@@ -890,7 +890,7 @@ test "Strings" {
     // Heap string. 
     val = try run.eval(
         \\str = 'abc'
-        \\str + 'xyz'
+        \\'{str}xyz'
     );
     str = try run.assertValueString(val);
     try t.eqStr(str, "abcxyz");
@@ -913,6 +913,8 @@ test "String interpolation." {
         \\try t.eq('''Hello {a} {b}''', 'Hello World 123')
         \\-- With expr at start.
         \\try t.eq('{10}', '10')
+        \\-- With adjacent exprs at start.
+        \\try t.eq('{10}{20}', '1020')
         \\-- With nested paren group.
         \\try t.eq('{(1 + 2) * 3}', '9')
     );

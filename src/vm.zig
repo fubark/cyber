@@ -2382,40 +2382,10 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
 
 fn evalAddFallback(left: cy.Value, right: cy.Value) linksection(".eval") !cy.Value {
     @setCold(true);
-    if (left.isNumber()) {
-        return Value.initF64(left.asF64() + try toF64OrPanic(right));
-    } else {
-        if (left.isPointer()) {
-            const obj = stdx.ptrAlignCast(*cy.HeapObject, left.asPointer().?);
-            if (obj.common.structId == cy.StringS) {
-                const str = obj.string.ptr[0..obj.string.len];
-                return gvm.allocStringConcat(str, gvm.valueToTempString(right)) catch stdx.fatal();
-            } else return gvm.panic("Cannot add struct instance.");
-        } else {
-            switch (left.getTag()) {
-                cy.TagBoolean => {
-                    if (left.asBool()) {
-                        return Value.initF64(1 + right.toF64());
-                    } else {
-                        return Value.initF64(right.toF64());
-                    }
-                },
-                cy.TagNone => return Value.initF64(right.toF64()),
-                cy.TagError => stdx.fatal(),
-                cy.TagConstString => {
-                    // Convert into heap string.
-                    const slice = left.asConstStr();
-                    const str = gvm.strBuf[slice.start..slice.end];
-                    return gvm.allocStringConcat(str, gvm.valueToTempString(right)) catch stdx.fatal();
-                },
-                else => stdx.panic("unexpected tag"),
-            }
-        }
-    }
+    return Value.initF64(try toF64OrPanic(left) + try toF64OrPanic(right));
 }
 
 fn toF64OrPanic(val: Value) linksection(".eval") !f64 {
-    @setRuntimeSafety(debug);
     if (val.isNumber()) {
         return val.asF64();
     } else {
@@ -2434,6 +2404,13 @@ fn convToF64OrPanic(val: Value) linksection(".eval") !f64 {
         switch (val.getTag()) {
             cy.TagNone => return 0,
             cy.TagBoolean => return if (val.asBool()) 1 else 0,
+            cy.TagInteger => return @intToFloat(f64, val.asI32()),
+            cy.TagError => stdx.fatal(),
+            cy.TagConstString => {
+                const slice = val.asConstStr();
+                const str = gvm.strBuf[slice.start..slice.end];
+                return std.fmt.parseFloat(f64, str) catch 0;
+            },
             else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
         }
     }
@@ -4333,7 +4310,6 @@ fn releaseFiberStack(fiber: *Fiber) void {
             if (gvm.ops[pc + 4].code == .coreturn) {
                 const numArgs = gvm.ops[pc - 4].arg;
                 for (fiber.framePtr[4..4 + numArgs]) |arg| {
-                    arg.dump();
                     release(arg);
                 }
             }

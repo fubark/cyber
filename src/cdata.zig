@@ -347,7 +347,7 @@ pub const DecodeMapIR = struct {
                 const str = cy.unescapeString(buf.items, token_s);
                 buf.items.len = str.len;
                 return buf.toOwnedSlice();
-            } else if (val_n.node_t == .stringTemplate and val_n.head.stringTemplate.firstIsString) {
+            } else if (val_n.node_t == .stringTemplate) {
                 const str = self.res.nodes.items[val_n.head.stringTemplate.partsHead];
                 if (str.next == NullId) {
                     const token_s = self.res.getTokenString(str.start_token);

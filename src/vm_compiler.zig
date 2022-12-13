@@ -226,25 +226,15 @@ pub const VMcompiler = struct {
                 return ConstStringType;
             },
             .stringTemplate => {
-                const first = self.nodes[node.head.stringTemplate.partsHead];
-                if (node.head.stringTemplate.firstIsString and first.next == NullId) {
-                    // nop
-                    return ConstStringType;
-                }
-
-                var nextIsExpr = !node.head.stringTemplate.firstIsString;
+                var expStringPart = true;
                 var curId = node.head.stringTemplate.partsHead;
-                while (true) {
+                while (curId != NullId) {
                     const cur = self.nodes[curId];
-                    if (nextIsExpr) {
+                    if (!expStringPart) {
                         _ = try self.semaExpr(curId, discardTopExprReg);
                     }
-                    if (cur.next == NullId) {
-                        break;
-                    } else {
-                        curId = cur.next;
-                        nextIsExpr = !nextIsExpr;
-                    }
+                    curId = cur.next;
+                    expStringPart = !expStringPart;
                 }
                 return StringType;
             },
@@ -2823,37 +2813,20 @@ pub const VMcompiler = struct {
                 }
             },
             .stringTemplate => {
-                const first = self.nodes[node.head.stringTemplate.partsHead];
-                if (node.head.stringTemplate.firstIsString and first.next == NullId) {
-                    // Just a string.
-                    if (!discardTopExprReg) {
-                        const str = self.getNodeTokenString(first);
-                        return self.genString(str, dst);
-                    }
-                }
-
                 const operandStart = self.operandStack.items.len;
                 defer self.operandStack.items.len = operandStart;
-
-                if (!node.head.stringTemplate.firstIsString) {
-                    if (!discardTopExprReg) {
-                        // Insert empty string.
-                        const idx = try self.buf.pushStringConst("");
-                        try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                    }
-                }
 
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
 
                 const argStartLocal = self.advanceNextTempLocalPastArcTemps();
 
-                var nextIsExpr = !node.head.stringTemplate.firstIsString;
+                var expStringPart = true;
                 var curId = node.head.stringTemplate.partsHead;
                 var numExprs: u32 = 0;
-                while (true) {
+                while (curId != NullId) {
                     const cur = self.nodes[curId];
-                    if (!nextIsExpr) {
+                    if (expStringPart) {
                         if (!discardTopExprReg) {
                             const str = self.getNodeTokenString(cur);
                             const idx = try self.buf.pushStringConst(str);
@@ -2863,19 +2836,8 @@ pub const VMcompiler = struct {
                         _ = try self.genRetainedTempExpr(curId, discardTopExprReg);
                         numExprs += 1;
                     }
-                    if (cur.next == NullId) {
-                        if (nextIsExpr) {
-                            // Insert empty string.
-                            if (!discardTopExprReg) {
-                                const idx = try self.buf.pushStringConst("");
-                                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                            }
-                        }
-                        break;
-                    } else {
-                        curId = cur.next;
-                        nextIsExpr = !nextIsExpr;
-                    }
+                    curId = cur.next;
+                    expStringPart = !expStringPart;
                 }
 
                 if (!discardTopExprReg) {
@@ -3230,11 +3192,7 @@ pub const VMcompiler = struct {
                             }
                             try self.buf.pushOp3(.add, leftv.local, rightv.local, dst);
                             try self.pushDebugSym(nodeId);
-                            if (leftv.vtype.typeT == .string) {
-                                return self.initGenValue(dst, StringType);
-                            } else {
-                                return self.initGenValue(dst, NumberType);
-                            }
+                            return self.initGenValue(dst, NumberType);
                         } else {
                             return GenValue.initNoValue();
                         }

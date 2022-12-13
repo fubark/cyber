@@ -88,7 +88,7 @@ test "Automatic reference counting." {
 
     // Map entry access expression retains the entry.
     val = try run.eval(
-        \\a = { foo: 'abc' + 123 }
+        \\a = { foo: 'abc{123}' }
         \\b = a.foo
     );
     try t.eq(trace.numRetains, 3);
@@ -144,12 +144,12 @@ test "ARC in expressions." {
     // The string template literal is released at the end of the arc expression.
     val = try run.eval(
         \\foo = 'World'
-        \\'Hello {foo} ' + 123
+        \\'Hello {foo} {123}'
     );
     try run.valueIsString(val, "Hello World 123");
     run.deinitValue(val);
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numRetains, 1);
 }
 
 test "ARC in loops." {
@@ -163,7 +163,7 @@ test "ARC in loops." {
     _ = try run.eval(
         \\a = 123
         \\for 0..3:
-        \\  a = 'abc' + 123 -- copyReleaseDst
+        \\  a = 'abc{123}'   -- copyReleaseDst
     );
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
@@ -173,7 +173,7 @@ test "ARC in loops." {
         \\a = 123
         \\for 0..3:
         \\  if true:
-        \\    a = 'abc' + 123 -- copyReleaseDst
+        \\    a = 'abc{123}'    -- copyReleaseDst
     );
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
@@ -194,7 +194,7 @@ test "ARC in loops." {
     // An rc var first used inside a loop.
     _ = try run.eval(
         \\for 0..3:
-        \\  a = 'abc' + 123
+        \\  a = 'abc{123}'
     );
     try t.eq(trace.numRetains, 3);
     // The inner set inst should be a releaseSet.

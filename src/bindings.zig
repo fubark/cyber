@@ -108,11 +108,11 @@ pub fn bindCore(self: *cy.VM) !void {
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
     id = try self.ensureFieldSym("sym");
-    self.setFieldSym(sid, id, 0);
+    try self.addFieldSym(sid, id, 0);
     id = try self.ensureFieldSym("args");
-    self.setFieldSym(sid, id, 1);
+    try self.addFieldSym(sid, id, 1);
     id = try self.ensureFieldSym("ret");
-    self.setFieldSym(sid, id, 2);
+    try self.addFieldSym(sid, id, 2);
 
     id = try self.ensureTagLitSym("int");
     std.debug.assert(id == TagLit_int);
@@ -304,7 +304,7 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     defer alloc.free(cfuncPtrs);
     const symf = gvm.ensureFieldSym("sym") catch stdx.fatal();
     for (cfuncs.items()) |cfunc, i| {
-        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const symz = std.cstr.addNullByte(alloc, sym) catch stdx.fatal();
         defer alloc.free(symz);
         if (lib.lookup(*anyopaque, symz)) |ptr| {
@@ -337,9 +337,9 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     const argsf = gvm.ensureFieldSym("args") catch stdx.fatal();
     const retf = gvm.ensureFieldSym("ret") catch stdx.fatal();
     for (cfuncs.items()) |cfunc| {
-        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
-        const cargsv = gvm.getField(argsf, cfunc) catch stdx.fatal();
-        const ret = gvm.getField(retf, cfunc) catch stdx.fatal();
+        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
+        const cargsv = gvm.getField(cfunc, argsf) catch stdx.fatal();
+        const ret = gvm.getField(cfunc, retf) catch stdx.fatal();
 
         const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?);
         const lastArg = cargs.items().len - 1;
@@ -580,7 +580,7 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 
     // Add binded symbols.
     for (cfuncs.items()) |cfunc, i| {
-        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const symz = std.cstr.addNullByte(alloc, sym) catch stdx.fatal();
         defer alloc.free(symz);
         _ = tcc.tcc_add_symbol(state, symz.ptr, cfuncPtrs[i]);
@@ -595,7 +595,7 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     const cyState = gvm.allocTccState(state.?) catch stdx.fatal();
     gvm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
     for (cfuncs.items()) |cfunc| {
-        const sym = gvm.valueToTempString(gvm.getField(symf, cfunc) catch stdx.fatal());
+        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const cySym = std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0}) catch stdx.fatal();
         defer alloc.free(cySym);
         const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {

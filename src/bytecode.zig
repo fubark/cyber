@@ -437,6 +437,7 @@ pub const OpCode = enum(u8) {
     /// Calls a lambda and ensures 1 return value.
     call1,
     field,
+    fieldIC,
     lambda,
     closure,
     compare,
@@ -498,7 +499,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 82);
+    try t.eq(std.enums.values(OpCode).len, 83);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

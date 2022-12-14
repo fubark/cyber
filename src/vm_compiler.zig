@@ -1739,7 +1739,7 @@ pub const VMcompiler = struct {
 
         const accessLeftv = try self.genExpr(left.head.accessExpr.left, false);
         const accessLocal = try self.nextFreeTempLocal();
-        try self.buf.pushOp3(.field, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
+        try self.buf.pushOpSlice(.field, &.{ accessLeftv.local, accessLocal, @intCast(u8, fieldId), 0, 0, 0 });
 
         const rightv = try self.genExpr(rightId, false);
         try self.buf.pushOp3(code, accessLocal, rightv.local, accessLocal);
@@ -1851,7 +1851,7 @@ pub const VMcompiler = struct {
                     const field = self.nodes[fieldId];
                     const fieldName = self.getNodeTokenString(field);
                     const fieldSymId = try self.vm.ensureFieldSym(fieldName);
-                    self.vm.setFieldSym(sid, fieldSymId, i);
+                    try self.vm.addFieldSym(sid, fieldSymId, @intCast(u16, i));
                     fieldId = field.next;
                 }
 
@@ -3159,10 +3159,11 @@ pub const VMcompiler = struct {
                 if (!discardTopExprReg) {
                     if (retainEscapeTop) {
                         try self.buf.pushOp3(.fieldRetain, @intCast(u8, fieldId), leftv.local, dst);
+                        try self.pushDebugSym(nodeId);
                     } else {
-                        try self.buf.pushOp3(.field, @intCast(u8, fieldId), leftv.local, dst);
+                        try self.pushDebugSym(nodeId);
+                        try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
                     }
-                    try self.pushDebugSym(nodeId);
                     return self.initGenValue(dst, AnyType);
                 } else {
                     return GenValue.initNoValue();

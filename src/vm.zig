@@ -45,7 +45,7 @@ pub const VM = struct {
     /// [Eval context]
 
     /// Program counter. Pointer to the current instruction data in `ops`.
-    pc: [*]const cy.OpData,
+    pc: [*]cy.OpData,
     /// Current stack frame ptr.
     framePtr: [*]Value,
 
@@ -53,7 +53,7 @@ pub const VM = struct {
     stack: []Value,
     stackEndPtr: [*]const Value,
 
-    ops: []const cy.OpData,
+    ops: []cy.OpData,
     consts: []const cy.Const,
     strBuf: []const u8,
 
@@ -66,7 +66,7 @@ pub const VM = struct {
     /// Symbol table used to lookup object methods.
     /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
     methodSyms: cy.List(SymbolMap),
-    methodTable: std.AutoHashMapUnmanaged(MethodKey, SymbolEntry),
+    methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, SymbolEntry),
 
     /// Used to track which method symbols already exist. Only considers the name right now.
     methodSymSigs: std.StringHashMapUnmanaged(SymbolId),
@@ -78,6 +78,7 @@ pub const VM = struct {
 
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
+    fieldTable: std.AutoHashMapUnmanaged(ObjectSymKey, u16),
     fieldSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     /// Structs.
@@ -136,6 +137,7 @@ pub const VM = struct {
             .funcSymSignatures = .{},
             .funcSymDetails = .{},
             .fieldSyms = .{},
+            .fieldTable = .{},
             .fieldSymSignatures = .{},
             .structs = .{},
             .structSignatures = .{},
@@ -207,6 +209,7 @@ pub const VM = struct {
         self.funcSymDetails.deinit(self.alloc);
 
         self.fieldSyms.deinit(self.alloc);
+        self.fieldTable.deinit(self.alloc);
         self.fieldSymSignatures.deinit(self.alloc);
 
         for (self.heapPages.items()) |page| {
@@ -430,7 +433,7 @@ pub const VM = struct {
         @call(.{ .modifier = .never_inline }, self.prepareEvalCold, .{buf});
 
         // Set these last to hint location to cache before eval.
-        self.pc = @ptrCast([*]const cy.OpData, buf.ops.items.ptr);
+        self.pc = @ptrCast([*]cy.OpData, buf.ops.items.ptr);
         try self.stackEnsureTotalCapacity(buf.mainStackSize);
         self.framePtr = @ptrCast([*]Value, self.stack.ptr);
 
@@ -933,10 +936,26 @@ pub const VM = struct {
     pub fn getStructFieldIdx(self: *const VM, sid: StructId, propName: []const u8) ?u32 {
         const fieldId = self.fieldSymSignatures.get(propName) orelse return null;
         const entry = self.fieldSyms.buf[fieldId];
-        if (entry.mapT == .one) {
-            if (entry.inner.one.id == sid) {
-                return entry.inner.one.fieldIdx;
-            }
+        switch (entry.mapT) {
+            .one => {
+                if (entry.inner.one.id == sid) {
+                    return entry.inner.one.offset;
+                }
+            },
+            .many => {
+                if (entry.inner.many.mruStructId == sid) {
+                    return entry.inner.many.mruOffset;
+                } else {
+                    const offset = self.fieldTable.get(.{ .structId = sid, .symId = fieldId }).?;
+                    self.fieldSyms.buf[fieldId].inner.many = .{
+                        .mruStructId = sid,
+                        .mruOffset = offset,
+                    };
+                    return offset;
+                }
+            },
+            .empty => {
+            },
         }
         return null;
     }
@@ -1065,14 +1084,48 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn setFieldSym(self: *VM, sid: StructId, symId: SymbolId, offset: u32) void {
-        self.fieldSyms.buf[symId].mapT = .one;
-        self.fieldSyms.buf[symId].inner = .{
-            .one = .{
-                .id = sid,
-                .fieldIdx = @intCast(u16, offset),
+    pub fn addFieldSym(self: *VM, sid: StructId, symId: SymbolId, offset: u16) !void {
+        switch (self.fieldSyms.buf[symId].mapT) {
+            .empty => {
+                self.fieldSyms.buf[symId].mapT = .one;
+                self.fieldSyms.buf[symId].inner = .{
+                    .one = .{
+                        .id = sid,
+                        .offset = @intCast(u16, offset),
+                    },
+                };
             },
-        };
+            .one => {
+                // Convert to many.
+                var key = ObjectSymKey{
+                    .structId = self.fieldSyms.buf[symId].inner.one.id,
+                    .symId = symId,
+                };
+                try self.fieldTable.putNoClobber(self.alloc, key, self.fieldSyms.buf[symId].inner.one.offset);
+
+                key = .{
+                    .structId = sid,
+                    .symId = symId,
+                };
+                try self.fieldTable.putNoClobber(self.alloc, key, offset);
+
+                self.fieldSyms.buf[symId].mapT = .many;
+                self.fieldSyms.buf[symId].inner = .{
+                    .many = .{
+                        .mruStructId = sid,
+                        .mruOffset = offset,
+                    },
+                };
+            },
+            .many => {
+                const key = ObjectSymKey{
+                    .structId = sid,
+                    .symId = symId,
+                };
+                try self.fieldTable.putNoClobber(self.alloc, key, offset);
+            },
+            // else => stdx.panicFmt("unsupported {}", .{self.fieldSyms.buf[symId].mapT}),
+        }
     }
 
     pub inline fn setTagLitSym(self: *VM, tid: TagTypeId, symId: SymbolId, val: u32) void {
@@ -1102,15 +1155,15 @@ pub const VM = struct {
             },
             .one => {
                 // Convert to many.
-                var key = MethodKey{
+                var key = ObjectSymKey{
                     .structId = self.methodSyms.buf[symId].inner.one.id,
-                    .methodId = symId,
+                    .symId = symId,
                 };
                 self.methodTable.putAssumeCapacityNoClobber(key, self.methodSyms.buf[symId].inner.one.sym);
 
                 key = .{
                     .structId = id,
-                    .methodId = symId,
+                    .symId = symId,
                 };
                 self.methodTable.putAssumeCapacityNoClobber(key, sym);
 
@@ -1123,9 +1176,9 @@ pub const VM = struct {
                 };
             },
             .many => {
-                const key = MethodKey{
+                const key = ObjectSymKey{
                     .structId = id,
-                    .methodId = symId,
+                    .symId = symId,
                 };
                 self.methodTable.putAssumeCapacityNoClobber(key, sym);
             },
@@ -1394,7 +1447,7 @@ pub const VM = struct {
             switch (symMap.mapT) {
                 .one => {
                     if (obj.common.structId == symMap.inner.one.id) {
-                        const valuePtr = obj.object.getValuePtr(symMap.inner.one.fieldIdx);
+                        const valuePtr = obj.object.getValuePtr(symMap.inner.one.offset);
                         release(valuePtr.*);
                         valuePtr.* = val;
                     } else {
@@ -1420,7 +1473,7 @@ pub const VM = struct {
             switch (symMap.mapT) {
                 .one => {
                     if (obj.common.structId == symMap.inner.one.id) {
-                        obj.object.getValuePtr(symMap.inner.one.fieldIdx).* = val;
+                        obj.object.getValuePtr(symMap.inner.one.offset).* = val;
                     } else {
                         stdx.panic("TODO: set field fallback");
                     }
@@ -1447,75 +1500,60 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    fn getAndRetainField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
+    fn getFieldOffsetFromTable(self: *VM, sid: StructId, symId: SymbolId) u8 {
+        if (self.fieldTable.get(.{ .structId = sid, .symId = symId })) |offset| {
+            self.fieldSyms.buf[symId].inner.many = .{
+                .mruStructId = sid,
+                .mruOffset = offset,
+            };
+            return @intCast(u8, offset);
+        } else {
+            return NullByteId;
+        }
+    }
+
+    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(section) u8 {
+        const symMap = self.fieldSyms.buf[symId];
+        switch (symMap.mapT) {
+            .one => {
+                if (obj.common.structId == symMap.inner.one.id) {
+                    return @intCast(u8, symMap.inner.one.offset);
+                } else {
+                    return NullByteId;
+                }
+            },
+            .many => {
+                if (obj.common.structId == symMap.inner.many.mruStructId) {
+                    return @intCast(u8, symMap.inner.many.mruOffset);
+                } else {
+                    return @call(.{ .modifier = .never_inline }, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
+                }
+            },
+            .empty => {
+                return NullByteId;
+            },
+            // else => {
+            //     // stdx.panicFmt("unsupported {}", .{symMap.mapT});
+            //     unreachable;
+            // },
+        } 
+    }
+
+    pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(section) !Value {
         if (recv.isPointer()) {
-            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
-            const symMap = self.fieldSyms.buf[symId];
-            switch (symMap.mapT) {
-                .one => {
-                    if (obj.retainedCommon.structId == symMap.inner.one.id) {
-                        const val = obj.object.getValue(symMap.inner.one.fieldIdx);
-                        self.retain(val);
-                        return val;
-                    } else {
-                        return self.getAndRetainFieldFallback(obj, symMap.name);
-                    }
-                },
-                .many => {
-                    stdx.fatal();
-                },
-                .empty => {
-                    return self.getAndRetainFieldFallback(obj, symMap.name);
-                },
-            } 
+            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer().?);
+            const offset = self.getFieldOffset(obj, symId);
+            if (offset != NullByteId) {
+                return obj.object.getValue(offset);
+            } else {
+                return self.getFieldFallback(obj, self.fieldSyms.buf[symId].name);
+            }
         } else {
             return self.getFieldMissingSymbolError();
         }
     }
 
-    pub fn getField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
-        if (recv.isPointer()) {
-            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
-            const symMap = self.fieldSyms.buf[symId];
-            switch (symMap.mapT) {
-                .one => {
-                    if (obj.common.structId == symMap.inner.one.id) {
-                        return obj.object.getValuesConstPtr()[symMap.inner.one.fieldIdx];
-                    } else {
-                        return self.getFieldOther(obj, symMap.name);
-                    }
-                },
-                .many => {
-                    stdx.fatal();
-                },
-                .empty => {
-                    return self.getFieldOther(obj, symMap.name);
-                },
-                // else => {
-                //     // stdx.panicFmt("unsupported {}", .{symMap.mapT});
-                //     unreachable;
-                // },
-            } 
-        } else {
-            return self.getFieldMissingSymbolError();
-        }
-    }
-
-    fn getAndRetainFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(".eval") Value {
-        @setCold(true);
-        if (obj.common.structId == MapS) {
-            const map = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
-            if (map.getByString(self, name)) |val| {
-                self.retain(val);
-                return val;
-            } else return Value.None;
-        } else {
-            log.debug("Missing symbol for object: {} {s}", .{obj.common.structId, name});
-            return Value.None;
-        }
-    }
-
-    fn getFieldOther(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(".eval") Value {
+    fn getFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(".eval") Value {
         @setCold(true);
         if (obj.common.structId == MapS) {
             const map = stdx.ptrCastAlign(*const MapInner, &obj.map.inner);
@@ -1606,7 +1644,7 @@ pub const VM = struct {
         }
     }
 
-    inline fn callSymEntry(self: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    inline fn callSymEntry(self: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
         switch (sym.entryT) {
             .func => {
                 // if (self.framePtr + startLocal + sym.inner.func.numLocals >= self.stack.len) {
@@ -1690,18 +1728,16 @@ pub const VM = struct {
         const map = self.methodSyms.buf[symId];
         switch (map.mapT) {
             .one => {
-                @setRuntimeSafety(debug);
                 if (obj.retainedCommon.structId == map.inner.one.id) {
                     return map.inner.one.sym;
                 } else return null;
             },
             .many => {
-                @setRuntimeSafety(debug);
                 if (map.inner.many.mruStructId == obj.retainedCommon.structId) {
                     return map.inner.many.mruSym;
                 } else {
                     // Compiler wants to inline this function, but it causes a noticeable slow down in for.cy benchmark.
-                    const sym = @call(.{ .modifier = .never_inline }, self.methodTable.get, .{.{ .structId = obj.retainedCommon.structId, .methodId = symId }}) orelse return null;
+                    const sym = @call(.{ .modifier = .never_inline }, self.methodTable.get, .{.{ .structId = obj.retainedCommon.structId, .symId = symId }}) orelse return null;
                     self.methodSyms.buf[symId].inner.many = .{
                         .mruStructId = obj.retainedCommon.structId,
                         .mruSym = sym,
@@ -1710,7 +1746,6 @@ pub const VM = struct {
                 }
             },
             .empty => {
-                @setRuntimeSafety(debug);
                 return null;
             },
             // else => {
@@ -2663,7 +2698,11 @@ const FieldSymbolMap = struct {
     inner: union {
         one: struct {
             id: StructId,
-            fieldIdx: u16,
+            offset: u16,
+        },
+        many: struct {
+            mruStructId: StructId,
+            mruOffset: u16,
         },
     },
     name: []const u8,
@@ -2934,7 +2973,6 @@ pub fn evalLoopGrowStack() linksection(".eval") error{StackOverflow, OutOfMemory
 }
 
 fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
-    @setRuntimeSafety(debug);
     var pc = gvm.pc;
     var framePtr = gvm.framePtr;
     defer {
@@ -2994,12 +3032,47 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .field => {
-                const fieldId = pc[1].arg;
-                const left = pc[2].arg;
-                const dst = pc[3].arg;
-                pc += 4;
+                const left = pc[1].arg;
+                const dst = pc[2].arg;
+                const symId = pc[3].arg;
                 const recv = framePtr[left];
-                framePtr[dst] = try gvm.getField(fieldId, recv);
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    const offset = gvm.getFieldOffset(obj, symId);
+                    if (offset != NullByteId) {
+                        framePtr[dst] = obj.object.getValue(offset);
+                        // Inline cache.
+                        pc[0] = cy.OpData{ .code = .fieldIC };
+                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
+                        pc[6] = cy.OpData { .arg = offset };
+                    } else {
+                        framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                    }
+                } else {
+                    return gvm.getFieldMissingSymbolError();
+                }
+                pc += 7;
+                continue;
+            },
+            .fieldIC => {
+                const recv = framePtr[pc[1].arg];
+                const dst = pc[2].arg;
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
+                        framePtr[dst] = obj.object.getValue(pc[6].arg);
+                        pc += 7;
+                        continue;
+                    }
+                } else {
+                    return gvm.getFieldMissingSymbolError();
+                }
+                // Deoptimize.
+                pc[0] = cy.OpData{ .code = .field };
+                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
+                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{ recv, pc[3].arg });
+                pc += 7;
                 continue;
             },
             .copyRetainSrc => {
@@ -3488,7 +3561,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const dst = pc[3].arg;
                 pc += 4;
                 const recv = framePtr[left];
-                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{fieldId, recv});
+                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{recv, fieldId});
                 release(recv);
                 continue;
             },
@@ -3499,7 +3572,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 4;
 
                 const recv = framePtr[left];
-                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getAndRetainField, .{fieldId, recv});
+                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{recv, fieldId});
+                gvm.retain(framePtr[dst]);
                 continue;
             },
             .lambda => {
@@ -3977,9 +4051,9 @@ pub const StackFrame = struct {
     col: u32,
 };
 
-const MethodKey = struct {
+const ObjectSymKey = struct {
     structId: StructId,
-    methodId: SymbolId,
+    symId: SymbolId,
 };
 
 /// Stack layout for lambda: arg0, arg1, ..., callee
@@ -4037,7 +4111,7 @@ pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLo
     }
 }
 
-pub fn callNoInline(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, callee.asPointer().?);
         switch (obj.common.structId) {
@@ -4107,7 +4181,7 @@ fn getObjectFunctionFallback(obj: *const HeapObject, symId: SymbolId) !Value {
 }
 
 // Use new pc local to avoid deoptimization.
-fn callObjSymFallback(pc: [*]const cy.OpData, framePtr: [*]Value, obj: *HeapObject, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) !PcFramePtr {
+fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) !PcFramePtr {
     @setCold(true);
     // const func = try @call(.{ .modifier = .never_inline }, getObjectFunctionFallback, .{obj, symId});
     const func = try getObjectFunctionFallback(obj, symId);
@@ -4364,8 +4438,8 @@ pub inline fn pcOffset(pc: [*]const cy.OpData) u32 {
     return @intCast(u32, @ptrToInt(pc) - @ptrToInt(gvm.ops.ptr));
 }
 
-pub inline fn toPc(offset: usize) [*]const cy.OpData {
-    return @ptrCast([*]const cy.OpData, &gvm.ops.ptr[offset]);
+pub inline fn toPc(offset: usize) [*]cy.OpData {
+    return @ptrCast([*]cy.OpData, &gvm.ops.ptr[offset]);
 }
 
 pub inline fn framePtrOffset(framePtr: [*]Value) usize {
@@ -4378,7 +4452,7 @@ pub inline fn toFramePtr(offset: usize) [*]Value {
 }
 
 const PcFramePtr = struct {
-    pc: [*]const cy.OpData,
+    pc: [*]cy.OpData,
     framePtr: [*]Value,
 };
 

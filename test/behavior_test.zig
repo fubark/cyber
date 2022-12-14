@@ -288,6 +288,29 @@ test "Structs." {
         \\try t.eq(n.d, 4)
         \\try t.eq(n.e, 5)
     );
+
+    // Multiple structs with the same field names but different offsets.
+    _ = try run.eval(
+        \\import t from 'test'
+        \\type Node1:
+        \\  a
+        \\  b
+        \\type Node2:
+        \\  b
+        \\  a
+        \\type Node3:
+        \\  a
+        \\  b
+        \\n1 = Node1{ a: 1, b: 2 }
+        \\n2 = Node2{ a: 3, b: 4 }
+        \\n3 = Node3{ a: 5, b: 6 }
+        \\try t.eq(n1.a, 1)
+        \\try t.eq(n1.b, 2)
+        \\try t.eq(n2.a, 3)
+        \\try t.eq(n2.b, 4)
+        \\try t.eq(n3.a, 5)
+        \\try t.eq(n3.b, 6)
+    );
 }
 
 test "Struct methods." {

@@ -124,7 +124,7 @@ pub const Value = packed union {
     }
 
     pub fn toBool(self: *const Value) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
+        @setCold(true);
         if (self.isNumber()) {
             return self.asF64() != 0;
         } else {
@@ -298,6 +298,7 @@ pub const Value = packed union {
                     cy.LambdaS => log.info("Lambda {*}", .{obj}),
                     cy.ClosureS => log.info("Closure {*}", .{obj}),
                     cy.FiberS => log.info("Fiber {*}", .{obj}),
+                    cy.NativeFunc1S => return log.info("NativeFunc {*}", .{obj}),
                     else => {
                         log.info("HeapObject {*} {}", .{obj, obj.common.structId});
                     },

@@ -178,7 +178,6 @@ pub const ByteCodeBuffer = struct {
         while (pc < ops.len) {
             const name = @tagName(ops[pc].code);
             switch (ops[pc].code) {
-                // .ret2,
                 .ret0,
                 .ret1,
                 .coreturn => {
@@ -230,10 +229,6 @@ pub const ByteCodeBuffer = struct {
                 .reverseIndexRetain,
                 .index,
                 .reverseIndex,
-                .callSym0,
-                .callSym1,
-                .callObjSym0,
-                .callObjSym1,
                 .jumpNotNone,
                 .jumpCond,
                 .minus,
@@ -310,6 +305,18 @@ pub const ByteCodeBuffer = struct {
                 .fieldIC => {
                     println("{} {s} {} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
                     pc += 7;
+                },
+                .callSym,
+                .callNativeFuncIC,
+                .callFuncIC => {
+                    println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+11])});
+                    pc += 11;
+                },
+                .callObjSym,
+                .callObjNativeFuncIC,
+                .callObjFuncIC => {
+                    println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+14])});
+                    pc += 14;
                 },
                 else => {
                     stdx.panicFmt("unsupported {}", .{ops[pc].code});
@@ -430,12 +437,12 @@ pub const OpCode = enum(u8) {
 
     // releaseMany,
     release,
-    /// Num args includes the receiver.
-    callObjSym0,
-    callObjSym1,
-    callSym0,
-    callSym1,
-    // ret2,
+    callObjSym,
+    callObjNativeFuncIC,
+    callObjFuncIC,
+    callSym,
+    callFuncIC,
+    callNativeFuncIC,
     ret1,
     ret0,
     /// Calls a lambda and ensures 0 return values.
@@ -507,7 +514,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 85);
+    try t.eq(std.enums.values(OpCode).len, 87);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

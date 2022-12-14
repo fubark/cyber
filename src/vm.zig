@@ -1556,26 +1556,19 @@ pub const VM = struct {
     }
 
     /// startLocal points to the first arg in the current stack frame.
-    fn callSym(self: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(section) !PcFramePtr {
         const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
             .nativeFunc1 => {
-                const newFramePtr = framePtr.* + startLocal;
-                if (@ptrToInt(newFramePtr) >= @ptrToInt(self.stackEndPtr)) {
-                    return error.StackOverflow;
-                }
-                pc.* += 4;
-                // const res = sym.inner.nativeFunc1(undefined, @ptrCast([*]const Value, newFramePtr + 2), numArgs);
+                const newFramePtr = framePtr + startLocal;
+
+                // Optimize.
+                pc[0] = cy.OpData{ .code = .callNativeFuncIC };
+                @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+
+                gvm.framePtr = newFramePtr;
                 const res = sym.inner.nativeFunc1(undefined, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (reqNumRetVals == 1) {
-                    // if (@ptrToInt(newFramePtr) >= @ptrToInt(self.stack.ptr) + 8*self.stack.len) {
-                    // if (newFramePtr >= self.stack.len) {
-                        // Already made state changes, so grow stack here instead of
-                        // returning StackOverflow.
-                        // try self.stackGrowTotalCapacity(newFramePtr);
-                        // try self.stackGrowTotalCapacity((@ptrToInt(newFramePtr) - @ptrToInt(self.stack.ptr))/8);
-                    // }
-                    // self.stack[newFramePtr] = res;
                     newFramePtr[0] = res;
                 } else {
                     switch (reqNumRetVals) {
@@ -1583,49 +1576,55 @@ pub const VM = struct {
                             // Nop.
                         },
                         1 => stdx.panic("not possible"),
-                        2 => {
-                            stdx.panic("unsupported require 2 ret vals");
-                        },
-                        3 => {
-                            stdx.panic("unsupported require 3 ret vals");
-                        },
+                        else => stdx.panic("unsupported"),
                     }
                 }
+                return PcFramePtr{
+                    .pc = pc + 11,
+                    .framePtr = framePtr,
+                };
             },
             .func => {
-                log.debug("req stack: {} {}", .{framePtrOffset(self.framePtr) + startLocal + sym.inner.func.numLocals, self.stack.len});
-                if (@ptrToInt(framePtr.* + startLocal + sym.inner.func.numLocals) >= @ptrToInt(self.stackEndPtr)) {
+                if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(self.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
-                // const retInfo = buildReturnInfo(pcOffset(pc.* + 4), (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
-                const retFramePtr = Value{ .retFramePtr = framePtr.* };
-                framePtr.* += startLocal;
-                framePtr.*[1] = buildReturnInfo(reqNumRetVals, true);
-                framePtr.*[2] = Value{ .retPcPtr = pc.* + 4 };
-                framePtr.*[3] = retFramePtr;
-                pc.* = toPc(sym.inner.func.pc);
+                // Optimize.
+                pc[0] = cy.OpData{ .code = .callFuncIC };
+                pc[4] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
+                @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(toPc(sym.inner.func.pc)));
+
+                const newFramePtr = framePtr + startLocal;
+                newFramePtr[1] = buildReturnInfo(reqNumRetVals, true);
+                newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
+                newFramePtr[3] = Value{ .retFramePtr = framePtr };
+                return PcFramePtr{
+                    .pc = toPc(sym.inner.func.pc),
+                    .framePtr = newFramePtr,
+                };
             },
             .closure => {
-                if (@ptrToInt(framePtr.* + startLocal + sym.inner.closure.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr + startLocal + sym.inner.closure.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
-                // const retInfo = buildReturnInfo(pcOffset(pc.* + 4), (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr))/8, reqNumRetVals, true);
-                const retFramePtr = Value{ .retFramePtr = framePtr.* };
-                framePtr.* += startLocal;
-                framePtr.*[1] = buildReturnInfo(reqNumRetVals, true);
-                framePtr.*[2] = Value{ .retPcPtr = pc.* + 4 };
-                framePtr.*[3] = retFramePtr;
-                pc.* = toPc(sym.inner.closure.funcPc);
+                const newFramePtr = framePtr + startLocal;
+                newFramePtr[1] = buildReturnInfo(reqNumRetVals, true);
+                newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
+                newFramePtr[3] = Value{ .retFramePtr = framePtr };
 
                 // Copy over captured vars to new call stack locals.
                 if (sym.inner.closure.numCaptured <= 3) {
                     const src = @ptrCast([*]Value, &sym.inner.closure.capturedVal0)[0..sym.inner.closure.numCaptured];
-                    std.mem.copy(Value, framePtr.*[numArgs + 4..numArgs + 4 + sym.inner.closure.numCaptured], src);
+                    std.mem.copy(Value, newFramePtr[numArgs + 4..numArgs + 4 + sym.inner.closure.numCaptured], src);
                 } else {
                     stdx.panic("unsupported closure > 3 captured args.");
                 }
+
+                return PcFramePtr{
+                    .pc = toPc(sym.inner.closure.funcPc),
+                    .framePtr = newFramePtr,
+                };
             },
             else => {
                 return self.panic("unsupported callsym");
@@ -1633,77 +1632,79 @@ pub const VM = struct {
         }
     }
 
-    inline fn callSymEntry(self: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !void {
+    fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(".eval") !PcFramePtr {
+        _ = self;
         switch (sym.entryT) {
             .func => {
-                // if (self.framePtr + startLocal + sym.inner.func.numLocals >= self.stack.len) {
-                //     return error.StackOverflow;
-                // }
-                if (@ptrToInt(framePtr.* + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
-                // const retInfo = buildReturnInfo(pcOffset(pc.*), (@ptrToInt(framePtr.*) - @ptrToInt(gvm.stack.ptr)) / 8, reqNumRetVals, true);
-
-                const retFramePtr = Value{ .retFramePtr = framePtr.* };
-                framePtr.* += startLocal;
-                framePtr.*[1] = buildReturnInfo(reqNumRetVals, true);
-                framePtr.*[2] = Value{ .retPcPtr = pc.* };
-                framePtr.*[3] = retFramePtr;
-                pc.* = toPc(sym.inner.func.pc);
+                // Optimize.
+                pc[0] = cy.OpData{ .code = .callObjFuncIC };
+                pc[5] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
+                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(toPc(sym.inner.func.pc)));
+                @ptrCast(*align(1) u16, pc + 12).* = @intCast(u16, obj.common.structId);
+                
+                const newFramePtr = framePtr + startLocal;
+                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true);
+                newFramePtr[2] = Value{ .retPcPtr = pc + 14 };
+                newFramePtr[3] = Value{ .retFramePtr = framePtr };
+                return PcFramePtr{
+                    .pc = toPc(sym.inner.func.pc),
+                    .framePtr = newFramePtr,
+                };
             },
             .nativeFunc1 => {
-                // self.pc += 3;
-                // const newFramePtr = self.framePtr + startLocal;
+                // Optimize.
+                pc[0] = cy.OpData{ .code = .callObjNativeFuncIC };
+                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+                @ptrCast(*align(1) u16, pc + 12).* = @intCast(u16, obj.common.structId);
 
-                // const framePtrSave = self.framePtr;
-                // gvm.framePtr = self.framePtr + startLocal;
-                gvm.framePtr = framePtr.* + startLocal;
-                gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, gvm.framePtr + 4), numArgs);
-                pc.* = gvm.pc;
+                const newFramePtr = framePtr + startLocal;
+                gvm.framePtr = newFramePtr;
+                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (reqNumRetVals == 1) {
-                    gvm.framePtr[0] = res;
-                    // gvm.framePtr = framePtrSave;
+                    newFramePtr[0] = res;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
                             // Nop.
-                            // gvm.framePtr = framePtrSave;
                         },
                         1 => stdx.panic("not possible"),
-                        2 => {
-                            stdx.panic("unsupported require 2 ret vals");
-                        },
-                        3 => {
-                            stdx.panic("unsupported require 3 ret vals");
+                        else => {
+                            stdx.panic("unsupported");
                         },
                     }
                 }
+                return PcFramePtr{
+                    .pc = pc + 14,
+                    .framePtr = framePtr,
+                };
             },
             .nativeFunc2 => {
-                // self.pc += 3;
-                const newFramePtr = self.framePtr + startLocal;
-                gvm.pc = pc.*;
-                const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, newFramePtr + 2), numArgs);
-                pc.* = gvm.pc;
-                if (reqNumRetVals == 2) {
-                    self.stack[newFramePtr] = res.left;
-                    self.stack[newFramePtr+1] = res.right;
-                } else {
-                    switch (reqNumRetVals) {
-                        0 => {
-                            // Nop.
-                        },
-                        1 => unreachable,
-                        2 => {
-                            unreachable;
-                        },
-                        3 => {
-                            unreachable;
-                        },
-                    }
-                }
+                stdx.panic("unsupported nativefunc2");
+                // const newFramePtr = self.framePtr + startLocal;
+                // gvm.pc = pc.*;
+                // const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, newFramePtr + 2), numArgs);
+                // pc.* = gvm.pc;
+                // if (reqNumRetVals == 2) {
+                //     self.stack[newFramePtr] = res.left;
+                //     self.stack[newFramePtr+1] = res.right;
+                // } else {
+                //     switch (reqNumRetVals) {
+                //         0 => {
+                //             // Nop.
+                //         },
+                //         1 => unreachable,
+                //         2 => {
+                //             unreachable;
+                //         },
+                //         3 => {
+                //             unreachable;
+                //         },
+                //     }
+                // }
             },
             // else => {
             //     // stdx.panicFmt("unsupported {}", .{sym.entryT});
@@ -1712,8 +1713,19 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSym(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(".eval") ?SymbolEntry {
-        @setRuntimeSafety(debug);
+    fn getCallObjSymFromTable(self: *VM, sid: StructId, symId: SymbolId) ?SymbolEntry {
+        if (self.methodTable.get(.{ .structId = sid, .symId = symId })) |entry| {
+            self.methodSyms.buf[symId].inner.many = .{
+                .mruStructId = sid,
+                .mruSym = entry,
+            };
+            return entry;
+        } else {
+            return null;
+        }
+    }
+
+    fn getCallObjSym(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(section) ?SymbolEntry {
         const map = self.methodSyms.buf[symId];
         switch (map.mapT) {
             .one => {
@@ -1725,13 +1737,7 @@ pub const VM = struct {
                 if (map.inner.many.mruStructId == obj.retainedCommon.structId) {
                     return map.inner.many.mruSym;
                 } else {
-                    // Compiler wants to inline this function, but it causes a noticeable slow down in for.cy benchmark.
-                    const sym = @call(.{ .modifier = .never_inline }, self.methodTable.get, .{.{ .structId = obj.retainedCommon.structId, .symId = symId }}) orelse return null;
-                    self.methodSyms.buf[symId].inner.many = .{
-                        .mruStructId = obj.retainedCommon.structId,
-                        .mruSym = sym,
-                    };
-                    return sym;
+                    return @call(.{ .modifier = .never_inline }, self.getCallObjSymFromTable, .{obj.retainedCommon.structId, symId});
                 }
             },
             .empty => {
@@ -3041,7 +3047,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .copyRetainSrc => {
-                @setRuntimeSafety(debug);
                 const src = pc[1].arg;
                 const dst = pc[2].arg;
                 pc += 3;
@@ -3292,11 +3297,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .copy => {
-                @setRuntimeSafety(debug);
-                const src = pc[1].arg;
-                const dst = pc[2].arg;
+                framePtr[pc[2].arg] = framePtr[pc[1].arg];
                 pc += 3;
-                framePtr[dst] = framePtr[src];
                 continue;
             },
             .copyRetainRelease => {
@@ -3310,18 +3312,15 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .copyReleaseDst => {
-                const src = pc[1].arg;
                 const dst = pc[2].arg;
-                pc += 3;
                 release(framePtr[dst]);
-                framePtr[dst] = framePtr[src];
+                framePtr[dst] = framePtr[pc[1].arg];
+                pc += 3;
                 continue;
             },
             .retain => {
-                @setRuntimeSafety(debug);
-                const local = pc[1].arg;
+                gvm.retain(framePtr[pc[1].arg]);
                 pc += 2;
-                gvm.retain(framePtr[local]);
                 continue;
             },
             .index => {
@@ -3427,73 +3426,108 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
-            .callObjSym0 => {
-                const symId = pc[1].arg;
-                const startLocal = pc[2].arg;
-                const numArgs = pc[3].arg;
-                pc += 4;
-
+            .callObjFuncIC => {
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 if (recv.isPointer()) {
+                    const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
-                    // if (@call(.{ .modifier = .never_inline }, gvm.getCallObjSym, .{obj, symId})) |sym| {
-                    if (gvm.getCallObjSym(obj, symId)) |sym| {
-                        // try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{&pc, sym, obj, startLocal, numArgs, 0});
-                        try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, numArgs, 0);
-                    } else {
-                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, 0});
-                        pc = res.pc;
-                        framePtr = res.framePtr;
+                    if (obj.common.structId == cachedStruct) {
+                        const numLocals = pc[5].arg;
+                        if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                            return error.StackOverflow;
+                        }
+                        const retFramePtr = Value{ .retFramePtr = framePtr };
+                        framePtr += startLocal;
+                        @ptrCast([*]u8, framePtr + 1)[0] = pc[3].arg;
+                        @ptrCast([*]u8, framePtr + 1)[1] = 0;
+                        framePtr[2] = Value{ .retPcPtr = pc + 14 };
+                        framePtr[3] = retFramePtr;
+                        pc = @intToPtr([*]cy.OpData, @ptrCast(*align(1) u48, pc + 6).*);
+                        continue;
                     }
                 } else {
                     return gvm.panic("Missing function symbol in value.");
                 }
-                // try gvm.callObjSym(recv, symId, numArgs, 0);
-                // try @call(.{.modifier = .always_inline }, gvm.callObjSym, .{recv, symId, numArgs, 0});
+
+                // Deoptimize.
+                pc[0] = cy.OpData{ .code = .callObjSym };
                 continue;
             },
-            .callObjSym1 => {
-                const symId = pc[1].arg;
-                const startLocal = pc[2].arg;
-                const numArgs = pc[3].arg;
-                pc += 4;
-
+            .callObjNativeFuncIC => {
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 if (recv.isPointer()) {
+                    const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
-                    // if (@call(.{ .modifier = .never_inline }, gvm.getCallObjSym, .{obj, symId})) |sym| {
-                    if (gvm.getCallObjSym(obj, symId)) |sym| {
-                        // try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{&pc, sym, obj, startLocal, numArgs, 1});
-                        try gvm.callSymEntry(&pc, &framePtr, sym, obj, startLocal, numArgs, 1);
-                    } else {
-                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, 1});
-                        pc = res.pc;
-                        framePtr = res.framePtr;
+                    if (obj.common.structId == cachedStruct) {
+                        const newFramePtr = framePtr + startLocal;
+                        gvm.framePtr = newFramePtr;
+                        const res = @intToPtr(*const fn (*UserVM, *HeapObject, [*]const Value, u8) Value, @ptrCast(*align (1) u48, pc + 6).*)(undefined, obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                        const numRet = pc[3].arg;
+                        pc += 14;
+                        if (numRet == 1) {
+                            newFramePtr[0] = res;
+                        } else {
+                            switch (numRet) {
+                                0 => {
+                                    // Nop.
+                                },
+                                1 => stdx.panic("not possible"),
+                                else => {
+                                    stdx.panic("unsupported numret");
+                                },
+                            }
+                        }
+                        continue;
                     }
                 } else {
                     return gvm.panic("Missing function symbol in value.");
                 }
-                // try gvm.callObjSym(recv, symId, numArgs, 1);
-                // try @call(.{.modifier = .always_inline }, gvm.callObjSym, .{recv, symId, numArgs, 1});
+
+                // Deoptimize.
+                pc[0] = cy.OpData{ .code = .callObjSym };
                 continue;
             },
-            .callSym0 => {
-                @setRuntimeSafety(debug);
-                const symId = pc[1].arg;
-                const startLocal = pc[2].arg;
-                const numArgs = pc[3].arg;
-                // pc += 4;
+            .callFuncIC => {
+                const startLocal = pc[1].arg;
+                const numLocals = pc[4].arg;
+                if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                    return error.StackOverflow;
+                }
 
-                try gvm.callSym(&pc, &framePtr, symId, startLocal, numArgs, 0);
+                const retFramePtr = Value{ .retFramePtr = framePtr };
+                framePtr += startLocal;
+                @ptrCast([*]u8, framePtr + 1)[0] = pc[3].arg;
+                @ptrCast([*]u8, framePtr + 1)[1] = 0;
+                framePtr[2] = Value{ .retPcPtr = pc + 11 };
+                framePtr[3] = retFramePtr;
+
+                pc = @intToPtr([*]cy.OpData, @ptrCast(*align(1) u48, pc + 5).*);
                 continue;
             },
-            .callSym1 => {
-                const symId = pc[1].arg;
-                const startLocal = pc[2].arg;
-                const numArgs = pc[3].arg;
-                // pc += 4;
+            .callNativeFuncIC => {
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
 
-                try gvm.callSym(&pc, &framePtr, symId, startLocal, numArgs, 1);
+                const newFramePtr = framePtr + startLocal;
+                gvm.framePtr = newFramePtr;
+                const res = @intToPtr(*const fn (*UserVM, [*]const Value, u8) Value, @ptrCast(*align (1) u48, pc + 5).*)(undefined, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                const numRet = pc[3].arg;
+                if (numRet == 1) {
+                    newFramePtr[0] = res;
+                } else {
+                    switch (numRet) {
+                        0 => {
+                            // Nop.
+                        },
+                        1 => stdx.panic("not possible"),
+                        else => stdx.panic("unsupported"),
+                    }
+                }
+                pc += 11;
                 continue;
             },
             .ret1 => {
@@ -3652,7 +3686,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .lambda => {
-                @setRuntimeSafety(debug);
                 const funcPc = pcOffset(pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numLocals = pc[3].arg;
@@ -3662,7 +3695,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .closure => {
-                @setRuntimeSafety(debug);
                 const funcPc = pcOffset(pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numCaptured = pc[3].arg;
@@ -3675,7 +3707,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .coreturn => {
-                @setRuntimeSafety(debug);
                 pc += 1;
                 if (gvm.curFiber != &gvm.mainFiber) {
                     const res = popFiber(pcOffset(pc), framePtr);
@@ -3685,7 +3716,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .coresume => {
-                @setRuntimeSafety(debug);
                 const fiber = framePtr[pc[1].arg];
                 // const dst = pc[2];
                 if (fiber.isPointer()) {
@@ -3703,7 +3733,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .coyield => {
-                @setRuntimeSafety(debug);
                 if (gvm.curFiber != &gvm.mainFiber) {
                     // Only yield on user fiber.
                     const res = popFiber(pcOffset(pc), framePtr);
@@ -3728,7 +3757,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .mul => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3737,7 +3765,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .div => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3746,7 +3773,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .mod => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3755,7 +3781,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .pow => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3764,7 +3789,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .box => {
-                @setRuntimeSafety(debug);
                 const value = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
                 pc += 3;
@@ -3773,7 +3797,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .setBoxValue => {
-                @setRuntimeSafety(debug);
                 const box = framePtr[pc[1].arg];
                 const rval = framePtr[pc[2].arg];
                 pc += 3;
@@ -3788,7 +3811,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .setBoxValueRelease => {
-                @setRuntimeSafety(debug);
                 const box = framePtr[pc[1].arg];
                 const rval = framePtr[pc[2].arg];
                 pc += 3;
@@ -3804,7 +3826,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .boxValue => {
-                @setRuntimeSafety(debug);
                 const box = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
                 pc += 3;
@@ -3819,7 +3840,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .boxValueRetain => {
-                @setRuntimeSafety(debug);
                 const box = framePtr[pc[1].arg];
                 // if (builtin.mode == .Debug) {
                 //     std.debug.assert(box.isPointer());
@@ -3909,6 +3929,40 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
                 continue;
             },
+            .callObjSym => {
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
+                const numRet = pc[3].arg;
+                const symId = pc[4].arg;
+
+                const recv = framePtr[startLocal + numArgs + 4 - 1];
+                recv.dump();
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+                    if (gvm.getCallObjSym(obj, symId)) |sym| {
+                        const res = try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{pc, framePtr, sym, obj, startLocal, numArgs, numRet });
+                        pc = res.pc;
+                        framePtr = res.framePtr;
+                    } else {
+                        const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, numRet});
+                        pc = res.pc;
+                        framePtr = res.framePtr;
+                    }
+                } else {
+                    return gvm.panic("Missing function symbol in value.");
+                }
+                continue;
+            },
+            .callSym => {
+                const startLocal = pc[1].arg;
+                const numArgs = pc[2].arg;
+                const numRet = pc[3].arg;
+                const symId = pc[4].arg;
+                const res = try @call(.{ .modifier = .never_inline }, gvm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
+                pc = res.pc;
+                framePtr = res.framePtr;
+                continue;
+            },
             .end => {
                 gvm.endLocal = pc[1].arg;
                 pc += 2;
@@ -3984,29 +4038,11 @@ fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
 fn dumpEvalOp(pc: [*]const cy.OpData) void {
     const offset = pcOffset(pc);
     switch (pc[0].code) {
-        .callObjSym0 => {
-            const methodId = pc[1].arg;
-            const startLocal = pc[2].arg;
-            const numArgs = pc[3].arg;
-            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), methodId, startLocal, numArgs});
+        .callObjSym => {
+            log.debug("{} op: {s} {any}", .{offset, @tagName(pc[0].code), std.mem.sliceAsBytes(pc[1..14])});
         },
-        .callObjSym1 => {
-            const methodId = pc[1].arg;
-            const startLocal = pc[2].arg;
-            const numArgs = pc[3].arg;
-            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), methodId, startLocal, numArgs});
-        },
-        .callSym1 => {
-            const funcId = pc[1].arg;
-            const startLocal = pc[2].arg;
-            const numArgs = pc[3].arg;
-            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), funcId, startLocal, numArgs});
-        },
-        .callSym0 => {
-            const funcId = pc[1].arg;
-            const startLocal = pc[2].arg;
-            const numArgs = pc[3].arg;
-            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), funcId, startLocal, numArgs});
+        .callSym => {
+            log.debug("{} op: {s} {any}", .{offset, @tagName(pc[0].code), std.mem.sliceAsBytes(pc[1..11])});
         },
         .release => {
             const local = pc[1].arg;
@@ -4203,7 +4239,7 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
                 const retFramePtr = Value{ .retFramePtr = framePtr.* };
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
-                framePtr.*[2] = Value{ .retPcPtr = pc.* };
+                framePtr.*[2] = Value{ .retPcPtr = pc.* + 14 };
                 framePtr.*[3] = retFramePtr;
                 pc.* = toPc(obj.lambda.funcPc);
             },
@@ -4214,6 +4250,7 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
                 const res = obj.nativeFunc1.func(undefined, newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
                 releaseObject(obj);
+                pc.* += 14;
             },
             else => {},
         }
@@ -4234,8 +4271,8 @@ fn getObjectFunctionFallback(obj: *const HeapObject, symId: SymbolId) !Value {
     return gvm.panic("Missing function symbol in value");
 }
 
-// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) !PcFramePtr {
+/// Use new pc local to avoid deoptimization.
+fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) !PcFramePtr {
     @setCold(true);
     // const func = try @call(.{ .modifier = .never_inline }, getObjectFunctionFallback, .{obj, symId});
     const func = try getObjectFunctionFallback(obj, symId);
@@ -4246,7 +4283,7 @@ fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, sy
     // Replace receiver with function.
     framePtr[startLocal + 4 + numArgs - 1] = func;
     // const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), reqNumRetVals, true);
-    const retInfo = buildReturnInfo(reqNumRetVals, true);
+    const retInfo = buildReturnInfo2(reqNumRetVals, true);
     var newPc = pc;
     var newFramePtr = framePtr;
     try @call(.{ .modifier = .always_inline }, callNoInline, .{&newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
@@ -4431,9 +4468,9 @@ fn releaseFiberStack(fiber: *Fiber) void {
 
     // Check if fiber is still in init state.
     switch (gvm.ops[pc].code) {
-        .callSym0,
-        .callSym1 => {
-            if (gvm.ops[pc + 4].code == .coreturn) {
+        .callFuncIC,
+        .callSym => {
+            if (gvm.ops[pc + 11].code == .coreturn) {
                 const numArgs = gvm.ops[pc - 4].arg;
                 for (fiber.framePtr[4..4 + numArgs]) |arg| {
                     release(arg);
@@ -4477,7 +4514,17 @@ fn pcToEndLocalsPc(pc: usize) u32 {
     } else return NullId;
 }
 
-pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(".eval") Value {
+pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(section) Value {
+    return Value{
+        .retInfo = .{
+            .numRetVals = numRetVals,
+            // .retFlag = if (cont) 0 else 1,
+            .retFlag = !cont,
+        },
+    };
+}
+
+pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(section) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,

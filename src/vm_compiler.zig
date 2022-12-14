@@ -1946,10 +1946,10 @@ pub const VMcompiler = struct {
                 const iterLocal = try self.nextFreeTempLocal();
                 try self.setReservedTempLocal(iterLocal);
                 try self.buf.pushOp2(.copy, iterable.local, iterLocal + 4);
-                try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.iteratorObjSym), iterLocal, 1);
+                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
 
                 try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
-                try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.nextObjSym), iterLocal + 1, 1);
+                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
 
                 const skipSkipJump = try self.pushEmptyJumpNotNone(val.local);
@@ -1960,7 +1960,7 @@ pub const VMcompiler = struct {
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
 
                 try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
-                try self.buf.pushOp3(.callObjSym1, @intCast(u8, self.vm.nextObjSym), iterLocal + 1, 1);
+                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
 
                 try self.pushJumpBackNotNone(bodyPc, val.local);
@@ -2367,10 +2367,10 @@ pub const VMcompiler = struct {
                             // var isStdCall = false;
                             if (self.vm.getFuncSym(semaSym.path)) |symId| {
                                 if (discardTopExprReg) {
-                                    try self.buf.pushOp3(.callSym0, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
+                                    try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
                                     try self.pushDebugSym(nodeId);
                                 } else {
-                                    try self.buf.pushOp3(.callSym1, @intCast(u8, symId), callStartLocal, @intCast(u8, numArgs));
+                                    try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
                                     try self.pushDebugSym(nodeId);
                                 }
                                 return GenValue.initTempValue(callStartLocal, semaSym.inner.func.retType);
@@ -2411,10 +2411,10 @@ pub const VMcompiler = struct {
                         _ = try self.genRetainedTempExpr(callee.head.accessExpr.left, false);
 
                         if (discardTopExprReg) {
-                            try self.buf.pushOp3(.callObjSym0, @intCast(u8, methodId), callStartLocal, @intCast(u8, numArgs));
+                            try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                             try self.pushDebugSym(nodeId);
                         } else {
-                            try self.buf.pushOp3(.callObjSym1, @intCast(u8, methodId), callStartLocal, @intCast(u8, numArgs));
+                            try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                             try self.pushDebugSym(nodeId);
                         }
                         return GenValue.initTempValue(callStartLocal, AnyType);
@@ -2478,10 +2478,10 @@ pub const VMcompiler = struct {
 
                     const symId = self.vm.getGlobalFuncSym(name) orelse (try self.vm.ensureFuncSym(name));
                     if (discardTopExprReg) {
-                        try self.buf.pushOp3(.callSym0, @intCast(u8, symId), genCallStartLocal, @intCast(u8, numArgs));
+                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
                         try self.pushDebugSym(nodeId);
                     } else {
-                        try self.buf.pushOp3(.callSym1, @intCast(u8, symId), genCallStartLocal, @intCast(u8, numArgs));
+                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
                         try self.pushDebugSym(nodeId);
                     }
 

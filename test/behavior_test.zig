@@ -271,6 +271,23 @@ test "Structs." {
     );
     try t.eqStr(try run.assertValueString(val), "Node");
     run.deinitValue(val);
+
+    // Big structs (allocated outside of heap pages).
+    _ = try run.eval(
+        \\import t from 'test'
+        \\type Node:
+        \\  a
+        \\  b
+        \\  c
+        \\  d
+        \\  e
+        \\n = Node{ a: 1, b: 2, c: 3, d: 4, e: 5 }
+        \\try t.eq(n.a, 1)
+        \\try t.eq(n.b, 2)
+        \\try t.eq(n.c, 3)
+        \\try t.eq(n.d, 4)
+        \\try t.eq(n.e, 5)
+    );
 }
 
 test "Struct methods." {

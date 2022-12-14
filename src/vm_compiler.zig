@@ -1851,11 +1851,11 @@ pub const VMcompiler = struct {
                     const field = self.nodes[fieldId];
                     const fieldName = self.getNodeTokenString(field);
                     const fieldSymId = try self.vm.ensureFieldSym(fieldName);
-                    self.vm.setFieldSym(sid, fieldSymId, i, numFields <= 4);
+                    self.vm.setFieldSym(sid, fieldSymId, i);
                     fieldId = field.next;
                 }
 
-                self.vm.structs.buf[sid].numFields = i;
+                self.vm.structs.buf[sid].numFields = numFields;
 
                 var funcId = node.head.structDecl.funcsHead;
                 var func: cy.Node = undefined;
@@ -2964,7 +2964,11 @@ pub const VMcompiler = struct {
                 }
 
                 if (!discardTopExprReg) {
-                    try self.buf.pushOpSlice(.structSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, i), dst });
+                    if (self.vm.structs.buf[sid].numFields <= 4) {
+                        try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, i), dst });
+                    } else {
+                        try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, i), dst });
+                    }
                     try self.buf.pushOperands(self.operandStack.items[operandStart..]);
                     // try self.buf.pushOp1(.pushStructInit, );
                     if (!retainEscapeTop and self.isTempLocal(dst)) {

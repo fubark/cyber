@@ -479,7 +479,7 @@ pub const VM = struct {
     }
 
     pub fn allocEmptyMap(self: *VM) !Value {
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.map = .{
             .structId = MapS,
             .rc = 1,
@@ -502,16 +502,15 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocSmallObject(self: *VM, sid: StructId, offsets: []const cy.OpData, props: []const Value) !Value {
-        @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
-        obj.smallObject = .{
+    /// Allocates an object outside of the object pool.
+    fn allocObject(self: *VM, sid: StructId, offsets: []const cy.OpData, props: []const Value) !Value {
+        // First slot holds the structId and rc.
+        const objSlice = try self.alloc.alloc(Value, 1 + props.len);
+        const obj = @ptrCast(*Object, objSlice.ptr);
+        obj.* = .{
             .structId = sid,
             .rc = 1,
-            .val0 = undefined,
-            .val1 = undefined,
-            .val2 = undefined,
-            .val3 = undefined,
+            .firstValue = undefined,
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -521,7 +520,31 @@ pub const VM = struct {
             gvm.refCounts += 1;
         }
 
-        const dst = @ptrCast([*]Value, &obj.smallObject.val0);
+        const dst = obj.getValuesPtr();
+        for (offsets) |offset, i| {
+            dst[offset.arg] = props[i];
+        }
+
+        const res = Value.initPtr(obj);
+        return res;
+    }
+
+    fn allocObjectSmall(self: *VM, sid: StructId, offsets: []const cy.OpData, props: []const Value) !Value {
+        const obj = try self.allocPoolObject();
+        obj.object = .{
+            .structId = sid,
+            .rc = 1,
+            .firstValue = undefined,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            gvm.refCounts += 1;
+        }
+
+        const dst = obj.object.getValuesPtr();
         for (offsets) |offset, i| {
             dst[offset.arg] = props[i];
         }
@@ -532,7 +555,7 @@ pub const VM = struct {
 
     fn allocMap(self: *VM, keyIdxs: []const cy.OpData, vals: []const Value) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.map = .{
             .structId = MapS,
             .rc = 1,
@@ -589,7 +612,7 @@ pub const VM = struct {
         }
     }
 
-    fn allocObject(self: *VM) !*HeapObject {
+    fn allocPoolObject(self: *VM) !*HeapObject {
         if (self.heapFreeHead == null) {
             self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.len * 15) / 10));
         }
@@ -615,7 +638,7 @@ pub const VM = struct {
 
     fn allocLambda(self: *VM, funcPc: usize, numParams: u8, numLocals: u8) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.lambda = .{
             .structId = LambdaS,
             .rc = 1,
@@ -635,7 +658,7 @@ pub const VM = struct {
 
     fn allocClosure(self: *VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const cy.OpData) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.closure = .{
             .structId = ClosureS,
             .rc = 1,
@@ -679,7 +702,7 @@ pub const VM = struct {
 
     pub fn allocOwnedString(self: *VM, str: []u8) linksection(section) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.string = .{
             .structId = StringS,
             .rc = 1,
@@ -698,7 +721,7 @@ pub const VM = struct {
     }
 
     pub fn allocOpaquePtr(self: *VM, ptr: ?*anyopaque) !Value {
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.opaquePtr = .{
             .structId = OpaquePtrS,
             .rc = 1,
@@ -715,7 +738,7 @@ pub const VM = struct {
     }
 
     pub fn allocTccState(self: *VM, state: *tcc.TCCState) !Value {
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.tccState = .{
             .structId = TccStateS,
             .rc = 1,
@@ -732,7 +755,7 @@ pub const VM = struct {
     }
 
     pub fn allocNativeFunc1(self: *VM, func: *const fn (*UserVM, [*]Value, u8) Value, tccState: ?Value) !Value {
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.nativeFunc1 = .{
             .structId = NativeFunc1S,
             .rc = 1,
@@ -756,7 +779,7 @@ pub const VM = struct {
 
     pub fn allocString(self: *VM, str: []const u8) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         const dupe = try self.alloc.dupe(u8, str);
         // log.debug("alloc str {*} {s}", .{dupe.ptr, dupe});
         obj.string = .{
@@ -789,7 +812,7 @@ pub const VM = struct {
             try self.u8Buf.appendSlice(self.alloc, self.valueAsString(Value.initRaw(gvm.consts[strs[i+1].arg].val)));
         }
 
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         const buf = try self.alloc.alloc(u8, self.u8Buf.len);
         std.mem.copy(u8, buf, self.u8Buf.items());
         // log.debug("alloc str template {*} {s}", .{buf.ptr, buf});
@@ -811,7 +834,7 @@ pub const VM = struct {
 
     fn allocStringConcat(self: *VM, str: []const u8, str2: []const u8) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         const buf = try self.alloc.alloc(u8, str.len + str2.len);
         std.mem.copy(u8, buf[0..str.len], str);
         std.mem.copy(u8, buf[str.len..], str2);
@@ -833,7 +856,7 @@ pub const VM = struct {
 
     pub fn allocOwnedList(self: *VM, elems: []Value) !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.list = .{
             .structId = ListS,
             .rc = 1,
@@ -856,7 +879,7 @@ pub const VM = struct {
 
     fn allocList(self: *VM, elems: []const Value) linksection(".eval") !Value {
         @setRuntimeSafety(debug);
-        const obj = try self.allocObject();
+        const obj = try self.allocPoolObject();
         obj.list = .{
             .structId = ListS,
             .rc = 1,
@@ -1042,13 +1065,12 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn setFieldSym(self: *VM, sid: StructId, symId: SymbolId, offset: u32, isSmallObject: bool) void {
+    pub inline fn setFieldSym(self: *VM, sid: StructId, symId: SymbolId, offset: u32) void {
         self.fieldSyms.buf[symId].mapT = .one;
         self.fieldSyms.buf[symId].inner = .{
             .one = .{
                 .id = sid,
                 .fieldIdx = @intCast(u16, offset),
-                .isSmallObject = isSmallObject,
             },
         };
     }
@@ -1366,30 +1388,23 @@ pub const VM = struct {
     }
 
     fn setFieldRelease(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
-        @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
             const symMap = self.fieldSyms.buf[fieldId];
             switch (symMap.mapT) {
                 .one => {
-                    @setRuntimeSafety(debug);
                     if (obj.common.structId == symMap.inner.one.id) {
-                        if (symMap.inner.one.isSmallObject) {
-                            release(obj.smallObject.getValuesPtr()[symMap.inner.one.fieldIdx]);
-                            obj.smallObject.getValuesPtr()[symMap.inner.one.fieldIdx] = val;
-                        } else {
-                            stdx.panic("TODO: big object");
-                        }
+                        const valuePtr = obj.object.getValuePtr(symMap.inner.one.fieldIdx);
+                        release(valuePtr.*);
+                        valuePtr.* = val;
                     } else {
                         stdx.panic("TODO: set field fallback");
                     }
                 },
                 .many => {
-                    @setRuntimeSafety(debug);
                     stdx.fatal();
                 },
                 .empty => {
-                    @setRuntimeSafety(debug);
                     stdx.panic("TODO: set field fallback");
                 },
             } 
@@ -1399,29 +1414,21 @@ pub const VM = struct {
     }
 
     fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
-        @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
             const symMap = self.fieldSyms.buf[fieldId];
             switch (symMap.mapT) {
                 .one => {
-                    @setRuntimeSafety(debug);
                     if (obj.common.structId == symMap.inner.one.id) {
-                        if (symMap.inner.one.isSmallObject) {
-                            obj.smallObject.getValuesPtr()[symMap.inner.one.fieldIdx] = val;
-                        } else {
-                            stdx.panic("TODO: big object");
-                        }
+                        obj.object.getValuePtr(symMap.inner.one.fieldIdx).* = val;
                     } else {
                         stdx.panic("TODO: set field fallback");
                     }
                 },
                 .many => {
-                    @setRuntimeSafety(debug);
                     stdx.fatal();
                 },
                 .empty => {
-                    @setRuntimeSafety(debug);
                     stdx.panic("TODO: set field fallback");
                 },
             } 
@@ -1441,26 +1448,20 @@ pub const VM = struct {
     }
 
     fn getAndRetainField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
-        @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
             const symMap = self.fieldSyms.buf[symId];
             switch (symMap.mapT) {
                 .one => {
                     if (obj.retainedCommon.structId == symMap.inner.one.id) {
-                        if (symMap.inner.one.isSmallObject) {
-                            const val = obj.smallObject.getValuesConstPtr()[symMap.inner.one.fieldIdx];
-                            self.retain(val);
-                            return val;
-                        } else {
-                            stdx.panic("TODO: big object");
-                        }
+                        const val = obj.object.getValue(symMap.inner.one.fieldIdx);
+                        self.retain(val);
+                        return val;
                     } else {
                         return self.getAndRetainFieldFallback(obj, symMap.name);
                     }
                 },
                 .many => {
-                    @setRuntimeSafety(debug);
                     stdx.fatal();
                 },
                 .empty => {
@@ -1473,24 +1474,18 @@ pub const VM = struct {
     }
 
     pub fn getField(self: *VM, symId: SymbolId, recv: Value) linksection(".eval") !Value {
-        @setRuntimeSafety(debug);
         if (recv.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
             const symMap = self.fieldSyms.buf[symId];
             switch (symMap.mapT) {
                 .one => {
                     if (obj.common.structId == symMap.inner.one.id) {
-                        if (symMap.inner.one.isSmallObject) {
-                            return obj.smallObject.getValuesConstPtr()[symMap.inner.one.fieldIdx];
-                        } else {
-                            stdx.panic("TODO: big object");
-                        }
+                        return obj.object.getValuesConstPtr()[symMap.inner.one.fieldIdx];
                     } else {
                         return self.getFieldOther(obj, symMap.name);
                     }
                 },
                 .many => {
-                    @setRuntimeSafety(debug);
                     stdx.fatal();
                 },
                 .empty => {
@@ -2083,14 +2078,13 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
                 }
             }
             const numFields = gvm.structs.buf[obj.retainedCommon.structId].numFields;
+            for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
+                release(child);
+            }
             if (numFields <= 4) {
-                for (obj.smallObject.getValuesConstPtr()[0..numFields]) |child| {
-                    release(child);
-                }
                 gvm.freeObject(obj);
             } else {
-                log.debug("unsupported release big object", .{});
-                stdx.fatal();
+                gvm.alloc.destroy(obj);
             }
         },
     }
@@ -2550,6 +2544,28 @@ pub const List = packed struct {
     }
 };
 
+const Object = packed struct {
+    structId: StructId,
+    rc: u32,
+    firstValue: Value,
+
+    pub inline fn getValuesConstPtr(self: *const Object) [*]const Value {
+        return @ptrCast([*]const Value, &self.firstValue);
+    }
+
+    pub inline fn getValuesPtr(self: *Object) [*]Value {
+        return @ptrCast([*]Value, &self.firstValue);
+    }
+
+    pub inline fn getValuePtr(self: *Object, idx: u32) *Value {
+        return @ptrCast(*Value, @ptrCast([*]Value, &self.firstValue) + idx);
+    }
+
+    pub inline fn getValue(self: *const Object, idx: u32) Value {
+        return @ptrCast([*]const Value, &self.firstValue)[idx];
+    }
+};
+
 // Keep it just under 4kb page.
 const HeapPage = struct {
     objects: [102]HeapObject,
@@ -2578,30 +2594,7 @@ pub const HeapObject = packed union {
     closure: Closure,
     lambda: Lambda,
     string: String,
-    smallObject: packed struct {
-        structId: StructId,
-        rc: u32,
-        val0: Value,
-        val1: Value,
-        val2: Value,
-        val3: Value,
-
-        pub inline fn getValuesConstPtr(self: *const @This()) [*]const Value {
-            return @ptrCast([*]const Value, &self.val0);
-        }
-
-        pub inline fn getValuesPtr(self: *@This()) [*]Value {
-            return @ptrCast([*]Value, &self.val0);
-        }
-    },
-    object: packed struct {
-        structId: StructId,
-        rc: u32,
-        ptr: *anyopaque,
-        val0: Value,
-        val1: Value,
-        val2: Value,
-    },
+    object: Object,
     box: Box,
     nativeFunc1: NativeFunc1,
     tccState: TccState,
@@ -2671,7 +2664,6 @@ const FieldSymbolMap = struct {
         one: struct {
             id: StructId,
             fieldIdx: u16,
-            isSmallObject: bool,
         },
     },
     name: []const u8,
@@ -3007,8 +2999,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const dst = pc[3].arg;
                 pc += 4;
                 const recv = framePtr[left];
-                const val = try gvm.getField(fieldId, recv);
-                framePtr[dst] = val;
+                framePtr[dst] = try gvm.getField(fieldId, recv);
                 continue;
             },
             .copyRetainSrc => {
@@ -3195,8 +3186,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dst] = try gvm.allocEmptyMap();
                 continue;
             },
-            .structSmall => {
-                @setRuntimeSafety(debug);
+            .objectSmall => {
                 const sid = pc[1].arg;
                 const startLocal = pc[2].arg;
                 const numProps = pc[3].arg;
@@ -3205,7 +3195,19 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 5 + numProps;
 
                 const props = framePtr[startLocal .. startLocal + numProps];
-                framePtr[dst] = try gvm.allocSmallObject(sid, offsets, props);
+                framePtr[dst] = try gvm.allocObjectSmall(sid, offsets, props);
+                continue;
+            },
+            .object => {
+                const sid = pc[1].arg;
+                const startLocal = pc[2].arg;
+                const numProps = pc[3].arg;
+                const dst = pc[4].arg;
+                const offsets = pc[5..5+numProps];
+                pc += 5 + numProps;
+
+                const props = framePtr[startLocal .. startLocal + numProps];
+                framePtr[dst] = try gvm.allocObject(sid, offsets, props);
                 continue;
             },
             .map => {
@@ -3457,7 +3459,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .setFieldRelease => {
-                @setRuntimeSafety(debug);
                 const fieldId = pc[1].arg;
                 const left = pc[2].arg;
                 const right = pc[3].arg;
@@ -3466,10 +3467,10 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const recv = framePtr[left];
                 const val = framePtr[right];
                 try gvm.setFieldRelease(recv, fieldId, val);
+                // try @call(.{ .modifier = .never_inline }, gvm.setFieldRelease, .{recv, fieldId, val});
                 continue;
             },
             .setField => {
-                @setRuntimeSafety(debug);
                 const fieldId = pc[1].arg;
                 const left = pc[2].arg;
                 const right = pc[3].arg;
@@ -3478,30 +3479,27 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const recv = framePtr[left];
                 const val = framePtr[right];
                 try gvm.setField(recv, fieldId, val);
+                // try @call(.{ .modifier = .never_inline }, gvm.setField, .{recv, fieldId, val});
                 continue;
             },
             .fieldRelease => {
-                @setRuntimeSafety(debug);
                 const fieldId = pc[1].arg;
                 const left = pc[2].arg;
                 const dst = pc[3].arg;
                 pc += 4;
                 const recv = framePtr[left];
-                const val = try gvm.getField(fieldId, recv);
-                framePtr[dst] = val;
+                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{fieldId, recv});
                 release(recv);
                 continue;
             },
             .fieldRetain => {
-                @setRuntimeSafety(debug);
                 const fieldId = pc[1].arg;
                 const left = pc[2].arg;
                 const dst = pc[3].arg;
                 pc += 4;
 
                 const recv = framePtr[left];
-                const val = try gvm.getAndRetainField(fieldId, recv);
-                framePtr[dst] = val;
+                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getAndRetainField, .{fieldId, recv});
                 continue;
             },
             .lambda => {
@@ -4264,7 +4262,7 @@ fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection
     // Assumes initial stack size generated by compiler is enough to hold captured args.
     std.mem.copy(Value, stack[4..4+args.len], args);
 
-    const obj = try gvm.allocObject();
+    const obj = try gvm.allocPoolObject();
     obj.fiber = .{
         .structId = FiberS,
         .rc = 1,
@@ -4399,7 +4397,7 @@ fn boxValueRetain(box: Value) linksection(".eval") Value {
 
 fn allocBox(val: Value) !Value {
     @setRuntimeSafety(debug);
-    const obj = try gvm.allocObject();
+    const obj = try gvm.allocPoolObject();
     obj.box = .{
         .structId = BoxS,
         .rc = 1,

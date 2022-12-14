@@ -108,11 +108,11 @@ pub fn bindCore(self: *cy.VM) !void {
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
     id = try self.ensureFieldSym("sym");
-    self.setFieldSym(sid, id, 0, true);
+    self.setFieldSym(sid, id, 0);
     id = try self.ensureFieldSym("args");
-    self.setFieldSym(sid, id, 1, true);
+    self.setFieldSym(sid, id, 1);
     id = try self.ensureFieldSym("ret");
-    self.setFieldSym(sid, id, 2, true);
+    self.setFieldSym(sid, id, 2);
 
     id = try self.ensureTagLitSym("int");
     std.debug.assert(id == TagLit_int);

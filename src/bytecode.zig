@@ -290,7 +290,8 @@ pub const ByteCodeBuffer = struct {
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
                     pc += 5;
                 },
-                .structSmall => {
+                .object,
+                .objectSmall => {
                     const numEntries = ops[pc+3].arg;
                     println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, numEntries, ops[pc+4].arg});
                     pc += 5 + numEntries;
@@ -460,7 +461,8 @@ pub const OpCode = enum(u8) {
     stringTemplate,
     neg,
     setInitN,
-    structSmall,
+    objectSmall,
+    object,
     setField,
     setFieldRelease,
     fieldRetain,
@@ -496,7 +498,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 81);
+    try t.eq(std.enums.values(OpCode).len, 82);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -1822,8 +1822,8 @@ pub const VMcompiler = struct {
 
                     const fieldName = self.getNodeTokenString(accessRight);
                     const fieldId = try self.vm.ensureFieldSym(fieldName);
-                    try self.buf.pushOp3(.setFieldRelease, @intCast(u8, fieldId), leftv.local, rightv.local);
                     try self.pushDebugSym(nodeId);
+                    try self.buf.pushOpSlice(.setFieldRelease, &.{leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
                 } else {
                     stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
                 }
@@ -3157,11 +3157,10 @@ pub const VMcompiler = struct {
                 const fieldId = try self.vm.ensureFieldSym(name);
 
                 if (!discardTopExprReg) {
+                    try self.pushDebugSym(nodeId);
                     if (retainEscapeTop) {
-                        try self.buf.pushOp3(.fieldRetain, @intCast(u8, fieldId), leftv.local, dst);
-                        try self.pushDebugSym(nodeId);
+                        try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
                     } else {
-                        try self.pushDebugSym(nodeId);
                         try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
                     }
                     return self.initGenValue(dst, AnyType);

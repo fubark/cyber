@@ -1365,7 +1365,6 @@ pub const VM = struct {
     }
 
     pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(".eval") void {
-        @setRuntimeSafety(debug);
         obj.retainedCommon.rc += 1;
         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
@@ -1378,7 +1377,6 @@ pub const VM = struct {
     }
 
     pub inline fn retain(self: *const VM, val: Value) linksection(".eval") void {
-        @setRuntimeSafety(debug);
         if (TraceEnabled) {
             self.trace.numRetainAttempts += 1;
         }
@@ -1437,32 +1435,6 @@ pub const VM = struct {
             else => {
                 return stdx.panic("unsupported struct type");
             },
-        }
-    }
-
-    fn setFieldRelease(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
-        if (recv.isPointer()) {
-            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
-            const symMap = self.fieldSyms.buf[fieldId];
-            switch (symMap.mapT) {
-                .one => {
-                    if (obj.common.structId == symMap.inner.one.id) {
-                        const valuePtr = obj.object.getValuePtr(symMap.inner.one.offset);
-                        release(valuePtr.*);
-                        valuePtr.* = val;
-                    } else {
-                        stdx.panic("TODO: set field fallback");
-                    }
-                },
-                .many => {
-                    stdx.fatal();
-                },
-                .empty => {
-                    stdx.panic("TODO: set field fallback");
-                },
-            } 
-        } else {
-            try self.setFieldNotObjectError();
         }
     }
 
@@ -1537,6 +1509,23 @@ pub const VM = struct {
             //     unreachable;
             // },
         } 
+    }
+
+    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(section) !void {
+        @setCold(true);
+        if (recv.isPointer()) {
+            const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer().?);
+            const offset = self.getFieldOffset(obj, symId);
+            if (offset != NullByteId) {
+                const lastValue = obj.object.getValuePtr(offset);
+                release(lastValue.*);
+                lastValue.* = val;
+            } else {
+                return self.getFieldMissingSymbolError();
+            }
+        } else {
+            return self.getFieldMissingSymbolError();
+        }
     }
 
     pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(section) !Value {
@@ -3031,30 +3020,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 @call(.{ .modifier = .never_inline }, release, .{framePtr[local]});
                 continue;
             },
-            .field => {
-                const left = pc[1].arg;
-                const dst = pc[2].arg;
-                const symId = pc[3].arg;
-                const recv = framePtr[left];
-                if (recv.isPointer()) {
-                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
-                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
-                    const offset = gvm.getFieldOffset(obj, symId);
-                    if (offset != NullByteId) {
-                        framePtr[dst] = obj.object.getValue(offset);
-                        // Inline cache.
-                        pc[0] = cy.OpData{ .code = .fieldIC };
-                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
-                        pc[6] = cy.OpData { .arg = offset };
-                    } else {
-                        framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
-                    }
-                } else {
-                    return gvm.getFieldMissingSymbolError();
-                }
-                pc += 7;
-                continue;
-            },
             .fieldIC => {
                 const recv = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
@@ -3531,16 +3496,61 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 try gvm.callSym(&pc, &framePtr, symId, startLocal, numArgs, 1);
                 continue;
             },
-            .setFieldRelease => {
-                const fieldId = pc[1].arg;
-                const left = pc[2].arg;
-                const right = pc[3].arg;
-                pc += 4;
-
-                const recv = framePtr[left];
-                const val = framePtr[right];
-                try gvm.setFieldRelease(recv, fieldId, val);
-                // try @call(.{ .modifier = .never_inline }, gvm.setFieldRelease, .{recv, fieldId, val});
+            .ret1 => {
+                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal1, .{&pc, &framePtr})) {
+                    continue;
+                } else {
+                    return;
+                }
+            },
+            .ret0 => {
+                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal0, .{&pc, &framePtr})) {
+                    continue;
+                } else {
+                    return;
+                }
+            },
+            .setFieldReleaseIC => {
+                const recv = framePtr[pc[1].arg];
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
+                        const lastValue = obj.object.getValuePtr(pc[6].arg);
+                        release(lastValue.*);
+                        lastValue.* = framePtr[pc[2].arg];
+                        pc += 7;
+                        continue;
+                    }
+                } else {
+                    return gvm.getFieldMissingSymbolError();
+                }
+                // Deoptimize.
+                pc[0] = cy.OpData{ .code = .setFieldRelease };
+                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
+                try @call(.{ .modifier = .never_inline }, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
+                pc += 7;
+                continue;
+            },
+            .fieldRetainIC => {
+                const recv = framePtr[pc[1].arg];
+                const dst = pc[2].arg;
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
+                        framePtr[dst] = obj.object.getValue(pc[6].arg);
+                        gvm.retain(framePtr[dst]);
+                        pc += 7;
+                        continue;
+                    }
+                } else {
+                    return gvm.getFieldMissingSymbolError();
+                }
+                // Deoptimize.
+                pc[0] = cy.OpData{ .code = .fieldRetain };
+                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
+                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{ recv, pc[3].arg });
+                gvm.retain(framePtr[dst]);
+                pc += 7;
                 continue;
             },
             .setField => {
@@ -3565,15 +3575,80 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 release(recv);
                 continue;
             },
-            .fieldRetain => {
-                const fieldId = pc[1].arg;
-                const left = pc[2].arg;
-                const dst = pc[3].arg;
-                pc += 4;
-
+            .field => {
+                const left = pc[1].arg;
+                const dst = pc[2].arg;
+                const symId = pc[3].arg;
                 const recv = framePtr[left];
-                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{recv, fieldId});
-                gvm.retain(framePtr[dst]);
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    const offset = gvm.getFieldOffset(obj, symId);
+                    if (offset != NullByteId) {
+                        framePtr[dst] = obj.object.getValue(offset);
+                        // Inline cache.
+                        pc[0] = cy.OpData{ .code = .fieldIC };
+                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
+                        pc[6] = cy.OpData { .arg = offset };
+                    } else {
+                        framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                    }
+                } else {
+                    return gvm.getFieldMissingSymbolError();
+                }
+                pc += 7;
+                continue;
+            },
+            .fieldRetain => {
+                const recv = framePtr[pc[1].arg];
+                const dst = pc[2].arg;
+                const symId = pc[3].arg;
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    const offset = gvm.getFieldOffset(obj, symId);
+                    if (offset != NullByteId) {
+                        framePtr[dst] = obj.object.getValue(offset);
+                        // Inline cache.
+                        pc[0] = cy.OpData{ .code = .fieldRetainIC };
+                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
+                        pc[6] = cy.OpData { .arg = offset };
+                    } else {
+                        framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                    }
+                    gvm.retain(framePtr[dst]);
+                } else {
+                    return gvm.getFieldMissingSymbolError();
+                }
+                pc += 7;
+                continue;
+            },
+            .setFieldRelease => {
+                const recv = framePtr[pc[1].arg];
+                const val = framePtr[pc[2].arg];
+                const symId = pc[3].arg;
+                if (recv.isPointer()) {
+                    const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
+                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    const offset = gvm.getFieldOffset(obj, symId);
+                    if (offset != NullByteId) {
+                        const lastValue = obj.object.getValuePtr(offset);
+                        release(lastValue.*);
+                        lastValue.* = val;
+
+                        // Inline cache.
+                        pc[0] = cy.OpData{ .code = .setFieldReleaseIC };
+                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
+                        pc[6] = cy.OpData { .arg = offset };
+                        pc += 7;
+                        continue;
+                    } else {
+                        return gvm.getFieldMissingSymbolError();
+                    }
+                } else {
+                    return gvm.setFieldNotObjectError();
+                }
+                pc += 7;
                 continue;
             },
             .lambda => {
@@ -3651,27 +3726,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 framePtr[dst] = fiber;
                 pc += jump;
                 continue;
-            },
-            // .ret2 => {
-            //     @setRuntimeSafety(debug);
-            //     // Using never_inline seems to work against the final compiler optimizations.
-            //     // @call(.{ .modifier = .never_inline }, gvm.popStackFrameCold, .{2});
-            //     gvm.popStackFrameCold(2);
-            //     continue;
-            // },
-            .ret1 => {
-                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal1, .{&pc, &framePtr})) {
-                    continue;
-                } else {
-                    return;
-                }
-            },
-            .ret0 => {
-                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal0, .{&pc, &framePtr})) {
-                    continue;
-                } else {
-                    return;
-                }
             },
             .mul => {
                 @setRuntimeSafety(debug);

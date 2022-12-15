@@ -33,8 +33,8 @@ var tempU8Buf: [256]u8 = undefined;
 /// Accessing global vars is faster with direct addressing.
 pub var gvm: VM = undefined;
 
-pub fn getUserVM() UserVM {
-    return UserVM{};
+pub fn getUserVM() *UserVM {
+    return @ptrCast(*UserVM, &gvm);
 }
 
 pub const VM = struct {
@@ -203,7 +203,7 @@ pub const VM = struct {
 
         for (self.funcSyms.items()) |sym| {
             if (sym.entryT == .closure) {
-                releaseObject(@ptrCast(*HeapObject, sym.inner.closure));
+                releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
             }
         }
         self.funcSyms.deinit(self.alloc);
@@ -449,7 +449,7 @@ pub const VM = struct {
         self.consts = buf.mconsts;
         self.strBuf = buf.strBuf.items;
 
-        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{});
+        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{self});
         if (TraceEnabled) {
             log.info("main stack size: {}", .{buf.mainStackSize});
         }
@@ -810,8 +810,6 @@ pub const VM = struct {
     }
 
     pub fn allocStringTemplate(self: *VM, strs: []const cy.OpData, vals: []const Value) !Value {
-        @setRuntimeSafety(debug);
-
         const firstStr = self.valueAsString(Value.initRaw(gvm.consts[strs[0].arg].val));
         try self.u8Buf.resize(self.alloc, firstStr.len);
         std.mem.copy(u8, self.u8Buf.items(), firstStr);
@@ -819,7 +817,7 @@ pub const VM = struct {
         var writer = self.u8Buf.writer(self.alloc);
         for (vals) |val, i| {
             self.writeValueToString(writer, val);
-            release(val);
+            release(self, val);
             try self.u8Buf.appendSlice(self.alloc, self.valueAsString(Value.initRaw(gvm.consts[strs[i+1].arg].val)));
         }
 
@@ -1313,7 +1311,6 @@ pub const VM = struct {
 
     fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
-        @setRuntimeSafety(debug);
         self.panicMsg = try self.alloc.dupe(u8, msg);
         log.debug("{s}", .{self.panicMsg});
         return error.Panic;
@@ -1407,7 +1404,7 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn retain(self: *const VM, val: Value) linksection(".eval") void {
+    pub inline fn retain(self: *VM, val: Value) linksection(".eval") void {
         if (TraceEnabled) {
             self.trace.numRetainAttempts += 1;
         }
@@ -1416,7 +1413,7 @@ pub const VM = struct {
             obj.retainedCommon.rc += 1;
             log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
             if (TrackGlobalRC) {
-                gvm.refCounts += 1;
+                self.refCounts += 1;
             }
             if (TraceEnabled) {
                 self.trace.numRetains += 1;
@@ -1549,7 +1546,7 @@ pub const VM = struct {
             const offset = self.getFieldOffset(obj, symId);
             if (offset != NullByteId) {
                 const lastValue = obj.object.getValuePtr(offset);
-                release(lastValue.*);
+                release(self, lastValue.*);
                 lastValue.* = val;
             } else {
                 return self.getFieldMissingSymbolError();
@@ -1598,7 +1595,7 @@ pub const VM = struct {
                 @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
 
                 gvm.framePtr = newFramePtr;
-                const res = sym.inner.nativeFunc1(undefined, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (reqNumRetVals == 1) {
                     newFramePtr[0] = res;
                 } else {
@@ -1664,7 +1661,6 @@ pub const VM = struct {
     }
 
     fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(".eval") !PcFramePtr {
-        _ = self;
         switch (sym.entryT) {
             .func => {
                 if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
@@ -1694,7 +1690,7 @@ pub const VM = struct {
 
                 const newFramePtr = framePtr + startLocal;
                 gvm.framePtr = newFramePtr;
-                const res = sym.inner.nativeFunc1(undefined, obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (reqNumRetVals == 1) {
                     newFramePtr[0] = res;
                 } else {
@@ -2049,7 +2045,7 @@ pub const VM = struct {
     }
 };
 
-pub fn releaseObject(obj: *HeapObject) linksection(section) void {
+pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(section) void {
     if (builtin.mode == .Debug or builtin.is_test) {
         if (obj.retainedCommon.structId == NullId) {
             stdx.panic("object already freed.");
@@ -2058,102 +2054,102 @@ pub fn releaseObject(obj: *HeapObject) linksection(section) void {
     obj.retainedCommon.rc -= 1;
     log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
     if (TrackGlobalRC) {
-        gvm.refCounts -= 1;
+        vm.refCounts -= 1;
     }
     if (TraceEnabled) {
-        gvm.trace.numReleases += 1;
-        gvm.trace.numReleaseAttempts += 1;
+        vm.trace.numReleases += 1;
+        vm.trace.numReleaseAttempts += 1;
     }
     if (obj.retainedCommon.rc == 0) {
-        @call(.{ .modifier = .never_inline }, freeObject, .{obj});
+        @call(.{ .modifier = .never_inline }, freeObject, .{vm, obj});
     }
 }
 
-fn freeObject(obj: *HeapObject) linksection(".eval") void {
+fn freeObject(vm: *VM, obj: *HeapObject) linksection(".eval") void {
     log.debug("free {}", .{obj.getUserTag()});
     switch (obj.retainedCommon.structId) {
         ListS => {
             const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
             for (list.items()) |it| {
-                release(it);
+                release(vm, it);
             }
-            list.deinit(gvm.alloc);
-            gvm.freeObject(obj);
+            list.deinit(vm.alloc);
+            vm.freeObject(obj);
         },
         MapS => {
             const map = stdx.ptrCastAlign(*MapInner, &obj.map.inner);
             var iter = map.iterator();
             while (iter.next()) |entry| {
-                release(entry.key);
-                release(entry.value);
+                release(vm, entry.key);
+                release(vm, entry.value);
             }
-            map.deinit(gvm.alloc);
-            gvm.freeObject(obj);
+            map.deinit(vm.alloc);
+            vm.freeObject(obj);
         },
         ClosureS => {
             if (obj.closure.numCaptured <= 3) {
                 const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
                 for (src) |capturedVal| {
-                    release(capturedVal);
+                    release(vm, capturedVal);
                 }
-                gvm.freeObject(obj);
+                vm.freeObject(obj);
             } else {
                 stdx.panic("unsupported");
             }
         },
         LambdaS => {
-            gvm.freeObject(obj);
+            vm.freeObject(obj);
         },
         StringS => {
-            gvm.alloc.free(obj.string.ptr[0..obj.string.len]);
-            gvm.freeObject(obj);
+            vm.alloc.free(obj.string.ptr[0..obj.string.len]);
+            vm.freeObject(obj);
         },
         FiberS => {
-            releaseFiberStack(&obj.fiber);
-            gvm.freeObject(obj);
+            releaseFiberStack(vm, &obj.fiber);
+            vm.freeObject(obj);
         },
         BoxS => {
-            release(obj.box.val);
-            gvm.freeObject(obj);
+            release(vm, obj.box.val);
+            vm.freeObject(obj);
         },
         NativeFunc1S => {
             if (obj.nativeFunc1.hasTccState) {
-                releaseObject(stdx.ptrAlignCast(*HeapObject, obj.nativeFunc1.tccState.asPointer().?));
+                releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.nativeFunc1.tccState.asPointer().?));
             }
-            gvm.freeObject(obj);
+            vm.freeObject(obj);
         },
         TccStateS => {
             tcc.tcc_delete(obj.tccState.state);
-            gvm.freeObject(obj);
+            vm.freeObject(obj);
         },
         OpaquePtrS => {
-            gvm.freeObject(obj);
+            vm.freeObject(obj);
         },
         else => {
             // Struct deinit.
             if (builtin.mode == .Debug) {
                 // Check range.
-                if (obj.retainedCommon.structId >= gvm.structs.len) {
+                if (obj.retainedCommon.structId >= vm.structs.len) {
                     log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});
                     stdx.fatal();
                 }
             }
-            const numFields = gvm.structs.buf[obj.retainedCommon.structId].numFields;
+            const numFields = vm.structs.buf[obj.retainedCommon.structId].numFields;
             for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                release(child);
+                release(vm, child);
             }
             if (numFields <= 4) {
-                gvm.freeObject(obj);
+                vm.freeObject(obj);
             } else {
-                gvm.alloc.destroy(obj);
+                vm.alloc.destroy(obj);
             }
         },
     }
 }
 
-pub fn release(val: Value) linksection(".eval") void {
+pub fn release(vm: *VM, val: Value) linksection(".eval") void {
     if (TraceEnabled) {
-        gvm.trace.numReleaseAttempts += 1;
+        vm.trace.numReleaseAttempts += 1;
     }
     if (val.isPointer()) {
         const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
@@ -2165,13 +2161,13 @@ pub fn release(val: Value) linksection(".eval") void {
         obj.retainedCommon.rc -= 1;
         log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
-            gvm.refCounts -= 1;
+            vm.refCounts -= 1;
         }
         if (TraceEnabled) {
-            gvm.trace.numReleases += 1;
+            vm.trace.numReleases += 1;
         }
         if (obj.retainedCommon.rc == 0) {
-            @call(.{ .modifier = .never_inline }, freeObject, .{obj});
+            @call(.{ .modifier = .never_inline }, freeObject, .{vm, obj});
         }
     }
 }
@@ -2755,10 +2751,14 @@ const SymbolEntryType = enum {
     nativeFunc2,
 };
 
+const NativeObjFuncPtr = *const fn (*UserVM, *anyopaque, [*]const Value, u8) Value;
+const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
+
+
 pub const SymbolEntry = struct {
     entryT: SymbolEntryType,
     inner: packed union {
-        nativeFunc1: *const fn (*UserVM, *anyopaque, [*]const Value, u8) Value,
+        nativeFunc1: NativeObjFuncPtr,
         nativeFunc2: *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair,
         func: packed struct {
             // pc: packed union {
@@ -2783,7 +2783,7 @@ pub const SymbolEntry = struct {
         };
     }
 
-    pub fn initNativeFunc1(func: *const fn (*UserVM, *anyopaque, [*]const Value, u8) Value) SymbolEntry {
+    pub fn initNativeFunc1(func: NativeObjFuncPtr) SymbolEntry {
         return .{
             .entryT = .nativeFunc1,
             .inner = .{
@@ -2916,9 +2916,9 @@ const RcNode = struct {
 
 const Root = @This();
 
-/// Force users to use the global vm instance (to avoid deoptimization).
+/// A simplified VM handle.
 pub const UserVM = struct {
-    dummy: u32 = 0,
+    dummy: u64 = 0,
 
     pub fn init(_: UserVM, alloc: std.mem.Allocator) !void {
         try gvm.init(alloc);
@@ -2965,8 +2965,12 @@ pub const UserVM = struct {
         std.mem.set(Value, gvm.stack, val);
     }
 
-    pub inline fn release(_: UserVM, val: Value) void {
-        Root.release(val);
+    pub inline fn releaseObject(self: *UserVM, obj: *HeapObject) void {
+        Root.releaseObject(@ptrCast(*VM, self), obj);
+    }
+
+    pub inline fn release(self: *UserVM, val: Value) void {
+        Root.release(@ptrCast(*VM, self), val);
     }
 
     pub inline fn getGlobalRC(_: UserVM) usize {
@@ -3000,13 +3004,13 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-pub fn evalLoopGrowStack() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
-    @setRuntimeSafety(debug);
+pub fn evalLoopGrowStack(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     while (true) {
-        @call(.{ .modifier = .always_inline }, evalLoop, .{}) catch |err| {
+        @call(.{ .modifier = .always_inline }, evalLoop, .{vm}) catch |err| {
             if (err == error.StackOverflow) {
                 log.debug("grow stack", .{});
                 try gvm.stackGrowTotalCapacity(gvm.stack.len + 1);
+                // TODO: Update function pc pointers.
                 continue;
             } else if (err == error.End) {
                 return;
@@ -3019,22 +3023,22 @@ pub fn evalLoopGrowStack() linksection(".eval") error{StackOverflow, OutOfMemory
     }
 }
 
-fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
-    var pc = gvm.pc;
-    var framePtr = gvm.framePtr;
+fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+    var pc = vm.pc;
+    var framePtr = vm.framePtr;
     defer {
-        gvm.pc = pc;
-        gvm.framePtr = framePtr;
+        vm.pc = pc;
+        vm.framePtr = framePtr;
     }
 
     while (true) {
         if (TraceEnabled) {
             const op = pc[0].code;
-            gvm.trace.opCounts[@enumToInt(op)].count += 1;
-            gvm.trace.totalOpCounts += 1;
+            vm.trace.opCounts[@enumToInt(op)].count += 1;
+            vm.trace.totalOpCounts += 1;
         }
         if (builtin.mode == .Debug) {
-            dumpEvalOp(pc);
+            dumpEvalOp(vm, pc);
         }
         switch (pc[0].code) {
             .true => {
@@ -3053,7 +3057,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .constOp => {
-                framePtr[pc[2].arg] = Value.initRaw(gvm.consts[pc[1].arg].val);
+                framePtr[pc[2].arg] = Value.initRaw(vm.consts[pc[1].arg].val);
                 pc += 3;
                 continue;
             },
@@ -3068,14 +3072,14 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .release => {
-                release(framePtr[pc[1].arg]);
+                release(vm, framePtr[pc[1].arg]);
                 pc += 2;
                 continue;
             },
             .releaseN => {
                 const numLocals = pc[1].arg;
                 for (pc[2..2+numLocals]) |local| {
-                    release(framePtr[local.arg]);
+                    release(vm, framePtr[local.arg]);
                 }
                 pc += 2 + numLocals;
                 continue;
@@ -3091,7 +3095,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         continue;
                     }
                 } else {
-                    return gvm.getFieldMissingSymbolError();
+                    return vm.getFieldMissingSymbolError();
                 }
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .field };
@@ -3103,7 +3107,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             .copyRetainSrc => {
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = val;
-                gvm.retain(val);
+                vm.retain(val);
                 pc += 3;
                 continue;
             },
@@ -3356,20 +3360,20 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const src = pc[1].arg;
                 const dst = pc[2].arg;
                 pc += 3;
-                gvm.retain(framePtr[src]);
-                release(framePtr[dst]);
+                vm.retain(framePtr[src]);
+                release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[src];
                 continue;
             },
             .copyReleaseDst => {
                 const dst = pc[2].arg;
-                release(framePtr[dst]);
+                release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[pc[1].arg];
                 pc += 3;
                 continue;
             },
             .retain => {
-                gvm.retain(framePtr[pc[1].arg]);
+                vm.retain(framePtr[pc[1].arg]);
                 pc += 2;
                 continue;
             },
@@ -3393,7 +3397,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
                 framePtr[dst] = try @call(.{.modifier = .never_inline}, gvm.getIndex, .{leftv, indexv});
-                gvm.retain(framePtr[dst]);
+                vm.retain(framePtr[dst]);
                 continue;
             },
             .reverseIndex => {
@@ -3415,7 +3419,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
                 framePtr[dst] = try @call(.{.modifier = .never_inline}, gvm.getReverseIndex, .{leftv, indexv});
-                gvm.retain(framePtr[dst]);
+                vm.retain(framePtr[dst]);
                 continue;
             },
             .jumpBack => {
@@ -3485,7 +3489,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
                     if (obj.common.structId == cachedStruct) {
                         const numLocals = pc[5].arg;
-                        if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                        if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(vm.stackEndPtr)) {
                             return error.StackOverflow;
                         }
                         const retFramePtr = Value{ .retFramePtr = framePtr };
@@ -3498,7 +3502,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         continue;
                     }
                 } else {
-                    return gvm.panic("Missing function symbol in value.");
+                    return vm.panic("Missing function symbol in value.");
                 }
 
                 // Deoptimize.
@@ -3514,8 +3518,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
                     if (obj.common.structId == cachedStruct) {
                         const newFramePtr = framePtr + startLocal;
-                        gvm.framePtr = newFramePtr;
-                        const res = @intToPtr(*const fn (*UserVM, *HeapObject, [*]const Value, u8) Value, @ptrCast(*align (1) u48, pc + 6).*)(undefined, obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                        vm.framePtr = newFramePtr;
+                        const func = @intToPtr(NativeObjFuncPtr, @ptrCast(*align (1) u48, pc + 6).*);
+                        const res = func(@ptrCast(*UserVM, vm), obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                         const numRet = pc[3].arg;
                         pc += 14;
                         if (numRet == 1) {
@@ -3534,7 +3539,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         continue;
                     }
                 } else {
-                    return gvm.panic("Missing function symbol in value.");
+                    return vm.panic("Missing function symbol in value.");
                 }
 
                 // Deoptimize.
@@ -3544,7 +3549,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             .callFuncIC => {
                 const startLocal = pc[1].arg;
                 const numLocals = pc[4].arg;
-                if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -3563,8 +3568,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const numArgs = pc[2].arg;
 
                 const newFramePtr = framePtr + startLocal;
-                gvm.framePtr = newFramePtr;
-                const res = @intToPtr(*const fn (*UserVM, [*]const Value, u8) Value, @ptrCast(*align (1) u48, pc + 5).*)(undefined, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                vm.framePtr = newFramePtr;
+                const func = @intToPtr(NativeFuncPtr, @ptrCast(*align (1) u48, pc + 5).*);
+                const res = func(@ptrCast(*UserVM, vm), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 const numRet = pc[3].arg;
                 if (numRet == 1) {
                     newFramePtr[0] = res;
@@ -3581,7 +3587,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .ret1 => {
-                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal1, .{&pc, &framePtr})) {
+                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal1, .{vm, &pc, &framePtr})) {
                     continue;
                 } else {
                     return;
@@ -3600,13 +3606,13 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
                     if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
                         const lastValue = obj.object.getValuePtr(pc[6].arg);
-                        release(lastValue.*);
+                        release(vm, lastValue.*);
                         lastValue.* = framePtr[pc[2].arg];
                         pc += 7;
                         continue;
                     }
                 } else {
-                    return gvm.getFieldMissingSymbolError();
+                    return vm.getFieldMissingSymbolError();
                 }
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .setFieldRelease };
@@ -3622,18 +3628,18 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     const obj = stdx.ptrCastAlign(*HeapObject, recv.asPointer());
                     if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
                         framePtr[dst] = obj.object.getValue(pc[6].arg);
-                        gvm.retain(framePtr[dst]);
+                        vm.retain(framePtr[dst]);
                         pc += 7;
                         continue;
                     }
                 } else {
-                    return gvm.getFieldMissingSymbolError();
+                    return vm.getFieldMissingSymbolError();
                 }
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .fieldRetain };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{ recv, pc[3].arg });
-                gvm.retain(framePtr[dst]);
+                vm.retain(framePtr[dst]);
                 pc += 7;
                 continue;
             },
@@ -3656,7 +3662,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 pc += 4;
                 const recv = framePtr[left];
                 framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{recv, fieldId});
-                release(recv);
+                release(vm, recv);
                 continue;
             },
             .field => {
@@ -3678,7 +3684,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
                 } else {
-                    return gvm.getFieldMissingSymbolError();
+                    return vm.getFieldMissingSymbolError();
                 }
                 pc += 7;
                 continue;
@@ -3700,9 +3706,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     } else {
                         framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
-                    gvm.retain(framePtr[dst]);
+                    vm.retain(framePtr[dst]);
                 } else {
-                    return gvm.getFieldMissingSymbolError();
+                    return vm.getFieldMissingSymbolError();
                 }
                 pc += 7;
                 continue;
@@ -3717,7 +3723,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                     const offset = gvm.getFieldOffset(obj, symId);
                     if (offset != NullByteId) {
                         const lastValue = obj.object.getValuePtr(offset);
-                        release(lastValue.*);
+                        release(vm, lastValue.*);
                         lastValue.* = val;
 
                         // Inline cache.
@@ -3727,10 +3733,10 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         pc += 7;
                         continue;
                     } else {
-                        return gvm.getFieldMissingSymbolError();
+                        return vm.getFieldMissingSymbolError();
                     }
                 } else {
-                    return gvm.setFieldNotObjectError();
+                    return vm.setFieldNotObjectError();
                 }
                 pc += 7;
                 continue;
@@ -3758,20 +3764,20 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
             },
             .varSym => {
                 const symId = pc[1].arg;
-                const sym = gvm.varSyms.buf[symId];
+                const sym = vm.varSyms.buf[symId];
                 switch (sym.symT) {
                     .value => {
                         framePtr[pc[2].arg] = sym.inner.value;
                         pc += 3;
                         continue;
                     },
-                    .none => return gvm.panic("Missing var symbol."),
+                    .none => return vm.panic("Missing var symbol."),
                 }
             },
             .coreturn => {
                 pc += 1;
-                if (gvm.curFiber != &gvm.mainFiber) {
-                    const res = popFiber(pcOffset(pc), framePtr);
+                if (vm.curFiber != &vm.mainFiber) {
+                    const res = popFiber(vm, pcOffset(pc), framePtr);
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
@@ -3783,8 +3789,8 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 if (fiber.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, fiber.asPointer().?);
                     if (obj.common.structId == FiberS) {
-                        if (&obj.fiber != gvm.curFiber) {
-                            const res = pushFiber(pcOffset(pc + 3), framePtr, &obj.fiber);
+                        if (&obj.fiber != vm.curFiber) {
+                            const res = pushFiber(vm, pcOffset(pc + 3), framePtr, &obj.fiber);
                             pc = res.pc;
                             framePtr = res.framePtr;
                             continue;
@@ -3795,9 +3801,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .coyield => {
-                if (gvm.curFiber != &gvm.mainFiber) {
+                if (vm.curFiber != &vm.mainFiber) {
                     // Only yield on user fiber.
-                    const res = popFiber(pcOffset(pc), framePtr);
+                    const res = popFiber(vm, pcOffset(pc), framePtr);
                     pc = res.pc;
                     framePtr = res.framePtr;
                 } else {
@@ -3854,7 +3860,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 const value = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
                 pc += 3;
-                gvm.retain(value);
+                vm.retain(value);
                 framePtr[dst] = try allocBox(value);
                 continue;
             },
@@ -3883,7 +3889,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 if (builtin.mode == .Debug) {
                     std.debug.assert(obj.common.structId == BoxS);
                 }
-                @call(.{ .modifier = .never_inline }, release, .{obj.box.val});
+                @call(.{ .modifier = .never_inline }, release, .{vm, obj.box.val});
                 obj.box.val = rval;
                 continue;
             },
@@ -3912,7 +3918,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 //     std.debug.assert(obj.common.structId == BoxS);
                 // }
                 // gvm.stack[gvm.framePtr + pc[2].arg] = obj.box.val;
-                // gvm.retain(obj.box.val);
+                // vm.retain(obj.box.val);
                 // pc += 3;
                 framePtr[pc[2].arg] = @call(.{ .modifier = .never_inline }, boxValueRetain, .{box});
                 pc += 3;
@@ -4011,7 +4017,7 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                         framePtr = res.framePtr;
                     }
                 } else {
-                    return gvm.panic("Missing function symbol in value.");
+                    return vm.panic("Missing function symbol in value.");
                 }
                 continue;
             },
@@ -4026,9 +4032,9 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .end => {
-                gvm.endLocal = pc[1].arg;
+                vm.endLocal = pc[1].arg;
                 pc += 2;
-                gvm.curFiber.pc = @intCast(u32, pcOffset(pc));
+                vm.curFiber.pc = @intCast(u32, pcOffset(pc));
                 return error.End;
             },
         }
@@ -4067,7 +4073,7 @@ fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     }
 }
 
-fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(".eval") bool {
+fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(section) bool {
     const retFlag = framePtr.*[1].retInfo.retFlag;
     const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
     if (reqNumArgs == 1) {
@@ -4078,7 +4084,7 @@ fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     } else {
         switch (reqNumArgs) {
             0 => {
-                release(framePtr.*[0]);
+                release(vm, framePtr.*[0]);
             },
             1 => unreachable,
             // 2 => {
@@ -4097,7 +4103,7 @@ fn popStackFrameLocal1(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     }
 }
 
-fn dumpEvalOp(pc: [*]const cy.OpData) void {
+fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) void {
     const offset = pcOffset(pc);
     switch (pc[0].code) {
         .callObjSym => {
@@ -4144,8 +4150,8 @@ fn dumpEvalOp(pc: [*]const cy.OpData) void {
         .constOp => {
             const idx = pc[1].arg;
             const dst = pc[2].arg;
-            const val = Value{ .val = gvm.consts[idx].val };
-            log.debug("{} op: {s} [{s}] -> %{}", .{offset, @tagName(pc[0].code), gvm.valueToTempString(val), dst});
+            const val = Value{ .val = vm.consts[idx].val };
+            log.debug("{} op: {s} [{s}] -> %{}", .{offset, @tagName(pc[0].code), vm.valueToTempString(val), dst});
         },
         .end => {
             const endLocal = pc[1].arg;
@@ -4309,9 +4315,9 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
                 gvm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
                 gvm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func(undefined, newFramePtr + 4, numArgs);
+                const res = obj.nativeFunc1.func(@ptrCast(*UserVM, &gvm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
-                releaseObject(obj);
+                releaseObject(&gvm, obj);
                 pc.* += 14;
             },
             else => {},
@@ -4340,7 +4346,7 @@ fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, sy
     const func = try getObjectFunctionFallback(obj, symId);
 
     gvm.retain(func);
-    releaseObject(obj);
+    releaseObject(&gvm, obj);
 
     // Replace receiver with function.
     framePtr[startLocal + 4 + numArgs - 1] = func;
@@ -4376,7 +4382,7 @@ fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: SymbolE
             const newFramePtr = framePtr + startLocal;
             gvm.pc = pc;
             gvm.framePtr = framePtr;
-            const res = sym.inner.nativeFunc1(undefined, obj, newFramePtr+4, numArgs);
+            const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, &gvm), obj, newFramePtr+4, numArgs);
             if (reqNumRetVals == 1) {
                 newFramePtr[0] = res;
             } else {
@@ -4402,7 +4408,7 @@ fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: SymbolE
             // gvm.pc += 3;
             const newFramePtr = gvm.framePtr + startLocal;
             gvm.pc = pc;
-            const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, newFramePtr+4), numArgs);
+            const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, &gvm), obj, @ptrCast([*]const Value, newFramePtr+4), numArgs);
             if (reqNumRetVals == 2) {
                 gvm.stack[newFramePtr] = res.left;
                 gvm.stack[newFramePtr+1] = res.right;
@@ -4429,52 +4435,52 @@ fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: SymbolE
     return pc;
 }
 
-fn popFiber(curFiberEndPc: usize, curFramePtr: [*]Value) PcFramePtr {
-    gvm.curFiber.stackPtr = gvm.stack.ptr;
-    gvm.curFiber.stackLen = @intCast(u32, gvm.stack.len);
-    gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    gvm.curFiber.framePtr = curFramePtr;
+fn popFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value) PcFramePtr {
+    vm.curFiber.stackPtr = vm.stack.ptr;
+    vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
+    vm.curFiber.pc = @intCast(u32, curFiberEndPc);
+    vm.curFiber.framePtr = curFramePtr;
 
     // Release current fiber.
-    const nextFiber = gvm.curFiber.prevFiber.?;
-    releaseObject(@ptrCast(*HeapObject, gvm.curFiber));
+    const nextFiber = vm.curFiber.prevFiber.?;
+    releaseObject(vm, @ptrCast(*HeapObject, vm.curFiber));
 
     // Set to next fiber.
-    gvm.curFiber = nextFiber;
+    vm.curFiber = nextFiber;
 
-    gvm.stack = gvm.curFiber.stackPtr[0..gvm.curFiber.stackLen];
-    gvm.stackEndPtr = gvm.stack.ptr + gvm.curFiber.stackLen;
-    gvm.framePtr = gvm.curFiber.framePtr;
-    log.debug("fiber set to {} {*}", .{gvm.curFiber.pc, gvm.framePtr});
+    vm.stack = vm.curFiber.stackPtr[0..vm.curFiber.stackLen];
+    vm.stackEndPtr = vm.stack.ptr + vm.curFiber.stackLen;
+    vm.framePtr = vm.curFiber.framePtr;
+    log.debug("fiber set to {} {*}", .{vm.curFiber.pc, vm.framePtr});
     return PcFramePtr{
-        .pc = toPc(gvm.curFiber.pc),
-        .framePtr = gvm.curFiber.framePtr,
+        .pc = toPc(vm.curFiber.pc),
+        .framePtr = vm.curFiber.framePtr,
     };
 }
 
 /// Since this is called from a coresume expression, the fiber should already be retained.
-fn pushFiber(curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber) PcFramePtr {
+fn pushFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber) PcFramePtr {
     // Save current fiber.
-    gvm.curFiber.stackPtr = gvm.stack.ptr;
-    gvm.curFiber.stackLen = @intCast(u32, gvm.stack.len);
-    gvm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    gvm.curFiber.framePtr = curFramePtr;
+    vm.curFiber.stackPtr = vm.stack.ptr;
+    vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
+    vm.curFiber.pc = @intCast(u32, curFiberEndPc);
+    vm.curFiber.framePtr = curFramePtr;
 
     // Push new fiber.
-    fiber.prevFiber = gvm.curFiber;
-    gvm.curFiber = fiber;
-    gvm.stack = fiber.stackPtr[0..fiber.stackLen];
-    gvm.stackEndPtr = gvm.stack.ptr + fiber.stackLen;
-    gvm.framePtr = fiber.framePtr;
+    fiber.prevFiber = vm.curFiber;
+    vm.curFiber = fiber;
+    vm.stack = fiber.stackPtr[0..fiber.stackLen];
+    vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
+    vm.framePtr = fiber.framePtr;
     // Check if fiber was previously yielded.
-    if (gvm.ops[fiber.pc].code == .coyield) {
-        log.debug("fiber set to {} {*}", .{fiber.pc + 3, gvm.framePtr});
+    if (vm.ops[fiber.pc].code == .coyield) {
+        log.debug("fiber set to {} {*}", .{fiber.pc + 3, vm.framePtr});
         return .{
             .pc = toPc(fiber.pc + 3),
             .framePtr = fiber.framePtr,
         };
     } else {
-        log.debug("fiber set to {} {*}", .{fiber.pc, gvm.framePtr});
+        log.debug("fiber set to {} {*}", .{fiber.pc, vm.framePtr});
         return .{
             .pc = toPc(fiber.pc),
             .framePtr = fiber.framePtr,
@@ -4483,7 +4489,6 @@ fn pushFiber(curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber) PcFrame
 }
 
 fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection(".eval") !Value {
-    log.debug("allocfiber {}", .{pc});
     // Args are copied over to the new stack.
     var stack = try gvm.alloc.alloc(Value, initialStackSize);
     // Assumes initial stack size generated by compiler is enough to hold captured args.
@@ -4510,32 +4515,32 @@ fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection
     return Value.initPtr(obj);
 }
 
-fn runReleaseOps(stack: []const Value, framePtr: usize, startPc: usize) void {
+fn runReleaseOps(vm: *VM, stack: []const Value, framePtr: usize, startPc: usize) void {
     var pc = startPc;
-    while (gvm.ops[pc].code == .release) {
-        const local = gvm.ops[pc+1].arg;
+    while (vm.ops[pc].code == .release) {
+        const local = vm.ops[pc+1].arg;
         // stack[framePtr + local].dump();
-        release(stack[framePtr + local]);
+        release(vm, stack[framePtr + local]);
         pc += 2;
     }
 }
 
 /// Unwinds the stack and releases the locals.
 /// This also releases the initial captured vars since it's on the stack.
-fn releaseFiberStack(fiber: *Fiber) void {
+fn releaseFiberStack(vm: *VM, fiber: *Fiber) void {
     log.debug("release fiber stack", .{});
     var stack = fiber.stackPtr[0..fiber.stackLen];
     var framePtr = (@ptrToInt(fiber.framePtr) - @ptrToInt(stack.ptr)) >> 3;
     var pc = fiber.pc;
 
     // Check if fiber is still in init state.
-    switch (gvm.ops[pc].code) {
+    switch (vm.ops[pc].code) {
         .callFuncIC,
         .callSym => {
-            if (gvm.ops[pc + 11].code == .coreturn) {
-                const numArgs = gvm.ops[pc - 4].arg;
+            if (vm.ops[pc + 11].code == .coreturn) {
+                const numArgs = vm.ops[pc - 4].arg;
                 for (fiber.framePtr[4..4 + numArgs]) |arg| {
-                    release(arg);
+                    release(vm, arg);
                 }
             }
         },
@@ -4543,35 +4548,35 @@ fn releaseFiberStack(fiber: *Fiber) void {
     }
 
     // Check if fiber was previously on a yield op.
-    if (gvm.ops[pc].code == .coyield) {
-        const jump = @ptrCast(*const align(1) u16, &gvm.ops[pc+1]).*;
+    if (vm.ops[pc].code == .coyield) {
+        const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
         log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
         // The yield statement already contains the end locals pc.
-        runReleaseOps(stack, framePtr, pc + jump);
+        runReleaseOps(vm, stack, framePtr, pc + jump);
     }
     // Unwind stack and release all locals.
     while (framePtr > 0) {
         pc = pcOffset(stack[framePtr + 2].retPcPtr);
         framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
-        const endLocalsPc = pcToEndLocalsPc(pc);
+        const endLocalsPc = pcToEndLocalsPc(vm, pc);
         log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
         if (endLocalsPc != NullId) {
-            runReleaseOps(stack, framePtr, endLocalsPc);
+            runReleaseOps(vm, stack, framePtr, endLocalsPc);
         }
     }
     // Finally free stack.
-    gvm.alloc.free(stack);
+    vm.alloc.free(stack);
 }
 
 /// Given pc position, return the end locals pc in the same frame.
 /// TODO: Memoize this function.
-fn pcToEndLocalsPc(pc: usize) u32 {
-    const idx = gvm.indexOfDebugSym(pc) orelse {
+fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
+    const idx = vm.indexOfDebugSym(pc) orelse {
         stdx.panic("Missing debug symbol.");
     };
-    const sym = gvm.debugTable[idx];
+    const sym = vm.debugTable[idx];
     if (sym.frameLoc != NullId) {
-        const node = gvm.compiler.nodes[sym.frameLoc];
+        const node = vm.compiler.nodes[sym.frameLoc];
         return node.head.func.genEndLocalsPc;
     } else return NullId;
 }

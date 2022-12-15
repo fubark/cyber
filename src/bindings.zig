@@ -173,13 +173,12 @@ pub fn testEqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 }
 
 pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = vm;
     _ = nargs;
     const act = args[0];
     const exp = args[1];
     defer {
-        vm_.release(act);
-        vm_.release(exp);
+        vm.release(act);
+        vm.release(exp);
     }
 
     const actType = act.getUserTag();
@@ -277,7 +276,7 @@ export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {
 }
 
 export fn cRelease(val: Value) void {
-    vm_.release(val);
+    vm_.release(gvm, val);
 }
 
 export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
@@ -618,8 +617,8 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
 
-    vm_.release(args[0]);
-    vm_.release(args[1]);
+    vm.release(args[0]);
+    vm.release(args[1]);
     return map;
 }
 
@@ -656,7 +655,7 @@ fn castNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 fn stdToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const val = args[0];
-    defer vm_.release(args[0]);
+    defer vm.release(args[0]);
     if (val.isString()) {
         return val;
     } else {
@@ -665,11 +664,11 @@ fn stdToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
-fn stdPrint(_: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+fn stdPrint(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueToTempString(args[0]);
     std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
-    vm_.release(args[0]);
+    vm.release(args[0]);
     return Value.None;
 }
 
@@ -681,7 +680,7 @@ fn stdReadInput(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
 fn stdParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
     _ = nargs;
     const str = gvm.valueAsString(args[0]);
-    defer vm_.release(args[0]);
+    defer vm.release(args[0]);
 
     var parser = cy.Parser.init(gvm.alloc);
     defer parser.deinit();
@@ -754,13 +753,13 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
             gvm.framePtr[6] = ctx_.lessFn;
             const retInfo = cy.buildReturnInfo(1, false);
             vm_.callNoInline(&gvm.pc, &gvm.framePtr, ctx_.lessFn, 0, 3, retInfo) catch stdx.fatal();
-            @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{}) catch unreachable;
+            @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{gvm}) catch unreachable;
             const res = gvm.framePtr[0];
             return res.toBool();
         }
     };
     std.sort.sort(Value, list.items(), &lessCtx, S.less);
-    vm_.releaseObject(obj);
+    vm_.releaseObject(gvm, obj);
     return Value.None;
 }
 
@@ -770,7 +769,7 @@ fn listRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
     inner.remove(index);
-    vm_.releaseObject(list);
+    vm_.releaseObject(gvm, list);
     return Value.None;
 }
 
@@ -784,11 +783,11 @@ fn listInsert(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
         inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
     }
     inner.insertAssumeCapacity(index, value);
-    vm_.releaseObject(list);
+    vm_.releaseObject(gvm, list);
     return Value.None;
 }
 
-fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
@@ -798,7 +797,8 @@ fn listAdd(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
         inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
     }
     inner.appendAssumeCapacity(args[0]);
-    vm_.releaseObject(list);
+    // vm_.releaseObject(list);
+    vm.releaseObject(list);
     return Value.None;
 }
 
@@ -832,7 +832,7 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
     inner.resize(gvm.alloc, size) catch stdx.fatal();
-    vm_.releaseObject(list);
+    vm_.releaseObject(gvm, list);
     return Value.None;
 }
 
@@ -841,7 +841,7 @@ fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     _ = args;
     const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
-    vm_.releaseObject(obj);
+    vm_.releaseObject(gvm, obj);
     return Value.initF64(@intToFloat(f64, inner.size));
 }
 
@@ -861,7 +861,7 @@ fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     _ = args;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
     const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
-    vm_.releaseObject(list);
+    vm_.releaseObject(gvm, list);
     return Value.initF64(@intToFloat(f64, inner.len));
 }
 

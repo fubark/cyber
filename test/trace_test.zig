@@ -225,7 +225,7 @@ test "ARC in loops." {
 }
 
 const VMrunner = struct {
-    vm: cy.UserVM,
+    vm: *cy.UserVM,
     trace: cy.TraceInfo,
 
     fn init(self: *VMrunner) void {

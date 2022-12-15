@@ -1980,7 +1980,7 @@ test "Binary Expressions" {
 }
 
 const VMrunner = struct {
-    vm: cy.UserVM,
+    vm: *cy.UserVM,
     trace: cy.TraceInfo,
 
     fn create() *VMrunner {

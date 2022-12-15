@@ -194,6 +194,7 @@ pub const ByteCodeBuffer = struct {
                     println("{} {s} {}", .{pc, name, ops[pc+1].arg});
                     pc += 2;
                 },
+                .releaseN,
                 .setInitN => {
                     const numVars = ops[pc+1].arg;
                     println("{} {s} {}", .{pc, name, numVars});
@@ -438,6 +439,7 @@ pub const OpCode = enum(u8) {
 
     // releaseMany,
     release,
+    releaseN,
     callObjSym,
     callObjNativeFuncIC,
     callObjFuncIC,
@@ -516,7 +518,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 88);
+    try t.eq(std.enums.values(OpCode).len, 89);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

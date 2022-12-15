@@ -1044,16 +1044,30 @@ pub const VMcompiler = struct {
 
     fn endLocals(self: *VMcompiler) !void {
         const sblock = self.curSemaBlock();
+
+        const start = self.operandStack.items.len;
+        defer self.operandStack.items.len = start;
+
         for (sblock.params.items) |varId| {
             const svar = self.vars.items[varId];
             if (svar.lifetimeRcCandidate and !svar.isCaptured) {
-                try self.buf.pushOp1(.release, svar.local);
+                try self.operandStack.append(self.alloc, cy.OpData.initArg(svar.local));
             }
         }
         for (sblock.locals.items) |varId| {
             const svar = self.vars.items[varId];
             if (svar.lifetimeRcCandidate and svar.genIsDefined) {
-                try self.buf.pushOp1(.release, svar.local);
+                try self.operandStack.append(self.alloc, cy.OpData.initArg(svar.local));
+            }
+        }
+        
+        const locals = self.operandStack.items[start..];
+        if (locals.len > 0) {
+            if (locals.len == 1) {
+                try self.buf.pushOp1(.release, locals[0].arg);
+            } else {
+                try self.buf.pushOp1(.releaseN, @intCast(u8, locals.len));
+                try self.buf.pushOperands(locals);
             }
         }
     }

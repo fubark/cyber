@@ -2049,7 +2049,7 @@ pub const VM = struct {
     }
 };
 
-pub fn releaseObject(obj: *HeapObject) linksection(".eval") void {
+pub fn releaseObject(obj: *HeapObject) linksection(section) void {
     if (builtin.mode == .Debug or builtin.is_test) {
         if (obj.retainedCommon.structId == NullId) {
             stdx.panic("object already freed.");
@@ -2152,7 +2152,6 @@ fn freeObject(obj: *HeapObject) linksection(".eval") void {
 }
 
 pub fn release(val: Value) linksection(".eval") void {
-    @setRuntimeSafety(debug);
     if (TraceEnabled) {
         gvm.trace.numReleaseAttempts += 1;
     }
@@ -3039,25 +3038,21 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
         }
         switch (pc[0].code) {
             .true => {
-                @setRuntimeSafety(debug);
                 framePtr[pc[1].arg] = Value.True;
                 pc += 2;
                 continue;
             },
             .false => {
-                @setRuntimeSafety(debug);
                 framePtr[pc[1].arg] = Value.False;
                 pc += 2;
                 continue;
             },
             .none => {
-                @setRuntimeSafety(debug);
                 framePtr[pc[1].arg] = Value.None;
                 pc += 2;
                 continue;
             },
             .constOp => {
-                @setRuntimeSafety(debug);
                 framePtr[pc[2].arg] = Value.initRaw(gvm.consts[pc[1].arg].val);
                 pc += 3;
                 continue;
@@ -3073,10 +3068,16 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .release => {
-                const local = pc[1].arg;
+                release(framePtr[pc[1].arg]);
                 pc += 2;
-                // TODO: Inline if heap object.
-                @call(.{ .modifier = .never_inline }, release, .{framePtr[local]});
+                continue;
+            },
+            .releaseN => {
+                const numLocals = pc[1].arg;
+                for (pc[2..2+numLocals]) |local| {
+                    release(framePtr[local.arg]);
+                }
+                pc += 2 + numLocals;
                 continue;
             },
             .fieldIC => {
@@ -3100,12 +3101,10 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .copyRetainSrc => {
-                const src = pc[1].arg;
-                const dst = pc[2].arg;
-                pc += 3;
-                const val = framePtr[src];
-                framePtr[dst] = val;
+                const val = framePtr[pc[1].arg];
+                framePtr[pc[2].arg] = val;
                 gvm.retain(val);
+                pc += 3;
                 continue;
             },
             .jumpNotCond => {
@@ -3124,7 +3123,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .neg => {
-                @setRuntimeSafety(debug);
                 const val = framePtr[pc[1].arg];
                 // gvm.stack[gvm.framePtr + pc[2].arg] = if (val.isNumber())
                 //     Value.initF64(-val.asF64())
@@ -3135,7 +3133,6 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
                 continue;
             },
             .not => {
-                @setRuntimeSafety(debug);
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = evalNot(val);
                 pc += 3;

@@ -208,7 +208,17 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (actPtr == expPtr) {
                     return Value.True;
                 } else {
-                    println("actual: '{*}' != '{*}'", .{actPtr, expPtr});
+                    println("actual: {*} != {*}", .{actPtr, expPtr});
+                    return Value.initErrorTagLit(TagLit_AssertError);
+                }
+            },
+            .boolean => {
+                const actv = act.asBool();
+                const expv = exp.asBool();
+                if (actv == expv) {
+                    return Value.True;
+                } else {
+                    println("actual: {} != {}", .{actv, expv});
                     return Value.initErrorTagLit(TagLit_AssertError);
                 }
             },
@@ -853,4 +863,149 @@ fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
     vm_.releaseObject(list);
     return Value.initF64(@intToFloat(f64, inner.len));
+}
+
+pub fn mathAbs(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(@fabs(args[0].toF64()));
+}
+
+pub fn mathCeil(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.ceil(args[0].toF64()));
+}
+
+pub fn mathFloor(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.floor(args[0].toF64()));
+}
+
+pub fn mathRound(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.round(args[0].toF64()));
+}
+
+pub fn mathTrunc(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.trunc(args[0].toF64()));
+}
+
+pub fn mathMax(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.max(args[0].toF64(), args[1].toF64()));
+}
+
+pub fn mathMin(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.min(args[0].toF64(), args[1].toF64()));
+}
+
+pub fn mathSign(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.sign(args[0].toF64()));
+}
+
+pub fn mathClz32(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(@intToFloat(f64, @clz(@floatToInt(i32, args[0].toF64()))));
+}
+
+pub fn mathMul32(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(@intToFloat(f64, @floatToInt(i32, args[0].toF64()) *% @floatToInt(i32, args[1].toF64())));
+}
+
+pub fn mathExp(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.exp(args[0].toF64()));
+}
+
+pub fn mathExpm1(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.expm1(args[0].toF64()));
+}
+
+pub fn mathLog(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.log(f64, args[0].toF64(), args[1].toF64()));
+}
+
+pub fn mathLog1p(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.log1p(args[0].toF64()));
+}
+
+pub fn mathLog10(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.log10(args[0].toF64()));
+}
+
+pub fn mathLog2(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.log2(args[0].toF64()));
+}
+
+pub fn mathLn(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.ln(args[0].toF64()));
+}
+
+pub fn mathIsNaN(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initBool(std.math.isNan(args[0].toF64()));
+}
+
+pub fn mathPow(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.pow(f64, args[0].toF64(), args[1].toF64()));
+}
+
+pub fn mathHypot(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.hypot(f64, args[0].toF64(), args[1].toF64()));
+}
+
+pub fn mathSqrt(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.sqrt(args[0].toF64()));
+}
+
+pub fn mathCbrt(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.cbrt(args[0].toF64()));
+}
+
+var rand = std.rand.DefaultPrng.init(0);
+pub fn mathRandom(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    return Value.initF64(rand.random().float(f64));
+}
+
+pub fn mathCos(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.cos(args[0].toF64()));
+}
+
+pub fn mathSin(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.sin(args[0].toF64()));
+}
+
+pub fn mathTan(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.tan(args[0].toF64()));
+}
+
+pub fn mathCosh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.cosh(args[0].toF64()));
+}
+
+pub fn mathSinh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.sinh(args[0].toF64()));
+}
+
+pub fn mathTanh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.tanh(args[0].toF64()));
+}
+
+pub fn mathAcos(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.acos(args[0].toF64()));
+}
+
+pub fn mathAsin(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.asin(args[0].toF64()));
+}
+
+pub fn mathAtan(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.atan(args[0].toF64()));
+}
+
+pub fn mathAtan2(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.atan2(f64, args[0].toF64(), args[1].toF64()));
+}
+
+pub fn mathAcosh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.acosh(args[0].toF64()));
+}
+
+pub fn mathAsinh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.asinh(args[0].toF64()));
+}
+
+pub fn mathAtanh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return Value.initF64(std.math.atanh(args[0].toF64()));
 }

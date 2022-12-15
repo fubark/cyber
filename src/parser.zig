@@ -38,6 +38,8 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "import", .import_k },
     .{ "from", .from_k },
     .{ "try", .try_k },
+    .{ "catch", .catch_k },
+    .{ "recover", .recover_k },
 });
 
 const BlockState = struct {
@@ -2736,6 +2738,8 @@ pub const TokenType = enum(u6) {
     import_k,
     from_k,
     try_k,
+    catch_k,
+    recover_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -3977,6 +3981,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 53);
-    try t.eq(keywords.kvs.len, 25);
+    try t.eq(std.enums.values(TokenType).len, 55);
+    try t.eq(keywords.kvs.len, 27);
 }

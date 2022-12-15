@@ -76,6 +76,9 @@ pub const VM = struct {
     funcSymSignatures: std.StringHashMapUnmanaged(SymbolId),
     funcSymDetails: cy.List(FuncSymDetail),
 
+    varSyms: cy.List(VarSymbol),
+    varSymSignatures: std.StringHashMapUnmanaged(SymbolId),
+
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
     fieldTable: std.AutoHashMapUnmanaged(ObjectSymKey, u16),
@@ -136,6 +139,8 @@ pub const VM = struct {
             .funcSyms = .{},
             .funcSymSignatures = .{},
             .funcSymDetails = .{},
+            .varSyms = .{},
+            .varSymSignatures = .{},
             .fieldSyms = .{},
             .fieldTable = .{},
             .fieldSymSignatures = .{},
@@ -207,6 +212,9 @@ pub const VM = struct {
             self.alloc.free(detail.name);
         }
         self.funcSymDetails.deinit(self.alloc);
+
+        self.varSyms.deinit(self.alloc);
+        self.varSymSignatures.deinit(self.alloc);
 
         self.fieldSyms.deinit(self.alloc);
         self.fieldTable.deinit(self.alloc);
@@ -1007,6 +1015,25 @@ pub const VM = struct {
     pub inline fn getFuncSym(self: *const VM, name: []const u8) ?SymbolId {
         return self.funcSymSignatures.get(name);
     }
+
+    pub inline fn getVarSym(self: *const VM, name: []const u8) ?SymbolId {
+        return self.varSymSignatures.get(name);
+    }
+
+    pub fn ensureVarSym(self: *VM, name: []const u8) !SymbolId {
+        const res = try self.varSymSignatures.getOrPut(self.alloc, name);
+        if (!res.found_existing) {
+            const id = @intCast(u32, self.varSyms.len);
+            try self.varSyms.append(self.alloc, .{
+                .symT = .none,
+                .inner = undefined,
+            });
+            res.value_ptr.* = id;
+            return id;
+        } else {
+            return res.value_ptr.*;
+        }
+    }
     
     pub fn ensureFuncSym(self: *VM, name: []const u8) !SymbolId {
         const res = try self.funcSymSignatures.getOrPut(self.alloc, name);
@@ -1136,6 +1163,10 @@ pub const VM = struct {
                 .val = val,
             },
         };
+    }
+
+    pub inline fn setVarSym(self: *VM, symId: SymbolId, sym: VarSymbol) void {
+        self.varSyms.buf[symId] = sym;
     }
 
     pub inline fn setFuncSym(self: *VM, symId: SymbolId, sym: FuncSymbolEntry) void {
@@ -2772,6 +2803,27 @@ pub const SymbolEntry = struct {
     }
 };
 
+const VarSymbolType = enum {
+    value,
+    none,
+};
+
+pub const VarSymbol = struct {
+    symT: VarSymbolType,
+    inner: packed union {
+        value: Value,
+    },
+
+    pub fn initValue(val: Value) VarSymbol {
+        return .{
+            .symT = .value,
+            .inner = .{
+                .value = val,
+            },
+        };
+    }
+};
+
 const FuncSymbolEntryType = enum {
     nativeFunc1,
     func,
@@ -2783,6 +2835,7 @@ pub const FuncSymDetail = struct {
     name: []const u8,
 };
 
+/// TODO: Rename to FuncSymbol.
 pub const FuncSymbolEntry = struct {
     entryT: FuncSymbolEntryType,
     inner: packed union {
@@ -3705,6 +3758,18 @@ fn evalLoop() linksection(".eval") error{StackOverflow, OutOfMemory, Panic, OutO
 
                 framePtr[dst] = try gvm.allocClosure(framePtr, funcPc, numParams, numLocals, capturedVals);
                 continue;
+            },
+            .varSym => {
+                const symId = pc[1].arg;
+                const sym = gvm.varSyms.buf[symId];
+                switch (sym.symT) {
+                    .value => {
+                        framePtr[pc[2].arg] = sym.inner.value;
+                        pc += 3;
+                        continue;
+                    },
+                    .none => return gvm.panic("Missing var symbol."),
+                }
             },
             .coreturn => {
                 pc += 1;

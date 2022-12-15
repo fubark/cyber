@@ -36,6 +36,7 @@ pub const UserVM = vm.UserVM;
 pub const VM = vm.VM;
 pub const SymbolEntry = vm.SymbolEntry;
 pub const FuncSymbolEntry = vm.FuncSymbolEntry;
+pub const VarSymbol = vm.VarSymbol;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 pub const HeapObject = vm.HeapObject;

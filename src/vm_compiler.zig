@@ -839,27 +839,9 @@ pub const VMcompiler = struct {
     fn loadModule(self: *VMcompiler, spec: []const u8) !Module {
         // Builtin modules.
         if (std.mem.eql(u8, "test", spec)) {
-            var mod = Module{
-                .syms = .{},
-                .prefix = spec,
-            };
-            try mod.syms.put(self.alloc, "eq", .{
-                .symT = .nativeFunc1,
-                .inner = .{
-                    .nativeFunc1 = .{
-                        .func = bindings.testEq,
-                    },
-                },
-            });
-            try mod.syms.put(self.alloc, "eqNear", .{
-                .symT = .nativeFunc1,
-                .inner = .{
-                    .nativeFunc1 = .{
-                        .func = bindings.testEqNear,
-                    },
-                },
-            });
-            return mod;
+            return initTestModule(self.alloc, spec);
+        } else if (std.mem.eql(u8, "math", spec)) {
+            return initMathModule(self.alloc, spec);
         } else {
             return self.reportDebugError("Unsupported import. {s}", .{spec});
         }
@@ -1369,6 +1351,19 @@ pub const VMcompiler = struct {
                                 .declId = NullId,
                                 .retType = AnyType,
                             },
+                        },
+                    });
+                    try self.semaResolvedSymMap.put(self.alloc, pathDupe, id);
+                } else if (modSym.symT == .variable) {
+                    const pathDupe = try self.alloc.dupe(u8, path);
+                    const rtSymId = try self.vm.ensureVarSym(pathDupe);
+                    const rtSym = cy.VarSymbol.initValue(modSym.inner.variable.val);
+                    self.vm.setVarSym(rtSymId, rtSym);
+                    try self.semaResolvedSyms.append(self.alloc, .{
+                        .symT = .variable,
+                        .path = pathDupe,
+                        .inner = .{
+                            .variable = undefined,
                         },
                     });
                     try self.semaResolvedSymMap.put(self.alloc, pathDupe, id);
@@ -3142,6 +3137,24 @@ pub const VMcompiler = struct {
                 }
             },
             .accessExpr => {
+                if (node.head.accessExpr.semaSymId != NullId) {
+                    if (self.genGetResolvedSym(node.head.accessExpr.semaSymId)) |semaSym| {
+                        if (semaSym.symT == .variable) {
+                            if (self.vm.getVarSym(semaSym.path)) |symId| {
+                                if (!discardTopExprReg) {
+                                    // Static variable.
+                                    try self.buf.pushOp2(.varSym, @intCast(u8, symId), dst);
+                                    return self.initGenValue(dst, AnyType);
+                                } else {
+                                    return GenValue.initNoValue();
+                                }
+                            }
+                        }
+                    }
+                    const symPath = self.semaSyms.items[node.head.accessExpr.semaSymId].path;
+                    return self.reportError("Unsupported sym: {s}", .{symPath}, node);
+                }
+
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
 
@@ -4015,6 +4028,7 @@ const SemaSym = struct {
 
 const ResolvedSymType = enum {
     func,
+    variable,
 };
 
 const SemaResolvedSymId = u32;
@@ -4028,10 +4042,12 @@ const SemaResolvedSym = struct {
             // Return type.
             retType: Type,
         },
+        variable: void,
     },
 };
 
 const ModuleSymType = enum {
+    variable,
     nativeFunc1,
 };
 
@@ -4041,6 +4057,9 @@ const ModuleSym = struct {
         nativeFunc1: struct {
             func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value,
         },
+        variable: struct {
+            val: cy.Value,
+        },
     },
 };
 
@@ -4048,6 +4067,28 @@ const ModuleId = u32;
 const Module = struct {
     syms: std.StringHashMapUnmanaged(ModuleSym), 
     prefix: []const u8,
+
+    fn setNativeFunc(self: *Module, alloc: std.mem.Allocator, name: []const u8, func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value) !void {
+        try self.syms.put(alloc, name, .{
+            .symT = .nativeFunc1,
+            .inner = .{
+                .nativeFunc1 = .{
+                    .func = func,
+                },
+            },
+        });
+    }
+
+    fn setVar(self: *Module, alloc: std.mem.Allocator, name: []const u8, val: cy.Value) !void {
+        try self.syms.put(alloc, name, .{
+            .symT = .variable,
+            .inner = .{
+                .variable = .{
+                    .val = val,
+                },
+            },
+        });
+    }
 
     fn deinit(self: *Module, alloc: std.mem.Allocator) void {
         self.syms.deinit(alloc);
@@ -4077,3 +4118,163 @@ pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
 const ReservedTempLocal = struct {
     local: LocalId,
 };
+
+fn initTestModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
+    var mod = Module{
+        .syms = .{},
+        .prefix = spec,
+    };
+    try mod.setNativeFunc(alloc, "eq", bindings.testEq);
+    try mod.setNativeFunc(alloc, "eqNear", bindings.testEqNear);
+    return mod;
+}
+
+fn initMathModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
+    var mod = Module{
+        .syms = .{},
+        .prefix = spec,
+    };
+
+    // Natural logarithm of 2; approximately 0.693.
+    try mod.setVar(alloc, "ln2", cy.Value.initF64(std.math.ln2));
+
+    // Natural logarithm of 10; approximately 2.303.
+    try mod.setVar(alloc, "ln10", cy.Value.initF64(std.math.ln10));
+
+    // Base-2 logarithm of E; approximately 1.443.
+    try mod.setVar(alloc, "log2e", cy.Value.initF64(std.math.log2e));
+
+    // Base-10 logarithm of E; approximately 0.434.
+    try mod.setVar(alloc, "log10e", cy.Value.initF64(std.math.log10e));
+
+    // Euler's number and the base of natural logarithms; approximately 2.718.
+    try mod.setVar(alloc, "e", cy.Value.initF64(std.math.e));
+
+    // Ratio of a circle's circumference to its diameter; approximately 3.14159.
+    try mod.setVar(alloc, "pi", cy.Value.initF64(std.math.pi));
+
+    // Square root of ½; approximately 0.707.
+    try mod.setVar(alloc, "sqrt1_2", cy.Value.initF64(std.math.sqrt1_2));
+
+    // Square root of 2; approximately 1.414.
+    try mod.setVar(alloc, "sqrt2", cy.Value.initF64(std.math.sqrt2));
+
+    // Infinity.
+    try mod.setVar(alloc, "inf", cy.Value.initF64(std.math.inf_f64));
+
+    // Neg infinity.
+    try mod.setVar(alloc, "neginf", cy.Value.initF64(-std.math.inf_f64));
+
+    // Not a number.
+    try mod.setVar(alloc, "nan", cy.Value.initF64(-std.math.nan_f64));
+
+    // Returns the absolute value of x.
+    try mod.setNativeFunc(alloc, "isNaN", bindings.mathIsNaN);
+
+    // Returns the absolute value of x.
+    try mod.setNativeFunc(alloc, "abs", bindings.mathAbs);
+
+    // Returns the smallest integer greater than or equal to x.
+    try mod.setNativeFunc(alloc, "ceil", bindings.mathCeil);
+
+    // Returns the largest integer less than or equal to x.
+    try mod.setNativeFunc(alloc, "floor", bindings.mathFloor);
+
+    // Returns the value of the number x rounded to the nearest integer.
+    try mod.setNativeFunc(alloc, "round", bindings.mathRound);
+
+    // Returns the integer portion of x, removing any fractional digits.
+    try mod.setNativeFunc(alloc, "trunc", bindings.mathTrunc);
+
+    // Returns the largest of two numbers.
+    try mod.setNativeFunc(alloc, "max", bindings.mathMax);
+
+    // Returns the smallest of two numbers.
+    try mod.setNativeFunc(alloc, "min", bindings.mathMin);
+
+    // Returns the sign of the x, indicating whether x is positive, negative, or zero.
+    try mod.setNativeFunc(alloc, "sign", bindings.mathSign);
+
+    // Returns the number of leading zero bits of the 32-bit integer x.
+    try mod.setNativeFunc(alloc, "clz32", bindings.mathClz32);
+
+    // Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.
+    try mod.setNativeFunc(alloc, "mul32", bindings.mathMul32);
+
+    // Returns ex, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm).
+    try mod.setNativeFunc(alloc, "exp", bindings.mathExp);
+
+    // Returns subtracting 1 from exp(x).
+    try mod.setNativeFunc(alloc, "expm1", bindings.mathExpm1);
+
+    // Returns the logarithm of y with base x.
+    try mod.setNativeFunc(alloc, "log", bindings.mathLog);
+
+    // Returns the natural logarithm (㏒e; also, ㏑) of x.
+    try mod.setNativeFunc(alloc, "ln", bindings.mathLn);
+
+    // Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x.
+    try mod.setNativeFunc(alloc, "log1p", bindings.mathLog1p);
+
+    // Returns the base-10 logarithm of x.
+    try mod.setNativeFunc(alloc, "log10", bindings.mathLog10);
+
+    // Returns the base-2 logarithm of x.
+    try mod.setNativeFunc(alloc, "log2", bindings.mathLog2);
+
+    // Returns base x to the exponent power y (that is, xy).
+    try mod.setNativeFunc(alloc, "pow", bindings.mathPow);
+
+    // Returns the square root of the sum of squares of its arguments.
+    try mod.setNativeFunc(alloc, "hypot", bindings.mathHypot);
+
+    // Returns the positive square root of x.
+    try mod.setNativeFunc(alloc, "sqrt", bindings.mathSqrt);
+
+    // Returns the cube root of x.
+    try mod.setNativeFunc(alloc, "cbrt", bindings.mathCbrt);
+
+    // Returns a pseudo-random number between 0 and 1.
+    try mod.setNativeFunc(alloc, "random", bindings.mathRandom);
+
+    // Returns the cosine of x.
+    try mod.setNativeFunc(alloc, "cos", bindings.mathCos);
+
+    // Returns the sine of x.
+    try mod.setNativeFunc(alloc, "sin", bindings.mathSin);
+
+    // Returns the tangent of x.
+    try mod.setNativeFunc(alloc, "tan", bindings.mathTan);
+
+    // Returns the hyperbolic cosine of x.
+    try mod.setNativeFunc(alloc, "cosh", bindings.mathCosh);
+
+    // Returns the hyperbolic sine of x.
+    try mod.setNativeFunc(alloc, "sinh", bindings.mathSinh);
+
+    // Returns the hyperbolic tangent of x.
+    try mod.setNativeFunc(alloc, "tanh", bindings.mathTanh);
+
+    // Returns the arccosine of x.
+    try mod.setNativeFunc(alloc, "acos", bindings.mathAcos);
+
+    // Returns the arcsine of x.
+    try mod.setNativeFunc(alloc, "asin", bindings.mathAsin);
+
+    // Returns the arctangent of x.
+    try mod.setNativeFunc(alloc, "atan", bindings.mathAtan);
+
+    // Returns the arctangent of the quotient of its arguments.
+    try mod.setNativeFunc(alloc, "atan2", bindings.mathAtan2);
+
+    // Returns the hyperbolic arccosine of x.
+    try mod.setNativeFunc(alloc, "acosh", bindings.mathAcosh);
+
+    // Returns the hyperbolic arcsine of a number.
+    try mod.setNativeFunc(alloc, "asinh", bindings.mathAsinh);
+
+    // Returns the hyperbolic arctangent of x.
+    try mod.setNativeFunc(alloc, "atanh", bindings.mathAtanh);
+
+    return mod;
+}

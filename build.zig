@@ -3,6 +3,8 @@ const cy_config = @import("src/config.zig");
 const mimalloc = @import("lib/mimalloc/lib.zig");
 const tcc = @import("lib/tcc/lib.zig");
 
+const Version = "0.1";
+
 const Options = struct {
     linkMimalloc: bool = false,
 };
@@ -23,7 +25,12 @@ pub fn build(b: *std.build.Builder) !void {
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
 
+        const buildTag = std.os.getenv("BUILD") orelse "local";
+        const commitTag = std.os.getenv("COMMIT") orelse "local";
         const build_options = b.addOptions();
+        build_options.addOption([]const u8, "version", Version);
+        build_options.addOption([]const u8, "build", buildTag);
+        build_options.addOption([]const u8, "commit", commitTag);
         build_options.addOption(bool, "trace", false);
         // build_options.addOption(bool, "trace", true);
         exe.addPackage(build_options.getPackage("build_options"));

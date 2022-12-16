@@ -4,7 +4,8 @@ const stdx = @import("stdx");
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
-const TraceEnabled = @import("build_options").trace;
+const build_options = @import("build_options");
+const TraceEnabled = build_options.trace;
 
 /// Use mimalloc for fast builds.
 const UseMimalloc = builtin.mode == .ReleaseFast;
@@ -48,6 +49,10 @@ pub fn main() !void {
             if (cmd == .none) {
                 if (std.mem.eql(u8, arg, "compile")) {
                     cmd = .compile;
+                } else if (std.mem.eql(u8, arg, "version")) {
+                    cmd = .version;
+                } else if (std.mem.eql(u8, arg, "help")) {
+                    cmd = .help;
                 } else {
                     cmd = .eval;
                     arg0 = arg;
@@ -66,8 +71,14 @@ pub fn main() !void {
         .compile => {
             try compilePath(alloc, arg0);
         },
+        .help => {
+            help();
+        },
+        .version => {
+            version();
+        },
         .none => {
-            std.debug.print("Missing command\n", .{});
+            help();
             std.os.exit(1);
         },
     }
@@ -76,6 +87,8 @@ pub fn main() !void {
 const Command = enum {
     eval,
     compile,
+    help,
+    version,
     none,
 };
 
@@ -105,12 +118,18 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    _ = vm.eval(src) catch |err| {
-        if (err == error.Panic) {
-            vm.dumpPanicStackTrace();
-            std.os.exit(1);
-        } else {
-            stdx.panicFmt("unexpected {}", .{err});
+    _ = vm.eval(path, src) catch |err| {
+        switch (err) {
+            error.Panic => {
+                vm.dumpPanicStackTrace();
+                std.os.exit(1);
+            },
+            error.ParseError => {
+                std.os.exit(1);
+            },
+            else => {
+                stdx.panicFmt("unexpected {}", .{err});
+            },
         }
     };
     if (verbose) {
@@ -120,4 +139,26 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
             vm.dumpStats();
         }
     }
+}
+
+fn help() void {
+    std.debug.print(
+        \\Cyber {s}
+        \\
+        \\Usage: cyber [source]
+        \\       cyber [command] ...
+        \\
+        \\Commands:
+        \\  compile [source]     Compile source and dump the bytecode.
+        \\  help                 Print usage.
+        \\  version              Print version number.
+        \\  
+        \\General Options:
+        \\  -v      Verbose.
+        \\
+    , .{build_options.version});
+}
+
+fn version() void {
+    std.debug.print("Cyber {s} build-{s}-{s}\n", .{build_options.version, build_options.build, build_options.commit});
 }

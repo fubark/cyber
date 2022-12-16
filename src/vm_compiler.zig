@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
+const fmt = @import("fmt.zig");
 
 const log = stdx.log.scoped(.vm_compiler);
 
@@ -350,7 +351,7 @@ pub const VMcompiler = struct {
                         _ = try self.semaExpr(node.head.unary.child, discardTopExprReg);
                         return NumberType;
                     },
-                    // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
+                    // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
                 }
             },
             .binExpr => {
@@ -467,7 +468,7 @@ pub const VMcompiler = struct {
                         _ = try self.semaExpr(right, discardTopExprReg);
                         return BoolType;
                     },
-                    else => return self.reportError("Unsupported binary op: {}", .{op}, node),
+                    else => return self.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
                 }
             },
             .coyield => {
@@ -520,8 +521,8 @@ pub const VMcompiler = struct {
                             }
                             return AnyType;
                         }
-                    } else return self.reportError("Unsupported callee", .{}, node);
-                } else return self.reportError("Unsupported named args", .{}, node);
+                    } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
+                } else return self.reportErrorAt("Unsupported named args", &.{}, nodeId);
             },
             .lambda_multi => {
                 if (!discardTopExprReg) {
@@ -549,7 +550,7 @@ pub const VMcompiler = struct {
                 }
                 return AnyType;
             },
-            else => return self.reportError("Unsupported node", .{}, node),
+            else => return self.reportErrorAt("Unsupported node", &.{}, nodeId),
         }
     }
 
@@ -574,8 +575,9 @@ pub const VMcompiler = struct {
         self.semaSyms.items[symId].resolvedSymId = resolvedId;
     }
 
-    fn semaStmt(self: *VMcompiler, node: cy.Node, comptime discardTopExprReg: bool) !void {
+    fn semaStmt(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
         // log.debug("sema stmt {}", .{node.node_t});
+        const node = self.nodes[nodeId];
         switch (node.node_t) {
             .pass_stmt => {
                 return;
@@ -593,7 +595,7 @@ pub const VMcompiler = struct {
                         const svar = self.vars.items[varId];
                         const rtype = try self.semaExpr(node.head.left_right.right, false);
                         if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and rtype.typeT != svar.vtype.typeT) {
-                            return self.reportError("Type mismatch: Expected {}", .{svar.vtype.typeT}, node);
+                            return self.reportErrorAt("Type mismatch: Expected {}", &.{fmt.v(svar.vtype.typeT)}, nodeId);
                         }
                     } else stdx.panic("variable not declared");
                 } else if (left.node_t == .accessExpr) {
@@ -687,7 +689,7 @@ pub const VMcompiler = struct {
                         const symId = try self.ensureSemaSym(self.u8Buf.items, null);
                         self.semaSyms.items[symId].symT = .func;
                     } else {
-                        return self.reportDebugError("Symbol already declared: {s}", .{self.u8Buf.items});
+                        return self.reportErrorAt("Symbol already declared: {}", &.{fmt.v(self.u8Buf.items)}, nodeId);
                     }
 
                     try self.pushSemaBlock();
@@ -798,7 +800,7 @@ pub const VMcompiler = struct {
                 const spec = self.nodes[node.head.left_right.right];
                 const specPath = self.getNodeTokenString(spec);
 
-                const modId = try self.getOrLoadModule(specPath);
+                const modId = try self.getOrLoadModule(specPath, nodeId);
                 try self.semaSymToMod.put(self.alloc, symId, modId);
             },
             .return_stmt => {
@@ -820,16 +822,16 @@ pub const VMcompiler = struct {
                     }
                 }
             },
-            else => return self.reportError("Unsupported node", .{}, node),
+            else => return self.reportErrorAt("Unsupported node", &.{}, nodeId),
         }
     }
 
-    fn getOrLoadModule(self: *VMcompiler, spec: []const u8) !ModuleId {
+    fn getOrLoadModule(self: *VMcompiler, spec: []const u8, nodeId: cy.NodeId) !ModuleId {
         const res = try self.moduleMap.getOrPut(self.alloc, spec);
         if (res.found_existing) {
             return res.value_ptr.*;
         } else {
-            const mod = try self.loadModule(spec);
+            const mod = try self.loadModule(spec, nodeId);
             const id = @intCast(u32, self.modules.items.len);
             try self.modules.append(self.alloc, mod);
             res.key_ptr.* = spec;
@@ -838,14 +840,14 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn loadModule(self: *VMcompiler, spec: []const u8) !Module {
+    fn loadModule(self: *VMcompiler, spec: []const u8, nodeId: cy.NodeId) !Module {
         // Builtin modules.
         if (std.mem.eql(u8, "test", spec)) {
             return initTestModule(self.alloc, spec);
         } else if (std.mem.eql(u8, "math", spec)) {
             return initMathModule(self.alloc, spec);
         } else {
-            return self.reportDebugError("Unsupported import. {s}", .{spec});
+            return self.reportErrorAt("Unsupported import. {}", &.{fmt.v(spec)}, nodeId);
         }
     }
 
@@ -855,12 +857,12 @@ pub const VMcompiler = struct {
             const node = self.nodes[cur_id];
             if (attachEnd) {
                 if (node.next == NullId) {
-                    try self.semaStmt(node, false);
+                    try self.semaStmt(cur_id, false);
                 } else {
-                    try self.semaStmt(node, true);
+                    try self.semaStmt(cur_id, true);
                 }
             } else {
-                try self.semaStmt(node, true);
+                try self.semaStmt(cur_id, true);
             }
             cur_id = node.next;
         }
@@ -971,12 +973,12 @@ pub const VMcompiler = struct {
                     const w = self.u8Buf.writer(self.alloc);
                     try std.fmt.format(w, "{s}.{s}", .{ modPrefix, sym.path[idx+1..] });
 
-                    if (try self.getOrTryResolveSym(self.u8Buf.items, modId)) |resolvedId| {
+                    if (try self.getOrTryResolveSym(self.u8Buf.items, modId, NullId)) |resolvedId| {
                         sym.resolvedSymId = resolvedId;
                         // log.debug("resolve {s} {} {}", .{sym.path, sym.leadSymId, modId});
                     }
                 } else {
-                    if (try self.getOrTryResolveSym(modPrefix, modId)) |resolvedId| {
+                    if (try self.getOrTryResolveSym(modPrefix, modId, NullId)) |resolvedId| {
                         sym.resolvedSymId = resolvedId;
                         // log.debug("resolve {s} {} {}", .{sym.path, sym.leadSymId, modId});
                     }
@@ -1346,7 +1348,7 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn getOrTryResolveSym(self: *VMcompiler, path: []const u8, modId: ModuleId) !?SemaResolvedSymId {
+    fn getOrTryResolveSym(self: *VMcompiler, path: []const u8, modId: ModuleId, nodeId: cy.NodeId) !?SemaResolvedSymId {
         if (self.semaResolvedSymMap.get(path)) |id| {
             return id;
         } else {
@@ -1384,7 +1386,7 @@ pub const VMcompiler = struct {
                     });
                     try self.semaResolvedSymMap.put(self.alloc, pathDupe, id);
                 } else {
-                    return self.reportDebugError("Unsupported module sym {}", .{modSym.symT});
+                    return self.reportErrorAt("Unsupported module sym {}", &.{fmt.v(modSym.symT)}, nodeId);
                 }
                 return id;
             }
@@ -2149,7 +2151,7 @@ pub const VMcompiler = struct {
                     try self.buf.pushOp(.ret1);
                 }
             },
-            else => return self.reportError("Unsupported node", .{}, node),
+            else => return self.reportErrorAt("Unsupported node", &.{}, nodeId),
         }
     }
 
@@ -2386,7 +2388,7 @@ pub const VMcompiler = struct {
                                 }
                                 return GenValue.initTempValue(callStartLocal, semaSym.inner.func.retType);
                             } else {
-                                return self.reportError("Unsupported callee", .{}, node);
+                                return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                             }
 
                             // if (try self.readScopedVar(leftName)) |info| {
@@ -2404,11 +2406,11 @@ pub const VMcompiler = struct {
                             //     _ = try self.genMaybeRetainExpr(left, false);
                             // }
                         } else {
-                            return self.reportError("Unsupported callee", .{}, node);
+                            return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                         }
                     } else {
                         const symPath = self.semaSyms.items[callee.head.accessExpr.semaSymId].path;
-                        return self.reportError("Unsupported callee: {s}", .{symPath}, node);
+                        return self.reportErrorAt("Unsupported callee: {}", &.{fmt.v(symPath)}, nodeId);
                     }
                 } else {
                     const right = self.nodes[callee.head.accessExpr.right];
@@ -2429,7 +2431,7 @@ pub const VMcompiler = struct {
                             try self.pushDebugSym(nodeId);
                         }
                         return GenValue.initTempValue(callStartLocal, AnyType);
-                    } else return self.reportError("Unsupported callee", .{}, node);
+                    } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                 }
             } else if (callee.node_t == .ident) {
                 if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
@@ -2464,12 +2466,12 @@ pub const VMcompiler = struct {
                                 genArgs = true;
                             }
                         } else {
-                            return self.reportError("Unsupported callee", .{}, node);
+                            return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                         }
                     // } else {
                     //     const symPath = self.semaSyms.items[callee.head.ident.semaSymId].path;
                     //     log.debug("{} {s}", .{callee.head.ident.semaSymId, symPath});
-                    //     return self.reportError("Missing symbol: {s}", .{symPath}, node);
+                    //     return self.reportErrorAt("Missing symbol: {s}", .{symPath}, node);
                     // }
                     }
 
@@ -2507,8 +2509,8 @@ pub const VMcompiler = struct {
                         return GenValue.initTempValue(callStartLocal, AnyType);
                     }
                 }
-            } else return self.reportDebugError("Unsupported callee {}", .{callee.node_t});
-        } else return self.reportDebugError("Unsupported named args", .{});
+            } else return self.reportError("Unsupported callee {}", &.{fmt.v(callee.node_t)});
+        } else return self.reportError("Unsupported named args", &.{});
     }
 
     fn genIfExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !GenValue {
@@ -2560,7 +2562,7 @@ pub const VMcompiler = struct {
                 return self.initGenValue(dst, IntegerType);
             }
         } else {
-            return self.reportDebugError("TODO: coerce", .{});
+            return self.reportError("TODO: coerce", &.{});
         }
         const int = @floatToInt(i32, val);
         const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initI32(int).val));
@@ -2648,7 +2650,7 @@ pub const VMcompiler = struct {
             }
             return @intCast(u8, self.curBlock.firstFreeTempLocal);
         } else {
-            return self.reportDebugError("Exceeded max locals.", .{});
+            return self.reportError("Exceeded max locals.", &.{});
         }
     }
 
@@ -2698,7 +2700,7 @@ pub const VMcompiler = struct {
     fn genEnsureRequiredType(self: *VMcompiler, genValue: GenValue, requiredType: Type) !void {
         if (requiredType.typeT != .any) {
             if (genValue.vtype.typeT != requiredType.typeT) {
-                return self.reportDebugError("Type {} can not be auto converted to required type {}", .{genValue.vtype.typeT, requiredType.typeT});
+                return self.reportError("Type {} can not be auto converted to required type {}", &.{fmt.v(genValue.vtype.typeT), fmt.v(requiredType.typeT)});
             }
         }
     }
@@ -3168,7 +3170,7 @@ pub const VMcompiler = struct {
                         }
                     }
                     const symPath = self.semaSyms.items[node.head.accessExpr.semaSymId].path;
-                    return self.reportError("Unsupported sym: {s}", .{symPath}, node);
+                    return self.reportErrorAt("Unsupported sym: {}", &.{fmt.v(symPath)}, nodeId);
                 }
 
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -3226,7 +3228,7 @@ pub const VMcompiler = struct {
                             return self.initGenValue(dst, NumberType);
                         } else return GenValue.initNoValue();
                     },
-                    // else => return self.reportError("Unsupported unary op: {}", .{op}, node),
+                    // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
                 }
             },
             .binExpr => {
@@ -3370,7 +3372,7 @@ pub const VMcompiler = struct {
                             return self.initGenValue(dst, leftv.vtype);
                         } else return self.initGenValue(dst, AnyType);
                     },
-                    else => return self.reportError("Unsupported binary op: {}", .{op}, node),
+                    else => return self.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
                 }
             },
             .call_expr => {
@@ -3559,25 +3561,19 @@ pub const VMcompiler = struct {
                 return self.initGenValue(dst, FiberType);
             },
             else => {
-                return self.reportDebugError("Unsupported {}", .{node.node_t});
+                return self.reportError("Unsupported {}", &.{fmt.v(node.node_t)});
             }
         }
     }
 
-    /// Temporary way to log an error without touching std.fmt in release builds.
-    fn reportDebugError(self: *const VMcompiler, comptime fmt: []const u8, args: anytype) error{CompileError} {
-        _ = self;
-        log.debug(fmt, args);
-        return error.CompileError;
+    fn reportError(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
+        return self.reportErrorAt(format, args, NullId);
     }
 
-    fn reportError(self: *VMcompiler, comptime fmt: []const u8, args: anytype, node: cy.Node) anyerror {
-        const token = self.tokens[node.start_token];
-        const customMsg = try std.fmt.allocPrint(self.alloc, fmt, args);
-        defer self.alloc.free(customMsg);
+    fn reportErrorAt(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
         self.alloc.free(self.lastErr);
-        self.lastErr = try std.fmt.allocPrint(self.alloc, "{s}: {} at {}", .{customMsg, node.node_t, token.pos()});
-        self.lastErrNode = node.start_token;
+        self.lastErr = try fmt.allocFormat(self.alloc, format, args);
+        self.lastErrNode = nodeId;
         return error.CompileError;
     }
 

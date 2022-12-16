@@ -29,6 +29,8 @@ pub fn v(val: anytype) FmtValue {
         else => {
             if (@typeInfo(@TypeOf(val)) == .Enum) {
                 return enumv(val);
+            } else if (@typeInfo(@TypeOf(val)) == .ErrorSet) {
+                return str(@errorName(val));
             } else {
                 @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{@TypeOf(val)}));
             }
@@ -127,8 +129,15 @@ pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtV
 var printMutex = std.Thread.Mutex{};
 
 pub fn printStderr(fmt: []const u8, vals: []const FmtValue) !void {
+    @setCold(true);
     printMutex.lock();
     defer printMutex.unlock();
     const w = std.io.getStdErr().writer();
     try format(w, fmt, vals);
+}
+
+pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
+    @setCold(true);
+    printStderr(fmt, vals) catch {};
+    @panic("");
 }

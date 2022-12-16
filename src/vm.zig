@@ -286,19 +286,30 @@ pub const VM = struct {
         return first;
     }
 
-    pub fn compile(self: *VM, src: []const u8) !cy.ByteCodeBuffer {
+    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
         var tt = stdx.debug.trace();
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
-            log.debug("Parse Error: {s}", .{astRes.err_msg});
-            return error.ParseError;
+            if (astRes.isTokenError) {
+                try printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
+                return error.TokenError;
+            } else {
+                try printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
+                return error.ParseError;
+            }
         }
         tt.endPrint("parse");
 
         tt = stdx.debug.trace();
         const res = try self.compiler.compile(astRes);
         if (res.hasError) {
-            log.debug("Compile Error: {s}", .{self.compiler.lastErr});
+            if (self.compiler.lastErrNode != NullId) {
+                const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
+                const pos = self.parser.tokens.items[token].pos();
+                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
+            } else {
+                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
+            }
             return error.CompileError;
         }
         tt.endPrint("compile");
@@ -311,10 +322,10 @@ pub const VM = struct {
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
             if (astRes.isTokenError) {
-                try printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.next_pos, true);
+                try printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
                 return error.TokenError;
             } else {
-                try printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.next_pos, false);
+                try printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
                 return error.ParseError;
             }
         }
@@ -323,8 +334,13 @@ pub const VM = struct {
         tt = stdx.debug.trace();
         const res = try self.compiler.compile(astRes);
         if (res.hasError) {
-            const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
-            try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, token, false);
+            if (self.compiler.lastErrNode != NullId) {
+                const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
+                const pos = self.parser.tokens.items[token].pos();
+                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
+            } else {
+                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
+            }
             return error.CompileError;
         }
         tt.endPrint("compile");
@@ -1844,16 +1860,15 @@ pub const VM = struct {
         var line: u32 = 0;
         var lineStart: u32 = 0;
         for (self.parser.src.items) |ch, i| {
-            if (ch == '\n') {
-                line += 1;
-                lineStart = @intCast(u32, i + 1);
-                continue;
-            }
             if (i == loc) {
                 outLine.* = line;
                 outCol.* = loc - lineStart;
                 outLineStart.* = lineStart;
                 return;
+            }
+            if (ch == '\n') {
+                line += 1;
+                lineStart = @intCast(u32, i + 1);
             }
         }
     }
@@ -1862,16 +1877,15 @@ pub const VM = struct {
         var line: u32 = 0;
         var lineStart: u32 = 0;
         for (self.parser.tokens.items) |token| {
-            if (token.tag() == .new_line) {
-                line += 1;
-                lineStart = token.pos() + 1;
-                continue;
-            }
             if (token.pos() == loc) {
                 outLine.* = line;
                 outCol.* = loc - lineStart;
                 outLineStart.* = lineStart;
                 return;
+            }
+            if (token.tag() == .new_line) {
+                line += 1;
+                lineStart = token.pos() + 1;
             }
         }
     }
@@ -3009,8 +3023,8 @@ pub const UserVM = struct {
         return gvm.checkMemory();
     }
 
-    pub inline fn compile(_: UserVM, src: []const u8) !cy.ByteCodeBuffer {
-        return gvm.compile(src);
+    pub inline fn compile(_: UserVM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
+        return gvm.compile(srcUri, src);
     }
 
     pub inline fn eval(_: UserVM, srcUri: []const u8, src: []const u8) !Value {
@@ -4696,31 +4710,41 @@ fn funcSymClosure(framePtr: [*]Value, symId: SymbolId, numParams: u8, capturedLo
 }
 
 fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) !void {
-    var line: u32 = undefined;
-    var col: u32 = undefined;
-    var lineStart: u32 = undefined;
-    if (isTokenError) {
-        vm.computeLinePosFromSrc(pos, &line, &col, &lineStart);
+    if (pos != NullId) {
+        var line: u32 = undefined;
+        var col: u32 = undefined;
+        var lineStart: u32 = undefined;
+        if (isTokenError) {
+            vm.computeLinePosFromSrc(pos, &line, &col, &lineStart);
+        } else {
+            vm.computeLinePos(pos, &line, &col, &lineStart);
+        }
+        const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
+        var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
+        defer arrowBuf.deinit(vm.alloc);
+        var w = arrowBuf.writer(vm.alloc);
+        try w.writeByteNTimes(' ', col);
+        try w.writeByte('^');
+        try fmt.printStderr(
+            \\{}: {}
+            \\
+            \\{}:{}:{}:
+            \\{}
+            \\{}
+            \\
+        , &.{
+            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
+            fmt.v(line+1), fmt.v(col+1), fmt.v(vm.parser.src.items[lineStart..lineEnd]),
+            fmt.v(arrowBuf.items)
+        });
     } else {
-        const srcPos = vm.parser.tokens.items[pos].pos();
-        vm.computeLinePos(srcPos, &line, &col, &lineStart);
+        try fmt.printStderr(
+            \\{}: {}
+            \\
+            \\in {}
+            \\
+        , &.{
+            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
+        });
     }
-    const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
-    var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
-    defer arrowBuf.deinit(vm.alloc);
-    var w = arrowBuf.writer(vm.alloc);
-    try w.writeByteNTimes(' ', col);
-    try w.writeByte('^');
-    try fmt.printStderr(
-        \\{}: {}
-        \\
-        \\{}:{}:{}:
-        \\{}
-        \\{}
-        \\
-    , &.{
-        fmt.v(title), fmt.v(msg), fmt.v(srcUri),
-        fmt.v(line+1), fmt.v(col+1), fmt.v(vm.parser.src.items[lineStart..lineEnd]),
-        fmt.v(arrowBuf.items)
-    });
 }

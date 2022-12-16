@@ -6,6 +6,7 @@ const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
 const build_options = @import("build_options");
 const TraceEnabled = build_options.trace;
+const fmt = @import("fmt.zig");
 
 /// Use mimalloc for fast builds.
 const UseMimalloc = builtin.mode == .ReleaseFast;
@@ -102,8 +103,17 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    const buf = vm.compile(src) catch |err| {
-        stdx.panicFmt("unexpected {}", .{err});
+    const buf = vm.compile(path, src) catch |err| {
+        switch (err) {
+            error.TokenError,
+            error.ParseError,
+            error.CompileError => {
+                std.os.exit(1);
+            },
+            else => {
+                fmt.panic("unexpected {}\n", &.{fmt.v(err)});
+            },
+        }
     };
     try buf.dump();
 }
@@ -124,11 +134,13 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
                 vm.dumpPanicStackTrace();
                 std.os.exit(1);
             },
-            error.ParseError => {
+            error.TokenError,
+            error.ParseError,
+            error.CompileError => {
                 std.os.exit(1);
             },
             else => {
-                stdx.panicFmt("unexpected {}", .{err});
+                fmt.panic("unexpected {}\n", &.{fmt.v(err)});
             },
         }
     };

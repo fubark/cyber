@@ -22,6 +22,7 @@ pub const VMcompiler = struct {
     vm: *cy.VM,
     buf: cy.ByteCodeBuffer,
     lastErr: []const u8,
+    lastErrNode: cy.NodeId,
 
     /// Context vars.
     src: []const u8,
@@ -76,6 +77,7 @@ pub const VMcompiler = struct {
             .vm = vm,
             .buf = try cy.ByteCodeBuffer.init(vm.alloc),
             .lastErr = "",
+            .lastErrNode = undefined,
             .nodes = undefined,
             .tokens = undefined,
             .funcDecls = undefined,
@@ -3575,6 +3577,7 @@ pub const VMcompiler = struct {
         defer self.alloc.free(customMsg);
         self.alloc.free(self.lastErr);
         self.lastErr = try std.fmt.allocPrint(self.alloc, "{s}: {} at {}", .{customMsg, node.node_t, token.pos()});
+        self.lastErrNode = node.start_token;
         return error.CompileError;
     }
 

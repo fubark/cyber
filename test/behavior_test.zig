@@ -2030,7 +2030,7 @@ const VMrunner = struct {
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {
         // Eval with new env.
         try self.resetEnv();
-        return self.vm.eval(src) catch |err| {
+        return self.vm.eval("main", src) catch |err| {
             if (err == error.Panic) {
                 self.vm.dumpPanicStackTrace();
             }
@@ -2049,8 +2049,8 @@ const VMrunner = struct {
         self.vm.setTrace(&self.trace);
     }
 
-    fn evalNoReset(self: *VMrunner, src: []const u8) cy.EvalError!cy.Value {
-        return self.vm.eval(src) catch |err| {
+    fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
+        return self.vm.eval("main", src) catch |err| {
             if (err == error.Panic) {
                 self.vm.dumpPanicStackTrace();
             }

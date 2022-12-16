@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const tcc = @import("tcc");
 
+const fmt = @import("fmt.zig");
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const Value = cy.Value;
@@ -305,19 +306,25 @@ pub const VM = struct {
         return res.buf;
     }
 
-    pub fn eval(self: *VM, src: []const u8) !Value {
+    pub fn eval(self: *VM, srcUri: []const u8, src: []const u8) !Value {
         var tt = stdx.debug.trace();
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
-            log.debug("Parse Error: {s}", .{astRes.err_msg});
-            return error.ParseError;
+            if (astRes.isTokenError) {
+                try printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.next_pos, true);
+                return error.TokenError;
+            } else {
+                try printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.next_pos, false);
+                return error.ParseError;
+            }
         }
         tt.endPrint("parse");
 
         tt = stdx.debug.trace();
         const res = try self.compiler.compile(astRes);
         if (res.hasError) {
-            log.debug("Compile Error: {s}", .{self.compiler.lastErr});
+            const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
+            try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, token, false);
             return error.CompileError;
         }
         tt.endPrint("compile");
@@ -1833,10 +1840,28 @@ pub const VM = struct {
         return null;
     }
 
-    fn computeLinePos(self: *const VM, loc: u32, outLine: *u32, outCol: *u32) void {
+    fn computeLinePosFromSrc(self: *const VM, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) void {
         var line: u32 = 0;
         var lineStart: u32 = 0;
-        for (self.compiler.tokens) |token| {
+        for (self.parser.src.items) |ch, i| {
+            if (ch == '\n') {
+                line += 1;
+                lineStart = @intCast(u32, i + 1);
+                continue;
+            }
+            if (i == loc) {
+                outLine.* = line;
+                outCol.* = loc - lineStart;
+                outLineStart.* = lineStart;
+                return;
+            }
+        }
+    }
+
+    fn computeLinePos(self: *const VM, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) void {
+        var line: u32 = 0;
+        var lineStart: u32 = 0;
+        for (self.parser.tokens.items) |token| {
             if (token.tag() == .new_line) {
                 line += 1;
                 lineStart = token.pos() + 1;
@@ -1845,6 +1870,7 @@ pub const VM = struct {
             if (token.pos() == loc) {
                 outLine.* = line;
                 outCol.* = loc - lineStart;
+                outLineStart.* = lineStart;
                 return;
             }
         }
@@ -1865,7 +1891,8 @@ pub const VM = struct {
                 const node = self.compiler.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
-                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col);
+                var lineStart: u32 = undefined;
+                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = "main",
                     .line = line,
@@ -1880,7 +1907,8 @@ pub const VM = struct {
                 const node = self.compiler.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
-                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col);
+                var lineStart: u32 = undefined;
+                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = name,
                     .line = line,
@@ -2985,8 +3013,8 @@ pub const UserVM = struct {
         return gvm.compile(src);
     }
 
-    pub inline fn eval(_: UserVM, src: []const u8) !Value {
-        return gvm.eval(src);
+    pub inline fn eval(_: UserVM, srcUri: []const u8, src: []const u8) !Value {
+        return gvm.eval(srcUri, src);
     }
 
     pub inline fn allocator(_: UserVM) std.mem.Allocator {
@@ -4665,4 +4693,34 @@ fn funcSymClosure(framePtr: [*]Value, symId: SymbolId, numParams: u8, capturedLo
     const closure = try gvm.allocClosure(framePtr, pc, numParams, numLocals, capturedLocals);
     gvm.funcSyms.buf[symId].entryT = .closure;
     gvm.funcSyms.buf[symId].inner.closure = stdx.ptrAlignCast(*Closure, closure.asPointer().?);
+}
+
+fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) !void {
+    var line: u32 = undefined;
+    var col: u32 = undefined;
+    var lineStart: u32 = undefined;
+    if (isTokenError) {
+        vm.computeLinePosFromSrc(pos, &line, &col, &lineStart);
+    } else {
+        const srcPos = vm.parser.tokens.items[pos].pos();
+        vm.computeLinePos(srcPos, &line, &col, &lineStart);
+    }
+    const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
+    var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
+    defer arrowBuf.deinit(vm.alloc);
+    var w = arrowBuf.writer(vm.alloc);
+    try w.writeByteNTimes(' ', col);
+    try w.writeByte('^');
+    try fmt.printStderr(
+        \\{}: {}
+        \\
+        \\{}:{}:{}:
+        \\{}
+        \\{}
+        \\
+    , &.{
+        fmt.v(title), fmt.v(msg), fmt.v(srcUri),
+        fmt.v(line+1), fmt.v(col+1), fmt.v(vm.parser.src.items[lineStart..lineEnd]),
+        fmt.v(arrowBuf.items)
+    });
 }

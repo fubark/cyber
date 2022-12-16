@@ -89,14 +89,6 @@ pub const Value = packed union {
         return @intCast(u32, self.val & @as(u64, 0xFFFFFFFF));
     }
 
-    pub inline fn asError(self: *const Value) u32 {
-        if (endian == .Little) {
-            return self.two[0];
-        } else {
-            return self.two[1];
-        } 
-    }
-
     pub inline fn toF64(self: *const Value) linksection(".eval") f64 {
         @setRuntimeSafety(debug);
         if (self.isNumber()) {
@@ -277,6 +269,10 @@ pub const Value = packed union {
 
     pub inline fn initErrorTagLit(id: u8) Value {
         return .{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | id };
+    }
+
+    pub inline fn asErrorTagLit(self: *const Value) u8 {
+        return @intCast(u8, self.val & 0xff);
     }
 
     pub fn dump(self: *const Value) void {

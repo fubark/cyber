@@ -131,7 +131,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
     _ = vm.eval(path, src) catch |err| {
         switch (err) {
             error.Panic => {
-                vm.dumpPanicStackTrace();
+                try vm.dumpPanicStackTrace();
                 std.os.exit(1);
             },
             error.TokenError,

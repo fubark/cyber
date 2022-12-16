@@ -117,6 +117,8 @@ pub const VM = struct {
     /// 255 indicates no return value.
     endLocal: u8,
 
+    mainUri: []const u8,
+
     trace: if (TraceEnabled) *TraceInfo else void,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
@@ -164,6 +166,7 @@ pub const VM = struct {
             .mainFiber = undefined,
             .curFiber = undefined,
             .endLocal = undefined,
+            .mainUri = "",
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -373,6 +376,7 @@ pub const VM = struct {
             }
         }
 
+        self.mainUri = srcUri;
         return self.evalByteCode(res.buf);
     }
 
@@ -1332,6 +1336,19 @@ pub const VM = struct {
         }
     }
 
+    fn panicFmt(self: *VM, comptime format: []const u8, args: []const fmt.FmtValue) error{Panic, OutOfMemory} {
+        @setCold(true);
+        self.panicMsg = fmt.allocFormat(self.alloc, format, args) catch |err| {
+            if (err == error.OutOfMemory) {
+                return error.OutOfMemory;
+            } else {
+                stdx.panic("unexpected");
+            }
+        };
+        log.debug("{s}", .{self.panicMsg});
+        return error.Panic;
+    }
+
     fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
         self.panicMsg = try self.alloc.dupe(u8, msg);
@@ -1909,8 +1926,10 @@ pub const VM = struct {
                 self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = "main",
+                    .uri = self.mainUri,
                     .line = line,
                     .col = col,
+                    .lineStartPos = lineStart,
                 });
                 break;
             } else {
@@ -1925,8 +1944,10 @@ pub const VM = struct {
                 self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = name,
+                    .uri = self.mainUri,
                     .line = line,
                     .col = col,
+                    .lineStartPos = lineStart,
                 });
                 pc = pcOffset(self.stack[framePtr + 2].retPcPtr);
                 framePtr = framePtrOffset(self.stack[framePtr + 3].retFramePtr);
@@ -2985,14 +3006,16 @@ pub const UserVM = struct {
         return gvm.panicMsg;
     }
 
-    pub fn dumpPanicStackTrace(_: UserVM) void {
+    pub fn dumpPanicStackTrace(self: *UserVM) !void {
+        @setCold(true);
+        const vm = @ptrCast(*VM, self);
         if (builtin.is_test) {
-            log.debug("panic: {s}", .{gvm.panicMsg});
+            log.debug("panic: {s}", .{vm.panicMsg});
         } else {
-            std.debug.print("panic: {s}\n", .{gvm.panicMsg});
+            try fmt.printStderr("panic: {}\n", &.{fmt.v(vm.panicMsg)});
         }
-        const trace = gvm.getStackTrace();
-        trace.dump();
+        const trace = vm.getStackTrace();
+        try trace.dump(vm);
     }
 
     pub fn dumpInfo(_: UserVM) void {
@@ -3986,7 +4009,7 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                     pc += 3;
                     continue;
                 } else {
-                    return error.Panic;
+                    return vm.panicFmt("{}", &.{fmt.v(vm.tagLitSyms.buf[val.asErrorTagLit()].name)});
                 }
             },
             .bitwiseAnd => {
@@ -4232,23 +4255,53 @@ pub const StackTrace = struct {
         alloc.free(self.frames);
     }
 
-    pub fn dump(self: *const StackTrace) void {
+    pub fn dump(self: *const StackTrace, vm: *const VM) !void {
+        @setCold(true);
+        var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
+        var w = arrowBuf.writer(vm.alloc);
+        defer arrowBuf.deinit(vm.alloc);
+
         for (self.frames) |frame| {
+            const lineEnd = std.mem.indexOfScalarPos(u8, vm.compiler.src, frame.lineStartPos, '\n') orelse vm.compiler.src.len;
+            arrowBuf.clearRetainingCapacity();
+            try w.writeByteNTimes(' ', frame.col);
+            try w.writeByte('^');
             if (builtin.is_test) {
-                log.debug("{s}:{}:{}", .{frame.name, frame.line + 1, frame.col + 1});
+                log.debug(
+                    \\{s}:{}:{} {s}:
+                    \\{s}
+                    \\{s}
+                    \\
+                , .{
+                    frame.uri, frame.line + 1, frame.col + 1, frame.name,
+                    vm.compiler.src[frame.lineStartPos..lineEnd], arrowBuf.items,
+                });
             } else {
-                std.debug.print("{s}:{}:{}\n", .{frame.name, frame.line + 1, frame.col + 1});
+                try fmt.printStderr(
+                    \\{}:{}:{} {}:
+                    \\{}
+                    \\{}
+                    \\
+                , &.{
+                    fmt.v(frame.uri), fmt.v(frame.line+1), fmt.v(frame.col+1), fmt.v(frame.name),
+                    fmt.v(vm.compiler.src[frame.lineStartPos..lineEnd]), fmt.v(arrowBuf.items),
+                });
             }
         }
     }
 };
 
 pub const StackFrame = struct {
+    /// Name identifier (eg. function name)
     name: []const u8,
+    /// Source location.
+    uri: []const u8,
     /// Starts at 0.
     line: u32,
     /// Starts at 0.
     col: u32,
+    /// Where the line starts in the source file.
+    lineStartPos: u32,
 };
 
 const ObjectSymKey = struct {

@@ -1394,14 +1394,12 @@ pub const VMcompiler = struct {
             // Direct alias lookup.
             if (self.semaSymToRef.get(sym.leadSymId)) |ref| {
                 if (ref.refT == .moduleMember) {
-                    log.debug("here", .{});
                     const modId = ref.inner.moduleMember.modId;
                     const mod = self.modules.items[modId];
                     self.u8Buf.clearRetainingCapacity();
                     const w = self.u8Buf.writer(self.alloc);
                     try std.fmt.format(w, "{s}.{s}", .{ mod.prefix, ref.inner.moduleMember.memberName });
                     if (try self.getOrTryResolveSym(self.u8Buf.items, modId, NullId)) |resolvedId| {
-                        log.debug("resolved", .{});
                         sym.resolvedSymId = resolvedId;
                     }
                 } else {
@@ -2104,45 +2102,34 @@ pub const VMcompiler = struct {
                     }
                 }
 
+                // Keep counter hidden from user. (User can't change it's value.)
+                const counter = try self.nextFreeTempLocal();
+                try self.setReservedTempLocal(counter);
+
                 const rangeStart = try self.genExpr(range_clause.head.left_right.left, false);
-                if (self.isTempLocal(rangeStart.local)) {
-                    try self.setReservedTempLocal(rangeStart.local);
-                }
-                const rangeEnd = try self.genExpr(range_clause.head.left_right.right, false);
-                if (self.isTempLocal(rangeEnd.local)) {
-                    try self.setReservedTempLocal(rangeEnd.local);
-                }
+
+                const rangeEnd = try self.nextFreeTempLocal();
+                _ = try self.genExprTo(range_clause.head.left_right.right, rangeEnd, false, false);
+                try self.setReservedTempLocal(rangeEnd);
 
                 // Set custom step.
                 const rangeStep = try self.nextFreeTempLocal();
                 try self.setReservedTempLocal(rangeStep);
                 _ = try self.genConst(1, rangeStep);
 
-                try self.buf.pushOp2(.copy, rangeStart.local, local);
-
-                // Initial comparison to check against end range.
-                if (lessThanCond) {
-                    try self.buf.pushOp3(.less, local, rangeEnd.local, rangeStart.local);
-                } else {
-                    try self.buf.pushOp3(.greater, local, rangeEnd.local, rangeStart.local);
-                }
-                const jumpNotCond = try self.pushEmptyJumpNotCond(rangeStart.local);
+                const initPc = self.buf.ops.items.len;
+                try self.buf.pushOpSlice(.forRangeInit, &.{ rangeStart.local, rangeEnd, rangeStep, counter, local, 0, 0 });
 
                 const bodyPc = self.buf.ops.items.len;
-
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
 
                 // Perform counter update and perform check against end range.
-                if (lessThanCond) {
-                    try self.buf.pushOp3(.add, local, rangeStep, local);
-                    try self.buf.pushOp3(.less, local, rangeEnd.local, rangeStart.local);
-                } else {
-                    try self.buf.pushOp3(.minus, local, rangeStep, local);
-                    try self.buf.pushOp3(.greater, local, rangeEnd.local, rangeStart.local);
-                }
-                try self.pushJumpBackCond(bodyPc, rangeStart.local);
-
-                self.patchJumpToCurrent(jumpNotCond);
+                const jumpBackOffset = @intCast(u16, self.buf.ops.items.len - bodyPc);
+                const forRangeOp = self.buf.ops.items.len;
+                // The forRange op is patched by forRangeInit at runtime.
+                self.buf.setOpArgU16(initPc + 6, @intCast(u16, self.buf.ops.items.len - initPc));
+                try self.buf.pushOpSlice(.forRange, &.{ counter, rangeStep, rangeEnd, local, 0, 0 });
+                self.buf.setOpArgU16(forRangeOp + 5, jumpBackOffset);
             },
             .if_stmt => {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -2437,7 +2424,7 @@ pub const VMcompiler = struct {
 
         var callStartLocal = self.advanceNextTempLocalPastArcTemps();
 
-        // Reserve next two temps for return value and return info.
+        // Reserve registers for return value and return info.
         if (dst + 1 == self.curBlock.firstFreeTempLocal) {
             callStartLocal -= 1;
         } else {
@@ -2714,7 +2701,7 @@ pub const VMcompiler = struct {
     fn advanceNextTempLocalPastArcTemps(self: *VMcompiler) LocalId {
         if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
             for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
-                if (self.curBlock.firstFreeTempLocal < temp.local) {
+                if (self.curBlock.firstFreeTempLocal <= temp.local) {
                     self.curBlock.firstFreeTempLocal = temp.local + 1;
                 }
             }
@@ -3373,7 +3360,6 @@ pub const VMcompiler = struct {
                             try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
                             return self.initGenValue(dst, NumberType);
                         } else return GenValue.initNoValue();
-                        // return self.genPushBinOp(.minus, left, right, NumberType, dst, discardTopExprReg);
                     },
                     .equal_equal => {
                         return self.genPushBinOp(.compare, left, right, BoolType, dst, discardTopExprReg);

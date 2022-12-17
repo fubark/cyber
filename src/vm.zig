@@ -3524,16 +3524,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 }
                 continue;
             },
-            .jumpNotNone => {
-                const offset = @ptrCast(*const align(1) i16, &pc[1]).*;
-                if (!framePtr[pc[3].arg].isNone()) {
-                    @setRuntimeSafety(false);
-                    pc += @intCast(usize, offset);
-                } else {
-                    pc += 4;
-                }
-                continue;
-            },
             .call0 => {
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
@@ -3719,6 +3709,58 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{ recv, pc[3].arg });
                 vm.retain(framePtr[dst]);
                 pc += 7;
+                continue;
+            },
+            .forRangeInit => {
+                const start = framePtr[pc[1].arg].toF64();
+                const end = framePtr[pc[2].arg].toF64();
+                framePtr[pc[2].arg] = Value.initF64(end);
+                var step = framePtr[pc[3].arg].toF64();
+                if (step < 0) {
+                    step = -step;
+                }
+                framePtr[pc[3].arg] = Value.initF64(step);
+                if (start == end) {
+                    pc += @ptrCast(*const align(1) u16, pc + 6).* + 7;
+                } else {
+                    framePtr[pc[4].arg] = Value.initF64(start);
+                    framePtr[pc[5].arg] = Value.initF64(start);
+                    const offset = @ptrCast(*const align(1) u16, pc + 6).*;
+                    pc[offset] = if (start < end)
+                        cy.OpData{ .code = .forRange }
+                    else
+                        cy.OpData{ .code = .forRangeReverse };
+                    pc += 8;
+                }
+            },
+            .forRange => {
+                const counter = framePtr[pc[1].arg].asF64() + framePtr[pc[2].arg].asF64();
+                if (counter < framePtr[pc[3].arg].asF64()) {
+                    framePtr[pc[1].arg] = Value.initF64(counter);
+                    framePtr[pc[4].arg] = Value.initF64(counter);
+                    pc -= @ptrCast(*const align(1) u16, pc + 5).*;
+                } else {
+                    pc += 7;
+                }
+            },
+            .forRangeReverse => {
+                const counter = framePtr[pc[1].arg].asF64() - framePtr[pc[2].arg].asF64();
+                if (counter > framePtr[pc[3].arg].asF64()) {
+                    framePtr[pc[1].arg] = Value.initF64(counter);
+                    framePtr[pc[4].arg] = Value.initF64(counter);
+                    pc -= @ptrCast(*const align(1) u16, pc + 5).*;
+                } else {
+                    pc += 7;
+                }
+            },
+            .jumpNotNone => {
+                const offset = @ptrCast(*const align(1) i16, &pc[1]).*;
+                if (!framePtr[pc[3].arg].isNone()) {
+                    @setRuntimeSafety(false);
+                    pc += @intCast(usize, offset);
+                } else {
+                    pc += 4;
+                }
                 continue;
             },
             .setField => {

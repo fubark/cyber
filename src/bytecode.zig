@@ -278,6 +278,8 @@ pub const ByteCodeBuffer = struct {
                 const numCaptured = ops[pc+3].arg;
                 return 6 + numCaptured;
             },
+            .forRange,
+            .forRangeReverse,
             .setFieldRelease,
             .setFieldReleaseIC,
             .fieldRetain,
@@ -285,6 +287,9 @@ pub const ByteCodeBuffer = struct {
             .field,
             .fieldIC => {
                 return 7;
+            },
+            .forRangeInit => {
+                return 8;
             },
             .callSym,
             .callNativeFuncIC,
@@ -399,6 +404,7 @@ pub const OpCode = enum(u8) {
     add,
     // addNumber,
     /// Subtracts second local from first local and stores result to a dst local.
+    /// TODO: Rename to sub.
     minus,
     /// Push boolean onto register stack.
     true,
@@ -504,13 +510,16 @@ pub const OpCode = enum(u8) {
     minusInt,
     lessInt,
     varSym,
+    forRangeInit,
+    forRange,
+    forRangeReverse,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 89);
+    try t.eq(std.enums.values(OpCode).len, 92);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

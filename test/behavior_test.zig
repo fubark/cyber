@@ -1444,7 +1444,7 @@ test "For loop over range." {
         \\  sum += i
         \\i
     );
-    try t.eq(val.asF64toI32(), 10);
+    try t.eq(val.asF64toI32(), 9);
 
     // Reverse direction.
     val = try run.eval(

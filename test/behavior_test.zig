@@ -1125,11 +1125,39 @@ test "Assignment statements" {
     try t.eq(val.asF64toI32(), 11);
 }
 
-test "Variables and scope" {
+test "Local variable declaration." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Variable declaration.
+    _ = try run.eval(
+        \\import t from 'test'
+        \\-- Declare local and read it.
+        \\a <- 1
+        \\try t.eq(a, 1)
+        \\func foo():
+        \\  -- Captured `a` from main block.
+        \\  try t.eq(a, 1)
+        \\  a = 2
+        \\try foo()
+        \\-- Changed `a` from main block.
+        \\try t.eq(a, 2)
+        \\func bar():
+        \\  -- Captured `a` from main block.
+        \\  try t.eq(a, 2)
+        \\  -- New `a` in `bar`.
+        \\  a <- 3
+        \\  try t.eq(a, 3)
+        \\try bar()
+        \\-- `a` from main remains the same.
+        \\try t.eq(a, 2)
+    );
+}
+
+test "Local variable assignment." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Variable assignment.
     var val = try run.eval(
         \\a = 1
         \\a
@@ -1513,6 +1541,18 @@ test "Closures." {
         \\a
     );
     try run.valueIsI32(val, 234);
+
+    // Closure read then write over number in main block static function.
+    _ = try run.eval(
+        \\import t from 'test'
+        \\a = 123
+        \\func foo():
+        \\  b = a
+        \\  try t.eq(b, 123)
+        \\  a = 234
+        \\try foo()
+        \\try t.eq(a, 234)
+    );
 
     // Closure add assign over number in main block static function.
     val = try run.eval(

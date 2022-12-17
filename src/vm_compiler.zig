@@ -257,7 +257,7 @@ pub const VMcompiler = struct {
                 return StringType;
             },
             .ident => {
-                if (try self.semaIdentLocalVarOrNull(nodeId, true)) |varId| {
+                if (try self.semaIdentLocalVarOrNull(nodeId, true, true)) |varId| {
                     return self.vars.items[varId].vtype;
                 } else {
                     return AnyType;
@@ -470,7 +470,7 @@ pub const VMcompiler = struct {
 
                         return AnyType;
                     } else if (callee.node_t == .ident) {
-                        if (try self.semaIdentLocalVarOrNull(node.head.func_call.callee, true)) |varId| {
+                        if (try self.semaIdentLocalVarOrNull(node.head.func_call.callee, true, true)) |varId| {
                             _ = varId;
                             var numArgs: u32 = 1;
                             var arg_id = node.head.func_call.arg_head;
@@ -563,13 +563,13 @@ pub const VMcompiler = struct {
             .add_assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    if (try self.semaIdentLocalVarOrNull(node.head.left_right.left, true)) |varId| {
+                    if (try self.semaIdentLocalVarOrNull(node.head.left_right.left, true, true)) |varId| {
                         const svar = self.vars.items[varId];
                         const rtype = try self.semaExpr(node.head.left_right.right, false);
                         if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and rtype.typeT != svar.vtype.typeT) {
                             return self.reportErrorAt("Type mismatch: Expected {}", &.{fmt.v(svar.vtype.typeT)}, nodeId);
                         }
-                    } else stdx.panic("variable not declared");
+                    } else unexpected("variable not declared", &.{});
                 } else if (left.node_t == .accessExpr) {
                     const accessLeft = try self.semaExpr(left.head.accessExpr.left, false);
                     const accessRight = try self.semaExpr(left.head.accessExpr.right, false);
@@ -578,14 +578,14 @@ pub const VMcompiler = struct {
                     _ = accessRight;
                     _ = right;
                 } else {
-                    stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
             },
             .assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
                     const rtype = try self.semaExpr(node.head.left_right.right, false);
-                    _ = try self.semaAssignVar(node.head.left_right.left, rtype);
+                    _ = try self.semaAssignVar(node.head.left_right.left, rtype, false);
                 } else if (left.node_t == .arr_access_expr) {
                     _ = try self.semaExpr(left.head.left_right.left, false);
                     _ = try self.semaExpr(left.head.left_right.right, false);
@@ -595,7 +595,16 @@ pub const VMcompiler = struct {
                     _ = try self.semaExpr(left.head.accessExpr.right, false);
                     _ = try self.semaExpr(node.head.left_right.right, false);
                 } else {
-                    stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                }
+            },
+            .localDecl => {
+                const left = self.nodes[node.head.left_right.left];
+                if (left.node_t == .ident) {
+                    const rtype = try self.semaExpr(node.head.left_right.right, false);
+                    _ = try self.semaAssignVar(node.head.left_right.left, rtype, true);
+                } else {
+                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
             },
             .tagDecl => {
@@ -691,10 +700,30 @@ pub const VMcompiler = struct {
                 }
                 try self.pushSemaFuncParamVars(func);
                 try self.semaStmts(node.head.func.body_head, false);
+                const sblock = self.curSemaBlock();
                 if (retType == null) {
-                    retType = self.curSemaBlock().getReturnType();
+                    retType = sblock.getReturnType();
                 }
+                const numParams = @intCast(u8, func.params.end - func.params.start);
+                const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
                 try self.endSemaBlock();
+
+                // Update original var to boxed.
+                if (numCaptured > 0) {
+                    for (sblock.params.items) |varId| {
+                        const svar = self.vars.items[varId];
+                        if (svar.isCaptured) {
+                            const pId = self.capVarParents.get(varId).?;
+                            const pvar = &self.vars.items[pId];
+
+                            if (svar.isBoxed and !pvar.isBoxed) {
+                                pvar.isBoxed = true;
+                                pvar.vtype = BoxType;
+                                pvar.lifetimeRcCandidate = true;
+                            }
+                        }
+                    }
+                }
 
                 const name = self.src[func.name.start..func.name.end];
                 try self.resolveLocalFuncSym(node.head.func.decl_id, name, retType.?);
@@ -882,11 +911,17 @@ pub const VMcompiler = struct {
         // Reserve the locals.
         var numInitializers: u32 = 0;
         for (sblock.locals.items) |varId| {
-            const svar = self.genGetVar(varId).?;
+            const svar = self.genGetVarPtr(varId).?;
             _ = try self.reserveLocalVar(varId);
             if (svar.genInitializer) {
                 numInitializers += 1;
             }
+
+            if (!svar.isCaptured and svar.isBoxed) {
+                // Original var starts off as unboxed.
+                svar.isBoxed = false;
+            }
+
             // log.debug("reserve {} {s}", .{local, self.getVarName(varId)});
         }
 
@@ -1238,14 +1273,36 @@ pub const VMcompiler = struct {
         return self.curSemaBlock().locals.items.len + self.curSemaBlock().params.items.len;
     }
 
-    fn semaAssignVar(self: *VMcompiler, ident: cy.NodeId, vtype: Type) !void {
+    fn semaAssignVar(self: *VMcompiler, ident: cy.NodeId, vtype: Type, isLocalDecl: bool) !void {
         // log.debug("set var {s}", .{name});
         const node = self.nodes[ident];
         const name = self.getNodeTokenString(node);
 
         // canBeSymRoot=false and check if the sym is declared in else clause.
-        if (try self.semaIdentLocalVarOrNull(ident, false)) |varId| {
+        if (try self.semaIdentLocalVarOrNull(ident, !isLocalDecl, false)) |varId| {
             const svar = &self.vars.items[varId];
+
+            if (svar.isCaptured) {
+                if (isLocalDecl) {
+                    // Create a new local var and update mapping so any references after will refer to the local var.
+                    const sblock = self.curSemaBlock();
+                    _ = sblock.nameToVar.remove(name);
+                    const id = try self.pushSemaLocalVar(name, vtype);
+                    if (sblock.subBlockDepth > 1) {
+                        self.vars.items[id].genInitializer = true;
+                    }
+                    self.nodes[ident].head.ident.semaVarId = id;
+
+                    try self.assignedVarStack.append(self.alloc, id);
+                    return;
+                } else {
+                    if (!svar.isBoxed) {
+                        // Becomes boxed so codegen knows ahead of time.
+                        svar.isBoxed = true;
+                        svar.vtype = BoxType;
+                    }
+                }
+            }
 
             const ssblock = self.curSemaSubBlock();
             if (!ssblock.prevVarTypes.contains(varId)) {
@@ -1287,7 +1344,7 @@ pub const VMcompiler = struct {
     };
 
     /// First checks current block and then the immediate parent block.
-    fn semaLookupVar(self: *VMcompiler, name: []const u8) ?SemaVarResult {
+    fn semaLookupVar(self: *VMcompiler, name: []const u8, searchParentScope: bool) ?SemaVarResult {
         const sblock = self.curSemaBlock();
         if (sblock.nameToVar.get(name)) |varId| {
             return SemaVarResult{
@@ -1296,14 +1353,16 @@ pub const VMcompiler = struct {
             };
         }
 
-        // Only check one block above.
-        if (self.semaBlockDepth > 1) {
-            const prev = self.semaBlocks.items[sblock.prevBlockId];
-            if (prev.nameToVar.get(name)) |varId| {
-                return SemaVarResult{
-                    .id = varId,
-                    .fromParentBlock = true,
-                };
+        if (searchParentScope) {
+            // Only check one block above.
+            if (self.semaBlockDepth > 1) {
+                const prev = self.semaBlocks.items[sblock.prevBlockId];
+                if (prev.nameToVar.get(name)) |varId| {
+                    return SemaVarResult{
+                        .id = varId,
+                        .fromParentBlock = true,
+                    };
+                }
             }
         }
 
@@ -1317,7 +1376,7 @@ pub const VMcompiler = struct {
         if (right.node_t == .ident) {
             var left = self.nodes[node.head.accessExpr.left];
             if (left.node_t == .ident) {
-                _ = try self.semaIdentLocalVarOrNull(node.head.accessExpr.left, false);
+                _ = try self.semaIdentLocalVarOrNull(node.head.accessExpr.left, true, false);
 
                 left = self.nodes[node.head.accessExpr.left];
                 if (left.head.ident.semaSymId != NullId) {
@@ -1359,11 +1418,11 @@ pub const VMcompiler = struct {
     /// Retrieve the SemaVarId that is local to the current block.
     /// If the var comes from a parent block, a local captured var is created and returned.
     /// Sets the resulting id onto the node for codegen.
-    fn semaIdentLocalVarOrNull(self: *VMcompiler, ident: cy.NodeId, canBeSymRoot: bool) !?SemaVarId {
+    fn semaIdentLocalVarOrNull(self: *VMcompiler, ident: cy.NodeId, searchParentScope: bool, canBeSymRoot: bool) !?SemaVarId {
         const node = self.nodes[ident];
         const name = self.getNodeTokenString(node);
 
-        if (self.semaLookupVar(name)) |res| {
+        if (self.semaLookupVar(name, searchParentScope)) |res| {
             if (res.fromParentBlock) {
                 // Create a local captured variable.
                 const svar = self.vars.items[res.id];
@@ -1566,6 +1625,10 @@ pub const VMcompiler = struct {
     fn pushSemaCapturedVar(self: *VMcompiler, name: []const u8, parentVarId: SemaVarId, vtype: Type) !SemaVarId {
         const id = try self.pushSemaVar(name, vtype);
         self.vars.items[id].isCaptured = true;
+        if (self.vars.items[parentVarId].isBoxed) {
+            // If original variable is already known to be boxed, it is also boxed in the local scope.
+            self.vars.items[id].isBoxed = true;
+        }
         try self.capVarParents.put(self.alloc, id, parentVarId);
         try self.curSemaBlock().params.append(self.alloc, id);
         return id;
@@ -1631,7 +1694,6 @@ pub const VMcompiler = struct {
         _ = discardTopExprReg;
         const expr = self.nodes[exprId];
         if (self.genGetVarPtr(varId)) |svar| {
-
             if (svar.isCaptured and !svar.isBoxed) {
                 svar.isBoxed = true;
                 svar.vtype = BoxType;
@@ -1665,7 +1727,12 @@ pub const VMcompiler = struct {
                     }
                 } else {
                     if (exprv.vtype.rcCandidate) {
-                        try self.buf.pushOp2(.copyRetainSrc, exprv.local, svar.local);
+                        if (exprv.vtype.typeT == .box) {
+                            // TODO: Becomes boxValue if child is known to not be an rcCandidate.
+                            try self.buf.pushOp2(.boxValueRetain, exprv.local, svar.local);
+                        } else {
+                            try self.buf.pushOp2(.copyRetainSrc, exprv.local, svar.local);
+                        }
                     } else {
                         try self.buf.pushOp2(.copy, exprv.local, svar.local);
                     }
@@ -1773,6 +1840,14 @@ pub const VMcompiler = struct {
         const sblock = self.curSemaBlock();
         for (sblock.params.items) |varId| {
             _ = try self.reserveLocalVar(varId);
+
+            // Params are already defined.
+            self.vars.items[varId].genIsDefined = true;
+
+            // Initialize to box type.
+            if (self.vars.items[varId].isBoxed) {
+                self.vars.items[varId].vtype = BoxType;
+            }
         }
     }
 
@@ -1887,11 +1962,11 @@ pub const VMcompiler = struct {
                         } else {
                             try self.buf.pushOp3(.add, svar.local, right.local, svar.local);
                         }
-                    } else stdx.panic("variable not declared");
+                    } else unexpected("variable not declared", &.{});
                 } else if (left.node_t == .accessExpr) {
                     try self.genBinOpAssignToField(.add, node.head.left_right.left, node.head.left_right.right);
                 } else {
-                    stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
             },
             .assign_stmt => {
@@ -1925,7 +2000,15 @@ pub const VMcompiler = struct {
                     try self.buf.pushOpSlice(.setFieldRelease, &.{leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
                     try self.pushDebugSym(nodeId);
                 } else {
-                    stdx.panicFmt("unsupported assignment to left {}", .{left.node_t});
+                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                }
+            },
+            .localDecl => {
+                const left = self.nodes[node.head.left_right.left];
+                if (left.node_t == .ident) {
+                    try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
+                } else {
+                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
             },
             .tagDecl => {
@@ -3740,14 +3823,12 @@ const SemaVar = struct {
     vtype: Type,
 
     /// Whether this var is a captured function param.
-    /// Currently, captured variables can not be reassigned to another value.
-    /// This restriction avoids an extra retain/release op for closure calls.
     isCaptured: bool = false,
 
-    /// A captured var needs to be boxed if:
-    /// 1. It can become a primitive value during its lifetime
-    /// 2. It was assigned to a value in a closure.
-    /// This is updated only in codegen since a captured var can start off unboxed and later lifted.
+    /// A captured var needs to be boxed if it was reassigned to a value.
+    /// The scope of the original var sets this to true during codegen since it can start off unboxed and
+    /// later forced to be lifted by a closure.
+    /// In the closure scope, this is set during sema so that codegen knows whether a captured var is boxed from the start.
     isBoxed: bool = false,
 
     /// Whether this is a function param. (Does not include captured vars.)
@@ -4408,4 +4489,11 @@ fn initMathModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
     try mod.setNativeFunc(alloc, "atanh", bindings.mathAtanh);
 
     return mod;
+}
+
+fn unexpected(format: []const u8, vals: []const fmt.FmtValue) noreturn {
+    if (builtin.mode == .Debug) {
+        fmt.printStderr(format, vals) catch stdx.fatal();
+    }
+    stdx.fatal();
 }

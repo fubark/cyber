@@ -2251,6 +2251,7 @@ pub const Parser = struct {
                 .is_k,
                 .plus_equal,
                 .equal,
+                .arrowLeft,
                 .operator,
                 .or_k,
                 .and_k,
@@ -2298,6 +2299,21 @@ pub const Parser = struct {
                             },
                             else => {
                                 return self.reportParseErrorAt("Expected variable to left of assignment operator.", &.{}, next);
+                            },
+                        }
+                    } else {
+                        break;
+                    }
+                },
+                .arrowLeft => {
+                    if (opts.returnLeftAssignExpr) {
+                        switch (self.nodes.items[left_id].node_t) {
+                            .ident => {
+                                opts.outIsAssignStmt.* = true;
+                                return left_id;
+                            },
+                            else => {
+                                return self.reportParseErrorAt("Expected variable to left of local declaration operator.", &.{}, next);
                             },
                         }
                     } else {
@@ -2446,6 +2462,17 @@ pub const Parser = struct {
             switch (assignTag) {
                 .equal => {
                     assignStmt = try self.pushNode(.assign_stmt, start);
+                    if (self.peekToken().tag() == .func_k) {
+                        // Multi-line lambda.
+                        rightExpr = try self.parseMultilineLambdaFunction();
+                    } else {
+                        rightExpr = (try self.parseExpr(.{})) orelse {
+                            return self.reportParseErrorAt("Expected right expression for assignment statement.", &.{}, self.peekToken());
+                        };
+                    }
+                },
+                .arrowLeft => {
+                    assignStmt = try self.pushNode(.localDecl, start);
                     if (self.peekToken().tag() == .func_k) {
                         // Multi-line lambda.
                         rightExpr = try self.parseMultilineLambdaFunction();
@@ -2725,6 +2752,7 @@ pub const TokenType = enum(u6) {
     equal,
     plus_equal,
     star_equal,
+    arrowLeft,
     new_line,
     indent,
     return_k,
@@ -2787,6 +2815,7 @@ pub const NodeType = enum {
     expr_stmt,
     assign_stmt,
     add_assign_stmt,
+    localDecl,
     pass_stmt,
     break_stmt,
     return_stmt,
@@ -3478,6 +3507,9 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     } else if (ch2 == '<') {
                         try p.pushOpToken(.lessLess, start);
                         advanceChar(p);
+                    } else if (ch2 == '-') {
+                        try p.pushToken(.arrowLeft, start);
+                        advanceChar(p);
                     } else {
                         try p.pushLogicOpToken(.less, start);
                     }
@@ -3996,6 +4028,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 55);
+    try t.eq(std.enums.values(TokenType).len, 56);
     try t.eq(keywords.kvs.len, 27);
 }

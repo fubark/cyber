@@ -2731,6 +2731,7 @@ pub const HeapObject = packed union {
             cy.NativeFunc1S => return .nativeFunc,
             cy.TccStateS => return .tccState,
             cy.OpaquePtrS => return .opaquePtr,
+            cy.BoxS => return .box,
             else => {
                 return .object;
             },

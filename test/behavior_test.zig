@@ -267,7 +267,7 @@ test "Structs." {
         \\type Node:
         \\  value
         \\n = Node{ value: 123 }
-        \\toString(n)
+        \\string(n)
     );
     try t.eqStr(try run.assertValueString(val), "Node");
     run.deinitValue(val);

@@ -162,8 +162,11 @@ pub const Value = packed union {
     }
 
     pub inline fn asPointer(self: *const Value) linksection(".eval") ?*anyopaque {
-        @setRuntimeSafety(debug);
         return @intToPtr(?*anyopaque, self.val & ~PointerMask);
+    }
+
+    pub inline fn asHeapObject(self: *const Value, comptime Ptr: type) linksection(".eval") Ptr {
+        return @intToPtr(Ptr, self.val & ~PointerMask);
     }
 
     pub inline fn asBool(self: *const Value) linksection(".eval") bool {

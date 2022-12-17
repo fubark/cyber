@@ -1965,6 +1965,11 @@ pub const VM = struct {
         }
     }
 
+    pub fn valueToString(self: *const VM, val: Value) ![]const u8 {
+        const str = self.valueToTempString(val);
+        return try self.alloc.dupe(u8, str);
+    }
+
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
     pub fn valueToTempString(self: *const VM, val: Value) linksection(".eval2") []const u8 {
         if (val.isNumber()) {
@@ -3050,16 +3055,28 @@ pub const UserVM = struct {
         return gvm.eval(srcUri, src);
     }
 
-    pub inline fn allocator(_: UserVM) std.mem.Allocator {
-        return gvm.alloc;
+    pub inline fn allocator(self: *const UserVM) std.mem.Allocator {
+        return @ptrCast(*const VM, self).alloc;
     }
 
-    pub inline fn allocString(_: UserVM, str: []const u8) !Value {
-        return gvm.allocString(str);
+    pub inline fn allocString(self: *UserVM, str: []const u8) !Value {
+        return @ptrCast(*VM, self).allocString(str);
     }
 
-    pub inline fn valueAsString(_: UserVM, val: Value) []const u8 {
-        return gvm.valueAsString(val);
+    pub inline fn allocOwnedString(self: *UserVM, str: []u8) !Value {
+        return @ptrCast(*VM, self).allocOwnedString(str);
+    }
+
+    pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {
+        return @ptrCast(*const VM, self).valueAsString(val);
+    }
+
+    pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
+        return @ptrCast(*const VM, self).valueToTempString(val);
+    }
+
+    pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {
+        return @ptrCast(*const VM, self).valueToString(val);
     }
 };
 

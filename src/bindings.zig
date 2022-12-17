@@ -269,7 +269,46 @@ export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
     }
 }
 
-fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn coreExecCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const alloc = vm.allocator();
+
+    const list = args[0].asHeapObject(*cy.CyList);
+    var buf: std.ArrayListUnmanaged([]const u8) = .{};
+    defer buf.deinit(alloc);
+    for (list.items()) |arg| {
+        buf.append(alloc, vm.valueToString(arg) catch stdx.fatal()) catch stdx.fatal();
+    }
+
+    const res = std.ChildProcess.exec(.{
+        .allocator = alloc,
+        .argv = buf.items,
+    }) catch |err| {
+        std.debug.print("exec err {}\n", .{err});
+        stdx.fatal();
+    };
+
+    const map = gvm.allocEmptyMap() catch stdx.fatal();
+    const outKey = gvm.allocString("out") catch stdx.fatal();
+    const out = vm.allocOwnedString(res.stdout) catch stdx.fatal();
+    gvm.setIndex(map, outKey, out) catch stdx.fatal();
+    const errKey = gvm.allocString("err") catch stdx.fatal();
+    const err = vm.allocOwnedString(res.stderr) catch stdx.fatal();
+    gvm.setIndex(map, errKey, err) catch stdx.fatal();
+    return map;
+}
+
+pub fn coreFetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const alloc = vm.allocator();
+    const url = vm.valueToTempString(args[0]);
+    const res = std.ChildProcess.exec(.{
+        .allocator = alloc,
+        .argv = &.{ "curl", url },
+    }) catch stdx.fatal();
+    alloc.free(res.stderr);
+    return vm.allocOwnedString(res.stdout) catch stdx.fatal();
+}
+
+pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const path = args[0];
     const alloc = vm.allocator();
@@ -598,7 +637,7 @@ fn stdBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     return map;
 }
 
-fn toOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = vm;
     _ = nargs;
     const val = args[0];
@@ -609,7 +648,7 @@ fn toOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
-fn castNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn coreNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = vm;
     _ = nargs;
     const val = args[0];
@@ -628,7 +667,7 @@ fn castNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
-fn stdToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn coreString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const val = args[0];
     defer vm.release(args[0]);
@@ -640,20 +679,50 @@ fn stdToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
-fn stdPrint(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn corePrint(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const str = gvm.valueToTempString(args[0]);
-    std.io.getStdOut().writer().print("{s}\n", .{str}) catch stdx.fatal();
+    const w = std.io.getStdOut().writer();
+    w.writeAll(str) catch stdx.fatal();
+    w.writeByte('\n') catch stdx.fatal();
     vm.release(args[0]);
     return Value.None;
 }
 
-fn stdReadInput(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
+pub fn corePrints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    _ = nargs;
+    const str = gvm.valueToTempString(args[0]);
+    const w = std.io.getStdOut().writer();
+    w.writeAll(str) catch stdx.fatal();
+    vm.release(args[0]);
+    return Value.None;
+}
+
+pub fn coreWriteFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const path = vm.valueToString(args[0]) catch stdx.fatal();
+    defer vm.allocator().free(path);
+    const content = vm.valueToTempString(args[1]);
+    std.fs.cwd().writeFile(path, content) catch stdx.fatal();
+    return Value.None;
+}
+
+pub fn coreReadFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const path = vm.valueToTempString(args[0]);
+    const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch stdx.fatal();
+    return vm.allocOwnedString(content) catch stdx.fatal();
+}
+
+pub fn coreReadAll(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const input = std.io.getStdIn().readToEndAlloc(gvm.alloc, 10e8) catch stdx.fatal();
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 
-fn stdParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
+pub fn coreReadLine(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(gvm.alloc, '\n', 10e8) catch stdx.fatal();
+    return gvm.allocOwnedString(input) catch stdx.fatal();
+}
+
+pub fn coreParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
     _ = nargs;
     const str = gvm.valueAsString(args[0]);
     defer vm.release(args[0]);

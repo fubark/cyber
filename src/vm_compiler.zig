@@ -823,6 +823,8 @@ pub const VMcompiler = struct {
             return initTestModule(self.alloc, spec);
         } else if (std.mem.eql(u8, "math", spec)) {
             return initMathModule(self.alloc, spec);
+        } else if (std.mem.eql(u8, "core", spec)) {
+            return initCoreModule(self.alloc, spec);
         } else {
             return self.reportErrorAt("Unsupported import. {}", &.{fmt.v(spec)}, nodeId);
         }
@@ -927,6 +929,10 @@ pub const VMcompiler = struct {
         self.tokens = ast.tokens;
         self.semaBlockDepth = 0;
 
+        // Import core module into local namespace.
+        const modId = try self.getOrLoadModule("core", NullId);
+        try self.importAllFromModule(modId);
+
         const root = self.nodes[ast.root_id];
 
         try self.pushSemaBlock();
@@ -1006,6 +1012,23 @@ pub const VMcompiler = struct {
             .buf = self.buf,
             .hasError = false,
         };
+    }
+
+    fn importAllFromModule(self: *VMcompiler, modId: ModuleId) !void {
+        const mod = self.modules.items[modId];
+        var iter = mod.syms.iterator();
+        while (iter.next()) |entry| {
+            const symId = try self.ensureSemaSym(entry.key_ptr.*, null);
+            try self.semaSymToRef.put(self.alloc, symId, .{
+                .refT = .moduleMember,
+                .inner = .{
+                    .moduleMember = .{
+                        .modId = modId,
+                        .memberName = entry.key_ptr.*,
+                    }
+                }
+            });
+        }
     }
 
     fn endLocals(self: *VMcompiler) !void {
@@ -4217,6 +4240,29 @@ pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
 const ReservedTempLocal = struct {
     local: LocalId,
 };
+
+fn initCoreModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
+    var mod = Module{
+        .syms = .{},
+        .prefix = spec,
+    };
+    try mod.syms.ensureTotalCapacity(alloc, 13);
+    try mod.setNativeFunc(alloc, "bindLib", bindings.coreBindLib);
+    try mod.setNativeFunc(alloc, "execCmd", bindings.coreExecCmd);
+    try mod.setNativeFunc(alloc, "fetchUrl", bindings.coreFetchUrl);
+    // try mod.setNativeFunc(alloc, "dump", bindings.coreDump);
+    try mod.setNativeFunc(alloc, "number", bindings.coreNumber);
+    try mod.setNativeFunc(alloc, "opaque", bindings.coreOpaque);
+    try mod.setNativeFunc(alloc, "parseCyon", bindings.coreParseCyon);
+    try mod.setNativeFunc(alloc, "print", bindings.corePrint);
+    try mod.setNativeFunc(alloc, "prints", bindings.corePrints);
+    try mod.setNativeFunc(alloc, "readAll", bindings.coreReadAll);
+    try mod.setNativeFunc(alloc, "readFile", bindings.coreReadFile);
+    try mod.setNativeFunc(alloc, "readLine", bindings.coreReadLine);
+    try mod.setNativeFunc(alloc, "string", bindings.coreString);
+    try mod.setNativeFunc(alloc, "writeFile", bindings.coreWriteFile);
+    return mod;
+}
 
 fn initTestModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
     var mod = Module{

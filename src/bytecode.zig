@@ -170,6 +170,138 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
+    pub fn getInstLenAt(self: *const ByteCodeBuffer, pc: usize) u8 {
+        const ops = self.ops.items;
+        switch (ops[pc].code) {
+            .ret0,
+            .ret1,
+            .coreturn => {
+                return 1;
+            },
+            .retain,
+            .end,
+            .release,
+            .none,
+            .true,
+            .false,
+            .mapEmpty => {
+                return 2;
+            },
+            .releaseN,
+            .setInitN => {
+                const numVars = ops[pc+1].arg;
+                return 2 + numVars;
+            },
+            .setIndex,
+            .copy,
+            .not,
+            .bitwiseNot,
+            .neg,
+            .copyRetainSrc,
+            .copyReleaseDst,
+            .constI8,
+            .constI8Int,
+            .call0,
+            .call1,
+            .jumpBack,
+            .jump,
+            .coyield,
+            .coresume,
+            .box,
+            .setBoxValue,
+            .setBoxValueRelease,
+            .boxValue,
+            .boxValueRetain,
+            .tagLiteral,
+            .tryValue,
+            .varSym,
+            .constOp => {
+                return 3;
+            },
+            .indexRetain,
+            .reverseIndexRetain,
+            .index,
+            .reverseIndex,
+            .jumpNotNone,
+            .jumpCond,
+            .minus,
+            .minusInt,
+            .mul,
+            .div,
+            .setField,
+            .pow,
+            .mod,
+            .less,
+            .lessInt,
+            .greater,
+            .lessEqual,
+            .greaterEqual,
+            .compare,
+            .compareNot,
+            .bitwiseAnd,
+            .bitwiseOr,
+            .bitwiseXor,
+            .bitwiseLeftShift,
+            .bitwiseRightShift,
+            .list,
+            .add,
+            .addInt,
+            .tag,
+            .jumpNotCond => {
+                return 4;
+            },
+            .stringTemplate => {
+                const numExprs = ops[pc+2].arg;
+                return 4 + numExprs + 1;
+            },
+            .funcSymClosure => {
+                const numCaptured = ops[pc+3].arg;
+                return 4 + numCaptured;
+            },
+            .map => {
+                const numEntries = ops[pc+2].arg;
+                return 4 + numEntries;
+            },
+            .slice,
+            .lambda => {
+                return 5;
+            },
+            .object,
+            .objectSmall => {
+                const numEntries = ops[pc+3].arg;
+                return 5 + numEntries;
+            },
+            .coinit => {
+                return 6;
+            },
+            .closure => {
+                const numCaptured = ops[pc+3].arg;
+                return 6 + numCaptured;
+            },
+            .setFieldRelease,
+            .setFieldReleaseIC,
+            .fieldRetain,
+            .fieldRetainIC,
+            .field,
+            .fieldIC => {
+                return 7;
+            },
+            .callSym,
+            .callNativeFuncIC,
+            .callFuncIC => {
+                return 11;
+            },
+            .callObjSym,
+            .callObjNativeFuncIC,
+            .callObjFuncIC => {
+                return 14;
+            },
+            else => {
+                stdx.panicFmt("unsupported {}", .{ops[pc].code});
+            },
+        }
+    }
+
     pub fn dump(self: ByteCodeBuffer) !void {
         var pc: usize = 0;
         const ops = self.ops.items;
@@ -177,151 +309,11 @@ pub const ByteCodeBuffer = struct {
         println("Bytecode:", .{});
         while (pc < ops.len) {
             const name = @tagName(ops[pc].code);
+            const len = self.getInstLenAt(pc);
             switch (ops[pc].code) {
-                .ret0,
-                .ret1,
-                .coreturn => {
-                    println("{} {s}", .{pc, name});
-                    pc += 1;
-                },
-                .retain,
-                .end,
-                .release,
-                .none,
-                .true,
-                .false,
-                .mapEmpty => {
-                    println("{} {s} {}", .{pc, name, ops[pc+1].arg});
-                    pc += 2;
-                },
-                .releaseN,
-                .setInitN => {
-                    const numVars = ops[pc+1].arg;
-                    println("{} {s} {}", .{pc, name, numVars});
-                    pc += 2 + numVars;
-                },
-                .setIndex,
-                .copy,
-                .not,
-                .bitwiseNot,
-                .neg,
-                .copyRetainSrc,
-                .copyReleaseDst,
-                .constI8,
-                .constI8Int,
-                .call0,
-                .call1,
-                .jumpBack,
-                .jump,
-                .coyield,
-                .coresume,
-                .box,
-                .setBoxValue,
-                .setBoxValueRelease,
-                .boxValue,
-                .boxValueRetain,
-                .tagLiteral,
-                .tryValue,
-                .varSym,
-                .constOp => {
-                    println("{} {s} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg});
-                    pc += 3;
-                },
-                .indexRetain,
-                .reverseIndexRetain,
-                .index,
-                .reverseIndex,
-                .jumpNotNone,
-                .jumpCond,
-                .minus,
-                .minusInt,
-                .mul,
-                .div,
-                .setField,
-                .pow,
-                .mod,
-                .less,
-                .lessInt,
-                .greater,
-                .lessEqual,
-                .greaterEqual,
-                .compare,
-                .compareNot,
-                .bitwiseAnd,
-                .bitwiseOr,
-                .bitwiseXor,
-                .bitwiseLeftShift,
-                .bitwiseRightShift,
-                .list,
-                .add,
-                .addInt,
-                .tag,
-                .jumpNotCond => {
-                    println("{} {s} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
-                    pc += 4;
-                },
-                .stringTemplate => {
-                    println("{} {s} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg});
-                    const numExprs = ops[pc+2].arg;
-                    pc += 4 + numExprs + 1;
-                },
-                .funcSymClosure => {
-                    const symId = ops[pc+2].arg;
-                    const numParams = ops[pc+2].arg;
-                    const numCaptured = ops[pc+3].arg;
-                    println("{} {s} {} {} {}", .{pc, name, symId, numParams, numCaptured});
-                    pc += 4 + numCaptured;
-                },
-                .map => {
-                    const startLocal = ops[pc+1].arg;
-                    const numEntries = ops[pc+2].arg;
-                    const dst = ops[pc+3].arg;
-                    println("{} {s} {} {} {}", .{pc, name, startLocal, numEntries, dst});
-                    pc += 4 + numEntries;
-                },
-                .slice,
-                .lambda => {
-                    println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
-                    pc += 5;
-                },
-                .object,
-                .objectSmall => {
-                    const numEntries = ops[pc+3].arg;
-                    println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, numEntries, ops[pc+4].arg});
-                    pc += 5 + numEntries;
-                },
-                .coinit => {
-                    println("{} {s} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg});
-                    pc += 6;
-                },
-                .closure => {
-                    const numCaptured = ops[pc+3].arg;
-                    println("{} {s} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg});
-                    pc += 6 + numCaptured;
-                },
-                .setFieldRelease,
-                .setFieldReleaseIC,
-                .fieldRetain,
-                .fieldRetainIC,
-                .field,
-                .fieldIC => {
-                    println("{} {s} {} {} {} {} {} {}", .{pc, name, ops[pc+1].arg, ops[pc+2].arg, ops[pc+3].arg, ops[pc+4].arg, ops[pc+5].arg, ops[pc+6].arg});
-                    pc += 7;
-                },
-                .callSym,
-                .callNativeFuncIC,
-                .callFuncIC => {
-                    println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+11])});
-                    pc += 11;
-                },
-                .callObjSym,
-                .callObjNativeFuncIC,
-                .callObjFuncIC => {
-                    println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+14])});
-                    pc += 14;
-                },
                 else => {
-                    stdx.panicFmt("unsupported {}", .{ops[pc].code});
+                    println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+len])});
+                    pc += len;
                 },
             }
         }

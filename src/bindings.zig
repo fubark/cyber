@@ -81,30 +81,6 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("OpaquePtr");
     std.debug.assert(id == cy.OpaquePtrS);
 
-    id = try self.ensureFuncSym("std.readInput");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdReadInput));
-    id = try self.ensureFuncSym("std.parseCyon");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdParseCyon));
-    id = try self.ensureFuncSym("std.print");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdPrint));
-    id = try self.ensureFuncSym("std.toString");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdToString));
-    // id = try self.ensureFuncSym("std.dump");
-    // self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdDump));
-    id = try self.ensureFuncSym("std.bindLib");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(stdBindLib));
-    id = try self.ensureFuncSym("number");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(castNumber));
-    id = try self.ensureFuncSym("opaque");
-    self.setFuncSym(id, cy.FuncSymbolEntry.initNativeFunc1(toOpaque));
-
-    try self.ensureGlobalFuncSym("readInput", "std.readInput");
-    try self.ensureGlobalFuncSym("parseCyon", "std.parseCyon");
-    try self.ensureGlobalFuncSym("print", "std.print");
-    try self.ensureGlobalFuncSym("toString", "std.toString");
-    try self.ensureGlobalFuncSym("bindLib", "std.bindLib");
-    // try self.ensureGlobalFuncSym("dump", "std.dump");
-
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
     id = try self.ensureFieldSym("sym");

@@ -100,8 +100,6 @@ pub const VM = struct {
     tagLitSyms: cy.List(TagLitSym),
     tagLitSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
-    globals: std.StringHashMapUnmanaged(SymbolId),
-
     u8Buf: cy.List(u8),
 
     stackTrace: StackTrace,
@@ -157,7 +155,6 @@ pub const VM = struct {
             .pairIteratorObjSym = undefined,
             .nextObjSym = undefined,
             .trace = undefined,
-            .globals = .{},
             .u8Buf = .{},
             .stackTrace = .{},
             .debugTable = undefined,
@@ -238,7 +235,6 @@ pub const VM = struct {
         self.tagLitSyms.deinit(self.alloc);
         self.tagLitSymSignatures.deinit(self.alloc);
 
-        self.globals.deinit(self.alloc);
         self.u8Buf.deinit(self.alloc);
         self.stackTrace.deinit(self.alloc);
         self.alloc.free(self.panicMsg);
@@ -1026,15 +1022,6 @@ pub const VM = struct {
         } else {
             return self;
         }
-    }
-
-    pub fn ensureGlobalFuncSym(self: *VM, ident: []const u8, funcSymName: []const u8) !void {
-        const id = try self.ensureFuncSym(funcSymName);
-        try self.globals.put(self.alloc, ident, id);
-    }
-
-    pub fn getGlobalFuncSym(self: *VM, ident: []const u8) ?SymbolId {
-        return self.globals.get(ident);
     }
 
     pub inline fn getFuncSym(self: *const VM, name: []const u8) ?SymbolId {
@@ -1907,15 +1894,25 @@ pub const VM = struct {
         }
     }
 
-    pub fn buildStackTrace(self: *VM) !void {
+    pub fn buildStackTrace(self: *VM, fromPanic: bool) !void {
         @setCold(true);
         self.stackTrace.deinit(self.alloc);
         var frames: std.ArrayListUnmanaged(StackFrame) = .{};
 
         var framePtr = framePtrOffset(self.framePtr);
         var pc = pcOffset(self.pc);
+        var isTopFrame = true;
         while (true) {
-            const idx = self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
+            const idx = b: {
+                if (isTopFrame) {
+                    isTopFrame = false;
+                    if (fromPanic) {
+                        const len = self.compiler.buf.getInstLenAt(pc);
+                        break :b self.indexOfDebugSym(pc + len) orelse return error.NoDebugSym;
+                    }
+                }
+                break :b self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
+            };
             const sym = self.debugTable[idx];
 
             if (sym.frameLoc == NullId) {
@@ -1958,7 +1955,6 @@ pub const VM = struct {
     }
 
     pub fn valueAsString(self: *const VM, val: Value) []const u8 {
-        @setRuntimeSafety(debug);
         if (val.isPointer()) {
             const obj = stdx.ptrCastAlign(*HeapObject, val.asPointer().?);
             return obj.string.ptr[0..obj.string.len];
@@ -3012,7 +3008,7 @@ pub const UserVM = struct {
         if (builtin.is_test) {
             log.debug("panic: {s}", .{vm.panicMsg});
         } else {
-            try fmt.printStderr("panic: {}\n", &.{fmt.v(vm.panicMsg)});
+            try fmt.printStderr("panic: {}\n\n", &.{fmt.v(vm.panicMsg)});
         }
         const trace = vm.getStackTrace();
         try trace.dump(vm);
@@ -3080,7 +3076,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(section) error{StackOverflow, OutO
             } else if (err == error.End) {
                 return;
             } else if (err == error.Panic) {
-                try @call(.{ .modifier = .never_inline }, gvm.buildStackTrace, .{});
+                try @call(.{ .modifier = .never_inline }, gvm.buildStackTrace, .{true});
                 return error.Panic;
             } else return err;
         };

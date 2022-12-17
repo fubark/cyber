@@ -2260,6 +2260,8 @@ pub const Parser = struct {
                 .from_k,
                 .as_k,
                 .string,
+                .number,
+                .ident,
                 .templateString,
                 .new_line,
                 .none => break,

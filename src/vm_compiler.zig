@@ -748,6 +748,9 @@ pub const VMcompiler = struct {
                 _ = try self.semaExpr(node.head.for_iter_stmt.iterable, false);
 
                 const as_clause = self.nodes[node.head.for_iter_stmt.as_clause];
+                if (as_clause.head.as_iter_clause.key != NullId) {
+                    _ = try self.semaEnsureVar(as_clause.head.as_iter_clause.key, AnyType);
+                }
                 _ = try self.semaEnsureVar(as_clause.head.as_iter_clause.value, AnyType);
 
                 try self.semaStmts(node.head.for_iter_stmt.body_head, false);
@@ -2117,11 +2120,23 @@ pub const VMcompiler = struct {
                 const iterable = try self.genExpr(node.head.for_iter_stmt.iterable, false);
 
                 const asClause = self.nodes[node.head.for_iter_stmt.as_clause];
-                const ident = self.nodes[asClause.head.as_iter_clause.value];
-                const val = self.genGetVar(ident.head.ident.semaVarId).?;
+
+                var keyVar: SemaVar = undefined;
+                var keyIdent: cy.Node = undefined;
+                var pairIter = false;
+                if (asClause.head.as_iter_clause.key != NullId) {
+                    keyIdent = self.nodes[asClause.head.as_iter_clause.key];
+                    keyVar = self.genGetVar(keyIdent.head.ident.semaVarId).?;
+                    pairIter = true;
+                }
+                const valIdent = self.nodes[asClause.head.as_iter_clause.value];
+                const valVar = self.genGetVar(valIdent.head.ident.semaVarId).?;
 
                 // At this point the temp var is loosely defined.
-                self.vars.items[ident.head.ident.semaVarId].genIsDefined = true;
+                self.vars.items[valIdent.head.ident.semaVarId].genIsDefined = true;
+                if (pairIter) {
+                    self.vars.items[keyIdent.head.ident.semaVarId].genIsDefined = true;
+                }
 
                 // Loop needs to reserve temp locals.
                 const reservedStart = self.reservedTempLocalStack.items.len;
@@ -2131,13 +2146,23 @@ pub const VMcompiler = struct {
                 const iterLocal = try self.nextFreeTempLocal();
                 try self.setReservedTempLocal(iterLocal);
                 try self.buf.pushOp2(.copy, iterable.local, iterLocal + 4);
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                if (pairIter) {
+                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.pairIteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                } else {
+                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                }
 
                 try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
+                if (pairIter) {
+                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+                } else {
+                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+                }
 
-                const skipSkipJump = try self.pushEmptyJumpNotNone(val.local);
+                const skipSkipJump = try self.pushEmptyJumpNotNone(if (pairIter) keyVar.local else valVar.local);
                 const skipBodyJump = try self.pushEmptyJump();
                 self.patchJumpToCurrent(skipSkipJump);
 
@@ -2145,10 +2170,16 @@ pub const VMcompiler = struct {
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
 
                 try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, val.local);
+                if (pairIter) {
+                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+                } else {
+                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+                }
 
-                try self.pushJumpBackNotNone(bodyPc, val.local);
+                try self.pushJumpBackNotNone(bodyPc, if (pairIter) keyVar.local else valVar.local);
                 try self.buf.pushOp1(.release, iterLocal);
                 self.patchJumpToCurrent(skipBodyJump);
             },

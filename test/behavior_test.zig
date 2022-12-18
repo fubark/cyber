@@ -1054,6 +1054,25 @@ test "Lists" {
     try t.eqSlice(i32, val_slice, &.{ 1, 2, 3 });
     run.deinitValue(val);
     t.alloc.free(val_slice);
+
+    // Iterate list
+    _ = try run.eval(
+        \\import t 'test'
+        \\a := [1, 2, 3, 4, 5]
+        \\sum := 0
+        \\for a as it:
+        \\  sum += it
+        \\try t.eq(sum, 15)
+        \\-- Pair iteration.
+        \\a = [10, 20, 30]
+        \\sum = 0
+        \\idxSum := 0
+        \\for a as idx, it:
+        \\  sum += it
+        \\  idxSum += idx
+        \\try t.eq(sum, 60)
+        \\try t.eq(idxSum, 3)
+    );
 }
 
 test "Maps" {

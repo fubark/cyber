@@ -91,6 +91,7 @@ pub const VM = struct {
     iteratorObjSym: SymbolId,
     pairIteratorObjSym: SymbolId,
     nextObjSym: SymbolId,
+    nextPairObjSym: SymbolId,
 
     /// Tag types.
     tagTypes: cy.List(TagType),
@@ -154,6 +155,7 @@ pub const VM = struct {
             .iteratorObjSym = undefined,
             .pairIteratorObjSym = undefined,
             .nextObjSym = undefined,
+            .nextPairObjSym = undefined,
             .trace = undefined,
             .u8Buf = .{},
             .stackTrace = .{},
@@ -1737,28 +1739,31 @@ pub const VM = struct {
                 };
             },
             .nativeFunc2 => {
-                stdx.panic("unsupported nativefunc2");
-                // const newFramePtr = self.framePtr + startLocal;
-                // gvm.pc = pc.*;
-                // const res = sym.inner.nativeFunc2(undefined, obj, @ptrCast([*]const Value, newFramePtr + 2), numArgs);
-                // pc.* = gvm.pc;
-                // if (reqNumRetVals == 2) {
-                //     self.stack[newFramePtr] = res.left;
-                //     self.stack[newFramePtr+1] = res.right;
-                // } else {
-                //     switch (reqNumRetVals) {
-                //         0 => {
-                //             // Nop.
-                //         },
-                //         1 => unreachable,
-                //         2 => {
-                //             unreachable;
-                //         },
-                //         3 => {
-                //             unreachable;
-                //         },
-                //     }
-                // }
+                const newFramePtr = framePtr + startLocal;
+                gvm.framePtr = newFramePtr;
+                const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                if (reqNumRetVals == 2) {
+                    newFramePtr[0] = res.left;
+                    newFramePtr[1] = res.right;
+                } else {
+                    switch (reqNumRetVals) {
+                        0 => {
+                            release(self, res.left);
+                            release(self, res.right);
+                        },
+                        1 => {
+                            newFramePtr[0] = res.left;
+                            release(self, res.right);
+                        },
+                        else => {
+                            stdx.panic("unsupported");
+                        },
+                    }
+                }
+                return PcFramePtr{
+                    .pc = pc + 14,
+                    .framePtr = framePtr,
+                };
             },
             // else => {
             //     // stdx.panicFmt("unsupported {}", .{sym.entryT});
@@ -2817,8 +2822,8 @@ const SymbolEntryType = enum {
 };
 
 const NativeObjFuncPtr = *const fn (*UserVM, *anyopaque, [*]const Value, u8) Value;
+const NativeObjFunc2Ptr = *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair;
 const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
-
 
 pub const SymbolEntry = struct {
     entryT: SymbolEntryType,
@@ -2857,7 +2862,7 @@ pub const SymbolEntry = struct {
         };
     }
 
-    fn initNativeFunc2(func: *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair) SymbolEntry {
+    pub fn initNativeFunc2(func: NativeObjFunc2Ptr) SymbolEntry {
         return .{
             .entryT = .nativeFunc2,
             .inner = .{

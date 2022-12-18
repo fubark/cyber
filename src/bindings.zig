@@ -41,6 +41,10 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
     self.nextObjSym = try self.ensureMethodSymKey("next");
     try self.addMethodSym(cy.ListS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listNext));
+    self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator");
+    try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
+    self.nextPairObjSym = try self.ensureMethodSymKey("nextPair");
+    try self.addMethodSym(cy.ListS, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(listNextPair));
     const add = try self.ensureMethodSymKey("add");
     try self.addMethodSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
     const insert = try self.ensureMethodSymKey("insert");
@@ -850,8 +854,25 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     return Value.None;
 }
 
+fn listNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) cy.ValuePair {
+    _ = args;
+    _ = nargs;
+    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    if (list.list.nextIterIdx < list.list.list.len) {
+        defer list.list.nextIterIdx += 1;
+        const val = list.list.list.ptr[list.list.nextIterIdx];
+        gvm.retain(val);
+        return .{
+            .left = Value.initF64(@intToFloat(f64, list.list.nextIterIdx)),
+            .right = val,
+        };
+    } else return .{
+        .left = Value.None,
+        .right = Value.None,
+    };
+}
+
 fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    @setRuntimeSafety(debug);
     _ = args;
     _ = nargs;
     const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);

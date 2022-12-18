@@ -1170,6 +1170,42 @@ pub const Parser = struct {
                             },
                         };
                         return for_stmt;
+                    } else if (token.tag() == .comma) {
+                        self.advanceToken();
+                        const secondIdent = (try self.parseExpr(.{})) orelse {
+                            return self.reportParseError("Expected ident.", &.{});
+                        };
+                        if (self.nodes.items[secondIdent].node_t == .ident) {
+                            token = self.peekToken();
+                            if (token.tag() == .colon) {
+                                self.advanceToken();
+                                try self.pushBlock();
+                                const body_head = try self.parseIndentedBodyStatements();
+                                self.popBlock();
+
+                                const as_clause = try self.pushNode(.as_iter_clause, start);
+                                self.nodes.items[as_clause].head = .{
+                                    .as_iter_clause = .{
+                                        .value = secondIdent,
+                                        .key = ident,
+                                    }
+                                };
+
+                                const for_stmt = try self.pushNode(.for_iter_stmt, start);
+                                self.nodes.items[for_stmt].head = .{
+                                    .for_iter_stmt = .{
+                                        .iterable = expr_id,
+                                        .body_head = body_head,
+                                        .as_clause = as_clause,
+                                    },
+                                };
+                                return for_stmt;
+                            } else {
+                                return self.reportParseError("Expected :.", &.{});
+                            }
+                        } else {
+                            return self.reportParseError("Expected ident.", &.{});
+                        }
                     } else {
                         return self.reportParseErrorAt("Expected :.", &.{}, token);
                     }

@@ -20,13 +20,14 @@ pub const unescapeString = vm_compiler.unescapeString;
 const value = @import("value.zig");
 pub const Value = value.Value;
 pub const ValuePair = value.ValuePair;
-pub const TagBoolean = value.TagBoolean;
-pub const TagNone = value.TagNone;
-pub const TagError = value.TagError;
-pub const TagConstString = value.TagConstString;
-pub const TagUserTag = value.TagUserTag;
-pub const TagUserTagLiteral = value.TagUserTagLiteral;
-pub const TagInteger = value.TagInteger;
+pub const BooleanT = value.BooleanT;
+pub const NoneT = value.NoneT;
+pub const ErrorT = value.ErrorT;
+pub const ConstStringT = value.ConstStringT;
+pub const UserTagT = value.UserTagT;
+pub const UserTagLiteralT = value.UserTagLiteralT;
+pub const IntegerT = value.IntegerT;
+pub const NumberT = value.NumberT;
 
 pub const ValueUserTag = value.ValueUserTag;
 

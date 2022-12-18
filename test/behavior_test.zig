@@ -970,6 +970,19 @@ test "Strings" {
     str = try run.assertValueString(val);
     try t.eqStr(str, "abcxyz");
     run.deinitValue(val);
+
+    // String functions.
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- Const string.
+        \\str = 'abc'
+        \\try t.eq(str.len(), 3)
+        \\try t.eq(str.charAt(1), 98)
+        \\-- Heap string.
+        \\str = '{'abc'}'
+        \\try t.eq(str.len(), 3)
+        \\try t.eq(str.charAt(1), 98)
+    );
 }
 
 test "String interpolation." {
@@ -1905,8 +1918,10 @@ test "Math" {
         \\try t.eqNear(m.e, 2.71828182)
         \\try t.eqNear(m.sqrt1_2, 0.70710678)
         \\try t.eqNear(m.sqrt2, 1.41421356)
+        \\-- nan
         \\try t.eq(m.isNaN(m.nan), true)
         \\try t.eq(m.isNaN(1), false)
+        \\try t.eq(m.nan == m.nan, false)
         \\try t.eq(m.abs(1), 1)
         \\try t.eq(m.abs(-1), 1)
         \\try t.eq(m.ceil(0), 0)
@@ -2221,8 +2236,8 @@ const VMrunner = struct {
 
     pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {
         _ = self;
-        const obj = stdx.ptrCastAlign(*cy.HeapObject, val.asPointer());
-        const list = stdx.ptrCastAlign(*cy.List(cy.Value), &obj.list.list);
+        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
+        const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
         const dupe = try t.alloc.alloc(i32, list.len);
         for (list.items()) |it, i| {
             dupe[i] = @floatToInt(i32, it.toF64());

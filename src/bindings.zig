@@ -37,28 +37,52 @@ pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
     forceSectionDep();
 
-    // Init compile time builtins.
     const resize = try self.ensureMethodSymKey("resize");
-    var id = try self.addStruct("List");
+    self.iteratorObjSym = try self.ensureMethodSymKey("iterator");
+    self.nextObjSym = try self.ensureMethodSymKey("next");
+    self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator");
+    self.nextPairObjSym = try self.ensureMethodSymKey("nextPair");
+    const add = try self.ensureMethodSymKey("add");
+    const insert = try self.ensureMethodSymKey("insert");
+    const remove = try self.ensureMethodSymKey("remove");
+    const sort = try self.ensureMethodSymKey("sort");
+    const size = try self.ensureMethodSymKey("size");
+    const len = try self.ensureMethodSymKey("len");
+    const charAt = try self.ensureMethodSymKey("charAt");
+
+    // Init compile time builtins.
+
+    // Primitive types.
+    var id = try self.addStruct("none");
+    std.debug.assert(id == cy.NoneT);
+    id = try self.addStruct("boolean");
+    std.debug.assert(id == cy.BooleanT);
+    id = try self.addStruct("error");
+    std.debug.assert(id == cy.ErrorT);
+    id = try self.addStruct("conststring");
+    std.debug.assert(id == cy.ConstStringT);
+    try self.addMethodSym(cy.ConstStringT, len, cy.SymbolEntry.initNativeFunc1(constStringLen));
+    try self.addMethodSym(cy.ConstStringT, charAt, cy.SymbolEntry.initNativeFunc1(constStringCharAt));
+    id = try self.addStruct("tag");
+    std.debug.assert(id == cy.UserTagT);
+    id = try self.addStruct("tagliteral");
+    std.debug.assert(id == cy.UserTagLiteralT);
+    id = try self.addStruct("integer");
+    std.debug.assert(id == cy.IntegerT);
+    id = try self.addStruct("number");
+    std.debug.assert(id == cy.NumberT);
+
+    id = try self.addStruct("List");
     std.debug.assert(id == cy.ListS);
     try self.addMethodSym(cy.ListS, resize, cy.SymbolEntry.initNativeFunc1(listResize));
-    self.iteratorObjSym = try self.ensureMethodSymKey("iterator");
     try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
-    self.nextObjSym = try self.ensureMethodSymKey("next");
     try self.addMethodSym(cy.ListS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listNext));
-    self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator");
     try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
-    self.nextPairObjSym = try self.ensureMethodSymKey("nextPair");
     try self.addMethodSym(cy.ListS, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(listNextPair));
-    const add = try self.ensureMethodSymKey("add");
     try self.addMethodSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
-    const insert = try self.ensureMethodSymKey("insert");
     try self.addMethodSym(cy.ListS, insert, cy.SymbolEntry.initNativeFunc1(listInsert));
-    const remove = try self.ensureMethodSymKey("remove");
     try self.addMethodSym(cy.ListS, remove, cy.SymbolEntry.initNativeFunc1(listRemove));
-    const sort = try self.ensureMethodSymKey("sort");
     try self.addMethodSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
-    const size = try self.ensureMethodSymKey("size");
     try self.addMethodSym(cy.ListS, size, cy.SymbolEntry.initNativeFunc1(listSize));
 
     id = try self.addStruct("Map");
@@ -78,6 +102,8 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("String");
     std.debug.assert(id == cy.StringS);
+    try self.addMethodSym(cy.StringS, len, cy.SymbolEntry.initNativeFunc1(stringLen));
+    try self.addMethodSym(cy.StringS, charAt, cy.SymbolEntry.initNativeFunc1(stringCharAt));
 
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
@@ -273,7 +299,7 @@ export fn cRelease(val: Value) void {
 
 export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
     if (val.isPointer()) {
-        const obj = stdx.ptrCastAlign(*cy.HeapObject, val.asPointer().?);
+        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
         const dupe = std.cstr.addNullByte(gvm.alloc, obj.string.ptr[0..obj.string.len]) catch stdx.fatal();
         len.* = @intCast(u32, obj.string.len);
         return dupe.ptr;
@@ -675,8 +701,8 @@ pub fn coreNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             return Value.initF64(1);
         } else {
             switch (val.getTag()) {
-                cy.TagUserTag => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-                cy.TagUserTagLiteral => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+                cy.UserTagT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+                cy.UserTagLiteralT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
                 else => return Value.initF64(1),
             }
         }
@@ -766,7 +792,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             var iter = dmap.iterator();
 
             const mapVal = try gvm.allocEmptyMap();
-            const map = stdx.ptrCastAlign(*cy.HeapObject, mapVal.asPointer().?);
+            const map = stdx.ptrAlignCast(*cy.HeapObject, mapVal.asPointer().?);
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
                 const key = try self.allocString(entry.key_ptr.*);
@@ -785,7 +811,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
 }
 
 fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
-    const map = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner); 
+    const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner); 
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
@@ -795,8 +821,8 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
         stdx.panic("Args mismatch");
     }
 
-    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const list = stdx.ptrCastAlign(*cy.List(Value), &obj.list.list);
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
         lessFn: Value,
     };
@@ -827,8 +853,8 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
 fn listRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const index = @floatToInt(usize, args[0].toF64());
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     inner.remove(index);
     vm_.releaseObject(gvm, list);
     return Value.None;
@@ -838,8 +864,8 @@ fn listInsert(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     _ = nargs;
     const index = @floatToInt(usize, args[0].toF64());
     const value = args[1];
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (inner.len == inner.buf.len) {
         inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
     }
@@ -852,8 +878,8 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (inner.len == inner.buf.len) {
         inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
     }
@@ -866,7 +892,7 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
 fn listNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) cy.ValuePair {
     _ = args;
     _ = nargs;
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     if (list.list.nextIterIdx < list.list.list.len) {
         defer list.list.nextIterIdx += 1;
         const val = list.list.list.ptr[list.list.nextIterIdx];
@@ -884,7 +910,7 @@ fn listNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
 fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = args;
     _ = nargs;
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     if (list.list.nextIterIdx < list.list.list.len) {
         defer list.list.nextIterIdx += 1;
         const val = list.list.list.ptr[list.list.nextIterIdx];
@@ -896,7 +922,7 @@ fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
 fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = args;
     _ = nargs;
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     gvm.retainObject(list);
     list.list.nextIterIdx = 0;
     return Value.initPtr(ptr);
@@ -906,8 +932,8 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
     inner.resize(gvm.alloc, size) catch stdx.fatal();
     vm_.releaseObject(gvm, list);
@@ -917,7 +943,7 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
 fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
     _ = nargs;
     _ = args;
-    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     vm.retainObject(obj);
     obj.map.inner.extra = 0;
     return Value.initPtr(ptr);
@@ -926,7 +952,7 @@ fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
 fn mapNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) cy.ValuePair {
     _ = args;
     _ = nargs;
-    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
     if (map.next()) |entry| {
         gvm.retain(entry.key);
@@ -944,7 +970,7 @@ fn mapNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
 fn mapNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
     _ = args;
     _ = nargs;
-    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
     if (map.next()) |entry| {
         gvm.retain(entry.value);
@@ -955,8 +981,8 @@ fn mapNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) link
 fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     _ = args;
-    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     vm_.releaseObject(gvm, obj);
     return Value.initF64(@intToFloat(f64, inner.size));
 }
@@ -965,8 +991,8 @@ fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
-    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.MapInner, &obj.map.inner);
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(gvm, args[0]);
     return Value.None;
 }
@@ -975,8 +1001,8 @@ fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     @setRuntimeSafety(debug);
     _ = nargs;
     _ = args;
-    const list = stdx.ptrCastAlign(*cy.HeapObject, ptr);
-    const inner = stdx.ptrCastAlign(*cy.List(Value), &list.list.list);
+    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     vm_.releaseObject(gvm, list);
     return Value.initF64(@intToFloat(f64, inner.len));
 }
@@ -1180,3 +1206,28 @@ pub fn osUnsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
+
+fn stringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, obj.string.len));
+}
+
+fn stringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, obj.string.ptr[@floatToInt(u32, args[0].toF64())]));
+}
+
+fn constStringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const str = val.asConstStr();
+    return Value.initF64(@intToFloat(f64, str.len()));
+}
+
+fn constStringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const str = val.asConstStr();
+    const idx = @floatToInt(u32, args[0].toF64());
+    return Value.initF64(@intToFloat(f64, gvm.strBuf[str.start + idx]));
+}

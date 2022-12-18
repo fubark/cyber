@@ -307,8 +307,8 @@ const VMrunner = struct {
 
     pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {
         _ = self;
-        const obj = stdx.ptrCastAlign(*cy.HeapObject, val.asPointer());
-        const list = stdx.ptrCastAlign(*std.ArrayListUnmanaged(cy.Value), &obj.list.list);
+        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
+        const list = stdx.ptrAlignCast(*std.ArrayListUnmanaged(cy.Value), &obj.list.list);
         const dupe = try t.alloc.alloc(i32, list.items.len);
         for (list.items) |it, i| {
             dupe[i] = @floatToInt(i32, it.toF64());

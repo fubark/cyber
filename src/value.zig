@@ -7,6 +7,8 @@ const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
 const cy = @import("cyber.zig");
 
+const Section = ".eval";
+
 /// Most significant bit.
 const SignMask: u64 = 1 << 63;
 
@@ -16,26 +18,37 @@ const TaggedValueMask: u64 = 0x7ffc000000000000;
 /// TaggedMask + Sign bit indicates a pointer value.
 const PointerMask: u64 = TaggedValueMask | SignMask;
 
-const BooleanMask: u64 = TaggedValueMask | (TagBoolean << 32);
+const BooleanMask: u64 = TaggedValueMask | (@as(u64, TagBoolean) << 32);
 const FalseMask: u64 = BooleanMask;
 const TrueMask: u64 = BooleanMask | TrueBitMask;
 const TrueBitMask: u64 = 1;
-const NoneMask: u64 = TaggedValueMask | (TagNone << 32);
-const ErrorMask: u64 = TaggedValueMask | (TagError << 32);
-const ConstStringMask: u64 = TaggedValueMask | (TagConstString << 32);
-const UserTagMask: u64 = TaggedValueMask | (TagUserTag << 32);
-const UserTagLiteralMask: u64 = TaggedValueMask | (TagUserTagLiteral << 32);
-const IntegerMask: u64 = TaggedValueMask | (TagInteger << 32);
+const NoneMask: u64 = TaggedValueMask | (@as(u64, TagNone) << 32);
+const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
+const ConstStringMask: u64 = TaggedValueMask | (@as(u64, TagConstString) << 32);
+const UserTagMask: u64 = TaggedValueMask | (@as(u64, TagUserTag) << 32);
+const UserTagLiteralMask: u64 = TaggedValueMask | (@as(u64, TagUserTagLiteral) << 32);
+const IntegerMask: u64 = TaggedValueMask | (@as(u64, TagInteger) << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
 const BeforeTagMask: u32 = 0x7fff << 3;
-pub const TagNone = 0;
-pub const TagBoolean = 1;
-pub const TagError = 2;
-pub const TagConstString = 3;
-pub const TagUserTag = 4;
-pub const TagUserTagLiteral = 5;
-pub const TagInteger = 6;
+
+/// The tag id is also the primitive type id.
+const TagId = u3;
+pub const TagNone: TagId = 0;
+pub const TagBoolean: TagId = 1;
+pub const TagError: TagId = 2;
+pub const TagConstString: TagId = 3;
+pub const TagUserTag: TagId = 4;
+pub const TagUserTagLiteral: TagId = 5;
+pub const TagInteger: TagId = 6;
+pub const NoneT: u32 = TagNone;
+pub const BooleanT: u32 = TagBoolean;
+pub const ErrorT: u32 = TagError;
+pub const ConstStringT: u32 = TagConstString;
+pub const UserTagT: u32 = TagUserTag;
+pub const UserTagLiteralT: u32 = TagUserTagLiteral;
+pub const IntegerT: u32 = TagInteger;
+pub const NumberT: u32 = 7;
 
 pub const ValuePair = struct {
     left: Value,
@@ -51,8 +64,6 @@ pub const Value = packed union {
     val: u64,
     /// Call frame return info.
     retInfo: packed struct {
-        // numRetVals: u2,
-        // retFlag: u1,
         numRetVals: u8,
         retFlag: bool,
     },
@@ -100,7 +111,7 @@ pub const Value = packed union {
 
     fn otherToF64(self: *const Value) linksection(".eval") f64 {
         if (self.isPointer()) {
-            const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+            const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
             if (obj.common.structId == cy.StringS) {
                 const str = obj.string.ptr[0..obj.string.len];
                 return std.fmt.parseFloat(f64, str) catch 0;
@@ -134,7 +145,7 @@ pub const Value = packed union {
     pub fn isString(self: *const Value) linksection(".eval") bool {
         @setRuntimeSafety(debug);
         if (self.isPointer()) {
-            const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+            const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
             return obj.common.structId == cy.StringS;
         } else {
             return self.getTag() == TagConstString;
@@ -149,8 +160,15 @@ pub const Value = packed union {
         return self.val & ErrorMask == ErrorMask;
     }
 
+    pub inline fn getPrimitiveTypeId(self: *const Value) linksection(Section) u32 {
+        if (self.isNumber()) {
+            return NumberT;
+        } else {
+            return self.getTag();
+        }
+    }
+
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
         // Only a number(f64) if not all tagged bits are set.
         return self.val & TaggedValueMask != TaggedValueMask;
     }
@@ -187,14 +205,8 @@ pub const Value = packed union {
         return self.val & BooleanMask == BooleanMask;
     }
 
-    pub inline fn getTag(self: *const Value) linksection(".eval") u3 {
-        @setRuntimeSafety(debug);
+    pub inline fn getTag(self: *const Value) linksection(Section) u3 {
         return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
-        // if (endian == .Little) {
-        //     return @intCast(u3, self.two[1] & TagMask);
-        // } else {
-        //     return @intCast(u3, self.two[0] & TagMask);
-        // }
     }
 
     pub inline fn initTag(tag: u8, val: u8) linksection(".eval") Value {
@@ -240,20 +252,9 @@ pub const Value = packed union {
     }
 
     pub inline fn asConstStr(self: *const Value) stdx.IndexSlice(u32) {
-        @setRuntimeSafety(debug);
         const len = (@intCast(u32, self.val >> 32) & BeforeTagMask) >> 3;
         const start = @intCast(u32, self.val & 0xffffffff);
         return stdx.IndexSlice(u32).init(start, start + len);
-
-        // if (endian == .Little) {
-        //     const len = (self.two[1] & BeforeTagMask) >> 3;
-        //     const start = self.two[0];
-        //     return stdx.IndexSlice(u32).init(start, start + len);
-        // } else {
-        //     const len = self.two[0] & BeforeTagMask >> 3;
-        //     const start = self.two[1];
-        //     return stdx.IndexSlice(u32).init(start, start + len);
-        // }
     }
 
     pub inline fn floatIsSpecial(val: f64) bool {
@@ -283,7 +284,7 @@ pub const Value = packed union {
             log.info("Number {}", .{self.asF64()});
         } else {
             if (self.isPointer()) {
-                const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+                const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
                 switch (obj.common.structId) {
                     cy.ListS => log.info("List {*} len={}", .{obj, obj.list.list.len}),
                     cy.MapS => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
@@ -325,7 +326,7 @@ pub const Value = packed union {
             return .number;
         } else {
             if (self.isPointer()) {
-                const obj = stdx.ptrCastAlign(*cy.HeapObject, self.asPointer().?);
+                const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
                 switch (obj.common.structId) {
                     cy.ListS => return .list,
                     cy.MapS => return .map,

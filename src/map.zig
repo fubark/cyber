@@ -157,13 +157,13 @@ pub const ValueMap = struct {
             return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
         } else {
             if (key.isPointer()) {
-                const obj = stdx.ptrCastAlign(*cy.HeapObject, key.asPointer().?);
+                const obj = stdx.ptrAlignCast(*cy.HeapObject, key.asPointer().?);
                 if (obj.common.structId == cy.StringS) {
                     return std.hash.Wyhash.hash(0, obj.string.ptr[0..obj.string.len]);
                 } else stdx.unsupported();
             } else {
                 switch (key.getTag()) {
-                    cy.TagConstString => {
+                    cy.ConstStringT => {
                         const slice = key.asConstStr();
                         return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
                     },
@@ -176,13 +176,13 @@ pub const ValueMap = struct {
     fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(section) bool {
         @setRuntimeSafety(debug);
         if (b.isPointer()) {
-            const obj = stdx.ptrCastAlign(*cy.HeapObject, b.asPointer().?);
+            const obj = stdx.ptrAlignCast(*cy.HeapObject, b.asPointer().?);
             if (obj.common.structId == cy.StringS) {
                 return std.mem.eql(u8, a, obj.string.ptr[0..obj.string.len]);
             } else return false;
         } else {
             const bTag = b.getTag();
-            if (bTag == cy.TagConstString) {
+            if (bTag == cy.ConstStringT) {
                 const bSlice = b.asConstStr();
                 const bStr = vm.strBuf[bSlice.start..bSlice.end];
                 return std.mem.eql(u8, a, bStr);
@@ -197,7 +197,7 @@ pub const ValueMap = struct {
             return a.val == b.val;
         } else {
             if (a.isPointer()) {
-                const aObj = stdx.ptrCastAlign(*cy.HeapObject, a.asPointer().?);
+                const aObj = stdx.ptrAlignCast(*cy.HeapObject, a.asPointer().?);
                 if (aObj.common.structId == cy.StringS) {
                     const aStr = aObj.string.ptr[0..aObj.string.len];
                     if (b.getUserTag() == .string) {
@@ -207,9 +207,9 @@ pub const ValueMap = struct {
                 } else stdx.unsupported();
             } else {
                 switch (a.getTag()) {
-                    cy.TagConstString => {
+                    cy.ConstStringT => {
                         const bTag = b.getTag();
-                        if (bTag == cy.TagConstString) {
+                        if (bTag == cy.ConstStringT) {
                             const aSlice = a.asConstStr();
                             const bSlice = b.asConstStr();
                             const aStr = vm.strBuf[aSlice.start..aSlice.end];

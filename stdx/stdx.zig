@@ -11,7 +11,6 @@ pub const Stack = stack.Stack;
 
 const utils = @import("utils.zig");
 pub const IndexSlice = utils.IndexSlice;
-pub const ptrCastAlign = utils.ptrAlignCast;
 pub const ptrAlignCast = utils.ptrAlignCast;
 
 pub const debug = @import("debug.zig");

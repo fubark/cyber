@@ -3907,6 +3907,7 @@ const TypeTag = enum {
     map,
     fiber,
     string,
+    constString,
     box,
     tag,
     tagLiteral,
@@ -3966,7 +3967,7 @@ const NumberOrRequestIntegerType = Type{
 };
 
 const ConstStringType = Type{
-    .typeT = .string,
+    .typeT = .constString,
     .rcCandidate = false,
 };
 

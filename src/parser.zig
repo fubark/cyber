@@ -37,7 +37,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "coyield", .coyield_k },
     .{ "coresume", .coresume_k },
     .{ "import", .import_k },
-    .{ "from", .from_k },
     .{ "try", .try_k },
     .{ "catch", .catch_k },
     .{ "recover", .recover_k },
@@ -965,32 +964,27 @@ pub const Parser = struct {
         // Assumes first token is the `import` keyword.
         self.advanceToken();
 
-        const exprId = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected import clause.", &.{});
-        };
-        const expr = self.nodes.items[exprId];
-        if (expr.node_t == .ident) {
-            if (self.peekToken().token_t == .from_k) {
-                self.advanceToken();
-                const fromId = (try self.parseExpr(.{})) orelse {
-                    return self.reportParseError("Expected from identifier.", &.{});
+        var token = self.peekToken();
+        if (token.token_t == .ident) {
+            const ident = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+
+            const fromId = (try self.parseExpr(.{})) orelse {
+                return self.reportParseError("Expected from identifier.", &.{});
+            };
+            const from = self.nodes.items[fromId];
+            if (from.node_t == .string) {
+                try self.consumeNewLineOrEnd();
+                const import = try self.pushNode(.importStmt, start);
+                self.nodes.items[import].head = .{
+                    .left_right = .{
+                        .left = ident,
+                        .right = fromId,
+                    },
                 };
-                const from = self.nodes.items[fromId];
-                if (from.node_t == .string) {
-                    try self.consumeNewLineOrEnd();
-                    const import = try self.pushNode(.importStmt, start);
-                    self.nodes.items[import].head = .{
-                        .left_right = .{
-                            .left = exprId,
-                            .right = fromId,
-                        },
-                    };
-                    return import;
-                } else {
-                    return self.reportParseError("Expected from identifier to be a string.", &.{});
-                }
+                return import;
             } else {
-                return self.reportParseError("Expected from clause.", &.{});
+                return self.reportParseError("Expected from identifier to be a string. {}", &.{fmt.v(from.node_t)});
             }
         } else {
             return self.reportParseError("Expected import clause.", &.{});
@@ -2257,7 +2251,6 @@ pub const Parser = struct {
                 .and_k,
                 .logic_op,
                 .then_k,
-                .from_k,
                 .as_k,
                 .string,
                 .number,
@@ -2412,7 +2405,6 @@ pub const Parser = struct {
                 .dot_dot,
                 .as_k,
                 .new_line,
-                .from_k,
                 .none => break,
                 else => {
                     // Attempt to parse as no paren call expr.
@@ -2781,7 +2773,6 @@ pub const TokenType = enum(u6) {
     coresume_k,
     tag,
     import_k,
-    from_k,
     try_k,
     catch_k,
     recover_k,
@@ -4034,6 +4025,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 56);
-    try t.eq(keywords.kvs.len, 27);
+    try t.eq(std.enums.values(TokenType).len, 55);
+    try t.eq(keywords.kvs.len, 26);
 }

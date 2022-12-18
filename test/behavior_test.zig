@@ -14,20 +14,20 @@ test "os module" {
     defer run.destroy();
 
     var val = try run.eval(
-        \\import os from 'os'
+        \\import os 'os'
         \\os.system
     );
     try t.eqStr(try run.assertValueString(val), @tagName(builtin.os.tag));
 
     val = try run.eval(
-        \\import os from 'os'
+        \\import os 'os'
         \\os.cpu
     );
     try t.eqStr(try run.assertValueString(val), @tagName(builtin.cpu.arch));
 
     _ = try run.eval(
-        \\import os from 'os'
-        \\import t from 'test'
+        \\import os 'os'
+        \\import t 'test'
         \\os.setEnv('testfoo', 'testbar')
         \\try t.eq(os.getEnv('testfoo'), 'testbar')
         \\os.unsetEnv('testfoo')
@@ -151,7 +151,7 @@ test "FFI." {
     _ = S;
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\
         \\lib = bindLib(none, [
         \\  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
@@ -234,13 +234,13 @@ test "test module" {
     defer run.destroy();
 
     const res = run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\try t.eq(123, 234)
     );
     try t.expectError(res, error.Panic);
 
     var val = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\t.eq(123, 123)
         \\t.eq(1.2345, 1.2345)
     );
@@ -301,7 +301,7 @@ test "Structs." {
 
     // Big structs (allocated outside of heap pages).
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\type Node:
         \\  a
         \\  b
@@ -318,7 +318,7 @@ test "Structs." {
 
     // Multiple structs with the same field names but different offsets.
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\type Node1:
         \\  a
         \\  b
@@ -827,7 +827,7 @@ test "Numbers." {
     defer run.destroy();
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\try t.eq(1, 1)
         \\try t.eq(-1, -1)
         \\try t.eq(-(-1), 1)
@@ -957,7 +957,7 @@ test "Strings" {
 
     // Multi-lines.
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\-- Const string multi-line double quote literal.
         \\str = "abc
         \\abc"
@@ -983,7 +983,7 @@ test "String interpolation." {
     defer run.destroy();
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\-- Using single quotes.
         \\a = 'World'
         \\b = 123
@@ -1006,7 +1006,7 @@ test "Lists" {
     defer run.destroy();
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\a = [1, 2, 3]
         \\-- Index access.
         \\try t.eq(a[0], 1)
@@ -1061,7 +1061,7 @@ test "Maps" {
     defer run.destroy();
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\a = {
         \\  b: 123
         \\  'c': 234
@@ -1157,9 +1157,9 @@ test "Local variable declaration." {
     defer run.destroy();
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\-- Declare local and read it.
-        \\a <- 1
+        \\a := 1
         \\try t.eq(a, 1)
         \\func foo():
         \\  -- Captured `a` from main block.
@@ -1172,7 +1172,7 @@ test "Local variable declaration." {
         \\  -- Captured `a` from main block.
         \\  try t.eq(a, 2)
         \\  -- New `a` in `bar`.
-        \\  a <- 3
+        \\  a := 3
         \\  try t.eq(a, 3)
         \\try bar()
         \\-- `a` from main remains the same.
@@ -1571,7 +1571,7 @@ test "Closures." {
 
     // Closure read then write over number in main block static function.
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\a = 123
         \\func foo():
         \\  b = a
@@ -1845,8 +1845,8 @@ test "Math" {
 
     // Math module.
     _ = try run.eval(
-        \\import m from 'math'
-        \\import t from 'test'
+        \\import m 'math'
+        \\import t 'test'
         \\try t.eqNear(m.pi, 3.14159265)
         \\try t.eqNear(m.ln2, 0.69314718)
         \\try t.eqNear(m.ln10, 2.30258509)
@@ -1981,7 +1981,7 @@ test "Bitwise operators." {
     defer run.destroy();
 
     _ = try run.eval(
-        \\import t from 'test'
+        \\import t 'test'
         \\-- Bitwise and
         \\try t.eq(4 & 2, 0)
         \\try t.eq(4 & 4, 4)

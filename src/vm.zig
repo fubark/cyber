@@ -2635,7 +2635,6 @@ const Map = packed struct {
         available: u32,
         extra: u32,
     },
-    // nextIterIdx: u32,
 };
 
 const Box = packed struct {
@@ -3043,6 +3042,10 @@ pub const UserVM = struct {
 
     pub inline fn release(self: *UserVM, val: Value) void {
         Root.release(@ptrCast(*VM, self), val);
+    }
+
+    pub inline fn retainObject(self: *UserVM, obj: *HeapObject) void {
+        @ptrCast(*VM, self).retainObject(obj);
     }
 
     pub inline fn getGlobalRC(_: UserVM) usize {

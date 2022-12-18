@@ -1146,6 +1146,28 @@ test "Maps" {
         \\a.b[1]
     );
     try t.eq(val.asF64toI32(), 2);
+
+    // Iterate maps.
+    val = try run.eval(
+        \\import t 'test'
+        \\m := { a: 2, b: 3, c: 4 }
+        \\sum := 0
+        \\for m as v:
+        \\  sum += v 
+        \\try t.eq(sum, 9)
+        \\sum = 0
+        \\keys = 0
+        \\for m as k, v:
+        \\  sum += v
+        \\  if k == 'a':
+        \\    keys += 1
+        \\  else k == 'b':
+        \\    keys += 1
+        \\  else k == 'c':
+        \\    keys += 1
+        \\try t.eq(sum, 9)
+        \\try t.eq(keys, 3)
+    );
 }
 
 test "Assignment statements" {

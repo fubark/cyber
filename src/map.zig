@@ -360,6 +360,21 @@ pub const ValueMap = struct {
         self.size -= 1;
         self.available += 1;
     }
+
+    pub fn next(self: *ValueMap) linksection(section) ?ValueMapEntry {
+        std.debug.assert(self.extra <= self.cap);
+        if (self.size == 0) {
+            return null;
+        }
+        while (self.extra < self.cap) : (self.extra += 1) {
+            const md = self.metadata.?[self.extra];
+            if (md.isUsed()) {
+                defer self.extra += 1;
+                return self.entries.?[self.extra];
+            }
+        }
+        return null;
+    }
 };
 
 pub const ValueMapEntry = struct {

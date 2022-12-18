@@ -28,9 +28,14 @@ const TagLit_ptr = 12;
 const TagLit_AssertError = 13;
 
 const StdSection = ".std";
+const Section = ".eval2";
+
+// This keeps .eval section first in order.
+pub export fn forceSectionDep() linksection(".eval") callconv(.C) void {}
 
 pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
+    forceSectionDep();
 
     // Init compile time builtins.
     const resize = try self.ensureMethodSymKey("resize");
@@ -60,6 +65,10 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.MapS);
     try self.addMethodSym(cy.MapS, remove, cy.SymbolEntry.initNativeFunc1(mapRemove));
     try self.addMethodSym(cy.MapS, size, cy.SymbolEntry.initNativeFunc1(mapSize));
+    try self.addMethodSym(cy.MapS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(mapIterator));
+    try self.addMethodSym(cy.MapS, self.pairIteratorObjSym, cy.SymbolEntry.initNativeFunc1(mapIterator));
+    try self.addMethodSym(cy.MapS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(mapNext));
+    try self.addMethodSym(cy.MapS, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(mapNextPair));
 
     id = try self.addStruct("Closure");
     std.debug.assert(id == cy.ClosureS);
@@ -903,6 +912,44 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     inner.resize(gvm.alloc, size) catch stdx.fatal();
     vm_.releaseObject(gvm, list);
     return Value.None;
+}
+
+fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
+    _ = nargs;
+    _ = args;
+    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    vm.retainObject(obj);
+    obj.map.inner.extra = 0;
+    return Value.initPtr(ptr);
+}
+
+fn mapNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) cy.ValuePair {
+    _ = args;
+    _ = nargs;
+    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
+    if (map.next()) |entry| {
+        gvm.retain(entry.key);
+        gvm.retain(entry.value);
+        return .{
+            .left = entry.key,
+            .right = entry.value,
+        };
+    } else return .{
+        .left = Value.None,
+        .right = Value.None,
+    };
+}
+
+fn mapNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
+    _ = args;
+    _ = nargs;
+    const obj = stdx.ptrCastAlign(*cy.HeapObject, ptr);
+    const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
+    if (map.next()) |entry| {
+        gvm.retain(entry.value);
+        return entry.value;
+    } else return Value.None;
 }
 
 fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {

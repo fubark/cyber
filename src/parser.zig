@@ -2251,7 +2251,7 @@ pub const Parser = struct {
                 .is_k,
                 .plus_equal,
                 .equal,
-                .arrowLeft,
+                .colonEqual,
                 .operator,
                 .or_k,
                 .and_k,
@@ -2307,7 +2307,7 @@ pub const Parser = struct {
                         break;
                     }
                 },
-                .arrowLeft => {
+                .colonEqual => {
                     if (opts.returnLeftAssignExpr) {
                         switch (self.nodes.items[left_id].node_t) {
                             .ident => {
@@ -2473,7 +2473,7 @@ pub const Parser = struct {
                         };
                     }
                 },
-                .arrowLeft => {
+                .colonEqual => {
                     assignStmt = try self.pushNode(.localDecl, start);
                     if (self.peekToken().tag() == .func_k) {
                         // Multi-line lambda.
@@ -2754,7 +2754,7 @@ pub const TokenType = enum(u6) {
     equal,
     plus_equal,
     star_equal,
-    arrowLeft,
+    colonEqual,
     new_line,
     indent,
     return_k,
@@ -3423,7 +3423,14 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         try p.pushToken(.dot, start);
                     }
                 },
-                ':' => try p.pushToken(.colon, start),
+                ':' => {
+                    if (peekChar(p) == '=') {
+                        advanceChar(p);
+                        try p.pushToken(.colonEqual, start);
+                    } else {
+                        try p.pushToken(.colon, start);
+                    }
+                },
                 '@' => try p.pushToken(.at, start),
                 '-' => {
                     if (peekChar(p) == '-') {
@@ -3508,9 +3515,6 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         advanceChar(p);
                     } else if (ch2 == '<') {
                         try p.pushOpToken(.lessLess, start);
-                        advanceChar(p);
-                    } else if (ch2 == '-') {
-                        try p.pushToken(.arrowLeft, start);
                         advanceChar(p);
                     } else {
                         try p.pushLogicOpToken(.less, start);

@@ -1167,6 +1167,21 @@ test "Maps" {
         \\    keys += 1
         \\try t.eq(sum, 9)
         \\try t.eq(keys, 3)
+        \\
+        \\-- Iterate rc values.
+        \\m = { a: [2], b: [3], c: [4] }
+        \\sum = 0
+        \\keys = 0
+        \\for m as k, v:
+        \\  sum += v[0]
+        \\  if k == 'a':
+        \\    keys += 1
+        \\  else k == 'b':
+        \\    keys += 1
+        \\  else k == 'c':
+        \\    keys += 1
+        \\try t.eq(sum, 9)
+        \\try t.eq(keys, 3)
     );
 }
 

@@ -867,26 +867,20 @@ test "Operator precedence." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Multiplication before addition.
-    var val = try run.eval(
-        \\2 + 3 * 4
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- Multiplication before addition.
+        \\try t.eq(2 + 3 * 4, 14)
+        \\-- Division before addition.
+        \\try t.eq(2 + 4 / 4, 3)
+        \\-- Power before addition.
+        \\try t.eq(2 + 3 ^ 2, 11)
+        \\-- Power before multiplication.
+        \\try t.eq(2 * 3 ^ 2, 18)
     );
-    try t.eq(val.asF64toI32(), 14);
-
-    // Division before addition.
-    val = try run.eval(
-        \\2 + 4 / 4
-    );
-    try t.eq(val.asF64toI32(), 3);
-
-    // Power before addition.
-    val = try run.eval(
-        \\2 + 3 ^ 2
-    );
-    try t.eq(val.asF64toI32(), 11);
 
     // Variables and parenthesis.
-    val = try run.eval(
+    var val = try run.eval(
         \\time = 50
         \\minTime = 50
         \\timeRange = 100

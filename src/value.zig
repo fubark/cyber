@@ -345,6 +345,7 @@ pub const Value = packed union {
                 switch (self.getTag()) {
                     TagBoolean => return .boolean,
                     TagConstString => return .string,
+                    TagNone => return .none,
                     else => unreachable,
                 }
             }
@@ -367,6 +368,7 @@ pub const ValueUserTag = enum {
     nativeFunc,
     tccState,
     opaquePtr,
+    none,
 };
 
 test "floatCanBeInteger" {

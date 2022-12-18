@@ -197,6 +197,9 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.initErrorTagLit(TagLit_AssertError);
                 }
             },
+            .none => {
+                return Value.True;
+            },
             else => {
                 stdx.panicFmt("Unsupported type {}", .{actType});
             }
@@ -1054,3 +1057,58 @@ pub fn mathAsinh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
 pub fn mathAtanh(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initF64(std.math.atanh(args[0].toF64()));
 }
+
+pub fn osCwd(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    const cwd = std.process.getCwdAlloc(vm.allocator()) catch stdx.fatal();
+    return vm.allocOwnedString(cwd) catch stdx.fatal();
+}
+
+pub fn osRealPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const path = vm.valueToTempString(args[0]);
+    const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch stdx.fatal();
+    return vm.allocOwnedString(res) catch stdx.fatal();
+}
+
+pub fn osGetEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    var env = std.process.getEnvMap(vm.allocator()) catch stdx.fatal();
+    defer env.deinit();
+
+    const map = gvm.allocEmptyMap() catch stdx.fatal();
+    var iter = env.iterator();
+    while (iter.next()) |entry| {
+        const key = gvm.allocString(entry.key_ptr.*) catch stdx.fatal();
+        const val = gvm.allocString(entry.value_ptr.*) catch stdx.fatal();
+        gvm.setIndex(map, key, val) catch stdx.fatal();
+    }
+    return map;
+}
+
+pub fn osGetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const key = vm.valueToTempString(args[0]);
+    const res = std.os.getenv(key) orelse return Value.None;
+    return vm.allocString(res) catch stdx.fatal();
+}
+
+pub fn osSetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const key = vm.valueToString(args[0]) catch stdx.fatal();
+    defer vm.allocator().free(key);
+    const keyz = std.cstr.addNullByte(vm.allocator(), key) catch stdx.fatal();
+    defer vm.allocator().free(keyz);
+
+    const value = vm.valueToTempString(args[1]);
+    const valuez = std.cstr.addNullByte(vm.allocator(), value) catch stdx.fatal();
+    defer vm.allocator().free(valuez);
+    _ = setenv(keyz, valuez, 1);
+    return Value.None;
+}
+
+pub fn osUnsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const key = vm.valueToTempString(args[0]);
+    const keyz = std.cstr.addNullByte(vm.allocator(), key) catch stdx.fatal();
+    defer vm.allocator().free(keyz);
+    _ = unsetenv(keyz);
+    return Value.None;
+}
+
+pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const build_options = @import("build_options");
 const stdx = @import("stdx");
 const fatal = stdx.fatal;
@@ -7,6 +8,32 @@ const t = stdx.testing;
 const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
 const log = stdx.log.scoped(.behavior_test);
+
+test "os module" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    var val = try run.eval(
+        \\import os from 'os'
+        \\os.system
+    );
+    try t.eqStr(try run.assertValueString(val), @tagName(builtin.os.tag));
+
+    val = try run.eval(
+        \\import os from 'os'
+        \\os.cpu
+    );
+    try t.eqStr(try run.assertValueString(val), @tagName(builtin.cpu.arch));
+
+    _ = try run.eval(
+        \\import os from 'os'
+        \\import t from 'test'
+        \\os.setEnv('testfoo', 'testbar')
+        \\try t.eq(os.getEnv('testfoo'), 'testbar')
+        \\os.unsetEnv('testfoo')
+        \\try t.eq(os.getEnv('testfoo'), none)
+    );
+}
 
 test "Fibers" {
     const run = VMrunner.create();

@@ -854,6 +854,8 @@ pub const VMcompiler = struct {
             return initMathModule(self.alloc, spec);
         } else if (std.mem.eql(u8, "core", spec)) {
             return initCoreModule(self.alloc, spec);
+        } else if (std.mem.eql(u8, "os", spec)) {
+            return initOsModule(self, self.alloc, spec);
         } else {
             return self.reportErrorAt("Unsupported import. {}", &.{fmt.v(spec)}, nodeId);
         }
@@ -4338,6 +4340,24 @@ fn initTestModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
     };
     try mod.setNativeFunc(alloc, "eq", bindings.testEq);
     try mod.setNativeFunc(alloc, "eqNear", bindings.testEqNear);
+    return mod;
+}
+
+fn initOsModule(self: *VMcompiler, alloc: std.mem.Allocator, spec: []const u8) !Module {
+    var mod = Module{
+        .syms = .{},
+        .prefix = spec,
+    };
+
+    try mod.setVar(alloc, "system", try self.buf.getStringConstValue(@tagName(builtin.os.tag)));
+    try mod.setVar(alloc, "cpu", try self.buf.getStringConstValue(@tagName(builtin.cpu.arch)));
+
+    try mod.setNativeFunc(alloc, "cwd", bindings.osCwd);
+    try mod.setNativeFunc(alloc, "realPath", bindings.osRealPath);
+    try mod.setNativeFunc(alloc, "getEnv", bindings.osGetEnv);
+    try mod.setNativeFunc(alloc, "setEnv", bindings.osSetEnv);
+    try mod.setNativeFunc(alloc, "unsetEnv", bindings.osUnsetEnv);
+    try mod.setNativeFunc(alloc, "getEnvAll", bindings.osGetEnvAll);
     return mod;
 }
 

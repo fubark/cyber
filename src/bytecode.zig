@@ -162,6 +162,11 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
+    pub fn getStringConstValue(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
+        const slice = try self.getStringConst(str);
+        return cy.Value.initConstStr(slice.start, @intCast(u15, slice.end - slice.start));
+    }
+
     fn println(comptime fmt: []const u8, args: anytype) void {
         if (builtin.is_test) {
             log.info(fmt, args);

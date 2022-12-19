@@ -713,6 +713,15 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
+pub fn coreInt(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    if (val.isNumber()) {
+        return Value.initI32(@floatToInt(i32, val.asF64()));
+    } else {
+        return Value.initI32(0);
+    }
+}
+
 pub fn coreNumber(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = vm;
     _ = nargs;

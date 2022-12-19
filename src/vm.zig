@@ -1979,10 +1979,14 @@ pub const VM = struct {
     pub fn valueToTempString(self: *const VM, val: Value) linksection(".eval2") []const u8 {
         if (val.isNumber()) {
             const f = val.asF64();
-            if (Value.floatCanBeInteger(f)) {
-                return std.fmt.bufPrint(&tempU8Buf, "{d:.0}", .{f}) catch stdx.fatal();
+            if (Value.floatIsSpecial(f)) {
+                return std.fmt.bufPrint(&tempU8Buf, "{}", .{f}) catch stdx.fatal();
             } else {
-                return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{f}) catch stdx.fatal();
+                if (Value.floatCanBeInteger(f)) {
+                    return std.fmt.bufPrint(&tempU8Buf, "{d:.0}", .{f}) catch stdx.fatal();
+                } else {
+                    return std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{f}) catch stdx.fatal();
+                }
             }
         } else {
             if (val.isPointer()) {
@@ -2018,51 +2022,8 @@ pub const VM = struct {
     }
 
     fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
-        if (val.isNumber()) {
-            const f = val.asF64();
-            if (Value.floatIsSpecial(f)) {
-                std.fmt.format(writer, "{}", .{f}) catch stdx.fatal();
-            } else {
-                if (Value.floatCanBeInteger(f)) {
-                    std.fmt.format(writer, "{}", .{@floatToInt(u64, f)}) catch stdx.fatal();
-                } else {
-                    std.fmt.format(writer, "{d:.10}", .{f}) catch stdx.fatal();
-                }
-            }
-        } else {
-            if (val.isPointer()) {
-                const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
-                if (obj.common.structId == StringS) {
-                    const str = obj.string.ptr[0..obj.string.len];
-                    _ = writer.write(str) catch stdx.fatal();
-                } else {
-                    log.debug("unexpected struct {}", .{obj.common.structId});
-                    stdx.fatal();
-                }
-            } else {
-                switch (val.getTag()) {
-                    cy.BooleanT => {
-                        if (val.asBool()) {
-                            _ = writer.write("true") catch stdx.fatal();
-                        } else {
-                            _ = writer.write("false") catch stdx.fatal();
-                        }
-                    },
-                    cy.NoneT => {
-                        _ = writer.write("none") catch stdx.fatal();
-                    },
-                    cy.ConstStringT => {
-                        // Convert into heap string.
-                        const slice = val.asConstStr();
-                        _ = writer.write(self.strBuf[slice.start..slice.end]) catch stdx.fatal();
-                    },
-                    else => {
-                        log.debug("unexpected tag {}", .{val.getTag()});
-                        stdx.fatal();
-                    },
-                }
-            }
-        }
+        const str = self.valueToTempString(val);
+        _ = writer.write(str) catch stdx.fatal();
     }
 
     pub inline fn stackEnsureUnusedCapacity(self: *VM, unused: u32) linksection(".eval") !void {

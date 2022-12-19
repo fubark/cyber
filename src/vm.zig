@@ -2326,7 +2326,6 @@ fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(".eval") cy.Val
 }
 
 fn evalCompareNotFallback(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
-    @setRuntimeSafety(debug);
     @setCold(true);
     if (left.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
@@ -2341,9 +2340,14 @@ fn evalCompareNotFallback(left: cy.Value, right: cy.Value) linksection(".eval") 
             } else return Value.True;
         }
     } else {
-        switch (left.getTag()) {
+        const ltag = left.getTag();
+        const rtag = left.getTag();
+        if (ltag != rtag) {
+            return Value.True;
+        }
+        switch (ltag) {
             cy.NoneT => return Value.initBool(!right.isNone()),
-            cy.BooleanT => return Value.initBool(left.asBool() != right.toBool()),
+            cy.BooleanT => return Value.initBool(left.asBool() != right.asBool()),
             cy.ConstStringT => {
                 if (right.isString()) {
                     const slice = left.asConstStr();
@@ -2351,6 +2355,7 @@ fn evalCompareNotFallback(left: cy.Value, right: cy.Value) linksection(".eval") 
                     return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
                 } return Value.True;
             },
+            cy.UserTagLiteralT => return Value.initBool(left.asTagLiteralId() != right.asTagLiteralId()),
             else => stdx.panic("unexpected tag"),
         }
     }

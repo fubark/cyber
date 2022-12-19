@@ -636,22 +636,19 @@ test "Not equal comparison." {
     );
     try t.eq(val.asBool(), false);
 
-    // Comparing objects.
-    val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- Comparing objects.
         \\type S:
         \\  value
-        \\s = S{ value: 3 }
-        \\s != 123
+        \\o = S{ value: 3 }
+        \\try t.eq(o != 123, true)
+        \\o2 = o
+        \\try t.eq(o != o2, false)
+        \\-- Compare tag literal.
+        \\try t.eq(#abc != #xyz, true) 
+        \\try t.eq(#abc != #abc, false) 
     );
-    try t.eq(val.asBool(), true);
-    val = try run.eval(
-        \\type S:
-        \\  value
-        \\s = S{ value: 3 }
-        \\t = s
-        \\s != t
-    );
-    try t.eq(val.asBool(), false);
 }
 
 test "Logic operators" {

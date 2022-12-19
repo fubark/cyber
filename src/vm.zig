@@ -1717,11 +1717,10 @@ pub const VM = struct {
                 @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
                 @ptrCast(*align(1) u16, pc + 12).* = @intCast(u16, typeId);
 
-                const newFramePtr = framePtr + startLocal;
-                gvm.framePtr = newFramePtr;
-                const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                self.framePtr = framePtr;
+                const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
                 if (reqNumRetVals == 1) {
-                    newFramePtr[0] = res;
+                    framePtr[startLocal] = res;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
@@ -1739,12 +1738,11 @@ pub const VM = struct {
                 };
             },
             .nativeFunc2 => {
-                const newFramePtr = framePtr + startLocal;
-                gvm.framePtr = newFramePtr;
-                const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                self.framePtr = framePtr;
+                const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
                 if (reqNumRetVals == 2) {
-                    newFramePtr[0] = res.left;
-                    newFramePtr[1] = res.right;
+                    framePtr[startLocal] = res.left;
+                    framePtr[startLocal+1] = res.right;
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
@@ -1752,7 +1750,7 @@ pub const VM = struct {
                             release(self, res.right);
                         },
                         1 => {
-                            newFramePtr[0] = res.left;
+                            framePtr[startLocal] = res.left;
                             release(self, res.right);
                         },
                         else => {
@@ -3573,14 +3571,13 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
 
                 const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
                 if (typeId == cachedStruct) {
-                    const newFramePtr = framePtr + startLocal;
-                    vm.framePtr = newFramePtr;
+                    // const newFramePtr = framePtr + startLocal;
+                    vm.framePtr = framePtr;
                     const func = @intToPtr(NativeObjFuncPtr, @ptrCast(*align (1) u48, pc + 6).*);
-                    const res = func(@ptrCast(*UserVM, vm), obj, @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                    const res = func(@ptrCast(*UserVM, vm), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
                     const numRet = pc[3].arg;
-                    pc += 14;
                     if (numRet == 1) {
-                        newFramePtr[0] = res;
+                        framePtr[startLocal] = res;
                     } else {
                         switch (numRet) {
                             0 => {
@@ -3592,6 +3589,10 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                             },
                         }
                     }
+                    pc += 14;
+                    // In the future, we might allow native functions to change the pc and framePtr.
+                    // pc = vm.pc;
+                    // framePtr = vm.framePtr;
                     continue;
                 }
 
@@ -3900,11 +3901,10 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                                 pc = res.pc;
                                 framePtr = res.framePtr;
                                 continue;
-                            } else {
-                                releaseObject(vm, obj);
                             }
                         }
                     }
+                    releaseObject(vm, obj);
                 }
                 pc += 3;
                 continue;
@@ -4758,7 +4758,6 @@ pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) link
 }
 
 pub inline fn pcOffset(pc: [*]const cy.OpData) u32 {
-    // Divide by eight.
     return @intCast(u32, @ptrToInt(pc) - @ptrToInt(gvm.ops.ptr));
 }
 

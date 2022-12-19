@@ -261,138 +261,6 @@ pub const OpDebug = struct {
     file: u16,
 };
 
-pub const OpCode = enum(u8) {
-    /// Copies a constant value from `consts` to a dst local.
-    constOp,
-    /// Sets an immediate i8 value as a number to a dst local.
-    constI8,
-    /// Sets an immediate i8 value as an integer to a dst local.
-    constI8Int,
-    /// Add first two locals and stores result to a dst local.
-    add,
-    // addNumber,
-    /// Subtracts second local from first local and stores result to a dst local.
-    /// TODO: Rename to sub.
-    minus,
-    /// Push boolean onto register stack.
-    true,
-    false,
-    /// Sets the `none` value to a dst local.
-    none,
-    /// Pops top register, performs not, and pushes result onto stack.
-    not,
-    /// Copies a local from src to dst.
-    copy,
-    copyReleaseDst,
-    /// Pops right, index, left registers, sets right value to address of left[index].
-    setIndex,
-    copyRetainSrc,
-    index,
-    indexRetain,
-    /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
-    list,
-    /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
-    /// Const key indexes follow the size operand.
-    map,
-    mapEmpty,
-    slice,
-    /// Pops top register, if value evals to false, jumps the pc forward by an offset.
-    jumpNotCond,
-    jumpCond,
-    /// Jumps the pc forward by an offset.
-    jump,
-    jumpBack,
-
-    // releaseMany,
-    release,
-    releaseN,
-    callObjSym,
-    callObjNativeFuncIC,
-    callObjFuncIC,
-    callSym,
-    callFuncIC,
-    callNativeFuncIC,
-    ret1,
-    ret0,
-    /// Calls a lambda and ensures 0 return values.
-    call0,
-    /// Calls a lambda and ensures 1 return value.
-    call1,
-    field,
-    fieldIC,
-    fieldRetain,
-    fieldRetainIC,
-    fieldRelease,
-    lambda,
-    closure,
-    compare,
-    less,
-    // lessNumber,
-    greater,
-    lessEqual,
-    greaterEqual,
-
-    /// Multiplies first two locals and stores result to a dst local.
-    mul,
-    /// Divides second local from first local and stores result to a dst local.
-    div,
-    /// Raises first local's power to the value of the second local and stores result to a dst local.
-    pow,
-    /// Perform modulus on the two locals and stores result to a dst local.
-    mod,
-
-    reverseIndex,
-    reverseIndexRetain,
-    compareNot,
-    stringTemplate,
-    neg,
-    setInitN,
-    objectSmall,
-    object,
-    setField,
-    setFieldRelease,
-    setFieldReleaseIC,
-    coinit,
-    coyield,
-    coreturn,
-    coresume,
-    retain,
-    copyRetainRelease,
-    box,
-    setBoxValue,
-    setBoxValueRelease,
-    boxValue,
-    boxValueRetain,
-    funcSymClosure,
-    tag,
-    tagLiteral,
-    tryValue,
-    bitwiseAnd,
-    bitwiseOr,
-    bitwiseXor,
-    bitwiseNot,
-    bitwiseLeftShift,
-    bitwiseRightShift,
-    jumpNotNone,
-    addInt,
-    minusInt,
-    lessInt,
-    varSym,
-    forRangeInit,
-    forRange,
-    forRangeReverse,
-
-    /// Indicates the end of the main script.
-    end,
-};
-
-test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 92);
-    try t.eq(@sizeOf(OpData), 1);
-    try t.eq(@sizeOf(Const), 8);
-    try t.eq(@alignOf(Const), 8);
-}
-
 pub fn getInstLenAt(pc: [*]const OpData) u8 {
     switch (pc[0].code) {
         .ret0,
@@ -527,4 +395,136 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             stdx.panicFmt("unsupported {}", .{pc[0].code});
         },
     }
+}
+
+pub const OpCode = enum(u8) {
+    /// Copies a constant value from `consts` to a dst local.
+    constOp,
+    /// Sets an immediate i8 value as a number to a dst local.
+    constI8,
+    /// Sets an immediate i8 value as an integer to a dst local.
+    constI8Int,
+    /// Add first two locals and stores result to a dst local.
+    add,
+    // addNumber,
+    /// Subtracts second local from first local and stores result to a dst local.
+    /// TODO: Rename to sub.
+    minus,
+    /// Push boolean onto register stack.
+    true,
+    false,
+    /// Sets the `none` value to a dst local.
+    none,
+    /// Pops top register, performs not, and pushes result onto stack.
+    not,
+    /// Copies a local from src to dst.
+    copy,
+    copyReleaseDst,
+    /// Pops right, index, left registers, sets right value to address of left[index].
+    setIndex,
+    copyRetainSrc,
+    index,
+    indexRetain,
+    /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
+    list,
+    /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
+    /// Const key indexes follow the size operand.
+    map,
+    mapEmpty,
+    slice,
+    /// Pops top register, if value evals to false, jumps the pc forward by an offset.
+    jumpNotCond,
+    jumpCond,
+    /// Jumps the pc forward by an offset.
+    jump,
+    jumpBack,
+
+    // releaseMany,
+    release,
+    releaseN,
+    callObjSym,
+    callObjNativeFuncIC,
+    callObjFuncIC,
+    callSym,
+    callFuncIC,
+    callNativeFuncIC,
+    ret1,
+    ret0,
+    /// Calls a lambda and ensures 0 return values.
+    call0,
+    /// Calls a lambda and ensures 1 return value.
+    call1,
+    field,
+    fieldIC,
+    fieldRetain,
+    fieldRetainIC,
+    fieldRelease,
+    lambda,
+    closure,
+    compare,
+    less,
+    // lessNumber,
+    greater,
+    lessEqual,
+    greaterEqual,
+
+    /// Multiplies first two locals and stores result to a dst local.
+    mul,
+    /// Divides second local from first local and stores result to a dst local.
+    div,
+    /// Raises first local's power to the value of the second local and stores result to a dst local.
+    pow,
+    /// Perform modulus on the two locals and stores result to a dst local.
+    mod,
+
+    reverseIndex,
+    reverseIndexRetain,
+    compareNot,
+    stringTemplate,
+    neg,
+    setInitN,
+    objectSmall,
+    object,
+    setField,
+    setFieldRelease,
+    setFieldReleaseIC,
+    coinit,
+    coyield,
+    coresume,
+    coreturn,
+    retain,
+    copyRetainRelease,
+    box,
+    setBoxValue,
+    setBoxValueRelease,
+    boxValue,
+    boxValueRetain,
+    funcSymClosure,
+    tag,
+    tagLiteral,
+    tryValue,
+    bitwiseAnd,
+    bitwiseOr,
+    bitwiseXor,
+    bitwiseNot,
+    bitwiseLeftShift,
+    bitwiseRightShift,
+    jumpNotNone,
+    addInt,
+    minusInt,
+    lessInt,
+    varSym,
+    forRangeInit,
+    forRange,
+    forRangeReverse,
+
+    /// Indicates the end of the main script.
+    end,
+};
+
+test "Internals." {
+    try t.eq(std.enums.values(OpCode).len, 92);
+    try t.eq(@sizeOf(OpData), 1);
+    try t.eq(@sizeOf(Const), 8);
+    try t.eq(@alignOf(Const), 8);
 }

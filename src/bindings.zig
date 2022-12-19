@@ -1239,6 +1239,31 @@ pub fn osUnsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
+// Keep as reference in case resume should be a function call.
+// Although it works, it requires native func calls to perform additional copies of pc and framePtr back to the eval loop,
+// which is a bad tradeoff for every other function call that doesn't need to.
+// One solution is to add another bytecode to call nativeFunc1 with control over execution context.
+// fn fiberResume(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(".eval") Value {
+//     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+//     if (&obj.fiber != @ptrCast(*cy.VM, vm).curFiber) {
+//         // Only resume fiber if it's not done.
+//         if (obj.fiber.pc != NullId) {
+//             // Obtain the startLocal from looking at previous inst operand.
+//             const startLocal = (@ptrCast(*cy.VM, vm).pc - 14 + 1)[0].arg;
+//             // Obtain previous framePtr by subtracting from args pointer.
+//             const prevFramePtr = @intToPtr([*]Value, @ptrToInt(args - startLocal - 4));
+
+//             const pcOffset = @intCast(u32, @ptrToInt(@ptrCast(*cy.VM, vm).pc) - @ptrToInt(@ptrCast(*cy.VM, vm).ops.ptr));
+//             const res = cy.pushFiber(@ptrCast(*cy.VM, vm), pcOffset, prevFramePtr, &obj.fiber, startLocal);
+//             @ptrCast(*cy.VM, vm).pc = res.pc;
+//             @ptrCast(*cy.VM, vm).framePtr = res.framePtr;
+//             return Value.None;
+//         }
+//     }
+//     vm.releaseObject(obj);
+//     return Value.None;
+// }
+
 fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);

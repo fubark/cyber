@@ -101,6 +101,32 @@ test "Fibers" {
         \\list.size()
     );
     try run.valueIsI32(val, 2);
+
+    // Fiber status.
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo():
+        \\  coyield
+        \\f = coinit foo()
+        \\try t.eq(f.status(), #paused)
+        \\coresume f
+        \\try t.eq(f.status(), #paused)
+        \\coresume f
+        \\try t.eq(f.status(), #done)
+    );
+
+    // Resuming after fiber is done is a nop.
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo():
+        \\  coyield
+        \\f = coinit foo()
+        \\coresume f
+        \\coresume f
+        \\try t.eq(f.status(), #done)
+        \\coresume f
+        \\try t.eq(f.status(), #done)
+    );
 }
 
 test "FFI." {

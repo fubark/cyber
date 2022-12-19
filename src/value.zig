@@ -347,6 +347,8 @@ pub const Value = packed union {
                     TagBoolean => return .boolean,
                     TagConstString => return .string,
                     TagNone => return .none,
+                    TagUserTag => return .tag,
+                    TagUserTagLiteral => return .tagLiteral,
                     else => unreachable,
                 }
             }
@@ -369,6 +371,8 @@ pub const ValueUserTag = enum {
     nativeFunc,
     tccState,
     opaquePtr,
+    tag,
+    tagLiteral,
     none,
 };
 

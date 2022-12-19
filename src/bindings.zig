@@ -12,6 +12,8 @@ const gvm = &vm_.gvm;
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.bindings);
 
+const NullId = std.math.maxInt(u32);
+
 const TagLit_int = 0;
 const TagLit_i8 = 1;
 const TagLit_u8 = 2;
@@ -26,6 +28,9 @@ const TagLit_double = 10;
 const TagLit_charPtrZ = 11;
 const TagLit_ptr = 12;
 const TagLit_AssertError = 13;
+const TagLit_running = 14;
+const TagLit_paused = 15;
+const TagLit_done = 16;
 
 const StdSection = ".std";
 const Section = ".eval2";
@@ -49,6 +54,7 @@ pub fn bindCore(self: *cy.VM) !void {
     const size = try self.ensureMethodSymKey("size");
     const len = try self.ensureMethodSymKey("len");
     const charAt = try self.ensureMethodSymKey("charAt");
+    const status = try self.ensureMethodSymKey("status");
 
     // Init compile time builtins.
 
@@ -107,6 +113,7 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
+    try self.addMethodSym(cy.FiberS, status, cy.SymbolEntry.initNativeFunc1(fiberStatus));
 
     id = try self.addStruct("Box");
     std.debug.assert(id == cy.BoxS);
@@ -158,6 +165,12 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.ensureTagLitSym("AssertError");
     std.debug.assert(id == TagLit_AssertError);
+    id = try self.ensureTagLitSym("running");
+    std.debug.assert(id == TagLit_running);
+    id = try self.ensureTagLitSym("paused");
+    std.debug.assert(id == TagLit_paused);
+    id = try self.ensureTagLitSym("done");
+    std.debug.assert(id == TagLit_done);
 }
 
 pub fn testEqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
@@ -233,6 +246,16 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: {} != {}", .{actv, expv});
+                    return Value.initErrorTagLit(TagLit_AssertError);
+                }
+            },
+            .tagLiteral => {
+                const actv = act.asTagLiteralId();
+                const expv = exp.asTagLiteralId();
+                if (actv == expv) {
+                    return Value.True;
+                } else {
+                    println("actual: {s} != {s}", .{gvm.tagLitSyms.buf[actv].name, gvm.tagLitSyms.buf[expv].name});
                     return Value.initErrorTagLit(TagLit_AssertError);
                 }
             },
@@ -1206,6 +1229,22 @@ pub fn osUnsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
+
+fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+
+    if (gvm.curFiber == @ptrCast(*cy.Fiber, obj)) {
+        return Value.initTagLiteral(TagLit_running);
+    } else {
+        // Check if done.
+        if (obj.fiber.pc == NullId) {
+            return Value.initTagLiteral(TagLit_done);
+        } else {
+            return Value.initTagLiteral(TagLit_paused);
+        }
+    }
+}
 
 fn stringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);

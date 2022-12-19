@@ -2643,12 +2643,13 @@ const Box = packed struct {
     val: Value,
 };
 
-const Fiber = packed struct {
+pub const Fiber = packed struct {
     structId: StructId,
     rc: u32,
     prevFiber: ?*Fiber,
     stackPtr: [*]Value,
     stackLen: u32,
+    /// If pc == NullId, the fiber is done.
     pc: u32,
     framePtr: [*]Value,
 };
@@ -3910,7 +3911,7 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
             .coreturn => {
                 pc += 1;
                 if (vm.curFiber != &vm.mainFiber) {
-                    const res = popFiber(vm, pcOffset(pc), framePtr);
+                    const res = popFiber(vm, NullId, framePtr);
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
@@ -3923,10 +3924,15 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                     const obj = stdx.ptrAlignCast(*HeapObject, fiber.asPointer().?);
                     if (obj.common.structId == FiberS) {
                         if (&obj.fiber != vm.curFiber) {
-                            const res = pushFiber(vm, pcOffset(pc + 3), framePtr, &obj.fiber);
-                            pc = res.pc;
-                            framePtr = res.framePtr;
-                            continue;
+                            // Only resume fiber if it's not done.
+                            if (obj.fiber.pc != NullId) {
+                                const res = pushFiber(vm, pcOffset(pc + 3), framePtr, &obj.fiber);
+                                pc = res.pc;
+                                framePtr = res.framePtr;
+                                continue;
+                            } else {
+                                releaseObject(vm, obj);
+                            }
                         }
                     }
                 }
@@ -4700,35 +4706,38 @@ fn releaseFiberStack(vm: *VM, fiber: *Fiber) void {
     var framePtr = (@ptrToInt(fiber.framePtr) - @ptrToInt(stack.ptr)) >> 3;
     var pc = fiber.pc;
 
-    // Check if fiber is still in init state.
-    switch (vm.ops[pc].code) {
-        .callFuncIC,
-        .callSym => {
-            if (vm.ops[pc + 11].code == .coreturn) {
-                const numArgs = vm.ops[pc - 4].arg;
-                for (fiber.framePtr[4..4 + numArgs]) |arg| {
-                    release(vm, arg);
-                }
-            }
-        },
-        else => {},
-    }
+    if (pc != NullId) {
 
-    // Check if fiber was previously on a yield op.
-    if (vm.ops[pc].code == .coyield) {
-        const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
-        log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
-        // The yield statement already contains the end locals pc.
-        runReleaseOps(vm, stack, framePtr, pc + jump);
-    }
-    // Unwind stack and release all locals.
-    while (framePtr > 0) {
-        pc = pcOffset(stack[framePtr + 2].retPcPtr);
-        framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
-        const endLocalsPc = pcToEndLocalsPc(vm, pc);
-        log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
-        if (endLocalsPc != NullId) {
-            runReleaseOps(vm, stack, framePtr, endLocalsPc);
+        // Check if fiber is still in init state.
+        switch (vm.ops[pc].code) {
+            .callFuncIC,
+            .callSym => {
+                if (vm.ops[pc + 11].code == .coreturn) {
+                    const numArgs = vm.ops[pc - 4].arg;
+                    for (fiber.framePtr[4..4 + numArgs]) |arg| {
+                        release(vm, arg);
+                    }
+                }
+            },
+            else => {},
+        }
+
+        // Check if fiber was previously on a yield op.
+        if (vm.ops[pc].code == .coyield) {
+            const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
+            log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
+            // The yield statement already contains the end locals pc.
+            runReleaseOps(vm, stack, framePtr, pc + jump);
+        }
+        // Unwind stack and release all locals.
+        while (framePtr > 0) {
+            pc = pcOffset(stack[framePtr + 2].retPcPtr);
+            framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
+            const endLocalsPc = pcToEndLocalsPc(vm, pc);
+            log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
+            if (endLocalsPc != NullId) {
+                runReleaseOps(vm, stack, framePtr, endLocalsPc);
+            }
         }
     }
     // Finally free stack.

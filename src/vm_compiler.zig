@@ -941,7 +941,7 @@ pub const VMcompiler = struct {
             }
         }
 
-        self.curBlock.firstFreeTempLocal = @intCast(u8, self.curBlock.numLocals);
+        self.resetNextFreeTemp();
     }
 
     pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
@@ -2539,6 +2539,14 @@ pub const VMcompiler = struct {
         defer self.setFirstFreeTempLocal(startTempLocal);
 
         var callStartLocal = self.advanceNextTempLocalPastArcTemps();
+        if (self.blocks.items.len == 1) {
+            // Main block.
+            // Ensure call start register is at least 1 so the runtime can easily check
+            // if framePtr is at main or a function.
+            if (callStartLocal == 0) {
+                callStartLocal = 1;
+            }
+        }
 
         // Reserve registers for return value and return info.
         if (dst + 1 == self.curBlock.firstFreeTempLocal) {
@@ -2550,7 +2558,7 @@ pub const VMcompiler = struct {
         _ = try self.nextFreeTempLocal();
         _ = try self.nextFreeTempLocal();
 
-        const genCallStartLocal = if (startFiber) 0 else callStartLocal;
+        const genCallStartLocal = if (startFiber) 1 else callStartLocal;
 
         const node = self.nodes[nodeId];
         const callee = self.nodes[node.head.func_call.callee];
@@ -2672,7 +2680,8 @@ pub const VMcompiler = struct {
                     const coinitPc = self.buf.ops.items.len;
                     if (startFiber) {
                         // Precompute first arg local since coinit doesn't need the startLocal.
-                        var initialStackSize = numArgs + 4;
+                        // numArgs + 4 (ret slots) + 1 (min call start local for main block)
+                        var initialStackSize = numArgs + 4 + 1;
                         if (initialStackSize < 16) {
                             initialStackSize = 16;
                         }
@@ -3733,7 +3742,11 @@ pub const VMcompiler = struct {
             },
             .coresume => {
                 const fiber = try self.genRetainedTempExpr(node.head.child_head, false);
-                try self.buf.pushOp2(.coresume, fiber.local, dst);
+                if (!discardTopExprReg) {
+                    try self.buf.pushOp2(.coresume, fiber.local, dst);
+                } else {
+                    try self.buf.pushOp2(.coresume, fiber.local, NullIdU8);
+                }
                 return self.initGenValue(dst, AnyType);
             },
             .coyield => {

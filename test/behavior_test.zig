@@ -73,6 +73,17 @@ test "Fibers" {
     );
     try run.valueIsI32(val, 123);
 
+    // coresume returns final value.
+    val = try run.eval(
+        \\import t 'test'
+        \\func foo(list):
+        \\  list.add(123)
+        \\  return list[0]
+        \\list = []
+        \\f = coinit foo(list)
+        \\try t.eq(coresume f, 123)
+    );
+
     // Start fiber with yield in nested function.
     val = try run.eval(
         \\func bar():
@@ -126,6 +137,18 @@ test "Fibers" {
         \\try t.eq(f.status(), #done)
         \\coresume f
         \\try t.eq(f.status(), #done)
+    );
+
+    // Grow fiber stack.
+    _ = try run.eval(
+        \\import t 'test'
+        \\func sum(n):
+        \\  if n == 0:
+        \\    return 0
+        \\  return n + sum(n - 1)
+        \\f = coinit sum(20)
+        \\res = coresume f
+        \\try t.eq(res, 210)
     );
 }
 

@@ -76,6 +76,7 @@ pub const OpCode = bytecode.OpCode;
 pub const OpData = bytecode.OpData;
 pub const Const = bytecode.Const;
 pub const OpDebug = bytecode.OpDebug;
+pub const getInstLenAt = bytecode.getInstLenAt;
 
 const cdata = @import("cdata.zig");
 pub const encodeCyon = cdata.encode;

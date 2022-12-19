@@ -175,143 +175,6 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn getInstLenAt(self: *const ByteCodeBuffer, pc: usize) u8 {
-        const ops = self.ops.items;
-        switch (ops[pc].code) {
-            .ret0,
-            .ret1,
-            .coreturn => {
-                return 1;
-            },
-            .retain,
-            .end,
-            .release,
-            .none,
-            .true,
-            .false,
-            .mapEmpty => {
-                return 2;
-            },
-            .releaseN,
-            .setInitN => {
-                const numVars = ops[pc+1].arg;
-                return 2 + numVars;
-            },
-            .setIndex,
-            .copy,
-            .not,
-            .bitwiseNot,
-            .neg,
-            .copyRetainSrc,
-            .copyReleaseDst,
-            .constI8,
-            .constI8Int,
-            .call0,
-            .call1,
-            .jumpBack,
-            .jump,
-            .coyield,
-            .coresume,
-            .box,
-            .setBoxValue,
-            .setBoxValueRelease,
-            .boxValue,
-            .boxValueRetain,
-            .tagLiteral,
-            .tryValue,
-            .varSym,
-            .constOp => {
-                return 3;
-            },
-            .indexRetain,
-            .reverseIndexRetain,
-            .index,
-            .reverseIndex,
-            .jumpNotNone,
-            .jumpCond,
-            .minus,
-            .minusInt,
-            .mul,
-            .div,
-            .setField,
-            .pow,
-            .mod,
-            .less,
-            .lessInt,
-            .greater,
-            .lessEqual,
-            .greaterEqual,
-            .compare,
-            .compareNot,
-            .bitwiseAnd,
-            .bitwiseOr,
-            .bitwiseXor,
-            .bitwiseLeftShift,
-            .bitwiseRightShift,
-            .list,
-            .add,
-            .addInt,
-            .tag,
-            .jumpNotCond => {
-                return 4;
-            },
-            .stringTemplate => {
-                const numExprs = ops[pc+2].arg;
-                return 4 + numExprs + 1;
-            },
-            .funcSymClosure => {
-                const numCaptured = ops[pc+3].arg;
-                return 4 + numCaptured;
-            },
-            .map => {
-                const numEntries = ops[pc+2].arg;
-                return 4 + numEntries;
-            },
-            .slice,
-            .lambda => {
-                return 5;
-            },
-            .object,
-            .objectSmall => {
-                const numEntries = ops[pc+3].arg;
-                return 5 + numEntries;
-            },
-            .coinit => {
-                return 6;
-            },
-            .closure => {
-                const numCaptured = ops[pc+3].arg;
-                return 6 + numCaptured;
-            },
-            .forRange,
-            .forRangeReverse,
-            .setFieldRelease,
-            .setFieldReleaseIC,
-            .fieldRetain,
-            .fieldRetainIC,
-            .field,
-            .fieldIC => {
-                return 7;
-            },
-            .forRangeInit => {
-                return 8;
-            },
-            .callSym,
-            .callNativeFuncIC,
-            .callFuncIC => {
-                return 11;
-            },
-            .callObjSym,
-            .callObjNativeFuncIC,
-            .callObjFuncIC => {
-                return 14;
-            },
-            else => {
-                stdx.panicFmt("unsupported {}", .{ops[pc].code});
-            },
-        }
-    }
-
     pub fn dump(self: ByteCodeBuffer) !void {
         var pc: usize = 0;
         const ops = self.ops.items;
@@ -319,7 +182,7 @@ pub const ByteCodeBuffer = struct {
         println("Bytecode:", .{});
         while (pc < ops.len) {
             const name = @tagName(ops[pc].code);
-            const len = self.getInstLenAt(pc);
+            const len = getInstLenAt(self.ops.items.ptr + pc);
             switch (ops[pc].code) {
                 else => {
                     println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+len])});
@@ -528,4 +391,140 @@ test "Internals." {
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);
+}
+
+pub fn getInstLenAt(pc: [*]const OpData) u8 {
+    switch (pc[0].code) {
+        .ret0,
+        .ret1,
+        .coreturn => {
+            return 1;
+        },
+        .retain,
+        .end,
+        .release,
+        .none,
+        .true,
+        .false,
+        .mapEmpty => {
+            return 2;
+        },
+        .releaseN,
+        .setInitN => {
+            const numVars = pc[1].arg;
+            return 2 + numVars;
+        },
+        .setIndex,
+        .copy,
+        .not,
+        .bitwiseNot,
+        .neg,
+        .copyRetainSrc,
+        .copyReleaseDst,
+        .constI8,
+        .constI8Int,
+        .call0,
+        .call1,
+        .jumpBack,
+        .jump,
+        .coyield,
+        .coresume,
+        .box,
+        .setBoxValue,
+        .setBoxValueRelease,
+        .boxValue,
+        .boxValueRetain,
+        .tagLiteral,
+        .tryValue,
+        .varSym,
+        .constOp => {
+            return 3;
+        },
+        .indexRetain,
+        .reverseIndexRetain,
+        .index,
+        .reverseIndex,
+        .jumpNotNone,
+        .jumpCond,
+        .minus,
+        .minusInt,
+        .mul,
+        .div,
+        .setField,
+        .pow,
+        .mod,
+        .less,
+        .lessInt,
+        .greater,
+        .lessEqual,
+        .greaterEqual,
+        .compare,
+        .compareNot,
+        .bitwiseAnd,
+        .bitwiseOr,
+        .bitwiseXor,
+        .bitwiseLeftShift,
+        .bitwiseRightShift,
+        .list,
+        .add,
+        .addInt,
+        .tag,
+        .jumpNotCond => {
+            return 4;
+        },
+        .stringTemplate => {
+            const numExprs = pc[2].arg;
+            return 4 + numExprs + 1;
+        },
+        .funcSymClosure => {
+            const numCaptured = pc[3].arg;
+            return 4 + numCaptured;
+        },
+        .map => {
+            const numEntries = pc[2].arg;
+            return 4 + numEntries;
+        },
+        .slice,
+        .lambda => {
+            return 5;
+        },
+        .object,
+        .objectSmall => {
+            const numEntries = pc[3].arg;
+            return 5 + numEntries;
+        },
+        .coinit => {
+            return 6;
+        },
+        .closure => {
+            const numCaptured = pc[3].arg;
+            return 6 + numCaptured;
+        },
+        .forRange,
+        .forRangeReverse,
+        .setFieldRelease,
+        .setFieldReleaseIC,
+        .fieldRetain,
+        .fieldRetainIC,
+        .field,
+        .fieldIC => {
+            return 7;
+        },
+        .forRangeInit => {
+            return 8;
+        },
+        .callSym,
+        .callNativeFuncIC,
+        .callFuncIC => {
+            return 11;
+        },
+        .callObjSym,
+        .callObjNativeFuncIC,
+        .callObjFuncIC => {
+            return 14;
+        },
+        else => {
+            stdx.panicFmt("unsupported {}", .{pc[0].code});
+        },
+    }
 }

@@ -2747,9 +2747,9 @@ pub const VMcompiler = struct {
         self.patchJumpToCurrent(jumpPc);
 
         if (truev.vtype.typeT != falsev.vtype.typeT) {
-            return self.initGenValue(dst, truev.vtype);
-        } else {
             return self.initGenValue(dst, AnyType);
+        } else {
+            return self.initGenValue(dst, truev.vtype);
         }
     }
 

@@ -1432,6 +1432,14 @@ test "if expression" {
         \\if foo then 123 else 456
     );
     try t.eq(val.asF64toI32(), 456);
+
+    // Types are merged.
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = if false then 123 else '{123}456'
+        \\try t.eq(a, '123456')
+        \\-- `a` should be released since else returns a heap string.
+    );
 }
 
 test "Return statement." {

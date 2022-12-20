@@ -9,7 +9,7 @@ pub const heap = @import("heap.zig");
 pub const stack = @import("ds/stack.zig");
 pub const Stack = stack.Stack;
 
-const utils = @import("utils.zig");
+pub const utils = @import("utils.zig");
 pub const IndexSlice = utils.IndexSlice;
 pub const ptrAlignCast = utils.ptrAlignCast;
 

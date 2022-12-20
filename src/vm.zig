@@ -8,7 +8,7 @@ const fmt = @import("fmt.zig");
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const Value = cy.Value;
-const debug = builtin.mode == .Debug;
+const debug = @import("debug.zig");
 const TraceEnabled = @import("build_options").trace;
 
 const log = stdx.log.scoped(.vm);
@@ -590,7 +590,6 @@ pub const VM = struct {
     }
 
     fn allocMap(self: *VM, keyIdxs: []const cy.OpData, vals: []const Value) !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         obj.map = .{
             .structId = MapS,
@@ -673,7 +672,6 @@ pub const VM = struct {
     }
 
     fn allocLambda(self: *VM, funcPc: usize, numParams: u8, numLocals: u8) !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         obj.lambda = .{
             .structId = LambdaS,
@@ -693,7 +691,6 @@ pub const VM = struct {
     }
 
     fn allocClosure(self: *VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const cy.OpData) !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         obj.closure = .{
             .structId = ClosureS,
@@ -737,7 +734,6 @@ pub const VM = struct {
     }
 
     pub fn allocOwnedString(self: *VM, str: []u8) linksection(section) !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         obj.string = .{
             .structId = StringS,
@@ -814,7 +810,6 @@ pub const VM = struct {
     }
 
     pub fn allocString(self: *VM, str: []const u8) !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         const dupe = try self.alloc.dupe(u8, str);
         // log.debug("alloc str {*} {s}", .{dupe.ptr, dupe});
@@ -889,7 +884,6 @@ pub const VM = struct {
     }
 
     pub fn allocOwnedList(self: *VM, elems: []Value) !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         obj.list = .{
             .structId = ListS,
@@ -912,7 +906,6 @@ pub const VM = struct {
     }
 
     fn allocList(self: *VM, elems: []const Value) linksection(".eval") !Value {
-        @setRuntimeSafety(debug);
         const obj = try self.allocPoolObject();
         obj.list = .{
             .structId = ListS,
@@ -1232,7 +1225,6 @@ pub const VM = struct {
     }
 
     pub fn setIndex(self: *VM, left: Value, index: Value, right: Value) !void {
-        @setRuntimeSafety(debug);
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
@@ -1266,12 +1258,10 @@ pub const VM = struct {
 
     /// Assumes sign of index is preserved.
     fn getReverseIndex(self: *const VM, left: Value, index: Value) !Value {
-        @setRuntimeSafety(debug);
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
                 ListS => {
-                    @setRuntimeSafety(debug);
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
                     if (idx < list.len) {
@@ -1281,7 +1271,6 @@ pub const VM = struct {
                     }
                 },
                 MapS => {
-                    @setRuntimeSafety(debug);
                     const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
                     const key = Value.initF64(index.toF64());
                     if (map.get(self, key)) |val| {
@@ -1451,7 +1440,6 @@ pub const VM = struct {
     }
 
     pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(".eval") void {
-        @setRuntimeSafety(debug);
         if (TraceEnabled) {
             self.trace.numRetainAttempts += inc;
         }
@@ -1880,23 +1868,6 @@ pub const VM = struct {
         }
     }
 
-    fn computeLinePos(self: *const VM, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) void {
-        var line: u32 = 0;
-        var lineStart: u32 = 0;
-        for (self.parser.tokens.items) |token| {
-            if (token.pos() == loc) {
-                outLine.* = line;
-                outCol.* = loc - lineStart;
-                outLineStart.* = lineStart;
-                return;
-            }
-            if (token.tag() == .new_line) {
-                line += 1;
-                lineStart = token.pos() + 1;
-            }
-        }
-    }
-
     pub fn buildStackTrace(self: *VM, fromPanic: bool) !void {
         @setCold(true);
         self.stackTrace.deinit(self.alloc);
@@ -1923,7 +1894,8 @@ pub const VM = struct {
                 var line: u32 = undefined;
                 var col: u32 = undefined;
                 var lineStart: u32 = undefined;
-                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col, &lineStart);
+                const pos = self.compiler.tokens[node.start_token].pos();
+                debug.computeLinePosWithTokens(self.parser.tokens.items, self.parser.src.items, pos, &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = "main",
                     .uri = self.mainUri,
@@ -1941,7 +1913,8 @@ pub const VM = struct {
                 var line: u32 = undefined;
                 var col: u32 = undefined;
                 var lineStart: u32 = undefined;
-                self.computeLinePos(self.compiler.tokens[node.start_token].pos(), &line, &col, &lineStart);
+                const pos = self.compiler.tokens[node.start_token].pos();
+                debug.computeLinePosWithTokens(self.parser.tokens.items, self.parser.src.items, pos, &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = name,
                     .uri = self.mainUri,
@@ -2025,21 +1998,18 @@ pub const VM = struct {
     }
 
     pub inline fn stackEnsureUnusedCapacity(self: *VM, unused: u32) linksection(".eval") !void {
-        @setRuntimeSafety(debug);
         if (@ptrToInt(self.framePtr) + 8 * unused >= @ptrToInt(self.stack.ptr + self.stack.len)) {
             try self.stackGrowTotalCapacity((@ptrToInt(self.framePtr) + 8 * unused) / 8);
         }
     }
 
     inline fn stackEnsureTotalCapacity(self: *VM, newCap: usize) linksection(".eval") !void {
-        @setRuntimeSafety(debug);
         if (newCap > self.stack.len) {
             try self.stackGrowTotalCapacity(newCap);
         }
     }
 
     pub fn stackEnsureTotalCapacityPrecise(self: *VM, newCap: usize) !void {
-        @setRuntimeSafety(debug);
         if (newCap > self.stack.len) {
             try self.stackGrowTotalCapacityPrecise(newCap);
         }
@@ -2279,7 +2249,6 @@ fn evalLessOrEqual(left: cy.Value, right: cy.Value) cy.Value {
 }
 
 fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
-    @setRuntimeSafety(debug);
     @setCold(true);
     return Value.initBool(left.toF64() < right.toF64());
 }
@@ -2321,7 +2290,6 @@ fn evalCompareNotFallback(left: cy.Value, right: cy.Value) linksection(".eval") 
 }
 
 fn evalCompareFallback(left: Value, right: Value) linksection(".eval") Value {
-    @setRuntimeSafety(debug);
     @setCold(true);
     if (left.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
@@ -2371,7 +2339,6 @@ fn evalMinusFallback(left: Value, right: Value) linksection(".eval") Value {
 }
 
 fn evalPower(left: cy.Value, right: cy.Value) cy.Value {
-    @setRuntimeSafety(debug);
     if (left.isNumber()) {
         return Value.initF64(std.math.pow(f64, left.asF64(), right.toF64()));
     } else {
@@ -2390,7 +2357,6 @@ fn evalPower(left: cy.Value, right: cy.Value) cy.Value {
 }
 
 fn evalDivide(left: cy.Value, right: cy.Value) cy.Value {
-    @setRuntimeSafety(debug);
     if (left.isNumber()) {
         return Value.initF64(left.asF64() / right.toF64());
     } else {
@@ -2409,7 +2375,6 @@ fn evalDivide(left: cy.Value, right: cy.Value) cy.Value {
 }
 
 fn evalMod(left: cy.Value, right: cy.Value) cy.Value {
-    @setRuntimeSafety(debug);
     if (left.isNumber()) {
         return Value.initF64(std.math.mod(f64, left.asF64(), right.toF64()) catch std.math.nan_f64);
     } else {
@@ -2445,7 +2410,6 @@ fn evalMod(left: cy.Value, right: cy.Value) cy.Value {
 }
 
 fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
-    @setRuntimeSafety(debug);
     if (left.isNumber()) {
         return Value.initF64(left.asF64() * right.toF64());
     } else {
@@ -2500,7 +2464,6 @@ fn convToF64OrPanic(val: Value) linksection(".eval") !f64 {
 }
 
 fn evalNeg(val: Value) Value {
-    @setRuntimeSafety(debug);
     // @setCold(true);
     if (val.isNumber()) {
         return Value.initF64(-val.asF64());
@@ -3200,7 +3163,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .compareNot => {
-                @setRuntimeSafety(debug);
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
@@ -3249,7 +3211,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .greater => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3258,7 +3219,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .lessEqual => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3267,7 +3227,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .greaterEqual => {
-                @setRuntimeSafety(debug);
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
@@ -3310,7 +3269,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .stringTemplate => {
-                @setRuntimeSafety(debug);
                 const startLocal = pc[1].arg;
                 const exprCount = pc[2].arg;
                 const dst = pc[3].arg;
@@ -3323,7 +3281,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .list => {
-                @setRuntimeSafety(debug);
                 const startLocal = pc[1].arg;
                 const numElems = pc[2].arg;
                 const dst = pc[3].arg;
@@ -3334,7 +3291,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .mapEmpty => {
-                @setRuntimeSafety(debug);
                 const dst = pc[1].arg;
                 pc += 2;
                 framePtr[dst] = try gvm.allocEmptyMap();
@@ -3365,7 +3321,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .map => {
-                @setRuntimeSafety(debug);
                 const startLocal = pc[1].arg;
                 const numEntries = pc[2].arg;
                 const dst = pc[3].arg;
@@ -3376,7 +3331,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .slice => {
-                @setRuntimeSafety(debug);
                 const list = framePtr[pc[1].arg];
                 const start = framePtr[pc[2].arg];
                 const end = framePtr[pc[3].arg];
@@ -3386,7 +3340,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .setInitN => {
-                @setRuntimeSafety(debug);
                 const numLocals = pc[1].arg;
                 const locals = pc[2..2+numLocals];
                 pc += 2 + numLocals;
@@ -3396,7 +3349,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .setIndex => {
-                @setRuntimeSafety(debug);
                 const left = pc[1].arg;
                 const index = pc[2].arg;
                 const right = pc[3].arg;
@@ -3413,7 +3365,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .copyRetainRelease => {
-                @setRuntimeSafety(debug);
                 const src = pc[1].arg;
                 const dst = pc[2].arg;
                 pc += 3;
@@ -3435,7 +3386,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .index => {
-                @setRuntimeSafety(debug);
                 const left = pc[1].arg;
                 const index = pc[2].arg;
                 const dst = pc[3].arg;
@@ -3446,7 +3396,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .indexRetain => {
-                @setRuntimeSafety(debug);
                 const left = pc[1].arg;
                 const index = pc[2].arg;
                 const dst = pc[3].arg;
@@ -3458,7 +3407,6 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .reverseIndex => {
-                @setRuntimeSafety(debug);
                 const left = pc[1].arg;
                 const index = pc[2].arg;
                 const dst = pc[3].arg;
@@ -4239,10 +4187,6 @@ fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) void {
             const dst = pc[2].arg;
             log.debug("{} op: {s} {} {}", .{offset, @tagName(pc[0].code), src, dst});
         },
-        .fieldRetain => {
-            const fieldId = pc[1].arg;
-            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), fieldId});
-        },
         .map => {
             const startLocal = pc[1].arg;
             const numEntries = pc[2].arg;
@@ -4798,7 +4742,6 @@ fn boxValueRetain(box: Value) linksection(".eval") Value {
 }
 
 fn allocBox(val: Value) !Value {
-    @setRuntimeSafety(debug);
     const obj = try gvm.allocPoolObject();
     obj.box = .{
         .structId = BoxS,
@@ -4835,7 +4778,7 @@ fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []c
         if (isTokenError) {
             vm.computeLinePosFromSrc(pos, &line, &col, &lineStart);
         } else {
-            vm.computeLinePos(pos, &line, &col, &lineStart);
+            debug.computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
         }
         const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
         var arrowBuf: std.ArrayListUnmanaged(u8) = .{};

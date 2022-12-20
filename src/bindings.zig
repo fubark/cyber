@@ -847,7 +847,7 @@ fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void 
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
-fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
@@ -856,28 +856,23 @@ fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
         lessFn: Value,
+        vm: *cy.UserVM,
+        newFramePtr: u32,
     };
     var lessCtx = LessContext{
         .lessFn = args[0],
+        .vm = vm,
+        .newFramePtr = vm.getNewFramePtrOffset(args),
     };
-    gvm.stackEnsureUnusedCapacity(5) catch stdx.fatal();
+
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
-            gvm.retain(a);
-            gvm.retain(b);
-            gvm.retain(ctx_.lessFn);
-            gvm.framePtr[4] = a;
-            gvm.framePtr[5] = b;
-            gvm.framePtr[6] = ctx_.lessFn;
-            const retInfo = cy.buildReturnInfo(1, false);
-            vm_.callNoInline(&gvm.pc, &gvm.framePtr, ctx_.lessFn, 0, 3, retInfo) catch stdx.fatal();
-            @call(.{ .modifier = .never_inline }, vm_.evalLoopGrowStack, .{gvm}) catch unreachable;
-            const res = gvm.framePtr[0];
+            const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch stdx.fatal();
             return res.toBool();
         }
     };
     std.sort.sort(Value, list.items(), &lessCtx, S.less);
-    vm_.releaseObject(gvm, obj);
+    vm.releaseObject(obj);
     return Value.None;
 }
 

@@ -3021,6 +3021,36 @@ pub const UserVM = struct {
     pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {
         return @ptrCast(*const VM, self).valueToString(val);
     }
+
+    pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value) u32 {
+        const vm = @ptrCast(*const VM, self);
+        return @intCast(u32, framePtrOffsetFrom(vm.stack.ptr, args));
+    }
+
+    pub fn callFunc(self: *UserVM, framePtr: u32, func: Value, args: []const Value) !Value {
+        const vm = @ptrCast(*VM, self);
+
+        try ensureTotalStackCapacity(vm, framePtr + args.len + 1 + 4);
+        const saveFramePtrOffset = framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
+        vm.framePtr = vm.stack.ptr + framePtr;
+
+        vm.retain(func);
+        vm.framePtr[4 + args.len] = func;
+        for (args) |arg, i| {
+            vm.retain(arg);
+            vm.framePtr[4 + i] = arg;
+        }
+        const retInfo = buildReturnInfo(1, false);
+        try callNoInline(&vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len + 1), retInfo);
+        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{vm});
+
+        const res = vm.framePtr[0];
+
+        // Restore framePtr.
+        vm.framePtr = vm.stack.ptr + saveFramePtrOffset;
+
+        return res;
+    }
 };
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
@@ -4709,12 +4739,12 @@ pub inline fn toPc(offset: usize) [*]cy.OpData {
     return @ptrCast([*]cy.OpData, &gvm.ops.ptr[offset]);
 }
 
-inline fn framePtrOffsetFrom(stackPtr: [*]Value, framePtr: [*]Value) usize {
+inline fn framePtrOffsetFrom(stackPtr: [*]const Value, framePtr: [*]const Value) usize {
     // Divide by eight.
     return (@ptrToInt(framePtr) - @ptrToInt(stackPtr)) >> 3;
 }
 
-pub inline fn framePtrOffset(framePtr: [*]Value) usize {
+pub inline fn framePtrOffset(framePtr: [*]const Value) usize {
     // Divide by eight.
     return (@ptrToInt(framePtr) - @ptrToInt(gvm.stack.ptr)) >> 3;
 }

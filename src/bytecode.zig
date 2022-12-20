@@ -289,6 +289,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .neg,
         .copyRetainSrc,
         .copyReleaseDst,
+        .copyRetainRelease,
         .constI8,
         .constI8Int,
         .call0,
@@ -480,6 +481,8 @@ pub const OpCode = enum(u8) {
     reverseIndex,
     reverseIndexRetain,
     compareNot,
+
+    /// [startLocal] [exprCount] [dst] [..string consts]
     stringTemplate,
     neg,
     setInitN,

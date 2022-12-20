@@ -1,5 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
+const t = stdx.testing;
 
 const log = stdx.log.scoped(.fmt);
 
@@ -9,6 +11,7 @@ const FmtValueType = enum {
     char,
     string,
     u32,
+    bool,
 };
 
 pub const FmtValue = struct {
@@ -17,11 +20,20 @@ pub const FmtValue = struct {
         u32: u32,
         string: []const u8,
         char: u8,
+        bool: bool,
     },
 };
 
 pub fn v(val: anytype) FmtValue {
     switch (@TypeOf(val)) {
+        bool => {
+            return .{
+                .valT = .bool,
+                .inner = .{
+                    .bool = val,
+                },
+            };
+        },
         u8,
         u32 => return u32v(val),
         []u8,
@@ -76,6 +88,13 @@ pub fn str(s: []const u8) FmtValue {
 
 fn formatValue(writer: anytype, val: FmtValue) !void {
     switch (val.valT) {
+        .bool => {
+            if (val.inner.bool) {
+                try writer.writeAll("true");
+            } else {
+                try writer.writeAll("false");
+            }
+        },
         .char => {
             try writer.writeByte(val.inner.char);
         },
@@ -119,6 +138,7 @@ pub fn format(writer: anytype, fmt: []const u8, vals: []const FmtValue) !void {
 }
 
 pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtValue) ![]const u8 {
+    @setCold(true);
     var buf: std.ArrayListUnmanaged(u8) = .{};
     defer buf.deinit(alloc);
     var w = buf.writer(alloc);
@@ -127,6 +147,25 @@ pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtV
 }
 
 var printMutex = std.Thread.Mutex{};
+
+pub fn printStdout(fmt: []const u8, vals: []const FmtValue) !void {
+    @setCold(true);
+    printMutex.lock();
+    defer printMutex.unlock();
+    const w = std.io.getStdOut().writer();
+    if (builtin.is_test) {
+        var msg: []const u8 = undefined;
+        if (fmt[fmt.len-1] == '\n') {
+            msg = try allocFormat(t.alloc, fmt[0..fmt.len-1], vals);
+        } else {
+            msg = try allocFormat(t.alloc, fmt[0..fmt.len-1], vals);
+        }
+        defer t.alloc.free(msg);
+        log.debug("{s}", .{msg});
+    } else {
+        try format(w, fmt, vals);
+    }
+}
 
 pub fn printStderr(fmt: []const u8, vals: []const FmtValue) !void {
     @setCold(true);

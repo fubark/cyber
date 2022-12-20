@@ -848,7 +848,6 @@ fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void 
 }
 
 fn listSort(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    @setRuntimeSafety(debug);
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }

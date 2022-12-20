@@ -40,6 +40,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "try", .try_k },
     .{ "catch", .catch_k },
     .{ "recover", .recover_k },
+    .{ "compt", .compt_k },
 });
 
 const BlockState = struct {
@@ -1915,6 +1916,15 @@ pub const Parser = struct {
                 };
                 return expr;
             },
+            .compt_k => {
+                self.advanceToken();
+                const expr = try self.pushNode(.comptExpr, start);
+                const child = try self.parseTermExpr();
+                self.nodes.items[expr].head = .{
+                    .child_head = child,
+                };
+                return expr;
+            },
             .try_k => {
                 self.advanceToken();
                 const expr = try self.pushNode(.tryExpr, start);
@@ -2812,12 +2822,12 @@ pub const TokenType = enum(u6) {
     try_k,
     catch_k,
     recover_k,
+    compt_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
     none,
 };
-
 
 pub const Token = packed struct {
     token_t: TokenType,
@@ -2897,6 +2907,7 @@ pub const NodeType = enum {
     coresume,
     importStmt,
     tryExpr,
+    comptExpr,
 };
 
 pub const BinaryExprOp = enum {
@@ -4061,6 +4072,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 55);
-    try t.eq(keywords.kvs.len, 26);
+    try t.eq(std.enums.values(TokenType).len, 56);
+    try t.eq(keywords.kvs.len, 27);
 }

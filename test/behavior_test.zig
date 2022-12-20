@@ -9,6 +9,17 @@ const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "compile time" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // compt is valid syntax
+    _ = try run.eval(
+        \\func foo(a):
+        \\  compt compilerDumpLocals()
+    );
+}
+
 test "os module" {
     const run = VMrunner.create();
     defer run.destroy();

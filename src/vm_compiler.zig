@@ -304,6 +304,10 @@ pub const VMcompiler = struct {
                 }
                 return AnyType;
             },
+            .comptExpr => {
+                _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
+                return AnyType;
+            },
             .tryExpr => {
                 _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
                 return AnyType;
@@ -2967,6 +2971,21 @@ pub const VMcompiler = struct {
         return self.genExprTo2(nodeId, dst, AnyType, retainEscapeTop, discardTopExprReg);
     }
 
+    fn dumpLocals(self: *VMcompiler) !void {
+        if (builtin.mode == .Debug) {
+            const sblock = self.curSemaBlock();
+            try fmt.printStdout("Compiler (dump locals):\n", &.{});
+            for (sblock.params.items) |varId| {
+                const svar = self.vars.items[varId];
+                try fmt.printStdout("{} (param), local: {}, curType: {} {} {}\n", &.{fmt.v(svar.name), fmt.v(svar.local), fmt.v(svar.vtype.typeT), fmt.v(svar.vtype.rcCandidate), fmt.v(svar.lifetimeRcCandidate)});
+            }
+            for (sblock.locals.items) |varId| {
+                const svar = self.vars.items[varId];
+                try fmt.printStdout("{}, local: {}, curType: {} {} {}\n", &.{fmt.v(svar.name), fmt.v(svar.local), fmt.v(svar.vtype.typeT), fmt.v(svar.vtype.rcCandidate), fmt.v(svar.lifetimeRcCandidate)});
+            }
+        }
+    }
+
     /// `dst` indicates the local of the resulting value.
     /// `retainEscapeTop` indicates that the resulting val is meant to be used to escape the current scope. (eg. call args)
     /// If `retainEscapeTop` is false, the dst is a temp local, and the expr requires a retain (eg. call expr), it is added as an arcTempLocal.
@@ -3398,6 +3417,20 @@ pub const VMcompiler = struct {
                     return self.initGenValue(dst, AnyType);
                 } else {
                     return GenValue.initNoValue();
+                }
+            },
+            .comptExpr => {
+                const child = self.nodes[node.head.child_head];
+                if (child.node_t == .call_expr) {
+                    const callee = self.nodes[child.head.func_call.callee];
+                    const name = self.getNodeTokenString(callee);
+                    if (std.mem.eql(u8, name, "compilerDumpLocals")) {
+                        try self.dumpLocals();
+                    }
+                    try self.buf.pushOp1(.none, dst);
+                    return self.initGenValue(dst, AnyType);
+                } else {
+                    return self.reportError("Unsupported compt expr {}", &.{fmt.v(child.node_t)});
                 }
             },
             .tryExpr => {

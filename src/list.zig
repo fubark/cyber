@@ -93,7 +93,7 @@ pub fn List(comptime T: type) type {
         }
 
         pub fn growTotalCapacity(self: *ListT, alloc: std.mem.Allocator, newCap: usize) !void {
-            var betterCap = newCap;
+            var betterCap = self.buf.len;
             while (true) {
                 betterCap +|= betterCap / 2 + 8;
                 if (betterCap >= newCap) {

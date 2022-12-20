@@ -912,10 +912,16 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (inner.len == inner.buf.len) {
-        inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
+        // After reaching a certain size, use power of two ceil.
+        // This reduces allocations for big lists while not over allocating for smaller lists.
+        if (inner.len > 512) {
+            const newCap = std.math.ceilPowerOfTwo(u32, @intCast(u32, inner.len) + 1) catch stdx.fatal();
+            inner.growTotalCapacityPrecise(gvm.alloc, newCap) catch stdx.fatal();
+        } else {
+            inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
+        }
     }
     inner.appendAssumeCapacity(args[0]);
-    // vm_.releaseObject(list);
     vm.releaseObject(list);
     return Value.None;
 }

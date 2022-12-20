@@ -2016,7 +2016,7 @@ pub const VM = struct {
     }
 
     pub fn stackGrowTotalCapacity(self: *VM, newCap: usize) !void {
-        var betterCap = newCap;
+        var betterCap = self.stack.len;
         while (true) {
             betterCap +|= betterCap / 2 + 8;
             if (betterCap >= newCap) {
@@ -4818,7 +4818,23 @@ fn growStackAuto(vm: *VM) !void {
     if (growSize < 16) {
         growSize = 16;
     }
-    const newCap = vm.stack.len + growSize;
+    try growStackPrecise(vm, vm.stack.len + growSize);
+}
+
+fn ensureTotalStackCapacity(vm: *VM, newCap: usize) !void {
+    if (newCap > vm.stack.len) {
+        var betterCap = vm.stack.len;
+        while (true) {
+            betterCap +|= betterCap / 2 + 8;
+            if (betterCap >= newCap) {
+                break;
+            }
+        }
+        try growStackPrecise(vm, betterCap);
+    }
+}
+
+fn growStackPrecise(vm: *VM, newCap: usize) !void {
     if (vm.alloc.resize(vm.stack, newCap)) {
         vm.stack.len = newCap;
         vm.stackEndPtr = vm.stack.ptr + newCap;

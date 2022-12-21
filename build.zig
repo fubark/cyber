@@ -23,6 +23,9 @@ pub fn build(b: *std.build.Builder) !void {
         exe.setTarget(target);
         exe.setOutputDir("zig-out/cyber");
 
+        // Allow dynamic libraries to be loaded by filename in the cwd.
+        exe.addRPath(".");
+
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
 

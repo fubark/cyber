@@ -38,7 +38,7 @@ const TagLit_number = 19;
 const TagLit_object = 20;
 const TagLit_bool = 21;
 
-const StdSection = ".std";
+const StdSection = ".eval.std";
 const Section = ".eval2";
 
 // This keeps .eval section first in order.
@@ -401,19 +401,26 @@ pub fn coreFetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return vm.allocOwnedString(res.stdout) catch stdx.fatal();
 }
 
-pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
     _ = nargs;
     const path = args[0];
     const alloc = vm.allocator();
 
-    var lib: std.DynLib = undefined;
-    if (path.isNone()) {
-        lib = std.DynLib.openZ("") catch stdx.fatal();
-        log.debug("loaded main exe", .{});
-    } else {
-        lib = std.DynLib.open(gvm.valueToTempString(path)) catch stdx.fatal();
+    defer {
+        vm.release(args[0]);
+        vm.release(args[1]);
     }
-    defer lib.close();
+
+    var lib = alloc.create(std.DynLib) catch stdx.fatal();
+    if (path.isNone()) {
+        lib.* = std.DynLib.openZ("") catch stdx.fatal();
+    } else {
+        lib.* = std.DynLib.open(gvm.valueToTempString(path)) catch |err| {
+            log.debug("{}", .{err});
+            alloc.destroy(lib);
+            return Value.initErrorTagLit(TagLit_NotFound);
+        };
+    }
 
     // Check that symbols exist.
     const cfuncs = stdx.ptrAlignCast(*cy.CyList, args[1].asPointer().?);
@@ -709,7 +716,7 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 
     // Create vm function pointers and put in map.
     const map = gvm.allocEmptyMap() catch stdx.fatal();
-    const cyState = gvm.allocTccState(state.?) catch stdx.fatal();
+    const cyState = gvm.allocTccState(state.?, lib) catch stdx.fatal();
     gvm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
     for (cfuncs.items()) |cfunc| {
         const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
@@ -724,9 +731,6 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
-
-    vm.release(args[0]);
-    vm.release(args[1]);
     return map;
 }
 
@@ -757,7 +761,7 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (val.isPointer()) {
         stdx.fatal();
     } else {
-        if (val.isTagLiteral()) {
+        if (val.assumeNotPtrIsTagLiteral()) {
             return Value.initErrorTagLit(@intCast(u8, val.asTagLiteralId()));
         } else {
             stdx.fatal();

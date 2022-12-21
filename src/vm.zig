@@ -16,6 +16,7 @@ const log = stdx.log.scoped(.vm);
 const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 const section = ".eval";
+const StdSection = ".eval.std";
 
 /// Reserved symbols known at comptime.
 pub const ListS: StructId = 8;
@@ -769,19 +770,20 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocTccState(self: *VM, state: *tcc.TCCState) !Value {
+    pub fn allocTccState(self: *VM, state: *tcc.TCCState, lib: *std.DynLib) linksection(StdSection) !Value {
         const obj = try self.allocPoolObject();
         obj.tccState = .{
             .structId = TccStateS,
             .rc = 1,
             .state = state,
+            .lib = lib,
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -2121,6 +2123,8 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(".eval") void {
         },
         TccStateS => {
             tcc.tcc_delete(obj.tccState.state);
+            obj.tccState.lib.close();
+            vm.alloc.destroy(obj.tccState.lib);
             vm.freeObject(obj);
         },
         OpaquePtrS => {
@@ -2517,6 +2521,7 @@ const TccState = packed struct {
     structId: StructId,
     rc: u32,
     state: *tcc.TCCState,
+    lib: *std.DynLib,
 };
 
 const NativeFunc1 = packed struct {

@@ -1000,7 +1000,13 @@ lib = bindLib('mylib.so', [
 ])
 lib.add(123, 321)
 ```
-When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own embedded Cyber app/runtime.
+mylib.so would declare their function like this in C:
+```c
+int add(int a, int b) {
+    return a + b;
+}
+```
+If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own embedded Cyber app/runtime.
 
 The `CFunc` object lets you declare the argument and return types as [tag literals](#tags). `bindLib` then uses these declarations to generate functions that convert Cyber values to C and back. The following binding types and conversions are supported:
 

@@ -225,6 +225,10 @@ test "FFI." {
     _ = try run.eval(
         \\import t 'test'
         \\
+        \\-- Not found.
+        \\lib = bindLib('xyz123.so', [])
+        \\try t.eq(lib, error(#NotFound))
+        \\
         \\lib = bindLib(none, [
         \\  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
         \\  CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }

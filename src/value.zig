@@ -157,10 +157,14 @@ pub const Value = packed union {
     }
 
     pub inline fn isError(self: *const Value) linksection(".eval") bool {
+        return self.val & (ErrorMask | SignMask) == ErrorMask;
+    }
+
+    pub inline fn assumeNotPtrIsError(self: *const Value) linksection(".eval") bool {
         return self.val & ErrorMask == ErrorMask;
     }
 
-    pub inline fn isTagLiteral(self: *const Value) linksection(".eval") bool {
+    pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) linksection(".eval") bool {
         return self.val & UserTagLiteralMask == UserTagLiteralMask;
     }
 
@@ -178,7 +182,6 @@ pub const Value = packed union {
     }
 
     pub inline fn isPointer(self: *const Value) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
         // Only a pointer if nan bits and sign bit are set.
         return self.val & PointerMask == PointerMask;
     }

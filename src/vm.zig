@@ -347,6 +347,10 @@ pub const VM = struct {
         }
         tt.endPrint("compile");
 
+        if (builtin.is_test) {
+            try res.buf.dump();
+        }
+
         if (TraceEnabled) {
             try res.buf.dump();
             const numOps = comptime std.enums.values(cy.OpCode).len;

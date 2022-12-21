@@ -11,7 +11,10 @@ const fmt = @import("fmt.zig");
 /// Use mimalloc for fast builds.
 const UseMimalloc = builtin.mode == .ReleaseFast;
 
-var gpa: std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = false }) = .{};
+var gpa: std.heap.GeneralPurposeAllocator(.{
+    .enable_memory_limit = false,
+    .stack_trace_frames = if (builtin.mode == .Debug) 10 else 0,
+}) = .{};
 var miAlloc: mi.Allocator = undefined;
 
 pub fn main() !void {
@@ -161,9 +164,10 @@ fn help() void {
         \\       cyber [command] ...
         \\
         \\Commands:
-        \\  compile [source]     Compile source and dump the bytecode.
-        \\  help                 Print usage.
-        \\  version              Print version number.
+        \\  cyber [source]             Compile and run a script.
+        \\  cyber compile [source]     Compile script and dump the bytecode.
+        \\  cyber help                 Print usage.
+        \\  cyber version              Print version number.
         \\  
         \\General Options:
         \\  -v      Verbose.

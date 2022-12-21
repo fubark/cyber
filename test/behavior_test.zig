@@ -1133,15 +1133,15 @@ test "Lists" {
     // Iterate list
     _ = try run.eval(
         \\import t 'test'
-        \\a := [1, 2, 3, 4, 5]
-        \\sum := 0
+        \\let a = [1, 2, 3, 4, 5]
+        \\let sum = 0
         \\for a as it:
         \\  sum += it
         \\try t.eq(sum, 15)
         \\-- Pair iteration.
         \\a = [10, 20, 30]
         \\sum = 0
-        \\idxSum := 0
+        \\let idxSum = 0
         \\for a as idx, it:
         \\  sum += it
         \\  idxSum += idx
@@ -1225,8 +1225,8 @@ test "Maps" {
     // Iterate maps.
     val = try run.eval(
         \\import t 'test'
-        \\m := { a: 2, b: 3, c: 4 }
-        \\sum := 0
+        \\let m = { a: 2, b: 3, c: 4 }
+        \\let sum = 0
         \\for m as v:
         \\  sum += v 
         \\try t.eq(sum, 9)
@@ -1290,7 +1290,7 @@ test "Local variable declaration." {
     _ = try run.eval(
         \\import t 'test'
         \\-- Declare local and read it.
-        \\a := 1
+        \\let a = 1
         \\try t.eq(a, 1)
         \\func foo():
         \\  -- Captured `a` from main block.
@@ -1303,7 +1303,7 @@ test "Local variable declaration." {
         \\  -- Captured `a` from main block.
         \\  try t.eq(a, 2)
         \\  -- New `a` in `bar`.
-        \\  a := 3
+        \\  let a = 3
         \\  try t.eq(a, 3)
         \\try bar()
         \\-- `a` from main remains the same.

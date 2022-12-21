@@ -41,6 +41,8 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "catch", .catch_k },
     .{ "recover", .recover_k },
     .{ "compt", .compt_k },
+    .{ "let", .let_k },
+    .{ "var", .var_k },
 });
 
 const BlockState = struct {
@@ -1397,6 +1399,42 @@ pub const Parser = struct {
                     },
                 }
             },
+            .let_k => {
+                const start = self.next_pos;
+                self.advanceToken();
+
+                // Local name.
+                token = self.peekToken();
+                var name: NodeId = undefined;
+                if (token.tag() == .ident) {
+                    name = try self.pushIdentNode(self.next_pos);
+                    self.advanceToken();
+                } else return self.reportParseError("Expected local name identifier.", &.{});
+
+                token = self.peekToken();
+                if (token.tag() != .equal) {
+                    return self.reportParseError("Expected `=` after local variable name.", &.{});
+                }
+                self.advanceToken();
+
+                var right: NodeId = undefined;
+                if (self.peekToken().tag() == .func_k) {
+                    // Multi-line lambda.
+                    right = try self.parseMultilineLambdaFunction();
+                } else {
+                    right = (try self.parseExpr(.{})) orelse {
+                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                    };
+                }
+                const decl = try self.pushNode(.localDecl, start);
+                self.nodes.items[decl].head = .{
+                    .left_right = .{
+                        .left = name,
+                        .right = right,
+                    },
+                };
+                return decl;
+            },
             else => {
                 if (try self.parseExprOrAssignStatement()) |id| {
                     return id;
@@ -2291,7 +2329,6 @@ pub const Parser = struct {
                 .is_k,
                 .plus_equal,
                 .equal,
-                .colonEqual,
                 .operator,
                 .or_k,
                 .and_k,
@@ -2340,21 +2377,6 @@ pub const Parser = struct {
                             },
                             else => {
                                 return self.reportParseErrorAt("Expected variable to left of assignment operator.", &.{}, next);
-                            },
-                        }
-                    } else {
-                        break;
-                    }
-                },
-                .colonEqual => {
-                    if (opts.returnLeftAssignExpr) {
-                        switch (self.nodes.items[left_id].node_t) {
-                            .ident => {
-                                opts.outIsAssignStmt.* = true;
-                                return left_id;
-                            },
-                            else => {
-                                return self.reportParseErrorAt("Expected variable to left of local declaration operator.", &.{}, next);
                             },
                         }
                     } else {
@@ -2502,17 +2524,6 @@ pub const Parser = struct {
             switch (assignTag) {
                 .equal => {
                     assignStmt = try self.pushNode(.assign_stmt, start);
-                    if (self.peekToken().tag() == .func_k) {
-                        // Multi-line lambda.
-                        rightExpr = try self.parseMultilineLambdaFunction();
-                    } else {
-                        rightExpr = (try self.parseExpr(.{})) orelse {
-                            return self.reportParseErrorAt("Expected right expression for assignment statement.", &.{}, self.peekToken());
-                        };
-                    }
-                },
-                .colonEqual => {
-                    assignStmt = try self.pushNode(.localDecl, start);
                     if (self.peekToken().tag() == .func_k) {
                         // Multi-line lambda.
                         rightExpr = try self.parseMultilineLambdaFunction();
@@ -2792,7 +2803,6 @@ pub const TokenType = enum(u6) {
     equal,
     plus_equal,
     star_equal,
-    colonEqual,
     new_line,
     indent,
     return_k,
@@ -2823,6 +2833,8 @@ pub const TokenType = enum(u6) {
     catch_k,
     recover_k,
     compt_k,
+    let_k,
+    var_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -3462,12 +3474,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     }
                 },
                 ':' => {
-                    if (peekChar(p) == '=') {
-                        advanceChar(p);
-                        try p.pushToken(.colonEqual, start);
-                    } else {
-                        try p.pushToken(.colon, start);
-                    }
+                    try p.pushToken(.colon, start);
                 },
                 '@' => try p.pushToken(.at, start),
                 '-' => {
@@ -4072,6 +4079,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 56);
-    try t.eq(keywords.kvs.len, 27);
+    try t.eq(std.enums.values(TokenType).len, 57);
+    try t.eq(keywords.kvs.len, 29);
 }

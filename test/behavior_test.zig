@@ -163,6 +163,18 @@ test "Fibers" {
     );
 }
 
+test "Errors." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\err = error(#NotFound)
+        \\try t.eq(valtag(err), #error)
+        \\try t.eq(err, error(#NotFound))
+    );
+}
+
 test "FFI." {
     const run = VMrunner.create();
     defer run.destroy();

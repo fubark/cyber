@@ -8,6 +8,7 @@ const Value = cy.Value;
 const vm_ = @import("vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
 const gvm = &vm_.gvm;
+const fmt = @import("fmt.zig");
 
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.bindings);
@@ -28,9 +29,14 @@ const TagLit_double = 10;
 const TagLit_charPtrZ = 11;
 const TagLit_ptr = 12;
 const TagLit_AssertError = 13;
-const TagLit_running = 14;
-const TagLit_paused = 15;
-const TagLit_done = 16;
+const TagLit_NotFound = 14;
+const TagLit_running = 15;
+const TagLit_paused = 16;
+const TagLit_done = 17;
+const TagLit_error = 18;
+const TagLit_number = 19;
+const TagLit_object = 20;
+const TagLit_bool = 21;
 
 const StdSection = ".std";
 const Section = ".eval2";
@@ -165,12 +171,23 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.ensureTagLitSym("AssertError");
     std.debug.assert(id == TagLit_AssertError);
+    id = try self.ensureTagLitSym("NotFound");
+    std.debug.assert(id == TagLit_NotFound);
     id = try self.ensureTagLitSym("running");
     std.debug.assert(id == TagLit_running);
     id = try self.ensureTagLitSym("paused");
     std.debug.assert(id == TagLit_paused);
     id = try self.ensureTagLitSym("done");
     std.debug.assert(id == TagLit_done);
+
+    id = try self.ensureTagLitSym("error");
+    std.debug.assert(id == TagLit_error);
+    id = try self.ensureTagLitSym("number");
+    std.debug.assert(id == TagLit_number);
+    id = try self.ensureTagLitSym("object");
+    std.debug.assert(id == TagLit_object);
+    id = try self.ensureTagLitSym("bool");
+    std.debug.assert(id == TagLit_bool);
 }
 
 pub fn testEqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
@@ -262,6 +279,16 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             .none => {
                 return Value.True;
             },
+            .errorVal => {
+                const actv = act.asErrorTagLit();
+                const expv = exp.asErrorTagLit();
+                if (actv == expv) {
+                    return Value.True;
+                } else {
+                    println("actual: error({s}) != error({s})", .{gvm.tagLitSyms.buf[actv].name, gvm.tagLitSyms.buf[expv].name});
+                    return Value.initErrorTagLit(TagLit_AssertError);
+                }
+            },
             else => {
                 stdx.panicFmt("Unsupported type {}", .{actType});
             }
@@ -274,12 +301,13 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 }
 
 const testStdOutLog = stdx.log.scoped(.stdout);
-fn println(comptime fmt: []const u8, args: anytype) void {
+
+fn println(comptime format: []const u8, args: anytype) void {
     if (builtin.is_test) {
-        testStdOutLog.debug(fmt, args);
+        testStdOutLog.debug(format, args);
     } else {
         const stdout = std.io.getStdOut().writer();
-        stdout.print(fmt ++ "\n", args) catch stdx.fatal();
+        stdout.print(format ++ "\n", args) catch stdx.fatal();
     }
 }
 
@@ -710,6 +738,30 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         return gvm.allocOpaquePtr(@intToPtr(?*anyopaque, @floatToInt(u64, val.asF64()))) catch stdx.fatal();
     } else {
         stdx.panicFmt("Unsupported conversion", .{});
+    }
+}
+
+pub fn coreValtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    switch (val.getUserTag()) {
+        .number => return Value.initTagLiteral(TagLit_number),
+        .object => return Value.initTagLiteral(TagLit_object),
+        .errorVal => return Value.initTagLiteral(TagLit_error),
+        .boolean => return Value.initTagLiteral(TagLit_bool),
+        else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
+    }
+}
+
+pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    if (val.isPointer()) {
+        stdx.fatal();
+    } else {
+        if (val.isTagLiteral()) {
+            return Value.initErrorTagLit(@intCast(u8, val.asTagLiteralId()));
+        } else {
+            stdx.fatal();
+        }
     }
 }
 

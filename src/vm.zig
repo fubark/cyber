@@ -1671,9 +1671,12 @@ pub const VM = struct {
                     .framePtr = newFramePtr,
                 };
             },
-            else => {
-                return self.panic("unsupported callsym");
+            .none => {
+                return self.panic("Symbol is not defined.");
             },
+            // else => {
+            //     return self.panic("unsupported callsym");
+            // },
         }
     }
 

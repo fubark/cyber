@@ -76,7 +76,7 @@ Cyber is easy to learn. These docs provide a reference manual for the language. 
 [To Top.](#table-of-contents)
 
 ### Hello World.
-```cy
+```text
 worlds = ['World', '世界', 'दुनिया', 'mundo']
 for worlds as w:
     print 'Hello, {w}!'
@@ -89,7 +89,7 @@ In Cyber, a statement ends with the new line.
 A statement block is not surrounded by delimiters like braces.
 Instead, the beginning of a block starts with a colon.
 This is intended to make a clear distinction between expressions and structured statements.
-```cy
+```text
 -- This is a statement.
 a = 123
 
@@ -98,7 +98,7 @@ if true:
     a = 234
 ```
 The first statement in a block must be indented further than the block declaration. The rest of the statements in the block must follow the indentation. When the next statement recedes from this indentation the block ends.
-```cy
+```text
 for items as it:
     if it == 20:
         print it
@@ -106,7 +106,7 @@ for items as it:
     print it      -- This is the first statement outside of the `if` block.
 ```
 Single line blocks allows you to have one statement on the same line as the block statement.
-```cy
+```text
 -- A single line block.
 if true: print 123
 
@@ -124,12 +124,12 @@ In Cyber, there are local variables and static variables. When referencing varia
 
 ### Local Variables.
 Local variables are set with the assignment statement.
-```cy
+```text
 a = 123
 ```
 Function blocks and the main block have their own local variable scope.
 Variable names are looked up from the current scope and upwards until the first declaration is found, so using the assignment statement alone doesn't always write to the current scope.
-```cy
+```text
 a = 123
 func foo():
     -- This assignment closes over the `a` from the main scope.
@@ -138,7 +138,7 @@ foo()
 print a     -- '234'
 ```
 To declare a new local variable, use the `let` assignment.
-```cy
+```text
 a = 123
 func foo():
     -- A new local `a` inside `foo`.
@@ -149,7 +149,7 @@ foo()
 print a     -- '123'
 ```
 Note that branching constructs such as `if` or `for` are considered sub-blocks and share the same variable scope as the block they are in.
-```cy
+```text
 let a = 123
 if true:
     let a = 234   -- This would raise a compile error since `a` is already declared in the same scope.
@@ -162,7 +162,7 @@ Unlike local variables, static variables continue to exist after their block fin
 When declared in the main block, they act as global variables and are visible from anywhere in the script without being captured by a closure. 
 You can declare static variables with the `var` keyword.
 
-```cy
+```text
 var a = 123
 ```
 Cyber's static variable declaration can be a source of confusion if you're coming from a language that uses `var` as a local variable.
@@ -170,11 +170,11 @@ As a rule of thumb, static declarations in Cyber always begin with a keyword tha
 Local variable declarations use the `let` assignment instead.
 
 Static variables can also be exported from the current script. You can read more about exports and [Modules](#modules).
-```cy
+```text
 export var a = 123
 ```
 When declared in functions, static variables continue to exist for subsequent function calls. The variable is only visible from within the function.
-```cy
+```text
 func add(a):
     var sum = 0
     sum += a
@@ -202,7 +202,7 @@ There are currently `29` keywords in Cyber. This list categorizes them and shows
 
 ### Operators.
 Cyber supports the following arithmetic operators. To understand how these operators affect the number type, see [Numbers](#numbers).
-```cy
+```text
 1 + 2     -- Addition, evaluates to 3.
 100 - 10  -- Subtraction, evaluates to 90.
 3 * 4     -- Multiplication, evaluates to 12.
@@ -216,7 +216,7 @@ Cyber supports the following comparison operators.
 A comparison expression always evaluates to a [Boolean](#booleans) value.
 
 The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.
-```cy
+```text
 1 == 1      -- Evaluates to `true`
 1 == 2      -- Evaluates to `true`
 1 == true   -- Evaluates to `false`
@@ -231,7 +231,7 @@ a == []     -- Evaluates to `false`
 ```
 
 Numbers have additional comparison operators.
-```cy
+```text
 a > b    -- `true` if a is greater than b
 a >= b   -- `true` if a is greater than or equal to b
 a < b    -- `true` if a is less than b
@@ -239,13 +239,13 @@ a <= b   -- `true` if a is less than or equal to b
 ```
 
 The logical operators `and`, `or`, and `not` are supported. `and` evaluates to `b` if operands `a` and `b` have truthy values otherwise `false`. A number value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.
-```cy
+```text
 true and true  -- Evaluates to true
 123 and 234    -- Evaluates to 234
 123 and 0      -- Evaluates to false
 ```
 `or` evaluates to the first truthy value among operands `a` and `b`. If neither are truthy, `false` is returned. If `a` is found to be truthy, the evaluation of `b` is not executed.
-```cy
+```text
 true or false  -- Evaluates to true
 false or true  -- Evaluates to true
 false or false -- Evaluates to false
@@ -253,7 +253,7 @@ false or false -- Evaluates to false
 ```
 
 The unary operator `not` performs negation on the boolean value. The unary operator `!` can also be used instead of `not`.
-```cy
+```text
 not false     -- Evaluates to true
 not true      -- Evaluates to false
 not 0         -- Evaluates to true      
@@ -263,7 +263,7 @@ not 123       -- Evaluates to false
 ```
 
 Cyber supports the following bitwise operators for integer values. Number operands are first converted to a 32-bit integer before applying the operation.
-```cy
+```text
 -- Bitwise and: any underlying bits that are set in both integers are set in the new integer.
 a & b
 
@@ -287,7 +287,7 @@ a << b
 
 ### Comments.
 A single line comment starts with two hyphens.
-```cy
+```text
 -- This is a comment.
 
 a = 123   -- This is a comment on the same line as a statement.
@@ -305,7 +305,7 @@ The `none` value represents an empty value. This is similar to null in other lan
 
 ### Booleans.
 Booleans can be `true` or `false`.
-```cy
+```text
 a = true
 if a:
     print 'a is true'
@@ -325,13 +325,13 @@ You can still use numbers as integers and perform arithmetic without rounding is
 
 When performing bitwise operations, the number is first converted to an 32-bit integer.
 
-```cy
+```text
 a = 123
 b = 2.34567
 ```
 
 There are other number literal notations you can use.
-```cy
+```text
 -- Scientific notation. 
 a = 123.0e4
 
@@ -342,7 +342,7 @@ a = 0b1010   -- binary.
 ```
 
 The `int` type is a 32-bit integer and has limited support and you can only declare them in function param and return types.
-```cy
+```text
 func fib(n int) int:
     if n < 2:
         return n
@@ -357,30 +357,30 @@ Big numbers will be supported in a future version of Cyber.
 
 ### Strings.
 A single line string literal is surrounded in single quotes.
-```cy
+```text
 apple = 'a fruit'
 ```
 
 You can escape the single quote inside the literal or use double quotes.
-```cy
+```text
 apple = 'Bob\'s fruit'
 apple = "Bob's fruit"
 ```
 
 Strings are UTF-8 encoded.
-```cy
+```text
 str = 'abc🦊xyz🐶'
 ```
 
 Use double quotes to surround a multi-line string.
-```cy
+```text
 str = "line a
 line b
 line c"
 ```
 
 You can escape double quotes inside the literal or use triple quotes.
-```cy
+```text
 str = "line a
 line \"b\"
 line c"
@@ -393,7 +393,7 @@ line c
 ```
 
 The boundary of each line can be set with a vertical line character. This makes it easier to see the whitespace.
-```cy
+```text
 poem = "line a
        |  two spaces from the left
        |     indented further"
@@ -404,14 +404,14 @@ poem = "line a
 ### String Interpolation.
 
 You can embed expressions into string templates using braces.
-```cy
+```text
 name = 'Bob'
 points = 123
 str = 'Scoreboard: {name} {points}'
 ```
 
 Escape braces with a backslash.
-```cy
+```text
 points = 123
 str = 'Scoreboard: \{ Bob \} {points}'
 ```
@@ -421,7 +421,7 @@ String templates can not contain nested string templates.
 
 ### Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.
-```cy
+```text
 -- Construct a new list.
 list = [1, 2, 3]
 
@@ -433,7 +433,7 @@ print list[-1]   -- Prints '3'
 ```
 
 Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.
-```cy
+```text
 list = [ 1, 2, 3, 4, 5 ]
 list[0..0]  -- []          Empty list.
 list[0..3]  -- [ 1, 2, 3 ] From start to end index.
@@ -443,7 +443,7 @@ list[2..+2] -- [ 3, 4 ]    From start index to start index + amount.
 ```
 
 List operations.
-```cy
+```text
 list = [234]
 -- Append a value.
 list.add 123
@@ -470,7 +470,7 @@ list.remove(1)
 
 ### Maps.
 Maps are a builtin type that store key value pairs in dictionaries.
-```cy
+```text
 map = { a: 123, b: () => 5 }
 print map['a']
 
@@ -486,7 +486,7 @@ map = {
 Entries can also follow a `{}:` block.
 This gives structure to the entries and has
 the added benefit of allowing multi-line lambdas.
-```cy
+```text
 colors = {}:
     red: 0xFF0000
     green: 0x00FF00
@@ -503,7 +503,7 @@ colors = {}:
         blue: 0x0000AA
 ```
 Map operations.
-```cy
+```text
 map = {}
 -- Set a key value pair.
 map[123] = 234
@@ -523,7 +523,7 @@ for map as val, key:
 
 ### Objects.
 Any value that isn't a primitive is an object. You can declare your own object types using the `type` keyword. Object templates are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
-```cy
+```text
 type Node:
     value
     next
@@ -533,7 +533,7 @@ print node.value          -- '123'
 ```
 New instances of an object template are created using the type name and braces that surround the initial member values.
 When declaring methods, the first parameter must be `self`. Otherwise, it becomes a function that can only be invoked from the type's namespace.
-```cy
+```text
 type Node:
     value
     next
@@ -556,7 +556,7 @@ n.dump()
 Tags are similar to enums in other languages. A new tag type can be declared with the `tagtype` keyword.
 A tag value can only be one of the unique tags declared in its tag type.
 By default, the tags have a unique id generated starting from 0.
-```cy
+```text
 tagtype Fruit:
     apple
     orange
@@ -568,13 +568,13 @@ print fruit          -- '#kiwi'
 print number(fruit)  -- '3'
 ```
 When the type of the value is known to be a tag, it can be assigned using a tag literal.
-```cy
+```text
 fruit = Fruit#kiwi
 fruit = #orange
 print(fruit == Fruit#orange)   -- 'true'
 ```
 Tag literals by themselves also have a global unique id. When assigned to a non tag value, it becomes a tag literal value.
-```cy
+```text
 tagtype MyColor:
     red
     green
@@ -594,7 +594,7 @@ Cyber provides the common constructs to branch and enter loops.
 
 ### Branching.
 Use `if` and `else` statements to branch the execution of your code depending on conditions. The `else` clause can contain a condition which is only evaluated if the previous if or conditional else clause was `false`. 
-```cy
+```text
 a = 10
 if a == 10:
     print 'a is 10'
@@ -604,7 +604,7 @@ else:
     print 'neither 10 nor 20'
 ```
 An `if` expression also needs the `then` keyword. Conditional `else` clauses are not allowed in an `if` expression.:
-```cy
+```text
 a = 10
 str = if a == 10 then 'red' else 'blue'
 ```
@@ -613,7 +613,7 @@ str = if a == 10 then 'red' else 'blue'
 ### Iterations.
 Loops and iterations start with the `for` keyword. An infinite loop continues to run the code in the block until a `break` or `return` is reached.
 When the `for` clause contains a condition, the loop continues to run until the condition is evaluated to `false`.
-```cy
+```text
 -- Infinite loop.
 for:
     pass
@@ -624,7 +624,7 @@ for running:
     pass
 ```
 `for` loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
-```cy
+```text
 for 0..100 as i:
     print i    -- 0, 1, 2, ... , 99
 
@@ -639,7 +639,7 @@ for 100..=0, 1 as i:
 ```
 The `for` clause can iterate over an `Iterable` object. An Iterable type contains an `iterator()` method that returns an `Iterator` object. An Iterator type contains a `next()` method that returns the next value or `none` when finished.
 You can iterate lists since they are Iterable.
-```cy
+```text
 list = [1, 2, 3, 4, 5]
 
 -- Iterate on values.
@@ -648,7 +648,7 @@ for list as n:
 ```
 When the `as` clause contains two variables, the for loop will iterate a `PairIterable` object. A PairIterable type contains a `pairIterator()` method that returns a `PairIterator` object. A PairIterator type contains a `nextPair()` method that returns two values or `none` on the first value when finished. 
 The list object is also a PairIterable and the key is the index of the value in the list.
-```cy
+```text
 -- Iterate on values and indexes.
 for list as i, n:
     print '{i} -> {n}'
@@ -658,7 +658,7 @@ for list as i, _:
     print i 
 ```
 The `for` clause can also iterate over maps with the same idea.
-```cy
+```text
 map = { a: 123, b: 234 }
 
 -- Iterate on values.
@@ -677,7 +677,7 @@ for map as k, _:
 
 ### Matching
 Matching is similar to a switch statement.
-```cy
+```text
 val = 1000
 match val:
     0..100: print 'at or between 0 and 99'
@@ -698,7 +698,7 @@ In Cyber, there are first-class functions (or function values) as well as static
 ### Static Functions.
 Static functions are not initally values themselves, although they can be lifted to become a value.
 Static functions are declared with the `func` keyword and must have a name.
-```cy
+```text
 import m from 'math'
 
 func dist(x0, y0, x1, y1):
@@ -708,7 +708,7 @@ func dist(x0, y0, x1, y1):
 ```
 
 Functions can return multiple values.
-```cy
+```text
 import {*} from 'math'
 
 func compute(rad):
@@ -722,7 +722,7 @@ x, y = compute(pi)
 Lambdas or function values can be assigned to variables or passed as arguments into other constructs.
 
 When a lambda only returns an expression, it can be declared with a simplified syntax.
-```cy
+```text
 -- Passing simple lambda as an argument.
 foo(word => toUpper(word))
 
@@ -734,7 +734,7 @@ canvas.onUpdate = delta_ms => print delta_ms
 ```
 
 Lambdas that need a block of statements can be declared with the `func` keyword without a name.
-```cy
+```text
 -- Assigning lambda block to a variable.
 add = func (a, b):
     return a + b
@@ -750,7 +750,7 @@ Passing a lambda block as a call argument is only possible in a call expression 
 
 ### Closures.
 In Cyber, functions can close over local variables in parent blocks.
-```cy
+```text
 func add():
     a = 123
     return b => a + b
@@ -763,17 +763,17 @@ addTo(10)         -- Prints '133'
 ### Function Calls.
 The straightforward way to call a function is to use parentheses.
 
-```cy
+```text
 d = dist(100, 100, 200, 200)
 ```
 
 You can call functions with named parameters.
-```cy
+```text
 d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
 ```
 
 The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:
-```cy
+```text
 d = dist 100 100 200 200  -- Calls the function `dist`.
 
 func random():            -- Function with no parameters.
@@ -784,19 +784,19 @@ r = random()              -- Calls the function `random`.
 ```
 
 The top level arguments for the shorthand convention must be separated by whitespace. A string can contain whitespace since it's surrounded by delimiters. 
-```cy
+```text
 a = myFunc 'cyber script'
 ```
 
 The following has a binary expression with spaces inbetween which is not allowed. Removing that whitespace fixes the call expression.
 
-```cy
+```text
 a = myFunc 1 + 2     -- Not allowed.
 a = myFunc 1+2       -- Correct.
 ```
 
 Wrapping arguments in parentheses allows you to keep the whitespace in the sub-expression.
-```cy
+```text
 -- This calls the function `myFunc` with 2 arguments.
 a = myFunc 'hello' (1 + 2 * 3)
 
@@ -805,7 +805,7 @@ a = myFunc 'hello' (otherFunc 1+2 'world')
 ```
 
 The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the `..` syntax. Arguments mapped to named parameters have a key value syntax separated by a `:`. All other arguments are added into a list and passed as the last argument.
-```cy
+```text
 foo(123):
     ..func ():
         return 123
@@ -825,7 +825,7 @@ Modules in Cyber contain static symbols that can be used from other modules. Imp
 
 ### Importing.
 Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader.
-```cy
+```text
 import t from 'test'
 try t.eq(123, 123)
 
@@ -839,7 +839,7 @@ print foo.myFunc()
 print foo.myVar
 ```
 Modules can also be destructured using the following syntax:
-```cy
+```text
 import { cos, pi } from 'math'
 print cos(pi)
 ```
@@ -848,7 +848,7 @@ print cos(pi)
 
 ### Exporting.
 Use the `export` prefix in front of static declarations to indicate that it should be exported when the script's module is loaded.
-```cy
+```text
 export func foo():
     print 123
 
@@ -871,7 +871,7 @@ Cyber currently contains the builtin modules:
 The core module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
 
 Sample usage:
-```cy
+```text
 print 'hello'
 contents = readFile 'foo.txt'
 print contents
@@ -881,6 +881,7 @@ print contents
 | ------------- | ------------- | ----- |
 | bindLib | fns []CFunc -> {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
 | execCmd | args []string -> { out, err } | Runs a shell command and returns the stdout/stderr. | 
+| error | any -> error | Create an error from a tag or tag literal. | 
 | fetchUrl | url string -> string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 
 | int | val any -> int | Converts a value to an 32-bit integer. | 
 | number | val any -> number | Converts a value to a number. | 
@@ -892,6 +893,7 @@ print contents
 | readFile | path string -> string | Reads a file into a string value. | 
 | readLine | -> string | Reads stdin until a new line is reached. | 
 | string | val any -> string | Converts a value to a string. | 
+| valtag | any -> tag literal | Returns the value's type as a tag literal. |
 | writeFile | path string, contents string -> none | Writes a string value to a file. | 
 
 [To Top.](#table-of-contents)
@@ -900,7 +902,7 @@ print contents
 The math module contains commonly used math constants and functions.
 
 Sample usage:
-```cy
+```text
 import m from 'math'
 
 r = 10
@@ -965,7 +967,7 @@ print(m.pi * r^2)
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
 
 Sample usage:
-```cy
+```text
 import os 'os'
 
 let map = os.getEnvAll()
@@ -992,7 +994,7 @@ for map as k, v:
 Cyber supports binding to an existing C ABI compatible library at runtime.
 This allows you to call into dynamic libraries created in C or other languages.
 Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bindLib` is part of the core library and accepts the path to the library as a string and a list of CFunc declarations.
-```cy
+```text
 lib = bindLib('mylib.so', [
     CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
@@ -1024,20 +1026,20 @@ Once all the native functions have been released by ARC, the TCCState cleans up 
 In Cyber, errors are values and do not propogate up the call stack by default. Users are not forced to handle errors unless the error value is passed to a typed destination.
 
 The `error` type is a primitive that contains either a tag or a tag literal. Tag literals can be used for convenience but the underlying id value can not be statically defined. Use your own tags if you want reliable id values. In a future version of Cyber, you'll be able to attach an optional payload value.
-```cy
+```text
 func doThatThing():
-    return error{#oops}
+    return error(#oops)
 
 tagtype MyError:
     boom
     badArgument
     nameTooLong
 
-err = error{MyError#boom}
+err = error(MyError#boom)
 ```
 
 The `try` expression wraps a value and guarantees a non error value is returned. If the value is an error, execution stops in the current block and the error is returned to the parent call site.
-```cy
+```text
 func foo():
     try doSomething()
     return 123
@@ -1047,9 +1049,9 @@ res = foo()
 ```
 
 The `catch` expression returns a non error value or swallows the error and returns the `none` value. If a `then` clause follows, a default value is returned instead of the `none` value. An `as` clause lets you use the error inside the `then` expression.
-```cy
+```text
 func foo():
-    return error{#boom}
+    return error(#boom)
 
 res = catch foo()
 res = catch foo() then 123
@@ -1064,7 +1066,7 @@ res = catch foo() then:
 An unexpected error is an error that you don't plan on handling at runtime. In this scenario, you can prefer to fail-fast and `panic`.
 
 Panics are similar to exceptions in other languages. Once the builtin `panic` is invoked, the current fiber stops execution and begins to unwind its call stack. Once the error is propagated to the root, the fiber ends and transitions to a panic state. If the main fiber ends this way, the VM begins to shutdown.
-```cy
+```text
 func kaboom():
     panic(#danger)
 
@@ -1072,7 +1074,7 @@ kaboom()     -- Scripts ends and prints the stack trace.
 ```
 
 While the error is propagated up the call stack, the fiber can regain control in a `recover` block. The recover block must be declared before the statement that triggers a panic.
-```cy
+```text
 func kaboom():
     recover err:
         if err == #danger:
@@ -1093,7 +1095,7 @@ Cyber supports fibers as a concurrency mechanism. There are plans to support pre
 Fibers in Cyber allow representing execution contexts as first-class values. They contain their own call stack and program counters. Fibers by themselves do not enable parallelism.
 
 The `coinit` creates a new fiber from a function call syntax. Using `coyield` inside a function pauses the current fiber and execution is returned to the fiber that invoked `coresume`.
-```cy
+```text
 count = 0
 func foo():
     count += 1
@@ -1107,7 +1109,7 @@ coresume fiber
 print count          -- '2'
 ```
 In Cyber, `coyield` can be used anywhere in a fiber's call stack.
-```cy
+```text
 func foo():
     count += 1
     bar()
@@ -1119,14 +1121,14 @@ fiber = coinit foo()
 coresume fiber
 ```
 `coresume` also returns the resulting value. In a future version of Cyber, you will be able to yield back results and pass values back when resuming.
-```cy
+```text
 func foo():
     return 123
 fiber = coinit foo()
 print(coresume fiber)    -- '123'
 ```
 Use `Fiber.status()` to get the current state of the fiber.
-```cy
+```text
 func foo():
     coyield
     print 'done'
@@ -1153,7 +1155,7 @@ Fibers are freed by ARC just like any other object. Once there are no references
 
 ### Compile-time
 Compile-time evaluation is experimental. Currently it is used to call builtins for debugging the compiler.
-```cy
+```text
 func foo(a):
     b = a + 1
     compt compilerDumpLocals()
@@ -1165,7 +1167,7 @@ func foo(a):
 
 ### CYON
 CYON or the Cyber object notation is similar to JSON. The format uses the same literal value semantics as Cyber.
-```cy
+```text
 {
     name: 'John Doe'
     'age': 25

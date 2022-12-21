@@ -158,7 +158,7 @@ pub fn printStdout(fmt: []const u8, vals: []const FmtValue) !void {
         if (fmt[fmt.len-1] == '\n') {
             msg = try allocFormat(t.alloc, fmt[0..fmt.len-1], vals);
         } else {
-            msg = try allocFormat(t.alloc, fmt[0..fmt.len-1], vals);
+            msg = try allocFormat(t.alloc, fmt[0..fmt.len], vals);
         }
         defer t.alloc.free(msg);
         log.debug("{s}", .{msg});

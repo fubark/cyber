@@ -160,6 +160,10 @@ pub const Value = packed union {
         return self.val & ErrorMask == ErrorMask;
     }
 
+    pub inline fn isTagLiteral(self: *const Value) linksection(".eval") bool {
+        return self.val & UserTagLiteralMask == UserTagLiteralMask;
+    }
+
     pub inline fn getPrimitiveTypeId(self: *const Value) linksection(Section) u32 {
         if (self.isNumber()) {
             return NumberT;
@@ -349,6 +353,7 @@ pub const Value = packed union {
                     TagNone => return .none,
                     TagUserTag => return .tag,
                     TagUserTagLiteral => return .tagLiteral,
+                    TagError => return .errorVal,
                     else => unreachable,
                 }
             }
@@ -373,6 +378,7 @@ pub const ValueUserTag = enum {
     opaquePtr,
     tag,
     tagLiteral,
+    errorVal,
     none,
 };
 

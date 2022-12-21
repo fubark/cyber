@@ -1283,6 +1283,26 @@ test "Assignment statements" {
     try t.eq(val.asF64toI32(), 11);
 }
 
+test "Undefined variable references." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Reading an undefined variable declares a new local variable with the `none` value.
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo(arg):
+        \\  pass
+        \\foo(a)
+        \\try t.eq(a, none)
+    );
+
+    // Using an undefined variable as a callee uses it as a sym so the runtime call panics.
+    const res = run.eval(
+        \\a()
+    );
+    try t.expectError(res, error.Panic);
+}
+
 test "Local variable declaration." {
     const run = VMrunner.create();
     defer run.destroy();

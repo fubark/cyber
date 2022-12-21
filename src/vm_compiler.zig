@@ -2528,6 +2528,14 @@ pub const VMcompiler = struct {
         return numArgs;
     }
 
+    fn genEnsureRtFuncSym(self: *const VMcompiler, symId: SemaSymId) !u32 {
+        if (self.genGetResolvedSym(symId)) |sym| {
+            return self.vm.ensureFuncSym(sym.path);
+        } else {
+            return self.vm.ensureFuncSym(self.semaSyms.items[symId].path);
+        }
+    }
+
     fn genGetResolvedSym(self: *const VMcompiler, semaSymId: SemaSymId) ?SemaResolvedSym {
         const sym = self.semaSyms.items[semaSymId];
         if (sym.resolvedSymId != NullId) {
@@ -2692,15 +2700,13 @@ pub const VMcompiler = struct {
                         try self.buf.pushOpSlice(.coinit, &.{ callStartLocal + 4, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
                     }
 
-                    if (self.genGetResolvedSym(callee.head.ident.semaSymId)) |semaSym| {
-                        const symId = try self.vm.ensureFuncSym(semaSym.path);
-                        if (discardTopExprReg) {
-                            try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
-                            try self.pushDebugSym(nodeId);
-                        } else {
-                            try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
-                            try self.pushDebugSym(nodeId);
-                        }
+                    const rtSymId = try self.genEnsureRtFuncSym(callee.head.ident.semaSymId);
+                    if (discardTopExprReg) {
+                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, rtSymId), 0, 0, 0, 0, 0, 0 });
+                        try self.pushDebugSym(nodeId);
+                    } else {
+                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, rtSymId), 0, 0, 0, 0, 0, 0 });
+                        try self.pushDebugSym(nodeId);
                     }
 
                     if (startFiber) {

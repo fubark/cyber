@@ -3191,6 +3191,7 @@ pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
     switch (op) {
         .caret => return 4,
         .slash,
+        .percent,
         .star => {
             return 3;
         },

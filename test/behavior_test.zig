@@ -948,6 +948,9 @@ test "Operator precedence." {
         \\try t.eq(2 + 3 ^ 2, 11)
         \\-- Power before multiplication.
         \\try t.eq(2 * 3 ^ 2, 18)
+        \\-- Math operator before comparison.
+        \\try t.eq(5 == 2 + 3, true)
+        \\try t.eq(5 == 21 % 16, true)
     );
 
     // Variables and parenthesis.

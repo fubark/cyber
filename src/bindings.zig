@@ -769,6 +769,11 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     }
 }
 
+pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    defer vm.release(args[0]);
+    return Value.initBool(args[0].toBool());
+}
+
 pub fn coreInt(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     if (val.isNumber()) {

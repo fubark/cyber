@@ -891,6 +891,7 @@ print contents
 
 | Function | Signature | Summary |
 | ------------- | ------------- | ----- |
+| bool | val any -> bool | Converts a value to either `true` or `false`. | 
 | bindLib | fns []CFunc -> {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
 | execCmd | args []string -> { out, err } | Runs a shell command and returns the stdout/stderr. | 
 | error | any -> error | Create an error from a tag or tag literal. | 

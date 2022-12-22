@@ -701,37 +701,46 @@ test "Not equal comparison." {
     );
 }
 
+test "Truthy evaluation." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- Non zero number evaluates to true.
+        \\try t.eq(bool(123), true)
+        \\try t.eq(bool(-123), true)
+        \\try t.eq(bool(0), false)
+        \\-- String evaluates to true if not empty.
+        \\try t.eq(bool('cyber'), true)
+        \\try t.eq(bool(''), false)
+        \\-- Heap objects evaluate to true.
+        \\try t.eq(bool({}), true)
+        \\try t.eq(bool([]), true)
+        \\type S:
+        \\  a
+        \\try t.eq(bool(S{a: 0}), true)
+        \\-- none evaluates to false
+        \\try t.eq(bool(none), false)
+    );
+}
+
 test "Logic operators" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var val = try run.eval(
-        \\false or false
-    );
-    try t.eq(val.asBool(), false);
-
-    val = try run.eval(
-        \\false or true
-    );
-    try t.eq(val.asBool(), true);
-
-    // If first `or` operand evaluates to true, the second expression is not evaluated
-    // and the first operand is returned.
-    val = try run.eval(
-        \\a = none
-        \\123 or a.foo
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // If first `or` operand evaluates to false, the second expression is evaluated and returned.
-    val = try run.eval(
-        \\a = 123
-        \\0 or a
-    );
-    try t.eq(val.asF64toI32(), 123);
-
     _ = try run.eval(
         \\import t 'test'
+        \\-- or operator
+        \\try t.eq(false or false, false)
+        \\try t.eq(false or true, true)
+        \\-- If first `or` operand evaluates to true, the second expression is not evaluated
+        \\-- and the first operand is returned.
+        \\a = none
+        \\try t.eq(123 or a.foo, 123)
+        \\-- If first `or` operand evaluates to false, the second expression is evaluated and returned.
+        \\a = 123
+        \\try t.eq(0 or a, 123)
         \\try t.eq(false and true, false)
         \\try t.eq(true and true, true)
         \\-- First false skips second operand evaluation.
@@ -744,7 +753,7 @@ test "Logic operators" {
 
     // If first `and` operand evaluates to false, the second expression is not evaluated
     // and the first operand is returned
-    val = try run.eval(
+    var val = try run.eval(
         \\a = none
         \\0 and a.foo
     );

@@ -126,18 +126,28 @@ pub const Value = packed union {
         }
     }
 
-    pub fn toBool(self: *const Value) linksection(".eval") bool {
+    pub fn toBool(self: *const Value) linksection(Section) bool {
         @setCold(true);
         if (self.isNumber()) {
             return self.asF64() != 0;
         } else {
-            switch (self.getTag()) {
-                TagNone => return false,
-                TagBoolean => return self.asBool(),
-                else => {
-                    log.debug("tag {}", .{self.getTag()});
-                    stdx.panic("unexpected tag");
-                },
+            if (self.isPointer()) {
+                const obj = self.asHeapObject(*cy.HeapObject);
+                if (obj.common.structId == cy.StringS) {
+                    return obj.string.len > 0;
+                } else {
+                    return true;
+                }
+            } else {
+                switch (self.getTag()) {
+                    cy.NoneT => return false,
+                    cy.BooleanT => return self.asBool(),
+                    cy.ConstStringT => return self.asConstStr().len() > 0,
+                    else => {
+                        log.debug("tag {}", .{self.getTag()});
+                        stdx.panic("unexpected tag");
+                    },
+                }
             }
         }
     }
@@ -213,7 +223,10 @@ pub const Value = packed union {
     }
 
     pub inline fn isBool(self: *const Value) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
+        return self.val & (BooleanMask | SignMask) == BooleanMask;
+    }
+
+    pub inline fn assumeNotPtrIsBool(self: *const Value) linksection(".eval") bool {
         return self.val & BooleanMask == BooleanMask;
     }
 

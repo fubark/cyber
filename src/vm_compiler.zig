@@ -4407,6 +4407,7 @@ fn initCoreModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
     };
     try mod.syms.ensureTotalCapacity(alloc, 13);
     try mod.setNativeFunc(alloc, "bindLib", bindings.coreBindLib);
+    try mod.setNativeFunc(alloc, "bool", bindings.coreBool);
     try mod.setNativeFunc(alloc, "error", bindings.coreError);
     try mod.setNativeFunc(alloc, "execCmd", bindings.coreExecCmd);
     try mod.setNativeFunc(alloc, "fetchUrl", bindings.coreFetchUrl);

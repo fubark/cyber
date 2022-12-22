@@ -15,7 +15,7 @@ const log = stdx.log.scoped(.vm);
 
 const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
-const section = ".eval";
+const Section = ".eval";
 const StdSection = ".eval.std";
 
 /// Reserved symbols known at comptime.
@@ -738,7 +738,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocOwnedString(self: *VM, str: []u8) linksection(section) !Value {
+    pub fn allocOwnedString(self: *VM, str: []u8) linksection(Section) !Value {
         const obj = try self.allocPoolObject();
         obj.string = .{
             .structId = StringS,
@@ -1535,7 +1535,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(section) u8 {
+    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(Section) u8 {
         const symMap = self.fieldSyms.buf[symId];
         switch (symMap.mapT) {
             .one => {
@@ -1562,7 +1562,7 @@ pub const VM = struct {
         } 
     }
 
-    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(section) !void {
+    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(Section) !void {
         @setCold(true);
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
@@ -1579,7 +1579,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(section) !Value {
+    pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(Section) !Value {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const offset = self.getFieldOffset(obj, symId);
@@ -1607,7 +1607,7 @@ pub const VM = struct {
     }
 
     /// startLocal points to the first arg in the current stack frame.
-    fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(section) !PcFramePtr {
+    fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(Section) !PcFramePtr {
         const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
             .nativeFunc1 => {
@@ -1779,7 +1779,7 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(section) ?SymbolEntry {
+    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(Section) ?SymbolEntry {
         const map = self.methodSyms.buf[symId];
         switch (map.mapT) {
             .one => {
@@ -2052,7 +2052,7 @@ pub const VM = struct {
     }
 };
 
-pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(section) void {
+pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(Section) void {
     if (builtin.mode == .Debug or builtin.is_test) {
         if (obj.retainedCommon.structId == NullId) {
             stdx.panic("object already freed.");
@@ -3089,7 +3089,7 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-pub fn evalLoopGrowStack(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+pub fn evalLoopGrowStack(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     while (true) {
         @call(.{ .modifier = .always_inline }, evalLoop, .{vm}) catch |err| {
             if (err == error.StackOverflow) {
@@ -3107,7 +3107,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(section) error{StackOverflow, OutO
     }
 }
 
-fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     var pc = vm.pc;
     var framePtr = vm.framePtr;
     defer {
@@ -4190,7 +4190,7 @@ fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     }
 }
 
-fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(section) bool {
+fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(Section) bool {
     const retFlag = framePtr.*[1].retInfo.retFlag;
     const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
     if (reqNumArgs == 1) {
@@ -4737,7 +4737,7 @@ fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
     } else return NullId;
 }
 
-pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(section) Value {
+pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(Section) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,
@@ -4747,7 +4747,7 @@ pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(
     };
 }
 
-pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(section) Value {
+pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(Section) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,

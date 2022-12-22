@@ -756,7 +756,7 @@ pub fn coreValtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const val = args[0];
     if (val.isPointer()) {
         stdx.fatal();

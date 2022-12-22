@@ -734,6 +734,7 @@ test "Logic operators" {
         \\-- or operator
         \\try t.eq(false or false, false)
         \\try t.eq(false or true, true)
+        \\try t.eq('cyber' or false, 'cyber')
         \\-- If first `or` operand evaluates to true, the second expression is not evaluated
         \\-- and the first operand is returned.
         \\a = none

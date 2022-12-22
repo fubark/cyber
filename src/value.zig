@@ -30,6 +30,7 @@ const UserTagLiteralMask: u64 = TaggedValueMask | (@as(u64, TagUserTagLiteral) <
 const IntegerMask: u64 = TaggedValueMask | (@as(u64, TagInteger) << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
+const TaggedPrimitiveMask = TaggedValueMask | (@as(u64, TagMask) << 32);
 const BeforeTagMask: u32 = 0x7fff << 3;
 
 /// The tag id is also the primitive type id.
@@ -167,15 +168,15 @@ pub const Value = packed union {
     }
 
     pub inline fn isError(self: *const Value) linksection(".eval") bool {
-        return self.val & (ErrorMask | SignMask) == ErrorMask;
+        return self.val & (TaggedPrimitiveMask | SignMask) == ErrorMask;
     }
 
     pub inline fn assumeNotPtrIsError(self: *const Value) linksection(".eval") bool {
-        return self.val & ErrorMask == ErrorMask;
+        return self.val & TaggedPrimitiveMask == ErrorMask;
     }
 
     pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) linksection(".eval") bool {
-        return self.val & UserTagLiteralMask == UserTagLiteralMask;
+        return self.val & TaggedPrimitiveMask == UserTagLiteralMask;
     }
 
     pub inline fn getPrimitiveTypeId(self: *const Value) linksection(Section) u32 {
@@ -210,7 +211,6 @@ pub const Value = packed union {
     }
 
     pub inline fn asBool(self: *const Value) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
         return self.val == TrueMask;
     }
 
@@ -223,11 +223,11 @@ pub const Value = packed union {
     }
 
     pub inline fn isBool(self: *const Value) linksection(".eval") bool {
-        return self.val & (BooleanMask | SignMask) == BooleanMask;
+        return self.val & (TaggedPrimitiveMask | SignMask) == BooleanMask;
     }
 
     pub inline fn assumeNotPtrIsBool(self: *const Value) linksection(".eval") bool {
-        return self.val & BooleanMask == BooleanMask;
+        return self.val & TaggedPrimitiveMask == BooleanMask;
     }
 
     pub inline fn getTag(self: *const Value) linksection(Section) u3 {
@@ -273,7 +273,7 @@ pub const Value = packed union {
     }
 
     pub inline fn assumeNotPtrIsConstStr(self: *const Value) bool {
-        return self.val & ConstStringMask == ConstStringMask;
+        return self.val & TaggedPrimitiveMask == ConstStringMask;
     }
 
     pub inline fn asConstStr(self: *const Value) stdx.IndexSlice(u32) {

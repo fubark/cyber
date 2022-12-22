@@ -1281,23 +1281,27 @@ test "Assignment statements" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Assign to variable.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- Assign to variable.
         \\a = 1
         \\a += 10
-        \\a
-    );
-    try t.eq(val.asF64toI32(), 11);
-
-    // Assign to field.
-    val = try run.eval(
+        \\try t.eq(a, 11)
+        \\-- Assign to field.
         \\type S:
         \\  foo
         \\s = S{ foo: 1 }
         \\s.foo += 10
-        \\s.foo
+        \\try t.eq(s.foo, 11)
+        \\-- Other operator assignments.
+        \\a = 100
+        \\a *= 2
+        \\try t.eq(a, 200)
+        \\a /= 4
+        \\try t.eq(a, 50)
+        \\a -= 1
+        \\try t.eq(a, 49)
     );
-    try t.eq(val.asF64toI32(), 11);
 }
 
 test "Undefined variable references." {

@@ -564,12 +564,12 @@ pub const VMcompiler = struct {
             .break_stmt => {
                 return;
             },
-            .add_assign_stmt => {
-                const left = self.nodes[node.head.left_right.left];
+            .opAssignStmt => {
+                const left = self.nodes[node.head.opAssignStmt.left];
                 if (left.node_t == .ident) {
-                    if (try self.semaIdentLocalVarOrNull(node.head.left_right.left, true, true)) |varId| {
+                    if (try self.semaIdentLocalVarOrNull(node.head.opAssignStmt.left, true, true)) |varId| {
                         const svar = self.vars.items[varId];
-                        const rtype = try self.semaExpr(node.head.left_right.right, false);
+                        const rtype = try self.semaExpr(node.head.opAssignStmt.right, false);
                         if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and rtype.typeT != svar.vtype.typeT) {
                             return self.reportErrorAt("Type mismatch: Expected {}", &.{fmt.v(svar.vtype.typeT)}, nodeId);
                         }
@@ -577,7 +577,7 @@ pub const VMcompiler = struct {
                 } else if (left.node_t == .accessExpr) {
                     const accessLeft = try self.semaExpr(left.head.accessExpr.left, false);
                     const accessRight = try self.semaExpr(left.head.accessExpr.right, false);
-                    const right = try self.semaExpr(node.head.left_right.right, false);
+                    const right = try self.semaExpr(node.head.opAssignStmt.right, false);
                     _ = accessLeft;
                     _ = accessRight;
                     _ = right;
@@ -1952,8 +1952,15 @@ pub const VMcompiler = struct {
                 const pc = try self.pushEmptyJump();
                 try self.subBlockJumpStack.append(self.alloc, .{ .pc = pc });
             },
-            .add_assign_stmt => {
-                const left = self.nodes[node.head.left_right.left];
+            .opAssignStmt => {
+                const left = self.nodes[node.head.opAssignStmt.left];
+                const genOp: cy.OpCode = switch (node.head.opAssignStmt.op) {
+                    .plus => .add,
+                    .minus => .minus,
+                    .star => .mul,
+                    .slash => .div,
+                    else => fmt.panic("Unexpected operator assignment.", &.{}),
+                };
                 if (left.node_t == .ident) {
                     if (self.genGetVarPtr(left.head.ident.semaVarId)) |svar| {
                         if (svar.isCaptured and !svar.isBoxed) {
@@ -1961,19 +1968,19 @@ pub const VMcompiler = struct {
                             svar.vtype = BoxType;
                         }
 
-                        const right = try self.genExpr(node.head.left_right.right, false);
+                        const right = try self.genExpr(node.head.opAssignStmt.right, false);
                         if (svar.isBoxed) {
                             const tempLocal = try self.nextFreeTempLocal();
                             try self.buf.pushOp2(.boxValue, svar.local, tempLocal);
-                            try self.buf.pushOp3(.add, tempLocal, right.local, tempLocal);
+                            try self.buf.pushOp3(genOp, tempLocal, right.local, tempLocal);
                             try self.buf.pushOp2(.setBoxValue, svar.local, tempLocal);
                             return;
                         } else {
-                            try self.buf.pushOp3(.add, svar.local, right.local, svar.local);
+                            try self.buf.pushOp3(genOp, svar.local, right.local, svar.local);
                         }
                     } else unexpected("variable not declared", &.{});
                 } else if (left.node_t == .accessExpr) {
-                    try self.genBinOpAssignToField(.add, node.head.left_right.left, node.head.left_right.right);
+                    try self.genBinOpAssignToField(genOp, node.head.opAssignStmt.left, node.head.opAssignStmt.right);
                 } else {
                     unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
@@ -3187,8 +3194,7 @@ pub const VMcompiler = struct {
                     if (!discardTopExprReg) {
                         const propName = self.getNodeTokenString(prop);
                         const propIdx = self.vm.getStructFieldIdx(sid, propName) orelse {
-                            log.debug("Missing field {s}", .{propName});
-                            return error.CompileError;
+                            return self.reportErrorAt("Missing field {}", &.{fmt.v(propName)}, entry.head.left_right.left);
                         };
                         try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, propIdx)));
                     }

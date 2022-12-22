@@ -1099,40 +1099,6 @@ pub const Parser = struct {
                                 },
                             };
                             return for_stmt;
-                        } else if (token.tag() == .plus_equal) {
-                            self.advanceToken();
-                            const step_expr = (try self.parseExpr(.{})) orelse {
-                                return self.reportParseErrorAt("Expected step expr.", &.{}, token);
-                            };
-                            token = self.peekToken();
-                            if (token.tag() == .colon) {
-                                self.advanceToken();
-
-                                try self.pushBlock();
-                                const first_stmt = try self.parseIndentedBodyStatements();
-                                self.popBlock();
-
-                                const as_clause = try self.pushNode(.as_range_clause, start);
-                                self.nodes.items[as_clause].head = .{
-                                    .as_range_clause = .{
-                                        .ident = ident,
-                                        .step = step_expr,
-                                        .inc = true,
-                                    }
-                                };
-
-                                const for_stmt = try self.pushNode(.for_range_stmt, start);
-                                self.nodes.items[for_stmt].head = .{
-                                    .for_range_stmt = .{
-                                        .range_clause = range_clause,
-                                        .body_head = first_stmt,
-                                        .as_clause = as_clause,
-                                    },
-                                };
-                                return for_stmt;
-                            } else {
-                                return self.reportParseErrorAt("Expected :.", &.{}, token);
-                            }
                         } else {
                             return self.reportParseErrorAt("Expected :.", &.{}, token);
                         }
@@ -2327,7 +2293,6 @@ pub const Parser = struct {
                 .comma,
                 .colon,
                 .is_k,
-                .plus_equal,
                 .equal,
                 .operator,
                 .or_k,
@@ -2344,6 +2309,20 @@ pub const Parser = struct {
             }
         }
         return left_id;
+    }
+
+    fn returnLeftAssignExpr(self: *Parser, leftId: NodeId, outIsAssignStmt: *bool) !?NodeId {
+        switch (self.nodes.items[leftId].node_t) {
+            .accessExpr,
+            .arr_access_expr,
+            .ident => {
+                outIsAssignStmt.* = true;
+                return leftId;
+            },
+            else => {
+                return self.reportParseError("Expected variable to left of assignment operator.", &.{});
+            },
+        }
     }
 
     fn parseExpr(self: *Parser, opts: ParseExprOptions) anyerror!?NodeId {
@@ -2363,28 +2342,32 @@ pub const Parser = struct {
         while (true) {
             const next = self.peekToken();
             switch (next.tag()) {
-                .plus_equal,
                 .equal => {
                     // If left is an accessor expression or identifier, parse as assignment statement.
                     if (opts.returnLeftAssignExpr) {
-                        switch (self.nodes.items[left_id].node_t) {
-                            .accessExpr,
-                            .arr_access_expr,
-                            .ident => {
-                                opts.outIsAssignStmt.* = true;
-                                return left_id;
-                            },
-                            else => {
-                                return self.reportParseErrorAt("Expected variable to left of assignment operator.", &.{}, next);
-                            },
-                        }
+                        return self.returnLeftAssignExpr(left_id, opts.outIsAssignStmt);
                     } else {
                         break;
                     }
                 },
                 .operator => {
-                    // BinaryExpression.
                     const op_t = next.data.operator_t;
+                    switch (op_t) {
+                        .plus,
+                        .minus,
+                        .star,
+                        .slash => {
+                            if (self.peekTokenAhead(1).token_t == .equal) {
+                                if (opts.returnLeftAssignExpr) {
+                                    return self.returnLeftAssignExpr(left_id, opts.outIsAssignStmt);
+                                } else {
+                                    break;
+                                }
+                            }
+                        },
+                        else => {},
+                    }
+                    // BinaryExpression.
                     const bin_op = toBinExprOp(op_t);
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(bin_op);
@@ -2514,22 +2497,39 @@ pub const Parser = struct {
                             return self.reportParseErrorAt("Expected right expression for assignment statement.", &.{}, self.peekToken());
                         };
                     }
-                },
-                .plus_equal => {
-                    assignStmt = try self.pushNode(.add_assign_stmt, start);
-                    rightExpr = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseErrorAt("Expected right expression for assignment statement.", &.{}, self.peekToken());
+                    self.nodes.items[assignStmt].head = .{
+                        .left_right = .{
+                            .left = expr_id,
+                            .right = rightExpr,
+                        },
                     };
+                },
+                .operator => {
+                    const op_t = token.data.operator_t;
+                    switch (op_t) {
+                        .plus,
+                        .minus,
+                        .star,
+                        .slash => {
+                            self.advanceToken();
+                            rightExpr = (try self.parseExpr(.{})) orelse {
+                                return self.reportParseErrorAt("Expected right expression for assignment statement.", &.{}, self.peekToken());
+                            };
+                            assignStmt = try self.pushNode(.opAssignStmt, start);
+                            self.nodes.items[assignStmt].head = .{
+                                .opAssignStmt = .{
+                                    .left = expr_id,
+                                    .right = rightExpr,
+                                    .op = toBinExprOp(op_t),
+                                },
+                            };
+                        },
+                        else => fmt.panic("Unexpected operator assignment.", &.{}),
+                    }
                 },
                 else => return self.reportParseErrorAt("Unsupported assignment operator.", &.{}, token),
             }
 
-            self.nodes.items[assignStmt].head = .{
-                .left_right = .{
-                    .left = expr_id,
-                    .right = rightExpr,
-                },
-            };
 
             const left = self.nodes.items[expr_id];
             if (left.node_t == .ident) {
@@ -2770,8 +2770,6 @@ pub const TokenType = enum(u6) {
     dot_dot,
     logic_op,
     equal,
-    plus_equal,
-    star_equal,
     new_line,
     indent,
     return_k,
@@ -2833,7 +2831,7 @@ pub const NodeType = enum {
     root,
     expr_stmt,
     assign_stmt,
-    add_assign_stmt,
+    opAssignStmt,
     localDecl,
     pass_stmt,
     break_stmt,
@@ -2930,6 +2928,11 @@ pub const Node = struct {
             right: NodeId,
             op: BinaryExprOp,
             semaCanRequestIntegerOperands: bool = false,
+        },
+        opAssignStmt: struct {
+            left: NodeId,
+            right: NodeId,
+            op: BinaryExprOp,
         },
         left_right: struct {
             left: NodeId,
@@ -3470,23 +3473,13 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 },
                 '~' => try p.pushOpToken(.tilde, start),
                 '+' => {
-                    if (peekChar(p) == '=') {
-                        advanceChar(p);
-                        try p.pushToken(.plus_equal, start);
-                    } else {
-                        try p.pushOpToken(.plus, start);
-                    }
+                    try p.pushOpToken(.plus, start);
                 },
                 '^' => {
                     try p.pushOpToken(.caret, start);
                 },
                 '*' => {
-                    if (peekChar(p) == '=') {
-                        advanceChar(p);
-                        try p.pushToken(.star_equal, start);
-                    } else {
-                        try p.pushOpToken(.star, start);
-                    }
+                    try p.pushOpToken(.star, start);
                 },
                 '/' => {
                     try p.pushOpToken(.slash, start);
@@ -4044,6 +4037,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 57);
+    try t.eq(std.enums.values(TokenType).len, 55);
     try t.eq(keywords.kvs.len, 29);
 }

@@ -184,6 +184,11 @@ pub const ByteCodeBuffer = struct {
             const name = @tagName(ops[pc].code);
             const len = getInstLenAt(self.ops.items.ptr + pc);
             switch (ops[pc].code) {
+                .jumpNotCond => {
+                    const jump = @ptrCast(*const align(1) u16, &ops[pc + 1]).*;
+                    println("{} {s} offset={}, cond={}", .{pc, name, jump, ops[pc + 3].arg});
+                    pc += len;
+                },
                 else => {
                     println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+len])});
                     pc += len;

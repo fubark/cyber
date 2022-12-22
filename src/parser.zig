@@ -2332,7 +2332,6 @@ pub const Parser = struct {
                 .operator,
                 .or_k,
                 .and_k,
-                .logic_op,
                 .then_k,
                 .as_k,
                 .string,
@@ -2422,23 +2421,6 @@ pub const Parser = struct {
                             .left = left_id,
                             .right = right_id,
                             .op = BinaryExprOp.or_op,
-                        },
-                    };
-                    left_id = bin_expr;
-                },
-                .logic_op => {
-                    // BinaryExpression.
-                    const op_t = next.data.logic_op_t;
-                    const bin_op = try toBinExprOpFromLogicOp(op_t);
-                    self.advanceToken();
-                    const right_id = try self.parseRightExpression(bin_op);
-
-                    const bin_expr = try self.pushNode(.binExpr, start);
-                    self.nodes.items[bin_expr].head = .{
-                        .binExpr = .{
-                            .left = left_id,
-                            .right = right_id,
-                            .op = bin_op,
                         },
                     };
                     left_id = bin_expr;
@@ -2670,16 +2652,6 @@ pub const Parser = struct {
         });
     }
 
-    inline fn pushLogicOpToken(self: *Parser, logic_op_t: LogicOpType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .logic_op,
-            .start_pos = @intCast(u26, start_pos),
-            .data = .{
-                .logic_op_t = logic_op_t,
-            },
-        });
-    }
-
     inline fn pushOpToken(self: *Parser, operator_t: OperatorType, start_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .operator,
@@ -2767,9 +2739,6 @@ pub const OperatorType = enum {
     tilde,
     lessLess,
     greaterGreater,
-};
-
-const LogicOpType = enum {
     bang,
     bang_equal,
     less,
@@ -2847,7 +2816,6 @@ pub const Token = packed struct {
     data: packed union {
         end_pos: u32,
         operator_t: OperatorType,
-        logic_op_t: LogicOpType,
         // Num indent spaces.
         indent: u32,
     },
@@ -3208,35 +3176,27 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
         .doubleVerticalBar => .bitwiseXor,
         .lessLess => .bitwiseLeftShift,
         .greaterGreater => .bitwiseRightShift,
-        .tilde => unreachable,
-    };
-}
-
-fn toBinExprOpFromLogicOp(op: LogicOpType) !BinaryExprOp {
-    return switch (op) {
         .bang_equal => .bang_equal,
         .less => .less,
         .less_equal => .less_equal,
         .greater => .greater,
         .greater_equal => .greater_equal,
         .equal_equal => .equal_equal,
-        else => {
-            log.debug("unsupported logic op: {}", .{op});
-            return error.Unsupported;
-        },
+        .bang,
+        .tilde => unreachable,
     };
 }
 
 pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
     switch (op) {
-        .caret => return 3,
+        .caret => return 4,
         .slash,
         .star => {
-            return 2;
+            return 3;
         },
         .minus,
         .plus => {
-            return 1;
+            return 2;
         },
         .greater,
         .greater_equal,
@@ -3244,6 +3204,10 @@ pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
         .less_equal,
         .bang_equal,
         .equal_equal => {
+            return 1;
+        },
+        .or_op,
+        .and_op => {
             return 0;
         },
         else => return 0,
@@ -3528,10 +3492,10 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 },
                 '!' => {
                     if (isNextChar(p, '=')) {
-                        try p.pushLogicOpToken(.bang_equal, start);
+                        try p.pushOpToken(.bang_equal, start);
                         advanceChar(p);
                     } else {
-                        try p.pushLogicOpToken(.bang, start);
+                        try p.pushOpToken(.bang, start);
                     }
                 },
                 '=' => {
@@ -3539,7 +3503,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         switch (peekChar(p)) {
                             '=' => {
                                 advanceChar(p);
-                                try p.pushLogicOpToken(.equal_equal, start);
+                                try p.pushOpToken(.equal_equal, start);
                             },
                             '>' => {
                                 advanceChar(p);
@@ -3556,25 +3520,25 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 '<' => {
                     const ch2 = peekChar(p);
                     if (ch2 == '=') {
-                        try p.pushLogicOpToken(.less_equal, start);
+                        try p.pushOpToken(.less_equal, start);
                         advanceChar(p);
                     } else if (ch2 == '<') {
                         try p.pushOpToken(.lessLess, start);
                         advanceChar(p);
                     } else {
-                        try p.pushLogicOpToken(.less, start);
+                        try p.pushOpToken(.less, start);
                     }
                 },
                 '>' => {
                     const ch2 = peekChar(p);
                     if (ch2 == '=') {
-                        try p.pushLogicOpToken(.greater_equal, start);
+                        try p.pushOpToken(.greater_equal, start);
                         advanceChar(p);
                     } else if (ch2 == '>') {
                         try p.pushOpToken(.greaterGreater, start);
                         advanceChar(p);
                     } else {
-                        try p.pushLogicOpToken(.greater, start);
+                        try p.pushOpToken(.greater, start);
                     }
                 },
                 ' ',

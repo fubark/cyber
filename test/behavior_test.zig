@@ -730,15 +730,17 @@ test "Logic operators" {
     );
     try t.eq(val.asF64toI32(), 123);
 
-    val = try run.eval(
-        \\false and true
+    _ = try run.eval(
+        \\import t 'test'
+        \\try t.eq(false and true, false)
+        \\try t.eq(true and true, true)
+        \\-- First false skips second operand evaluation.
+        \\called = false
+        \\func foo():
+        \\  called = true
+        \\try t.eq(false and foo(), false)
+        \\try t.eq(called, false)
     );
-    try t.eq(val.asBool(), false);
-
-    val = try run.eval(
-        \\true and true
-    );
-    try t.eq(val.asBool(), true);
 
     // If first `and` operand evaluates to false, the second expression is not evaluated
     // and the first operand is returned
@@ -754,15 +756,11 @@ test "Logic operators" {
     );
     try t.eq(val.asF64toI32(), 234);
 
-    val = try run.eval(
-        \\not false
+    _ = try run.eval(
+        \\import t 'test'
+        \\try t.eq(not false, true)
+        \\try t.eq(not true, false)
     );
-    try t.eq(val.asBool(), true);
-
-    val = try run.eval(
-        \\not true
-    );
-    try t.eq(val.asBool(), false);
 }
 
 test "boolean" {
@@ -2217,10 +2215,10 @@ test "Binary Expressions" {
     try t.eq(val.asF64toI32(), 32);
 
     // Modulus
-    val = try run.eval(
-        \\3 % 2
+    _ = try run.eval(
+        \\import t 'test'
+        \\try t.eq(3 % 2, 1)
     );
-    try t.eq(val.asF64toI32(), 1);
 
     // Right function call.
     val = try run.eval(

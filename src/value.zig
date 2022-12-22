@@ -176,6 +176,11 @@ pub const Value = packed union {
         }
     }
 
+    pub inline fn isNumberOrPointer(self: *const Value) linksection(".eval") bool {
+        // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
+        return self.isNumber() or self.isPointer();
+    }
+
     pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
         // Only a number(f64) if not all tagged bits are set.
         return self.val & TaggedValueMask != TaggedValueMask;

@@ -2264,8 +2264,13 @@ fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(".eval") cy.Val
     return Value.initBool(left.toF64() < right.toF64());
 }
 
-fn evalCompareNotFallback(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
+fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
     @setCold(true);
+    if (left.isNumber()) {
+        if (right.isNumber()) {
+            return Value.initBool(left.asF64() != right.asF64());
+        } else return Value.True;
+    }
     if (left.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
         if (obj.common.structId == StringS) {
@@ -2279,29 +2284,37 @@ fn evalCompareNotFallback(left: cy.Value, right: cy.Value) linksection(".eval") 
             } else return Value.True;
         }
     } else {
-        const ltag = left.getTag();
-        const rtag = left.getTag();
-        if (ltag != rtag) {
+        const tag = left.getTag();
+        if (right.isNumber() or tag != right.getTag()) {
             return Value.True;
         }
-        switch (ltag) {
-            cy.NoneT => return Value.initBool(!right.isNone()),
-            cy.BooleanT => return Value.initBool(left.asBool() != right.asBool()),
+        switch (tag) {
+            cy.NoneT => {
+                if (right.isPointer()) {
+                    return Value.True;
+                } else return Value.False;
+            },
+            cy.BooleanT => return Value.initBool(right.isPointer() or (left.asBool() != right.asBool())),
             cy.ConstStringT => {
                 if (right.isString()) {
                     const slice = left.asConstStr();
                     const str = gvm.strBuf[slice.start..slice.end];
                     return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
-                } return Value.True;
+                } else return Value.True;
             },
-            cy.UserTagLiteralT => return Value.initBool(left.asTagLiteralId() != right.asTagLiteralId()),
+            cy.UserTagLiteralT => return Value.initBool(right.isPointer() or (left.asTagLiteralId() != right.asTagLiteralId())),
             else => stdx.panic("unexpected tag"),
         }
     }
 }
 
-fn evalCompareFallback(left: Value, right: Value) linksection(".eval") Value {
+fn evalCompare(left: Value, right: Value) linksection(".eval") Value {
     @setCold(true);
+    if (left.isNumber()) {
+        if (right.isNumber()) {
+            return Value.initBool(left.asF64() == right.asF64());
+        } else return Value.False;
+    }
     if (left.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
         if (obj.common.structId == StringS) {
@@ -2315,16 +2328,25 @@ fn evalCompareFallback(left: Value, right: Value) linksection(".eval") Value {
             } else return Value.False;
         }
     } else {
-        switch (left.getTag()) {
-            cy.NoneT => return Value.initBool(right.isNone()),
-            cy.BooleanT => return Value.initBool(left.asBool() == right.toBool()),
+        const tag = left.getTag();
+        if (right.isNumber() or tag != right.getTag()) {
+            return Value.False;
+        }
+        switch (tag) {
+            cy.NoneT => {
+                if (!right.isPointer()) {
+                    return Value.True;
+                } else return Value.False;
+            },
+            cy.BooleanT => return Value.initBool(!right.isPointer() and (left.asBool() == right.asBool())),
             cy.ConstStringT => {
                 if (right.isString()) {
                     const slice = left.asConstStr();
                     const str = gvm.strBuf[slice.start..slice.end];
                     return Value.initBool(std.mem.eql(u8, str, gvm.valueAsString(right)));
-                } return Value.False;
+                } else return Value.False;
             },
+            cy.UserTagLiteralT => return Value.initBool(!right.isPointer() and (left.asTagLiteralId() == right.asTagLiteralId())),
             else => stdx.panic("unexpected tag"),
         }
     }
@@ -3207,22 +3229,14 @@ fn evalLoop(vm: *VM) linksection(section) error{StackOverflow, OutOfMemory, Pani
             .compareNot => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                if (Value.bothNumbers(left, right)) {
-                    framePtr[pc[3].arg] = Value.initBool(left.asF64() != right.asF64());
-                } else {
-                    framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompareNotFallback, .{left, right});
-                }
+                framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompareNot, .{left, right});
                 pc += 4;
                 continue;
             },
             .compare => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                if (Value.bothNumbers(left, right)) {
-                    framePtr[pc[3].arg] = Value.initBool(left.asF64() == right.asF64());
-                } else {
-                    framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompareFallback, .{left, right});
-                }
+                framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompare, .{left, right});
                 pc += 4;
                 continue;
             },

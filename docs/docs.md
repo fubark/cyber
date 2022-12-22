@@ -211,11 +211,14 @@ Cyber supports the following arithmetic operators. To understand how these opera
 12 % 5    -- Modulus remainder, evaluates to 2.
 -(10)     -- Apply negative, evaluates to -10.
 ```
+[To Top.](#table-of-contents)
+
+### Comparison Operators.
 
 Cyber supports the following comparison operators.
 A comparison expression always evaluates to a [Boolean](#booleans) value.
 
-The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.
+The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.
 ```text
 1 == 1      -- Evaluates to `true`
 1 == 2      -- Evaluates to `true`
@@ -238,13 +241,19 @@ a < b    -- `true` if a is less than b
 a <= b   -- `true` if a is less than or equal to b
 ```
 
-The logical operators `and`, `or`, and `not` are supported. `and` evaluates to `b` if operands `a` and `b` have truthy values otherwise `false`. A number value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.
+[To Top.](#table-of-contents)
+
+### Logic Operators.
+
+The logical operators `and`, `or`, and `not` are supported.
+
+`and` evaluates to `a` if `a` is not truthy. Otherwise, it evaluates to `b`. If `a` is not truthy, the evaluation of `b` is not executed. A number value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.
 ```text
 true and true  -- Evaluates to true
 123 and 234    -- Evaluates to 234
 123 and 0      -- Evaluates to false
 ```
-`or` evaluates to the first truthy value among operands `a` and `b`. If neither are truthy, `false` is returned. If `a` is found to be truthy, the evaluation of `b` is not executed.
+`or` evaluates to `a` if `a` is truthy. Otherwise, it evaluates to `b`. If `a` is found to be truthy, the evaluation of `b` is not executed.
 ```text
 true or false  -- Evaluates to true
 false or true  -- Evaluates to true
@@ -261,6 +270,9 @@ not 123       -- Evaluates to false
 !false        -- Evaluates to true
 !true         -- Evaluates to false
 ```
+[To Top.](#table-of-contents)
+
+### Bitwise Operators.
 
 Cyber supports the following bitwise operators for integer values. Number operands are first converted to a 32-bit integer before applying the operation.
 ```text

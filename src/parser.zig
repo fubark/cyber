@@ -2110,6 +2110,17 @@ pub const Parser = struct {
                         },
                     };
                     return expr_id;
+                } else if (token.data.operator_t == .bang) {
+                    self.advanceToken();
+                    const expr = try self.pushNode(.unary_expr, start);
+                    const child = try self.parseTermExpr();
+                    self.nodes.items[expr].head = .{
+                        .unary = .{
+                            .child = child,
+                            .op = .not,
+                        },
+                    };
+                    return expr;
                 } else return self.reportParseErrorAt("Unexpected operator.", &.{}, token);
             },
             .none => return self.reportParseErrorAt("Expected term expr.", &.{}, token),

@@ -370,6 +370,30 @@ test "Structs." {
         \\-- Struct to string returns struct's name. 
         \\n = Node{ value: 123 }
         \\try t.eq(string(n), 'Node')
+        \\
+        \\-- Initialize fields without commas.
+        \\type W:
+        \\  a
+        \\  b
+        \\w = W{
+        \\  a: 1
+        \\  b: 2
+        \\}
+        \\try t.eq(w.a, 1)
+        \\try t.eq(w.b, 2)
+        \\
+        \\-- Initialize fields with commas.
+        \\w = W{ a: 1, b: 2 }
+        \\try t.eq(w.a, 1)
+        \\try t.eq(w.b, 2)
+        \\
+        \\-- Initialize fields with commans and newlines.
+        \\w = W{
+        \\  a: 1,
+        \\  b: 2,
+        \\}
+        \\try t.eq(w.a, 1)
+        \\try t.eq(w.b, 2)
     );
 
     // Big structs (allocated outside of heap pages).

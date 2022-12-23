@@ -1594,6 +1594,9 @@ pub const Parser = struct {
                     .right_brace => {
                         break :outer;
                     },
+                    .new_line => {
+                        continue;
+                    },
                     else => return self.reportParseErrorAt("Expected map key.", &.{}, token),
                 }
             }
@@ -1974,6 +1977,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         if (token.tag() == .new_line) {
             self.consumeWhitespaceTokens();
+            start = self.next_pos;
             token = self.peekToken();
         }
 

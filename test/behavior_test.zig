@@ -232,6 +232,8 @@ test "FFI." {
         export fn testPtr(ptr: *anyopaque) *anyopaque {
             return ptr;
         }
+        export fn testVoid() void {
+        }
     };
     _ = S;
 
@@ -258,6 +260,7 @@ test "FFI." {
         \\  CFunc{ sym: 'testF64', args: [#f64], ret: #f64 }
         \\  CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
         \\  CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
+        \\  CFunc{ sym: 'testVoid', args: [], ret: #void }
         \\])
         \\try t.eq(lib.testAdd(123, 321), 444)
         \\try t.eq(lib.testI8(-128), -128)
@@ -274,6 +277,9 @@ test "FFI." {
         \\str = 'foo{123}'
         \\try t.eq(lib.testCharPtrZ(str), 'foo123')
         \\try t.eq(lib.testPtr(opaque(123)), opaque(123))
+        \\
+        \\-- void return and no args.
+        \\try t.eq(lib.testVoid(), none)
     );
 }
 

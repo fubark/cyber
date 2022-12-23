@@ -15,29 +15,35 @@ const log = stdx.log.scoped(.bindings);
 
 const NullId = std.math.maxInt(u32);
 
-const TagLit_int = 0;
-const TagLit_i8 = 1;
-const TagLit_u8 = 2;
-const TagLit_i16 = 3;
-const TagLit_u16 = 4;
-const TagLit_i32 = 5;
-const TagLit_u32 = 6;
-const TagLit_f32 = 7;
-const TagLit_f64 = 8;
-const TagLit_float = 9;
-const TagLit_double = 10;
-const TagLit_charPtrZ = 11;
-const TagLit_ptr = 12;
-const TagLit_AssertError = 13;
-const TagLit_NotFound = 14;
-const TagLit_MissingSymbol = 15;
-const TagLit_running = 16;
-const TagLit_paused = 17;
-const TagLit_done = 18;
-const TagLit_error = 19;
-const TagLit_number = 20;
-const TagLit_object = 21;
-const TagLit_bool = 22;
+const TagLit = enum {
+    int,
+    i8,
+    u8,
+    i16,
+    u16,
+    i32,
+    u32,
+    f32,
+    f64,
+    float,
+    double,
+    charPtrZ,
+    ptr,
+    void,
+
+    AssertError,
+    NotFound,
+    MissingSymbol,
+
+    running,
+    paused,
+    done,
+
+    err,
+    number,
+    object,
+    bool,
+};
 
 const StdSection = ".eval.std";
 const Section = ".eval2";
@@ -143,55 +149,38 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.ensureFieldSym("ret");
     try self.addFieldSym(sid, id, 2);
 
-    id = try self.ensureTagLitSym("int");
-    std.debug.assert(id == TagLit_int);
-    id = try self.ensureTagLitSym("i8");
-    std.debug.assert(id == TagLit_i8);
-    id = try self.ensureTagLitSym("u8");
-    std.debug.assert(id == TagLit_u8);
-    id = try self.ensureTagLitSym("i16");
-    std.debug.assert(id == TagLit_i16);
-    id = try self.ensureTagLitSym("u16");
-    std.debug.assert(id == TagLit_u16);
-    id = try self.ensureTagLitSym("i32");
-    std.debug.assert(id == TagLit_i32);
-    id = try self.ensureTagLitSym("u32");
-    std.debug.assert(id == TagLit_u32);
-    id = try self.ensureTagLitSym("f32");
-    std.debug.assert(id == TagLit_f32);
-    id = try self.ensureTagLitSym("f64");
-    std.debug.assert(id == TagLit_f64);
-    id = try self.ensureTagLitSym("float");
-    std.debug.assert(id == TagLit_float);
-    id = try self.ensureTagLitSym("double");
-    std.debug.assert(id == TagLit_double);
-    id = try self.ensureTagLitSym("charPtrZ");
-    std.debug.assert(id == TagLit_charPtrZ);
-    id = try self.ensureTagLitSym("ptr");
-    std.debug.assert(id == TagLit_ptr);
+    try ensureTagLitSym(self, "int", .int);
+    try ensureTagLitSym(self, "i8", .i8);
+    try ensureTagLitSym(self, "u8", .u8);
+    try ensureTagLitSym(self, "i16", .i16);
+    try ensureTagLitSym(self, "u16", .u16);
+    try ensureTagLitSym(self, "i32", .i32);
+    try ensureTagLitSym(self, "u32", .u32);
+    try ensureTagLitSym(self, "f32", .f32);
+    try ensureTagLitSym(self, "f64", .f64);
+    try ensureTagLitSym(self, "float", .float);
+    try ensureTagLitSym(self, "double", .double);
+    try ensureTagLitSym(self, "charPtrZ", .charPtrZ);
+    try ensureTagLitSym(self, "ptr", .ptr);
+    try ensureTagLitSym(self, "void", .void);
 
-    id = try self.ensureTagLitSym("AssertError");
-    std.debug.assert(id == TagLit_AssertError);
-    id = try self.ensureTagLitSym("NotFound");
-    std.debug.assert(id == TagLit_NotFound);
-    id = try self.ensureTagLitSym("MissingSymbol");
-    std.debug.assert(id == TagLit_MissingSymbol);
+    try ensureTagLitSym(self, "AssertError", .AssertError);
+    try ensureTagLitSym(self, "NotFound", .NotFound);
+    try ensureTagLitSym(self, "MissingSymbol", .MissingSymbol);
 
-    id = try self.ensureTagLitSym("running");
-    std.debug.assert(id == TagLit_running);
-    id = try self.ensureTagLitSym("paused");
-    std.debug.assert(id == TagLit_paused);
-    id = try self.ensureTagLitSym("done");
-    std.debug.assert(id == TagLit_done);
+    try ensureTagLitSym(self, "running", .running);
+    try ensureTagLitSym(self, "paused", .paused);
+    try ensureTagLitSym(self, "done", .done);
 
-    id = try self.ensureTagLitSym("error");
-    std.debug.assert(id == TagLit_error);
-    id = try self.ensureTagLitSym("number");
-    std.debug.assert(id == TagLit_number);
-    id = try self.ensureTagLitSym("object");
-    std.debug.assert(id == TagLit_object);
-    id = try self.ensureTagLitSym("bool");
-    std.debug.assert(id == TagLit_bool);
+    try ensureTagLitSym(self, "error", .err);
+    try ensureTagLitSym(self, "number", .number);
+    try ensureTagLitSym(self, "object", .object);
+    try ensureTagLitSym(self, "bool", .bool);
+}
+
+fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
+    const id = try vm.ensureTagLitSym(name);
+    std.debug.assert(id == @enumToInt(tag));
 }
 
 pub fn testEqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
@@ -208,16 +197,16 @@ pub fn testEqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 return Value.True;
             } else {
                 println("actual: {} != {}", .{act.asF64(), exp.asF64()});
-                return Value.initErrorTagLit(TagLit_AssertError);
+                return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
             }
         } else {
             println("Expected number, actual: {}", .{actType});
-            return Value.initErrorTagLit(TagLit_AssertError);
+            return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
         }
     } else {
         println("Types do not match:", .{});
         println("actual: {} != {}", .{actType, expType});
-        return Value.initErrorTagLit(TagLit_AssertError);
+        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
     }
 }
 
@@ -239,7 +228,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: {} != {}", .{act.asF64(), exp.asF64()});
-                    return Value.initErrorTagLit(TagLit_AssertError);
+                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
             .string => {
@@ -247,7 +236,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: '{s}' != '{s}'", .{gvm.valueAsString(act), gvm.valueAsString(exp)});
-                    return Value.initErrorTagLit(TagLit_AssertError);
+                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
             .opaquePtr => {
@@ -257,7 +246,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: {*} != {*}", .{actPtr, expPtr});
-                    return Value.initErrorTagLit(TagLit_AssertError);
+                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
             .boolean => {
@@ -267,7 +256,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: {} != {}", .{actv, expv});
-                    return Value.initErrorTagLit(TagLit_AssertError);
+                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
             .tagLiteral => {
@@ -277,7 +266,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: {s} != {s}", .{gvm.tagLitSyms.buf[actv].name, gvm.tagLitSyms.buf[expv].name});
-                    return Value.initErrorTagLit(TagLit_AssertError);
+                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
             .none => {
@@ -290,7 +279,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                     return Value.True;
                 } else {
                     println("actual: error({s}) != error({s})", .{gvm.tagLitSyms.buf[actv].name, gvm.tagLitSyms.buf[expv].name});
-                    return Value.initErrorTagLit(TagLit_AssertError);
+                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
             else => {
@@ -300,7 +289,7 @@ pub fn testEq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     } else {
         println("Types do not match:", .{});
         println("actual: {} != {}", .{actType, expType});
-        return Value.initErrorTagLit(TagLit_AssertError);
+        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
     }
 }
 
@@ -429,7 +418,7 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
     } else {
         lib.* = std.DynLib.open(gvm.valueToTempString(path)) catch |err| {
             log.debug("{}", .{err});
-            return Value.initErrorTagLit(TagLit_NotFound);
+            return Value.initErrorTagLit(@enumToInt(TagLit.NotFound));
         };
     }
 
@@ -446,7 +435,7 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
             cfuncPtrs[i] = ptr;
         } else {
             log.debug("Missing sym: '{s}'", .{sym});
-            return Value.initErrorTagLit(TagLit_MissingSymbol);
+            return Value.initErrorTagLit(@enumToInt(TagLit.MissingSymbol));
         }
     }
 
@@ -479,99 +468,104 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
         const cargsv = gvm.getField(cfunc, argsf) catch stdx.fatal();
         const ret = gvm.getField(cfunc, retf) catch stdx.fatal();
 
-        const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?);
-        const lastArg = cargs.items().len - 1;
+        const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
 
         // Emit extern declaration.
         w.print("extern ", .{}) catch stdx.fatal();
         const retTag = ret.asTagLiteralId();
-        switch (retTag) {
-            TagLit_i32,
-            TagLit_int => {
+        switch (@intToEnum(TagLit, retTag)) {
+            .i32,
+            .int => {
                 w.print("int", .{}) catch stdx.fatal();
             },
-            TagLit_i8 => {
+            .i8 => {
                 w.print("int8_t", .{}) catch stdx.fatal();
             },
-            TagLit_u8 => {
+            .u8 => {
                 w.print("uint8_t", .{}) catch stdx.fatal();
             },
-            TagLit_i16 => {
+            .i16 => {
                 w.print("int16_t", .{}) catch stdx.fatal();
             },
-            TagLit_u16 => {
+            .u16 => {
                 w.print("uint16_t", .{}) catch stdx.fatal();
             },
-            TagLit_u32 => {
+            .u32 => {
                 w.print("uint32_t", .{}) catch stdx.fatal();
             },
-            TagLit_float,
-            TagLit_f32 => {
+            .float,
+            .f32 => {
                 w.print("float", .{}) catch stdx.fatal();
             },
-            TagLit_double,
-            TagLit_f64 => {
+            .double,
+            .f64 => {
                 w.print("double", .{}) catch stdx.fatal();
             },
-            TagLit_charPtrZ => {
+            .charPtrZ => {
                 w.print("char*", .{}) catch stdx.fatal();
             },
-            TagLit_ptr => {
+            .ptr => {
                 w.print("void*", .{}) catch stdx.fatal();
+            },
+            .void => {
+                w.print("void", .{}) catch stdx.fatal();
             },
             else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
         }
         w.print(" {s}(", .{sym}) catch stdx.fatal();
-        for (cargs.items()) |carg, i| {
-            const argTag = carg.asTagLiteralId();
-            switch (argTag) {
-                TagLit_i32,
-                TagLit_int => {
-                    w.print("int", .{}) catch stdx.fatal();
-                },
-                TagLit_i8 => {
-                    w.print("int8_t", .{}) catch stdx.fatal();
-                },
-                TagLit_u8 => {
-                    w.print("uint8_t", .{}) catch stdx.fatal();
-                },
-                TagLit_i16 => {
-                    w.print("int16_t", .{}) catch stdx.fatal();
-                },
-                TagLit_u16 => {
-                    w.print("uint16_t", .{}) catch stdx.fatal();
-                },
-                TagLit_u32 => {
-                    w.print("uint32_t", .{}) catch stdx.fatal();
-                },
-                TagLit_float,
-                TagLit_f32 => {
-                    w.print("float", .{}) catch stdx.fatal();
-                },
-                TagLit_double,
-                TagLit_f64 => {
-                    w.print("double", .{}) catch stdx.fatal();
-                },
-                TagLit_charPtrZ => {
-                    w.print("char*", .{}) catch stdx.fatal();
-                },
-                TagLit_ptr => {
-                    w.print("void*", .{}) catch stdx.fatal();
-                },
-                else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
-            }
-            if (i != lastArg) {
-                w.print(", ", .{}) catch stdx.fatal();
+        if (cargs.len > 0) {
+            const lastArg = cargs.len-1;
+            for (cargs) |carg, i| {
+                const argTag = carg.asTagLiteralId();
+                switch (@intToEnum(TagLit, argTag)) {
+                    .i32,
+                    .int => {
+                        w.print("int", .{}) catch stdx.fatal();
+                    },
+                    .i8 => {
+                        w.print("int8_t", .{}) catch stdx.fatal();
+                    },
+                    .u8 => {
+                        w.print("uint8_t", .{}) catch stdx.fatal();
+                    },
+                    .i16 => {
+                        w.print("int16_t", .{}) catch stdx.fatal();
+                    },
+                    .u16 => {
+                        w.print("uint16_t", .{}) catch stdx.fatal();
+                    },
+                    .u32 => {
+                        w.print("uint32_t", .{}) catch stdx.fatal();
+                    },
+                    .float,
+                    .f32 => {
+                        w.print("float", .{}) catch stdx.fatal();
+                    },
+                    .double,
+                    .f64 => {
+                        w.print("double", .{}) catch stdx.fatal();
+                    },
+                    .charPtrZ => {
+                        w.print("char*", .{}) catch stdx.fatal();
+                    },
+                    .ptr => {
+                        w.print("void*", .{}) catch stdx.fatal();
+                    },
+                    else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
+                }
+                if (i != lastArg) {
+                    w.print(", ", .{}) catch stdx.fatal();
+                }
             }
         }
         w.print(");\n", .{}) catch stdx.fatal();
 
         w.print("uint64_t cy{s}(void* vm, uint64_t* args, char numArgs) {{\n", .{sym}) catch stdx.fatal();
         // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
-        for (cargs.items()) |carg, i| {
+        for (cargs) |carg, i| {
             const argTag = carg.asTagLiteralId();
-            switch (argTag) {
-                TagLit_charPtrZ => {
+            switch (@intToEnum(TagLit, argTag)) {
+                .charPtrZ => {
                     w.print("  uint32_t strLen{};\n", .{i}) catch stdx.fatal();
                     w.print("  char* str{} = icyToCStr(args[{}], &strLen{});\n", .{i, i, i}) catch stdx.fatal();
                 },
@@ -579,86 +573,92 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
             }
         }
 
-        switch (retTag) {
-            TagLit_i8,
-            TagLit_u8,
-            TagLit_i16,
-            TagLit_u16,
-            TagLit_i32,
-            TagLit_u32,
-            TagLit_f32,
-            TagLit_float,
-            TagLit_int => {
+        switch (@intToEnum(TagLit, retTag)) {
+            .i8,
+            .u8,
+            .i16,
+            .u16,
+            .i32,
+            .u32,
+            .f32,
+            .float,
+            .int => {
                 w.print("  double res = (double){s}(", .{sym}) catch stdx.fatal();
             },
-            TagLit_f64,
-            TagLit_double => {
+            .f64,
+            .double => {
                 w.print("  double res = {s}(", .{sym}) catch stdx.fatal();
             },
-            TagLit_charPtrZ => {
+            .charPtrZ => {
                 w.print("  char* res = {s}(", .{sym}) catch stdx.fatal();
             },
-            TagLit_ptr => {
+            .ptr => {
                 w.print("  void* res = {s}(", .{sym}) catch stdx.fatal();
+            },
+            .void => {
+                w.print("  {s}(", .{sym}) catch stdx.fatal();
             },
             else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
         }
 
         // Gen args.
-        for (cargs.items()) |carg, i| {
-            const argTag = carg.asTagLiteralId();
-            switch (argTag) {
-                TagLit_i32,
-                TagLit_int => {
-                    w.print("(int)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_i8 => {
-                    w.print("(int8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_u8 => {
-                    w.print("(uint8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_i16 => {
-                    w.print("(int16_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_u16 => {
-                    w.print("(uint16_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_u32 => {
-                    w.print("(uint32_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_float,
-                TagLit_f32 => {
-                    w.print("(float)*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_double,
-                TagLit_f64 => {
-                    w.print("*(double*)&args[{}]", .{i}) catch stdx.fatal();
-                },
-                TagLit_charPtrZ => {
-                    w.print("str{}", .{i}) catch stdx.fatal();
-                },
-                TagLit_ptr => {
-                    w.print("icyGetPtr(args[{}])", .{i}) catch stdx.fatal();
-                },
-                else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
-            }
-            if (i != lastArg) {
-                w.print(", ", .{}) catch stdx.fatal();
+        if (cargs.len > 0) {
+            const lastArg = cargs.len-1;
+            for (cargs) |carg, i| {
+                const argTag = carg.asTagLiteralId();
+                switch (@intToEnum(TagLit, argTag)) {
+                    .i32,
+                    .int => {
+                        w.print("(int)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .i8 => {
+                        w.print("(int8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .u8 => {
+                        w.print("(uint8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .i16 => {
+                        w.print("(int16_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .u16 => {
+                        w.print("(uint16_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .u32 => {
+                        w.print("(uint32_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .float,
+                    .f32 => {
+                        w.print("(float)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .double,
+                    .f64 => {
+                        w.print("*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .charPtrZ => {
+                        w.print("str{}", .{i}) catch stdx.fatal();
+                    },
+                    .ptr => {
+                        w.print("icyGetPtr(args[{}])", .{i}) catch stdx.fatal();
+                    },
+                    else => stdx.panicFmt("Unsupported arg type: {s}", .{ gvm.getTagLitName(argTag) }),
+                }
+                if (i != lastArg) {
+                    w.print(", ", .{}) catch stdx.fatal();
+                }
             }
         }
 
         // End of args.
         w.print(");\n", .{}) catch stdx.fatal();
 
-        for (cargs.items()) |carg, i| {
+        for (cargs) |carg, i| {
             const argTag = carg.asTagLiteralId();
-            switch (argTag) {
-                TagLit_charPtrZ => {
+            switch (@intToEnum(TagLit, argTag)) {
+                .charPtrZ => {
                     w.print("  icyFreeCStr(str{}, strLen{});\n", .{i, i}) catch stdx.fatal();
                     w.print("  icyRelease(args[{}]);\n", .{i}) catch stdx.fatal();
                 },
-                TagLit_ptr => {
+                .ptr => {
                     w.print("  icyRelease(args[{}]);\n", .{i}) catch stdx.fatal();
                 },
                 else => {},
@@ -666,25 +666,28 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
         }
 
         // Gen return.
-        switch (retTag) {
-            TagLit_i8,
-            TagLit_u8,
-            TagLit_i16,
-            TagLit_u16,
-            TagLit_i32,
-            TagLit_u32,
-            TagLit_f32,
-            TagLit_float,
-            TagLit_f64,
-            TagLit_double,
-            TagLit_int => {
+        switch (@intToEnum(TagLit, retTag)) {
+            .i8,
+            .u8,
+            .i16,
+            .u16,
+            .i32,
+            .u32,
+            .f32,
+            .float,
+            .f64,
+            .double,
+            .int => {
                 w.print("  return *(uint64_t*)&res;\n", .{}) catch stdx.fatal();
             },
-            TagLit_charPtrZ => {
+            .charPtrZ => {
                 w.print("  return icyFromCStr(res);\n", .{}) catch stdx.fatal();
             },
-            TagLit_ptr => {
+            .ptr => {
                 w.print("  return icyAllocOpaquePtr(res);\n", .{}) catch stdx.fatal();
+            },
+            .void => {
+                w.print("  return 0x7FFC000000000000;\n", .{}) catch stdx.fatal();
             },
             else => stdx.fatal(),
         }
@@ -764,10 +767,10 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 pub fn coreValtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
-        .number => return Value.initTagLiteral(TagLit_number),
-        .object => return Value.initTagLiteral(TagLit_object),
-        .errorVal => return Value.initTagLiteral(TagLit_error),
-        .boolean => return Value.initTagLiteral(TagLit_bool),
+        .number => return Value.initTagLiteral(@enumToInt(TagLit.number)),
+        .object => return Value.initTagLiteral(@enumToInt(TagLit.object)),
+        .errorVal => return Value.initTagLiteral(@enumToInt(TagLit.err)),
+        .boolean => return Value.initTagLiteral(@enumToInt(TagLit.bool)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }
@@ -1345,13 +1348,13 @@ fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value 
     defer vm.releaseObject(obj);
 
     if (gvm.curFiber == @ptrCast(*cy.Fiber, obj)) {
-        return Value.initTagLiteral(TagLit_running);
+        return Value.initTagLiteral(@enumToInt(TagLit.running));
     } else {
         // Check if done.
         if (obj.fiber.pc == NullId) {
-            return Value.initTagLiteral(TagLit_done);
+            return Value.initTagLiteral(@enumToInt(TagLit.done));
         } else {
-            return Value.initTagLiteral(TagLit_paused);
+            return Value.initTagLiteral(@enumToInt(TagLit.paused));
         }
     }
 }

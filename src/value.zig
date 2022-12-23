@@ -424,4 +424,5 @@ test "asF64" {
 
 test "Masks" {
     try t.eq(ConstStringMask, 0x7FFC000300000000);
+    try t.eq(NoneMask, 0x7FFC000000000000);
 }

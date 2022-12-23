@@ -242,6 +242,10 @@ test "FFI." {
         \\lib = bindLib('xyz123.so', [])
         \\try t.eq(lib, error(#NotFound))
         \\
+        \\-- Missing symbol.
+        \\lib = bindLib(none, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
+        \\try t.eq(lib, error(#MissingSymbol))
+        \\
         \\lib = bindLib(none, [
         \\  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
         \\  CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }

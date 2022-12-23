@@ -30,13 +30,14 @@ const TagLit_charPtrZ = 11;
 const TagLit_ptr = 12;
 const TagLit_AssertError = 13;
 const TagLit_NotFound = 14;
-const TagLit_running = 15;
-const TagLit_paused = 16;
-const TagLit_done = 17;
-const TagLit_error = 18;
-const TagLit_number = 19;
-const TagLit_object = 20;
-const TagLit_bool = 21;
+const TagLit_MissingSymbol = 15;
+const TagLit_running = 16;
+const TagLit_paused = 17;
+const TagLit_done = 18;
+const TagLit_error = 19;
+const TagLit_number = 20;
+const TagLit_object = 21;
+const TagLit_bool = 22;
 
 const StdSection = ".eval.std";
 const Section = ".eval2";
@@ -173,6 +174,9 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == TagLit_AssertError);
     id = try self.ensureTagLitSym("NotFound");
     std.debug.assert(id == TagLit_NotFound);
+    id = try self.ensureTagLitSym("MissingSymbol");
+    std.debug.assert(id == TagLit_MissingSymbol);
+
     id = try self.ensureTagLitSym("running");
     std.debug.assert(id == TagLit_running);
     id = try self.ensureTagLitSym("paused");
@@ -406,18 +410,25 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
     const path = args[0];
     const alloc = vm.allocator();
 
+    var success = false;
+
     defer {
         vm.release(args[0]);
         vm.release(args[1]);
     }
 
     var lib = alloc.create(std.DynLib) catch stdx.fatal();
+    defer {
+        if (!success) {
+            alloc.destroy(lib);
+        }
+    }
+
     if (path.isNone()) {
         lib.* = std.DynLib.openZ("") catch stdx.fatal();
     } else {
         lib.* = std.DynLib.open(gvm.valueToTempString(path)) catch |err| {
             log.debug("{}", .{err});
-            alloc.destroy(lib);
             return Value.initErrorTagLit(TagLit_NotFound);
         };
     }
@@ -433,7 +444,10 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
         defer alloc.free(symz);
         if (lib.lookup(*anyopaque, symz)) |ptr| {
             cfuncPtrs[i] = ptr;
-        } else stdx.panicFmt("Missing sym: {s}", .{sym});
+        } else {
+            log.debug("Missing sym: '{s}'", .{sym});
+            return Value.initErrorTagLit(TagLit_MissingSymbol);
+        }
     }
 
     // Generate c code.
@@ -731,6 +745,8 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
         const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
+
+    success = true;
     return map;
 }
 

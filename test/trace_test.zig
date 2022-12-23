@@ -6,7 +6,7 @@ const t = stdx.testing;
 const cy = @import("../src/cyber.zig");
 const log = stdx.log.scoped(.trace_test);
 
-test "Automatic reference counting." {
+test "ARC." {
     var run: VMrunner = undefined;
     run.init();
     defer run.deinit();
@@ -37,44 +37,16 @@ test "Automatic reference counting." {
     try t.eq(trace.numReleases, 2);
 
     // Object is retained when assigned to struct literal.
-    val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
         \\type S:
         \\  value
-        \\func foo():
-        \\  a = [123]
-        \\  return S{ value: a }
-        \\s = foo()
-        \\s.value[0]
+        \\a = [123]
+        \\s = S{ value: a }
+        \\try t.eq(s.value[0], 123)
     );
-    try t.eq(val.asF64toI32(), 123);
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
-
-    // Object is retained when returned from non-literal expression in return clause.
-    val = try run.eval(
-        \\type S:
-        \\  value
-        \\func foo():
-        \\  a = S{ value: 123 }
-        \\  return a
-        \\s = foo()
-        \\s.value
-    );
-    try t.eq(val.asF64toI32(), 123);
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
-
-    // Object is released when returned from a function if no followup assignment.
-    val = try run.eval(
-        \\type S:
-        \\  value
-        \\func foo():
-        \\  return S{ value: 123 }
-        \\foo()
-        \\return
-    );
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
 
     // Object is released when returned rvalue field access.
     val = try run.eval(
@@ -126,7 +98,59 @@ test "Automatic reference counting." {
     try t.eq(trace.numForceReleases, 2);
 }
 
-test "ARC in expressions." {
+test "ARC for passing call args." {
+    var run: VMrunner = undefined;
+    run.init();
+    defer run.deinit();
+
+    const trace = &run.trace;
+
+    // Temp list is retained when passed into function.
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo(list):
+        \\  return list[0]
+        \\try t.eq(foo([1]), 1)
+    );
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
+}
+
+test "ARC for function returns values." {
+    var run: VMrunner = undefined;
+    run.init();
+    defer run.deinit();
+
+    const trace = &run.trace;
+
+    // Local object is retained when returned.
+    _ = try run.eval(
+        \\import t 'test'
+        \\type S:
+        \\  value
+        \\func foo():
+        \\  a = S{ value: 123 }
+        \\  return a
+        \\s = foo()
+        \\try t.eq(s.value, 123)
+    );
+    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numReleases, 2);
+
+    // Object is released when returned from a function if no followup assignment.
+    _ = try run.eval(
+        \\type S:
+        \\  value
+        \\func foo():
+        \\  return S{ value: 123 }
+        \\foo()
+        \\return
+    );
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
+}
+
+test "ARC on temp locals in expressions." {
     var run: VMrunner = undefined;
     run.init();
     defer run.deinit();

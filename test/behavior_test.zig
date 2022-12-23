@@ -840,6 +840,21 @@ test "boolean" {
 //     run.deinitValue(val);
 // }
 
+test "Statements." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- Expressions are allowed to wrap to the next line.
+        \\if true or
+        \\   true:
+        \\  a = 10
+        \\try t.eq(a, 10)
+    );
+}
+
 test "Indentation." {
     const run = VMrunner.create();
     defer run.destroy();

@@ -1972,6 +1972,10 @@ pub const Parser = struct {
     fn parseTightTermExpr(self: *Parser) anyerror!NodeId {
         var start = self.next_pos;
         var token = self.peekToken();
+        if (token.tag() == .new_line) {
+            self.consumeWhitespaceTokens();
+            token = self.peekToken();
+        }
 
         var left_id = switch (token.tag()) {
             .ident => b: {
@@ -2123,8 +2127,7 @@ pub const Parser = struct {
                     return expr;
                 } else return self.reportParseErrorAt("Unexpected operator.", &.{}, token);
             },
-            .none => return self.reportParseErrorAt("Expected term expr.", &.{}, token),
-            else => return self.reportParseErrorAt("Expected term expr.", &.{}, token),
+            else => return self.reportParseErrorAt("Expected term expr. Parsed {}.", &.{fmt.v(token.tag())}, token),
         };
 
         while (true) {

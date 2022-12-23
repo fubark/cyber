@@ -567,12 +567,8 @@ pub const VMcompiler = struct {
             .opAssignStmt => {
                 const left = self.nodes[node.head.opAssignStmt.left];
                 if (left.node_t == .ident) {
-                    if (try self.semaIdentLocalVarOrNull(node.head.opAssignStmt.left, true, true)) |varId| {
-                        const svar = self.vars.items[varId];
-                        const rtype = try self.semaExpr(node.head.opAssignStmt.right, false);
-                        if (svar.vtype.typeT != .number and svar.vtype.typeT != .any and rtype.typeT != svar.vtype.typeT) {
-                            return self.reportErrorAt("Type mismatch: Expected {}", &.{fmt.v(svar.vtype.typeT)}, nodeId);
-                        }
+                    if (try self.semaIdentLocalVarOrNull(node.head.opAssignStmt.left, true, true)) |_| {
+                        _ = try self.semaExpr(node.head.opAssignStmt.right, false);
                     } else unexpected("variable not declared", &.{});
                 } else if (left.node_t == .accessExpr) {
                     const accessLeft = try self.semaExpr(left.head.accessExpr.left, false);

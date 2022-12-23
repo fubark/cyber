@@ -550,30 +550,24 @@ pub const Parser = struct {
 
             token = self.peekToken();
             if (token.tag() == .ident) {
-                const nameToken = self.tokens.items[self.next_pos];
-                const typeName = self.src.items[nameToken.pos() .. nameToken.data.end_pos];
-                if (std.mem.eql(u8, typeName, "any")) {
-                    const typeN = try self.pushIdentNode(self.next_pos);
+                const typeN = try self.pushIdentNode(self.next_pos);
+                self.advanceToken();
+
+                token = self.peekToken();
+                if (token.tag() == .new_line) {
                     self.advanceToken();
-
-                    token = self.peekToken();
-                    if (token.tag() == .new_line) {
-                        self.advanceToken();
-                    } else {
-                        return self.reportParseError("Expected new line.", &.{});
-                    }
-
-                    const field = try self.pushNode(.structField, start);
-                    self.nodes.items[field].head = .{
-                        .structField = .{
-                            .name = name,
-                            .fieldType = typeN,
-                        },
-                    };
-                    return field;
                 } else {
-                    return self.reportParseError("Unsupported type.", &.{});
+                    return self.reportParseError("Expected new line.", &.{});
                 }
+
+                const field = try self.pushNode(.structField, start);
+                self.nodes.items[field].head = .{
+                    .structField = .{
+                        .name = name,
+                        .fieldType = typeN,
+                    },
+                };
+                return field;
             } else if (token.tag() == .new_line) {
                 self.advanceToken();
                 const field = try self.pushNode(.structField, start);

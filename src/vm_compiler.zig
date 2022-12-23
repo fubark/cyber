@@ -198,7 +198,7 @@ pub const VMcompiler = struct {
                 var entry_id = initializer.head.child_head;
                 while (entry_id != NullId) : (i += 1) {
                     var entry = self.nodes[entry_id];
-                    _ = try self.semaExpr(entry.head.left_right.right, discardTopExprReg);
+                    _ = try self.semaExpr(entry.head.mapEntry.right, discardTopExprReg);
                     entry_id = entry.next;
                 }
                 return AnyType;
@@ -209,7 +209,7 @@ pub const VMcompiler = struct {
                 while (entry_id != NullId) : (i += 1) {
                     var entry = self.nodes[entry_id];
 
-                    _ = try self.semaExpr(entry.head.left_right.right, discardTopExprReg);
+                    _ = try self.semaExpr(entry.head.mapEntry.right, discardTopExprReg);
                     entry_id = entry.next;
                 }
                 return MapType;
@@ -3000,7 +3000,7 @@ pub const VMcompiler = struct {
     }
 
     /// `dst` indicates the local of the resulting value.
-    /// `retainEscapeTop` indicates that the resulting val is meant to be used to escape the current scope. (eg. call args)
+    /// `retainEscapeTop` indicates that the resulting val is meant to escape the current scope. (eg. call args)
     /// If `retainEscapeTop` is false, the dst is a temp local, and the expr requires a retain (eg. call expr), it is added as an arcTempLocal.
     fn genExprTo2(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: Type, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
         const node = self.nodes[nodeId];
@@ -3174,11 +3174,25 @@ pub const VMcompiler = struct {
                 };
 
                 const initializer = self.nodes[node.head.structInit.initializer];
-
+                
+                // TODO: Would it be faster/efficient to copy the fields into contiguous registers 
+                //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
+                //       The current implementation is the former.
                 // TODO: Have sema sort the fields so eval can handle default values easier.
+
                 // Push props onto stack.
-                const operandStart = self.operandStack.items.len;
-                defer self.operandStack.items.len = operandStart;
+
+                const numFields = self.vm.structs.buf[sid].numFields;
+                // Repurpose stack for sorting fields.
+                const sortedFieldsStart = self.assignedVarStack.items.len;
+                try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
+                defer self.assignedVarStack.items.len = sortedFieldsStart;
+
+                // Initially set to NullId so leftovers are defaulted to `none`.
+                const initFields = self.assignedVarStack.items[sortedFieldsStart..];
+                for (initFields) |*entryId| {
+                    entryId.* = NullId;
+                }
 
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
@@ -3187,35 +3201,39 @@ pub const VMcompiler = struct {
 
                 var i: u32 = 0;
                 var entryId = initializer.head.child_head;
+                // First iteration to sort the initializer fields.
                 while (entryId != NullId) : (i += 1) {
-                    var entry = self.nodes[entryId];
-                    const prop = self.nodes[entry.head.left_right.left];
-
-                    if (!discardTopExprReg) {
-                        const propName = self.getNodeTokenString(prop);
-                        const propIdx = self.vm.getStructFieldIdx(sid, propName) orelse {
-                            return self.reportErrorAt("Missing field {}", &.{fmt.v(propName)}, entry.head.left_right.left);
-                        };
-                        try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, propIdx)));
-                    }
-
-                    _ = try self.genRetainedTempExpr(entry.head.left_right.right, discardTopExprReg);
+                    const entry = self.nodes[entryId];
+                    const prop = self.nodes[entry.head.mapEntry.left];
+                    const fieldName = self.getNodeTokenString(prop);
+                    const fieldIdx = self.vm.getStructFieldIdx(sid, fieldName) orelse {
+                        return self.reportErrorAt("Missing field {}", &.{fmt.v(fieldName)}, entry.head.mapEntry.left);
+                    };
+                    initFields[fieldIdx] = entryId;
                     entryId = entry.next;
                 }
 
-                if (i != self.vm.structs.buf[sid].numFields) {
-                    log.debug("Default values not supported. {} {}", .{i, self.vm.structs.buf[sid].numFields});
-                    return error.CompileError;
+                i = 0;
+                while (i < numFields) : (i += 1) {
+                    entryId = self.assignedVarStack.items[sortedFieldsStart + i];
+                    if (entryId == NullId) {
+                        if (!discardTopExprReg) {
+                            // Push none.
+                            const local = try self.nextFreeTempLocal();
+                            try self.buf.pushOp1(.none, local);
+                        }
+                    } else {
+                        const entry = self.nodes[entryId];
+                        _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, discardTopExprReg);
+                    }
                 }
 
                 if (!discardTopExprReg) {
                     if (self.vm.structs.buf[sid].numFields <= 4) {
-                        try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, i), dst });
+                        try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
                     } else {
-                        try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, i), dst });
+                        try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
                     }
-                    try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-                    // try self.buf.pushOp1(.pushStructInit, );
                     if (!retainEscapeTop and self.isTempLocal(dst)) {
                         try self.setReservedTempLocal(dst);
                     }
@@ -3240,7 +3258,7 @@ pub const VMcompiler = struct {
                 var entry_id = node.head.child_head;
                 while (entry_id != NullId) : (i += 1) {
                     var entry = self.nodes[entry_id];
-                    const key = self.nodes[entry.head.left_right.left];
+                    const key = self.nodes[entry.head.mapEntry.left];
 
                     if (!discardTopExprReg) {
                         switch (key.node_t) {
@@ -3258,7 +3276,7 @@ pub const VMcompiler = struct {
                         }
                     }
 
-                    _ = try self.genRetainedTempExpr(entry.head.left_right.right, discardTopExprReg);
+                    _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, discardTopExprReg);
                     entry_id = entry.next;
                 }
 

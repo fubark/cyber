@@ -359,13 +359,10 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             return 4 + numEntries;
         },
         .slice,
+        .object,
+        .objectSmall,
         .lambda => {
             return 5;
-        },
-        .object,
-        .objectSmall => {
-            const numEntries = pc[3].arg;
-            return 5 + numEntries;
         },
         .coinit => {
             return 6;

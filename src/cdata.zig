@@ -305,12 +305,12 @@ pub const DecodeMapIR = struct {
         var entry_id = map.head.child_head;
         while (entry_id != NullId) {
             const entry = res.nodes.items[entry_id];
-            const key = res.nodes.items[entry.head.left_right.left];
+            const key = res.nodes.items[entry.head.mapEntry.left];
             switch (key.node_t) {
                 .number,
                 .ident => {
                     const str = res.getTokenString(key.start_token);
-                    try new.map.put(alloc, str, entry.head.left_right.right);
+                    try new.map.put(alloc, str, entry.head.mapEntry.right);
                 },
                 else => return error.Unsupported,
             }

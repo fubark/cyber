@@ -347,10 +347,6 @@ pub const VM = struct {
         }
         tt.endPrint("compile");
 
-        if (builtin.is_test) {
-            try res.buf.dump();
-        }
-
         if (TraceEnabled) {
             try res.buf.dump();
             const numOps = comptime std.enums.values(cy.OpCode).len;
@@ -370,7 +366,13 @@ pub const VM = struct {
             self.trace.numRetainAttempts = 0;
             self.trace.numRetainCycles = 0;
             self.trace.numRetainCycleRoots = 0;
+        } else {
+            if (builtin.is_test) {
+                // Only visible for tests with .debug log level.
+                try res.buf.dump();
+            }
         }
+
         tt = stdx.debug.trace();
         defer {
             tt.endPrint("eval");
@@ -544,9 +546,9 @@ pub const VM = struct {
     }
 
     /// Allocates an object outside of the object pool.
-    fn allocObject(self: *VM, sid: StructId, offsets: []const cy.OpData, props: []const Value) !Value {
+    fn allocObject(self: *VM, sid: StructId, fields: []const Value) !Value {
         // First slot holds the structId and rc.
-        const objSlice = try self.alloc.alloc(Value, 1 + props.len);
+        const objSlice = try self.alloc.alloc(Value, 1 + fields.len);
         const obj = @ptrCast(*Object, objSlice.ptr);
         obj.* = .{
             .structId = sid,
@@ -558,19 +560,17 @@ pub const VM = struct {
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
 
         const dst = obj.getValuesPtr();
-        for (offsets) |offset, i| {
-            dst[offset.arg] = props[i];
-        }
+        std.mem.copy(Value, dst[0..fields.len], fields);
 
         const res = Value.initPtr(obj);
         return res;
     }
 
-    fn allocObjectSmall(self: *VM, sid: StructId, offsets: []const cy.OpData, props: []const Value) !Value {
+    fn allocObjectSmall(self: *VM, sid: StructId, fields: []const Value) !Value {
         const obj = try self.allocPoolObject();
         obj.object = .{
             .structId = sid,
@@ -582,13 +582,11 @@ pub const VM = struct {
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
 
         const dst = obj.object.getValuesPtr();
-        for (offsets) |offset, i| {
-            dst[offset.arg] = props[i];
-        }
+        std.mem.copy(Value, dst[0..fields.len], fields);
 
         const res = Value.initPtr(obj);
         return res;
@@ -3338,25 +3336,19 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
             .objectSmall => {
                 const sid = pc[1].arg;
                 const startLocal = pc[2].arg;
-                const numProps = pc[3].arg;
-                const dst = pc[4].arg;
-                const offsets = pc[5..5+numProps];
-                pc += 5 + numProps;
-
-                const props = framePtr[startLocal .. startLocal + numProps];
-                framePtr[dst] = try gvm.allocObjectSmall(sid, offsets, props);
+                const numFields = pc[3].arg;
+                const fields = framePtr[startLocal .. startLocal + numFields];
+                framePtr[pc[4].arg] = try vm.allocObjectSmall(sid, fields);
+                pc += 5;
                 continue;
             },
             .object => {
                 const sid = pc[1].arg;
                 const startLocal = pc[2].arg;
-                const numProps = pc[3].arg;
-                const dst = pc[4].arg;
-                const offsets = pc[5..5+numProps];
-                pc += 5 + numProps;
-
-                const props = framePtr[startLocal .. startLocal + numProps];
-                framePtr[dst] = try gvm.allocObject(sid, offsets, props);
+                const numFields = pc[3].arg;
+                const fields = framePtr[startLocal .. startLocal + numFields];
+                framePtr[pc[4].arg] = try vm.allocObject(sid, fields);
+                pc += 5;
                 continue;
             },
             .map => {

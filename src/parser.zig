@@ -1449,9 +1449,9 @@ pub const Parser = struct {
             return self.reportParseErrorAt("Expected map value.", &.{}, token);
         };
         const key_id = try self.pushNode(key_node_t, start);
-        const entry_id = try self.pushNode(.map_entry, start);
+        const entry_id = try self.pushNode(.mapEntry, start);
         self.nodes.items[entry_id].head = .{
-            .left_right = .{
+            .mapEntry = .{
                 .left = key_id,
                 .right = val_id,
             }
@@ -2878,7 +2878,7 @@ pub const NodeType = enum {
     lambda_expr, 
     lambda_multi,
     map_literal,
-    map_entry,
+    mapEntry,
     arr_literal,
     coinit,
     coyield,
@@ -2933,6 +2933,10 @@ pub const Node = struct {
             left: NodeId,
             right: NodeId,
             op: BinaryExprOp,
+        },
+        mapEntry: struct {
+            left: NodeId,
+            right: NodeId,
         },
         left_right: struct {
             left: NodeId,

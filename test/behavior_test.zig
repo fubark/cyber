@@ -327,53 +327,37 @@ test "Structs." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Initialization.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
         \\type Node:
         \\  value
+        \\
+        \\-- Initialization.
         \\n = Node{ value: 123 }
-        \\n.value
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // Initialize with heap value field.
-    val = try run.eval(
-        \\type Node:
-        \\  value
+        \\try t.eq(n.value, 123)
+        \\
+        \\-- Init and default field to none.
+        \\n = Node{}
+        \\try t.eq(n.value, none)
+        \\
+        \\-- Init with heap value.
         \\n = Node{ value: [123] }
-        \\n.value[0]
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // Set to struct field.
-    val = try run.eval(
-        \\type Node:
-        \\  value
+        \\try t.eq(n.value[0], 123)
+        \\
+        \\-- Set to struct field.
         \\n = Node{ value: 123 }
         \\n.value = 234
-        \\n.value
-    );
-    try t.eq(val.asF64toI32(), 234);
-
-    // Set to field with heap value.
-    val = try run.eval(
-        \\type Node:
-        \\  value
+        \\try t.eq(n.value, 234)
+        \\
+        \\-- Set to field with heap value.
         \\n = Node{ value: [123] }
         \\n.value = 234
-        \\n.value
-    );
-    try t.eq(val.asF64toI32(), 234);
-
-    // Struct to string returns struct's name. 
-    val = try run.eval(
-        \\type Node:
-        \\  value
+        \\try t.eq(n.value, 234)
+        \\
+        \\-- Struct to string returns struct's name. 
         \\n = Node{ value: 123 }
-        \\string(n)
+        \\try t.eq(string(n), 'Node')
     );
-    try t.eqStr(try run.assertValueString(val), "Node");
-    run.deinitValue(val);
 
     // Big structs (allocated outside of heap pages).
     _ = try run.eval(

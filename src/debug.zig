@@ -6,15 +6,29 @@ const log = stdx.log.scoped(.debug);
 
 const Section = ".eval2";
 
+pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(Section) void {
+    var line: u32 = 0;
+    var lineStart: u32 = 0;
+    for (src) |ch, i| {
+        if (i == loc) {
+            outLine.* = line;
+            outCol.* = loc - lineStart;
+            outLineStart.* = lineStart;
+            return;
+        }
+        if (ch == '\n') {
+            line += 1;
+            lineStart = @intCast(u32, i + 1);
+        }
+    }
+}
+
 pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
     for (tokens) |token| {
         if (token.pos() == pos) {
-            outLine.* = line;
-            outCol.* = pos - lineStart;
-            outLineStart.* = lineStart;
-            return;
+            break;
         }
         if (token.tag() == .new_line) {
             line += 1;
@@ -29,6 +43,10 @@ pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: 
             }
         }
     }
+    // This also handles the case where target pos is at the end of source.
+    outLine.* = line;
+    outCol.* = pos - lineStart;
+    outLineStart.* = lineStart;
 }
 
 pub fn countNewLines(str: []const u8, outLastIdx: *u32) u32 {
@@ -82,4 +100,13 @@ test "computeLinePosFromTokens" {
     try t.eq(line, 3);
     try t.eq(col, 0);
     try t.eq(lineStart, 18);
+
+    // Error at end.
+    _ = try parser.parse(
+        \\a = 1
+    );
+    computeLinePosWithTokens(parser.tokens.items, parser.src.items, @intCast(u32, parser.src.items.len), &line, &col, &lineStart);
+    try t.eq(line, 0);
+    try t.eq(col, 5);
+    try t.eq(lineStart, 0);
 }

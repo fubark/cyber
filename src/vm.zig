@@ -1860,23 +1860,6 @@ pub const VM = struct {
         return null;
     }
 
-    fn computeLinePosFromSrc(self: *const VM, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) void {
-        var line: u32 = 0;
-        var lineStart: u32 = 0;
-        for (self.parser.src.items) |ch, i| {
-            if (i == loc) {
-                outLine.* = line;
-                outCol.* = loc - lineStart;
-                outLineStart.* = lineStart;
-                return;
-            }
-            if (ch == '\n') {
-                line += 1;
-                lineStart = @intCast(u32, i + 1);
-            }
-        }
-    }
-
     pub fn buildStackTrace(self: *VM, fromPanic: bool) !void {
         @setCold(true);
         self.stackTrace.deinit(self.alloc);
@@ -4832,7 +4815,7 @@ fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []c
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
         if (isTokenError) {
-            vm.computeLinePosFromSrc(pos, &line, &col, &lineStart);
+            debug.computeLinePos(vm.parser.src.items, pos, &line, &col, &lineStart);
         } else {
             debug.computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
         }

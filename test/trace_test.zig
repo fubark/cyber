@@ -240,6 +240,7 @@ const VMrunner = struct {
 
     fn deinit(self: *VMrunner) void {
         t.alloc.free(self.trace.opCounts);
+        self.trace.opCounts = &.{};
         self.vm.deinit();
     }
 
@@ -266,8 +267,7 @@ const VMrunner = struct {
             return error.UnreleasedObjects;
         }
         // Eval with new env.
-        t.alloc.free(self.trace.opCounts);
-        self.vm.deinit();
+        self.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);
         return self.vm.eval("main", src) catch |err| {

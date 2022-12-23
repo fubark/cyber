@@ -650,7 +650,7 @@ pub const VM = struct {
         }
     }
 
-    fn allocPoolObject(self: *VM) !*HeapObject {
+    fn allocPoolObject(self: *VM) linksection(Section) !*HeapObject {
         if (self.heapFreeHead == null) {
             self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.len * 15) / 10));
         }
@@ -909,7 +909,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocList(self: *VM, elems: []const Value) linksection(".eval") !Value {
+    fn allocListFill(self: *VM, val: Value, n: u32) linksection(StdSection) !Value {
         const obj = try self.allocPoolObject();
         obj.list = .{
             .structId = ListS,
@@ -922,14 +922,45 @@ pub const VM = struct {
             .nextIterIdx = 0,
         };
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
         const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-        try list.appendSlice(self.alloc, elems);
+        // Initializes capacity to exact size.
+        try list.ensureTotalCapacityPrecise(self.alloc, n);
+        list.len = n;
+        std.mem.set(Value, list.items(), val);
+        self.retainInc(val, n);
+        return Value.initPtr(obj);
+    }
+
+    fn allocList(self: *VM, elems: []const Value) linksection(Section) !Value {
+        const obj = try self.allocPoolObject();
+        obj.list = .{
+            .structId = ListS,
+            .rc = 1,
+            .list = .{
+                .ptr = undefined,
+                .len = 0,
+                .cap = 0,
+            },
+            .nextIterIdx = 0,
+        };
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+        // Initializes capacity to exact size.
+        try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
+        list.len = elems.len;
+        std.mem.copy(Value, list.items(), elems);
         return Value.initPtr(obj);
     }
 
@@ -1414,7 +1445,7 @@ pub const VM = struct {
         return true;
     }
 
-    pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(".eval") void {
+    pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(Section) void {
         obj.retainedCommon.rc += 1;
         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
@@ -1426,7 +1457,7 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn retain(self: *VM, val: Value) linksection(".eval") void {
+    pub inline fn retain(self: *VM, val: Value) linksection(Section) void {
         if (TraceEnabled) {
             self.trace.numRetainAttempts += 1;
         }
@@ -1443,7 +1474,7 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(".eval") void {
+    pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(Section) void {
         if (TraceEnabled) {
             self.trace.numRetainAttempts += inc;
         }
@@ -3015,6 +3046,10 @@ pub const UserVM = struct {
 
     pub inline fn allocator(self: *const UserVM) std.mem.Allocator {
         return @ptrCast(*const VM, self).alloc;
+    }
+
+    pub inline fn allocListFill(self: *UserVM, val: Value, n: u32) !Value {
+        return @ptrCast(*VM, self).allocListFill(val, n);
     }
 
     pub inline fn allocString(self: *UserVM, str: []const u8) !Value {

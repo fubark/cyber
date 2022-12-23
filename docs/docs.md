@@ -464,8 +464,8 @@ print list[-1]     -- Prints '123'
 -- Inserting a value at an index.
 list.insert(1, 345)
 
--- Get the size.
-print list.size()  -- Prints '2'
+-- Get the length.
+print list.len()  -- Prints '2'
 
 -- Sort the list in place.
 list.sort((a, b) => a < b)
@@ -891,6 +891,7 @@ print contents
 
 | Function | Signature | Summary |
 | ------------- | ------------- | ----- |
+| arrayFill | val any, n number -> [..] | Creates a list with initial capacity of `n` and values set to `val`. | 
 | bool | val any -> bool | Converts a value to either `true` or `false`. | 
 | bindLib | fns []CFunc -> {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
 | execCmd | args []string -> { out, err } | Runs a shell command and returns the stdout/stderr. | 

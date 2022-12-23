@@ -20,6 +20,19 @@ test "compile time" {
     );
 }
 
+test "core module" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = arrayFill(123, 10)
+        \\try t.eq(a.len(), 10)
+        \\for 0..10 as i:
+        \\  try t.eq(a[i], 123)
+    );
+}
+
 test "os module" {
     const run = VMrunner.create();
     defer run.destroy();
@@ -57,7 +70,7 @@ test "Fibers" {
         \\  list.add(123)
         \\list = []
         \\f = coinit foo(list)
-        \\list.size()
+        \\list.len()
     );
     try run.valueIsI32(val, 0);
 
@@ -69,7 +82,7 @@ test "Fibers" {
         \\list = []
         \\f = coinit foo(list)
         \\coresume f
-        \\list.size()
+        \\list.len()
     );
     try run.valueIsI32(val, 0);
 
@@ -106,7 +119,7 @@ test "Fibers" {
         \\list = []
         \\f = coinit foo(list)
         \\coresume f
-        \\list.size()
+        \\list.len()
     );
     try run.valueIsI32(val, 0);
 
@@ -120,7 +133,7 @@ test "Fibers" {
         \\f = coinit foo(list)
         \\coresume f
         \\coresume f
-        \\list.size()
+        \\list.len()
     );
     try run.valueIsI32(val, 2);
 
@@ -1108,7 +1121,7 @@ test "Lists" {
         \\a.insert(1, 123)
         \\try t.eq(a[1], 123)
         \\-- Get size.
-        \\try t.eq(a.size(), 4)
+        \\try t.eq(a.len(), 4)
     );
 
     // Start to end index slice.

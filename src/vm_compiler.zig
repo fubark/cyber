@@ -3190,9 +3190,7 @@ pub const VMcompiler = struct {
 
                 // Initially set to NullId so leftovers are defaulted to `none`.
                 const initFields = self.assignedVarStack.items[sortedFieldsStart..];
-                for (initFields) |*entryId| {
-                    entryId.* = NullId;
-                }
+                std.mem.set(u32, initFields, NullId);
 
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.computeNextTempLocalFrom(startTempLocal);
@@ -4424,6 +4422,7 @@ fn initCoreModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
         .prefix = spec,
     };
     try mod.syms.ensureTotalCapacity(alloc, 13);
+    try mod.setNativeFunc(alloc, "arrayFill", bindings.coreArrayFill);
     try mod.setNativeFunc(alloc, "bindLib", bindings.coreBindLib);
     try mod.setNativeFunc(alloc, "bool", bindings.coreBool);
     try mod.setNativeFunc(alloc, "error", bindings.coreError);

@@ -95,7 +95,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.ListS, insert, cy.SymbolEntry.initNativeFunc1(listInsert));
     try self.addMethodSym(cy.ListS, remove, cy.SymbolEntry.initNativeFunc1(listRemove));
     try self.addMethodSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
-    try self.addMethodSym(cy.ListS, size, cy.SymbolEntry.initNativeFunc1(listSize));
+    try self.addMethodSym(cy.ListS, len, cy.SymbolEntry.initNativeFunc1(listLen));
 
     id = try self.addStruct("Map");
     std.debug.assert(id == cy.MapS);
@@ -1090,8 +1090,7 @@ fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     return Value.None;
 }
 
-fn listSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    @setRuntimeSafety(debug);
+fn listLen(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
     _ = nargs;
     _ = args;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
@@ -1364,4 +1363,9 @@ fn constStringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8
     const str = val.asConstStr();
     const idx = @floatToInt(u32, args[0].toF64());
     return Value.initF64(@intToFloat(f64, gvm.strBuf[str.start + idx]));
+}
+
+pub fn coreArrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    defer vm.release(args[0]);
+    return vm.allocListFill(args[0], @floatToInt(u32, args[1].toF64())) catch stdx.fatal();
 }

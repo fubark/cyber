@@ -7,6 +7,7 @@ const t = stdx.testing;
 
 const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
+const bindings = @import("../src/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
 test "compile time" {
@@ -51,6 +52,16 @@ test "os module" {
         \\os.cpu
     );
     try t.eqStr(try run.assertValueString(val), @tagName(builtin.cpu.arch));
+
+    val = try run.eval(
+        \\import os 'os'
+        \\os.endian
+    );
+    if (builtin.cpu.arch.endian() == .Little) {
+        try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.little));
+    } else {
+        try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.big));
+    }
 
     _ = try run.eval(
         \\import os 'os'

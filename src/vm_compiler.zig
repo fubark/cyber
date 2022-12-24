@@ -4489,8 +4489,13 @@ fn initOsModule(self: *VMcompiler, alloc: std.mem.Allocator, spec: []const u8) !
         .prefix = spec,
     };
 
-    try mod.setVar(alloc, "system", try self.buf.getStringConstValue(@tagName(builtin.os.tag)));
     try mod.setVar(alloc, "cpu", try self.buf.getStringConstValue(@tagName(builtin.cpu.arch)));
+    if (builtin.cpu.arch.endian() == .Little) {
+        try mod.setVar(alloc, "endian", cy.Value.initTagLiteral(@enumToInt(bindings.TagLit.little)));
+    } else {
+        try mod.setVar(alloc, "endian", cy.Value.initTagLiteral(@enumToInt(bindings.TagLit.big)));
+    }
+    try mod.setVar(alloc, "system", try self.buf.getStringConstValue(@tagName(builtin.os.tag)));
 
     try mod.setNativeFunc(alloc, "cwd", bindings.osCwd);
     try mod.setNativeFunc(alloc, "realPath", bindings.osRealPath);

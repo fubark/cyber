@@ -15,7 +15,7 @@ const log = stdx.log.scoped(.bindings);
 
 const NullId = std.math.maxInt(u32);
 
-const TagLit = enum {
+pub const TagLit = enum {
     int,
     bool,
     i8,
@@ -31,6 +31,9 @@ const TagLit = enum {
     charPtrZ,
     ptr,
     void,
+
+    little,
+    big,
 
     AssertError,
     NotFound,
@@ -164,6 +167,9 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "charPtrZ", .charPtrZ);
     try ensureTagLitSym(self, "ptr", .ptr);
     try ensureTagLitSym(self, "void", .void);
+
+    try ensureTagLitSym(self, "little", .little);
+    try ensureTagLitSym(self, "big", .big);
 
     try ensureTagLitSym(self, "AssertError", .AssertError);
     try ensureTagLitSym(self, "NotFound", .NotFound);

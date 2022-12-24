@@ -992,6 +992,7 @@ for map as k, v:
 | Variable | Type | Summary |
 | -- | -- | -- |
 | cpu | string | The current cpu arch's tag name. |
+| endian | #little, #big | The current arch's endianness. |
 | system | string | The current operating system's tag name. |
 
 | Function | Signature | Summary |

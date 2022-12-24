@@ -10,17 +10,21 @@ const log = stdx.log.scoped(.fmt);
 const FmtValueType = enum {
     char,
     string,
-    u32,
+    u64,
+    f64,
     bool,
+    ptr,
 };
 
 pub const FmtValue = struct {
     valT: FmtValueType,
     inner: union {
-        u32: u32,
+        u64: u64,
+        f64: f64,
         string: []const u8,
         char: u8,
         bool: bool,
+        ptr: *anyopaque,
     },
 };
 
@@ -35,7 +39,15 @@ pub fn v(val: anytype) FmtValue {
             };
         },
         u8,
-        u32 => return u32v(val),
+        u32,
+        u64,
+        usize => return u64v(val),
+        f64 => return .{
+            .valT = .f64,
+            .inner = .{
+                .f64 = val,
+            },
+        },
         []u8,
         []const u8 => return str(val),
         else => {
@@ -43,6 +55,13 @@ pub fn v(val: anytype) FmtValue {
                 return enumv(val);
             } else if (@typeInfo(@TypeOf(val)) == .ErrorSet) {
                 return str(@errorName(val));
+            } else if (@typeInfo(@TypeOf(val)) == .Pointer) {
+                return .{
+                    .valT = .ptr,
+                    .inner = .{
+                        .ptr = val,
+                    }
+                };
             } else {
                 @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{@TypeOf(val)}));
             }
@@ -59,11 +78,11 @@ pub fn char(ch: u8) FmtValue {
     };
 }
 
-pub fn u32v(n: u32) FmtValue {
+pub fn u64v(n: u64) FmtValue {
     return .{
-        .valT = .u32,
+        .valT = .u64,
         .inner = .{
-            .u32 = n,
+            .u64 = n,
         }
     };
 }
@@ -98,11 +117,18 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         .char => {
             try writer.writeByte(val.inner.char);
         },
-        .u32 => {
-            try std.fmt.formatInt(val.inner.u32, 10, .lower, .{}, writer);
+        .u64 => {
+            try std.fmt.formatInt(val.inner.u64, 10, .lower, .{}, writer);
+        },
+        .f64 => {
+            try std.fmt.formatFloatDecimal(val.inner.f64, .{}, writer);
         },
         .string => {
             try writer.writeAll(val.inner.string);
+        },
+        .ptr => {
+            try writer.writeByte('@');
+            try std.fmt.formatInt(@ptrToInt(val.inner.ptr), 16, .lower, .{}, writer);
         },
         // else => stdx.panicFmt("unsupported {}", .{val.valT}),
     }

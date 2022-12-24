@@ -5,6 +5,7 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const fmt = @import("fmt.zig");
+const v = fmt.v;
 
 const log = stdx.log.scoped(.vm_compiler);
 
@@ -34,7 +35,7 @@ pub const VMcompiler = struct {
     semaBlocks: std.ArrayListUnmanaged(SemaBlock),
     semaSubBlocks: std.ArrayListUnmanaged(SemaSubBlock),
     vars: std.ArrayListUnmanaged(SemaVar),
-    capVarParents: std.AutoHashMapUnmanaged(SemaVarId, SemaVarId),
+    capVarDescs: std.AutoHashMapUnmanaged(SemaVarId, CapVarDesc),
     blocks: std.ArrayListUnmanaged(Block),
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
     subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
@@ -44,6 +45,10 @@ pub const VMcompiler = struct {
 
     assignedVarStack: std.ArrayListUnmanaged(SemaVarId),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
+    
+    /// Generic linked list buffer.
+    dataNodes: std.ArrayListUnmanaged(DataNode),
+
     curBlock: *Block,
     curSemaBlockId: SemaBlockId,
     semaBlockDepth: u32,
@@ -86,7 +91,7 @@ pub const VMcompiler = struct {
             .semaBlocks = .{},
             .semaSubBlocks = .{},
             .vars = .{},
-            .capVarParents = .{},
+            .capVarDescs = .{},
             .blocks = .{},
             .blockJumpStack = .{},
             .subBlockJumpStack = .{},
@@ -109,6 +114,7 @@ pub const VMcompiler = struct {
             .moduleMap = .{},
             .semaSymToRef = .{},
             .typeNames = .{},
+            .dataNodes = .{},
         };
         try self.typeNames.put(self.alloc, "int", IntegerType);
     }
@@ -135,7 +141,7 @@ pub const VMcompiler = struct {
         self.u8Buf.deinit(self.alloc);
         self.reservedTempLocalStack.deinit(self.alloc);
         self.vars.deinit(self.alloc);
-        self.capVarParents.deinit(self.alloc);
+        self.capVarDescs.deinit(self.alloc);
 
         for (self.semaSyms.items) |sym| {
             self.alloc.free(sym.path);
@@ -156,6 +162,7 @@ pub const VMcompiler = struct {
         self.moduleMap.deinit(self.alloc);
         self.semaSymToRef.deinit(self.alloc);
         self.typeNames.deinit(self.alloc);
+        self.dataNodes.deinit(self.alloc);
     }
 
     fn semaExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
@@ -509,7 +516,8 @@ pub const VMcompiler = struct {
                     try self.pushSemaLambdaParamVars(func);
                     try self.semaStmts(node.head.func.body_head, false);
 
-                    try self.endSemaBlock();
+                    const numParams = func.params.len();
+                    try self.endSemaFuncBlock(numParams);
                 }
                 return AnyType;
             },
@@ -522,7 +530,8 @@ pub const VMcompiler = struct {
                     try self.pushSemaLambdaParamVars(func);
                     _ = try self.semaExpr(node.head.func.body_head, false);
 
-                    try self.endSemaBlock();
+                    const numParams = func.params.len();
+                    try self.endSemaFuncBlock(numParams);
                 }
                 return AnyType;
             },
@@ -549,6 +558,63 @@ pub const VMcompiler = struct {
         });
         try @call(.{ .modifier = .never_inline }, self.semaResolvedSymMap.put, .{self.alloc, pathDupe, resolvedId});
         self.semaSyms.items[symId].resolvedSymId = resolvedId;
+    }
+
+    fn endSemaFuncBlock(self: *VMcompiler, numParams: u32) !void {
+        const sblock = self.curSemaBlock();
+        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
+        if (numCaptured > 0) {
+            for (sblock.params.items) |varId| {
+                const svar = self.vars.items[varId];
+                if (svar.isCaptured) {
+                    const pId = self.capVarDescs.get(varId).?.user;
+                    const pvar = &self.vars.items[pId];
+
+                    if (!pvar.isBoxed) {
+                        pvar.isBoxed = true;
+                        pvar.lifetimeRcCandidate = true;
+                    }
+                }
+            }
+        }
+        try self.endSemaBlock();
+    }
+
+    fn endSemaFuncSymBlock(self: *VMcompiler, symId: u32, numParams: u32) !void {
+        const sblock = self.curSemaBlock();
+        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
+        // Update original var to boxed.
+        if (numCaptured > 0) {
+            for (sblock.params.items) |varId, i| {
+                const svar = self.vars.items[varId];
+                if (svar.isCaptured) {
+                    const pId = self.capVarDescs.get(varId).?.user;
+                    const pvar = &self.vars.items[pId];
+
+                    if (!pvar.isBoxed) {
+                        pvar.isBoxed = true;
+                        pvar.lifetimeRcCandidate = true;
+                    }
+
+                    try self.ensureCapVarOwner(pId);
+                    const owner = self.capVarDescs.getPtr(pId).?;
+
+                    // Add func sym as dependent.
+                    const dataId = @intCast(u32, self.dataNodes.items.len);
+                    try self.dataNodes.append(self.alloc, .{
+                        .inner = .{
+                            .funcSym = .{
+                                .symId = @intCast(u24, symId),
+                                .capVarIdx = @intCast(u8, i - numParams),
+                            },
+                        },
+                        .next = owner.owner,
+                    });
+                    owner.owner = dataId;
+                }
+            }
+        }
+        try self.endSemaBlock();
     }
 
     fn semaStmt(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
@@ -704,28 +770,11 @@ pub const VMcompiler = struct {
                 if (retType == null) {
                     retType = sblock.getReturnType();
                 }
-                const numParams = @intCast(u8, func.params.end - func.params.start);
-                const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-                try self.endSemaBlock();
-
-                // Update original var to boxed.
-                if (numCaptured > 0) {
-                    for (sblock.params.items) |varId| {
-                        const svar = self.vars.items[varId];
-                        if (svar.isCaptured) {
-                            const pId = self.capVarParents.get(varId).?;
-                            const pvar = &self.vars.items[pId];
-
-                            if (svar.isBoxed and !pvar.isBoxed) {
-                                pvar.isBoxed = true;
-                                pvar.vtype = BoxType;
-                                pvar.lifetimeRcCandidate = true;
-                            }
-                        }
-                    }
-                }
-
                 const name = self.src[func.name.start..func.name.end];
+                const symId = try self.vm.ensureFuncSym(name);
+                const numParams = func.params.end - func.params.start;
+                try self.endSemaFuncSymBlock(symId, numParams);
+
                 try self.resolveLocalFuncSym(node.head.func.decl_id, name, retType.?);
             },
             .for_cond_stmt => {
@@ -921,12 +970,6 @@ pub const VMcompiler = struct {
             if (svar.genInitializer) {
                 numInitializers += 1;
             }
-
-            if (!svar.isCaptured and svar.isBoxed) {
-                // Original var starts off as unboxed.
-                svar.isBoxed = false;
-            }
-
             // log.debug("reserve {} {s}", .{local, self.getVarName(varId)});
         }
 
@@ -1304,7 +1347,6 @@ pub const VMcompiler = struct {
                     if (!svar.isBoxed) {
                         // Becomes boxed so codegen knows ahead of time.
                         svar.isBoxed = true;
-                        svar.vtype = BoxType;
                     }
                 }
             }
@@ -1630,11 +1672,10 @@ pub const VMcompiler = struct {
     fn pushSemaCapturedVar(self: *VMcompiler, name: []const u8, parentVarId: SemaVarId, vtype: Type) !SemaVarId {
         const id = try self.pushSemaVar(name, vtype);
         self.vars.items[id].isCaptured = true;
-        if (self.vars.items[parentVarId].isBoxed) {
-            // If original variable is already known to be boxed, it is also boxed in the local scope.
-            self.vars.items[id].isBoxed = true;
-        }
-        try self.capVarParents.put(self.alloc, id, parentVarId);
+        self.vars.items[id].isBoxed = true;
+        try self.capVarDescs.put(self.alloc, id, .{
+            .user = parentVarId,
+        });
         try self.curSemaBlock().params.append(self.alloc, id);
         return id;
     }
@@ -1705,8 +1746,34 @@ pub const VMcompiler = struct {
             }
 
             if (svar.isBoxed) {
-                try self.genSetBoxedVarToExpr(svar, exprId);
-                return;
+                if (!svar.genIsDefined) {
+                    const exprv = try self.genExpr(exprId, false);
+                    try self.buf.pushOp2(.box, @intCast(u8, exprv.local), svar.local);
+                    svar.vtype = BoxType;
+
+                    if (self.capVarDescs.get(varId)) |desc| {
+                        // Update dependent func syms.
+                        const start = self.operandStack.items.len;
+                        defer self.operandStack.items.len = start;
+                        var cur = desc.owner;
+                        var numFuncSyms: u8 = 0;
+                        while (cur != NullId) {
+                            const dep = self.dataNodes.items[cur];
+                            try self.pushTempOperand(@intCast(u8, dep.inner.funcSym.symId));
+                            try self.pushTempOperand(dep.inner.funcSym.capVarIdx);
+                            numFuncSyms += 1;
+                            cur = dep.next;
+                        }
+                        try self.buf.pushOp2(.setCapValToFuncSyms, svar.local, numFuncSyms);
+                        try self.buf.pushOperands(self.operandStack.items[start..]);
+                    }
+
+                    svar.genIsDefined = true;
+                    return;
+                } else {
+                    try self.genSetBoxedVarToExpr(svar, exprId);
+                    return;
+                }
             }
 
             if (expr.node_t == .ident) {
@@ -2471,33 +2538,32 @@ pub const VMcompiler = struct {
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
                 if (svar.isCaptured) {
-                    const pId = self.capVarParents.get(varId).?;
+                    const pId = self.capVarDescs.get(varId).?.user;
                     const pvar = &self.vars.items[pId];
 
                     if (svar.isBoxed and !pvar.isBoxed) {
-                        // Lift var to boxed.
-                        try self.buf.pushOp2(.box, pvar.local, pvar.local);
                         pvar.isBoxed = true;
-                        pvar.vtype = BoxType;
                         pvar.lifetimeRcCandidate = true;
-
-                        try self.buf.pushOp1(.retain, pvar.local);
-                        try self.pushTempOperand(pvar.local);
-                    } else {
-                        if (svar.vtype.rcCandidate) {
-                            try self.buf.pushOp1(.retain, pvar.local);
-                        }
-                        try self.pushTempOperand(pvar.local);
                     }
                 }
             }
-            try self.buf.pushOp3(.funcSymClosure, @intCast(u8, symId), @intCast(u8, numParams), numCaptured);
-            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-        }
 
-        // A closure would update the symbol at runtime.
-        const sym = cy.FuncSymbolEntry.initFuncOffset(opStart, numLocals);
-        self.vm.setFuncSym(symId, sym);
+            const closure = try self.vm.allocEmptyClosure(opStart, numParams, @intCast(u8, numLocals), numCaptured);
+            const sym = cy.FuncSymbolEntry.initClosure(closure.asHeapObject(*cy.Closure));
+            self.vm.setFuncSym(symId, sym);
+        } else {
+            const sym = cy.FuncSymbolEntry.initFuncOffset(opStart, numLocals);
+            self.vm.setFuncSym(symId, sym);
+        }
+    }
+
+    fn ensureCapVarOwner(self: *VMcompiler, varId: SemaVarId) !void {
+        const res = try self.capVarDescs.getOrPut(self.alloc, varId);
+        if (!res.found_existing) {
+            res.value_ptr.* = .{
+                .owner = NullId,
+            };
+        }
     }
 
     fn genCallArgs2(self: *VMcompiler, func: cy.FuncDecl, first: cy.NodeId) !u32 {
@@ -2814,7 +2880,10 @@ pub const VMcompiler = struct {
     fn userLocalOrDst(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool) LocalId {
         if (self.nodes[nodeId].node_t == .ident) {
             if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                return svar.local;
+                if (!svar.isBoxed) {
+                    // If boxed, the value needs to be copied outside of the box.
+                    return svar.local;
+                }
             }
         }
         usedDst.* = true;
@@ -2986,11 +3055,17 @@ pub const VMcompiler = struct {
             try fmt.printStdout("Compiler (dump locals):\n", &.{});
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
-                try fmt.printStdout("{} (param), local: {}, curType: {} {} {}\n", &.{fmt.v(svar.name), fmt.v(svar.local), fmt.v(svar.vtype.typeT), fmt.v(svar.vtype.rcCandidate), fmt.v(svar.lifetimeRcCandidate)});
+                try fmt.printStdout("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
+                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
+                });
             }
             for (sblock.locals.items) |varId| {
                 const svar = self.vars.items[varId];
-                try fmt.printStdout("{}, local: {}, curType: {} {} {}\n", &.{fmt.v(svar.name), fmt.v(svar.local), fmt.v(svar.vtype.typeT), fmt.v(svar.vtype.rcCandidate), fmt.v(svar.lifetimeRcCandidate)});
+                try fmt.printStdout("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
+                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
+                });
             }
         }
     }
@@ -3691,7 +3766,7 @@ pub const VMcompiler = struct {
                         for (sblock.params.items) |varId| {
                             const svar = self.vars.items[varId];
                             if (svar.isCaptured) {
-                                const pId = self.capVarParents.get(varId).?;
+                                const pId = self.capVarDescs.get(varId).?.user;
                                 const pvar = &self.vars.items[pId];
 
                                 if (svar.isBoxed and !pvar.isBoxed) {
@@ -3764,7 +3839,7 @@ pub const VMcompiler = struct {
                         for (sblock.params.items) |varId| {
                             const svar = self.vars.items[varId];
                             if (svar.isCaptured) {
-                                const pId = self.capVarParents.get(varId).?;
+                                const pId = self.capVarDescs.get(varId).?.user;
                                 const pvar = &self.vars.items[pId];
 
                                 if (svar.isBoxed and !pvar.isBoxed) {
@@ -3928,10 +4003,8 @@ const SemaVar = struct {
     /// Whether this var is a captured function param.
     isCaptured: bool = false,
 
-    /// A captured var needs to be boxed if it was reassigned to a value.
-    /// The scope of the original var sets this to true during codegen since it can start off unboxed and
-    /// later forced to be lifted by a closure.
-    /// In the closure scope, this is set during sema so that codegen knows whether a captured var is boxed from the start.
+    /// Currently a captured var always needs to be boxed.
+    /// In the future, the concept of a const variable could change this.
     isBoxed: bool = false,
 
     /// Whether this is a function param. (Does not include captured vars.)
@@ -4180,6 +4253,7 @@ const SemaBlock = struct {
     locals: std.ArrayListUnmanaged(SemaVarId),
 
     /// Param vars for function blocks. Includes captured vars for closures.
+    /// Captured vars are always at the end since the function params are known from the start.
     /// Codegen will reserve these first for the calling convention layout.
     params: std.ArrayListUnmanaged(SemaVarId),
 
@@ -4624,3 +4698,20 @@ fn unexpected(format: []const u8, vals: []const fmt.FmtValue) noreturn {
     }
     stdx.fatal();
 }
+
+const CapVarDesc = packed union {
+    /// The owner of a captured var contains the `DataNode` head to a list of func sym that depend on it.
+    owner: u32,
+    /// The user of a captured var contains the SemaVarId back to the owner's var.
+    user: SemaVarId,
+};
+
+const DataNode = packed struct {
+    inner: packed union {
+        funcSym: packed struct {
+            symId: u24,
+            capVarIdx: u8,
+        },
+    },
+    next: u32,
+};

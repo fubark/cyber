@@ -1780,21 +1780,21 @@ test "Native function call." {
     try t.eq(val.asF64toI32(), 9);
 }
 
-test "Closures." {
+test "Static closures." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Closure read over number in main block static function.
-    var val = try run.eval(
+    // Closure read over number in main block.
+    _ = try run.eval(
+        \\import t 'test'
         \\a = 123
         \\func foo():
         \\  return a
-        \\foo()
+        \\try t.eq(foo(), 123)
     );
-    try run.valueIsI32(val, 123);
 
-    // Closure write over number in main block static function.
-    val = try run.eval(
+    // Closure write over number in main block.
+    var val = try run.eval(
         \\a = 123
         \\func foo():
         \\  a = 234
@@ -1803,7 +1803,7 @@ test "Closures." {
     );
     try run.valueIsI32(val, 234);
 
-    // Closure read then write over number in main block static function.
+    // Closure read then write over number in main block.
     _ = try run.eval(
         \\import t 'test'
         \\a = 123
@@ -1815,7 +1815,7 @@ test "Closures." {
         \\try t.eq(a, 234)
     );
 
-    // Closure add assign over number in main block static function.
+    // Closure add assign over number in main block.
     val = try run.eval(
         \\a = 123
         \\func foo():
@@ -1825,15 +1825,38 @@ test "Closures." {
     );
     try run.valueIsI32(val, 124);
 
-    // Closure read over number in main block function value.
-    val = try run.eval(
+    // Closure used before declaration.
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = 123
+        \\try t.eq(foo(), 123)
+        \\func foo():
+        \\  return a
+    );
+
+    // Closure used before declaration and captured var.
+    _ = try run.eval(
+        \\import t 'test'
+        \\try t.eq(foo(), none)
+        \\a = 123
+        \\func foo():
+        \\  return a
+    );
+}
+
+test "Value closures." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Closure read over number in main block.
+    var val = try run.eval(
         \\a = 123
         \\foo = () => a
         \\foo()
     );
     try run.valueIsI32(val, 123);
 
-    // Closure write over number in main block function value.
+    // Closure write over number in main block.
     val = try run.eval(
         \\a = 123
         \\foo = func():

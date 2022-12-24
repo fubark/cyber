@@ -60,6 +60,7 @@ pub const buildReturnInfo = vm.buildReturnInfo;
 pub const framePtrOffset = vm.framePtrOffset;
 pub const CyList = vm.List;
 pub const Fiber = vm.Fiber;
+pub const Closure = vm.Closure;
 pub const OpaquePtr = vm.OpaquePtr;
 pub const FuncSymDetail = vm.FuncSymDetail;
 

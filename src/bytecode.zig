@@ -314,6 +314,10 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .constOp => {
             return 3;
         },
+        .setCapValToFuncSyms => {
+            const numFuncSyms = pc[2].arg;
+            return 3 + numFuncSyms * 2;
+        },
         .indexRetain,
         .reverseIndexRetain,
         .index,
@@ -349,10 +353,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .stringTemplate => {
             const numExprs = pc[2].arg;
             return 4 + numExprs + 1;
-        },
-        .funcSymClosure => {
-            const numCaptured = pc[3].arg;
-            return 4 + numCaptured;
         },
         .map => {
             const numEntries = pc[2].arg;
@@ -504,7 +504,7 @@ pub const OpCode = enum(u8) {
     setBoxValueRelease,
     boxValue,
     boxValueRetain,
-    funcSymClosure,
+    setCapValToFuncSyms,
     tag,
     tagLiteral,
     tryValue,

@@ -5,6 +5,7 @@ const t = stdx.testing;
 const tcc = @import("tcc");
 
 const fmt = @import("fmt.zig");
+const v = fmt.v;
 const cy = @import("cyber.zig");
 const bindings = @import("bindings.zig");
 const Value = cy.Value;
@@ -693,6 +694,35 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
+    pub fn allocEmptyClosure(self: *VM, funcPc: usize, numParams: u8, numLocals: u8, numCaptured: u8) !Value {
+        const obj = try self.allocPoolObject();
+        obj.closure = .{
+            .structId = ClosureS,
+            .rc = 1,
+            .funcPc = @intCast(u32, funcPc),
+            .numParams = numParams,
+            .numLocals = numLocals,
+            .numCaptured = numCaptured,
+            .padding = undefined,
+            .firstCapturedVal = undefined,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        const dst = obj.closure.getCapturedValuesPtr()[0..numCaptured];
+        if (numCaptured <= 3) {
+            std.mem.set(Value, dst, Value.None);
+        } else {
+            log.debug("Unsupported number of closure captured values: {}", .{numCaptured});
+            return error.Panic;
+        }
+        return Value.initPtr(obj);
+    }
+
     fn allocClosure(self: *VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const cy.OpData) !Value {
         const obj = try self.allocPoolObject();
         obj.closure = .{
@@ -703,35 +733,23 @@ pub const VM = struct {
             .numLocals = numLocals,
             .numCaptured = @intCast(u8, capturedVals.len),
             .padding = undefined,
-            .capturedVal0 = undefined,
-            .capturedVal1 = undefined,
-            .extra = undefined,
+            .firstCapturedVal = undefined,
         };
         if (TraceEnabled) {
-            gvm.trace.numRetains += 1;
+            self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
-        switch (capturedVals.len) {
-            0 => unreachable,
-            1 => {
-                obj.closure.capturedVal0 = framePtr[capturedVals[0].arg];
-            },
-            2 => {
-                obj.closure.capturedVal0 = framePtr[capturedVals[0].arg];
-                obj.closure.capturedVal1 = framePtr[capturedVals[1].arg];
-            },
-            3 => {
-                obj.closure.capturedVal0 = framePtr[capturedVals[0].arg];
-                obj.closure.capturedVal1 = framePtr[capturedVals[1].arg];
-                obj.closure.extra.capturedVal2 = framePtr[capturedVals[2].arg];
-            },
-            else => {
-                log.debug("Unsupported number of closure captured values: {}", .{capturedVals.len});
-                return error.Panic;
+        const dst = obj.closure.getCapturedValuesPtr();
+        if (capturedVals.len <= 3) {
+            for (capturedVals) |local, i| {
+                dst[i] = framePtr[local.arg];
             }
+        } else {
+            log.debug("Unsupported number of closure captured values: {}", .{capturedVals.len});
+            return error.Panic;
         }
         return Value.initPtr(obj);
     }
@@ -1695,7 +1713,7 @@ pub const VM = struct {
 
                 // Copy over captured vars to new call stack locals.
                 if (sym.inner.closure.numCaptured <= 3) {
-                    const src = @ptrCast([*]Value, &sym.inner.closure.capturedVal0)[0..sym.inner.closure.numCaptured];
+                    const src = sym.inner.closure.getCapturedValuesPtr()[0..sym.inner.closure.numCaptured];
                     std.mem.copy(Value, newFramePtr[numArgs + 4..numArgs + 4 + sym.inner.closure.numCaptured], src);
                 } else {
                     stdx.panic("unsupported closure > 3 captured args.");
@@ -2107,7 +2125,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(".eval") void {
         },
         ClosureS => {
             if (obj.closure.numCaptured <= 3) {
-                const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
+                const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                 for (src) |capturedVal| {
                     release(vm, capturedVal);
                 }
@@ -2579,7 +2597,7 @@ const Lambda = packed struct {
     numLocals: u8,
 };
 
-const Closure = packed struct {
+pub const Closure = packed struct {
     structId: StructId,
     rc: u32,
     funcPc: u32, 
@@ -2588,12 +2606,11 @@ const Closure = packed struct {
     /// Includes locals, captured vars, and return info. Does not include params.
     numLocals: u8,
     padding: u8,
-    capturedVal0: Value,
-    capturedVal1: Value,
-    extra: packed union {
-        capturedVal2: Value,
-        ptr: ?*anyopaque,
-    },
+    firstCapturedVal: Value,
+
+    inline fn getCapturedValuesPtr(self: *Closure) [*]Value {
+        return @ptrCast([*]Value, &self.firstCapturedVal);
+    }
 };
 
 pub const MapInner = cy.ValueMap;
@@ -2917,6 +2934,15 @@ pub const FuncSymbolEntry = struct {
                     .pc = @intCast(u32, pc),
                     .numLocals = numLocals,
                 },
+            },
+        };
+    }
+
+    pub fn initClosure(closure: *Closure) FuncSymbolEntry {
+        return .{
+            .entryT = .closure,
+            .inner = .{
+                .closure = closure,
             },
         };
     }
@@ -3981,10 +4007,8 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
             },
             .box => {
                 const value = framePtr[pc[1].arg];
-                const dst = pc[2].arg;
+                framePtr[pc[2].arg] = try allocBox(value);
                 pc += 3;
-                vm.retain(value);
-                framePtr[dst] = try allocBox(value);
                 continue;
             },
             .setBoxValue => {
@@ -4111,13 +4135,12 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 pc += 4;
                 continue;
             },
-            .funcSymClosure => {
-                const symId = pc[1].arg;
-                const numParams = pc[2].arg;
-                const numCaptured = pc[3].arg;
-                const captured = pc[4..4+numCaptured];
-                pc += 4 + numCaptured;
-                try @call(.{ .modifier = .never_inline }, funcSymClosure, .{ framePtr, symId, numParams, captured });
+            .setCapValToFuncSyms => {
+                const capVal = framePtr[pc[1].arg];
+                const numSyms = pc[2].arg;
+                const syms = pc[3..3+numSyms*2];
+                @call(.{ .modifier = .never_inline }, setCapValToFuncSyms, .{ vm, capVal, numSyms, syms });
+                pc += 3 + numSyms*2;
                 continue;
             },
             .callObjSym => {
@@ -4393,7 +4416,7 @@ pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLo
 
                 // Copy over captured vars to new call stack locals.
                 if (obj.closure.numCaptured <= 3) {
-                    const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
+                    const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                     std.mem.copy(Value, framePtr.*[numArgs + 4..numArgs + 4 + obj.closure.numCaptured], src);
                 } else {
                     stdx.panic("unsupported closure > 3 captured args.");
@@ -4442,7 +4465,7 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
 
                 // Copy over captured vars to new call stack locals.
                 if (obj.closure.numCaptured <= 3) {
-                    const src = @ptrCast([*]Value, &obj.closure.capturedVal0)[0..obj.closure.numCaptured];
+                    const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                     std.mem.copy(Value, framePtr.*[numArgs + 2..numArgs + 2 + obj.closure.numCaptured], src);
                 } else {
                     stdx.panic("unsupported closure > 3 captured args.");
@@ -4794,17 +4817,22 @@ const PcFramePtr = struct {
     framePtr: [*]Value,
 };
 
-fn boxValueRetain(box: Value) linksection(".eval") Value {
+fn boxValueRetain(box: Value) linksection(Section) Value {
     @setCold(true);
-    if (builtin.mode == .Debug) {
-        std.debug.assert(box.isPointer());
+    if (box.isPointer()) {
+        const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
+        if (builtin.mode == .Debug) {
+            std.debug.assert(obj.common.structId == BoxS);
+        }
+        gvm.retain(obj.box.val);
+        return obj.box.val;
+    } else {
+        // Box can be none if used before captured var was initialized.
+        if (builtin.mode == .Debug) {
+            std.debug.assert(box.isNone());
+        }
+        return Value.None;
     }
-    const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
-    if (builtin.mode == .Debug) {
-        std.debug.assert(obj.common.structId == BoxS);
-    }
-    gvm.retain(obj.box.val);
-    return obj.box.val;
 }
 
 fn allocBox(val: Value) !Value {
@@ -4825,15 +4853,16 @@ fn allocBox(val: Value) !Value {
     return Value.initPtr(obj);
 }
 
-fn funcSymClosure(framePtr: [*]Value, symId: SymbolId, numParams: u8, capturedLocals: []const cy.OpData) !void {
+fn setCapValToFuncSyms(vm: *VM, capVal: Value, numSyms: u8, syms: []const cy.OpData) void {
     @setCold(true);
-    const sym = gvm.funcSyms.buf[symId];
-    const pc = sym.inner.func.pc;
-    const numLocals = @intCast(u8, sym.inner.func.numLocals);
-
-    const closure = try gvm.allocClosure(framePtr, pc, numParams, numLocals, capturedLocals);
-    gvm.funcSyms.buf[symId].entryT = .closure;
-    gvm.funcSyms.buf[symId].inner.closure = stdx.ptrAlignCast(*Closure, closure.asPointer().?);
+    var i: u32 = 0;
+    while (i < numSyms) : (i += 1) {
+        const capVarIdx = syms[i * 2 + 1].arg;
+        const sym = vm.funcSyms.buf[syms[i*2].arg];
+        const ptr = sym.inner.closure.getCapturedValuesPtr();
+        ptr[capVarIdx] = capVal;
+    }
+    vm.retainInc(capVal, numSyms);
 }
 
 fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) !void {
@@ -4925,5 +4954,51 @@ fn growStackPrecise(vm: *VM, newCap: usize) !void {
         vm.framePtr = newStack.ptr + framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
         vm.stack = newStack;
         vm.stackEndPtr = vm.stack.ptr + newCap;
+    }
+}
+
+/// Like Value.dump but shows heap values.
+fn dumpValue(vm: *const VM, val: Value) !void {
+    if (val.isNumber()) {
+        try fmt.printStdout("Number {}\n", &.{ v(val.asF64()) });
+    } else {
+        if (val.isPointer()) {
+            const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
+            switch (obj.common.structId) {
+                cy.ListS => try fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
+                cy.MapS => try fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
+                cy.StringS => {
+                    if (obj.string.len > 20) {
+                        try fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..20])});
+                    } else {
+                        try fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..obj.string.len])});
+                    }
+                },
+                cy.LambdaS => try fmt.printStdout("Lambda {}\n", &.{v(obj)}),
+                cy.ClosureS => try fmt.printStdout("Closure {}\n", &.{v(obj)}),
+                cy.FiberS => try fmt.printStdout("Fiber {}\n", &.{v(obj)}),
+                cy.NativeFunc1S => try fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
+                else => {
+                    try fmt.printStdout("HeapObject {} {}\n", &.{v(obj), v(obj.common.structId)});
+                },
+            }
+        } else {
+            switch (val.getTag()) {
+                cy.NoneT => {
+                    try fmt.printStdout("None\n", &.{});
+                },
+                cy.ConstStringT => {
+                    const slice = val.asConstStr();
+                    if (slice.len() > 20) {
+                        try fmt.printStdout("Const String len={} str=\"{s}\"...\n", &.{v(slice.len()), v(vm.strBuf[slice.start..20])});
+                    } else {
+                        try fmt.printStdout("Const String len={} str=\"{}\"\n", &.{v(slice.len()), v(vm.strBuf[slice.start..slice.end])});
+                    }
+                },
+                else => {
+                    try fmt.printStdout("{}\n", &.{v(val.val)});
+                },
+            }
+        }
     }
 }

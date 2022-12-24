@@ -3208,16 +3208,23 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
 
 pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
     switch (op) {
-        .caret => return 4,
+        .caret => return 6,
         .slash,
         .percent,
         .star => {
-            return 3;
+            return 5;
         },
         .minus,
         .plus => {
-            return 2;
+            return 4;
         },
+
+        .bitwiseLeftShift,
+        .bitwiseRightShift => return 3,
+
+        .bitwiseAnd,
+        .bitwiseOr => return 2,
+
         .greater,
         .greater_equal,
         .less,
@@ -3226,6 +3233,7 @@ pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
         .equal_equal => {
             return 1;
         },
+
         .or_op,
         .and_op => {
             return 0;

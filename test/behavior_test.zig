@@ -1027,6 +1027,8 @@ test "Operator precedence." {
         \\-- Math operator before comparison.
         \\try t.eq(5 == 2 + 3, true)
         \\try t.eq(5 == 21 % 16, true)
+        \\-- Bitwise shift before bitwise or.
+        \\try t.eq(1 | 1 << 1, 3)
     );
 
     // Variables and parenthesis.

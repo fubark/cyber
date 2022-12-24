@@ -6,6 +6,8 @@ const log = stdx.log.scoped(.debug);
 
 const Section = ".eval2";
 
+const NullId = std.math.maxInt(u32);
+
 pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
@@ -109,4 +111,30 @@ test "computeLinePosFromTokens" {
     try t.eq(line, 0);
     try t.eq(col, 5);
     try t.eq(lineStart, 0);
+}
+
+pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
+    for (vm.debugTable) |sym, i| {
+        if (sym.pc == pc) {
+            return i;
+        }
+    }
+    return null;
+}
+
+pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) void {
+    if (vm.objectTraceMap.get(obj)) |pc| {
+        if (indexOfDebugSym(vm, pc)) |idx| {
+            const sym = vm.debugTable[idx];
+            const node = vm.compiler.nodes[sym.loc];
+            var line: u32 = undefined;
+            var col: u32 = undefined;
+            var lineStart: u32 = undefined;
+            const pos = vm.compiler.tokens[node.start_token].pos();
+            computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
+            log.debug("{*} was allocated at {}:{}", .{obj, line + 1, col + 1});
+            return;
+        } 
+    }
+    log.debug("No trace for {*}.", .{obj});
 }

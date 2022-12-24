@@ -3290,6 +3290,7 @@ pub const VMcompiler = struct {
 
                 if (!discardTopExprReg) {
                     if (self.vm.structs.buf[sid].numFields <= 4) {
+                        try self.pushOptionalDebugSym(nodeId);
                         try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
                     } else {
                         try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
@@ -3886,6 +3887,13 @@ pub const VMcompiler = struct {
     fn getNodeTokenString(self: *const VMcompiler, node: cy.Node) []const u8 {
         const token = self.tokens[node.start_token];
         return self.src[token.pos()..token.data.end_pos];
+    }
+
+    /// An optional debug sym is only included in Debug builds.
+    fn pushOptionalDebugSym(self: *VMcompiler, nodeId: cy.NodeId) !void {
+        if (builtin.mode == .Debug) {
+            try self.buf.pushDebugSym(self.buf.ops.items.len, 0, nodeId, self.curBlock.frameLoc);
+        }
     }
 
     fn pushDebugSym(self: *VMcompiler, nodeId: cy.NodeId) !void {

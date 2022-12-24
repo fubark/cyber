@@ -122,6 +122,9 @@ pub const VM = struct {
 
     trace: if (TraceEnabled) *TraceInfo else void,
 
+    /// Object to pc of instruction that allocated it.
+    objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, u32) else void,
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -168,6 +171,7 @@ pub const VM = struct {
             .curFiber = undefined,
             .endLocal = undefined,
             .mainUri = "",
+            .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -242,6 +246,10 @@ pub const VM = struct {
         self.u8Buf.deinit(self.alloc);
         self.stackTrace.deinit(self.alloc);
         self.alloc.free(self.panicMsg);
+
+        if (builtin.mode == .Debug) {
+            self.objectTraceMap.deinit(self.alloc);
+        }
     }
 
     /// Initializes the page with freed object slots and returns the pointer to the first slot.
@@ -1896,15 +1904,6 @@ pub const VM = struct {
         return &self.stackTrace;
     }
 
-    fn indexOfDebugSym(self: *const VM, pc: usize) ?usize {
-        for (self.debugTable) |sym, i| {
-            if (sym.pc == pc) {
-                return i;
-            }
-        }
-        return null;
-    }
-
     pub fn buildStackTrace(self: *VM, fromPanic: bool) !void {
         @setCold(true);
         self.stackTrace.deinit(self.alloc);
@@ -1919,10 +1918,10 @@ pub const VM = struct {
                     isTopFrame = false;
                     if (fromPanic) {
                         const len = cy.getInstLenAt(self.ops.ptr + pc);
-                        break :b self.indexOfDebugSym(pc + len) orelse return error.NoDebugSym;
+                        break :b debug.indexOfDebugSym(self, pc + len) orelse return error.NoDebugSym;
                     }
                 }
-                break :b self.indexOfDebugSym(pc) orelse return error.NoDebugSym;
+                break :b debug.indexOfDebugSym(self, pc) orelse return error.NoDebugSym;
             };
             const sym = self.debugTable[idx];
 
@@ -2194,7 +2193,9 @@ pub fn release(vm: *VM, val: Value) linksection(".eval") void {
         const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
         if (builtin.mode == .Debug or builtin.is_test) {
             if (obj.retainedCommon.structId == NullId) {
-                stdx.panic("object already freed.");
+                log.debug("object already freed. {*}", .{obj});
+                debug.dumpObjectTrace(vm, obj);
+                stdx.fatal();
             }
         }
         obj.retainedCommon.rc -= 1;
@@ -3400,6 +3401,9 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const numFields = pc[3].arg;
                 const fields = framePtr[startLocal .. startLocal + numFields];
                 framePtr[pc[4].arg] = try vm.allocObjectSmall(sid, fields);
+                if (builtin.mode == .Debug) {
+                    vm.objectTraceMap.put(vm.alloc, framePtr[pc[4].arg].asHeapObject(*HeapObject), pcOffset(pc)) catch stdx.fatal();
+                }
                 pc += 5;
                 continue;
             },
@@ -4759,7 +4763,7 @@ fn releaseFiberStack(vm: *VM, fiber: *Fiber) void {
 /// Given pc position, return the end locals pc in the same frame.
 /// TODO: Memoize this function.
 fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
-    const idx = vm.indexOfDebugSym(pc) orelse {
+    const idx = debug.indexOfDebugSym(vm, pc) orelse {
         stdx.panic("Missing debug symbol.");
     };
     const sym = vm.debugTable[idx];

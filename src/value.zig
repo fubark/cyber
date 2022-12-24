@@ -154,17 +154,24 @@ pub const Value = packed union {
     }
 
     pub fn isString(self: *const Value) linksection(".eval") bool {
-        @setRuntimeSafety(debug);
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
             return obj.common.structId == cy.StringS;
         } else {
-            return self.getTag() == TagConstString;
+            return self.assumeNotPtrIsConstStr();
         }
     }
 
     pub inline fn bothNumbers(a: Value, b: Value) linksection(".eval") bool {
         return a.isNumber() and b.isNumber();
+    }
+
+    pub inline fn isConstString(self: *const Value) linksection(".eval") bool {
+        return self.val & (TaggedPrimitiveMask | SignMask) == ConstStringMask;
+    }
+
+    pub inline fn assumeNotPtrIsConstString(self: *const Value) linksection(".eval") bool {
+        return self.val & TaggedPrimitiveMask == ConstStringMask;
     }
 
     pub inline fn isError(self: *const Value) linksection(".eval") bool {

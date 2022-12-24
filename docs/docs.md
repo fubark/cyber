@@ -894,6 +894,7 @@ print contents
 | arrayFill | val any, n number -> [..] | Creates a list with initial capacity of `n` and values set to `val`. | 
 | bool | val any -> bool | Converts a value to either `true` or `false`. | 
 | bindLib | fns []CFunc -> {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
+| char | val any -> number | Converts the first character of a string to a number with an ASCII code. | 
 | execCmd | args []string -> { out, err } | Runs a shell command and returns the stdout/stderr. | 
 | error | any -> error | Create an error from a tag or tag literal. | 
 | fetchUrl | url string -> string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 

@@ -804,6 +804,16 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSect
     }
 }
 
+pub fn coreChar(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    defer vm.release(args[0]);
+    const str = vm.valueToTempString(args[0]);
+    if (str.len > 0) {
+        return Value.initF64(@intToFloat(f64, str[0]));
+    } else {
+        return Value.None;
+    }
+}
+
 pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
     return Value.initBool(args[0].toBool());

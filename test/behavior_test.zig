@@ -30,6 +30,9 @@ test "core module" {
         \\try t.eq(a.len(), 10)
         \\for 0..10 as i:
         \\  try t.eq(a[i], 123)
+        \\
+        \\-- char()
+        \\try t.eq(char('a'), 97)
     );
 }
 

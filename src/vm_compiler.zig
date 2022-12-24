@@ -2134,9 +2134,15 @@ pub const VMcompiler = struct {
             },
             .for_cond_stmt => {
                 self.nextSemaSubBlock();
-                defer self.prevSemaSubBlock();
 
                 const topPc = @intCast(u32, self.buf.ops.items.len);
+                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
+                defer {
+                    self.patchSubBlockJumps(jumpStackSave);
+                    self.subBlockJumpStack.items.len = jumpStackSave;
+                    self.prevSemaSubBlock();
+                }
+
                 const condv = try self.genExpr(node.head.left_right.left, false);
 
                 var jumpPc = try self.pushEmptyJumpNotCond(condv.local);

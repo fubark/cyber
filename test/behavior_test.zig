@@ -1650,14 +1650,21 @@ test "Conditional for loop." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // `for` with condition expression.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- `for` with condition expression.
         \\i = 0
         \\for i != 10:
         \\  i += 1
-        \\i
+        \\try t.eq(i, 10)
+        \\
+        \\-- break
+        \\i = 0
+        \\for i != 10:
+        \\  i += 1
+        \\  break
+        \\try t.eq(i, 1)
     );
-    try t.eq(val.asF64toI32(), 10);
 }
 
 test "For loop over list." {

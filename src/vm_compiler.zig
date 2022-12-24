@@ -4473,6 +4473,7 @@ fn initCoreModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
     try mod.setNativeFunc(alloc, "copy", bindings.coreCopy);
     try mod.setNativeFunc(alloc, "error", bindings.coreError);
     try mod.setNativeFunc(alloc, "execCmd", bindings.coreExecCmd);
+    try mod.setNativeFunc(alloc, "exit", bindings.coreExit);
     try mod.setNativeFunc(alloc, "fetchUrl", bindings.coreFetchUrl);
     try mod.setNativeFunc(alloc, "int", bindings.coreInt);
     // try mod.setNativeFunc(alloc, "dump", bindings.coreDump);

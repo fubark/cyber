@@ -1508,3 +1508,8 @@ pub fn coreCopy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSect
         return val;
     }
 }
+
+pub fn coreExit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const status = @floatToInt(u8, args[0].toF64());
+    std.os.exit(status);
+}

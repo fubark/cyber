@@ -897,6 +897,7 @@ print contents
 | char(val any) number | Converts the first character of a string to a number with an ASCII code. | 
 | copy(val any) any | Copies a primitive value or creates a shallow copy of an object value. | 
 | execCmd(args []string) { out, err } | Runs a shell command and returns the stdout/stderr. | 
+| exit(status number) noreturn | Exits the program with a status code. | 
 | error(any) error | Create an error from a tag or tag literal. | 
 | fetchUrl(url string) string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 
 | int(val any) int | Converts a value to an 32-bit integer. | 

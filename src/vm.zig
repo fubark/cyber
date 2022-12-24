@@ -200,6 +200,15 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *VM) void {
+        // Deinit runtime related resources first, since they may depend on
+        // compiled/debug resources.
+        for (self.funcSyms.items()) |sym| {
+            if (sym.entryT == .closure) {
+                releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
+            }
+        }
+        self.funcSyms.deinit(self.alloc);
+
         self.parser.deinit();
         self.compiler.deinit();
         self.alloc.free(self.stack);
@@ -210,12 +219,6 @@ pub const VM = struct {
         self.methodSymSigs.deinit(self.alloc);
         self.methodTable.deinit(self.alloc);
 
-        for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == .closure) {
-                releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
-            }
-        }
-        self.funcSyms.deinit(self.alloc);
         self.funcSymSignatures.deinit(self.alloc);
         for (self.funcSymDetails.items()) |detail| {
             self.alloc.free(detail.name);

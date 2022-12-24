@@ -274,7 +274,7 @@ not 123       -- Evaluates to false
 
 ### Bitwise Operators.
 
-Cyber supports the following bitwise operators for integer values. Number operands are first converted to a 32-bit integer before applying the operation.
+Cyber supports the following bitwise operators for integer values. Number operands are first converted to a 32-bit integer (two's complement) before applying the operation.
 ```text
 -- Bitwise and: any underlying bits that are set in both integers are set in the new integer.
 a & b
@@ -285,10 +285,10 @@ a | b
 -- Bitwise exclusive or: any underlying bits that are set in either integer a or integer b but not both are set in the new integer.
 a || b
 
--- Bitwise right shift: a's bits are shifted b bits to the least significant end. Signed integer types perform sign-extension.
+-- Bitwise right shift: a's bits are shifted b bits to the least significant end. This performs sign-extension on the 32-bit integer.
 a >> b
 
--- Bitwise left shift: a's bits are shifted b bits to the most significant end. Signed integer types perform sign-extension.
+-- Bitwise left shift: a's bits are shifted b bits to the most significant end. This does not perform sign-extension on the 32-bit integer.
 a << b
 
 -- Bitwise not: a's integer bits are flipped.

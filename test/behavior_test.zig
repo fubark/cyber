@@ -2292,8 +2292,10 @@ test "Bitwise operators." {
         \\-- Bitwise right shift
         \\try t.eq(16 >> 2, 4)
         \\try t.eq(2 >> 2, 0)
+        \\try t.eq(-1 >> 1, -1)  -- Performs sign extension
         \\-- Bitwise left shift
         \\try t.eq(2 << 4, 32)
+        \\try t.eq(-2147483648 << 1, 0)  -- Does not perform sign extension
     );
 }
 

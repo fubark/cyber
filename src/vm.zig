@@ -3086,6 +3086,10 @@ pub const UserVM = struct {
         Root.release(@ptrCast(*VM, self), val);
     }
 
+    pub inline fn retain(self: *UserVM, val: Value) void {
+        @ptrCast(*VM, self).retain(val);
+    }
+
     pub inline fn retainObject(self: *UserVM, obj: *HeapObject) void {
         @ptrCast(*VM, self).retainObject(obj);
     }
@@ -3110,12 +3114,28 @@ pub const UserVM = struct {
         return @ptrCast(*const VM, self).alloc;
     }
 
+    pub inline fn allocEmptyMap(self: *UserVM) !Value {
+        return @ptrCast(*VM, self).allocEmptyMap();
+    }
+
+    pub inline fn allocList(self: *UserVM, elems: []const Value) !Value {
+        return @ptrCast(*VM, self).allocList(elems);
+    }
+
     pub inline fn allocListFill(self: *UserVM, val: Value, n: u32) !Value {
         return @ptrCast(*VM, self).allocListFill(val, n);
     }
 
     pub inline fn allocString(self: *UserVM, str: []const u8) !Value {
         return @ptrCast(*VM, self).allocString(str);
+    }
+
+    pub inline fn allocObjectSmall(self: *UserVM, sid: StructId, fields: []const Value) !Value {
+        return @ptrCast(*VM, self).allocObjectSmall(sid, fields);
+    }
+
+    pub inline fn allocObject(self: *UserVM, sid: StructId, fields: []const Value) !Value {
+        return @ptrCast(*VM, self).allocObject(sid, fields);
     }
 
     pub inline fn allocOwnedString(self: *UserVM, str: []u8) !Value {

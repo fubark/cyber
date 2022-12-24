@@ -34,6 +34,35 @@ test "core module" {
         \\
         \\-- char()
         \\try t.eq(char('a'), 97)
+        \\
+        \\-- copy()
+        \\try t.eq(copy(123), 123)
+        \\object S:
+        \\  foo
+        \\  bar
+        \\s = S{}
+        \\oldList = [123, s]
+        \\newList = copy(oldList)
+        \\try t.eq(newList == oldList, false)
+        \\try t.eq(newList.len(), 2)
+        \\try t.eq(newList[0], 123)
+        \\try t.eq(newList[1], s)
+        \\oldMap = { a: 123, b: s }
+        \\newMap = copy(oldMap)
+        \\try t.eq(newMap == oldMap, false)
+        \\try t.eq(newMap.size(), 2)
+        \\try t.eq(newMap.a, 123)
+        \\try t.eq(newMap.b, s)
+        \\oldStr = 'foo'
+        \\newStr = copy(oldStr)
+        \\try t.eq(newStr, oldStr)
+        \\rcList = []
+        \\s.foo = 123
+        \\s.bar = rcList
+        \\newS = copy(s)
+        \\try t.eq(newS == s, false)
+        \\try t.eq(newS.foo, 123)
+        \\try t.eq(newS.bar, rcList)
     );
 }
 

@@ -889,27 +889,28 @@ contents = readFile 'foo.txt'
 print contents
 ```
 
-| Function | Signature | Summary |
-| ------------- | ------------- | ----- |
-| arrayFill | val any, n number -> [..] | Creates a list with initial capacity of `n` and values set to `val`. | 
-| bool | val any -> bool | Converts a value to either `true` or `false`. | 
-| bindLib | fns []CFunc -> {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
-| char | val any -> number | Converts the first character of a string to a number with an ASCII code. | 
-| execCmd | args []string -> { out, err } | Runs a shell command and returns the stdout/stderr. | 
-| error | any -> error | Create an error from a tag or tag literal. | 
-| fetchUrl | url string -> string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 
-| int | val any -> int | Converts a value to an 32-bit integer. | 
-| number | val any -> number | Converts a value to a number. | 
-| opaque | val any -> opaque | Converts a value to an opaque pointer value. This is usually used with FFI. | 
-| parseCyon | cyon string -> any | Parses a CYON string into a value. | 
-| print | s string -> none | Prints a value as a string to stdout. The new line is also printed. | 
-| prints | s string -> none | Prints a value as a string to stdout. | 
-| readAll | -> string | Reads stdin to the end as a string. | 
-| readFile | path string -> string | Reads a file into a string value. | 
-| readLine | -> string | Reads stdin until a new line is reached. | 
-| string | val any -> string | Converts a value to a string. | 
-| valtag | any -> tag literal | Returns the value's type as a tag literal. |
-| writeFile | path string, contents string -> none | Writes a string value to a file. | 
+| Function | Summary |
+| ------------- | ----- |
+| arrayFill(val any, n number) [..] | Creates a list with initial capacity of `n` and values set to `val`. | 
+| bool(val any) bool | Converts a value to either `true` or `false`. | 
+| bindLib(fns []CFunc) {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
+| char(val any) number | Converts the first character of a string to a number with an ASCII code. | 
+| copy(val any) any | Copies a primitive value or creates a shallow copy of an object value. | 
+| execCmd(args []string) { out, err } | Runs a shell command and returns the stdout/stderr. | 
+| error(any) error | Create an error from a tag or tag literal. | 
+| fetchUrl(url string) string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 
+| int(val any) int | Converts a value to an 32-bit integer. | 
+| number(val any) number | Converts a value to a number. | 
+| opaque(val any) opaque | Converts a value to an opaque pointer value. This is usually used with FFI. | 
+| parseCyon(cyon string) any | Parses a CYON string into a value. | 
+| print(s string) none | Prints a value as a string to stdout. The new line is also printed. | 
+| prints(s string) none | Prints a value as a string to stdout. | 
+| readAll() string | Reads stdin to the end as a string. | 
+| readFile(path string) string | Reads a file into a string value. | 
+| readLine() string | Reads stdin until a new line is reached. | 
+| string(val any) string | Converts a value to a string. | 
+| valtag(any) #taglit | Returns the value's type as a tag literal. |
+| writeFile(path string, contents string) none | Writes a string value to a file. | 
 
 [To Top.](#table-of-contents)
 

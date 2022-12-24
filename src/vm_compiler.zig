@@ -3043,17 +3043,17 @@ pub const VMcompiler = struct {
     fn dumpLocals(self: *VMcompiler) !void {
         if (builtin.mode == .Debug) {
             const sblock = self.curSemaBlock();
-            try fmt.printStdout("Compiler (dump locals):\n", &.{});
+            fmt.printStdout("Compiler (dump locals):\n", &.{});
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
-                try fmt.printStdout("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                fmt.printStdout("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
                     v(svar.name), v(svar.local), v(svar.vtype.typeT),
                     v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
                 });
             }
             for (sblock.locals.items) |varId| {
                 const svar = self.vars.items[varId];
-                try fmt.printStdout("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                fmt.printStdout("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
                     v(svar.name), v(svar.local), v(svar.vtype.typeT),
                     v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
                 });
@@ -3517,6 +3517,8 @@ pub const VMcompiler = struct {
                     const name = self.getNodeTokenString(callee);
                     if (std.mem.eql(u8, name, "compilerDumpLocals")) {
                         try self.dumpLocals();
+                    } else if (std.mem.eql(u8, name, "compilerDumpBytecode")) {
+                        self.buf.dump();
                     }
                     try self.buf.pushOp1(.none, dst);
                     return self.initGenValue(dst, AnyType);

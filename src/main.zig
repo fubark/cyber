@@ -118,7 +118,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
             },
         }
     };
-    try buf.dump();
+    buf.dump();
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {

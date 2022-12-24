@@ -4,6 +4,8 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.bytecode);
+const fmt = @import("fmt.zig");
+const v = fmt.v;
 
 /// Holds vm instructions.
 pub const ByteCodeBuffer = struct {
@@ -167,42 +169,44 @@ pub const ByteCodeBuffer = struct {
         return cy.Value.initConstStr(slice.start, @intCast(u15, slice.end - slice.start));
     }
 
-    fn println(comptime fmt: []const u8, args: anytype) void {
+    fn printStderr(comptime format: []const u8, args: anytype) void {
         if (builtin.is_test) {
-            log.info(fmt, args);
+            log.debug(format, args);
         } else {
-            std.debug.print(fmt ++ "\n", args);
+            std.debug.print(format, args);
         }
     }
 
-    pub fn dump(self: ByteCodeBuffer) !void {
+    pub fn dump(self: ByteCodeBuffer) void {
         var pc: usize = 0;
         const ops = self.ops.items;
 
-        println("Bytecode:", .{});
+        fmt.printStdout("Bytecode:\n", &.{});
         while (pc < ops.len) {
-            const name = @tagName(ops[pc].code);
+            const code = ops[pc].code;
             const len = getInstLenAt(self.ops.items.ptr + pc);
             switch (ops[pc].code) {
                 .jumpNotCond => {
                     const jump = @ptrCast(*const align(1) u16, &ops[pc + 1]).*;
-                    println("{} {s} offset={}, cond={}", .{pc, name, jump, ops[pc + 3].arg});
+                    fmt.printStdout("{} {} offset={}, cond={}\n", &.{v(pc), v(code), v(jump), v(ops[pc + 3].arg)});
                     pc += len;
                 },
                 else => {
-                    println("{} {s} {any}", .{pc, name, std.mem.sliceAsBytes(ops[pc+1..pc+len])});
+                    fmt.printStdout("{} {}", &.{v(pc), v(code)});
+                    printStderr(" {any}", .{std.mem.sliceAsBytes(ops[pc+1..pc+len])});
+                    fmt.printStdout("\n", &.{});
                     pc += len;
                 },
             }
         }
 
-        println("\nConstants:", .{});
+        fmt.printStdout("\nConstants:\n", &.{});
         for (self.mconsts) |extra| {
             const val = cy.Value{ .val = extra.val };
             if (val.isNumber()) {
-                println("{}", .{val.asF64()});
+                fmt.printStdout("{}\n", &.{v(val.asF64())});
             } else {
-                println("{}", .{extra});
+                fmt.printStdout("{}\n", &.{v(extra.val)});
             }
         }
     }
@@ -287,7 +291,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             const numVars = pc[1].arg;
             return 2 + numVars;
         },
-        .setIndex,
         .copy,
         .not,
         .bitwiseNot,
@@ -318,6 +321,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             const numFuncSyms = pc[2].arg;
             return 3 + numFuncSyms * 2;
         },
+        .setIndex,
         .indexRetain,
         .reverseIndexRetain,
         .index,

@@ -10,15 +10,23 @@ const log = stdx.log.scoped(.fmt);
 const FmtValueType = enum {
     char,
     string,
+    u8,
+    u16,
+    u32,
     u64,
     f64,
     bool,
     ptr,
+    enumt,
+    err,
 };
 
 pub const FmtValue = struct {
     valT: FmtValueType,
     inner: union {
+        u8: u8,
+        u16: u16,
+        u32: u32,
         u64: u64,
         f64: f64,
         string: []const u8,
@@ -28,9 +36,35 @@ pub const FmtValue = struct {
     },
 };
 
+fn toFmtValueType(comptime T: type) FmtValueType {
+    switch (T) {
+        bool => return .bool,
+        u8 => return .u8,
+        u16 => return .u16,
+        u32 => return .u32,
+        usize,
+        u64 => return .u64,
+        f64 => return .f64,
+        []u8,
+        []const u8 => return .string,
+        else => {
+            if (@typeInfo(T) == .Enum) {
+                return .enumt;
+            } else if (@typeInfo(T) == .ErrorSet) {
+                return .err;
+            } else if (@typeInfo(T) == .Pointer) {
+                return .ptr;
+            } else {
+                @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{T}));
+            }
+        },
+    }
+}
+
 pub fn v(val: anytype) FmtValue {
-    switch (@TypeOf(val)) {
-        bool => {
+    const fmt_t = comptime toFmtValueType(@TypeOf(val));
+    switch (fmt_t) {
+        .bool => {
             return .{
                 .valT = .bool,
                 .inner = .{
@@ -38,32 +72,52 @@ pub fn v(val: anytype) FmtValue {
                 },
             };
         },
-        u8,
-        u32,
-        u64,
-        usize => return u64v(val),
-        f64 => return .{
+        .char => {
+            return .{
+                .valT = .char,
+                .inner = .{
+                    .u8 = val,
+                }
+            };
+        },
+        .u8 => {
+            return .{
+                .valT = .u8,
+                .inner = .{
+                    .u8 = val,
+                }
+            };
+        },
+        .u16 => {
+            return .{
+                .valT = .u16,
+                .inner = .{
+                    .u16 = val,
+                }
+            };
+        },
+        .u32 => {
+            return .{
+                .valT = .u32,
+                .inner = .{
+                    .u32 = val,
+                }
+            };
+        },
+        .u64 => return u64v(val),
+        .f64 => return .{
             .valT = .f64,
             .inner = .{
                 .f64 = val,
             },
         },
-        []u8,
-        []const u8 => return str(val),
-        else => {
-            if (@typeInfo(@TypeOf(val)) == .Enum) {
-                return enumv(val);
-            } else if (@typeInfo(@TypeOf(val)) == .ErrorSet) {
-                return str(@errorName(val));
-            } else if (@typeInfo(@TypeOf(val)) == .Pointer) {
-                return .{
-                    .valT = .ptr,
-                    .inner = .{
-                        .ptr = val,
-                    }
-                };
-            } else {
-                @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{@TypeOf(val)}));
+        .string => return str(val),
+        .enumt => return enumv(val),
+        .err => return str(@errorName(val)),
+        .ptr =>  return .{
+            .valT = .ptr,
+            .inner = .{
+                .ptr = val,
             }
         },
     }
@@ -117,12 +171,23 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         .char => {
             try writer.writeByte(val.inner.char);
         },
+        .u8 => {
+            try std.fmt.formatInt(val.inner.u8, 10, .lower, .{}, writer);
+        },
+        .u16 => {
+            try std.fmt.formatInt(val.inner.u16, 10, .lower, .{}, writer);
+        },
+        .u32 => {
+            try std.fmt.formatInt(val.inner.u32, 10, .lower, .{}, writer);
+        },
         .u64 => {
             try std.fmt.formatInt(val.inner.u64, 10, .lower, .{}, writer);
         },
         .f64 => {
             try std.fmt.formatFloatDecimal(val.inner.f64, .{}, writer);
         },
+        .err,
+        .enumt,
         .string => {
             try writer.writeAll(val.inner.string);
         },
@@ -174,7 +239,14 @@ pub fn allocFormat(alloc: std.mem.Allocator, fmt: []const u8, vals: []const FmtV
 
 var printMutex = std.Thread.Mutex{};
 
-pub fn printStdout(fmt: []const u8, vals: []const FmtValue) !void {
+pub fn printStdout(fmt: []const u8, vals: []const FmtValue) void {
+    printStdoutOrErr(fmt, vals) catch |err| {
+        log.debug("{}", .{err});
+        stdx.fatal();
+    };
+}
+
+pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     @setCold(true);
     printMutex.lock();
     defer printMutex.unlock();

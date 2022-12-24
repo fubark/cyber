@@ -1842,6 +1842,18 @@ test "Static closures." {
         \\func foo():
         \\  return a
     );
+
+    // Closure with more than 3 captured vars forces allocation outside of object pool.
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = 123
+        \\b = 234
+        \\c = 345
+        \\d = 456
+        \\func foo():
+        \\  return a + b + c + d
+        \\try t.eq(foo(), 1158)
+    );
 }
 
 test "Value closures." {
@@ -1915,6 +1927,17 @@ test "Value closures." {
         \\fn()
     );
     try run.valueIsI32(val, 123);
+
+    // Closure with more than 3 captured vars forces allocation outside of object pool.
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = 123
+        \\b = 234
+        \\c = 345
+        \\d = 456
+        \\foo = () => a + b + c + d
+        \\try t.eq(foo(), 1158)
+    );
 }
 
 test "Function recursion." {

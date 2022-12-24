@@ -1725,9 +1725,7 @@ pub const VMcompiler = struct {
     fn genSetBoxedVarToExpr(self: *VMcompiler, svar: *SemaVar, exprId: cy.NodeId) !void {
         // Retain rval.
         const exprv = try self.genRetainedTempExpr(exprId, false);
-        if (svar.vtype.typeT != BoxType.typeT) {
-            svar.vtype = exprv.vtype;
-        }
+        svar.vtype = exprv.vtype;
         svar.genIsDefined = true;
         if (!svar.vtype.rcCandidate) {
             try self.buf.pushOp2(.setBoxValue, svar.local, exprv.local);
@@ -1740,16 +1738,11 @@ pub const VMcompiler = struct {
         _ = discardTopExprReg;
         const expr = self.nodes[exprId];
         if (self.genGetVarPtr(varId)) |svar| {
-            if (svar.isCaptured and !svar.isBoxed) {
-                svar.isBoxed = true;
-                svar.vtype = BoxType;
-            }
-
             if (svar.isBoxed) {
                 if (!svar.genIsDefined) {
                     const exprv = try self.genExpr(exprId, false);
                     try self.buf.pushOp2(.box, @intCast(u8, exprv.local), svar.local);
-                    svar.vtype = BoxType;
+                    svar.vtype = exprv.vtype;
 
                     if (self.capVarDescs.get(varId)) |desc| {
                         // Update dependent func syms.
@@ -1915,11 +1908,6 @@ pub const VMcompiler = struct {
 
             // Params are already defined.
             self.vars.items[varId].genIsDefined = true;
-
-            // Initialize to box type.
-            if (self.vars.items[varId].isBoxed) {
-                self.vars.items[varId].vtype = BoxType;
-            }
         }
     }
 
@@ -2026,11 +2014,6 @@ pub const VMcompiler = struct {
                 };
                 if (left.node_t == .ident) {
                     if (self.genGetVarPtr(left.head.ident.semaVarId)) |svar| {
-                        if (svar.isCaptured and !svar.isBoxed) {
-                            svar.isBoxed = true;
-                            svar.vtype = BoxType;
-                        }
-
                         const right = try self.genExpr(node.head.opAssignStmt.right, false);
                         if (svar.isBoxed) {
                             const tempLocal = try self.nextFreeTempLocal();
@@ -2894,7 +2877,9 @@ pub const VMcompiler = struct {
         const node = self.nodes[nodeId];
         if (node.node_t == .ident) {
             if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                return svar.local;
+                if (!svar.isBoxed) {
+                    return svar.local;
+                }
             }
         } else if (node.node_t == .call_expr) {
             // Since call expr args allocate arg locals past the arc temps,
@@ -3769,19 +3754,8 @@ pub const VMcompiler = struct {
                                 const pId = self.capVarDescs.get(varId).?.user;
                                 const pvar = &self.vars.items[pId];
 
-                                if (svar.isBoxed and !pvar.isBoxed) {
-                                    // Lift var to boxed.
-                                    try self.buf.pushOp2(.box, pvar.local, pvar.local);
-                                    pvar.isBoxed = true;
-                                    pvar.vtype = BoxType;
-                                    pvar.lifetimeRcCandidate = true;
-
+                                if (svar.isBoxed) {
                                     try self.buf.pushOp1(.retain, pvar.local);
-                                    try self.pushTempOperand(pvar.local);
-                                } else {
-                                    if (svar.vtype.rcCandidate) {
-                                        try self.buf.pushOp1(.retain, pvar.local);
-                                    }
                                     try self.pushTempOperand(pvar.local);
                                 }
                             }
@@ -3842,19 +3816,8 @@ pub const VMcompiler = struct {
                                 const pId = self.capVarDescs.get(varId).?.user;
                                 const pvar = &self.vars.items[pId];
 
-                                if (svar.isBoxed and !pvar.isBoxed) {
-                                    // Lift var to boxed.
-                                    try self.buf.pushOp2(.box, pvar.local, pvar.local);
-                                    pvar.isBoxed = true;
-                                    pvar.vtype = BoxType;
-                                    pvar.lifetimeRcCandidate = true;
-
+                                if (svar.isBoxed) {
                                     try self.buf.pushOp1(.retain, pvar.local);
-                                    try self.pushTempOperand(pvar.local);
-                                } else {
-                                    if (svar.vtype.rcCandidate) {
-                                        try self.buf.pushOp1(.retain, pvar.local);
-                                    }
                                     try self.pushTempOperand(pvar.local);
                                 }
                             }
@@ -4067,11 +4030,6 @@ const Type = struct {
             canRequestInteger: bool,
         },
     } = undefined,
-};
-
-const BoxType = Type{
-    .typeT = .box,
-    .rcCandidate = true,
 };
 
 const AnyType = Type{

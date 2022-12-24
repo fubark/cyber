@@ -17,6 +17,7 @@ const NullId = std.math.maxInt(u32);
 
 const TagLit = enum {
     int,
+    bool,
     i8,
     u8,
     i16,
@@ -42,7 +43,6 @@ const TagLit = enum {
     err,
     number,
     object,
-    bool,
 };
 
 const StdSection = ".eval.std";
@@ -150,6 +150,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addFieldSym(sid, id, 2);
 
     try ensureTagLitSym(self, "int", .int);
+    try ensureTagLitSym(self, "bool", .bool);
     try ensureTagLitSym(self, "i8", .i8);
     try ensureTagLitSym(self, "u8", .u8);
     try ensureTagLitSym(self, "i16", .i16);
@@ -175,7 +176,6 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "error", .err);
     try ensureTagLitSym(self, "number", .number);
     try ensureTagLitSym(self, "object", .object);
-    try ensureTagLitSym(self, "bool", .bool);
 }
 
 fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
@@ -445,6 +445,7 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
     const w = csrc.writer(alloc);
 
     w.print(
+        \\#define bool _Bool
         \\#define uint64_t unsigned long long
         \\#define int8_t signed char
         \\#define uint8_t unsigned char
@@ -510,6 +511,9 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
             .void => {
                 w.print("void", .{}) catch stdx.fatal();
             },
+            .bool => {
+                w.print("bool", .{}) catch stdx.fatal();
+            },
             else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
         }
         w.print(" {s}(", .{sym}) catch stdx.fatal();
@@ -521,6 +525,9 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
                     .i32,
                     .int => {
                         w.print("int", .{}) catch stdx.fatal();
+                    },
+                    .bool => {
+                        w.print("bool", .{}) catch stdx.fatal();
                     },
                     .i8 => {
                         w.print("int8_t", .{}) catch stdx.fatal();
@@ -598,6 +605,9 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
             .void => {
                 w.print("  {s}(", .{sym}) catch stdx.fatal();
             },
+            .bool => {
+                w.print("  bool res = {s}(", .{sym}) catch stdx.fatal();
+            },
             else => stdx.panicFmt("Unsupported return type: {s}", .{ gvm.getTagLitName(retTag) }),
         }
 
@@ -610,6 +620,9 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
                     .i32,
                     .int => {
                         w.print("(int)*(double*)&args[{}]", .{i}) catch stdx.fatal();
+                    },
+                    .bool => {
+                        w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i}) catch stdx.fatal();
                     },
                     .i8 => {
                         w.print("(int8_t)*(double*)&args[{}]", .{i}) catch stdx.fatal();
@@ -688,6 +701,9 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
             },
             .void => {
                 w.print("  return 0x7FFC000000000000;\n", .{}) catch stdx.fatal();
+            },
+            .bool => {
+                w.print("  return (res == 1) ? 0x7FFC000100000001 : 0x7FFC000100000000;\n", .{}) catch stdx.fatal();
             },
             else => stdx.fatal(),
         }

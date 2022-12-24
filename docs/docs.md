@@ -1026,6 +1026,7 @@ The `CFunc` object lets you declare the argument and return types as [tag litera
 
 | Binding Type | Cyber | C |
 | ------------- | ------------- | ----- |
+| #bool | bool | bool |
 | #i8 | number | int8_t, signed char | 
 | #u8 | number | uint8_t, unsigned char | 
 | #i16 | number | int16_t, short | 

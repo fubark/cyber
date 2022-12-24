@@ -234,6 +234,9 @@ test "FFI." {
         }
         export fn testVoid() void {
         }
+        export fn testBool(b: bool) bool {
+            return b;
+        }
     };
     _ = S;
 
@@ -261,6 +264,7 @@ test "FFI." {
         \\  CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
         \\  CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
         \\  CFunc{ sym: 'testVoid', args: [], ret: #void }
+        \\  CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
         \\])
         \\try t.eq(lib.testAdd(123, 321), 444)
         \\try t.eq(lib.testI8(-128), -128)
@@ -280,6 +284,10 @@ test "FFI." {
         \\
         \\-- void return and no args.
         \\try t.eq(lib.testVoid(), none)
+        \\
+        \\-- bool arg and bool return.
+        \\try t.eq(lib.testBool(true), true)
+        \\try t.eq(lib.testBool(false), false)
     );
 }
 

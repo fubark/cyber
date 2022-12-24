@@ -360,7 +360,7 @@ pub const VM = struct {
         tt.endPrint("compile");
 
         if (TraceEnabled) {
-            try res.buf.dump();
+            res.buf.dump();
             const numOps = comptime std.enums.values(cy.OpCode).len;
             self.trace.opCounts = try self.alloc.alloc(cy.OpCount, numOps);
             var i: u32 = 0;
@@ -381,7 +381,7 @@ pub const VM = struct {
         } else {
             if (builtin.is_test) {
                 // Only visible for tests with .debug log level.
-                try res.buf.dump();
+                res.buf.dump();
             }
         }
 
@@ -417,26 +417,25 @@ pub const VM = struct {
     }
 
     pub fn dumpInfo(self: *VM) void {
-        const print = if (builtin.is_test) log.debug else std.debug.print;
-        print("stack size: {}\n", .{self.stack.len});
-        print("stack framePtr: {}\n", .{framePtrOffset(self.framePtr)});
-        print("heap pages: {}\n", .{self.heapPages.len});
+        fmt.printStderr("stack size: {}\n", &.{v(self.stack.len)});
+        fmt.printStderr("stack framePtr: {}\n", &.{v(framePtrOffset(self.framePtr))});
+        fmt.printStderr("heap pages: {}\n", &.{v(self.heapPages.len)});
 
         // Dump object symbols.
         {
-            print("obj syms:\n", .{});
+            fmt.printStderr("obj syms:\n", &.{});
             var iter = self.funcSymSignatures.iterator();
             while (iter.next()) |it| {
-                print("\t{s}: {}\n", .{it.key_ptr.*, it.value_ptr.*});
+                fmt.printStderr("\t{}: {}\n", &.{v(it.key_ptr.*), v(it.value_ptr.*)});
             }
         }
 
         // Dump object fields.
         {
-            print("obj fields:\n", .{});
+            fmt.printStderr("obj fields:\n", &.{});
             var iter = self.fieldSymSignatures.iterator();
             while (iter.next()) |it| {
-                print("\t{s}: {}\n", .{it.key_ptr.*, it.value_ptr.*});
+                fmt.printStderr("\t{}: {}\n", &.{v(it.key_ptr.*), v(it.value_ptr.*)});
             }
         }
     }
@@ -3025,11 +3024,7 @@ pub const UserVM = struct {
     pub fn dumpPanicStackTrace(self: *UserVM) !void {
         @setCold(true);
         const vm = @ptrCast(*VM, self);
-        if (builtin.is_test) {
-            log.debug("panic: {s}", .{vm.panicMsg});
-        } else {
-            try fmt.printStderr("panic: {}\n\n", &.{fmt.v(vm.panicMsg)});
-        }
+        fmt.printStderr("panic: {}\n\n", &.{fmt.v(vm.panicMsg)});
         const trace = vm.getStackTrace();
         try trace.dump(vm);
     }
@@ -4358,27 +4353,15 @@ pub const StackTrace = struct {
             arrowBuf.clearRetainingCapacity();
             try w.writeByteNTimes(' ', frame.col);
             try w.writeByte('^');
-            if (builtin.is_test) {
-                log.debug(
-                    \\{s}:{}:{} {s}:
-                    \\{s}
-                    \\{s}
-                    \\
-                , .{
-                    frame.uri, frame.line + 1, frame.col + 1, frame.name,
-                    vm.compiler.src[frame.lineStartPos..lineEnd], arrowBuf.items,
-                });
-            } else {
-                try fmt.printStderr(
-                    \\{}:{}:{} {}:
-                    \\{}
-                    \\{}
-                    \\
-                , &.{
-                    fmt.v(frame.uri), fmt.v(frame.line+1), fmt.v(frame.col+1), fmt.v(frame.name),
-                    fmt.v(vm.compiler.src[frame.lineStartPos..lineEnd]), fmt.v(arrowBuf.items),
-                });
-            }
+            fmt.printStderr(
+                \\{}:{}:{} {}:
+                \\{}
+                \\{}
+                \\
+            , &.{
+                fmt.v(frame.uri), fmt.v(frame.line+1), fmt.v(frame.col+1), fmt.v(frame.name),
+                fmt.v(vm.compiler.src[frame.lineStartPos..lineEnd]), fmt.v(arrowBuf.items),
+            });
         }
     }
 };
@@ -4887,7 +4870,7 @@ fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []c
         var w = arrowBuf.writer(vm.alloc);
         try w.writeByteNTimes(' ', col);
         try w.writeByte('^');
-        try fmt.printStderr(
+        fmt.printStderr(
             \\{}: {}
             \\
             \\{}:{}:{}:
@@ -4900,7 +4883,7 @@ fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []c
             fmt.v(arrowBuf.items)
         });
     } else {
-        try fmt.printStderr(
+        fmt.printStderr(
             \\{}: {}
             \\
             \\in {}

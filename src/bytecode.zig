@@ -171,7 +171,9 @@ pub const ByteCodeBuffer = struct {
 
     fn printStderr(comptime format: []const u8, args: anytype) void {
         if (builtin.is_test) {
-            log.debug(format, args);
+            if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
+                std.debug.print(format, args);
+            }
         } else {
             std.debug.print(format, args);
         }
@@ -181,32 +183,32 @@ pub const ByteCodeBuffer = struct {
         var pc: usize = 0;
         const ops = self.ops.items;
 
-        fmt.printStdout("Bytecode:\n", &.{});
+        fmt.printStderr("Bytecode:\n", &.{});
         while (pc < ops.len) {
             const code = ops[pc].code;
             const len = getInstLenAt(self.ops.items.ptr + pc);
             switch (ops[pc].code) {
                 .jumpNotCond => {
                     const jump = @ptrCast(*const align(1) u16, &ops[pc + 1]).*;
-                    fmt.printStdout("{} {} offset={}, cond={}\n", &.{v(pc), v(code), v(jump), v(ops[pc + 3].arg)});
+                    fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pc), v(code), v(jump), v(ops[pc + 3].arg)});
                     pc += len;
                 },
                 else => {
-                    fmt.printStdout("{} {}", &.{v(pc), v(code)});
+                    fmt.printStderr("{} {}", &.{v(pc), v(code)});
                     printStderr(" {any}", .{std.mem.sliceAsBytes(ops[pc+1..pc+len])});
-                    fmt.printStdout("\n", &.{});
+                    fmt.printStderr("\n", &.{});
                     pc += len;
                 },
             }
         }
 
-        fmt.printStdout("\nConstants:\n", &.{});
+        fmt.printStderr("\nConstants:\n", &.{});
         for (self.mconsts) |extra| {
             const val = cy.Value{ .val = extra.val };
             if (val.isNumber()) {
-                fmt.printStdout("{}\n", &.{v(val.asF64())});
+                fmt.printStderr("{}\n", &.{v(val.asF64())});
             } else {
-                fmt.printStdout("{}\n", &.{v(extra.val)});
+                fmt.printStderr("{}\n", &.{v(extra.val)});
             }
         }
     }

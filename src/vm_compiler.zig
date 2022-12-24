@@ -4674,7 +4674,7 @@ fn initMathModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
 
 fn unexpected(format: []const u8, vals: []const fmt.FmtValue) noreturn {
     if (builtin.mode == .Debug) {
-        fmt.printStderr(format, vals) catch stdx.fatal();
+        fmt.printStderr(format, vals);
     }
     stdx.fatal();
 }

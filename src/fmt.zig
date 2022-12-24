@@ -252,29 +252,37 @@ pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     defer printMutex.unlock();
     const w = std.io.getStdOut().writer();
     if (builtin.is_test) {
-        var msg: []const u8 = undefined;
-        if (fmt[fmt.len-1] == '\n') {
-            msg = try allocFormat(t.alloc, fmt[0..fmt.len-1], vals);
-        } else {
-            msg = try allocFormat(t.alloc, fmt[0..fmt.len], vals);
+        if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
+            try format(w, fmt, vals);
         }
-        defer t.alloc.free(msg);
-        log.debug("{s}", .{msg});
     } else {
         try format(w, fmt, vals);
     }
 }
 
-pub fn printStderr(fmt: []const u8, vals: []const FmtValue) !void {
+pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
+    printStderrOrErr(fmt, vals) catch |err| {
+        log.debug("{}", .{err});
+        stdx.fatal();
+    };
+}
+
+pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     @setCold(true);
     printMutex.lock();
     defer printMutex.unlock();
     const w = std.io.getStdErr().writer();
-    try format(w, fmt, vals);
+    if (builtin.is_test) {
+        if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
+            try format(w, fmt, vals);
+        }
+    } else {
+        try format(w, fmt, vals);
+    }
 }
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
     @setCold(true);
-    printStderr(fmt, vals) catch {};
+    printStderr(fmt, vals);
     @panic("");
 }

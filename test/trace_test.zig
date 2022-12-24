@@ -98,6 +98,40 @@ test "ARC." {
     try t.eq(trace.numForceReleases, 2);
 }
 
+test "ARC assignments." {
+    var run: VMrunner = undefined;
+    run.init();
+    defer run.deinit();
+
+    const trace = &run.trace;
+
+    // Set index on rc-candidate child to primitive.
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = [123]
+        \\b = 234
+        \\a[0] = b
+        \\try t.eq(a[0], 234)
+    );
+    try t.eq(trace.numRetainAttempts, 2);
+    try t.eq(trace.numReleaseAttempts, 6);
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
+
+    // Set index on rc-candidate child to rc-candidate.
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = [123]
+        \\b = {}
+        \\a[0] = b
+        \\try t.eq(valtag(a[0]), #map)
+    );
+    try t.eq(trace.numRetainAttempts, 4);
+    try t.eq(trace.numReleaseAttempts, 7);
+    try t.eq(trace.numRetains, 4);
+    try t.eq(trace.numReleases, 3);
+}
+
 test "ARC for passing call args." {
     var run: VMrunner = undefined;
     run.init();

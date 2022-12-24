@@ -2041,8 +2041,8 @@ pub const VMcompiler = struct {
 
                     const leftv = try self.genExpr(left.head.left_right.left, false);
                     const indexv = try self.genExpr(left.head.left_right.right, false);
-                    const rightv = try self.genExpr(node.head.left_right.right, false);
-                    try self.buf.pushOp3(.setIndex, leftv.local, indexv.local, rightv.local);
+                    const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
+                    try self.buf.pushOp3(.setIndexRelease, leftv.local, indexv.local, rightv.local);
                 } else if (left.node_t == .accessExpr) {
                     const startTempLocal = self.curBlock.firstFreeTempLocal;
                     defer self.setFirstFreeTempLocal(startTempLocal);

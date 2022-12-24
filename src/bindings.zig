@@ -46,6 +46,7 @@ pub const TagLit = enum {
     err,
     number,
     object,
+    map,
 };
 
 const StdSection = ".eval.std";
@@ -182,6 +183,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "error", .err);
     try ensureTagLitSym(self, "number", .number);
     try ensureTagLitSym(self, "object", .object);
+    try ensureTagLitSym(self, "map", .map);
 }
 
 fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
@@ -793,6 +795,7 @@ pub fn coreValtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .object => return Value.initTagLiteral(@enumToInt(TagLit.object)),
         .errorVal => return Value.initTagLiteral(@enumToInt(TagLit.err)),
         .boolean => return Value.initTagLiteral(@enumToInt(TagLit.bool)),
+        .map => return Value.initTagLiteral(@enumToInt(TagLit.map)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }

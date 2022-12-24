@@ -324,6 +324,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             return 3 + numFuncSyms * 2;
         },
         .setIndex,
+        .setIndexRelease,
         .indexRetain,
         .reverseIndexRetain,
         .index,
@@ -429,8 +430,12 @@ pub const OpCode = enum(u8) {
     /// Copies a local from src to dst.
     copy,
     copyReleaseDst,
-    /// Pops right, index, left registers, sets right value to address of left[index].
+
+    /// [leftLocal] [indexLocal] [rightLocal]
     setIndex,
+    /// setIndex in addition to a release on leftLocal.
+    setIndexRelease,
+
     copyRetainSrc,
     index,
     indexRetain,
@@ -534,7 +539,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 92);
+    try t.eq(std.enums.values(OpCode).len, 93);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

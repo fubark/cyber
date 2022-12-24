@@ -1289,6 +1289,43 @@ pub const VM = struct {
         }
     }
 
+    pub fn setIndexRelease(self: *VM, left: Value, index: Value, right: Value) !void {
+        if (left.isPointer()) {
+            const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
+            switch (obj.retainedCommon.structId) {
+                ListS => {
+                    const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+                    const idx = @floatToInt(u32, index.toF64());
+                    if (idx < list.len) {
+                        release(self, list.buf[idx]);
+                        list.buf[idx] = right;
+                    } else {
+                        // var i: u32 = @intCast(u32, list.val.items.len);
+                        // try list.val.resize(self.alloc, idx + 1);
+                        // while (i < idx) : (i += 1) {
+                        //     list.val.items[i] = Value.None;
+                        // }
+                        // list.val.items[idx] = right;
+                        return self.panic("Index out of bounds.");
+                    }
+                },
+                MapS => {
+                    const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+                    const res = try map.getOrPut(self.alloc, self, index);
+                    if (res.foundExisting) {
+                        release(self, res.valuePtr.*);
+                    }
+                    res.valuePtr.* = right;
+                },
+                else => {
+                    return stdx.panic("unsupported struct");
+                },
+            }
+        } else {
+            return stdx.panic("expected pointer");
+        }
+    }
+
     pub fn setIndex(self: *VM, left: Value, index: Value, right: Value) !void {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
@@ -3451,6 +3488,17 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
                 try gvm.setIndex(leftv, indexv, rightv);
+                continue;
+            },
+            .setIndexRelease => {
+                const left = pc[1].arg;
+                const index = pc[2].arg;
+                const right = pc[3].arg;
+                pc += 4;
+                const rightv = framePtr[right];
+                const indexv = framePtr[index];
+                const leftv = framePtr[left];
+                try gvm.setIndexRelease(leftv, indexv, rightv);
                 continue;
             },
             .copy => {

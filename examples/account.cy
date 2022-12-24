@@ -1,4 +1,4 @@
-type Account:
+object Account:
     name
     balance
 

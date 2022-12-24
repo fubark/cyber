@@ -29,7 +29,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "not", .not_k },
     .{ "as", .as_k },
     .{ "pass", .pass_k },
-    .{ "type", .type_k },
+    .{ "object", .object_k },
     .{ "tagtype", .tagtype_k },
     .{ "none", .none_k },
     .{ "is", .is_k },
@@ -1297,7 +1297,7 @@ pub const Parser = struct {
                     return id;
                 }
             },
-            .type_k => {
+            .object_k => {
                 return try self.parseStructDecl();
             },
             .tagtype_k => {
@@ -2799,7 +2799,7 @@ pub const TokenType = enum(u6) {
     as_k,
     pass_k,
     none_k,
-    type_k,
+    object_k,
     tagtype_k,
     func_k,
     is_k,

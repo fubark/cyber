@@ -363,7 +363,7 @@ test "Structs." {
 
     _ = try run.eval(
         \\import t 'test'
-        \\type Node:
+        \\object Node:
         \\  value
         \\
         \\-- Initialization.
@@ -393,7 +393,7 @@ test "Structs." {
         \\try t.eq(string(n), 'Node')
         \\
         \\-- Initialize fields without commas.
-        \\type W:
+        \\object W:
         \\  a
         \\  b
         \\w = W{
@@ -420,7 +420,7 @@ test "Structs." {
     // Big structs (allocated outside of heap pages).
     _ = try run.eval(
         \\import t 'test'
-        \\type Node:
+        \\object Node:
         \\  a
         \\  b
         \\  c
@@ -437,13 +437,13 @@ test "Structs." {
     // Multiple structs with the same field names but different offsets.
     _ = try run.eval(
         \\import t 'test'
-        \\type Node1:
+        \\object Node1:
         \\  a
         \\  b
-        \\type Node2:
+        \\object Node2:
         \\  b
         \\  a
-        \\type Node3:
+        \\object Node3:
         \\  a
         \\  b
         \\n1 = Node1{ a: 1, b: 2 }
@@ -464,7 +464,7 @@ test "Struct methods." {
 
     // self param.
     var val = try run.eval(
-        \\type Node:
+        \\object Node:
         \\  value
         \\  func get(self):
         \\    return self.value
@@ -475,7 +475,7 @@ test "Struct methods." {
 
     // self param with regular param.
     val = try run.eval(
-        \\type Node:
+        \\object Node:
         \\  value
         \\  func get(self, param):
         \\    return self.value + param
@@ -486,7 +486,7 @@ test "Struct methods." {
 
     // self param with many regular param.
     val = try run.eval(
-        \\type Node:
+        \\object Node:
         \\  value
         \\  func get(self, param, param2):
         \\    return self.value + param - param2
@@ -497,7 +497,7 @@ test "Struct methods." {
 
     // Static method, no params.
     val = try run.eval(
-        \\type Node:
+        \\object Node:
         \\  value
         \\  func get():
         \\    return 123
@@ -507,7 +507,7 @@ test "Struct methods." {
 
     // Static method, one params.
     val = try run.eval(
-        \\type Node:
+        \\object Node:
         \\  value
         \\  func get(param):
         \\    return 123 + param
@@ -517,7 +517,7 @@ test "Struct methods." {
 
     // Static method, many params.
     val = try run.eval(
-        \\type Node:
+        \\object Node:
         \\  value
         \\  func get(param, param2):
         \\    return 123 + param - param2
@@ -697,7 +697,7 @@ test "Comparison ops." {
 
     // Object equals.
     val = try run.eval(
-        \\type S:
+        \\object S:
         \\  value
         \\s = S{ value: 123 }
         \\a = S{ value: 123 }
@@ -705,7 +705,7 @@ test "Comparison ops." {
     );
     try t.eq(val.asBool(), false);
     val = try run.eval(
-        \\type S:
+        \\object S:
         \\  value
         \\s = S{ value: 123 }
         \\a = s
@@ -731,7 +731,7 @@ test "Not equal comparison." {
     _ = try run.eval(
         \\import t 'test'
         \\-- Comparing objects.
-        \\type S:
+        \\object S:
         \\  value
         \\o = S{ value: 3 }
         \\try t.eq(o != 123, true)
@@ -759,7 +759,7 @@ test "Truthy evaluation." {
         \\-- Heap objects evaluate to true.
         \\try t.eq(bool({}), true)
         \\try t.eq(bool([]), true)
-        \\type S:
+        \\object S:
         \\  a
         \\try t.eq(bool(S{a: 0}), true)
         \\-- none evaluates to false
@@ -1353,7 +1353,7 @@ test "Assignment statements" {
         \\a += 10
         \\try t.eq(a, 11)
         \\-- Assign to field.
-        \\type S:
+        \\object S:
         \\  foo
         \\s = S{ foo: 1 }
         \\s.foo += 10
@@ -1503,7 +1503,7 @@ test "Local variable assignment." {
     try run.resetEnv();
     run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
     val = try run.evalNoReset(
-        \\type S:
+        \\object S:
         \\  value
         \\if false:
         \\  a = S{ value: 123 }
@@ -1513,7 +1513,7 @@ test "Local variable assignment." {
     try run.resetEnv();
     run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
     val = try run.evalNoReset(
-        \\type S:
+        \\object S:
         \\  value
         \\  func foo(self):
         \\    if false:
@@ -1966,7 +1966,7 @@ test "Function recursion." {
 
     // Recursion with long lived object.
     val = try run.eval(
-        \\type S:
+        \\object S:
         \\  n
         \\func foo(o):
         \\  if o.n is 0:
@@ -1980,7 +1980,7 @@ test "Function recursion." {
 
     // Recursion with new objects.
     val = try run.eval(
-        \\type S:
+        \\object S:
         \\  n
         \\func foo(o):
         \\  if o.n is 0:

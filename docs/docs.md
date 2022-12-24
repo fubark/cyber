@@ -166,7 +166,7 @@ You can declare static variables with the `var` keyword.
 var a = 123
 ```
 Cyber's static variable declaration can be a source of confusion if you're coming from a language that uses `var` as a local variable.
-As a rule of thumb, static declarations in Cyber always begin with a keyword that describes what it is: `var`, `func`, `type`, `module`, `import`.
+As a rule of thumb, static declarations in Cyber always begin with a keyword that describes what it is: `var`, `func`, `object`, `module`, `import`.
 Local variable declarations use the `let` assignment instead.
 
 Static variables can also be exported from the current script. You can read more about exports and [Modules](#modules).
@@ -193,7 +193,7 @@ There are currently `29` keywords in Cyber. This list categorizes them and shows
 - [Variables](#variables): `var` `let`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
-- [Data Types](#data-types): `type` `tagtype` `true` `false` `none`
+- [Data Types](#data-types): `object` `tagtype` `true` `false` `none`
 - [Error Handling](#error-handling): `try` `catch` `recover`
 - [Modules](#modules): `import` `export`
 - Metaprogramming: `compt`
@@ -534,9 +534,9 @@ for map as val, key:
 [To Top.](#table-of-contents)
 
 ### Objects.
-Any value that isn't a primitive is an object. You can declare your own object types using the `type` keyword. Object templates are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
+Any value that isn't a primitive is an object. You can declare your own object types using the `object` keyword. Object templates are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
 ```text
-type Node:
+object Node:
     value
     next
 
@@ -546,7 +546,7 @@ print node.value          -- '123'
 New instances of an object template are created using the type name and braces that surround the initial member values.
 When declaring methods, the first parameter must be `self`. Otherwise, it becomes a function that can only be invoked from the type's namespace.
 ```text
-type Node:
+object Node:
     value
     next
 

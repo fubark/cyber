@@ -1170,8 +1170,8 @@ pub const VMcompiler = struct {
 
     fn pushJumpBackTo(self: *VMcompiler, toPc: usize) !void {
         const pc = self.buf.ops.items.len;
-        try self.buf.pushOp2(.jumpBack, 0, 0);
-        self.buf.setOpArgU16(pc + 1, @intCast(u16, pc - toPc));
+        try self.buf.pushOp2(.jump, 0, 0);
+        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
     }
 
     fn pushEmptyJump(self: *VMcompiler) !u32 {

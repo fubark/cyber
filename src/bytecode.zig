@@ -304,7 +304,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .constI8Int,
         .call0,
         .call1,
-        .jumpBack,
         .jump,
         .coyield,
         .coresume,
@@ -449,9 +448,8 @@ pub const OpCode = enum(u8) {
     /// Pops top register, if value evals to false, jumps the pc forward by an offset.
     jumpNotCond,
     jumpCond,
-    /// Jumps the pc forward by an offset.
+    /// Jumps the pc by an 16-bit integer offset.
     jump,
-    jumpBack,
 
     // releaseMany,
     release,
@@ -539,7 +537,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 93);
+    try t.eq(std.enums.values(OpCode).len, 92);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

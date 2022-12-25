@@ -3599,12 +3599,9 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 vm.retain(framePtr[dst]);
                 continue;
             },
-            .jumpBack => {
-                pc -= @ptrCast(*const align(1) u16, &pc[1]).*;
-                continue;
-            },
             .jump => {
-                pc += @ptrCast(*const align(1) u16, &pc[1]).*;
+                @setRuntimeSafety(false);
+                pc += @intCast(usize, @ptrCast(*const align(1) i16, &pc[1]).*);
                 continue;
             },
             .jumpCond => {

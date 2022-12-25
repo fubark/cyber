@@ -20,3 +20,10 @@
 /stab.h
 /stab.dev
 /tccmacho.c
+/arm64-gen.c
+/arm64-link.c
+/arm64-asm.c
+/arm-gen.c
+/arm-link.c
+/arm-asm.c
+/arm-tok.h

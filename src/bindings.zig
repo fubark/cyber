@@ -791,7 +791,7 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
             stdx.panic("Failed to get symbol.");
         };
 
-        const func = @ptrCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
+        const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
         const key = gvm.allocString(sym) catch stdx.fatal();
         const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();

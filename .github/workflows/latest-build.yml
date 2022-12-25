@@ -80,7 +80,8 @@ jobs:
       - name: Clone repo.
         uses: actions/checkout@v2
         with:
-          fetch-depth: 1
+          # Fetch all so commit count can be computed from tag.
+          fetch-depth: 0
           #submodules: recursive
 
       - name: Install zig.

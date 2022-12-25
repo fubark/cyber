@@ -562,7 +562,7 @@ pub const VM = struct {
     /// Allocates an object outside of the object pool.
     fn allocObject(self: *VM, sid: StructId, fields: []const Value) !Value {
         // First slot holds the structId and rc.
-        const objSlice = try self.alloc.alloc(Value, 1 + fields.len);
+        const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 1 + fields.len);
         const obj = @ptrCast(*Object, objSlice.ptr);
         obj.* = .{
             .structId = sid,
@@ -712,7 +712,7 @@ pub const VM = struct {
         if (numCaptured <= 3) {
             obj = try self.allocPoolObject();
         } else {
-            const objSlice = try self.alloc.alloc(Value, 2 + numCaptured);
+            const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 2 + numCaptured);
             obj = @ptrCast(*HeapObject, objSlice.ptr);
         }
         obj.closure = .{
@@ -742,7 +742,7 @@ pub const VM = struct {
         if (capturedVals.len <= 3) {
             obj = try self.allocPoolObject();
         } else {
-            const objSlice = try self.alloc.alloc(Value, 2 + capturedVals.len);
+            const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 2 + capturedVals.len);
             obj = @ptrCast(*HeapObject, objSlice.ptr);
         }
         obj.closure = .{
@@ -2845,6 +2845,7 @@ const FieldSymbolMap = struct {
 };
 
 test "Internals." {
+    try t.eq(@alignOf(UserVM), UserVMAlign);
     try t.eq(@alignOf(VM), 8);
     try t.eq(@sizeOf(SymbolEntry), 16);
     try t.eq(@alignOf(SymbolMap), 8);
@@ -3040,9 +3041,12 @@ const RcNode = struct {
 
 const Root = @This();
 
+/// Match VM 16-byte alignment on arm64.
+const UserVMAlign = if (builtin.cpu.arch == .aarch64) 16 else 8;
+
 /// A simplified VM handle.
 pub const UserVM = struct {
-    dummy: u64 = 0,
+    dummy: u64 align(UserVMAlign) = undefined,
 
     pub fn init(_: UserVM, alloc: std.mem.Allocator) !void {
         try gvm.init(alloc);

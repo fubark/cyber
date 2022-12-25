@@ -5,11 +5,9 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.debug);
 
-const Section = ".eval2";
-
 const NullId = std.math.maxInt(u32);
 
-pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(Section) void {
+pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
     for (src) |ch, i| {
@@ -26,7 +24,7 @@ pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, ou
     }
 }
 
-pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(Section) void {
+pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
     for (tokens) |token| {

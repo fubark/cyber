@@ -2031,7 +2031,7 @@ pub const VM = struct {
     }
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-    pub fn valueToTempString(self: *const VM, val: Value) linksection(".eval2") []const u8 {
+    pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         if (val.isNumber()) {
             const f = val.asF64();
             if (Value.floatIsSpecial(f)) {

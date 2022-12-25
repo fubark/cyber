@@ -442,7 +442,7 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
                 stdx.fatal();
             };
         } else {
-            lib.* = std.DynLib.openz("") catch |err| {
+            lib.* = std.DynLib.openZ("") catch |err| {
                 log.debug("{}", .{err});
                 stdx.fatal();
             };

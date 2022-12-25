@@ -302,8 +302,8 @@ test "FFI." {
             \\lib = bindLib(none, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
             \\try t.eq(lib, error(#MissingSymbol))
             \\
-            \\lib = try bindLib(none, [
-            \\  CFunc{ sym: '_testAdd', args: [#int, #int], ret: #int }
+            \\lib = bindLib(none, [
+            \\  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
             \\  CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }
             \\  CFunc{ sym: 'testU8', args: [#u8], ret: #u8 }
             \\  CFunc{ sym: 'testI16', args: [#i16], ret: #i16 }

@@ -21,6 +21,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "for", .for_k },
     .{ "func", .func_k },
     .{ "break", .break_k },
+    .{ "continue", .continue_k },
     .{ "await", .await_k },
     .{ "true", .true_k },
     .{ "false", .false_k },
@@ -1317,6 +1318,21 @@ pub const Parser = struct {
             },
             .pass_k => {
                 const id = try self.pushNode(.pass_stmt, self.next_pos);
+                self.advanceToken();
+                token = self.peekToken();
+                switch (token.tag()) {
+                    .none => return id,
+                    .new_line => {
+                        self.advanceToken();
+                        return id;
+                    },
+                    else => {
+                        return self.reportParseErrorAt("Expected end of statement.", &.{}, token);
+                    },
+                }
+            },
+            .continue_k => {
+                const id = try self.pushNode(.continueStmt, self.next_pos);
                 self.advanceToken();
                 token = self.peekToken();
                 switch (token.tag()) {
@@ -2786,6 +2802,7 @@ pub const TokenType = enum(u6) {
     indent,
     return_k,
     break_k,
+    continue_k,
     if_k,
     then_k,
     else_k,
@@ -2847,6 +2864,7 @@ pub const NodeType = enum {
     localDecl,
     pass_stmt,
     break_stmt,
+    continueStmt,
     return_stmt,
     return_expr_stmt,
     at_stmt,
@@ -4061,6 +4079,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 55);
-    try t.eq(keywords.kvs.len, 29);
+    try t.eq(std.enums.values(TokenType).len, 56);
+    try t.eq(keywords.kvs.len, 30);
 }

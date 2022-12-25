@@ -186,9 +186,9 @@ print add(5)     -- "10"
 [To Top.](#table-of-contents)
 
 ### Keywords.
-There are currently `29` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `30` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow](#control-flow): `if` `then` `else` `for` `break` `as` `pass`
+- [Control Flow](#control-flow): `if` `then` `else` `for` `as` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
 - [Variables](#variables): `var` `let`
 - [Functions](#functions): `func` `return`
@@ -684,6 +684,22 @@ for map as k, v:
 -- Iterate on just keys.
 for map as k, _:
     print k
+```
+You can exit a loop using `break`.
+```text
+for 0..10 as i:
+    if i == 4:
+        break
+    print i
+-- This loop stops printing once `i` reaches 4.
+```
+You can skip the rest of the loop and go to the next iteration using `continue`.
+```text
+for 0..10 as i:
+    if i == 4:
+        continue
+    print i
+-- This loop prints 0 through 9 but skips 4.
 ```
 [To Top.](#table-of-contents)
 

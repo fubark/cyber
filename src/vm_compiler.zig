@@ -630,6 +630,9 @@ pub const VMcompiler = struct {
             .break_stmt => {
                 return;
             },
+            .continueStmt => {
+                return;
+            },
             .opAssignStmt => {
                 const left = self.nodes[node.head.opAssignStmt.left];
                 if (left.node_t == .ident) {
@@ -1190,9 +1193,34 @@ pub const VMcompiler = struct {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
     }
 
-    fn patchSubBlockJumps(self: *VMcompiler, jumpStackStart: usize) void {
+    fn patchIfBlockJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize) void {
         for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
-            self.patchJumpToCurrent(jump.pc);
+            if (jump.jumpT == .brk) {
+                self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
+            } else {
+                fmt.panic("Unexpected jumpT {}", &.{v(jump.jumpT)});
+            }
+        }
+    }
+
+    fn patchForBlockJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize, contPc: usize) void {
+        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+            switch (jump.jumpT) {
+                .brk => {
+                    if (breakPc > jump.pc) {
+                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
+                    } else {
+                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - breakPc)));
+                    }
+                },
+                .cont => {
+                    if (contPc > jump.pc) {
+                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, contPc - jump.pc));
+                    } else {
+                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - contPc)));
+                    }
+                },
+            }
         }
     }
 
@@ -2001,7 +2029,11 @@ pub const VMcompiler = struct {
             },
             .break_stmt => {
                 const pc = try self.pushEmptyJump();
-                try self.subBlockJumpStack.append(self.alloc, .{ .pc = pc });
+                try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .brk, .pc = pc });
+            },
+            .continueStmt => {
+                const pc = try self.pushEmptyJump();
+                try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .cont, .pc = pc });
             },
             .opAssignStmt => {
                 const left = self.nodes[node.head.opAssignStmt.left];
@@ -2137,11 +2169,7 @@ pub const VMcompiler = struct {
 
                 const topPc = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer {
-                    self.patchSubBlockJumps(jumpStackSave);
-                    self.subBlockJumpStack.items.len = jumpStackSave;
-                    self.prevSemaSubBlock();
-                }
+                defer self.subBlockJumpStack.items.len = jumpStackSave;
 
                 const condv = try self.genExpr(node.head.left_right.left, false);
 
@@ -2151,17 +2179,16 @@ pub const VMcompiler = struct {
                 try self.pushJumpBackTo(topPc);
 
                 self.patchJumpToCurrent(jumpPc);
+
+                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
+                self.prevSemaSubBlock();
             },
             .for_inf_stmt => {
                 self.nextSemaSubBlock();
 
                 const pcSave = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer {
-                    self.patchSubBlockJumps(jumpStackSave);
-                    self.subBlockJumpStack.items.len = jumpStackSave;
-                    self.prevSemaSubBlock();
-                }
+                defer self.subBlockJumpStack.items.len = jumpStackSave;
 
                 // TODO: generate gas meter checks.
                 // if (self.opts.gas_meter != .none) {
@@ -2175,6 +2202,9 @@ pub const VMcompiler = struct {
 
                 try self.genStatements(node.head.child_head, false);
                 try self.pushJumpBackTo(pcSave);
+
+                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, pcSave);
+                self.prevSemaSubBlock();
             },
             .for_iter_stmt => {
                 self.nextSemaSubBlock();
@@ -2231,8 +2261,10 @@ pub const VMcompiler = struct {
 
                 const bodyPc = self.buf.ops.items.len;
                 const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
+                defer self.subBlockJumpStack.items.len = jumpStackSave;
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
 
+                const contPc = self.buf.ops.items.len;
                 try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
                 if (pairIter) {
                     try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
@@ -2245,9 +2277,7 @@ pub const VMcompiler = struct {
 
                 try self.pushJumpBackNotNone(bodyPc, if (pairIter) keyVar.local else valVar.local);
 
-                // Patch breaks.
-                self.patchSubBlockJumps(jumpStackSave);
-                self.subBlockJumpStack.items.len = jumpStackSave;
+                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, contPc);
 
                 try self.buf.pushOp1(.release, iterLocal);
                 self.patchJumpToCurrent(skipBodyJump);
@@ -2307,6 +2337,7 @@ pub const VMcompiler = struct {
 
                 const bodyPc = self.buf.ops.items.len;
                 const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
+                defer self.subBlockJumpStack.items.len = jumpStackSave;
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
 
                 // Perform counter update and perform check against end range.
@@ -2317,9 +2348,7 @@ pub const VMcompiler = struct {
                 try self.buf.pushOpSlice(.forRange, &.{ counter, rangeStep, rangeEnd, local, 0, 0 });
                 self.buf.setOpArgU16(forRangeOp + 5, jumpBackOffset);
 
-                // Patch breaks.
-                self.patchSubBlockJumps(jumpStackSave);
-                self.subBlockJumpStack.items.len = jumpStackSave;
+                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, forRangeOp);
             },
             .if_stmt => {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -2335,15 +2364,12 @@ pub const VMcompiler = struct {
                 var elseClauseId = node.head.left_right.extra;
                 if (elseClauseId != NullId) {
                     const jumpsStart = self.subBlockJumpStack.items.len;
-                    defer {
-                        self.patchSubBlockJumps(jumpsStart);
-                        self.subBlockJumpStack.items.len = jumpsStart;
-                    }
+                    defer self.subBlockJumpStack.items.len = jumpsStart;
 
                     var endsWithElse = false;
                     while (elseClauseId != NullId) {
                         const pc = try self.pushEmptyJump();
-                        try self.subBlockJumpStack.append(self.alloc, .{ .pc = pc });
+                        try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .brk, .pc = pc });
 
                         self.patchJumpToCurrent(lastCondJump);
 
@@ -2371,6 +2397,7 @@ pub const VMcompiler = struct {
                     if (!endsWithElse) {
                         self.patchJumpToCurrent(lastCondJump);
                     }
+                    self.patchIfBlockJumps(jumpsStart, self.buf.ops.items.len);
                 } else {
                     self.patchJumpToCurrent(lastCondJump);
                 }
@@ -4156,7 +4183,13 @@ const BlockJump = struct {
     pc: u32,
 };
 
+const SubBlockJumpType = enum {
+    brk,
+    cont,
+};
+
 const SubBlockJump = struct {
+    jumpT: SubBlockJumpType,
     pc: u32,
 };
 

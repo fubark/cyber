@@ -1669,16 +1669,28 @@ test "Infinite for loop." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Infinite loop clause.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
+        \\-- Infinite loop clause.
         \\i = 0
         \\for:
         \\  i += 1
         \\  if i == 10:
         \\    break
-        \\i
+        \\try t.eq(i, 10)
+        \\
+        \\-- Continue.
+        \\i = 0
+        \\count = 0
+        \\for:
+        \\  i += 1
+        \\  if i == 4:
+        \\    continue
+        \\  count += 1
+        \\  if i == 10:
+        \\    break
+        \\try t.eq(count, 9)
     );
-    try t.eq(val.asF64toI32(), 10);
 }
 
 test "Conditional for loop." {
@@ -1699,6 +1711,16 @@ test "Conditional for loop." {
         \\  i += 1
         \\  break
         \\try t.eq(i, 1)
+        \\
+        \\-- continue
+        \\i = 0
+        \\count = 0
+        \\for i != 10:
+        \\  i += 1
+        \\  if i == 2:
+        \\    continue
+        \\  count += 1
+        \\try t.eq(count, 9)
     );
 }
 
@@ -1731,6 +1753,15 @@ test "For iterator." {
         \\      break
         \\   sum += it
         \\try t.eq(sum, 3)
+        \\
+        \\-- Continue.
+        \\list = [1, 2, 3]
+        \\sum = 0
+        \\for list as it:
+        \\   if it == 1:
+        \\      continue
+        \\   sum += it
+        \\try t.eq(sum, 5)
     );
 }
 
@@ -1793,6 +1824,14 @@ test "For loop over range." {
         \\       break
         \\   iters += 1
         \\try t.eq(iters, 2)
+        \\
+        \\-- Continue.
+        \\iters = 0
+        \\for 0..10 as i:
+        \\   if i == 2:
+        \\       continue
+        \\   iters += 1
+        \\try t.eq(iters, 9)
     );
 
     // Custom step.

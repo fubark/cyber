@@ -106,7 +106,7 @@ pub const Value = packed union {
         if (self.isNumber()) {
             return self.asF64();
         } else {
-            return @call(.{ .modifier = .never_inline }, otherToF64, .{self});
+            return @call(.never_inline, otherToF64, .{self});
         }
     }
 

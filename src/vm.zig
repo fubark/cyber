@@ -196,7 +196,7 @@ pub const VM = struct {
         self.heapFreeHead = try self.growHeapPages(1);
 
         // Core bindings.
-        try @call(.{ .modifier = .never_inline }, bindings.bindCore, .{self});
+        try @call(.never_inline, bindings.bindCore, .{self});
     }
 
     pub fn deinit(self: *VM) void {
@@ -485,7 +485,7 @@ pub const VM = struct {
             return error.NoEndOp;
         }
 
-        @call(.{ .modifier = .never_inline }, self.prepareEvalCold, .{buf});
+        @call(.never_inline, self.prepareEvalCold, .{buf});
 
         // Set these last to hint location to cache before eval.
         self.pc = @ptrCast([*]cy.OpData, buf.ops.items.ptr);
@@ -496,7 +496,7 @@ pub const VM = struct {
         self.consts = buf.mconsts;
         self.strBuf = buf.strBuf.items;
 
-        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{self});
+        try @call(.never_inline, evalLoopGrowStack, .{self});
         if (TraceEnabled) {
             log.info("main stack size: {}", .{buf.mainStackSize});
         }
@@ -1413,7 +1413,7 @@ pub const VM = struct {
                 },
                 MapS => {
                     const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
-                    if (@call(.{ .modifier = .never_inline }, map.get, .{self, index})) |val| {
+                    if (@call(.never_inline, map.get, .{self, index})) |val| {
                         return val;
                     } else return Value.None;
                 },
@@ -1655,7 +1655,7 @@ pub const VM = struct {
                 if (obj.common.structId == symMap.inner.many.mruStructId) {
                     return @intCast(u8, symMap.inner.many.mruOffset);
                 } else {
-                    return @call(.{ .modifier = .never_inline }, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
+                    return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
                 }
             },
             .empty => {
@@ -1893,7 +1893,7 @@ pub const VM = struct {
                 if (map.inner.many.mruStructId == typeId) {
                     return map.inner.many.mruSym;
                 } else {
-                    return @call(.{ .modifier = .never_inline }, self.getCallObjSymFromTable, .{typeId, symId});
+                    return @call(.never_inline, self.getCallObjSymFromTable, .{typeId, symId});
                 }
             },
             .empty => {
@@ -1921,7 +1921,7 @@ pub const VM = struct {
                 },
                 .many => {
                     if (map.inner.many.mruStructId == obj.retainedCommon.structId) {
-                        return try @call(.{ .modifier = .never_inline }, callSymEntryNoInline, .{pc, framePtr, map.inner.many.mruSym, obj, startLocal, numArgs, reqNumRetVals});
+                        return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, map.inner.many.mruSym, obj, startLocal, numArgs, reqNumRetVals});
                     } else {
                         const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse {
                             log.debug("Symbol does not exist for receiver.", .{});
@@ -1931,11 +1931,11 @@ pub const VM = struct {
                             .mruStructId = obj.retainedCommon.structId,
                             .mruSym = sym,
                         };
-                        return try @call(.{ .modifier = .never_inline }, callSymEntryNoInline, .{pc, framePtr, sym, obj, startLocal, numArgs, reqNumRetVals});
+                        return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, sym, obj, startLocal, numArgs, reqNumRetVals});
                     }
                 },
                 .empty => {
-                    return try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, reqNumRetVals});
+                    return try @call(.never_inline, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, reqNumRetVals});
                 },
                 // else => {
                 //     unreachable;
@@ -2144,7 +2144,7 @@ pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(Section) void {
         vm.trace.numReleaseAttempts += 1;
     }
     if (obj.retainedCommon.rc == 0) {
-        @call(.{ .modifier = .never_inline }, freeObject, .{vm, obj});
+        @call(.never_inline, freeObject, .{vm, obj});
     }
 }
 
@@ -2256,7 +2256,7 @@ pub fn release(vm: *VM, val: Value) linksection(".eval") void {
             vm.trace.numReleases += 1;
         }
         if (obj.retainedCommon.rc == 0) {
-            @call(.{ .modifier = .never_inline }, freeObject, .{vm, obj});
+            @call(.never_inline, freeObject, .{vm, obj});
         }
     }
 }
@@ -2549,7 +2549,7 @@ fn toF64OrPanic(val: Value) linksection(".eval") !f64 {
     if (val.isNumber()) {
         return val.asF64();
     } else {
-        return try @call(.{ .modifier = .never_inline }, convToF64OrPanic, .{val});
+        return try @call(.never_inline, convToF64OrPanic, .{val});
     }
 }
 
@@ -3184,7 +3184,7 @@ pub const UserVM = struct {
         }
         const retInfo = buildReturnInfo(1, false);
         try callNoInline(&vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len + 1), retInfo);
-        try @call(.{ .modifier = .never_inline }, evalLoopGrowStack, .{vm});
+        try @call(.never_inline, evalLoopGrowStack, .{vm});
 
         const res = vm.framePtr[0];
 
@@ -3199,15 +3199,15 @@ pub const UserVM = struct {
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
 pub fn evalLoopGrowStack(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     while (true) {
-        @call(.{ .modifier = .always_inline }, evalLoop, .{vm}) catch |err| {
+        @call(.always_inline, evalLoop, .{vm}) catch |err| {
             if (err == error.StackOverflow) {
                 log.debug("grow stack", .{});
-                try @call(.{ .modifier = .never_inline }, growStackAuto, .{ vm });
+                try @call(.never_inline, growStackAuto, .{ vm });
                 continue;
             } else if (err == error.End) {
                 return;
             } else if (err == error.Panic) {
-                try @call(.{ .modifier = .never_inline }, gvm.buildStackTrace, .{true});
+                try @call(.never_inline, gvm.buildStackTrace, .{true});
                 return error.Panic;
             } else return err;
         };
@@ -3292,7 +3292,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .field };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{ recv, pc[3].arg });
+                framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
                 pc += 7;
                 continue;
             },
@@ -3309,7 +3309,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
-                    break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
+                    break :b @call(.never_inline, cond.toBool, .{});
                 };
                 if (!condVal) {
                     pc += jump;
@@ -3323,7 +3323,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 // gvm.stack[gvm.framePtr + pc[2].arg] = if (val.isNumber())
                 //     Value.initF64(-val.asF64())
                 // else 
-                    // @call(.{ .modifier = .never_inline }, evalNegFallback, .{val});
+                    // @call(.never_inline, evalNegFallback, .{val});
                 framePtr[pc[2].arg] = evalNeg(val);
                 pc += 3;
                 continue;
@@ -3337,14 +3337,14 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
             .compareNot => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompareNot, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalCompareNot, .{left, right});
                 pc += 4;
                 continue;
             },
             .compare => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{.modifier = .never_inline }, evalCompare, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalCompare, .{left, right});
                 pc += 4;
                 continue;
             },
@@ -3363,7 +3363,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initBool(left.asF64() < right.asF64())
                 else
-                    @call(.{ .modifier = .never_inline }, evalLessFallback, .{left, right});
+                    @call(.never_inline, evalLessFallback, .{left, right});
                 pc += 4;
                 continue;
             },
@@ -3404,7 +3404,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 if (Value.bothNumbers(left, right)) {
                     framePtr[pc[3].arg] = Value.initF64(left.asF64() + right.asF64());
                 } else {
-                    framePtr[pc[3].arg] = try @call(.{ .modifier = .never_inline }, evalAddFallback, .{ left, right });
+                    framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ left, right });
                 }
                 pc += 4;
                 continue;
@@ -3421,7 +3421,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initF64(left.asF64() - right.asF64())
-                else @call(.{ .modifier = .never_inline }, evalMinusFallback, .{left, right});
+                else @call(.never_inline, evalMinusFallback, .{left, right});
                 pc += 4;
                 continue;
             },
@@ -3440,7 +3440,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const strs = pc[4 .. 4 + strCount];
                 pc += 4 + strCount;
                 const vals = framePtr[startLocal .. startLocal + exprCount];
-                const res = try @call(.{ .modifier = .never_inline }, gvm.allocStringTemplate, .{strs, vals});
+                const res = try @call(.never_inline, gvm.allocStringTemplate, .{strs, vals});
                 framePtr[dst] = res;
                 continue;
             },
@@ -3564,7 +3564,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
-                framePtr[dst] = try @call(.{.modifier = .never_inline}, gvm.getIndex, .{leftv, indexv});
+                framePtr[dst] = try @call(.never_inline, gvm.getIndex, .{leftv, indexv});
                 continue;
             },
             .indexRetain => {
@@ -3574,7 +3574,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
-                framePtr[dst] = try @call(.{.modifier = .never_inline}, gvm.getIndex, .{leftv, indexv});
+                framePtr[dst] = try @call(.never_inline, gvm.getIndex, .{leftv, indexv});
                 vm.retain(framePtr[dst]);
                 continue;
             },
@@ -3585,7 +3585,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
-                framePtr[dst] = try @call(.{.modifier = .never_inline}, gvm.getReverseIndex, .{leftv, indexv});
+                framePtr[dst] = try @call(.never_inline, gvm.getReverseIndex, .{leftv, indexv});
                 continue;
             },
             .reverseIndexRetain => {
@@ -3595,7 +3595,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 pc += 4;
                 const indexv = framePtr[index];
                 const leftv = framePtr[left];
-                framePtr[dst] = try @call(.{.modifier = .never_inline}, gvm.getReverseIndex, .{leftv, indexv});
+                framePtr[dst] = try @call(.never_inline, gvm.getReverseIndex, .{leftv, indexv});
                 vm.retain(framePtr[dst]);
                 continue;
             },
@@ -3613,7 +3613,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
-                    break :b @call(.{ .modifier = .never_inline }, cond.toBool, .{});
+                    break :b @call(.never_inline, cond.toBool, .{});
                 };
                 if (condVal) {
                     @setRuntimeSafety(false);
@@ -3631,8 +3631,8 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const callee = framePtr[startLocal + numArgs + 4 - 1];
                 const retInfo = buildReturnInfo(0, true);
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 0, true);
-                // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
-                try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
+                // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
+                try @call(.always_inline, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
             .call1 => {
@@ -3643,8 +3643,8 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const callee = framePtr[startLocal + numArgs + 4 - 1];
                 const retInfo = buildReturnInfo(1, true);
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 1, true);
-                // try @call(.{ .modifier = .never_inline }, gvm.call, .{&pc, callee, numArgs, retInfo});
-                try @call(.{ .modifier = .always_inline }, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
+                // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
+                try @call(.always_inline, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
             .callObjFuncIC => {
@@ -3761,14 +3761,14 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 continue;
             },
             .ret1 => {
-                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal1, .{vm, &pc, &framePtr})) {
+                if (@call(.always_inline, popStackFrameLocal1, .{vm, &pc, &framePtr})) {
                     continue;
                 } else {
                     return;
                 }
             },
             .ret0 => {
-                if (@call(.{ .modifier = .always_inline }, popStackFrameLocal0, .{&pc, &framePtr})) {
+                if (@call(.always_inline, popStackFrameLocal0, .{&pc, &framePtr})) {
                     continue;
                 } else {
                     return;
@@ -3791,7 +3791,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .setFieldRelease };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-                try @call(.{ .modifier = .never_inline }, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
+                try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
                 pc += 7;
                 continue;
             },
@@ -3812,7 +3812,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .fieldRetain };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{ recv, pc[3].arg });
+                framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
                 vm.retain(framePtr[dst]);
                 pc += 7;
                 continue;
@@ -3878,7 +3878,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const recv = framePtr[left];
                 const val = framePtr[right];
                 try gvm.setField(recv, fieldId, val);
-                // try @call(.{ .modifier = .never_inline }, gvm.setField, .{recv, fieldId, val});
+                // try @call(.never_inline, gvm.setField, .{recv, fieldId, val});
                 continue;
             },
             .fieldRelease => {
@@ -3887,7 +3887,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const dst = pc[3].arg;
                 pc += 4;
                 const recv = framePtr[left];
-                framePtr[dst] = try @call(.{ .modifier = .never_inline }, gvm.getField, .{recv, fieldId});
+                framePtr[dst] = try @call(.never_inline, gvm.getField, .{recv, fieldId});
                 release(vm, recv);
                 continue;
             },
@@ -3898,7 +3898,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const recv = framePtr[left];
                 if (recv.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
-                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = gvm.getFieldOffset(obj, symId);
                     if (offset != NullByteId) {
                         framePtr[dst] = obj.object.getValue(offset);
@@ -3907,7 +3907,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData { .arg = offset };
                     } else {
-                        framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                        framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
                 } else {
                     return vm.getFieldMissingSymbolError();
@@ -3921,7 +3921,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const symId = pc[3].arg;
                 if (recv.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
-                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = gvm.getFieldOffset(obj, symId);
                     if (offset != NullByteId) {
                         framePtr[dst] = obj.object.getValue(offset);
@@ -3930,7 +3930,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData { .arg = offset };
                     } else {
-                        framePtr[dst] = @call(.{ .modifier = .never_inline }, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                        framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
                     vm.retain(framePtr[dst]);
                 } else {
@@ -3945,7 +3945,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const symId = pc[3].arg;
                 if (recv.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
-                    // const offset = @call(.{ .modifier = .never_inline }, gvm.getFieldOffset, .{obj, symId });
+                    // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = gvm.getFieldOffset(obj, symId);
                     if (offset != NullByteId) {
                         const lastValue = obj.object.getValuePtr(offset);
@@ -4048,7 +4048,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const dst = pc[5].arg;
 
                 const args = framePtr[startArgsLocal..startArgsLocal + numArgs];
-                const fiber = try @call(.{ .modifier = .never_inline }, allocFiber, .{pcOffset(pc + 6), args, initialStackSize});
+                const fiber = try @call(.never_inline, allocFiber, .{pcOffset(pc + 6), args, initialStackSize});
                 framePtr[dst] = fiber;
                 pc += jump;
                 continue;
@@ -4058,7 +4058,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
-                framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalMultiply, .{srcLeft, srcRight});
+                framePtr[dstLocal] = @call(.never_inline, evalMultiply, .{srcLeft, srcRight});
                 continue;
             },
             .div => {
@@ -4066,7 +4066,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
-                framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalDivide, .{srcLeft, srcRight});
+                framePtr[dstLocal] = @call(.never_inline, evalDivide, .{srcLeft, srcRight});
                 continue;
             },
             .mod => {
@@ -4074,7 +4074,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
-                framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalMod, .{srcLeft, srcRight});
+                framePtr[dstLocal] = @call(.never_inline, evalMod, .{srcLeft, srcRight});
                 continue;
             },
             .pow => {
@@ -4082,7 +4082,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
-                framePtr[dstLocal] = @call(.{ .modifier = .never_inline }, evalPower, .{srcLeft, srcRight});
+                framePtr[dstLocal] = @call(.never_inline, evalPower, .{srcLeft, srcRight});
                 continue;
             },
             .box => {
@@ -4116,7 +4116,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 if (builtin.mode == .Debug) {
                     std.debug.assert(obj.common.structId == BoxS);
                 }
-                @call(.{ .modifier = .never_inline }, release, .{vm, obj.box.val});
+                @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
                 continue;
             },
@@ -4150,7 +4150,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 // gvm.stack[gvm.framePtr + pc[2].arg] = obj.box.val;
                 // vm.retain(obj.box.val);
                 // pc += 3;
-                framePtr[pc[2].arg] = @call(.{ .modifier = .never_inline }, boxValueRetain, .{box});
+                framePtr[pc[2].arg] = @call(.never_inline, boxValueRetain, .{box});
                 pc += 3;
                 continue;
             },
@@ -4180,41 +4180,41 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
             .bitwiseAnd => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseAnd, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseAnd, .{left, right});
                 pc += 4;
                 continue;
             },
             .bitwiseOr => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseOr, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseOr, .{left, right});
                 pc += 4;
                 continue;
             },
             .bitwiseXor => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseXor, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseXor, .{left, right});
                 pc += 4;
                 continue;
             },
             .bitwiseNot => {
                 const val = framePtr[pc[1].arg];
-                framePtr[pc[2].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseNot, .{val});
+                framePtr[pc[2].arg] = @call(.never_inline, evalBitwiseNot, .{val});
                 pc += 3;
                 continue;
             },
             .bitwiseLeftShift => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseLeftShift, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseLeftShift, .{left, right});
                 pc += 4;
                 continue;
             },
             .bitwiseRightShift => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.{ .modifier = .never_inline }, evalBitwiseRightShift, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseRightShift, .{left, right});
                 pc += 4;
                 continue;
             },
@@ -4222,7 +4222,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const capVal = framePtr[pc[1].arg];
                 const numSyms = pc[2].arg;
                 const syms = pc[3..3+numSyms*2];
-                @call(.{ .modifier = .never_inline }, setCapValToFuncSyms, .{ vm, capVal, numSyms, syms });
+                @call(.never_inline, setCapValToFuncSyms, .{ vm, capVal, numSyms, syms });
                 pc += 3 + numSyms*2;
                 continue;
             },
@@ -4244,11 +4244,11 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 }
 
                 if (gvm.getCallObjSym(typeId, symId)) |sym| {
-                    const res = try @call(.{ .modifier = .never_inline }, gvm.callSymEntry, .{pc, framePtr, sym, obj, typeId, startLocal, numArgs, numRet });
+                    const res = try @call(.never_inline, gvm.callSymEntry, .{pc, framePtr, sym, obj, typeId, startLocal, numArgs, numRet });
                     pc = res.pc;
                     framePtr = res.framePtr;
                 } else {
-                    const res = try @call(.{ .modifier = .never_inline }, callObjSymFallback, .{pc, framePtr, obj, typeId, symId, startLocal, numArgs, numRet});
+                    const res = try @call(.never_inline, callObjSymFallback, .{pc, framePtr, obj, typeId, symId, startLocal, numArgs, numRet});
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
@@ -4259,7 +4259,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
                 const numArgs = pc[2].arg;
                 const numRet = pc[3].arg;
                 const symId = pc[4].arg;
-                const res = try @call(.{ .modifier = .never_inline }, gvm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
+                const res = try @call(.never_inline, gvm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
                 pc = res.pc;
                 framePtr = res.framePtr;
                 continue;
@@ -4586,7 +4586,7 @@ fn getObjectFunctionFallback(obj: *const HeapObject, typeId: u32, symId: SymbolI
 /// Use new pc local to avoid deoptimization.
 fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, typeId: u32, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) !PcFramePtr {
     @setCold(true);
-    // const func = try @call(.{ .modifier = .never_inline }, getObjectFunctionFallback, .{obj, symId});
+    // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const func = try getObjectFunctionFallback(obj, typeId, symId);
 
     gvm.retain(func);
@@ -4598,7 +4598,7 @@ fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, ty
     const retInfo = buildReturnInfo2(reqNumRetVals, true);
     var newPc = pc;
     var newFramePtr = framePtr;
-    try @call(.{ .modifier = .always_inline }, callNoInline, .{&newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
+    try @call(.always_inline, callNoInline, .{&newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
     return PcFramePtr{
         .pc = newPc,
         .framePtr = newFramePtr,

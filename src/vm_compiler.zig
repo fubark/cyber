@@ -556,7 +556,7 @@ pub const VMcompiler = struct {
                 },
             },
         });
-        try @call(.{ .modifier = .never_inline }, self.semaResolvedSymMap.put, .{self.alloc, pathDupe, resolvedId});
+        try @call(.never_inline, self.semaResolvedSymMap.put, .{self.alloc, pathDupe, resolvedId});
         self.semaSyms.items[symId].resolvedSymId = resolvedId;
     }
 

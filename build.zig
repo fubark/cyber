@@ -76,6 +76,10 @@ pub fn build(b: *std.build.Builder) !void {
         const traceTest = addTraceTest(b, mode, target);
         b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
     }
+
+    const printStep = b.allocator.create(PrintStep) catch unreachable;
+    printStep.* = PrintStep.init(b, Version);
+    b.step("version", "Get the short version.").dependOn(&printStep.step);
 }
 
 fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget) *std.build.LibExeObjStep {
@@ -104,3 +108,22 @@ const stdxPkg = std.build.Pkg{
 fn srcPath() []const u8 {
     return std.fs.path.dirname(@src().file) orelse unreachable;
 }
+
+pub const PrintStep = struct {
+    step: std.build.Step,
+    builder: *std.build.Builder,
+    str: []const u8,
+
+    pub fn init(builder: *std.build.Builder, str: []const u8) PrintStep {
+        return PrintStep{
+            .builder = builder,
+            .step = std.build.Step.init(.custom, "print", builder.allocator, make),
+            .str = builder.dupe(str),
+        };
+    }
+
+    fn make(step: *std.build.Step) anyerror!void {
+        const self = @fieldParentPtr(PrintStep, "step", step);
+        std.io.getStdOut().writer().writeAll(self.str) catch unreachable;
+    }
+};

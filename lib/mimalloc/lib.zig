@@ -29,6 +29,8 @@ pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
     if (step.target.getOsTag() == .windows) {
     } else if (step.target.getOsTag() == .macos) {
+        // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
+        lib.addSystemIncludePath("/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include");
         lib.addSystemIncludePath("/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include");
     }
     if (step.build_mode == .Debug) {

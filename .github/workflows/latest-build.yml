@@ -31,10 +31,10 @@ jobs:
             target: x86_64-linux-gnu
             mode: release
           - host: macos-12
-            target: x86_64-macos-none
+            target: x86_64-macos.12-none
             mode: release
           - host: macos-12
-            target: aarch64-macos-none
+            target: aarch64-macos.12-none
             mode: release
           #- host: windows-2019
           #  target: x86_64-windows-gnu
@@ -47,15 +47,15 @@ jobs:
         ${{ fromJson('{
           "x86_64-windows-gnu": "cyber-windows-x64.zip",
           "x86_64-linux-gnu": "cyber-linux-x64.zip",
-          "x86_64-macos-none": "cyber-macos-x64.zip",
-          "aarch64-macos-none": "cyber-macos-arm64.zip",
+          "x86_64-macos.12-none": "cyber-macos-x64.zip",
+          "aarch64-macos.12-none": "cyber-macos-arm64.zip",
         }')[matrix.config.target] }}
       ZIG_TARGET_FLAG: >-
         ${{ fromJson('{
           "x86_64-windows-gnu": "-Dtarget=x86_64-windows-gnu -Dcpu=baseline",
           "x86_64-linux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline",
-          "x86_64-macos-none": "-Dtarget=x86_64-macos.10.13-none -Dcpu=baseline",
-          "aarch64-macos-none": "-Dtarget=aarch64-macos.11-none -Dcpu=baseline",
+          "x86_64-macos.12-none": "-Dtarget=x86_64-macos.12-none -Dcpu=baseline",
+          "aarch64-macos.12-none": "-Dtarget=aarch64-macos.12-none -Dcpu=baseline",
         }')[matrix.config.target] }}
       BUILD_HOST: ${{ matrix.config.host }}
       BUILD_TARGET: ${{ matrix.config.target }}
@@ -64,12 +64,12 @@ jobs:
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Drelease-fast') || '' }}
     steps:
-      #- name: Install Linux deps.
-      #  if: env.BUILD_HOST == 'ubuntu-20.04' && env.BUILD_TARGET == 'x86_64-linux-gnu'
-      #  run: |
-      #    sudo add-apt-repository -y "deb http://archive.ubuntu.com/ubuntu `lsb_release -sc` main universe restricted multiverse"
-      #    sudo apt-get update -y -qq
-      #    sudo apt-get install libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libxxf86vm-dev libxss-dev libgl1-mesa-dev libvulkan-dev
+      - name: Install Linux deps.
+        if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'x86_64-linux-gnu'
+        run: |
+          sudo add-apt-repository -y "deb http://archive.ubuntu.com/ubuntu `lsb_release -sc` main universe restricted multiverse"
+          sudo apt-get update -y -qq
+          sudo apt-get install xz-utils
 
       - name: Setup WSL (windows)
         if: env.BUILD_TARGET == 'x86_64-windows-gnu'
@@ -84,29 +84,37 @@ jobs:
           #submodules: recursive
 
       - name: Install zig.
-        uses: goto-bus-stop/setup-zig@v1
-        with:
-          # version: master
-          version: 0.11.0+a193ec432
-          # version: 0.9.0
+        if: env.BUILD_HOST == 'ubuntu-22.04'
+        run: |
+          wget -c https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.944+a193ec432.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+
+      - name: Install zig.
+        if: env.BUILD_HOST == 'macos-12'
+        run: |
+          wget -c https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.944+a193ec432.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          xcode-select --print-path
 
       - name: Setup script.
         uses: actions/github-script@v5
         with:
           script: |
-            core.exportVariable('SHORT_SHA', context.sha.substring(0, 7))
+            core.exportVariable('COMMIT', context.sha.substring(0, 7))
 
-      #- name: Get version.
-      #  if: env.BUILD_HOST == 'ubuntu-20.04' || env.BUILD_HOST == 'macos-11'
-      #  run: |
-      #    zig build version -fstage1 2>&1 | tee version
-      #    echo "BUILD_VERSION=$(cat version)" >> $GITHUB_ENV
+      - name: Get version.
+        if: env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12'
+        run: |
+          version=$(zig build version)
+          echo "SHORT_VERSION=$version" >> $GITHUB_ENV
+          git fetch --all --tags
+          echo "BUILD=$(git rev-list --count $version-init..master)" >> $GITHUB_ENV
 
       - name: Get version. (windows)
         if: env.BUILD_HOST == 'windows-2019'
         run: |
-          zig build version -fstage1 > version 2>&1
-          echo "BUILD_VERSION=$(cat version)" >> $env:GITHUB_ENV
+          version=$(zig build version)
+          echo "SHORT_VERSION=$version" >> $env:GITHUB_ENV
+          git fetch --all --tags
+          echo "BUILD=$(git rev-list --count $version-init..master)" >> $env:GITHUB_ENV
 
       - name: Cache.
         # Don't cache for windows, since there are issues with subsequent builds. Check to re-enable this later.
@@ -122,36 +130,31 @@ jobs:
           restore-keys:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
-      # Test core does not build external libs. It's nice to surface problems with the codebase first before doing a full build.
-      - name: Test core.
-        if: env.BUILD_TARGET != 'aarch64-macos-none'
-        run: zig build test ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }} -Dfetch -fstage1
-
-      - name: Test app.
-        #if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'x86_64-windows-gnu'
+      - name: Run tests.
+        #if: env.BUILD_TARGET != 'aarch64-macos.12-none' && env.BUILD_TARGET != 'x86_64-windows-gnu'
         #run: zig build test ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }} 
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Build.
         run: zig build cli ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
 
-       # Remove when zig strip is fixed.
-       - name: Strip (Linux)
-         if: env.BUILD_TARGET == 'x86_64-linux-gnu' && env.BUILD_MODE == 'release'
-         run: |
-           strip zig-out/cyber/cyber
+      # Remove when zig strip is fixed.
+      - name: Strip (Linux)
+        if: env.BUILD_TARGET == 'x86_64-linux-gnu' && env.BUILD_MODE == 'release'
+        run: |
+          strip zig-out/cyber/cyber
 
       # # Don't strip aarch64 since it was already code signed.
       # # TODO: Look for way to make zig strip before doing the codesign.
       # - name: Strip (macOS)
-      #   if: env.BUILD_TARGET == 'x86_64-macos-none' && env.BUILD_MODE == 'release'
+      #   if: env.BUILD_TARGET == 'x86_64-macos.12-none' && env.BUILD_MODE == 'release'
       #   run: |
       #     strip zig-out/${{ env.BUILD_TARGET }}/main/main
 
       # # Currently just ad hoc signing.
       # # aarch64 build is automatically signed by zig.
       # - name: Codesign (macOS)
-      #   if: env.BUILD_TARGET == 'x86_64-macos-none' && env.BUILD_MODE == 'release'
+      #   if: env.BUILD_TARGET == 'x86_64-macos.12-none' && env.BUILD_MODE == 'release'
       #   run: |
       #     codesign --force --deep -s - zig-out/${{ env.BUILD_TARGET }}/main/main
 
@@ -171,61 +174,34 @@ jobs:
         run: |
           (cd zig-out/cyber && zip - cyber${{env.BIN_EXT}}) > ${{ env.BIN_ZIP }}
 
-      # - name: Save artifact.
-      #   uses: actions/upload-artifact@v2
-      #   with:
-      #     name: bin
-      #     path: |
-      #       ${{ env.BIN_ZIP }}
+      - name: Save artifact.
+        uses: actions/upload-artifact@v2
+        with:
+          name: bin
+          path: |
+            ${{ env.BIN_ZIP }}
 
     outputs:
-      version: ${{ env.BUILD_VERSION }}
-      short_sha: ${{ env.SHORT_SHA }}
+      short_version: ${{ env.SHORT_VERSION }}
+    #  version: ${{ env.BUILD_VERSION }}
 
-  # release:
-  #   needs: build
-  #   name: Release
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/download-artifact@v2
-  #       with:
-  #         name: bin
+  release:
+    needs: build
+    name: Release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: bin
 
-  #     - name: Rename with version.
-  #       run: |
-  #         mv cosmic-windows-x64.zip cosmic-windows-x64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-  #         mv cosmic-linux-x64.zip cosmic-linux-x64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-  #         mv cosmic-macos-x64.zip cosmic-macos-x64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-  #         mv cosmic-macos-arm64.zip cosmic-macos-arm64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-
-  #     - name: Github Release.
-  #       uses: marvinpinto/action-automatic-releases@latest
-  #       with:
-  #         repo_token: ${{ secrets.GITHUB_TOKEN }}
-  #         automatic_release_tag: latest
-  #         prerelease: false
-  #         title: ${{ needs.build.outputs.version }}
-  #         files: |
-  #           cosmic-windows-x64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-  #           cosmic-linux-x64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-  #           cosmic-macos-x64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-  #           cosmic-macos-arm64_${{ needs.build.outputs.version }}-${{ needs.build.outputs.short_sha }}.zip
-
-  # dispatch:
-  #   needs: release
-  #   name: Dispatch doc gen.
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - name: Dispatch doc gen workflow.
-  #       continue-on-error: true
-  #       uses: actions/github-script@v5
-  #       with:
-  #         github-token: ${{ secrets.PAT }}
-  #         script: |
-  #           await github.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
-  #             owner: 'fubark',
-  #             repo: 'cosmic-site',
-  #             workflow_id: 'gen-docs.yml',
-  #             // workflow should just exist in master, one of the workflow steps will then checkout gh_pages.
-  #             ref: 'master'
-  #           })
+      - name: Github Release.
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          automatic_release_tag: latest
+          prerelease: false
+          title: v${{ needs.build.outputs.short_version }}-Latest
+          files: |
+            cosmic-linux-x64.zip
+            cosmic-macos-x64.zip
+            cosmic-macos-arm64.zip

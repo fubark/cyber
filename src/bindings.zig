@@ -49,11 +49,11 @@ pub const TagLit = enum {
     map,
 };
 
-const StdSection = ".eval.std";
-const Section = ".eval2";
+const StdSection = cy.StdSection;
+const Section = cy.Section;
 
 // This keeps .eval section first in order.
-pub export fn forceSectionDep() linksection(".eval") callconv(.C) void {}
+pub export fn forceSectionDep() linksection(cy.HotSection) callconv(.C) void {}
 
 pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
@@ -1369,7 +1369,7 @@ pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 // Although it works, it requires native func calls to perform additional copies of pc and framePtr back to the eval loop,
 // which is a bad tradeoff for every other function call that doesn't need to.
 // One solution is to add another bytecode to call nativeFunc1 with control over execution context.
-// fn fiberResume(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(".eval") Value {
+// fn fiberResume(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.HotSection) Value {
 //     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
 //     if (&obj.fiber != @ptrCast(*cy.VM, vm).curFiber) {
 //         // Only resume fiber if it's not done.

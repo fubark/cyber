@@ -16,8 +16,7 @@ const log = stdx.log.scoped(.vm);
 
 const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
-const Section = ".eval";
-const StdSection = ".eval.std";
+const StdSection = cy.StdSection;
 
 /// Reserved symbols known at comptime.
 pub const ListS: StructId = 8;
@@ -444,7 +443,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) linksection(".eval") void {
+    pub fn popStackFrameCold(self: *VM, comptime numRetVals: u2) linksection(cy.HotSection) void {
         _ = self;
         @setRuntimeSafety(debug);
         switch (numRetVals) {
@@ -458,7 +457,7 @@ pub const VM = struct {
         }
     }
 
-    fn popStackFrameLocal(self: *VM, pc: *usize, retLocal: u8, comptime numRetVals: u2) linksection(".eval") bool {
+    fn popStackFrameLocal(self: *VM, pc: *usize, retLocal: u8, comptime numRetVals: u2) linksection(cy.HotSection) bool {
         @setRuntimeSafety(debug);
         _ = retLocal;
         _ = self;
@@ -647,7 +646,7 @@ pub const VM = struct {
         return res;
     }
 
-    fn freeObject(self: *VM, obj: *HeapObject) linksection(".eval") void {
+    fn freeObject(self: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         const prev = &(@ptrCast([*]HeapObject, obj) - 1)[0];
         if (prev.common.structId == NullId) {
             // Left is a free span. Extend length.
@@ -665,7 +664,7 @@ pub const VM = struct {
         }
     }
 
-    fn allocPoolObject(self: *VM) linksection(Section) !*HeapObject {
+    fn allocPoolObject(self: *VM) linksection(cy.HotSection) !*HeapObject {
         if (self.heapFreeHead == null) {
             self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.len * 15) / 10));
         }
@@ -770,7 +769,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocOwnedString(self: *VM, str: []u8) linksection(Section) !Value {
+    pub fn allocOwnedString(self: *VM, str: []u8) linksection(cy.HotSection) !Value {
         const obj = try self.allocPoolObject();
         obj.string = .{
             .structId = StringS,
@@ -977,7 +976,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocList(self: *VM, elems: []const Value) linksection(Section) !Value {
+    fn allocList(self: *VM, elems: []const Value) linksection(cy.HotSection) !Value {
         const obj = try self.allocPoolObject();
         obj.list = .{
             .structId = ListS,
@@ -1004,12 +1003,12 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    inline fn getLocal(self: *const VM, offset: u8) linksection(".eval") Value {
+    inline fn getLocal(self: *const VM, offset: u8) linksection(cy.HotSection) Value {
         @setRuntimeSafety(debug);
         return self.stack[self.framePtr + offset];
     }
 
-    inline fn setLocal(self: *const VM, offset: u8, val: Value) linksection(".eval") void {
+    inline fn setLocal(self: *const VM, offset: u8, val: Value) linksection(cy.HotSection) void {
         @setRuntimeSafety(debug);
         self.stack[self.framePtr + offset] = val;
     }
@@ -1522,7 +1521,7 @@ pub const VM = struct {
         return true;
     }
 
-    pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(Section) void {
+    pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(cy.HotSection) void {
         obj.retainedCommon.rc += 1;
         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
@@ -1534,7 +1533,7 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn retain(self: *VM, val: Value) linksection(Section) void {
+    pub inline fn retain(self: *VM, val: Value) linksection(cy.HotSection) void {
         if (TraceEnabled) {
             self.trace.numRetainAttempts += 1;
         }
@@ -1551,7 +1550,7 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(Section) void {
+    pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(cy.HotSection) void {
         if (TraceEnabled) {
             self.trace.numRetainAttempts += inc;
         }
@@ -1595,7 +1594,7 @@ pub const VM = struct {
         }
     }
 
-    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(".eval") !void {
+    fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(cy.HotSection) !void {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
             const symMap = self.fieldSyms.buf[fieldId];
@@ -1641,7 +1640,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(Section) u8 {
+    pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
         const symMap = self.fieldSyms.buf[symId];
         switch (symMap.mapT) {
             .one => {
@@ -1668,7 +1667,7 @@ pub const VM = struct {
         } 
     }
 
-    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(Section) !void {
+    pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(cy.HotSection) !void {
         @setCold(true);
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
@@ -1685,7 +1684,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(Section) !Value {
+    pub fn getField(self: *VM, recv: Value, symId: SymbolId) linksection(cy.HotSection) !Value {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const offset = self.getFieldOffset(obj, symId);
@@ -1699,7 +1698,7 @@ pub const VM = struct {
         }
     }
 
-    fn getFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(".eval") Value {
+    fn getFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(cy.HotSection) Value {
         @setCold(true);
         if (obj.common.structId == MapS) {
             const map = stdx.ptrAlignCast(*const MapInner, &obj.map.inner);
@@ -1713,7 +1712,7 @@ pub const VM = struct {
     }
 
     /// startLocal points to the first arg in the current stack frame.
-    fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(Section) !PcFramePtr {
+    fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
         const sym = self.funcSyms.buf[symId];
         switch (sym.entryT) {
             .nativeFunc1 => {
@@ -1788,7 +1787,7 @@ pub const VM = struct {
         }
     }
 
-    fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(".eval") !PcFramePtr {
+    fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) !PcFramePtr {
         switch (sym.entryT) {
             .func => {
                 if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
@@ -1881,7 +1880,7 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(Section) ?SymbolEntry {
+    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(cy.HotSection) ?SymbolEntry {
         const map = self.methodSyms.buf[symId];
         switch (map.mapT) {
             .one => {
@@ -1909,7 +1908,7 @@ pub const VM = struct {
     /// Stack layout: arg0, arg1, ..., receiver
     /// numArgs includes the receiver.
     /// Return new pc to avoid deoptimization.
-    fn callObjSym(self: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, recv: Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !PcFramePtr {
+    fn callObjSym(self: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, recv: Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const map = self.methodSyms.buf[symId];
@@ -2082,13 +2081,13 @@ pub const VM = struct {
         _ = writer.write(str) catch stdx.fatal();
     }
 
-    pub inline fn stackEnsureUnusedCapacity(self: *VM, unused: u32) linksection(".eval") !void {
+    pub inline fn stackEnsureUnusedCapacity(self: *VM, unused: u32) linksection(cy.HotSection) !void {
         if (@ptrToInt(self.framePtr) + 8 * unused >= @ptrToInt(self.stack.ptr + self.stack.len)) {
             try self.stackGrowTotalCapacity((@ptrToInt(self.framePtr) + 8 * unused) / 8);
         }
     }
 
-    inline fn stackEnsureTotalCapacity(self: *VM, newCap: usize) linksection(".eval") !void {
+    inline fn stackEnsureTotalCapacity(self: *VM, newCap: usize) linksection(cy.HotSection) !void {
         if (newCap > self.stack.len) {
             try self.stackGrowTotalCapacity(newCap);
         }
@@ -2128,7 +2127,7 @@ pub const VM = struct {
     }
 };
 
-pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(Section) void {
+pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
     if (builtin.mode == .Debug or builtin.is_test) {
         if (obj.retainedCommon.structId == NullId) {
             stdx.panic("object already freed.");
@@ -2148,7 +2147,7 @@ pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(Section) void {
     }
 }
 
-fn freeObject(vm: *VM, obj: *HeapObject) linksection(".eval") void {
+fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
     log.debug("free {}", .{obj.getUserTag()});
     switch (obj.retainedCommon.structId) {
         ListS => {
@@ -2234,7 +2233,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(".eval") void {
     }
 }
 
-pub fn release(vm: *VM, val: Value) linksection(".eval") void {
+pub fn release(vm: *VM, val: Value) linksection(cy.HotSection) void {
     if (TraceEnabled) {
         vm.trace.numReleaseAttempts += 1;
     }
@@ -2261,7 +2260,7 @@ pub fn release(vm: *VM, val: Value) linksection(".eval") void {
     }
 }
 
-fn evalBitwiseOr(left: Value, right: Value) linksection(".eval") Value {
+fn evalBitwiseOr(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
        const f = @intToFloat(f64, left.asF64toI32() | @floatToInt(i32, right.toF64()));
@@ -2272,7 +2271,7 @@ fn evalBitwiseOr(left: Value, right: Value) linksection(".eval") Value {
     }
 }
 
-fn evalBitwiseXor(left: Value, right: Value) linksection(".eval") Value {
+fn evalBitwiseXor(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
        const f = @intToFloat(f64, left.asF64toI32() ^ @floatToInt(i32, right.toF64()));
@@ -2283,7 +2282,7 @@ fn evalBitwiseXor(left: Value, right: Value) linksection(".eval") Value {
     }
 }
 
-fn evalBitwiseAnd(left: Value, right: Value) linksection(".eval") Value {
+fn evalBitwiseAnd(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
        const f = @intToFloat(f64, left.asF64toI32() & @floatToInt(i32, right.toF64()));
@@ -2294,7 +2293,7 @@ fn evalBitwiseAnd(left: Value, right: Value) linksection(".eval") Value {
     }
 }
 
-fn evalBitwiseLeftShift(left: Value, right: Value) linksection(".eval") Value {
+fn evalBitwiseLeftShift(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
        const f = @intToFloat(f64, left.asF64toI32() << @floatToInt(u5, right.toF64()));
@@ -2305,7 +2304,7 @@ fn evalBitwiseLeftShift(left: Value, right: Value) linksection(".eval") Value {
     }
 }
 
-fn evalBitwiseRightShift(left: Value, right: Value) linksection(".eval") Value {
+fn evalBitwiseRightShift(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
        const f = @intToFloat(f64, left.asF64toI32() >> @floatToInt(u5, right.toF64()));
@@ -2316,7 +2315,7 @@ fn evalBitwiseRightShift(left: Value, right: Value) linksection(".eval") Value {
     }
 }
 
-fn evalBitwiseNot(val: Value) linksection(".eval") Value {
+fn evalBitwiseNot(val: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (val.isNumber()) {
        const f = @intToFloat(f64, ~val.asF64toI32());
@@ -2339,12 +2338,12 @@ fn evalLessOrEqual(left: cy.Value, right: cy.Value) cy.Value {
     return Value.initBool(left.toF64() <= right.toF64());
 }
 
-fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
+fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
     @setCold(true);
     return Value.initBool(left.toF64() < right.toF64());
 }
 
-fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value {
+fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
     @setCold(true);
     if (left.isNumber()) {
         if (right.isNumber()) {
@@ -2388,7 +2387,7 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(".eval") cy.Value
     }
 }
 
-fn evalCompare(left: Value, right: Value) linksection(".eval") Value {
+fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
         if (right.isNumber()) {
@@ -2432,7 +2431,7 @@ fn evalCompare(left: Value, right: Value) linksection(".eval") Value {
     }
 }
 
-fn evalMinusFallback(left: Value, right: Value) linksection(".eval") Value {
+fn evalMinusFallback(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isPointer()) {
         return Value.initF64(left.toF64() - right.toF64());
@@ -2540,12 +2539,12 @@ fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
     }
 }
 
-fn evalAddFallback(left: cy.Value, right: cy.Value) linksection(".eval") !cy.Value {
+fn evalAddFallback(left: cy.Value, right: cy.Value) linksection(cy.HotSection) !cy.Value {
     @setCold(true);
     return Value.initF64(try toF64OrPanic(left) + try toF64OrPanic(right));
 }
 
-fn toF64OrPanic(val: Value) linksection(".eval") !f64 {
+fn toF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
     if (val.isNumber()) {
         return val.asF64();
     } else {
@@ -2553,7 +2552,7 @@ fn toF64OrPanic(val: Value) linksection(".eval") !f64 {
     }
 }
 
-fn convToF64OrPanic(val: Value) linksection(".eval") !f64 {
+fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
     if (val.isPointer()) {
         const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
         if (obj.common.structId == cy.StringS) {
@@ -3197,7 +3196,7 @@ pub const UserVM = struct {
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM without deoptimizing the hot loop.
-pub fn evalLoopGrowStack(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     while (true) {
         @call(.always_inline, evalLoop, .{vm}) catch |err| {
             if (err == error.StackOverflow) {
@@ -3215,7 +3214,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(Section) error{StackOverflow, OutO
     }
 }
 
-fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     var pc = vm.pc;
     var framePtr = vm.framePtr;
     defer {
@@ -4271,7 +4270,7 @@ fn evalLoop(vm: *VM) linksection(Section) error{StackOverflow, OutOfMemory, Pani
     }
 }
 
-fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(".eval") bool {
+fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(cy.HotSection) bool {
     const retFlag = framePtr.*[1].retInfo.retFlag;
     const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
     if (reqNumArgs == 0) {
@@ -4303,7 +4302,7 @@ fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     }
 }
 
-fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(Section) bool {
+fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(cy.HotSection) bool {
     const retFlag = framePtr.*[1].retInfo.retFlag;
     const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
     if (reqNumArgs == 1) {
@@ -4602,7 +4601,7 @@ fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, ty
     };
 }
 
-fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(".eval") !PcFramePtr {
+fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
     switch (sym.entryT) {
         .func => {
             if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * gvm.stack.len) {
@@ -4736,7 +4735,7 @@ fn pushFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber
     }
 }
 
-fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection(".eval") !Value {
+fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection(cy.HotSection) !Value {
     // Args are copied over to the new stack.
     var stack = try gvm.alloc.alloc(Value, initialStackSize);
     // Assumes initial stack size generated by compiler is enough to hold captured args.
@@ -4834,7 +4833,7 @@ fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
     } else return NullId;
 }
 
-pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(Section) Value {
+pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(cy.HotSection) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,
@@ -4844,7 +4843,7 @@ pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(
     };
 }
 
-pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(Section) Value {
+pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(cy.HotSection) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,
@@ -4881,7 +4880,7 @@ const PcFramePtr = struct {
     framePtr: [*]Value,
 };
 
-fn boxValueRetain(box: Value) linksection(Section) Value {
+fn boxValueRetain(box: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (box.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);

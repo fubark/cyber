@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const debug = builtin.mode == .Debug;
 
-const section = ".eval";
+const section = @import("cyber.zig").HotSection;
 
 pub fn List(comptime T: type) type {
     return struct {

@@ -1,3 +1,5 @@
+const builtin = @import("builtin");
+
 const parser = @import("parser.zig");
 pub const Parser = parser.Parser;
 pub const ParseResultView = parser.ResultView;
@@ -89,3 +91,7 @@ pub const EncodeListContext = cdata.EncodeListContext;
 pub const DecodeMapIR = cdata.DecodeMapIR;
 pub const DecodeListIR = cdata.DecodeListIR;
 pub const DecodeValueIR = cdata.DecodeValueIR;
+
+pub const HotSection = if (builtin.os.tag == .macos) "DATA,.eval" else ".eval";
+pub const Section = if (builtin.os.tag == .macos) "DATA,.eval2" else ".eval2";
+pub const StdSection = if (builtin.os.tag == .macos) "DATA,.eval.std" else ".eval.std";

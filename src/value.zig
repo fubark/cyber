@@ -7,8 +7,6 @@ const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
 const cy = @import("cyber.zig");
 
-const Section = ".eval";
-
 /// Most significant bit.
 const SignMask: u64 = 1 << 63;
 
@@ -92,16 +90,16 @@ pub const Value = packed union {
         return @floatToInt(u32, self.asF64());
     }
 
-    pub inline fn asF64(self: *const Value) linksection(".eval") f64 {
+    pub inline fn asF64(self: *const Value) linksection(cy.HotSection) f64 {
         @setRuntimeSafety(debug);
         return @bitCast(f64, self.val);
     }
 
-    pub inline fn asTagLiteralId(self: *const Value) linksection(".eval") u32 {
+    pub inline fn asTagLiteralId(self: *const Value) linksection(cy.HotSection) u32 {
         return @intCast(u32, self.val & @as(u64, 0xFFFFFFFF));
     }
 
-    pub inline fn toF64(self: *const Value) linksection(".eval") f64 {
+    pub inline fn toF64(self: *const Value) linksection(cy.HotSection) f64 {
         @setRuntimeSafety(debug);
         if (self.isNumber()) {
             return self.asF64();
@@ -110,7 +108,7 @@ pub const Value = packed union {
         }
     }
 
-    fn otherToF64(self: *const Value) linksection(".eval") f64 {
+    fn otherToF64(self: *const Value) linksection(cy.HotSection) f64 {
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
             if (obj.common.structId == cy.StringS) {
@@ -127,7 +125,7 @@ pub const Value = packed union {
         }
     }
 
-    pub fn toBool(self: *const Value) linksection(Section) bool {
+    pub fn toBool(self: *const Value) linksection(cy.HotSection) bool {
         @setCold(true);
         if (self.isNumber()) {
             return self.asF64() != 0;
@@ -153,7 +151,7 @@ pub const Value = packed union {
         }
     }
 
-    pub fn isString(self: *const Value) linksection(".eval") bool {
+    pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
             return obj.common.structId == cy.StringS;
@@ -162,31 +160,31 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn bothNumbers(a: Value, b: Value) linksection(".eval") bool {
+    pub inline fn bothNumbers(a: Value, b: Value) linksection(cy.HotSection) bool {
         return a.isNumber() and b.isNumber();
     }
 
-    pub inline fn isConstString(self: *const Value) linksection(".eval") bool {
+    pub inline fn isConstString(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == ConstStringMask;
     }
 
-    pub inline fn assumeNotPtrIsConstString(self: *const Value) linksection(".eval") bool {
+    pub inline fn assumeNotPtrIsConstString(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & TaggedPrimitiveMask == ConstStringMask;
     }
 
-    pub inline fn isError(self: *const Value) linksection(".eval") bool {
+    pub inline fn isError(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == ErrorMask;
     }
 
-    pub inline fn assumeNotPtrIsError(self: *const Value) linksection(".eval") bool {
+    pub inline fn assumeNotPtrIsError(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & TaggedPrimitiveMask == ErrorMask;
     }
 
-    pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) linksection(".eval") bool {
+    pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & TaggedPrimitiveMask == UserTagLiteralMask;
     }
 
-    pub inline fn getPrimitiveTypeId(self: *const Value) linksection(Section) u32 {
+    pub inline fn getPrimitiveTypeId(self: *const Value) linksection(cy.HotSection) u32 {
         if (self.isNumber()) {
             return NumberT;
         } else {
@@ -194,58 +192,58 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn isNumberOrPointer(self: *const Value) linksection(".eval") bool {
+    pub inline fn isNumberOrPointer(self: *const Value) linksection(cy.HotSection) bool {
         // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
         return self.isNumber() or self.isPointer();
     }
 
-    pub inline fn isNumber(self: *const Value) linksection(".eval") bool {
+    pub inline fn isNumber(self: *const Value) linksection(cy.HotSection) bool {
         // Only a number(f64) if not all tagged bits are set.
         return self.val & TaggedValueMask != TaggedValueMask;
     }
 
-    pub inline fn isPointer(self: *const Value) linksection(".eval") bool {
+    pub inline fn isPointer(self: *const Value) linksection(cy.HotSection) bool {
         // Only a pointer if nan bits and sign bit are set.
         return self.val & PointerMask == PointerMask;
     }
 
-    pub inline fn asPointer(self: *const Value) linksection(".eval") ?*anyopaque {
+    pub inline fn asPointer(self: *const Value) linksection(cy.HotSection) ?*anyopaque {
         return @intToPtr(?*anyopaque, self.val & ~PointerMask);
     }
 
-    pub inline fn asHeapObject(self: *const Value, comptime Ptr: type) linksection(".eval") Ptr {
+    pub inline fn asHeapObject(self: *const Value, comptime Ptr: type) linksection(cy.HotSection) Ptr {
         return @intToPtr(Ptr, self.val & ~PointerMask);
     }
 
-    pub inline fn asBool(self: *const Value) linksection(".eval") bool {
+    pub inline fn asBool(self: *const Value) linksection(cy.HotSection) bool {
         return self.val == TrueMask;
     }
 
-    pub inline fn isNone(self: *const Value) linksection(".eval") bool {
+    pub inline fn isNone(self: *const Value) linksection(cy.HotSection) bool {
         return self.val == NoneMask;
     }
 
-    pub inline fn isTrue(self: *const Value) linksection(".eval") bool {
+    pub inline fn isTrue(self: *const Value) linksection(cy.HotSection) bool {
         return self.val == TrueMask;
     }
 
-    pub inline fn isBool(self: *const Value) linksection(".eval") bool {
+    pub inline fn isBool(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == BooleanMask;
     }
 
-    pub inline fn assumeNotPtrIsBool(self: *const Value) linksection(".eval") bool {
+    pub inline fn assumeNotPtrIsBool(self: *const Value) linksection(cy.HotSection) bool {
         return self.val & TaggedPrimitiveMask == BooleanMask;
     }
 
-    pub inline fn getTag(self: *const Value) linksection(Section) u3 {
+    pub inline fn getTag(self: *const Value) linksection(cy.HotSection) u3 {
         return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
     }
 
-    pub inline fn initTag(tag: u8, val: u8) linksection(".eval") Value {
+    pub inline fn initTag(tag: u8, val: u8) linksection(cy.HotSection) Value {
         return .{ .val = UserTagMask | (@as(u32, tag) << 8) | val };
     }
 
-    pub inline fn initTagLiteral(symId: u8) linksection(".eval") Value {
+    pub inline fn initTagLiteral(symId: u8) linksection(cy.HotSection) Value {
         return .{ .val = UserTagLiteralMask | symId };
     }
 
@@ -262,7 +260,7 @@ pub const Value = packed union {
         return .{ .val = val };
     }
 
-    pub inline fn initBool(b: bool) linksection(".eval") Value {
+    pub inline fn initBool(b: bool) linksection(cy.HotSection) Value {
         if (b) {
             return True;
         } else {
@@ -295,7 +293,7 @@ pub const Value = packed union {
         return false;
     }
 
-    pub inline fn floatCanBeInteger(val: f64) linksection(".eval") bool {
+    pub inline fn floatCanBeInteger(val: f64) linksection(cy.HotSection) bool {
         @setRuntimeSafety(debug);
         // return @fabs(std.math.floor(val) - val) < std.math.f64_epsilon;
         

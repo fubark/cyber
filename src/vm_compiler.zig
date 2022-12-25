@@ -4516,11 +4516,12 @@ fn initOsModule(self: *VMcompiler, alloc: std.mem.Allocator, spec: []const u8) !
     try mod.setVar(alloc, "system", try self.buf.getStringConstValue(@tagName(builtin.os.tag)));
 
     try mod.setNativeFunc(alloc, "cwd", bindings.osCwd);
-    try mod.setNativeFunc(alloc, "realPath", bindings.osRealPath);
     try mod.setNativeFunc(alloc, "getEnv", bindings.osGetEnv);
-    try mod.setNativeFunc(alloc, "setEnv", bindings.osSetEnv);
-    try mod.setNativeFunc(alloc, "unsetEnv", bindings.osUnsetEnv);
     try mod.setNativeFunc(alloc, "getEnvAll", bindings.osGetEnvAll);
+    try mod.setNativeFunc(alloc, "realPath", bindings.osRealPath);
+    try mod.setNativeFunc(alloc, "setEnv", bindings.osSetEnv);
+    try mod.setNativeFunc(alloc, "sleep", bindings.osSleep);
+    try mod.setNativeFunc(alloc, "unsetEnv", bindings.osUnsetEnv);
     return mod;
 }
 

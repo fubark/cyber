@@ -1001,10 +1001,11 @@ for map as k, v:
 | -- | -- |
 | cwd() string | Returns the current working directory. |
 | getEnv(string) string | Returns an environment value by key. |
+| getEnvAll() {..} | Returns all environment entries as a map. |
 | realPath(path string) string | Returns the absolute path of the given path. |
 | setEnv(key string, value string) none | Sets an environment value by key. |
+| sleep(ms number) none | Pauses the current thread for given milliseconds. |
 | unsetEnv(string) none | Removes an environment value by key. |
-| getEnvAll() {..} | Returns all environment entries as a map. |
 
 [To Top.](#table-of-contents)
 

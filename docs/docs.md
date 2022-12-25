@@ -939,44 +939,44 @@ print(m.pi * r^2)
 | sqrt1_2 | number | Square root of ½; approximately 0.707. |
 | sqrt2 | number | Square root of 2; approximately 1.414. |
 
-| Function | Signature | Summary |
-| -- | -- | -- |
-| abs | number -> number | Returns the absolute value of x. |
-| acos | number -> number | Returns the arccosine of x. |
-| acosh | number -> number | Returns the hyperbolic arccosine of x. |
-| asin | number -> number | Returns the arcsine of x. |
-| asinh | number -> number | Returns the hyperbolic arcsine of a number. |
-| atan | number -> number | Returns the arctangent of x. |
-| atan2 | number, number -> number | Returns the arctangent of the quotient of its arguments. |
-| atanh | number -> number | Returns the hyperbolic arctangent of x. |
-| cbrt | number -> number | Returns the cube root of x. |
-| ceil | number -> number | Returns the smallest integer greater than or equal to x. |
-| clz32 | number -> number | Returns the number of leading zero bits of the 32-bit integer x. |
-| cos | number -> number | Returns the cosine of x. |
-| cosh | number -> number | Returns the hyperbolic cosine of x. |
-| exp | number -> number | Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm). |
-| expm1 | number -> number | Returns subtracting 1 from exp(x). |
-| floor | number -> number | Returns the largest integer less than or equal to x. |
-| hypot | number, number -> number | Returns the square root of the sum of squares of its arguments. |
-| isNaN | number -> bool | Returns whether x is not a number. |
-| ln | number -> number | Returns the natural logarithm (㏒e; also, ㏑) of x. |
-| log | number, number -> number | Returns the logarithm of y with base x. |
-| log10 | number -> number | Returns the base-10 logarithm of x. |
-| log1p | number -> number | Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x. |
-| log2 | number -> number | Returns the base-2 logarithm of x. |
-| max | number, number -> number | Returns the largest of two numbers. |
-| min | number, number -> number | Returns the smallest of two numbers. |
-| mul32 | number, number -> number | Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed. |
-| pow | number, number -> number | Returns base x to the exponent power y (that is, x^y). |
-| random | -> number | Returns a pseudo-random number between 0 and 1. |
-| round | number -> number | Returns the value of the number x rounded to the nearest integer. |
-| sign | number -> number | Returns the sign of the x, indicating whether x is positive, negative, or zero. |
-| sin | number -> number | Returns the sine of x. |
-| sinh | number -> number | Returns the hyperbolic sine of x. |
-| sqrt | number -> number | Returns the positive square root of x. |
-| tan | number -> number | Returns the tangent of x. |
-| tanh | number -> number | Returns the hyperbolic tangent of x. |
-| trunc | number -> number | Returns the integer portion of x, removing any fractional digits. |
+| Function | Summary |
+| -- | -- |
+| abs(number) number | Returns the absolute value of x. |
+| acos(number) number | Returns the arccosine of x. |
+| acosh(number) number | Returns the hyperbolic arccosine of x. |
+| asin(number) number | Returns the arcsine of x. |
+| asinh(number) number | Returns the hyperbolic arcsine of a number. |
+| atan(number) number | Returns the arctangent of x. |
+| atan2(number, number) number | Returns the arctangent of the quotient of its arguments. |
+| atanh(number) number | Returns the hyperbolic arctangent of x. |
+| cbrt(number) number | Returns the cube root of x. |
+| ceil(number) number | Returns the smallest integer greater than or equal to x. |
+| clz32(number) number | Returns the number of leading zero bits of the 32-bit integer x. |
+| cos(number) number | Returns the cosine of x. |
+| cosh(number) number | Returns the hyperbolic cosine of x. |
+| exp(number) number | Returns e^x, where x is the argument, and e is Euler's number (2.718…, the base of the natural logarithm). |
+| expm1(number) number | Returns subtracting 1 from exp(x). |
+| floor(number) number | Returns the largest integer less than or equal to x. |
+| hypot(number, number) number | Returns the square root of the sum of squares of its arguments. |
+| isNaN(number) bool | Returns whether x is not a number. |
+| ln(number) number | Returns the natural logarithm (㏒e; also, ㏑) of x. |
+| log(number, number) number | Returns the logarithm of y with base x. |
+| log10(number) number | Returns the base-10 logarithm of x. |
+| log1p(number) number | Returns the natural logarithm (㏒e; also ㏑) of 1 + x for the number x. |
+| log2(number) number | Returns the base-2 logarithm of x. |
+| max(number, number) number | Returns the largest of two numbers. |
+| min(number, number) number | Returns the smallest of two numbers. |
+| mul32(number, number) number | Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed. |
+| pow(number, number) number | Returns base x to the exponent power y (that is, x^y). |
+| random() number | Returns a pseudo-random number between 0 and 1. |
+| round(number) number | Returns the value of the number x rounded to the nearest integer. |
+| sign(number) number | Returns the sign of the x, indicating whether x is positive, negative, or zero. |
+| sin(number) number | Returns the sine of x. |
+| sinh(number) number | Returns the hyperbolic sine of x. |
+| sqrt(number) number | Returns the positive square root of x. |
+| tan(number) number | Returns the tangent of x. |
+| tanh(number) number | Returns the hyperbolic tangent of x. |
+| trunc(number) number | Returns the integer portion of x, removing any fractional digits. |
 
 [To Top.](#table-of-contents)
 
@@ -997,14 +997,14 @@ for map as k, v:
 | endian | #little, #big | The current arch's endianness. |
 | system | string | The current operating system's tag name. |
 
-| Function | Signature | Summary |
-| -- | -- | -- |
-| cwd | -> string | Returns the current working directory. |
-| getEnv | string -> string | Returns an environment value by key. |
-| realPath | path string -> string | Returns the absolute path of the given path. |
-| setEnv | key string, value string -> none | Sets an environment value by key. |
-| unsetEnv | string -> none | Removes an environment value by key. |
-| getEnvAll | -> {..} | Returns all environment entries as a map. |
+| Function | Summary |
+| -- | -- |
+| cwd() string | Returns the current working directory. |
+| getEnv(string) string | Returns an environment value by key. |
+| realPath(path string) string | Returns the absolute path of the given path. |
+| setEnv(key string, value string) none | Sets an environment value by key. |
+| unsetEnv(string) none | Removes an environment value by key. |
+| getEnvAll() {..} | Returns all environment entries as a map. |
 
 [To Top.](#table-of-contents)
 

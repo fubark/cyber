@@ -27,3 +27,6 @@ zig build cli -Drelease-fast
 # For a debug build instead.
 zig build cli
 ```
+
+## Troubleshooting.
+- If you have trouble building mimalloc on MacOS, consider changing the sdk path in `lib/mimalloc/lib.zig` to your installed version.

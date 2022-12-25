@@ -434,7 +434,19 @@ pub fn coreBindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(
     }
 
     if (path.isNone()) {
-        lib.* = std.DynLib.openZ("") catch stdx.fatal();
+        if (builtin.os.tag == .macos) {
+            const exe = std.fs.selfExePathAlloc(alloc) catch stdx.fatal();
+            defer alloc.free(exe);
+            lib.* = std.DynLib.open(exe) catch |err| {
+                log.debug("{}", .{err});
+                stdx.fatal();
+            };
+        } else {
+            lib.* = std.DynLib.openz("") catch |err| {
+                log.debug("{}", .{err});
+                stdx.fatal();
+            };
+        }
     } else {
         lib.* = std.DynLib.open(gvm.valueToTempString(path)) catch |err| {
             log.debug("{}", .{err});

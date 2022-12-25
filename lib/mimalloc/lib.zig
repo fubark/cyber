@@ -28,6 +28,8 @@ pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
     var c_flags = std.ArrayList([]const u8).init(b.allocator);
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
     if (step.target.getOsTag() == .windows) {
+    } else if (step.target.getOsTag() == .macos) {
+        lib.addSystemIncludePath("/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include");
     }
     if (step.build_mode == .Debug) {
         // For debugging:

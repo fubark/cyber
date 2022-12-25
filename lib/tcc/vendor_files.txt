@@ -16,3 +16,7 @@
 /tccasm.c
 /tccelf.c
 /tccrun.c
+/elf.h
+/stab.h
+/stab.dev
+/tccmacho.c

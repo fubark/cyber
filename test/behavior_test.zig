@@ -1702,113 +1702,98 @@ test "Conditional for loop." {
     );
 }
 
-test "For loop over list." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Basic.
-    var val = try run.eval(
-        \\list = [1, 2, 3]
-        \\sum = 0
-        \\for list as it:
-        \\   sum += it
-        \\sum
-    );
-    try t.eq(val.asF64toI32(), 6);
-}
-
 test "For iterator." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var val = try run.eval(
-        \\list = []
-        \\for 0..10 as i:
-        \\  list.add(i)
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- Basic.
+        \\list = [1, 2, 3]
         \\sum = 0
-        \\for list as i:
-        \\  sum += i
-        \\sum
-    );
-    try t.eq(val.asF64toI32(), 45);
-
-    // Loop iterator var overwrites the user var.
-    val = try run.eval(
+        \\for list as it:
+        \\   sum += it
+        \\try t.eq(sum, 6)
+        \\
+        \\-- Loop iterator var overwrites the user var.
         \\elem = 123
         \\list = [1, 2, 3]
         \\for list as elem:
         \\  pass
-        \\elem
+        \\try t.eq(elem, none)
+        \\
+        \\-- Break.
+        \\list = [1, 2, 3]
+        \\sum = 0
+        \\for list as it:
+        \\   if it == 3:
+        \\      break
+        \\   sum += it
+        \\try t.eq(sum, 3)
     );
-    try t.expect(val.isNone());
 }
 
 test "For loop over range." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Basic.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- Basic.
         \\iters = 0
         \\for 0..10 as i:
         \\   iters += 1
-        \\iters
-    );
-    try t.eq(val.asF64toI32(), 10);
-
-    // two `for` with range don't interfere with each other
-    val = try run.eval(
+        \\try t.eq(iters, 10)
+        \\
+        \\-- two `for` with range don't interfere with each other
         \\iters = 0
         \\for 0..10 as i:
         \\   iters += 1
         \\for 0..10 as i:
         \\   iters += 1
-        \\iters
-    );
-    try t.eq(val.asF64toI32(), 20);
-
-    // two `for` with non const max value don't interfere with each other
-    val = try run.eval(
+        \\try t.eq(iters, 20)
+        \\
+        \\-- two `for` with non const max value don't interfere with each other
         \\foo = 10
         \\iters = 0
         \\for 0..foo as i:
         \\   iters += 1
         \\for 0..foo as i:
         \\   iters += 1
-        \\iters
-    );
-    try t.eq(val.asF64toI32(), 20);
-
-    // Nested for loop.
-    val = try run.eval(
+        \\try t.eq(iters, 20)
+        \\
+        \\-- Nested for loop.
         \\count = 0
         \\for 0..10 as i:
         \\  inner = 0
         \\  for 0..10 as j:
         \\    inner += 1
         \\  count += inner
-        \\count
-    );
-    try t.eq(val.asF64toI32(), 100);
-
-    // Index vars overwrites user var.
-    val = try run.eval(
+        \\try t.eq(count, 100)
+        \\
+        \\-- Index vars overwrites user var.
         \\i = 123
         \\sum = 0
         \\for 0..10 as i:
         \\  sum += i
-        \\i
-    );
-    try t.eq(val.asF64toI32(), 9);
-
-    // Reverse direction.
-    val = try run.eval(
+        \\try t.eq(i, 9)
+        \\
+        \\-- Reverse direction.
         \\sum = 0
         \\for 10..0 as i:
         \\  sum += i
-        \\sum
+        \\try t.eq(sum, 55)
+        \\
+        \\-- Break.
+        \\iters = 0
+        \\for 0..10 as i:
+        \\   if i == 2:
+        \\       break
+        \\   iters += 1
+        \\try t.eq(iters, 2)
     );
-    try t.eq(val.asF64toI32(), 55);
 
     // Custom step.
     // val = try run.eval(

@@ -2230,6 +2230,7 @@ pub const VMcompiler = struct {
                 self.patchJumpToCurrent(skipSkipJump);
 
                 const bodyPc = self.buf.ops.items.len;
+                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
 
                 try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
@@ -2243,6 +2244,11 @@ pub const VMcompiler = struct {
                 }
 
                 try self.pushJumpBackNotNone(bodyPc, if (pairIter) keyVar.local else valVar.local);
+
+                // Patch breaks.
+                self.patchSubBlockJumps(jumpStackSave);
+                self.subBlockJumpStack.items.len = jumpStackSave;
+
                 try self.buf.pushOp1(.release, iterLocal);
                 self.patchJumpToCurrent(skipBodyJump);
             },
@@ -2300,6 +2306,7 @@ pub const VMcompiler = struct {
                 try self.buf.pushOpSlice(.forRangeInit, &.{ rangeStart.local, rangeEnd, rangeStep, counter, local, 0, 0 });
 
                 const bodyPc = self.buf.ops.items.len;
+                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
                 try self.genStatements(node.head.for_range_stmt.body_head, false);
 
                 // Perform counter update and perform check against end range.
@@ -2309,6 +2316,10 @@ pub const VMcompiler = struct {
                 self.buf.setOpArgU16(initPc + 6, @intCast(u16, self.buf.ops.items.len - initPc));
                 try self.buf.pushOpSlice(.forRange, &.{ counter, rangeStep, rangeEnd, local, 0, 0 });
                 self.buf.setOpArgU16(forRangeOp + 5, jumpBackOffset);
+
+                // Patch breaks.
+                self.patchSubBlockJumps(jumpStackSave);
+                self.subBlockJumpStack.items.len = jumpStackSave;
             },
             .if_stmt => {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;

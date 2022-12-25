@@ -27,10 +27,16 @@ test "core module" {
 
     _ = try run.eval(
         \\import t 'test'
+        \\-- arrayFill with primitive.
         \\a = arrayFill(123, 10)
         \\try t.eq(a.len(), 10)
         \\for 0..10 as i:
         \\  try t.eq(a[i], 123)
+        \\
+        \\-- arrayFill with object performs shallow copy.
+        \\a = arrayFill([], 2)
+        \\try t.eq(a.len(), 2)
+        \\try t.eq(a[0] == a[1], false)
         \\
         \\-- char()
         \\try t.eq(char('a'), 97)
@@ -383,7 +389,7 @@ test "test module" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    const res = run.eval(
+    const res = run.evalSilent(
         \\import t 'test'
         \\try t.eq(123, 234)
     );
@@ -570,7 +576,7 @@ test "Stack trace unwinding." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var res = run.eval(
+    var res = run.evalSilent(
         \\a = 123
         \\1 + a.foo
     );
@@ -586,7 +592,7 @@ test "Stack trace unwinding." {
     });
 
     // Function stack trace.
-    res = run.eval(
+    res = run.evalSilent(
         \\func foo():
         \\  a = 123
         \\  return 1 + a.foo
@@ -1425,7 +1431,7 @@ test "Undefined variable references." {
     );
 
     // Using an undefined variable as a callee uses it as a sym so the runtime call panics.
-    const res = run.eval(
+    const res = run.evalSilent(
         \\a()
     );
     try t.expectError(res, error.Panic);
@@ -2444,6 +2450,14 @@ const VMrunner = struct {
 
     fn getStackTrace(self: *VMrunner) *const cy.StackTrace {
         return self.vm.getStackTrace();
+    }
+
+    /// Don't print panic errors.
+    fn evalSilent(self: *VMrunner, src: []const u8) !cy.Value {
+        try self.resetEnv();
+        return self.vm.eval("main", src) catch |err| {
+            return err;
+        };
     }
 
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {

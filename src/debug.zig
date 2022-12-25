@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
@@ -137,4 +138,8 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) void {
         } 
     }
     log.debug("No trace for {*}.", .{obj});
+}
+
+pub inline fn atLeastTestDebugLevel() bool {
+    return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
 }

@@ -1439,74 +1439,7 @@ pub fn coreArrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(St
 pub fn coreCopy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const val = args[0];
     defer vm.release(val);
-    if (val.isPointer()) {
-        const obj = val.asHeapObject(*cy.HeapObject);
-        switch (obj.common.structId) {
-            cy.ListS => {
-                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                const new = vm.allocList(list.items()) catch stdx.fatal();
-                for (list.items()) |item| {
-                    vm.retain(item);
-                }
-                return new;
-            },
-            cy.MapS => {
-                const new = vm.allocEmptyMap() catch stdx.fatal();
-                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject(*cy.HeapObject)).map.inner);
-
-                const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                var iter = map.iterator();
-                while (iter.next()) |entry| {
-                    vm.retain(entry.key);
-                    vm.retain(entry.value);
-                    newMap.put(vm.allocator(), @ptrCast(*const cy.VM, vm), entry.key, entry.value) catch stdx.fatal();
-                }
-                return new;
-            },
-            cy.ClosureS => {
-                fmt.panic("Unsupported copy closure.", &.{});
-            },
-            cy.LambdaS => {
-                fmt.panic("Unsupported copy closure.", &.{});
-            },
-            cy.StringS => {
-                const str = obj.string.ptr[0..obj.string.len];
-                const newStr = vm.allocator().dupe(u8, str) catch stdx.fatal();
-                return vm.allocOwnedString(newStr) catch stdx.fatal();
-            },
-            cy.FiberS => {
-                fmt.panic("Unsupported copy fiber.", &.{});
-            },
-            cy.BoxS => {
-                fmt.panic("Unsupported copy box.", &.{});
-            },
-            cy.NativeFunc1S => {
-                fmt.panic("Unsupported copy native func.", &.{});
-            },
-            cy.TccStateS => {
-                fmt.panic("Unsupported copy tcc state.", &.{});
-            },
-            cy.OpaquePtrS => {
-                fmt.panic("Unsupported copy opaque ptr.", &.{});
-            },
-            else => {
-                const numFields = @ptrCast(*const cy.VM, vm).structs.buf[obj.common.structId].numFields;
-                const fields = obj.object.getValuesConstPtr()[0..numFields];
-                var new: Value = undefined;
-                if (numFields <= 4) {
-                    new = vm.allocObjectSmall(obj.common.structId, fields) catch stdx.fatal();
-                } else {
-                    new = vm.allocObject(obj.common.structId, fields) catch stdx.fatal();
-                }
-                for (fields) |field| {
-                    vm.retain(field);
-                }
-                return new;
-            },
-        }
-    } else {
-        return val;
-    }
+    return vm_.shallowCopy(@ptrCast(*cy.VM, vm), val);
 }
 
 pub fn coreExit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {

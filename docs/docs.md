@@ -891,7 +891,7 @@ print contents
 
 | Function | Summary |
 | ------------- | ----- |
-| arrayFill(val any, n number) [..] | Creates a list with initial capacity of `n` and values set to `val`. | 
+| arrayFill(val any, n number) [..] | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | bool(val any) bool | Converts a value to either `true` or `false`. | 
 | bindLib(fns []CFunc) {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
 | char(val any) number | Converts the first character of a string to a number with an ASCII code. | 

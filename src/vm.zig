@@ -360,7 +360,9 @@ pub const VM = struct {
         tt.endPrint("compile");
 
         if (TraceEnabled) {
-            res.buf.dump();
+            if (!builtin.is_test and debug.atLeastTestDebugLevel()) {
+                res.buf.dump();
+            }
             const numOps = comptime std.enums.values(cy.OpCode).len;
             self.trace.opCounts = try self.alloc.alloc(cy.OpCount, numOps);
             var i: u32 = 0;
@@ -379,7 +381,7 @@ pub const VM = struct {
             self.trace.numRetainCycles = 0;
             self.trace.numRetainCycleRoots = 0;
         } else {
-            if (builtin.is_test) {
+            if (builtin.is_test and debug.atLeastTestDebugLevel()) {
                 // Only visible for tests with .debug log level.
                 res.buf.dump();
             }
@@ -389,7 +391,9 @@ pub const VM = struct {
         defer {
             tt.endPrint("eval");
             if (TraceEnabled) {
-                self.dumpInfo();
+                if (!builtin.is_test or debug.atLeastTestDebugLevel()) {
+                    self.dumpInfo();
+                }
             }
         }
 
@@ -962,8 +966,14 @@ pub const VM = struct {
         // Initializes capacity to exact size.
         try list.ensureTotalCapacityPrecise(self.alloc, n);
         list.len = n;
-        std.mem.set(Value, list.items(), val);
-        self.retainInc(val, n);
+        if (!val.isPointer()) {
+            std.mem.set(Value, list.items(), val);
+        } else {
+            var i: u32 = 0;
+            while (i < n) : (i += 1) {
+                list.buf[i] = shallowCopy(self, val);
+            }
+        }
         return Value.initPtr(obj);
     }
 
@@ -5057,5 +5067,76 @@ fn dumpValue(vm: *const VM, val: Value) !void {
                 },
             }
         }
+    }
+}
+
+pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(StdSection) Value {
+    if (val.isPointer()) {
+        const obj = val.asHeapObject(*cy.HeapObject);
+        switch (obj.common.structId) {
+            cy.ListS => {
+                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+                const new = vm.allocList(list.items()) catch stdx.fatal();
+                for (list.items()) |item| {
+                    vm.retain(item);
+                }
+                return new;
+            },
+            cy.MapS => {
+                const new = vm.allocEmptyMap() catch stdx.fatal();
+                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject(*cy.HeapObject)).map.inner);
+
+                const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+                var iter = map.iterator();
+                while (iter.next()) |entry| {
+                    vm.retain(entry.key);
+                    vm.retain(entry.value);
+                    newMap.put(vm.alloc, @ptrCast(*const cy.VM, vm), entry.key, entry.value) catch stdx.fatal();
+                }
+                return new;
+            },
+            cy.ClosureS => {
+                fmt.panic("Unsupported copy closure.", &.{});
+            },
+            cy.LambdaS => {
+                fmt.panic("Unsupported copy closure.", &.{});
+            },
+            cy.StringS => {
+                const str = obj.string.ptr[0..obj.string.len];
+                const newStr = vm.alloc.dupe(u8, str) catch stdx.fatal();
+                return vm.allocOwnedString(newStr) catch stdx.fatal();
+            },
+            cy.FiberS => {
+                fmt.panic("Unsupported copy fiber.", &.{});
+            },
+            cy.BoxS => {
+                fmt.panic("Unsupported copy box.", &.{});
+            },
+            cy.NativeFunc1S => {
+                fmt.panic("Unsupported copy native func.", &.{});
+            },
+            cy.TccStateS => {
+                fmt.panic("Unsupported copy tcc state.", &.{});
+            },
+            cy.OpaquePtrS => {
+                fmt.panic("Unsupported copy opaque ptr.", &.{});
+            },
+            else => {
+                const numFields = @ptrCast(*const cy.VM, vm).structs.buf[obj.common.structId].numFields;
+                const fields = obj.object.getValuesConstPtr()[0..numFields];
+                var new: Value = undefined;
+                if (numFields <= 4) {
+                    new = vm.allocObjectSmall(obj.common.structId, fields) catch stdx.fatal();
+                } else {
+                    new = vm.allocObject(obj.common.structId, fields) catch stdx.fatal();
+                }
+                for (fields) |field| {
+                    vm.retain(field);
+                }
+                return new;
+            },
+        }
+    } else {
+        return val;
     }
 }

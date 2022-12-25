@@ -272,13 +272,7 @@ pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     printMutex.lock();
     defer printMutex.unlock();
     const w = std.io.getStdErr().writer();
-    if (builtin.is_test) {
-        if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
-            try format(w, fmt, vals);
-        }
-    } else {
-        try format(w, fmt, vals);
-    }
+    try format(w, fmt, vals);
 }
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {

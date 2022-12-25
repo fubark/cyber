@@ -1450,7 +1450,11 @@ pub fn coreExit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSecti
 pub fn osSleep(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const ms = args[0].toF64();
     const secs = @floatToInt(u64, @divFloor(ms, 1000));
-    const nsecs = @floatToInt(u64, std.math.mod(f64, ms, 1000) catch stdx.fatal());
+    const nsecs = @floatToInt(u64, 1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
     std.os.nanosleep(secs, nsecs);
     return Value.None;
+}
+
+pub fn osMilliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    return Value.initF64(@intToFloat(f64, std.time.milliTimestamp()));
 }

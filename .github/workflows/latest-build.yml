@@ -203,6 +203,6 @@ jobs:
           prerelease: false
           title: v${{ needs.build.outputs.short_version }}-Latest
           files: |
-            cosmic-linux-x64.zip
-            cosmic-macos-x64.zip
-            cosmic-macos-arm64.zip
+            cyber-linux-x64.zip
+            cyber-macos-x64.zip
+            cyber-macos-arm64.zip

@@ -14,6 +14,7 @@ on:
     paths-ignore:
       - '.github/**'
       - '**.md'
+      - '.gitattributes'
       - 'examples/**.cy'
 # Cancel previous job if it's running.
 concurrency:

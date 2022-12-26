@@ -5,5 +5,5 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 - [Features](https://cyberscript.dev/features.html)
 - [Performance](https://cyberscript.dev/performance.html)
 - [Building](https://github.com/fubark/cyber/blob/master/docs/build.md)
-- Downloads
+- [Downloads](https://github.com/fubark/cyber/releases)
 - [Documentation](https://github.com/fubark/cyber/blob/master/docs/docs.md)

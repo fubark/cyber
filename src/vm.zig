@@ -3048,27 +3048,27 @@ const UserVMAlign = if (builtin.cpu.arch == .aarch64) 16 else 8;
 pub const UserVM = struct {
     dummy: u64 align(UserVMAlign) = undefined,
 
-    pub fn init(_: UserVM, alloc: std.mem.Allocator) !void {
-        try gvm.init(alloc);
+    pub fn init(self: *UserVM, alloc: std.mem.Allocator) !void {
+        try @ptrCast(*VM, self).init(alloc);
     }
 
-    pub fn deinit(_: UserVM) void {
-        gvm.deinit();
+    pub fn deinit(self: *UserVM) void {
+        @ptrCast(*VM, self).deinit();
     }
 
-    pub fn setTrace(_: UserVM, trace: *TraceInfo) void {
+    pub fn setTrace(self: *UserVM, trace: *TraceInfo) void {
         if (!TraceEnabled) {
             return;
         }
-        gvm.trace = trace;
+        @ptrCast(*VM, self).trace = trace;
     }
 
-    pub fn getStackTrace(_: UserVM) *const StackTrace {
-        return gvm.getStackTrace();
+    pub fn getStackTrace(self: *UserVM) *const StackTrace {
+        return @ptrCast(*const VM, self).getStackTrace();
     }
 
-    pub fn getPanicMsg(_: UserVM) []const u8 {
-        return gvm.panicMsg;
+    pub fn getPanicMsg(self: *const UserVM) []const u8 {
+        return @ptrCast(*const VM, self).panicMsg;
     }
 
     pub fn dumpPanicStackTrace(self: *UserVM) !void {
@@ -3079,12 +3079,12 @@ pub const UserVM = struct {
         try trace.dump(vm);
     }
 
-    pub fn dumpInfo(_: UserVM) void {
-        gvm.dumpInfo();
+    pub fn dumpInfo(self: *UserVM) void {
+        @ptrCast(*VM, self).dumpInfo();
     }
 
-    pub fn dumpStats(_: UserVM) void {
-        gvm.dumpStats();
+    pub fn dumpStats(self: *UserVM) void {
+        @ptrCast(*VM, self).dumpStats();
     }
 
     pub fn fillUndefinedStackSpace(_: UserVM, val: Value) void {
@@ -3107,20 +3107,20 @@ pub const UserVM = struct {
         @ptrCast(*VM, self).retainObject(obj);
     }
 
-    pub inline fn getGlobalRC(_: UserVM) usize {
-        return gvm.getGlobalRC();
+    pub inline fn getGlobalRC(self: *const UserVM) usize {
+        return @ptrCast(*const VM, self).getGlobalRC();
     }
 
-    pub inline fn checkMemory(_: UserVM) !bool {
-        return gvm.checkMemory();
+    pub inline fn checkMemory(self: *UserVM) !bool {
+        return @ptrCast(*VM, self).checkMemory();
     }
 
-    pub inline fn compile(_: UserVM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
-        return gvm.compile(srcUri, src);
+    pub inline fn compile(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
+        return @ptrCast(*VM, self).compile(srcUri, src);
     }
 
-    pub inline fn eval(_: UserVM, srcUri: []const u8, src: []const u8) !Value {
-        return gvm.eval(srcUri, src);
+    pub inline fn eval(self: *UserVM, srcUri: []const u8, src: []const u8) !Value {
+        return @ptrCast(*VM, self).eval(srcUri, src);
     }
 
     pub inline fn allocator(self: *const UserVM) std.mem.Allocator {

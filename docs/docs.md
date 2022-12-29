@@ -298,7 +298,7 @@ a << b
 [To Top.](#table-of-contents)
 
 ### Comments.
-A single line comment starts with two hyphens.
+A single line comment starts with two hyphens and ends at the end of the line.
 ```text
 -- This is a comment.
 

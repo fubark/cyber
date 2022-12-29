@@ -727,7 +727,7 @@ In Cyber, there are first-class functions (or function values) as well as static
 Static functions are not initally values themselves, although they can be lifted to become a value.
 Static functions are declared with the `func` keyword and must have a name.
 ```text
-import m from 'math'
+import m 'math'
 
 func dist(x0, y0, x1, y1):
     dx = x0-x1
@@ -737,7 +737,7 @@ func dist(x0, y0, x1, y1):
 
 Functions can return multiple values.
 ```text
-import {*} from 'math'
+import {*} 'math'
 
 func compute(rad):
     return cos(rad), sin(rad)
@@ -854,21 +854,21 @@ Modules in Cyber contain static symbols that can be used from other modules. Imp
 ### Importing.
 Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader.
 ```text
-import t from 'test'
+import t 'test'
 try t.eq(123, 123)
 
 -- Imports are static declarations so they can be anywhere in the script.
-import m from 'math'
+import m 'math'
 print m.cos(0)
 
 -- Loading another Cyber script.
-import foo from 'bar.cy'
+import foo 'bar.cy'
 print foo.myFunc()
 print foo.myVar
 ```
 Modules can also be destructured using the following syntax:
 ```text
-import { cos, pi } from 'math'
+import { cos, pi } 'math'
 print cos(pi)
 ```
 
@@ -936,7 +936,7 @@ The math module contains commonly used math constants and functions.
 
 Sample usage:
 ```text
-import m from 'math'
+import m 'math'
 
 r = 10
 print(m.pi * r^2)

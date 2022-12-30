@@ -72,6 +72,9 @@ pub const Parser = struct {
     func_params: std.ArrayListUnmanaged(FunctionParam),
     func_decls: std.ArrayListUnmanaged(FuncDecl),
 
+    /// Use the parser pass to record var declarations.
+    varDecls: std.ArrayListUnmanaged(NodeId),
+
     // TODO: This should be implemented by user callbacks.
     /// @name arg.
     name: []const u8,
@@ -110,6 +113,7 @@ pub const Parser = struct {
             .deps = .{},
             .user = undefined,
             .tokenizeOpts = .{},
+            .varDecls = .{},
         };
     }
 
@@ -122,6 +126,7 @@ pub const Parser = struct {
         self.func_params.deinit(self.alloc);
         self.func_decls.deinit(self.alloc);
         self.deps.deinit(self.alloc);
+        self.varDecls.deinit(self.alloc);
     }
 
     fn dumpTokensToCurrent(self: *Parser) void {
@@ -1374,6 +1379,43 @@ pub const Parser = struct {
                         return self.reportParseErrorAt("Expected end of statement.", &.{}, token);
                     },
                 }
+            },
+            .var_k => {
+                const start = self.next_pos;
+                self.advanceToken();
+
+                // Static var name.
+                token = self.peekToken();
+                var name: NodeId = undefined;
+                if (token.tag() == .ident) {
+                    name = try self.pushIdentNode(self.next_pos);
+                    self.advanceToken();
+                } else return self.reportParseError("Expected local name identifier.", &.{});
+
+                token = self.peekToken();
+                if (token.tag() != .equal) {
+                    return self.reportParseError("Expected `=` after local variable name.", &.{});
+                }
+                self.advanceToken();
+
+                var right: NodeId = undefined;
+                if (self.peekToken().tag() == .func_k) {
+                    // Multi-line lambda.
+                    right = try self.parseMultilineLambdaFunction();
+                } else {
+                    right = (try self.parseExpr(.{})) orelse {
+                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                    };
+                }
+                const decl = try self.pushNode(.varDecl, start);
+                self.nodes.items[decl].head = .{
+                    .varDecl = .{
+                        .left = name,
+                        .right = right,
+                    },
+                };
+                try self.varDecls.append(self.alloc, decl);
+                return decl;
             },
             .let_k => {
                 const start = self.next_pos;
@@ -2862,6 +2904,7 @@ pub const NodeType = enum {
     assign_stmt,
     opAssignStmt,
     localDecl,
+    varDecl,
     pass_stmt,
     break_stmt,
     continueStmt,
@@ -3022,6 +3065,10 @@ pub const Node = struct {
             name: NodeId,
             fieldsHead: NodeId,
             funcsHead: NodeId,
+        },
+        varDecl: struct {
+            left: NodeId,
+            right: NodeId,
         },
         tagMember: struct {
             name: NodeId,

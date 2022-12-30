@@ -26,6 +26,9 @@ pub const VMcompiler = struct {
     lastErr: []const u8,
     lastErrNode: cy.NodeId,
 
+    /// Used to return additional info for an error.
+    errorPayload: cy.NodeId,
+
     /// Context vars.
     src: []const u8,
     nodes: []cy.Node,
@@ -48,6 +51,9 @@ pub const VMcompiler = struct {
     
     /// Generic linked list buffer.
     dataNodes: std.ArrayListUnmanaged(DataNode),
+
+    /// Which sema sym var is currently being analyzed for an assignment initializer.
+    curSemaSymVar: u32,
 
     curBlock: *Block,
     curSemaBlockId: SemaBlockId,
@@ -84,6 +90,8 @@ pub const VMcompiler = struct {
             .buf = try cy.ByteCodeBuffer.init(vm.alloc),
             .lastErr = "",
             .lastErrNode = undefined,
+            .errorPayload = undefined,
+            .curSemaSymVar = NullId,
             .nodes = undefined,
             .tokens = undefined,
             .funcDecls = undefined,
@@ -539,7 +547,30 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn resolveLocalFuncSym(self: *VMcompiler, declId: u32, path: []const u8, retType: Type) !void {
+    /// Given the local sym path, add a resolved var sym entry.
+    fn resolveLocalVarSym(self: *VMcompiler, path: []const u8, declId: cy.NodeId) !u32 {
+        // Resolve the symbol.
+        const symId = try self.ensureSemaSym(path, null);
+        self.semaSyms.items[symId].symT = .variable;
+
+        const resolvedId = @intCast(u32, self.semaResolvedSyms.items.len);
+        const pathDupe = try self.alloc.dupe(u8, path);
+        try self.semaResolvedSyms.append(self.alloc, .{
+            .symT = .variable,
+            .path = pathDupe,
+            .inner = .{
+                .variable = .{
+                    .declId = declId,
+                },
+            },
+        });
+        try @call(.never_inline, self.semaResolvedSymMap.put, .{self.alloc, pathDupe, resolvedId});
+        self.semaSyms.items[symId].resolvedSymId = resolvedId;
+        return symId;
+    }
+
+    /// Given the local sym path, add a resolved func sym entry.
+    fn resolveLocalFuncSym(self: *VMcompiler, path: []const u8, declId: u32, retType: Type) !void {
         // Resolve the symbol.
         const symId = try self.ensureSemaSym(path, null);
         self.semaSyms.items[symId].symT = .func;
@@ -636,9 +667,8 @@ pub const VMcompiler = struct {
             .opAssignStmt => {
                 const left = self.nodes[node.head.opAssignStmt.left];
                 if (left.node_t == .ident) {
-                    if (try self.semaIdentLocalVarOrNull(node.head.opAssignStmt.left, true, true)) |_| {
-                        _ = try self.semaExpr(node.head.opAssignStmt.right, false);
-                    } else unexpected("variable not declared", &.{});
+                    const rtype = try self.semaExpr(node.head.opAssignStmt.right, false);
+                    _ = try self.semaOpAssignVar(node.head.opAssignStmt.left, rtype);
                 } else if (left.node_t == .accessExpr) {
                     const accessLeft = try self.semaExpr(left.head.accessExpr.left, false);
                     const accessRight = try self.semaExpr(left.head.accessExpr.right, false);
@@ -647,7 +677,7 @@ pub const VMcompiler = struct {
                     _ = accessRight;
                     _ = right;
                 } else {
-                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                    return self.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
                 }
             },
             .assign_stmt => {
@@ -664,7 +694,28 @@ pub const VMcompiler = struct {
                     _ = try self.semaExpr(left.head.accessExpr.right, false);
                     _ = try self.semaExpr(node.head.left_right.right, false);
                 } else {
-                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                    return self.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
+                }
+            },
+            .varDecl => {
+                const left = self.nodes[node.head.varDecl.left];
+                if (left.node_t == .ident) {
+                    const name = self.getNodeTokenString(left);
+                    const symId = try self.resolveLocalVarSym(name, nodeId);
+                    self.curSemaSymVar = symId;
+                    defer self.curSemaSymVar = NullId;
+
+                    _ = self.semaExpr(node.head.varDecl.right, false) catch |err| {
+                        if (err == error.CanNotUseLocal) {
+                            const local = self.nodes[self.errorPayload];
+                            const localName = self.getNodeTokenString(local);
+                            return self.reportErrorAt("The declaration of static variable `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
+                        } else {
+                            return err;
+                        } 
+                    };
+                } else {
+                    return self.reportErrorAt("Static variable declarations can only have an identifier as the name. Parsed {} instead.", &.{fmt.v(left.node_t)}, nodeId);
                 }
             },
             .localDecl => {
@@ -673,7 +724,7 @@ pub const VMcompiler = struct {
                     const rtype = try self.semaExpr(node.head.left_right.right, false);
                     _ = try self.semaAssignVar(node.head.left_right.left, rtype, true);
                 } else {
-                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                    return self.reportErrorAt("Local variable declarations can only have an identifier as the name. Parsed {} instead.", &.{fmt.v(left.node_t)}, nodeId);
                 }
             },
             .tagDecl => {
@@ -721,6 +772,7 @@ pub const VMcompiler = struct {
                         if (std.mem.eql(u8, paramName, "self")) {
                             // Struct method.
                             try self.pushSemaBlock();
+                            errdefer self.endSemaBlock() catch stdx.fatal();
                             try self.pushSemaMethodParamVars(decl);
                             try self.semaStmts(func.head.func.body_head, false);
                             try self.endSemaBlock();
@@ -743,12 +795,13 @@ pub const VMcompiler = struct {
                     }
 
                     try self.pushSemaBlock();
+                    errdefer self.endSemaBlock() catch stdx.fatal();
                     try self.pushSemaFuncParamVars(decl);
                     try self.semaStmts(func.head.func.body_head, false);
                     const retType = self.curSemaBlock().getReturnType();
                     try self.endSemaBlock();
 
-                    try self.resolveLocalFuncSym(func.head.func.decl_id, self.u8Buf.items, retType);
+                    try self.resolveLocalFuncSym(self.u8Buf.items, func.head.func.decl_id, retType);
 
                     funcId = func.next;
                 }
@@ -778,7 +831,7 @@ pub const VMcompiler = struct {
                 const numParams = func.params.end - func.params.start;
                 try self.endSemaFuncSymBlock(symId, numParams);
 
-                try self.resolveLocalFuncSym(node.head.func.decl_id, name, retType.?);
+                try self.resolveLocalFuncSym(name, node.head.func.decl_id, retType.?);
             },
             .for_cond_stmt => {
                 try self.pushSemaIterSubBlock();
@@ -1021,9 +1074,19 @@ pub const VMcompiler = struct {
 
         const root = self.nodes[ast.root_id];
 
+        // Ensure static var syms.
+        for (self.vm.parser.varDecls.items) |declId| {
+            const decl = self.nodes[declId];
+            const ident = self.nodes[decl.head.varDecl.left];
+            const str = self.getNodeTokenString(ident);
+            const symId = try self.ensureSemaSym(str, null);
+            self.semaSyms.items[symId].symT = .variable;
+        }
+
         try self.pushSemaBlock();
         self.semaStmts(root.head.child_head, true) catch {
-            if (dumpCompileErrorStackTrace) {
+            try self.endSemaBlock();
+            if (dumpCompileErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
             return ResultView{
@@ -1035,7 +1098,8 @@ pub const VMcompiler = struct {
 
         // After sema pass, resolve used syms.
         for (self.semaSyms.items) |sym, symId| {
-            if (sym.used) {
+            // Only full symbol paths that are unresolved.
+            if (sym.used and sym.resolvedSymId == NullId) {
                 try self.resolveSemaSym(@intCast(u32, symId));
             }
         }
@@ -1044,6 +1108,22 @@ pub const VMcompiler = struct {
         self.nextSemaSubBlockId = 1;
         _ = self.nextSemaBlock();
         try self.pushBlock();
+
+        // Once all symbols have been resolved, the static variables are initialized in DFS order.
+        // Uses temp locals from the main block.
+        for (self.semaSyms.items) |sym| {
+            if (sym.used and sym.symT == .variable) {
+                // log.debug("generate init var: {s}", .{sym.path});
+                const rsym = self.semaResolvedSyms.items[sym.resolvedSymId];
+                const declId = rsym.inner.variable.declId;
+                const decl = self.nodes[declId];
+                const exprv = try self.genRetainedTempExpr(decl.head.varDecl.right, false);
+                const rtSymId = try self.vm.ensureVarSym(rsym.path);
+                try self.buf.pushOp2(.setStatic, @intCast(u8, rtSymId), exprv.local);
+            }
+        }
+        self.resetNextFreeTemp();
+
         try self.genInitLocals();
         self.genStatements(root.head.child_head, true) catch {
             if (dumpCompileErrorStackTrace) {
@@ -1313,7 +1393,6 @@ pub const VMcompiler = struct {
     }
 
     fn pushSemaBlock(self: *VMcompiler) !void {
-        try self.pushBlock();
         const prevId = self.curSemaBlockId;
         self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
         try self.semaBlocks.append(self.alloc, SemaBlock.init(prevId));
@@ -1326,7 +1405,6 @@ pub const VMcompiler = struct {
         const sblock = self.curSemaBlock();
         sblock.nameToVar.deinit(self.alloc);
         self.curSemaBlockId = sblock.prevBlockId;
-        self.popBlock();
         self.semaBlockDepth -= 1;
     }
 
@@ -1347,6 +1425,50 @@ pub const VMcompiler = struct {
 
     fn blockNumLocals(self: *VMcompiler) usize {
         return self.curSemaBlock().locals.items.len + self.curSemaBlock().params.items.len;
+    }
+
+    fn semaOpAssignVar(self: *VMcompiler, ident: cy.NodeId, vtype: Type) !void {
+        // log.debug("set var {s}", .{name});
+        const node = self.nodes[ident];
+        const name = self.getNodeTokenString(node);
+
+        if (try self.semaIdentLocalVarOrNull(ident, true, false)) |varId| {
+            const svar = &self.vars.items[varId];
+
+            if (svar.isCaptured) {
+                if (!svar.isBoxed) {
+                    // Becomes boxed so codegen knows ahead of time.
+                    svar.isBoxed = true;
+                }
+            }
+
+            const ssblock = self.curSemaSubBlock();
+            if (!ssblock.prevVarTypes.contains(varId)) {
+                // Same variable but branched to sub block.
+                try ssblock.prevVarTypes.put(self.alloc, varId, svar.vtype);
+                try self.assignedVarStack.append(self.alloc, varId);
+            }
+
+            // Update current type after checking for branched assignment.
+            if (svar.vtype.typeT != vtype.typeT) {
+                svar.vtype = vtype;
+                if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
+                    svar.lifetimeRcCandidate = true;
+                }
+            }
+
+            self.nodes[ident].head.ident.semaVarId = varId;
+        } else {
+            if (self.getSemaSym(name)) |symId| {
+                const sym = self.semaSyms.items[symId];
+                if (sym.symT == .variable) {
+                    self.semaSyms.items[symId].used = true;
+                    self.nodes[ident].head.ident.semaSymId = symId;
+                    return;
+                }
+            }
+            return self.reportErrorAt("Can't perform operator assignment to undefined variable `{}`.", &.{v(name)}, ident);
+        }
     }
 
     fn semaAssignVar(self: *VMcompiler, ident: cy.NodeId, vtype: Type, isLocalDecl: bool) !void {
@@ -1396,20 +1518,24 @@ pub const VMcompiler = struct {
 
             self.nodes[ident].head.ident.semaVarId = varId;
         } else {
-            const symId = try self.ensureSemaSym(name, null);
-            if (self.semaSymToRef.contains(symId)) {
-                self.semaSyms.items[symId].used = true;
-            } else {
-                // Create a new local.
-                const id = try self.pushSemaLocalVar(name, vtype);
-                const sblock = self.curSemaBlock();
-                if (sblock.subBlockDepth > 1) {
-                    self.vars.items[id].genInitializer = true;
+            if (self.getSemaSym(name)) |symId| {
+                const sym = self.semaSyms.items[symId];
+                if (sym.symT == .variable) {
+                    // Assignment to static var.
+                    self.semaSyms.items[symId].used = true;
+                    self.nodes[ident].head.ident.semaSymId = symId;
+                    return;
                 }
-                self.nodes[ident].head.ident.semaVarId = id;
-
-                try self.assignedVarStack.append(self.alloc, id);
             }
+            // Create a new local.
+            const id = try self.pushSemaLocalVar(name, vtype);
+            const sblock = self.curSemaBlock();
+            if (sblock.subBlockDepth > 1) {
+                self.vars.items[id].genInitializer = true;
+            }
+            self.nodes[ident].head.ident.semaVarId = id;
+
+            try self.assignedVarStack.append(self.alloc, id);
         }
     }
 
@@ -1498,6 +1624,10 @@ pub const VMcompiler = struct {
         const name = self.getNodeTokenString(node);
 
         if (self.semaLookupVar(name, searchParentScope)) |res| {
+            if (self.curSemaSymVar != NullId) {
+                self.errorPayload = ident;
+                return error.CanNotUseLocal;
+            }
             if (res.fromParentBlock) {
                 // Create a local captured variable.
                 const svar = self.vars.items[res.id];
@@ -1595,7 +1725,7 @@ pub const VMcompiler = struct {
                 } else if (modSym.symT == .variable) {
                     const pathDupe = try self.alloc.dupe(u8, path);
                     const rtSymId = try self.vm.ensureVarSym(pathDupe);
-                    const rtSym = cy.VarSymbol.initValue(modSym.inner.variable.val);
+                    const rtSym = cy.VarSym.init(modSym.inner.variable.val);
                     self.vm.setVarSym(rtSymId, rtSym);
                     try self.semaResolvedSyms.append(self.alloc, .{
                         .symT = .variable,
@@ -2045,7 +2175,8 @@ pub const VMcompiler = struct {
                     else => fmt.panic("Unexpected operator assignment.", &.{}),
                 };
                 if (left.node_t == .ident) {
-                    if (self.genGetVarPtr(left.head.ident.semaVarId)) |svar| {
+                    if (left.head.ident.semaVarId != NullId) {
+                        const svar = self.genGetVarPtr(left.head.ident.semaVarId).?;
                         const right = try self.genExpr(node.head.opAssignStmt.right, false);
                         if (svar.isBoxed) {
                             const tempLocal = try self.nextFreeTempLocal();
@@ -2056,17 +2187,35 @@ pub const VMcompiler = struct {
                         } else {
                             try self.buf.pushOp3(genOp, svar.local, right.local, svar.local);
                         }
-                    } else unexpected("variable not declared", &.{});
+                    } else {
+                        const sym = self.semaSyms.items[left.head.ident.semaSymId];
+                        const rsym = self.semaResolvedSyms.items[sym.resolvedSymId];
+                        const rightv = try self.genExpr(node.head.opAssignStmt.right, false);
+                        const rtSymId = try self.vm.ensureVarSym(rsym.path);
+
+                        const tempLocal = try self.nextFreeTempLocal();
+                        try self.buf.pushOp2(.static, @intCast(u8, rtSymId), tempLocal);
+                        try self.buf.pushOp3(genOp, tempLocal, rightv.local, tempLocal);
+                        try self.buf.pushOp2(.setStatic, @intCast(u8, rtSymId), tempLocal);
+                    }
                 } else if (left.node_t == .accessExpr) {
                     try self.genBinOpAssignToField(genOp, node.head.opAssignStmt.left, node.head.opAssignStmt.right);
                 } else {
-                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                    unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
             },
             .assign_stmt => {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
-                    try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
+                    if (left.head.ident.semaVarId != NullId) {
+                        try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
+                    } else {
+                        const sym = self.semaSyms.items[left.head.ident.semaSymId];
+                        const rsym = self.semaResolvedSyms.items[sym.resolvedSymId];
+                        const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
+                        const rtSymId = try self.vm.ensureVarSym(rsym.path);
+                        try self.buf.pushOp2(.setStatic, @intCast(u8, rtSymId), rightv.local);
+                    }
                 } else if (left.node_t == .arr_access_expr) {
                     const startTempLocal = self.curBlock.firstFreeTempLocal;
                     defer self.setFirstFreeTempLocal(startTempLocal);
@@ -2094,16 +2243,16 @@ pub const VMcompiler = struct {
                     try self.buf.pushOpSlice(.setFieldRelease, &.{leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
                     try self.pushDebugSym(nodeId);
                 } else {
-                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
+                    unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
+            },
+            .varDecl => {
+                // Nop. Static variables are hoisted and initialized at the start of the program.
             },
             .localDecl => {
                 const left = self.nodes[node.head.left_right.left];
-                if (left.node_t == .ident) {
-                    try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
-                } else {
-                    unexpected("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
-                }
+                // Can assume left is .ident from sema.
+                try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
             },
             .tagDecl => {
                 // Nop.
@@ -2444,7 +2593,9 @@ pub const VMcompiler = struct {
                     try self.buf.pushOp(.ret1);
                 }
             },
-            else => return self.reportErrorAt("Unsupported node", &.{}, nodeId),
+            else => {
+                return self.reportErrorAt("Unsupported statement: {}", &.{v(node.node_t)}, nodeId);
+            }
         }
     }
 
@@ -3130,7 +3281,16 @@ pub const VMcompiler = struct {
                         return self.initGenValue(dst, svar.vtype);
                     }
                 } else {
-                    return self.genNone(dst);
+                    if (builtin.mode == .Debug and node.head.ident.semaSymId == NullId) {
+                        unexpectedFmt("Missing semaSymId.", &.{});
+                    }
+                    if (self.genGetResolvedSym(node.head.ident.semaSymId)) |semaSym| {
+                        const varId = try self.vm.ensureVarSym(semaSym.path);
+                        try self.buf.pushOp2(.static, @intCast(u8, varId), dst);
+                        return self.initGenValue(dst, AnyType);
+                    } else {
+                        return self.genNone(dst);
+                    }
                 }
             },
             .true_literal => {
@@ -3510,7 +3670,7 @@ pub const VMcompiler = struct {
                             if (self.vm.getVarSym(semaSym.path)) |symId| {
                                 if (!discardTopExprReg) {
                                     // Static variable.
-                                    try self.buf.pushOp2(.varSym, @intCast(u8, symId), dst);
+                                    try self.buf.pushOp2(.static, @intCast(u8, symId), dst);
                                     return self.initGenValue(dst, AnyType);
                                 } else {
                                     return GenValue.initNoValue();
@@ -4394,6 +4554,7 @@ const SemaSymRef = struct {
 const SemaSymId = u32;
 const SemaSymType = enum {
     func,
+    variable,
     undefined,
 };
 
@@ -4427,7 +4588,9 @@ const SemaResolvedSym = struct {
             // Return type.
             retType: Type,
         },
-        variable: void,
+        variable: struct {
+            declId: cy.NodeId,
+        },
     },
 };
 
@@ -4720,7 +4883,9 @@ fn initMathModule(alloc: std.mem.Allocator, spec: []const u8) !Module {
     return mod;
 }
 
-fn unexpected(format: []const u8, vals: []const fmt.FmtValue) noreturn {
+const unexpected = stdx.fatal;
+
+fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
     if (builtin.mode == .Debug) {
         fmt.printStderr(format, vals);
     }

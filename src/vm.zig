@@ -78,7 +78,7 @@ pub const VM = struct {
     funcSymSignatures: std.StringHashMapUnmanaged(SymbolId),
     funcSymDetails: cy.List(FuncSymDetail),
 
-    varSyms: cy.List(VarSymbol),
+    varSyms: cy.List(VarSym),
     varSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     /// Struct fields symbol table.
@@ -1105,10 +1105,7 @@ pub const VM = struct {
         const res = try self.varSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
             const id = @intCast(u32, self.varSyms.len);
-            try self.varSyms.append(self.alloc, .{
-                .symT = .none,
-                .inner = undefined,
-            });
+            try self.varSyms.append(self.alloc, VarSym.init(Value.None));
             res.value_ptr.* = id;
             return id;
         } else {
@@ -1246,7 +1243,7 @@ pub const VM = struct {
         };
     }
 
-    pub inline fn setVarSym(self: *VM, symId: SymbolId, sym: VarSymbol) void {
+    pub inline fn setVarSym(self: *VM, symId: SymbolId, sym: VarSym) void {
         self.varSyms.buf[symId] = sym;
     }
 
@@ -2918,23 +2915,12 @@ pub const SymbolEntry = struct {
     }
 };
 
-const VarSymbolType = enum {
-    value,
-    none,
-};
+pub const VarSym = struct {
+    value: Value,
 
-pub const VarSymbol = struct {
-    symT: VarSymbolType,
-    inner: packed union {
-        value: Value,
-    },
-
-    pub fn initValue(val: Value) VarSymbol {
+    pub fn init(val: Value) VarSym {
         return .{
-            .symT = .value,
-            .inner = .{
-                .value = val,
-            },
+            .value = val,
         };
     }
 };
@@ -3065,6 +3051,10 @@ pub const UserVM = struct {
 
     pub fn getStackTrace(self: *UserVM) *const StackTrace {
         return @ptrCast(*const VM, self).getStackTrace();
+    }
+
+    pub fn getCompileErrorMsg(self: *const UserVM) []const u8 {
+        return @ptrCast(*const VM, self).compiler.lastErr;
     }
 
     pub fn getPanicMsg(self: *const UserVM) []const u8 {
@@ -3988,17 +3978,18 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[dst] = try gvm.allocClosure(framePtr, funcPc, numParams, numLocals, capturedVals);
                 continue;
             },
-            .varSym => {
+            .static => {
                 const symId = pc[1].arg;
                 const sym = vm.varSyms.buf[symId];
-                switch (sym.symT) {
-                    .value => {
-                        framePtr[pc[2].arg] = sym.inner.value;
-                        pc += 3;
-                        continue;
-                    },
-                    .none => return vm.panic("Missing var symbol."),
-                }
+                framePtr[pc[2].arg] = sym.value;
+                pc += 3;
+                continue;
+            },
+            .setStatic => {
+                const symId = pc[1].arg;
+                vm.varSyms.buf[symId].value = framePtr[pc[2].arg];
+                pc += 3;
+                continue;
             },
             .coreturn => {
                 pc += 1;
@@ -4933,6 +4924,9 @@ fn setCapValToFuncSyms(vm: *VM, capVal: Value, numSyms: u8, syms: []const cy.OpD
 }
 
 fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) !void {
+    if (cy.silentError) {
+        return;
+    }
     if (pos != NullId) {
         var line: u32 = undefined;
         var col: u32 = undefined;

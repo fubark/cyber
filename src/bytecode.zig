@@ -314,7 +314,8 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .boxValueRetain,
         .tagLiteral,
         .tryValue,
-        .varSym,
+        .static,
+        .setStatic,
         .constOp => {
             return 3;
         },
@@ -527,17 +528,22 @@ pub const OpCode = enum(u8) {
     addInt,
     minusInt,
     lessInt,
-    varSym,
     forRangeInit,
     forRange,
     forRangeReverse,
+
+    /// Copies a static variable to a destination register.
+    static,
+
+    /// Copies a local register to a static variable.
+    setStatic,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 92);
+    try t.eq(std.enums.values(OpCode).len, 93);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

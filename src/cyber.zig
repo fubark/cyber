@@ -39,7 +39,7 @@ pub const UserVM = vm.UserVM;
 pub const VM = vm.VM;
 pub const SymbolEntry = vm.SymbolEntry;
 pub const FuncSymbolEntry = vm.FuncSymbolEntry;
-pub const VarSymbol = vm.VarSymbol;
+pub const VarSym = vm.VarSym;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 pub const HeapObject = vm.HeapObject;
@@ -95,3 +95,5 @@ pub const DecodeValueIR = cdata.DecodeValueIR;
 pub const HotSection = if (builtin.os.tag == .macos) "DATA,.eval" else ".eval";
 pub const Section = if (builtin.os.tag == .macos) "DATA,.eval2" else ".eval2";
 pub const StdSection = if (builtin.os.tag == .macos) "DATA,.eval.std" else ".eval.std";
+
+pub var silentError = false;

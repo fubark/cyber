@@ -1440,6 +1440,70 @@ test "Undefined variable references." {
     try t.expectError(res, error.Panic);
 }
 
+test "Static variable declaration." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Using a local variable in a static var initializer is not allowed.
+    const res = run.evalSilent(
+        \\let b = 123
+        \\var a = b
+    );
+    try t.expectError(res, error.CompileError);
+    try t.eqStr(run.vm.getCompileErrorMsg(), "The declaration of static variable `a` can not reference the local variable `b`.");
+
+    // Reading from a static variable.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = 123
+        \\let b = a
+        \\try t.eq(b, 123)
+    );
+
+    // Reading from a static variable before it is declared.
+    _ = try run.eval(
+        \\import t 'test'
+        \\let b = a
+        \\try t.eq(b, 123)
+        \\var a = 123
+    );
+}
+
+test "Static variable assignment." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Assignment to a static variable.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = 123
+        \\func foo():
+        \\  a = 234
+        \\foo()
+        \\try t.eq(a, 234)
+    );
+
+    // Assignment to a static variable before it is declared.
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo():
+        \\  a = 234
+        \\foo()
+        \\try t.eq(a, 234)
+        \\var a = 123
+    );
+
+    // Operator assignment to a static variable.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = 123
+        \\func foo():
+        \\  a += 321
+        \\foo()
+        \\try t.eq(a, 444)
+    );
+}
+
 test "Local variable declaration." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -1918,7 +1982,7 @@ test "Static closures." {
     );
     try run.valueIsI32(val, 124);
 
-    // Closure used before declaration.
+    // Closure called before declaration.
     _ = try run.eval(
         \\import t 'test'
         \\a = 123
@@ -1927,7 +1991,7 @@ test "Static closures." {
         \\  return a
     );
 
-    // Closure used before declaration and captured var.
+    // Closure called before declaration and captured var.
     _ = try run.eval(
         \\import t 'test'
         \\try t.eq(foo(), none)
@@ -2481,6 +2545,8 @@ const VMrunner = struct {
 
     /// Don't print panic errors.
     fn evalSilent(self: *VMrunner, src: []const u8) !cy.Value {
+        cy.silentError = true;
+        defer cy.silentError = false;
         try self.resetEnv();
         return self.vm.eval("main", src) catch |err| {
             return err;

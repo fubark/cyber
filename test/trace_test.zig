@@ -98,6 +98,25 @@ test "ARC." {
     try t.eq(trace.numForceReleases, 2);
 }
 
+test "ARC for static variable declarations." {
+    var run: VMrunner = undefined;
+    run.init();
+    defer run.deinit();
+    const trace = &run.trace;
+
+    // Static variable is freed on vm end.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = [123]
+        \\try t.eq(a[0], 123)
+    );
+    run.deinit();
+    try t.eq(trace.numRetainAttempts, 2);
+    try t.eq(trace.numReleaseAttempts, 5);
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
+}
+
 test "ARC assignments." {
     var run: VMrunner = undefined;
     run.init();

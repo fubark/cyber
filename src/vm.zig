@@ -124,6 +124,9 @@ pub const VM = struct {
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, u32) else void,
 
+    /// Whether this VM is already deinited. Used to skip the next deinit to avoid using undefined memory.
+    deinited: bool,
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -171,6 +174,7 @@ pub const VM = struct {
             .endLocal = undefined,
             .mainUri = "",
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
+            .deinited = false,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -199,6 +203,10 @@ pub const VM = struct {
     }
 
     pub fn deinit(self: *VM) void {
+        if (self.deinited) {
+            return;
+        }
+
         // Deinit runtime related resources first, since they may depend on
         // compiled/debug resources.
         for (self.funcSyms.items()) |sym| {
@@ -207,6 +215,10 @@ pub const VM = struct {
             }
         }
         self.funcSyms.deinit(self.alloc);
+        for (self.varSyms.items()) |vsym| {
+            release(self, vsym.value);
+        }
+        self.varSyms.deinit(self.alloc);
 
         self.parser.deinit();
         self.compiler.deinit();
@@ -224,7 +236,6 @@ pub const VM = struct {
         }
         self.funcSymDetails.deinit(self.alloc);
 
-        self.varSyms.deinit(self.alloc);
         self.varSymSignatures.deinit(self.alloc);
 
         self.fieldSyms.deinit(self.alloc);
@@ -252,6 +263,8 @@ pub const VM = struct {
         if (builtin.mode == .Debug) {
             self.objectTraceMap.deinit(self.alloc);
         }
+
+        self.deinited = true;
     }
 
     /// Initializes the page with freed object slots and returns the pointer to the first slot.

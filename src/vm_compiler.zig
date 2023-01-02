@@ -55,16 +55,23 @@ pub const VMcompiler = struct {
     /// Which sema sym var is currently being analyzed for an assignment initializer.
     curSemaSymVar: u32,
 
+    /// When looking at a var declaration, keep track of which symbols are already recorded as dependencies.
+    semaVarDeclDeps: std.AutoHashMapUnmanaged(u32, void),
+
     curBlock: *Block,
     curSemaBlockId: SemaBlockId,
     semaBlockDepth: u32,
     curSemaSubBlockId: SemaSubBlockId,
 
-    // Used during codegen to advance to the next saved sema block.
+    /// Used during codegen to advance to the next saved sema block.
     nextSemaBlockId: u32,
     nextSemaSubBlockId: u32,
 
-    u8Buf: std.ArrayListUnmanaged(u8),
+    /// Currently used to store lists of static var dependencies.
+    bufU32: std.ArrayListUnmanaged(u32),
+
+    /// Used for temp string building.
+    tempBufU8: std.ArrayListUnmanaged(u8),
 
     /// Local paths to syms.
     semaSyms: std.ArrayListUnmanaged(SemaSym),
@@ -113,7 +120,8 @@ pub const VMcompiler = struct {
             .nextSemaSubBlockId = undefined,
             .semaBlockDepth = undefined,
             .src = undefined,
-            .u8Buf = .{},
+            .tempBufU8 = .{},
+            .bufU32 = .{},
             .semaSyms = .{},
             .semaSymMap = .{},
             .semaResolvedSyms = .{},
@@ -123,6 +131,7 @@ pub const VMcompiler = struct {
             .semaSymToRef = .{},
             .typeNames = .{},
             .dataNodes = .{},
+            .semaVarDeclDeps = .{},
         };
         try self.typeNames.put(self.alloc, "int", IntegerType);
     }
@@ -146,7 +155,8 @@ pub const VMcompiler = struct {
         self.subBlockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
-        self.u8Buf.deinit(self.alloc);
+        self.tempBufU8.deinit(self.alloc);
+        self.bufU32.deinit(self.alloc);
         self.reservedTempLocalStack.deinit(self.alloc);
         self.vars.deinit(self.alloc);
         self.capVarDescs.deinit(self.alloc);
@@ -171,6 +181,7 @@ pub const VMcompiler = struct {
         self.semaSymToRef.deinit(self.alloc);
         self.typeNames.deinit(self.alloc);
         self.dataNodes.deinit(self.alloc);
+        self.semaVarDeclDeps.deinit(self.alloc);
     }
 
     fn semaExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
@@ -703,6 +714,7 @@ pub const VMcompiler = struct {
                     const name = self.getNodeTokenString(left);
                     const symId = try self.resolveLocalVarSym(name, nodeId);
                     self.curSemaSymVar = symId;
+                    self.semaVarDeclDeps.clearRetainingCapacity();
                     defer self.curSemaSymVar = NullId;
 
                     _ = self.semaExpr(node.head.varDecl.right, false) catch |err| {
@@ -783,15 +795,15 @@ pub const VMcompiler = struct {
 
                     // Struct function.
 
-                    self.u8Buf.clearRetainingCapacity();
-                    const w = self.u8Buf.writer(self.alloc);
+                    self.tempBufU8.clearRetainingCapacity();
+                    const w = self.tempBufU8.writer(self.alloc);
                     const funcName = self.src[decl.name.start..decl.name.end];
                     try std.fmt.format(w, "{s}.{s}", .{name, funcName});
-                    if (self.getSemaSym(self.u8Buf.items) == null) {
-                        const symId = try self.ensureSemaSym(self.u8Buf.items, null);
+                    if (self.getSemaSym(self.tempBufU8.items) == null) {
+                        const symId = try self.ensureSemaSym(self.tempBufU8.items, null);
                         self.semaSyms.items[symId].symT = .func;
                     } else {
-                        return self.reportErrorAt("Symbol already declared: {}", &.{fmt.v(self.u8Buf.items)}, nodeId);
+                        return self.reportErrorAt("Symbol already declared: {}", &.{fmt.v(self.tempBufU8.items)}, nodeId);
                     }
 
                     try self.pushSemaBlock();
@@ -801,7 +813,7 @@ pub const VMcompiler = struct {
                     const retType = self.curSemaBlock().getReturnType();
                     try self.endSemaBlock();
 
-                    try self.resolveLocalFuncSym(self.u8Buf.items, func.head.func.decl_id, retType);
+                    try self.resolveLocalFuncSym(self.tempBufU8.items, func.head.func.decl_id, retType);
 
                     funcId = func.next;
                 }
@@ -1043,6 +1055,31 @@ pub const VMcompiler = struct {
         self.resetNextFreeTemp();
     }
 
+    /// Generates var decl initializer.
+    /// If the declaration contains dependencies those are generated first in DFS order.
+    fn genVarDeclInitDFS(self: *VMcompiler, symId: u32) !void {
+        const sym = &self.semaSyms.items[symId];
+        sym.visited = true;
+
+        if (self.semaSymToRef.get(symId)) |ref| {
+            // Contains dependencies. Generate initializers for them first.
+            const deps = self.bufU32.items[ref.inner.initDeps.start..ref.inner.initDeps.end];
+            for (deps) |dep| {
+                if (!self.semaSyms.items[dep].visited) {
+                    try self.genVarDeclInitDFS(dep);
+                }
+            }
+        }
+
+        // log.debug("generate init var: {s}", .{sym.path});
+        const rsym = self.semaResolvedSyms.items[sym.resolvedSymId];
+        const declId = rsym.inner.variable.declId;
+        const decl = self.nodes[declId];
+        const exprv = try self.genRetainedTempExpr(decl.head.varDecl.right, false);
+        const rtSymId = try self.vm.ensureVarSym(rsym.path);
+        try self.buf.pushOp2(.setStatic, @intCast(u8, rtSymId), exprv.local);
+    }
+
     pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
         self.buf.clear();
         self.blocks.clearRetainingCapacity();
@@ -1111,15 +1148,10 @@ pub const VMcompiler = struct {
 
         // Once all symbols have been resolved, the static variables are initialized in DFS order.
         // Uses temp locals from the main block.
-        for (self.semaSyms.items) |sym| {
-            if (sym.used and sym.symT == .variable) {
-                // log.debug("generate init var: {s}", .{sym.path});
-                const rsym = self.semaResolvedSyms.items[sym.resolvedSymId];
-                const declId = rsym.inner.variable.declId;
-                const decl = self.nodes[declId];
-                const exprv = try self.genRetainedTempExpr(decl.head.varDecl.right, false);
-                const rtSymId = try self.vm.ensureVarSym(rsym.path);
-                try self.buf.pushOp2(.setStatic, @intCast(u8, rtSymId), exprv.local);
+        for (self.semaSyms.items) |sym, i| {
+            const symId = @intCast(u32, i);
+            if (sym.used and sym.symT == .variable and !sym.visited) {
+                try self.genVarDeclInitDFS(symId);
             }
         }
         self.resetNextFreeTemp();
@@ -1583,11 +1615,11 @@ pub const VMcompiler = struct {
                 if (left.head.ident.semaSymId != NullId) {
                     const leftSym = self.semaSyms.items[left.head.ident.semaSymId];
                     const rightName = self.getNodeTokenString(right);
-                    self.u8Buf.clearRetainingCapacity();
-                    const w = self.u8Buf.writer(self.alloc);
+                    self.tempBufU8.clearRetainingCapacity();
+                    const w = self.tempBufU8.writer(self.alloc);
                     try std.fmt.format(w, "{s}.{s}", .{leftSym.path, rightName });
 
-                    const symId = try self.ensureSemaSym(self.u8Buf.items, leftSym.leadSymId);
+                    const symId = try self.ensureSemaSym(self.tempBufU8.items, leftSym.leadSymId);
                     if (canBeSymRoot) {
                         self.semaSyms.items[symId].used = true;
                     }
@@ -1599,11 +1631,11 @@ pub const VMcompiler = struct {
                 if (left.head.accessExpr.semaSymId != NullId) {
                     const leftSym = self.semaSyms.items[left.head.ident.semaSymId];
                     const rightName = self.getNodeTokenString(right);
-                    self.u8Buf.clearRetainingCapacity();
-                    const w = self.u8Buf.writer(self.alloc);
+                    self.tempBufU8.clearRetainingCapacity();
+                    const w = self.tempBufU8.writer(self.alloc);
                     try std.fmt.format(w, "{s}.{s}", .{leftSym.path, rightName });
 
-                    const symId = try self.ensureSemaSym(self.u8Buf.items, leftSym.leadSymId);
+                    const symId = try self.ensureSemaSym(self.tempBufU8.items, leftSym.leadSymId);
                     if (canBeSymRoot) {
                         self.semaSyms.items[symId].used = true;
                     }
@@ -1646,6 +1678,30 @@ pub const VMcompiler = struct {
             if (canBeSymRoot) {
                 self.semaSyms.items[symId].used = true;
             }
+            if (self.curSemaSymVar != NullId) {
+                // Record this symbol as a dependency.
+                const res = try self.semaSymToRef.getOrPut(self.alloc, self.curSemaSymVar);
+                if (res.found_existing) {
+                    const depRes = try self.semaVarDeclDeps.getOrPut(self.alloc, symId);
+                    if (!depRes.found_existing) {
+                        try self.bufU32.append(self.alloc, symId);
+                        res.value_ptr.*.inner.initDeps.end = @intCast(u32, self.bufU32.items.len);
+                        depRes.value_ptr.* = {};
+                    }
+                } else {
+                    const start = @intCast(u32, self.bufU32.items.len);
+                    try self.bufU32.append(self.alloc, symId);
+                    res.value_ptr.* = .{
+                        .refT = .initDeps,
+                        .inner = .{
+                            .initDeps = .{
+                                .start = start,
+                                .end = @intCast(u32, self.bufU32.items.len),
+                            },
+                        }
+                    };
+                }
+            }
             self.nodes[ident].head.ident.semaSymId = symId;
             return null;
         }
@@ -1660,10 +1716,10 @@ pub const VMcompiler = struct {
                 if (ref.refT == .moduleMember) {
                     const modId = ref.inner.moduleMember.modId;
                     const mod = self.modules.items[modId];
-                    self.u8Buf.clearRetainingCapacity();
-                    const w = self.u8Buf.writer(self.alloc);
+                    self.tempBufU8.clearRetainingCapacity();
+                    const w = self.tempBufU8.writer(self.alloc);
                     try std.fmt.format(w, "{s}.{s}", .{ mod.prefix, ref.inner.moduleMember.memberName });
-                    if (try self.getOrTryResolveSym(self.u8Buf.items, modId, NullId)) |resolvedId| {
+                    if (try self.getOrTryResolveSym(self.tempBufU8.items, modId, NullId)) |resolvedId| {
                         sym.resolvedSymId = resolvedId;
                     }
                 } else {
@@ -1677,11 +1733,11 @@ pub const VMcompiler = struct {
                     const modId = ref.inner.module;
                     const modPrefix = self.modules.items[modId].prefix;
                     if (std.mem.indexOfScalar(u8, sym.path, '.')) |idx| {
-                        self.u8Buf.clearRetainingCapacity();
-                        const w = self.u8Buf.writer(self.alloc);
+                        self.tempBufU8.clearRetainingCapacity();
+                        const w = self.tempBufU8.writer(self.alloc);
                         try std.fmt.format(w, "{s}.{s}", .{ modPrefix, sym.path[idx+1..] });
 
-                        if (try self.getOrTryResolveSym(self.u8Buf.items, modId, NullId)) |resolvedId| {
+                        if (try self.getOrTryResolveSym(self.tempBufU8.items, modId, NullId)) |resolvedId| {
                             sym.resolvedSymId = resolvedId;
                             // log.debug("resolve {s} {} {}", .{sym.path, sym.leadSymId, modId});
                         }
@@ -1760,6 +1816,7 @@ pub const VMcompiler = struct {
                 .path = ownPath,
                 .used = false,
                 .leadSymId = leadSymId orelse id,
+                .visited = false,
             });
             res.key_ptr.* = ownPath;
             res.value_ptr.* = id;
@@ -3215,8 +3272,8 @@ pub const VMcompiler = struct {
     }
 
     fn unescapeString(self: *VMcompiler, literal: []const u8) ![]const u8 {
-        try self.u8Buf.resize(self.alloc, literal.len);
-        return Root.unescapeString(self.u8Buf.items, literal);
+        try self.tempBufU8.resize(self.alloc, literal.len);
+        return Root.unescapeString(self.tempBufU8.items, literal);
     }
 
     fn setReservedTempLocal(self: *VMcompiler, local: LocalId) !void {
@@ -4532,12 +4589,14 @@ const GenValue = struct {
 
 test "Internals." {
     try t.eq(@sizeOf(SemaVar), 32);
+    try t.eq(@sizeOf(SemaSym), 40);
     try t.eq(@sizeOf(Type), 3);
 }
 
 const SemaSymRefType = enum {
     module,
     moduleMember,
+    initDeps,
 };
 
 const SemaSymRef = struct {
@@ -4547,6 +4606,11 @@ const SemaSymRef = struct {
         moduleMember: struct {
             modId: ModuleId,
             memberName: []const u8,
+        },
+        /// For variable symbols, this points to a list of sema sym ids in `bufU32` that it depends on for initialization.
+        initDeps: struct {
+            start: u32 = 0,
+            end: u32 = 0,
         },
     },
 };
@@ -4568,8 +4632,13 @@ const SemaSym = struct {
     /// After the sema pass, all semaSyms are resolved.
     resolvedSymId: SemaResolvedSymId = NullId,
 
-    /// Whether the this sym is used in the script.
+    /// Whether this sym is used in the script.
+    /// TODO: This might not be necessary once resolving syms ends up using the parent path symbol.
     used: bool,
+
+    /// Used for static vars to track whether it has already generated code for the initializer
+    /// in a DFS traversal of its dependencies.
+    visited: bool,
 };
 
 const ResolvedSymType = enum {

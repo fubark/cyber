@@ -1445,7 +1445,7 @@ test "Static variable declaration." {
     defer run.destroy();
 
     // Using a local variable in a static var initializer is not allowed.
-    const res = run.evalSilent(
+    var res = run.evalSilent(
         \\let b = 123
         \\var a = b
     );
@@ -1466,6 +1466,40 @@ test "Static variable declaration." {
         \\let b = a
         \\try t.eq(b, 123)
         \\var a = 123
+    );
+
+    // Declaration with a circular reference.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = b + 123
+        \\var b = a
+        \\try t.eq(b, none)
+        \\try t.eq(a, 123)
+        \\-- Reference self.
+        \\var c = c 
+        \\try t.eq(c, none)
+    );
+
+    // Declaration that depends on another.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = 123
+        \\var b = a + 321
+        \\var c = a + b
+        \\try t.eq(a, 123) 
+        \\try t.eq(b, 444) 
+        \\try t.eq(c, 567) 
+    );
+
+    // Depends on and declared before another.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var c = a + b
+        \\var b = a + 321
+        \\var a = 123
+        \\try t.eq(a, 123) 
+        \\try t.eq(b, 444) 
+        \\try t.eq(c, 567) 
     );
 }
 

@@ -656,129 +656,63 @@ test "Comparison ops." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var val = try run.eval(
-        \\1 < 2
-    );
-    try t.eq(val.asBool(), true);
-
-    val = try run.eval(
-        \\2 < 1
-    );
-    try t.eq(val.asBool(), false);
-
-    val = try run.eval(
-        \\1 > 2
-    );
-    try t.eq(val.asBool(), false);
-
-    val = try run.eval(
-        \\2 > 1
-    );
-    try t.eq(val.asBool(), true);
-
-    val = try run.eval(
-        \\1 <= 2
-    );
-    try t.eq(val.asBool(), true);
-    val = try run.eval(
-        \\2 <= 2
-    );
-    try t.eq(val.asBool(), true);
-    val = try run.eval(
-        \\3 <= 2
-    );
-    try t.eq(val.asBool(), false);
-
-    val = try run.eval(
-        \\1 >= 2
-    );
-    try t.eq(val.asBool(), false);
-    val = try run.eval(
-        \\2 >= 2
-    );
-    try t.eq(val.asBool(), true);
-    val = try run.eval(
-        \\3 >= 2
-    );
-    try t.eq(val.asBool(), true);
-
-    // Using `is` keyword.
-    val = try run.eval(
-        \\3 is 2
-    );
-    try t.eq(val.asBool(), false);
-    val = try run.eval(
-        \\3 is 3
-    );
-    try t.eq(val.asBool(), true);
-
-    // Number equals.
-    val = try run.eval(
-        \\3 == 2
-    );
-    try t.eq(val.asBool(), false);
-    val = try run.eval(
-        \\3 == 3
-    );
-    try t.eq(val.asBool(), true);
-
-    // Const string equals.
-    val = try run.eval(
-        \\'foo' == 'bar'
-    );
-    try t.eq(val.asBool(), false);
-    val = try run.eval(
-        \\'foo' == 'foo'
-    );
-    try t.eq(val.asBool(), true);
-    
-    // Heap string equals.
-    val = try run.eval(
+    _= try run.eval(
+        \\import t 'test'
+        \\try t.eq(1 < 2, true)
+        \\try t.eq(2 < 1, false)
+        \\try t.eq(1 > 2, false)
+        \\try t.eq(2 > 1, true)
+        \\try t.eq(1 <= 2, true)
+        \\try t.eq(2 <= 2, true)
+        \\try t.eq(3 <= 2, false)
+        \\try t.eq(1 >= 2, false)
+        \\try t.eq(2 >= 2, true)
+        \\try t.eq(3 >= 2, true)
+        \\
+        \\-- Using `is` keyword.
+        \\try t.eq(3 is 2, false)
+        \\try t.eq(3 is 3, true)
+        \\
+        \\-- Number equals.
+        \\try t.eq(3 == 2, false)
+        \\try t.eq(3 == 3, true)
+        \\
+        \\-- Const string equals.
+        \\try t.eq('foo' == 'bar', false)
+        \\try t.eq('foo' == 'foo', true)
+        \\
+        \\-- Heap string equals.
         \\foo = '{'fo'}{'o'}'
-        \\foo == 'bar'
-    );
-    try t.eq(val.asBool(), false);
-    val = try run.eval(
+        \\try t.eq(foo == 'bar', false)
         \\foo = '{'fo'}{'o'}'
-        \\foo == 'foo'
-    );
-    try t.eq(val.asBool(), true);
-
-    // Object equals.
-    val = try run.eval(
+        \\try t.eq(foo == 'foo', true)
+        \\
+        \\-- Object equals.
         \\object S:
         \\  value
         \\s = S{ value: 123 }
         \\a = S{ value: 123 }
-        \\a == s
-    );
-    try t.eq(val.asBool(), false);
-    val = try run.eval(
-        \\object S:
-        \\  value
-        \\s = S{ value: 123 }
+        \\try t.eq(a == s, false)
         \\a = s
-        \\a == s
+        \\try t.eq(a == s, true)
+        \\
+        \\-- Error equals.
+        \\try t.eq(error(#SomeError) == error(#OtherError), false)
+        \\try t.eq(error(#SomeError) == error(#SomeError), true)
     );
-    try t.eq(val.asBool(), true);
 }
 
 test "Not equal comparison." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Using `is not` op.
-    var val = try run.eval(
-        \\3 is not 2
-    );
-    try t.eq(val.asBool(), true);
-    val = try run.eval(
-        \\3 is not 3
-    );
-    try t.eq(val.asBool(), false);
-
     _ = try run.eval(
         \\import t 'test'
+        \\
+        \\-- Using `is not` op.
+        \\try t.eq(3 is not 2, true)
+        \\try t.eq(3 is not 3, false)
+        \\
         \\-- Comparing objects.
         \\object S:
         \\  value
@@ -786,9 +720,14 @@ test "Not equal comparison." {
         \\try t.eq(o != 123, true)
         \\o2 = o
         \\try t.eq(o != o2, false)
+        \\
         \\-- Compare tag literal.
         \\try t.eq(#abc != #xyz, true) 
-        \\try t.eq(#abc != #abc, false) 
+        \\try t.eq(#abc != #abc, false)
+        \\
+        \\-- Compare errors.
+        \\try t.eq(error(#SomeError) != error(#OtherError), true)
+        \\try t.eq(error(#SomeError) != error(#SomeError), false)
     );
 }
 

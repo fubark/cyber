@@ -2388,6 +2388,7 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
                 } else return Value.False;
             },
             cy.BooleanT => return Value.initBool(right.isPointer() or (left.asBool() != right.asBool())),
+            cy.ErrorT => return Value.initBool(right.isPointer() or (left.asErrorTagLit() != right.asErrorTagLit())),
             cy.ConstStringT => {
                 if (right.isString()) {
                     const slice = left.asConstStr();
@@ -2432,6 +2433,7 @@ fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
                 } else return Value.False;
             },
             cy.BooleanT => return Value.initBool(!right.isPointer() and (left.asBool() == right.asBool())),
+            cy.ErrorT => return Value.initBool(!right.isPointer() and (left.asErrorTagLit() == right.asErrorTagLit())),
             cy.ConstStringT => {
                 if (right.isString()) {
                     const slice = left.asConstStr();

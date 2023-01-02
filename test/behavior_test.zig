@@ -1173,6 +1173,11 @@ test "Lists" {
         \\a.insert(1, 123)
         \\try t.eq(a[1], 123)
         \\
+        \\-- Insert at index out of bounds.
+        \\try t.eq(a.insert(-1, 123), error(#OutOfBounds))
+        \\try t.eq(a.insert(100, 123), error(#OutOfBounds))
+        \\try t.eq(a.len(), 4)
+        \\
         \\-- Get size.
         \\try t.eq(a.len(), 4)
         \\
@@ -1182,6 +1187,26 @@ test "Lists" {
         \\try t.eq(a.len(), 2)
         \\try t.eq(a[0], 1)
         \\try t.eq(a[1], 3)
+        \\
+        \\-- Remove first item.
+        \\a = [1, 2, 3]
+        \\a.remove(0)
+        \\try t.eq(a.len(), 2)
+        \\try t.eq(a[0], 2)
+        \\try t.eq(a[1], 3)
+
+        \\-- Remove last item.
+        \\a = [1, 2, 3]
+        \\a.remove(2)
+        \\try t.eq(a.len(), 2)
+        \\try t.eq(a[0], 1)
+        \\try t.eq(a[1], 2)
+        \\
+        \\-- Remove out of bounds.
+        \\a = [1, 2, 3]
+        \\try t.eq(a.remove(-1), error(#OutOfBounds))
+        \\try t.eq(a.remove(3), error(#OutOfBounds))
+        \\try t.eq(a.len(), 3)
     );
 
     // Start to end index slice.

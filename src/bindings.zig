@@ -39,6 +39,7 @@ pub const TagLit = enum {
     NotFound,
     MissingSymbol,
     EndOfStream,
+    OutOfBounds,
 
     running,
     paused,
@@ -177,6 +178,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "NotFound", .NotFound);
     try ensureTagLitSym(self, "MissingSymbol", .MissingSymbol);
     try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
+    try ensureTagLitSym(self, "OutOfBounds", .OutOfBounds);
 
     try ensureTagLitSym(self, "running", .running);
     try ensureTagLitSym(self, "paused", .paused);
@@ -1021,27 +1023,33 @@ fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     return Value.None;
 }
 
-fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
     _ = nargs;
-    const index = @floatToInt(usize, args[0].toF64());
+    const index = @floatToInt(i64, args[0].toF64());
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
-    inner.remove(index);
-    vm.releaseObject(list);
+    if (index < 0 or index >= inner.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    } 
+    inner.remove(@intCast(usize, index));
     return Value.None;
 }
 
-fn listInsert(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
     _ = nargs;
-    const index = @floatToInt(usize, args[0].toF64());
+    const index = @floatToInt(i64, args[0].toF64());
     const value = args[1];
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
+    if (index < 0 or index > inner.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    } 
     if (inner.len == inner.buf.len) {
-        inner.growTotalCapacity(gvm.alloc, inner.len + 1) catch stdx.fatal();
+        inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
     }
-    inner.insertAssumeCapacity(index, value);
-    vm_.releaseObject(gvm, list);
+    inner.insertAssumeCapacity(@intCast(usize, index), value);
     return Value.None;
 }
 

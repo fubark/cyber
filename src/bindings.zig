@@ -1032,6 +1032,7 @@ fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     if (index < 0 or index >= inner.len) {
         return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
     } 
+    vm.release(inner.buf[@intCast(usize, index)]);
     inner.remove(@intCast(usize, index));
     return Value.None;
 }

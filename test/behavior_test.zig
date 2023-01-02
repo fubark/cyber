@@ -1207,6 +1207,13 @@ test "Lists" {
         \\try t.eq(a.remove(-1), error(#OutOfBounds))
         \\try t.eq(a.remove(3), error(#OutOfBounds))
         \\try t.eq(a.len(), 3)
+        \\
+        \\-- Remove rc item.
+        \\a = [1, [123], 3]
+        \\a.remove(1)
+        \\try t.eq(a.len(), 2)
+        \\try t.eq(a[0], 1)
+        \\try t.eq(a[1], 3)
     );
 
     // Start to end index slice.

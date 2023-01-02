@@ -173,7 +173,7 @@ Static variables can also be exported from the current script. You can read more
 ```text
 export var a = 123
 ```
-When declared in functions, static variables continue to exist for subsequent function calls. The variable is only visible from within the function.
+When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.
 ```text
 func add(a):
     var sum = 0
@@ -182,6 +182,45 @@ func add(a):
 print add(5)     -- "5"
 print add(5)     -- "10"
 ```
+Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables. However, you can reassign any value to them with an assignment statement.
+```text
+let a = 123
+var b = a     -- Compile error, initializer can not reference a local variable.
+
+var b = 0
+b = a         -- Reassigning can reference a local variable.
+```
+Static variable initializers have a natural order based on when it was encountered by the compiler.
+In the case of [imported](#importing) variables, the order of the import would affect this order.
+The following would print '123' before '234'
+```text
+var a = print(123)
+var b = print(234)
+```
+When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
+```text
+var a = b + 321
+var b = 123
+print a        -- '444'
+```
+Circular references in initializers are allowed.
+When initialization encounters a reference that creates this circular dependency, that reference evaluates to `none` at that moment.
+In the following, `a` attempts to initialize first because of its natural ordering. Since `b` is a dependency, it supersedes the natural ordering.
+When `b` is found to reference an already visited `a` (causing the circular dependency), it evaluatues to `a`'s current value which is `none`. At the end of initialization, both `a` and `b` have the value `none`.
+```text
+var a = b
+var b = a
+```
+Sometimes, you may want to initialize a static variable by executing multiple statements in order.
+For this use case, you can use a declaration block.
+```
+var myImage =:
+    let img = loadImage('me.png')
+    img.resize(100, 100)
+    img.filter(#blur, 5)
+    break img
+```
+The final resulting value that is set to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is used instead.
 
 [To Top.](#table-of-contents)
 
@@ -737,7 +776,7 @@ func dist(x0, y0, x1, y1):
 
 Functions can return multiple values.
 ```text
-import {*} 'math'
+import {cos, sin} 'math'
 
 func compute(rad):
     return cos(rad), sin(rad)
@@ -847,7 +886,7 @@ In the example above, the function `foo` is called with 4 arguments. The first a
 [To Top.](#table-of-contents)
 
 ### Modules.
-Modules in Cyber contain static symbols that can be used from other modules. Importing other Cyber scripts returns their module by default.
+Modules contain accessible static symbols under a defined namespace. By default, importing another Cyber script returns its module with exported symbols.
 
 [To Top.](#table-of-contents)
 
@@ -866,6 +905,40 @@ import foo 'bar.cy'
 print foo.myFunc()
 print foo.myVar
 ```
+A Cyber script that is imported also runs it's main block after all child imports have loaded and executed their main blocks. The main block is only executed once even if the module was imported more than once. The following prints 'c', 'b', and 'a' in order.
+```text
+-- main.cy
+import t
+print 'a'
+
+-- foo.cy
+import bar.cy
+print 'b'
+
+-- bar.cy
+print 'c'
+```
+You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
+```text
+-- main.cy
+import foo 'foo.cy'
+
+export func printB():
+    foo.printC()
+
+foo.printA()
+
+-- foo.cy
+import main 'main.cy'
+
+export func printA():
+    main.printB()
+
+export func printC():
+    print 'done'
+```
+Static variable declarations from imports can have circular references. Read more about this in [Static Variables](#static-variables).
+
 Modules can also be destructured using the following syntax:
 ```text
 import { cos, pi } 'math'

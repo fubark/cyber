@@ -38,6 +38,7 @@ pub const TagLit = enum {
     AssertError,
     NotFound,
     MissingSymbol,
+    EndOfStream,
 
     running,
     paused,
@@ -175,6 +176,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "AssertError", .AssertError);
     try ensureTagLitSym(self, "NotFound", .NotFound);
     try ensureTagLitSym(self, "MissingSymbol", .MissingSymbol);
+    try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
 
     try ensureTagLitSym(self, "running", .running);
     try ensureTagLitSym(self, "paused", .paused);
@@ -894,7 +896,7 @@ pub fn coreString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 
 pub fn corePrint(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
-    const str = gvm.valueToTempString(args[0]);
+    const str = vm.valueToTempString(args[0]);
     const w = std.io.getStdOut().writer();
     w.writeAll(str) catch stdx.fatal();
     w.writeByte('\n') catch stdx.fatal();
@@ -930,8 +932,12 @@ pub fn coreReadAll(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 
-pub fn coreReadLine(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(gvm.alloc, '\n', 10e8) catch stdx.fatal();
+pub fn coreReadLine(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.allocator(), '\n', 10e8) catch |err| {
+        if (err == error.EndOfStream) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.EndOfStream));
+        } else stdx.fatal();
+    };
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 

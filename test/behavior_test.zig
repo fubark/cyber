@@ -1183,6 +1183,7 @@ test "toString." {
         \\import t 'test'
         \\try t.eq(string(123.4), '123.4000000000')
         \\try t.eq(string(int(123)), '123')
+        \\try t.eq(string(error(#foo)), 'error#foo')
     );
 }
 

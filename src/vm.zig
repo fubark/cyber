@@ -2067,10 +2067,14 @@ pub const VM = struct {
                 }
             } else {
                 switch (val.getTag()) {
+                    cy.NoneT => return "none",
                     cy.BooleanT => {
                         if (val.asBool()) return "true" else return "false";
                     },
-                    cy.NoneT => return "none",
+                    cy.ErrorT => {
+                        const litId = val.asErrorTagLit();
+                        return std.fmt.bufPrint(&tempU8Buf, "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                    },
                     cy.ConstStringT => {
                         // Convert into heap string.
                         const slice = val.asConstStr();

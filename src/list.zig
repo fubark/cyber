@@ -25,7 +25,7 @@ pub fn List(comptime T: type) type {
         }
 
         pub fn remove(self: *ListT, idx: usize) linksection(section) void {
-            std.mem.copy(T, self.buf[idx+1..self.len+1], self.buf[idx..self.len]);
+            std.mem.copy(T, self.buf[idx..self.len-1], self.buf[idx+1..self.len]);
             self.len -= 1;
         }
 

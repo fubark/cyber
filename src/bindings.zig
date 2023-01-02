@@ -1021,13 +1021,13 @@ fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     return Value.None;
 }
 
-fn listRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const index = @floatToInt(usize, args[0].toF64());
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     inner.remove(index);
-    vm_.releaseObject(gvm, list);
+    vm.releaseObject(list);
     return Value.None;
 }
 
@@ -1164,13 +1164,14 @@ fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     return Value.initF64(@intToFloat(f64, inner.size));
 }
 
-fn mapRemove(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     if (nargs == 0) {
         stdx.panic("Args mismatch");
     }
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    _ = inner.remove(gvm, args[0]);
+    _ = inner.remove(@ptrCast(*cy.VM, vm), args[0]);
+    vm.releaseObject(obj);
     return Value.None;
 }
 

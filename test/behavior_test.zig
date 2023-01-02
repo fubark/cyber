@@ -1155,9 +1155,11 @@ test "Lists" {
 
     _ = try run.eval(
         \\import t 'test'
-        \\a = [1, 2, 3]
+        \\
         \\-- Index access.
+        \\a = [1, 2, 3]
         \\try t.eq(a[0], 1)
+        \\
         \\-- Reverse index access.
         \\try t.eq(a[-1], 3)
         \\
@@ -1166,11 +1168,20 @@ test "Lists" {
         \\a.resize(3)
         \\a[2] = 3
         \\try t.eq(a[2], 3)
+        \\
         \\-- Insert at index
         \\a.insert(1, 123)
         \\try t.eq(a[1], 123)
+        \\
         \\-- Get size.
         \\try t.eq(a.len(), 4)
+        \\
+        \\-- Remove.
+        \\a = [1, 2, 3]
+        \\a.remove(1)
+        \\try t.eq(a.len(), 2)
+        \\try t.eq(a[0], 1)
+        \\try t.eq(a[1], 3)
     );
 
     // Start to end index slice.
@@ -1296,7 +1307,7 @@ test "Maps" {
     try t.eq(val.asF64toI32(), 2);
 
     // Iterate maps.
-    val = try run.eval(
+    _ = try run.eval(
         \\import t 'test'
         \\let m = { a: 2, b: 3, c: 4 }
         \\let sum = 0
@@ -1330,6 +1341,17 @@ test "Maps" {
         \\    keys += 1
         \\try t.eq(sum, 9)
         \\try t.eq(keys, 3)
+    );
+
+    // Remove from map.
+    _ = try run.eval(
+        \\import t 'test'
+        \\let m = { a: 2, b: 3, c: 4 }
+        \\m.remove('a')
+        \\try t.eq(m.size(), 2)
+        \\try t.eq(m['a'], none)
+        \\try t.eq(m['b'], 3)
+        \\try t.eq(m['c'], 4)
     );
 }
 

@@ -317,10 +317,10 @@ pub const VM = struct {
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
             if (astRes.isTokenError) {
-                try printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
+                try debug.printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
                 return error.TokenError;
             } else {
-                try printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
+                try debug.printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
                 return error.ParseError;
             }
         }
@@ -332,9 +332,9 @@ pub const VM = struct {
             if (self.compiler.lastErrNode != NullId) {
                 const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
                 const pos = self.parser.tokens.items[token].pos();
-                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
+                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
             } else {
-                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
+                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
             }
             return error.CompileError;
         }
@@ -348,10 +348,10 @@ pub const VM = struct {
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
             if (astRes.isTokenError) {
-                try printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
+                try debug.printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
                 return error.TokenError;
             } else {
-                try printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
+                try debug.printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
                 return error.ParseError;
             }
         }
@@ -363,9 +363,9 @@ pub const VM = struct {
             if (self.compiler.lastErrNode != NullId) {
                 const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
                 const pos = self.parser.tokens.items[token].pos();
-                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
+                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
             } else {
-                try printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
+                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
             }
             return error.CompileError;
         }
@@ -4944,49 +4944,6 @@ fn setCapValToFuncSyms(vm: *VM, capVal: Value, numSyms: u8, syms: []const cy.OpD
     vm.retainInc(capVal, numSyms);
 }
 
-fn printUserError(vm: *const VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) !void {
-    if (cy.silentError) {
-        return;
-    }
-    if (pos != NullId) {
-        var line: u32 = undefined;
-        var col: u32 = undefined;
-        var lineStart: u32 = undefined;
-        if (isTokenError) {
-            debug.computeLinePos(vm.parser.src.items, pos, &line, &col, &lineStart);
-        } else {
-            debug.computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
-        }
-        const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
-        var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
-        defer arrowBuf.deinit(vm.alloc);
-        var w = arrowBuf.writer(vm.alloc);
-        try w.writeByteNTimes(' ', col);
-        try w.writeByte('^');
-        fmt.printStderr(
-            \\{}: {}
-            \\
-            \\{}:{}:{}:
-            \\{}
-            \\{}
-            \\
-        , &.{
-            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
-            fmt.v(line+1), fmt.v(col+1), fmt.v(vm.parser.src.items[lineStart..lineEnd]),
-            fmt.v(arrowBuf.items)
-        });
-    } else {
-        fmt.printStderr(
-            \\{}: {}
-            \\
-            \\in {}
-            \\
-        , &.{
-            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
-        });
-    }
-}
-
 // Performs stackGrowTotalCapacityPrecise in addition to patching the frame pointers.
 fn growStackAuto(vm: *VM) !void {
     @setCold(true);
@@ -5040,45 +4997,45 @@ fn growStackPrecise(vm: *VM, newCap: usize) !void {
 }
 
 /// Like Value.dump but shows heap values.
-fn dumpValue(vm: *const VM, val: Value) !void {
+pub fn dumpValue(vm: *const VM, val: Value) void {
     if (val.isNumber()) {
-        try fmt.printStdout("Number {}\n", &.{ v(val.asF64()) });
+        fmt.printStdout("Number {}\n", &.{ v(val.asF64()) });
     } else {
         if (val.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
             switch (obj.common.structId) {
-                cy.ListS => try fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
-                cy.MapS => try fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
+                cy.ListS => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
+                cy.MapS => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
                 cy.StringS => {
                     if (obj.string.len > 20) {
-                        try fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..20])});
+                        fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..20])});
                     } else {
-                        try fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..obj.string.len])});
+                        fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..obj.string.len])});
                     }
                 },
-                cy.LambdaS => try fmt.printStdout("Lambda {}\n", &.{v(obj)}),
-                cy.ClosureS => try fmt.printStdout("Closure {}\n", &.{v(obj)}),
-                cy.FiberS => try fmt.printStdout("Fiber {}\n", &.{v(obj)}),
-                cy.NativeFunc1S => try fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
+                cy.LambdaS => fmt.printStdout("Lambda {}\n", &.{v(obj)}),
+                cy.ClosureS => fmt.printStdout("Closure {}\n", &.{v(obj)}),
+                cy.FiberS => fmt.printStdout("Fiber {}\n", &.{v(obj)}),
+                cy.NativeFunc1S => fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
                 else => {
-                    try fmt.printStdout("HeapObject {} {}\n", &.{v(obj), v(obj.common.structId)});
+                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.common.structId), v(vm.structs.buf[obj.common.structId].name)});
                 },
             }
         } else {
             switch (val.getTag()) {
                 cy.NoneT => {
-                    try fmt.printStdout("None\n", &.{});
+                    fmt.printStdout("None\n", &.{});
                 },
                 cy.ConstStringT => {
                     const slice = val.asConstStr();
                     if (slice.len() > 20) {
-                        try fmt.printStdout("Const String len={} str=\"{s}\"...\n", &.{v(slice.len()), v(vm.strBuf[slice.start..20])});
+                        fmt.printStdout("Const String len={} str=\"{s}\"...\n", &.{v(slice.len()), v(vm.strBuf[slice.start..20])});
                     } else {
-                        try fmt.printStdout("Const String len={} str=\"{}\"\n", &.{v(slice.len()), v(vm.strBuf[slice.start..slice.end])});
+                        fmt.printStdout("Const String len={} str=\"{}\"\n", &.{v(slice.len()), v(vm.strBuf[slice.start..slice.end])});
                     }
                 },
                 else => {
-                    try fmt.printStdout("{}\n", &.{v(val.val)});
+                    fmt.printStdout("{}\n", &.{v(val.val)});
                 },
             }
         }

@@ -260,6 +260,12 @@ pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     }
 }
 
+pub fn printDeprecated(name: []const u8, fmt: []const u8, vals: []const FmtValue) void {
+    printStderr("{} is deprecated: ", &.{v(name)});
+    printStderr(fmt, vals);
+    printStderr("\n", &.{});
+}
+
 pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
     printStderrOrErr(fmt, vals) catch |err| {
         log.debug("{}", .{err});

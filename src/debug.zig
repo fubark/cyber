@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const fmt = @import("fmt.zig");
 const log = stdx.log.scoped(.debug);
 
 const NullId = std.math.maxInt(u32);
@@ -140,4 +141,47 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) void {
 
 pub inline fn atLeastTestDebugLevel() bool {
     return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
+}
+
+pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) linksection(cy.Section) !void {
+    if (cy.silentError) {
+        return;
+    }
+    if (pos != NullId) {
+        var line: u32 = undefined;
+        var col: u32 = undefined;
+        var lineStart: u32 = undefined;
+        if (isTokenError) {
+            computeLinePos(vm.parser.src.items, pos, &line, &col, &lineStart);
+        } else {
+            computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
+        }
+        const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
+        var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
+        defer arrowBuf.deinit(vm.alloc);
+        var w = arrowBuf.writer(vm.alloc);
+        try w.writeByteNTimes(' ', col);
+        try w.writeByte('^');
+        fmt.printStderr(
+            \\{}: {}
+            \\
+            \\{}:{}:{}:
+            \\{}
+            \\{}
+            \\
+        , &.{
+            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
+            fmt.v(line+1), fmt.v(col+1), fmt.v(vm.parser.src.items[lineStart..lineEnd]),
+            fmt.v(arrowBuf.items)
+        });
+    } else {
+        fmt.printStderr(
+            \\{}: {}
+            \\
+            \\in {}
+            \\
+        , &.{
+            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
+        });
+    }
 }

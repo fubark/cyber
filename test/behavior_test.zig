@@ -1087,6 +1087,9 @@ test "Strings" {
         \\try t.eq('abc\n', "abc
         \\")
         \\try t.eq('abc\n'.charAt(3), 10)
+        \\-- Escaped backslash.
+        \\try t.eq('ab\\nc'.charAt(2), 92)
+        \\try t.eq('ab\\nc'.charAt(3), char('n'))
     );
 
     // Multi-lines.

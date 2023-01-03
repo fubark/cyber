@@ -74,6 +74,7 @@ pub fn bindCore(self: *cy.VM) !void {
     const len = try self.ensureMethodSymKey("len");
     const charAt = try self.ensureMethodSymKey("charAt");
     const status = try self.ensureMethodSymKey("status");
+    const streamLines = try self.ensureMethodSymKey("streamLines");
 
     // Init compile time builtins.
 
@@ -145,6 +146,12 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("OpaquePtr");
     std.debug.assert(id == cy.OpaquePtrS);
+
+    id = try self.addStruct("File");
+    std.debug.assert(id == cy.FileT);
+    try self.addMethodSym(cy.FileT, streamLines, cy.SymbolEntry.initNativeFunc1(fileStreamLines));
+    try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(fileIterator));
+    try self.addMethodSym(cy.FileT, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(fileNext));
 
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
@@ -1127,7 +1134,6 @@ fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
     _ = args;
     _ = nargs;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    gvm.retainObject(list);
     list.list.nextIterIdx = 0;
     return Value.initPtr(ptr);
 }
@@ -1144,11 +1150,10 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     return Value.None;
 }
 
-fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
+fn mapIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
     _ = nargs;
     _ = args;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    vm.retainObject(obj);
     obj.map.inner.extra = 0;
     return Value.initPtr(ptr);
 }
@@ -1505,4 +1510,97 @@ pub fn osSleep(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSectio
 
 pub fn osMilliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(StdSection) Value {
     return Value.initF64(@intToFloat(f64, std.time.milliTimestamp()));
+}
+
+pub fn fileStreamLines(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    // Don't need to release obj since it's being returned.
+    obj.file.iterLines = true;
+    return Value.initPtr(ptr);
+}
+
+pub fn fileIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    // Don't need to release obj since it's being returned.
+    if (obj.file.iterLines) {
+        obj.file.curPos = 0;
+        if (obj.file.readBufCap == 0) {
+            // Allocate read buffer.
+            const readBuf = vm.allocator().alloc(u8, 4096) catch stdx.fatal();
+            obj.file.readBuf = readBuf.ptr;
+            obj.file.readBufCap = @intCast(u32, readBuf.len);
+            obj.file.readBufEnd = 0;
+        }
+    }
+    return Value.initPtr(ptr);
+}
+
+fn getLineEnd(buf: []const u8) ?usize {
+    for (buf) |ch, i| {
+        if (ch == '\n') {
+            return i + 1;
+        } else if (ch == '\r') {
+            if (i + 1 < buf.len) {
+                if (buf[i+1] == '\n') {
+                    return i + 2;
+                }
+            }
+            return i + 1;
+        }
+    }
+    return null;
+}
+
+pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    if (obj.file.iterLines) {
+        const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
+        if (getLineEnd(readBuf[obj.file.curPos..obj.file.readBufEnd])) |end| {
+            // Found new line.
+            const line = vm.allocString(readBuf[obj.file.curPos..obj.file.curPos+end]) catch stdx.fatal();
+
+            // Advance pos.
+            obj.file.curPos += @intCast(u32, end);
+
+            return line;
+        }
+
+        var lineBuf = std.ArrayList(u8).init(vm.allocator());
+        // Start with previous string without line delimiter.
+        lineBuf.appendSlice(readBuf[obj.file.curPos..obj.file.readBufEnd]) catch stdx.fatal();
+
+        // Read into buffer.
+        const file = std.fs.File{
+            .handle = @bitCast(i32, obj.file.fd),
+            .capable_io_mode = .blocking,
+            .intended_io_mode = .blocking,
+        };
+        const reader = file.reader();
+
+        while (true) {
+            const bytesRead = reader.read(readBuf) catch stdx.fatal();
+            if (bytesRead == 0) {
+                // End of stream.
+                obj.file.iterLines = false;
+                if (lineBuf.items.len > 0) {
+                    return vm.allocOwnedString(lineBuf.toOwnedSlice() catch stdx.fatal()) catch stdx.fatal();
+                } else {
+                    return Value.None;
+                }
+            }
+            if (getLineEnd(readBuf[0..bytesRead])) |end| {
+                // Found new line.
+                lineBuf.appendSlice(readBuf[0..end]) catch stdx.fatal();
+
+                // Advance pos.
+                obj.file.curPos = @intCast(u32, end);
+                obj.file.readBufEnd = @intCast(u32, bytesRead);
+
+                return vm.allocOwnedString(lineBuf.toOwnedSlice() catch stdx.fatal()) catch stdx.fatal();
+            }
+        }
+    } else {
+        return Value.None;
+    }
 }

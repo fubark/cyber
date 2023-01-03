@@ -54,6 +54,7 @@ pub const BoxS = vm.BoxS;
 pub const NativeFunc1S = vm.NativeFunc1S;
 pub const TccStateS = vm.TccStateS;
 pub const OpaquePtrS = vm.OpaquePtrS;
+pub const FileT = vm.FileT;
 pub const StructId = vm.StructId;
 pub const EvalError = vm.EvalError;
 pub const StackTrace = vm.StackTrace;

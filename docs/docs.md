@@ -1085,6 +1085,7 @@ for map as k, v:
 | -- | -- | -- |
 | cpu | string | The current cpu arch's tag name. |
 | endian | #little, #big | The current arch's endianness. |
+| stdin | File | Standard input file descriptor. |
 | system | string | The current operating system's tag name. |
 
 | Function | Summary |
@@ -1097,6 +1098,12 @@ for map as k, v:
 | setEnv(key string, value string) none | Sets an environment value by key. |
 | sleep(ms number) none | Pauses the current thread for given milliseconds. |
 | unsetEnv(string) none | Removes an environment value by key. |
+
+object **File**
+| Function | Summary |
+| -- | -- |
+| streamLines() Iterable\<string\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). |
+
 
 [To Top.](#table-of-contents)
 

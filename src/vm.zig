@@ -29,6 +29,7 @@ pub const BoxS: StructId = 14;
 pub const NativeFunc1S: StructId = 15;
 pub const TccStateS: StructId = 16;
 pub const OpaquePtrS: StructId = 17;
+pub const FileT: StructId = 18;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -220,8 +221,9 @@ pub const VM = struct {
         }
         self.varSyms.deinit(self.alloc);
 
-        self.parser.deinit();
+        // Deinit compiler first since it depends on buffers from parser.
         self.compiler.deinit();
+        self.parser.deinit();
         self.alloc.free(self.stack);
         self.stack = &.{};
 
@@ -814,6 +816,28 @@ pub const VM = struct {
         }
         if (TrackGlobalRC) {
             gvm.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocFile(self: *VM, fd: std.os.fd_t) linksection(StdSection) !Value {
+        const obj = try self.allocPoolObject();
+        obj.file = .{
+            .structId = FileT,
+            .rc = 1,
+            .fd = fd,
+            .curPos = 0,
+            .iterLines = false,
+            .readBuf = undefined,
+            .readBufCap = 0,
+            .readBufEnd = 0,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -2224,7 +2248,14 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         OpaquePtrS => {
             vm.freeObject(obj);
         },
+        FileT => {
+            if (obj.file.readBufCap > 0) {
+                vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
+            }
+            vm.freeObject(obj);
+        },
         else => {
+            log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});
             // Struct deinit.
             if (builtin.mode == .Debug) {
                 // Check range.
@@ -2638,6 +2669,17 @@ pub const OpaquePtr = packed struct {
     ptr: ?*anyopaque,
 };
 
+const File = packed struct {
+    structId: StructId,
+    rc: u32,
+    fd: std.os.fd_t,
+    curPos: u32,
+    readBuf: [*]u8,
+    readBufCap: u32,
+    readBufEnd: u32,
+    iterLines: bool,
+};
+
 const TccState = packed struct {
     structId: StructId,
     rc: u32,
@@ -2784,6 +2826,7 @@ pub const HeapObject = packed union {
     box: Box,
     nativeFunc1: NativeFunc1,
     tccState: TccState,
+    file: File,
     opaquePtr: OpaquePtr,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {

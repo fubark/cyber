@@ -985,10 +985,11 @@ print contents
 | bindLib(fns []CFunc) {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
 | char(val any) number | Converts the first character of a string to a number with an ASCII code. | 
 | copy(val any) any | Copies a primitive value or creates a shallow copy of an object value. | 
-| execCmd(args []string) { out, err } | Runs a shell command and returns the stdout/stderr. | 
+| execCmd(args []string) { out, err, exited } | Runs a shell command and returns the stdout/stderr. | 
 | exit(status number) noreturn | Exits the program with a status code. | 
 | error(any) error | Create an error from a tag or tag literal. | 
 | fetchUrl(url string) string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 
+| getInput() string | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | int(val any) int | Converts a value to an 32-bit integer. | 
 | number(val any) number | Converts a value to a number. | 
 | opaque(val any) opaque | Converts a value to an opaque pointer value. This is usually used with FFI. | 
@@ -997,7 +998,7 @@ print contents
 | prints(s string) none | Prints a value as a string to stdout. | 
 | readAll() string | Reads stdin to the end as a string. | 
 | readFile(path string) string | Reads a file into a string value. | 
-| readLine() string | Reads stdin until a new line is reached. | 
+| readLine() string | Deprecated: Use `getInput` instead. |
 | string(val any) string | Converts a value to a string. | 
 | valtag(any) #taglit | Returns the value's type as a tag literal. |
 | writeFile(path string, contents string) none | Writes a string value to a file. | 

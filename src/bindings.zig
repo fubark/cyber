@@ -945,13 +945,18 @@ pub fn coreReadAll(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return gvm.allocOwnedString(input) catch stdx.fatal();
 }
 
-pub fn coreReadLine(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn coreGetInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.allocator(), '\n', 10e8) catch |err| {
         if (err == error.EndOfStream) {
             return Value.initErrorTagLit(@enumToInt(TagLit.EndOfStream));
         } else stdx.fatal();
     };
-    return gvm.allocOwnedString(input) catch stdx.fatal();
+    return vm.allocOwnedString(input) catch stdx.fatal();
+}
+
+pub fn coreReadLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
+    fmt.printDeprecated("readLine", "Use getInput() instead.", &.{});
+    return coreGetInput(vm, args, nargs);
 }
 
 pub fn coreParseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {

@@ -379,13 +379,20 @@ export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
     }
 }
 
-pub fn coreExecCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn coreExecCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const alloc = vm.allocator();
 
-    const list = args[0].asHeapObject(*cy.CyList);
+    const obj = args[0].asHeapObject(*cy.HeapObject);
     var buf: std.ArrayListUnmanaged([]const u8) = .{};
-    defer buf.deinit(alloc);
-    for (list.items()) |arg| {
+    defer {
+        for (buf.items) |arg| {
+            alloc.free(arg);
+        }
+        buf.deinit(alloc);
+
+        vm.releaseObject(obj);
+    }
+    for (obj.list.items()) |arg| {
         buf.append(alloc, vm.valueToString(arg) catch stdx.fatal()) catch stdx.fatal();
     }
 
@@ -404,6 +411,10 @@ pub fn coreExecCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const errKey = gvm.allocString("err") catch stdx.fatal();
     const err = vm.allocOwnedString(res.stderr) catch stdx.fatal();
     gvm.setIndex(map, errKey, err) catch stdx.fatal();
+    if (res.term == .Exited) {
+        const exitedKey = gvm.allocString("exited") catch stdx.fatal();
+        gvm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
+    }
     return map;
 }
 

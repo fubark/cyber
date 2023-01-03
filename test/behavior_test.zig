@@ -1078,15 +1078,23 @@ test "Strings" {
     str = try run.assertValueString(val);
     try t.eqStr(str, "ab'c");
 
-    // Const string with new line escape sequence.
     _ = try run.eval(
         \\import t 'test'
+        \\
+        \\-- Const string with new line escape sequence.
         \\try t.eq('ab\nc', "ab
         \\c")
         \\try t.eq('ab\nc'.charAt(2), 10)
         \\try t.eq('abc\n', "abc
         \\")
         \\try t.eq('abc\n'.charAt(3), 10)
+        \\
+        \\-- Carriage return.
+        \\try t.eq('ab\rc'.charAt(2), 13)
+        \\
+        \\-- Tab.
+        \\try t.eq('ab\tc'.charAt(2), 9)
+        \\
         \\-- Escaped backslash.
         \\try t.eq('ab\\nc'.charAt(2), 92)
         \\try t.eq('ab\\nc'.charAt(3), char('n'))

@@ -2451,7 +2451,7 @@ pub const VMcompiler = struct {
                     try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                 }
 
-                try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
+                try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
                 if (pairIter) {
                     try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
@@ -2471,7 +2471,7 @@ pub const VMcompiler = struct {
                 try self.genStatements(node.head.for_iter_stmt.body_head, false);
 
                 const contPc = self.buf.ops.items.len;
-                try self.buf.pushOp2(.copy, iterLocal, iterLocal + 5);
+                try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
                 if (pairIter) {
                     try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);

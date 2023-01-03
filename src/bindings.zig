@@ -1075,14 +1075,15 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     return Value.None;
 }
 
-fn listNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) cy.ValuePair {
+fn listNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) cy.ValuePair {
     _ = args;
     _ = nargs;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(list);
     if (list.list.nextIterIdx < list.list.list.len) {
         defer list.list.nextIterIdx += 1;
         const val = list.list.list.ptr[list.list.nextIterIdx];
-        gvm.retain(val);
+        vm.retain(val);
         return .{
             .left = Value.initF64(@intToFloat(f64, list.list.nextIterIdx)),
             .right = val,
@@ -1093,14 +1094,15 @@ fn listNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
     };
 }
 
-fn listNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
     _ = args;
     _ = nargs;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(list);
     if (list.list.nextIterIdx < list.list.list.len) {
         defer list.list.nextIterIdx += 1;
         const val = list.list.list.ptr[list.list.nextIterIdx];
-        gvm.retain(val);
+        vm.retain(val);
         return val;
     } else return Value.None;
 }
@@ -1135,14 +1137,15 @@ fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
     return Value.initPtr(ptr);
 }
 
-fn mapNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) cy.ValuePair {
+fn mapNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) cy.ValuePair {
     _ = args;
     _ = nargs;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
     if (map.next()) |entry| {
-        gvm.retain(entry.key);
-        gvm.retain(entry.value);
+        vm.retain(entry.key);
+        vm.retain(entry.value);
         return .{
             .left = entry.key,
             .right = entry.value,
@@ -1153,13 +1156,14 @@ fn mapNextPair(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     };
 }
 
-fn mapNext(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
+fn mapNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
     _ = args;
     _ = nargs;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
     if (map.next()) |entry| {
-        gvm.retain(entry.value);
+        vm.retain(entry.value);
         return entry.value;
     } else return Value.None;
 }

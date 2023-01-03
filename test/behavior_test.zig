@@ -1078,6 +1078,17 @@ test "Strings" {
     str = try run.assertValueString(val);
     try t.eqStr(str, "ab'c");
 
+    // Const string with new line escape sequence.
+    _ = try run.eval(
+        \\import t 'test'
+        \\try t.eq('ab\nc', "ab
+        \\c")
+        \\try t.eq('ab\nc'.charAt(2), 10)
+        \\try t.eq('abc\n', "abc
+        \\")
+        \\try t.eq('abc\n'.charAt(3), 10)
+    );
+
     // Multi-lines.
     _ = try run.eval(
         \\import t 'test'

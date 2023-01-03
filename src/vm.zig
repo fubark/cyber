@@ -4249,6 +4249,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     obj = recv.asHeapObject(*HeapObject);
                     typeId = obj.common.structId;
                 } else {
+                    // Don't check alignment in @intToPtr. Pointer is only used to go back to value.
+                    @setRuntimeSafety(false);
                     obj = @intToPtr(*HeapObject, recv.val);
                     typeId = recv.getPrimitiveTypeId();
                 }

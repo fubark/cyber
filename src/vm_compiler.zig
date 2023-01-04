@@ -2700,7 +2700,8 @@ pub const VMcompiler = struct {
 
     fn genMethodDecl(self: *VMcompiler, structId: cy.StructId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
         // log.debug("gen method {s}", .{name});
-        const methodId = try self.vm.ensureMethodSymKey(name);
+        const numParams = func.params.end - func.params.start;
+        const methodId = try self.vm.ensureMethodSymKey(name, numParams - 1);
 
         const jumpPc = try self.pushEmptyJump();
 
@@ -2716,7 +2717,6 @@ pub const VMcompiler = struct {
         try self.buf.pushOp(.ret0);
 
         // Reserve another local for the call return info.
-        const numParams = func.params.end - func.params.start;
         const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
 
         self.prevSemaBlock();
@@ -2937,7 +2937,7 @@ pub const VMcompiler = struct {
                     const numArgs = 1 + try self.genCallArgs(node.head.func_call.arg_head);
 
                     const rightName = self.getNodeTokenString(right);
-                    const methodId = try self.vm.ensureMethodSymKey(rightName);
+                    const methodId = try self.vm.ensureMethodSymKey(rightName, numArgs - 1);
 
                     _ = try self.genRetainedTempExpr(callee.head.accessExpr.left, false);
 

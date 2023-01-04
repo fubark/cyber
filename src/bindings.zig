@@ -61,20 +61,20 @@ pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
     forceSectionDep();
 
-    const resize = try self.ensureMethodSymKey("resize");
-    self.iteratorObjSym = try self.ensureMethodSymKey("iterator");
-    self.nextObjSym = try self.ensureMethodSymKey("next");
-    self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator");
-    self.nextPairObjSym = try self.ensureMethodSymKey("nextPair");
-    const add = try self.ensureMethodSymKey("add");
-    const insert = try self.ensureMethodSymKey("insert");
-    const remove = try self.ensureMethodSymKey("remove");
-    const sort = try self.ensureMethodSymKey("sort");
-    const size = try self.ensureMethodSymKey("size");
-    const len = try self.ensureMethodSymKey("len");
-    const charAt = try self.ensureMethodSymKey("charAt");
-    const status = try self.ensureMethodSymKey("status");
-    const streamLines = try self.ensureMethodSymKey("streamLines");
+    const resize = try self.ensureMethodSymKey("resize", 1);
+    self.iteratorObjSym = try self.ensureMethodSymKey("iterator", 0);
+    self.nextObjSym = try self.ensureMethodSymKey("next", 0);
+    self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator", 0);
+    self.nextPairObjSym = try self.ensureMethodSymKey("nextPair", 0);
+    const add = try self.ensureMethodSymKey("add", 1);
+    const insert = try self.ensureMethodSymKey("insert", 2);
+    const remove = try self.ensureMethodSymKey("remove", 1);
+    const sort = try self.ensureMethodSymKey("sort", 1);
+    const size = try self.ensureMethodSymKey("size", 0);
+    const len = try self.ensureMethodSymKey("len", 0);
+    const charAt = try self.ensureMethodSymKey("charAt", 1);
+    const status = try self.ensureMethodSymKey("status", 0);
+    const streamLines = try self.ensureMethodSymKey("streamLines", 0);
 
     // Init compile time builtins.
 

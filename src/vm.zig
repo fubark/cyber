@@ -71,8 +71,8 @@ pub const VM = struct {
     methodSyms: cy.List(SymbolMap),
     methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, SymbolEntry),
 
-    /// Used to track which method symbols already exist. Only considers the name right now.
-    methodSymSigs: std.StringHashMapUnmanaged(SymbolId),
+    /// Maps a method signature to a symbol id in `methodSyms`.
+    methodSymSigs: std.HashMapUnmanaged(MethodSigKey, SymbolId, MethodSigKeyContext, 80),
 
     /// Regular function symbol table.
     funcSyms: cy.List(FuncSymbolEntry),
@@ -1210,8 +1210,13 @@ pub const VM = struct {
         return false;
     }
 
-    pub fn ensureMethodSymKey(self: *VM, name: []const u8) !SymbolId {
-        const res = try self.methodSymSigs.getOrPut(self.alloc, name);
+    pub fn ensureMethodSymKey(self: *VM, name: []const u8, numParams: u32) !SymbolId {
+        const key = MethodSigKey{
+            .namePtr = name.ptr,
+            .nameLen = @intCast(u32, name.len),
+            .numParams = numParams,
+        };
+        const res = try self.methodSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.methodSyms.len);
             try self.methodSyms.append(self.alloc, .{
@@ -2915,6 +2920,7 @@ test "Internals." {
     try t.eq(@sizeOf(HeapPage), 40 * 102);
     try t.eq(@alignOf(HeapPage), 8);
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
+    try t.eq(@sizeOf(MethodSigKey), 16);
 
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 32);
@@ -5155,3 +5161,29 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(StdSection) Value {
         return val;
     }
 }
+
+const MethodSigKey = struct {
+    namePtr: [*]const u8,
+    nameLen: u32,
+    numParams: u32,
+};
+
+pub const MethodSigKeyContext = struct {
+    pub fn hash(self: @This(), key: MethodSigKey) u64 {
+        _ = self;
+        var hasher = std.hash.Wyhash.init(0);
+        @call(.always_inline, hasher.update, .{key.namePtr[0..key.nameLen]});
+        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.numParams)});
+        return hasher.final();
+    }
+    pub fn eql(self: @This(), a: MethodSigKey, b: MethodSigKey) bool {
+        _ = self;
+        if (a.nameLen != b.nameLen) {
+            return false;
+        }
+        if (a.numParams != b.numParams) {
+            return false;
+        }
+        return std.mem.eql(u8, a.namePtr[0..a.nameLen], b.namePtr[0..a.nameLen]);
+    }
+};

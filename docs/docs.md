@@ -44,7 +44,7 @@
         - [core](#core-module)
         - [math](#math-module)
         - [os](#os-module)
-        - test
+        - [test](#test-module)
 - [FFI](#ffi)
 - [Error Handling](#error-handling)
 - [Concurrency](#concurrency)
@@ -1104,6 +1104,21 @@ object **File**
 | -- | -- |
 | streamLines() Iterable\<string\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). |
 
+### Test Module.
+The `test` module contains utilities for testing.
+
+Sample usage:
+```text
+import t 'test'
+
+a = 123 + 321
+try t.eq(a, 444)
+```
+
+| Function | Summary |
+| -- | -- |
+| eq(a any, b any) bool | Returns whether two values are equal. Returns `false` if types do not match up. |
+| eqNear(a any, b any) bool | Returns two numbers are near each other within epsilon 1e-5. |
 
 [To Top.](#table-of-contents)
 

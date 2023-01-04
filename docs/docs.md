@@ -29,6 +29,7 @@
     - Deferred Execution
 - [Functions](#functions)
     - [Static Functions](#static-functions)
+        - [Function Overloading](#function-overloading)
     - [Lambdas](#lambdas)
     - [Closures](#closures)
     - [Function Calls](#function-calls)
@@ -784,6 +785,26 @@ x, y = compute(pi)
 ```
 
 [To Top.](#table-of-contents)
+
+### Function Overloading.
+Static functions can be overloaded by the number of parameters in its signature.
+```text
+func foo():
+    return 2 + 2
+
+func foo(n):
+    return 10 + n
+
+func foo(n, m):
+    return n * m
+
+print foo()         -- "4"
+print foo(2)        -- "12"
+print foo(20, 5)    -- "100"
+```
+
+[To Top.](#table-of-contents)
+
 
 ### Lambdas.
 Lambdas or function values can be assigned to variables or passed as arguments into other constructs.

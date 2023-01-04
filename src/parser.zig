@@ -3240,6 +3240,7 @@ pub const FuncDecl = struct {
     name: IndexSlice,
     params: IndexSlice,
     return_type: ?IndexSlice,
+    semaSymId: u32 = NullId,
 };
 
 pub const FunctionParam = struct {

@@ -406,7 +406,7 @@ test "test module" {
     try t.expect(val.isTrue());
 }
 
-test "Structs." {
+test "Objects." {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -507,7 +507,7 @@ test "Structs." {
     );
 }
 
-test "Struct methods." {
+test "Object methods." {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -2187,7 +2187,25 @@ test "Function recursion." {
     try t.eq(val.asF64toI32(), 55);
 }
 
-test "function declaration" {
+test "Function overloading." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo():
+        \\    return 2 + 2
+        \\func foo(n):
+        \\    return 2 + n
+        \\func foo(n, m):
+        \\    return n * m
+        \\try t.eq(foo(), 4)
+        \\try t.eq(foo(10), 12)
+        \\try t.eq(foo(3, 5), 15)
+    );
+}
+
+test "Function declarations." {
     const run = VMrunner.create();
     defer run.destroy();
 

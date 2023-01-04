@@ -33,7 +33,8 @@ pub const FileT: StructId = 18;
 
 var tempU8Buf: [256]u8 = undefined;
 
-/// Accessing global vars is faster with direct addressing.
+/// Going forward, references to gvm should be replaced with pointer access to allow multiple VMs.
+/// Once all references are replaced, gvm can be removed and the default VM can be allocated from the heap.
 pub var gvm: VM = undefined;
 
 pub fn getUserVM() *UserVM {
@@ -72,15 +73,15 @@ pub const VM = struct {
     methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, SymbolEntry),
 
     /// Maps a method signature to a symbol id in `methodSyms`.
-    methodSymSigs: std.HashMapUnmanaged(MethodSigKey, SymbolId, MethodSigKeyContext, 80),
+    methodSymSigs: std.HashMapUnmanaged(RelFuncSigKey, SymbolId, RelFuncSigKeyContext, 80),
 
     /// Regular function symbol table.
     funcSyms: cy.List(FuncSymbolEntry),
-    funcSymSignatures: std.StringHashMapUnmanaged(SymbolId),
+    funcSymSigs: std.HashMapUnmanaged(AbsFuncSigKey, SymbolId, AbsFuncSigKeyContext, 80),
     funcSymDetails: cy.List(FuncSymDetail),
 
     varSyms: cy.List(VarSym),
-    varSymSignatures: std.StringHashMapUnmanaged(SymbolId),
+    varSymSigs: std.HashMapUnmanaged(AbsVarSigKey, SymbolId, AbsVarSigKeyContext, 80),
 
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
@@ -147,10 +148,10 @@ pub const VM = struct {
             .methodSymSigs = .{},
             .methodTable = .{},
             .funcSyms = .{},
-            .funcSymSignatures = .{},
+            .funcSymSigs = .{},
             .funcSymDetails = .{},
             .varSyms = .{},
-            .varSymSignatures = .{},
+            .varSymSigs = .{},
             .fieldSyms = .{},
             .fieldTable = .{},
             .fieldSymSignatures = .{},
@@ -232,13 +233,13 @@ pub const VM = struct {
         self.methodSymSigs.deinit(self.alloc);
         self.methodTable.deinit(self.alloc);
 
-        self.funcSymSignatures.deinit(self.alloc);
+        self.funcSymSigs.deinit(self.alloc);
         for (self.funcSymDetails.items()) |detail| {
             self.alloc.free(detail.name);
         }
         self.funcSymDetails.deinit(self.alloc);
 
-        self.varSymSignatures.deinit(self.alloc);
+        self.varSymSigs.deinit(self.alloc);
 
         self.fieldSyms.deinit(self.alloc);
         self.fieldTable.deinit(self.alloc);
@@ -442,9 +443,14 @@ pub const VM = struct {
         // Dump object symbols.
         {
             fmt.printStderr("obj syms:\n", &.{});
-            var iter = self.funcSymSignatures.iterator();
+            var iter = self.funcSymSigs.iterator();
             while (iter.next()) |it| {
-                fmt.printStderr("\t{}: {}\n", &.{v(it.key_ptr.*), v(it.value_ptr.*)});
+                const key = it.key_ptr.*;
+                if (key.numParams == NullIdU16) {
+                    fmt.printStderr("\t{}: {}\n", &.{v(key.namePtr[0..key.nameLen]), v(it.value_ptr.*)});
+                } else {
+                    fmt.printStderr("\t{}({}): {}\n", &.{v(key.namePtr[0..key.nameLen]), v(key.numParams), v(it.value_ptr.*)});
+                }
             }
         }
 
@@ -1130,16 +1136,32 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn getFuncSym(self: *const VM, name: []const u8) ?SymbolId {
-        return self.funcSymSignatures.get(name);
+    pub inline fn getFuncSym(self: *const VM, resolvedParentId: u32, name: []const u8, numParams: u16) ?SymbolId {
+        const key = AbsFuncSigKey{
+            .namePtr = name.ptr,
+            .nameLen = @intCast(u16, name.len),
+            .parentId = resolvedParentId,
+            .numParams = numParams,
+        };
+        return self.funcSymSigs.get(key);
     }
 
-    pub inline fn getVarSym(self: *const VM, name: []const u8) ?SymbolId {
-        return self.varSymSignatures.get(name);
+    pub inline fn getVarSym(self: *const VM, resolvedParentId: u32, name: []const u8) ?SymbolId {
+        const key = AbsVarSigKey{
+            .namePtr = name.ptr,
+            .nameLen = @intCast(u32, name.len),
+            .numParams = resolvedParentId,
+        };
+        return self.varSymSigs.get(key);
     }
 
-    pub fn ensureVarSym(self: *VM, name: []const u8) !SymbolId {
-        const res = try self.varSymSignatures.getOrPut(self.alloc, name);
+    pub fn ensureVarSym(self: *VM, parentId: SymbolId, name: []const u8) !SymbolId {
+        const key = AbsVarSigKey{
+            .namePtr = name.ptr,
+            .nameLen = @intCast(u32, name.len),
+            .numParams = parentId,
+        };
+        const res = try self.varSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.varSyms.len);
             try self.varSyms.append(self.alloc, VarSym.init(Value.None));
@@ -1150,8 +1172,14 @@ pub const VM = struct {
         }
     }
     
-    pub fn ensureFuncSym(self: *VM, name: []const u8) !SymbolId {
-        const res = try self.funcSymSignatures.getOrPut(self.alloc, name);
+    pub fn ensureFuncSym(self: *VM, resolvedParentId: SymbolId, name: []const u8, numParams: u16) !SymbolId {
+        const key = AbsFuncSigKey{
+            .namePtr = name.ptr,
+            .parentId = resolvedParentId,
+            .nameLen = @intCast(u16, name.len),
+            .numParams = numParams,
+        };
+        const res = try self.funcSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.funcSyms.len);
             try self.funcSyms.append(self.alloc, .{
@@ -1211,7 +1239,7 @@ pub const VM = struct {
     }
 
     pub fn ensureMethodSymKey(self: *VM, name: []const u8, numParams: u32) !SymbolId {
-        const key = MethodSigKey{
+        const key = RelFuncSigKey{
             .namePtr = name.ptr,
             .nameLen = @intCast(u32, name.len),
             .numParams = numParams,
@@ -2659,6 +2687,7 @@ fn evalNot(val: cy.Value) cy.Value {
 }
 
 const NullByteId = std.math.maxInt(u8);
+const NullIdU16 = std.math.maxInt(u16);
 const NullId = std.math.maxInt(u32);
 
 const String = packed struct {
@@ -2920,7 +2949,8 @@ test "Internals." {
     try t.eq(@sizeOf(HeapPage), 40 * 102);
     try t.eq(@alignOf(HeapPage), 8);
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
-    try t.eq(@sizeOf(MethodSigKey), 16);
+    try t.eq(@sizeOf(AbsFuncSigKey), 16);
+    try t.eq(@sizeOf(RelFuncSigKey), 16);
 
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 32);
@@ -5162,21 +5192,22 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(StdSection) Value {
     }
 }
 
-const MethodSigKey = struct {
+/// Relative func symbol signature key.
+pub const RelFuncSigKey = struct {
     namePtr: [*]const u8,
     nameLen: u32,
     numParams: u32,
 };
 
-pub const MethodSigKeyContext = struct {
-    pub fn hash(self: @This(), key: MethodSigKey) u64 {
+pub const RelFuncSigKeyContext = struct {
+    pub fn hash(self: @This(), key: RelFuncSigKey) u64 {
         _ = self;
         var hasher = std.hash.Wyhash.init(0);
         @call(.always_inline, hasher.update, .{key.namePtr[0..key.nameLen]});
         @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.numParams)});
         return hasher.final();
     }
-    pub fn eql(self: @This(), a: MethodSigKey, b: MethodSigKey) bool {
+    pub fn eql(self: @This(), a: RelFuncSigKey, b: RelFuncSigKey) bool {
         _ = self;
         if (a.nameLen != b.nameLen) {
             return false;
@@ -5187,3 +5218,40 @@ pub const MethodSigKeyContext = struct {
         return std.mem.eql(u8, a.namePtr[0..a.nameLen], b.namePtr[0..a.nameLen]);
     }
 };
+
+/// Absolute func symbol signature key.
+pub const AbsFuncSigKey = struct {
+    namePtr: [*]const u8,
+    /// Refers to a parent sema resolved sym id.
+    parentId: u32,
+    nameLen: u16,
+    numParams: u16,
+};
+
+pub const AbsFuncSigKeyContext = struct {
+    pub fn hash(self: @This(), key: AbsFuncSigKey) u64 {
+        _ = self;
+        var hasher = std.hash.Wyhash.init(0);
+        @call(.always_inline, hasher.update, .{key.namePtr[0..key.nameLen]});
+        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.numParams)});
+        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.parentId)});
+        return hasher.final();
+    }
+    pub fn eql(self: @This(), a: AbsFuncSigKey, b: AbsFuncSigKey) bool {
+        _ = self;
+        if (a.parentId != b.parentId) {
+            return false;
+        }
+        if (a.nameLen != b.nameLen) {
+            return false;
+        }
+        if (a.numParams != b.numParams) {
+            return false;
+        }
+        return std.mem.eql(u8, a.namePtr[0..a.nameLen], b.namePtr[0..a.nameLen]);
+    }
+};
+
+/// Absolute var signature key. RelFuncSigKey is repurposed by using `numParams` as the parent sema resolved sym id.
+const AbsVarSigKey = RelFuncSigKey;
+const AbsVarSigKeyContext = RelFuncSigKeyContext;

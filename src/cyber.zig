@@ -66,6 +66,10 @@ pub const Fiber = vm.Fiber;
 pub const Closure = vm.Closure;
 pub const OpaquePtr = vm.OpaquePtr;
 pub const FuncSymDetail = vm.FuncSymDetail;
+pub const RelFuncSigKey = vm.RelFuncSigKey;
+pub const RelFuncSigKeyContext = vm.RelFuncSigKeyContext;
+pub const AbsFuncSigKey = vm.AbsFuncSigKey;
+pub const AbsFuncSigKeyContext = vm.AbsFuncSigKeyContext;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;

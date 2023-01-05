@@ -1352,7 +1352,7 @@ pub const Parser = struct {
                 }
             },
             .break_k => {
-                const id = try self.pushNode(.break_stmt, self.next_pos);
+                const id = try self.pushNode(.breakStmt, self.next_pos);
                 self.advanceToken();
                 token = self.peekToken();
                 switch (token.tag()) {
@@ -2906,7 +2906,7 @@ pub const NodeType = enum {
     localDecl,
     varDecl,
     pass_stmt,
-    break_stmt,
+    breakStmt,
     continueStmt,
     return_stmt,
     return_expr_stmt,

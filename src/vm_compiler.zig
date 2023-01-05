@@ -732,7 +732,7 @@ pub const VMcompiler = struct {
             .expr_stmt => {
                 _ = try self.semaExpr(node.head.child_head, discardTopExprReg);
             },
-            .break_stmt => {
+            .breakStmt => {
                 return;
             },
             .continueStmt => {
@@ -2301,7 +2301,7 @@ pub const VMcompiler = struct {
             .expr_stmt => {
                 _ = try self.genExprStmt(nodeId, false, discardTopExprReg);
             },
-            .break_stmt => {
+            .breakStmt => {
                 const pc = try self.pushEmptyJump();
                 try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .brk, .pc = pc });
             },

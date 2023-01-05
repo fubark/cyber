@@ -1087,7 +1087,7 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
                         // Ensure func sym.
                         const right = c.nodes[callee.head.accessExpr.right];
                         const name = c.getNodeTokenString(right);
-                        const symId = try ensureSym(c, left.head.ident.semaSymId, name, @intCast(u16, numArgs));
+                        const symId = try ensureSym(c, leftSymId, name, @intCast(u16, numArgs));
                         c.semaSyms.items[symId].used = true;
                         c.nodes[node.head.func_call.callee].head.accessExpr.semaSymId = symId;
                     }

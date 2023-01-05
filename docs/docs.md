@@ -1123,7 +1123,8 @@ for map as k, v:
 object **File**
 | Function | Summary |
 | -- | -- |
-| streamLines() Iterable\<string\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). |
+| streamLines() Iterable\<string\> | Equivalent to `streamLines(4096)`. |
+| streamLines(bufSize number) Iterable\<string\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 
 ### Test Module.
 The `test` module contains utilities for testing.

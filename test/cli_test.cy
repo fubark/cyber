@@ -10,7 +10,7 @@ try t.eq(getInput(), error(#EndOfStream))
 -- core.getInput() returns user input before new line.
 runPipeInput('printf "abc\n"', "
 import t 'test'
-try t.eq(readLine(), 'abc')
+try t.eq(getInput(), 'abc')
 ")
 
 -- os.stdin.streamLines()

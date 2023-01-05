@@ -834,6 +834,7 @@ pub const VM = struct {
             .fd = fd,
             .curPos = 0,
             .iterLines = false,
+            .hasReadBuf = false,
             .readBuf = undefined,
             .readBufCap = 0,
             .readBufEnd = 0,
@@ -2282,7 +2283,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             vm.freeObject(obj);
         },
         FileT => {
-            if (obj.file.readBufCap > 0) {
+            if (obj.file.hasReadBuf) {
                 vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
             }
             vm.freeObject(obj);
@@ -2712,6 +2713,7 @@ const File = packed struct {
     readBufCap: u32,
     readBufEnd: u32,
     iterLines: bool,
+    hasReadBuf: bool,
 };
 
 const TccState = packed struct {

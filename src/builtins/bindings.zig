@@ -74,6 +74,7 @@ pub fn bindCore(self: *cy.VM) !void {
     const charAt = try self.ensureMethodSymKey("charAt", 1);
     const status = try self.ensureMethodSymKey("status", 0);
     const streamLines = try self.ensureMethodSymKey("streamLines", 0);
+    const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
 
     // Init compile time builtins.
 
@@ -149,6 +150,7 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("File");
     std.debug.assert(id == cy.FileT);
     try self.addMethodSym(cy.FileT, streamLines, cy.SymbolEntry.initNativeFunc1(fileStreamLines));
+    try self.addMethodSym(cy.FileT, streamLines1, cy.SymbolEntry.initNativeFunc1(fileStreamLines1));
     try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(fileIterator));
     try self.addMethodSym(cy.FileT, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(fileNext));
 
@@ -469,26 +471,39 @@ fn constStringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8
     return Value.initF64(@intToFloat(f64, gvm.strBuf[str.start + idx]));
 }
 
-pub fn fileStreamLines(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileStreamLines(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, nargs: u8) linksection(StdSection) Value {
+    return fileStreamLines1(vm, ptr, &[_]Value{ Value.initF64(@intToFloat(f64, 4096)) }, nargs);
+}
+
+pub fn fileStreamLines1(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const bufSize = @floatToInt(u32, args[0].toF64());
+    var createReadBuf = true;
+    if (obj.file.hasReadBuf) {
+        if (bufSize != obj.file.readBufCap) {
+            // Cleanup previous buffer.
+            vm.allocator().free(obj.file.readBuf[0..obj.file.readBufCap]);
+        } else {
+            createReadBuf = false;
+        }
+    }
+    // Allocate read buffer.
     obj.file.iterLines = true;
+    if (createReadBuf) {
+        const readBuf = vm.allocator().alloc(u8, bufSize) catch stdx.fatal();
+        obj.file.readBuf = readBuf.ptr;
+        obj.file.readBufCap = @intCast(u32, readBuf.len);
+        obj.file.hasReadBuf = true;
+    }
     return Value.initPtr(ptr);
 }
 
-pub fn fileIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileIterator(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
-    if (obj.file.iterLines) {
-        obj.file.curPos = 0;
-        if (obj.file.readBufCap == 0) {
-            // Allocate read buffer.
-            const readBuf = vm.allocator().alloc(u8, 4096) catch stdx.fatal();
-            obj.file.readBuf = readBuf.ptr;
-            obj.file.readBufCap = @intCast(u32, readBuf.len);
-            obj.file.readBufEnd = 0;
-        }
-    }
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    obj.file.curPos = 0;
+    obj.file.readBufEnd = 0;
     return Value.initPtr(ptr);
 }
 

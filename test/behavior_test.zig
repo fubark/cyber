@@ -7,7 +7,7 @@ const t = stdx.testing;
 
 const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
-const bindings = @import("../src/bindings.zig");
+const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
 test "compile time" {

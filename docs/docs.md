@@ -1040,10 +1040,10 @@ print(m.pi * r^2)
 | ------------- | ------------- | ----- |
 | e | number | Euler's number and the base of natural logarithms; approximately 2.718. |
 | inf | number | Infinity. |
+| log10e | number | Base-10 logarithm of E; approximately 0.434. |
+| log2e | number | Base-2 logarithm of E; approximately 1.443. |
 | ln10 | number | Natural logarithm of 10; approximately 2.303. |
-| ln10e | number | Base-10 logarithm of E; approximately 0.434. |
 | ln2 | number | Natural logarithm of 2; approximately 0.693. |
-| ln2e | number | Base-2 logarithm of E; approximately 1.443. |
 | nan | number | Not a number. Note that nan != nan. |
 | neginf | number | Negative infinity. |
 | pi | number | Ratio of a circle's circumference to its diameter; approximately 3.14159. |

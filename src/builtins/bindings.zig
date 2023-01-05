@@ -75,6 +75,8 @@ pub fn bindCore(self: *cy.VM) !void {
     const status = try self.ensureMethodSymKey("status", 0);
     const streamLines = try self.ensureMethodSymKey("streamLines", 0);
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
+    const index = try self.ensureMethodSymKey("index", 1);
+    const indexChar = try self.ensureMethodSymKey("indexChar", 1);
 
     // Init compile time builtins.
 
@@ -89,6 +91,8 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.ConstStringT);
     try self.addMethodSym(cy.ConstStringT, len, cy.SymbolEntry.initNativeFunc1(constStringLen));
     try self.addMethodSym(cy.ConstStringT, charAt, cy.SymbolEntry.initNativeFunc1(constStringCharAt));
+    try self.addMethodSym(cy.ConstStringT, index, cy.SymbolEntry.initNativeFunc1(constStringIndex));
+    try self.addMethodSym(cy.ConstStringT, indexChar, cy.SymbolEntry.initNativeFunc1(constStringIndexChar));
     id = try self.addStruct("tag");
     std.debug.assert(id == cy.UserTagT);
     id = try self.addStruct("tagliteral");
@@ -130,6 +134,8 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.StringS);
     try self.addMethodSym(cy.StringS, len, cy.SymbolEntry.initNativeFunc1(stringLen));
     try self.addMethodSym(cy.StringS, charAt, cy.SymbolEntry.initNativeFunc1(stringCharAt));
+    try self.addMethodSym(cy.StringS, index, cy.SymbolEntry.initNativeFunc1(stringIndex));
+    try self.addMethodSym(cy.StringS, indexChar, cy.SymbolEntry.initNativeFunc1(stringIndexChar));
 
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
@@ -469,6 +475,99 @@ fn constStringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8
     const str = val.asConstStr();
     const idx = @floatToInt(u32, args[0].toF64());
     return Value.initF64(@intToFloat(f64, gvm.strBuf[str.start + idx]));
+}
+
+fn indexOfCharCpu(buf: []const u8, needle: u8) ?usize {
+    for (buf) |ch, i| {
+        if (ch == needle) {
+            return i;
+        }
+    }
+    return null;
+}
+
+fn indexOfChar(buf: []const u8, needle: u8) ?usize {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        const MaskInt = std.meta.Int(.unsigned, VecSize);
+        var vbuf: @Vector(VecSize, u8) = undefined;
+        const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
+        var i: usize = 0;
+        while (i + VecSize <= buf.len) : (i += VecSize) {
+            vbuf = buf[i..i+VecSize][0..VecSize].*;
+            const hitMask = @bitCast(MaskInt, vbuf == vneedle);
+            const bitIdx = @ctz(hitMask);
+            if (bitIdx < VecSize) {
+                // Found.
+                return i + bitIdx;
+            }
+        }
+        if (i < buf.len) {
+            // Remaining use cpu.
+            if (indexOfCharCpu(buf[i..], needle)) |res| {
+                return i + res;
+            }
+        }
+        return null;
+    } else {
+        return indexOfCharCpu(buf, needle);
+    }
+}
+
+fn constStringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asConstStr();
+    const str = gvm.strBuf[slice.start..slice.end];
+    const needle = vm.valueToTempString(args[0]);
+
+    if (std.mem.indexOf(u8, str, needle)) |idx| {
+        return Value.initF64(@intToFloat(f64, idx));
+    } else return Value.None;
+}
+
+fn stringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const str = obj.string.ptr[0..obj.string.len];
+    const needle = vm.valueToTempString(args[0]);
+
+    if (std.mem.indexOf(u8, str, needle)) |idx| {
+        return Value.initF64(@intToFloat(f64, idx));
+    } else return Value.None;
+}
+
+fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
+    if (val.isString()) {
+        const needle = vm.valueToTempString(val);
+        if (needle.len > 0) {
+            return needle[0];
+        } else {
+            return 0;
+        }
+    } else {
+       return @floatToInt(u8, val.toF64());
+    }
+}
+
+fn constStringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asConstStr();
+    const str = gvm.strBuf[slice.start..slice.end];
+    const char = valueToChar(vm, args[0]);
+
+    if (indexOfChar(str, char)) |idx| {
+        return Value.initF64(@intToFloat(f64, idx));
+    } else return Value.None;
+}
+
+fn stringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const str = obj.string.ptr[0..obj.string.len];
+    const char = valueToChar(vm, args[0]);
+
+    if (indexOfChar(str, char)) |idx| {
+        return Value.initF64(@intToFloat(f64, idx));
+    } else return Value.None;
 }
 
 pub fn fileStreamLines(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, nargs: u8) linksection(StdSection) Value {

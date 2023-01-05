@@ -1054,32 +1054,24 @@ test "Strings" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Const string with single quotes.
-    var val = try run.eval(
-        \\str = 'abc'
-        \\str
-    );
-    var str = try run.assertValueString(val);
-    try t.eqStr(str, "abc");
-
-    // Const string with unicode.
-    val = try run.eval(
-        \\str = 'abc🦊xyz🐶'
-        \\str
-    );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "abc🦊xyz🐶");
-
-    // Const string with escaped single quote.
-    val = try run.eval(
-        \\str = 'ab\'c'
-        \\str
-    );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "ab'c");
-
     _ = try run.eval(
         \\import t 'test'
+        \\
+        \\-- Const string with single quotes.
+        \\str = 'abc'
+        \\try t.eq(str, 'abc')
+        \\
+        \\-- Const string with unicode.
+        \\str = 'abc🦊xyz🐶'
+        \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- Const string with escaped single quote.
+        \\str = 'ab\'c'
+        \\try t.eq(str.len(), 4)
+        \\try t.eq(str.charAt(0), char('a'))
+        \\try t.eq(str.charAt(1), char('b'))
+        \\try t.eq(str.charAt(2), char("'"))
+        \\try t.eq(str.charAt(3), char('c'))
         \\
         \\-- Const string with new line escape sequence.
         \\try t.eq('ab\nc', "ab
@@ -1098,6 +1090,10 @@ test "Strings" {
         \\-- Escaped backslash.
         \\try t.eq('ab\\nc'.charAt(2), 92)
         \\try t.eq('ab\\nc'.charAt(3), char('n'))
+        \\
+        \\-- Heap string. 
+        \\str = 'abc'
+        \\try t.eq('{str}xyz', 'abcxyz')
     );
 
     // Multi-lines.
@@ -1113,26 +1109,45 @@ test "Strings" {
         \\try t.eq(str, 'abc\nabc')
     );
 
-    // Heap string. 
-    val = try run.eval(
-        \\str = 'abc'
-        \\'{str}xyz'
-    );
-    str = try run.assertValueString(val);
-    try t.eqStr(str, "abcxyz");
-    run.deinitValue(val);
-
     // String functions.
     _ = try run.eval(
         \\import t 'test'
+        \\
         \\-- Const string.
         \\str = 'abc'
         \\try t.eq(str.len(), 3)
         \\try t.eq(str.charAt(1), 98)
+        \\try t.eq(str.index('bc'), 1)
+        \\try t.eq(str.index('bd'), none)
+        \\try t.eq(str.index('ab'), 0)
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('b'), 1)
+        \\try t.eq(str.indexChar('c'), 2)
+        \\try t.eq(str.indexChar('d'), none)
+        \\
+        \\-- Long const string for simd.
+        \\str = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('m'), 16)
+        \\try t.eq(str.indexChar('z'), 68)
+        \\
         \\-- Heap string.
         \\str = '{'abc'}'
         \\try t.eq(str.len(), 3)
         \\try t.eq(str.charAt(1), 98)
+        \\try t.eq(str.index('bc'), 1)
+        \\try t.eq(str.index('bd'), none)
+        \\try t.eq(str.index('ab'), 0)
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('b'), 1)
+        \\try t.eq(str.indexChar('c'), 2)
+        \\try t.eq(str.indexChar('d'), none)
+        \\
+        \\-- Long heap string for simd.
+        \\str = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('m'), 16)
+        \\try t.eq(str.indexChar('z'), 68)
     );
 }
 

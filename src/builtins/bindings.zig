@@ -507,7 +507,7 @@ pub fn fileIterator(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) li
     return Value.initPtr(ptr);
 }
 
-fn getLineEnd(buf: []const u8) ?usize {
+fn getLineEndCpu(buf: []const u8) ?usize {
     for (buf) |ch, i| {
         if (ch == '\n') {
             return i + 1;
@@ -521,6 +521,44 @@ fn getLineEnd(buf: []const u8) ?usize {
         }
     }
     return null;
+}
+
+fn getLineEnd(buf: []const u8) ?usize {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        const MaskInt = std.meta.Int(.unsigned, VecSize);
+        var vbuf: @Vector(VecSize, u8) = undefined;
+        const lfNeedle: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, '\n'));
+        const crNeedle: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, '\r'));
+        var i: usize = 0;
+        while (i + VecSize <= buf.len) : (i += VecSize) {
+            vbuf = buf[i..i+VecSize][0..VecSize].*;
+            const lfHits = @bitCast(MaskInt, vbuf == lfNeedle);
+            const crHits = @bitCast(MaskInt, vbuf == crNeedle);
+            const bitIdx = @ctz(lfHits | crHits);
+            if (bitIdx < VecSize) {
+                // Found.
+                const res = i + bitIdx;
+                if (buf[res] == '\n') {
+                    return res + 1;
+                } else {
+                    if (res + 1 < buf.len and buf[res+1] == '\n') {
+                        return res + 2;
+                    } else {
+                        return res + 1;
+                    }
+                }
+            }
+        }
+        if (i < buf.len) {
+            // Remaining use cpu.
+            if (getLineEndCpu(buf[i..])) |res| {
+                return i + res;
+            }
+        }
+        return null;
+    } else {
+        return getLineEndCpu(buf);
+    }
 }
 
 pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {

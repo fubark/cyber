@@ -29,6 +29,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     try mod.setNativeFunc(alloc, "getInput", 0, getInput);
     try mod.setNativeFunc(alloc, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
+    try mod.setNativeFunc(alloc, "must", 1, must);
     try mod.setNativeFunc(alloc, "number", 1, number);
     try mod.setNativeFunc(alloc, "opaque", 1, coreOpaque);
     try mod.setNativeFunc(alloc, "panic", 1, panic);
@@ -540,6 +541,14 @@ pub fn int(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
         return Value.initI32(@floatToInt(i32, val.asF64()));
     } else {
         return Value.initI32(0);
+    }
+}
+
+pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    if (!args[0].isError()) {
+        return args[0];
+    } else {
+        return panic(vm, args, nargs);
     }
 }
 

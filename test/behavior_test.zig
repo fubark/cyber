@@ -575,6 +575,34 @@ test "Object methods." {
     try t.eq(val.asF64toI32(), 443);
 }
 
+test "must()" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\a = 123
+        \\-- no error, must returns argument.
+        \\try t.eq(must(a), 123)
+    );
+
+    var res = run.evalSilent(
+        \\a = error(#boom)
+        \\must(a)
+    );
+    try t.expectError(res, error.Panic);
+    var trace = run.getStackTrace();
+    try t.eqStr(run.getPanicMsg(), "error#boom");
+    try t.eq(trace.frames.len, 1);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "main",
+        .uri = "main",
+        .line = 1,
+        .col = 0,
+        .lineStartPos = 17,
+    });
+}
+
 test "panic()" {
     const run = VMrunner.create();
     defer run.destroy();

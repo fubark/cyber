@@ -1012,6 +1012,7 @@ print contents
 | fetchUrl(url string) string | Uses previously installed 'curl' to fetch the contents at a URL. Cyber has not included an http/tls library yet. | 
 | getInput() string | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | int(val any) int | Converts a value to an 32-bit integer. | 
+| must(val any) any \| noreturn | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | number(val any) number | Converts a value to a number. | 
 | opaque(val any) opaque | Converts a value to an opaque pointer value. This is usually used with FFI. | 
 | panic(e taglit) noreturn | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors). |

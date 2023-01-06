@@ -209,11 +209,7 @@ fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
     std.debug.assert(id == @enumToInt(tag));
 }
 
-fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    if (nargs == 0) {
-        stdx.panic("Args mismatch");
-    }
-
+fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
@@ -238,8 +234,7 @@ fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     return Value.None;
 }
 
-fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
-    _ = nargs;
+fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index = @floatToInt(i64, args[0].toF64());
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(list);
@@ -252,8 +247,7 @@ fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     return Value.None;
 }
 
-fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
-    _ = nargs;
+fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index = @floatToInt(i64, args[0].toF64());
     const value = args[1];
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
@@ -269,10 +263,7 @@ fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) 
     return Value.None;
 }
 
-fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    if (nargs == 0) {
-        stdx.panic("Args mismatch");
-    }
+fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (inner.len == inner.buf.len) {
@@ -290,9 +281,8 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Val
     return Value.None;
 }
 
-fn listNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) cy.ValuePair {
+fn listNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) cy.ValuePair {
     _ = args;
-    _ = nargs;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(list);
     if (list.list.nextIterIdx < list.list.list.len) {
@@ -309,9 +299,8 @@ fn listNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8
     };
 }
 
-fn listNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     _ = args;
-    _ = nargs;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(list);
     if (list.list.nextIterIdx < list.list.list.len) {
@@ -322,18 +311,14 @@ fn listNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Va
     } else return Value.None;
 }
 
-fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
+fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     _ = args;
-    _ = nargs;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     list.list.nextIterIdx = 0;
     return Value.initPtr(ptr);
 }
 
-fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    if (nargs == 0) {
-        stdx.panic("Args mismatch");
-    }
+fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
@@ -342,17 +327,15 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     return Value.None;
 }
 
-fn mapIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
-    _ = nargs;
+fn mapIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) Value {
     _ = args;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     obj.map.inner.extra = 0;
     return Value.initPtr(ptr);
 }
 
-fn mapNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) cy.ValuePair {
+fn mapNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
     _ = args;
-    _ = nargs;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
@@ -369,9 +352,8 @@ fn mapNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8)
     };
 }
 
-fn mapNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
+fn mapNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) Value {
     _ = args;
-    _ = nargs;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
@@ -381,8 +363,7 @@ fn mapNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) lin
     } else return Value.None;
 }
 
-fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    _ = nargs;
+fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     _ = args;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
@@ -390,10 +371,7 @@ fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Valu
     return Value.initF64(@intToFloat(f64, inner.size));
 }
 
-fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) Value {
-    if (nargs == 0) {
-        stdx.panic("Args mismatch");
-    }
+fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(@ptrCast(*cy.VM, vm), args[0]);
@@ -401,8 +379,7 @@ fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) V
     return Value.None;
 }
 
-fn listLen(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(Section) Value {
-    _ = nargs;
+fn listLen(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) Value {
     _ = args;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);

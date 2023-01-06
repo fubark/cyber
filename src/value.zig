@@ -77,6 +77,9 @@ pub const Value = packed union {
     pub const True = Value{ .val = TrueMask };
     pub const False = Value{ .val = FalseMask };
 
+    /// Panic value. Represented as a null object pointer. Can be returned from native functions.
+    pub const Panic = Value{ .val = PointerMask };
+
     pub inline fn asI32(self: *const Value) i32 {
         return @bitCast(i32, @intCast(u32, self.val & 0xffffffff));
     }
@@ -225,6 +228,10 @@ pub const Value = packed union {
 
     pub inline fn isTrue(self: *const Value) linksection(cy.HotSection) bool {
         return self.val == TrueMask;
+    }
+
+    pub inline fn isPanic(self: *const Value) linksection(cy.HotSection) bool {
+        return self.val == PointerMask;
     }
 
     pub inline fn isBool(self: *const Value) linksection(cy.HotSection) bool {

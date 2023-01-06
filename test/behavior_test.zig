@@ -575,6 +575,27 @@ test "Object methods." {
     try t.eq(val.asF64toI32(), 443);
 }
 
+test "panic()" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    var res = run.evalSilent(
+        \\a = 123
+        \\1 + panic(#boom)
+    );
+    try t.expectError(res, error.Panic);
+    var trace = run.getStackTrace();
+    try t.eqStr(run.getPanicMsg(), "#boom");
+    try t.eq(trace.frames.len, 1);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "main",
+        .uri = "main",
+        .line = 1,
+        .col = 4,
+        .lineStartPos = 8,
+    });
+}
+
 test "Stack trace unwinding." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -1160,6 +1181,7 @@ test "toString." {
         \\try t.eq(string(123.4), '123.4000000000')
         \\try t.eq(string(int(123)), '123')
         \\try t.eq(string(error(#foo)), 'error#foo')
+        \\try t.eq(string(#foo), '#foo')
     );
 }
 
@@ -2624,6 +2646,10 @@ const VMrunner = struct {
 
     fn getStackTrace(self: *VMrunner) *const cy.StackTrace {
         return self.vm.getStackTrace();
+    }
+
+    fn getPanicMsg(self: *VMrunner) []const u8 {
+        return self.vm.getPanicMsg();
     }
 
     /// Don't print panic errors.

@@ -1014,6 +1014,7 @@ print contents
 | int(val any) int | Converts a value to an 32-bit integer. | 
 | number(val any) number | Converts a value to a number. | 
 | opaque(val any) opaque | Converts a value to an opaque pointer value. This is usually used with FFI. | 
+| panic(e taglit) noreturn | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors). |
 | parseCyon(cyon string) any | Parses a CYON string into a value. | 
 | print(s string) none | Prints a value as a string to stdout. The new line is also printed. | 
 | prints(s string) none | Prints a value as a string to stdout. | 

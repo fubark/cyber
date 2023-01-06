@@ -719,11 +719,11 @@ pub const VM = struct {
             .numLocals = numLocals,
         };
         if (TraceEnabled) {
-            gvm.trace.numRetains += 1;
+            self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -1792,6 +1792,9 @@ pub const VM = struct {
 
                 gvm.framePtr = newFramePtr;
                 const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                if (res.isPanic()) {
+                    return error.Panic;
+                }
                 if (reqNumRetVals == 1) {
                     newFramePtr[0] = res;
                 } else {
@@ -1885,6 +1888,9 @@ pub const VM = struct {
 
                 self.framePtr = framePtr;
                 const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+                if (res.isPanic()) {
+                    return error.Panic;
+                }
                 if (reqNumRetVals == 1) {
                     framePtr[startLocal] = res;
                 } else {
@@ -1906,6 +1912,9 @@ pub const VM = struct {
             .nativeFunc2 => {
                 self.framePtr = framePtr;
                 const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, self), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+                if (res.left.isPanic()) {
+                    return error.Panic;
+                }
                 if (reqNumRetVals == 2) {
                     framePtr[startLocal] = res.left;
                     framePtr[startLocal+1] = res.right;
@@ -2137,6 +2146,10 @@ pub const VM = struct {
                         // Convert into heap string.
                         const slice = val.asConstStr();
                         return self.strBuf[slice.start..slice.end];
+                    },
+                    cy.UserTagLiteralT => {
+                        const litId = val.asTagLiteralId();
+                        return std.fmt.bufPrint(&tempU8Buf, "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
                     },
                     cy.IntegerT => return std.fmt.bufPrint(&tempU8Buf, "{}", .{val.asI32()}) catch stdx.fatal(),
                     else => {
@@ -3257,6 +3270,14 @@ pub const UserVM = struct {
         return @ptrCast(*const VM, self).valueToString(val);
     }
 
+    /// Used to return a panic from a native function body.
+    pub fn returnPanic(self: *UserVM, msg: []const u8) Value {
+        @setCold(true);
+        const vm = @ptrCast(*VM, self);
+        vm.panicMsg = vm.alloc.dupe(u8, msg) catch stdx.fatal();
+        return Value.Panic;
+    }
+
     pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value) u32 {
         const vm = @ptrCast(*const VM, self);
         return @intCast(u32, framePtrOffsetFrom(vm.stack.ptr, args));
@@ -3785,6 +3806,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     vm.framePtr = framePtr;
                     const func = @intToPtr(NativeObjFuncPtr, @ptrCast(*align (1) u48, pc + 6).*);
                     const res = func(@ptrCast(*UserVM, vm), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+                    if (res.isPanic()) {
+                        return error.Panic;
+                    }
                     const numRet = pc[3].arg;
                     if (numRet == 1) {
                         framePtr[startLocal] = res;
@@ -3835,6 +3859,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 vm.framePtr = newFramePtr;
                 const func = @intToPtr(NativeFuncPtr, @ptrCast(*align (1) u48, pc + 5).*);
                 const res = func(@ptrCast(*UserVM, vm), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                if (res.isPanic()) {
+                    return error.Panic;
+                }
                 const numRet = pc[3].arg;
                 if (numRet == 1) {
                     newFramePtr[0] = res;
@@ -4063,7 +4090,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numLocals = pc[3].arg;
                 const dst = pc[4].arg;
                 pc += 5;
-                framePtr[dst] = try gvm.allocLambda(funcPc, numParams, numLocals);
+                framePtr[dst] = try @call(.never_inline, vm.allocLambda, .{funcPc, numParams, numLocals});
                 continue;
             },
             .closure => {
@@ -4075,7 +4102,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const capturedVals = pc[6..6+numCaptured];
                 pc += 6 + numCaptured;
 
-                framePtr[dst] = try gvm.allocClosure(framePtr, funcPc, numParams, numLocals, capturedVals);
+                framePtr[dst] = try @call(.never_inline, vm.allocClosure, .{framePtr, funcPc, numParams, numLocals, capturedVals});
                 continue;
             },
             .static => {
@@ -4336,8 +4363,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     typeId = recv.getPrimitiveTypeId();
                 }
 
-                if (gvm.getCallObjSym(typeId, symId)) |sym| {
-                    const res = try @call(.never_inline, gvm.callSymEntry, .{pc, framePtr, sym, obj, typeId, startLocal, numArgs, numRet });
+                if (vm.getCallObjSym(typeId, symId)) |sym| {
+                    const res = try @call(.never_inline, vm.callSymEntry, .{pc, framePtr, sym, obj, typeId, startLocal, numArgs, numRet });
                     pc = res.pc;
                     framePtr = res.framePtr;
                 } else {
@@ -4352,7 +4379,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numArgs = pc[2].arg;
                 const numRet = pc[3].arg;
                 const symId = pc[4].arg;
-                const res = try @call(.never_inline, gvm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
+                const res = try @call(.never_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
                 pc = res.pc;
                 framePtr = res.framePtr;
                 continue;

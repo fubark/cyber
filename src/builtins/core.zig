@@ -31,6 +31,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try mod.setNativeFunc(alloc, "number", 1, number);
     try mod.setNativeFunc(alloc, "opaque", 1, coreOpaque);
+    try mod.setNativeFunc(alloc, "panic", 1, panic);
     try mod.setNativeFunc(alloc, "parseCyon", 1, parseCyon);
     try mod.setNativeFunc(alloc, "print", 1, print);
     try mod.setNativeFunc(alloc, "prints", 1, prints);
@@ -572,14 +573,20 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
+pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const str = vm.valueToTempString(args[0]);
+    return vm.returnPanic(str);
+}
+
 pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;
-    const str = gvm.valueAsString(args[0]);
+    const str = vm.valueAsString(args[0]);
     defer vm.release(args[0]);
-
-    var parser = cy.Parser.init(gvm.alloc);
+    
+    const alloc = vm.allocator();
+    var parser = cy.Parser.init(alloc);
     defer parser.deinit();
-    const val = cy.decodeCyon(gvm.alloc, &parser, str) catch stdx.fatal();
+    const val = cy.decodeCyon(alloc, &parser, str) catch stdx.fatal();
     return fromCyonValue(vm, val) catch stdx.fatal();
 }
 

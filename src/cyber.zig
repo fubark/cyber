@@ -49,6 +49,7 @@ pub const HeapObject = vm.HeapObject;
 pub const ListS = vm.ListS;
 pub const ListIteratorT = vm.ListIteratorT;
 pub const MapS = vm.MapS;
+pub const MapIteratorT = vm.MapIteratorT;
 pub const MapInner = vm.MapInner;
 pub const ClosureS = vm.ClosureS;
 pub const LambdaS = vm.LambdaS;

@@ -1456,38 +1456,56 @@ test "Maps" {
     // Iterate maps.
     _ = try run.eval(
         \\import t 'test'
+        \\
+        \\-- Iterator.
         \\let m = { a: 2, b: 3, c: 4 }
         \\let sum = 0
         \\for m as v:
         \\  sum += v 
         \\try t.eq(sum, 9)
+        \\
+        \\-- Pair Iterator.
         \\sum = 0
-        \\keys = 0
+        \\codeSum = 0
         \\for m as k, v:
         \\  sum += v
-        \\  if k == 'a':
-        \\    keys += 1
-        \\  else k == 'b':
-        \\    keys += 1
-        \\  else k == 'c':
-        \\    keys += 1
+        \\  codeSum += asciiCode(k)
         \\try t.eq(sum, 9)
-        \\try t.eq(keys, 3)
+        \\try t.eq(codeSum, 294)
+        \\
+        \\-- Nested iteration.
+        \\m = { a: 1, b: 2, c: 3 }
+        \\res = 0
+        \\for m as n:
+        \\  innerSum = 0
+        \\  for m as nn:
+        \\    innerSum += nn
+        \\  res += n * innerSum
+        \\try t.eq(res, 36)
+        \\
+        \\-- Nested pair iteration.
+        \\m = { a: 1, b: 2, c: 3 }
+        \\res = 0
+        \\codeSum = 0
+        \\for m as k, n:
+        \\  innerSum = 0
+        \\  for m as kk, nn:
+        \\    innerSum += nn
+        \\    codeSum += asciiCode(kk)
+        \\  res += n * innerSum
+        \\  codeSum += asciiCode(k)
+        \\try t.eq(res, 36)
+        \\try t.eq(codeSum, 294 * 4)
         \\
         \\-- Iterate rc values.
         \\m = { a: [2], b: [3], c: [4] }
         \\sum = 0
-        \\keys = 0
+        \\codeSum = 0
         \\for m as k, v:
         \\  sum += v[0]
-        \\  if k == 'a':
-        \\    keys += 1
-        \\  else k == 'b':
-        \\    keys += 1
-        \\  else k == 'c':
-        \\    keys += 1
+        \\  codeSum += asciiCode(k)
         \\try t.eq(sum, 9)
-        \\try t.eq(keys, 3)
+        \\try t.eq(codeSum, 294)
     );
 
     // Remove from map.

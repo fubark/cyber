@@ -570,7 +570,6 @@ pub const VM = struct {
                 .size = 0,
                 .cap = 0,
                 .available = 0,
-                .extra = 0,
             },
         };
         if (TraceEnabled) {
@@ -641,7 +640,6 @@ pub const VM = struct {
                 .size = 0,
                 .cap = 0,
                 .available = 0,
-                .extra = 0,
             },
         };
         if (TraceEnabled) {
@@ -649,10 +647,10 @@ pub const VM = struct {
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
 
-        const inner = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+        const inner = @ptrCast(*MapInner, &obj.map.inner);
         for (keyIdxs) |idx, i| {
             const val = vals[i];
 
@@ -1066,6 +1064,25 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
+    /// Assumes map is already retained for the iterator.
+    fn allocMapIterator(self: *VM, map: *Map) linksection(cy.HotSection) !Value {
+        const obj = try self.allocPoolObject();
+        obj.mapIter = .{
+            .structId = MapIteratorT,
+            .rc = 1,
+            .map = map,
+            .nextIdx = 0,
+        };
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
     pub fn ensureTagType(self: *VM, name: []const u8) !TagTypeId {
         const res = try self.tagTypeSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
@@ -1436,7 +1453,8 @@ pub const VM = struct {
                     try map.put(self.alloc, self, index, right);
                 },
                 else => {
-                    return stdx.panic("unsupported struct");
+                    log.debug("unsupported object: {}", .{obj.retainedCommon.structId});
+                    stdx.fatal();
                 },
             }
         } else {
@@ -2020,7 +2038,7 @@ pub const VM = struct {
                     }
                 },
                 .empty => {
-                    return try @call(.never_inline, callObjSymFallback, .{pc, framePtr, obj, symId, startLocal, numArgs, reqNumRetVals});
+                    return try @call(.never_inline, callObjSymFallback, .{self, pc, framePtr, obj, symId, startLocal, numArgs, reqNumRetVals});
                 },
                 // else => {
                 //     unreachable;
@@ -2264,6 +2282,10 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
                 release(vm, entry.value);
             }
             map.deinit(vm.alloc);
+            vm.freeObject(obj);
+        },
+        MapIteratorT => {
+            releaseObject(vm, @ptrCast(*HeapObject, obj.mapIter.map));
             vm.freeObject(obj);
         },
         ClosureS => {
@@ -2782,6 +2804,13 @@ pub const Closure = packed struct {
     }
 };
 
+pub const MapIterator = packed struct {
+    structId: StructId,
+    rc: u32,
+    map: *Map,
+    nextIdx: u32,
+};
+
 pub const MapInner = cy.ValueMap;
 const Map = packed struct {
     structId: StructId,
@@ -2792,7 +2821,9 @@ const Map = packed struct {
         size: u32,
         cap: u32,
         available: u32,
-        extra: u32,
+        /// This prevents `inner` from having offset=0 in Map.
+        /// Although @offsetOf(Map, "inner") returns 8 in that case &map.inner returns the same address as &map.
+        padding: u32 = 0,
     },
 };
 
@@ -2888,6 +2919,7 @@ pub const HeapObject = packed union {
     listIter: ListIterator,
     fiber: Fiber,
     map: Map,
+    mapIter: MapIterator,
     closure: Closure,
     lambda: Lambda,
     string: String,
@@ -3278,6 +3310,10 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).allocListIterator(list);
     }
 
+    pub inline fn allocMapIterator(self: *UserVM, map: *Map) !Value {
+        return @ptrCast(*VM, self).allocMapIterator(map);
+    }
+
     pub inline fn allocOwnedString(self: *UserVM, str: []u8) !Value {
         return @ptrCast(*VM, self).allocOwnedString(str);
     }
@@ -3321,7 +3357,7 @@ pub const UserVM = struct {
             vm.framePtr[4 + i] = arg;
         }
         const retInfo = buildReturnInfo(1, false);
-        try callNoInline(&vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len + 1), retInfo);
+        try callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len + 1), retInfo);
         try @call(.never_inline, evalLoopGrowStack, .{vm});
 
         const res = vm.framePtr[0];
@@ -4392,7 +4428,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     pc = res.pc;
                     framePtr = res.framePtr;
                 } else {
-                    const res = try @call(.never_inline, callObjSymFallback, .{pc, framePtr, obj, typeId, symId, startLocal, numArgs, numRet});
+                    const res = try @call(.never_inline, callObjSymFallback, .{vm, pc, framePtr, obj, typeId, symId, startLocal, numArgs, numRet});
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
@@ -4657,7 +4693,7 @@ pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLo
     }
 }
 
-pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, callee.asPointer().?);
         switch (obj.common.structId) {
@@ -4666,7 +4702,7 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
                     stdx.panic("params/args mismatch");
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.closure.numLocals) >= @ptrToInt(gvm.stack.ptr) + (gvm.stack.len << 3)) {
+                if (@ptrToInt(framePtr.* + startLocal + obj.closure.numLocals) >= @ptrToInt(vm.stack.ptr) + (vm.stack.len << 3)) {
                     return error.StackOverflow;
                 }
 
@@ -4688,7 +4724,7 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
                     stdx.fatal();
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.lambda.numLocals) >= @ptrToInt(gvm.stack.ptr) + (gvm.stack.len << 3)) {
+                if (@ptrToInt(framePtr.* + startLocal + obj.lambda.numLocals) >= @ptrToInt(vm.stack.ptr) + (vm.stack.len << 3)) {
                     return error.StackOverflow;
                 }
 
@@ -4700,12 +4736,12 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
                 pc.* = toPc(obj.lambda.funcPc);
             },
             NativeFunc1S => {
-                gvm.pc = pc.*;
+                vm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
-                gvm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func(@ptrCast(*UserVM, &gvm), newFramePtr + 4, numArgs);
+                vm.framePtr = newFramePtr;
+                const res = obj.nativeFunc1.func(@ptrCast(*UserVM, vm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
-                releaseObject(&gvm, obj);
+                releaseObject(vm, obj);
                 pc.* += 14;
             },
             else => {},
@@ -4715,26 +4751,29 @@ pub fn callNoInline(pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, start
     }
 }
 
-fn getObjectFunctionFallback(obj: *const HeapObject, typeId: u32, symId: SymbolId) !Value {
+fn getObjectFunctionFallback(vm: *VM, obj: *const HeapObject, typeId: u32, symId: SymbolId) !Value {
     @setCold(true);
     if (typeId == MapS) {
-        const name = gvm.methodSymExtras.buf[symId];
+        const name = vm.methodSymExtras.buf[symId];
         const heapMap = stdx.ptrAlignCast(*const MapInner, &obj.map.inner);
-        if (heapMap.getByString(&gvm, name)) |val| {
+        if (heapMap.getByString(vm, name)) |val| {
             return val;
         }
     }
-    return gvm.panic("Missing function symbol in value");
+
+    return vm.panicFmt("Missing method symbol `{}` from receiver of type `{}`.", &.{
+        v(vm.methodSymExtras.buf[symId]), v(vm.structs.buf[typeId].name),
+    });
 }
 
 /// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, typeId: u32, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) !PcFramePtr {
+fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, typeId: u32, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.Section) !PcFramePtr {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
-    const func = try getObjectFunctionFallback(obj, typeId, symId);
+    const func = try getObjectFunctionFallback(vm, obj, typeId, symId);
 
-    gvm.retain(func);
-    releaseObject(&gvm, obj);
+    vm.retain(func);
+    releaseObject(vm, obj);
 
     // Replace receiver with function.
     framePtr[startLocal + 4 + numArgs - 1] = func;
@@ -4742,7 +4781,7 @@ fn callObjSymFallback(pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapObject, ty
     const retInfo = buildReturnInfo2(reqNumRetVals, true);
     var newPc = pc;
     var newFramePtr = framePtr;
-    try @call(.always_inline, callNoInline, .{&newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
+    try @call(.always_inline, callNoInline, .{vm, &newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
     return PcFramePtr{
         .pc = newPc,
         .framePtr = newFramePtr,

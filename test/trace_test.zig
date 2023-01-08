@@ -283,22 +283,22 @@ test "ARC in loops." {
         \\func foo(it):
         \\  pass
         \\list = [123, 234] -- +1a +1 
-        \\for list as it:   -- +6a +4 (iterator is retained once, list is retained three times for calls to next(), and 2 retains for next() returning the child item.)
+        \\for list as it:   -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
         \\  foo(it)         -- +2a
     );
-    try t.eq(trace.numRetainAttempts, 9);
-    try t.eq(trace.numRetains, 5);
+    try t.eq(trace.numRetainAttempts, 10);
+    try t.eq(trace.numRetains, 6);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     _ = try run.eval(
         \\list = [{a: 123}, {a: 234}] -- +3a +3
-        \\for list as it:             -- +6a +6 -2
+        \\for list as it:             -- +7a +7 -2
         \\  pass                      
-        \\                            --        -4    
+        \\                            --        -8
     );
-    try t.eq(trace.numRetainAttempts, 9);
-    try t.eq(trace.numRetains, 9);
-    try t.eq(trace.numReleases, 9);
+    try t.eq(trace.numRetainAttempts, 10);
+    try t.eq(trace.numRetains, 10);
+    try t.eq(trace.numReleases, 10);
 }
 
 const VMrunner = struct {

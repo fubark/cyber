@@ -125,11 +125,11 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.MapS, size, cy.SymbolEntry.initNativeFunc1(mapSize));
     try self.addMethodSym(cy.MapS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(mapIterator));
     try self.addMethodSym(cy.MapS, self.pairIteratorObjSym, cy.SymbolEntry.initNativeFunc1(mapIterator));
-    try self.addMethodSym(cy.MapS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(mapNext));
-    try self.addMethodSym(cy.MapS, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(mapNextPair));
 
     id = try self.addStruct("MapIterator");
     std.debug.assert(id == cy.MapIteratorT);
+    try self.addMethodSym(cy.MapIteratorT, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(mapIteratorNext));
+    try self.addMethodSym(cy.MapIteratorT, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(mapIteratorNextPair));
 
     id = try self.addStruct("Closure");
     std.debug.assert(id == cy.ClosureS);
@@ -335,19 +335,17 @@ fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value
     return Value.None;
 }
 
-fn mapIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) Value {
-    _ = args;
+fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    obj.map.inner.extra = 0;
-    return Value.initPtr(ptr);
+    // Don't need to release recv since it's retained by the iterator.
+    return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-fn mapNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
-    _ = args;
+fn mapIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
-    if (map.next()) |entry| {
+    const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
+    if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
         return .{
@@ -360,12 +358,11 @@ fn mapNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) lin
     };
 }
 
-fn mapNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) Value {
-    _ = args;
+fn mapIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    const map = @ptrCast(*cy.ValueMap, &obj.map.inner);
-    if (map.next()) |entry| {
+    const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
+    if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.value);
         return entry.value;
     } else return Value.None;

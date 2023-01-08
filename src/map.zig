@@ -17,9 +17,6 @@ pub const ValueMap = struct {
     cap: u32 = 0,
     available: u32 = 0,
 
-    /// Not used internally.
-    extra: u32 = undefined,
-
     const MaxLoadPercentage = 80;
 
     pub fn iterator(self: *const ValueMap) Iterator {
@@ -359,16 +356,16 @@ pub const ValueMap = struct {
         self.available += 1;
     }
 
-    pub fn next(self: *ValueMap) linksection(cy.Section) ?ValueMapEntry {
-        std.debug.assert(self.extra <= self.cap);
+    pub fn next(self: *ValueMap, idx: *u32) linksection(cy.Section) ?ValueMapEntry {
+        std.debug.assert(idx.* <= self.cap);
         if (self.size == 0) {
             return null;
         }
-        while (self.extra < self.cap) : (self.extra += 1) {
-            const md = self.metadata.?[self.extra];
+        while (idx.* < self.cap) : (idx.* += 1) {
+            const md = self.metadata.?[idx.*];
             if (md.isUsed()) {
-                defer self.extra += 1;
-                return self.entries.?[self.extra];
+                defer idx.* += 1;
+                return self.entries.?[idx.*];
             }
         }
         return null;

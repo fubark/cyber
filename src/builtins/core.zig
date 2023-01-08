@@ -18,6 +18,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     };
     try mod.syms.ensureTotalCapacity(alloc, 13);
     try mod.setNativeFunc(alloc, "arrayFill", 2, arrayFill);
+    try mod.setNativeFunc(alloc, "asciiCode", 1, asciiCode);
     try mod.setNativeFunc(alloc, "bindLib", 2, bindLib);
     try mod.setNativeFunc(alloc, "bool", 1, coreBool);
     try mod.setNativeFunc(alloc, "char", 1, char);
@@ -48,6 +49,16 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     return vm.allocListFill(args[0], @floatToInt(u32, args[1].toF64())) catch stdx.fatal();
+}
+
+pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    const str = vm.valueToTempString(args[0]);
+    if (str.len > 0) {
+        return Value.initF64(@intToFloat(f64, str[0]));
+    } else {
+        return Value.None;
+    }
 }
 
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -442,14 +453,9 @@ pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initBool(args[0].toBool());
 }
 
-pub fn char(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
-    const str = vm.valueToTempString(args[0]);
-    if (str.len > 0) {
-        return Value.initF64(@intToFloat(f64, str[0]));
-    } else {
-        return Value.None;
-    }
+pub fn char(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("char", "0.1", "Use asciiCode() instead.", &.{});
+    return asciiCode(vm, args, nargs);
 }
 
 pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -670,7 +676,7 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("readLine", "Use getInput() instead.", &.{});
+    fmt.printDeprecated("readLine", "0.1", "Use getInput() instead.", &.{});
     return getInput(vm, args, nargs);
 }
 

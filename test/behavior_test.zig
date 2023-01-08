@@ -38,8 +38,8 @@ test "core module" {
         \\try t.eq(a.len(), 2)
         \\try t.eq(a[0] == a[1], false)
         \\
-        \\-- char()
-        \\try t.eq(char('a'), 97)
+        \\-- asciiCode()
+        \\try t.eq(asciiCode('a'), 97)
         \\
         \\-- copy()
         \\try t.eq(copy(123), 123)
@@ -1117,10 +1117,10 @@ test "Strings" {
         \\-- Const string with escaped single quote.
         \\str = 'ab\'c'
         \\try t.eq(str.len(), 4)
-        \\try t.eq(str.charAt(0), char('a'))
-        \\try t.eq(str.charAt(1), char('b'))
-        \\try t.eq(str.charAt(2), char("'"))
-        \\try t.eq(str.charAt(3), char('c'))
+        \\try t.eq(str.charAt(0), asciiCode('a'))
+        \\try t.eq(str.charAt(1), asciiCode('b'))
+        \\try t.eq(str.charAt(2), asciiCode("'"))
+        \\try t.eq(str.charAt(3), asciiCode('c'))
         \\
         \\-- Const string with new line escape sequence.
         \\try t.eq('ab\nc', "ab
@@ -1138,7 +1138,7 @@ test "Strings" {
         \\
         \\-- Escaped backslash.
         \\try t.eq('ab\\nc'.charAt(2), 92)
-        \\try t.eq('ab\\nc'.charAt(3), char('n'))
+        \\try t.eq('ab\\nc'.charAt(3), asciiCode('n'))
         \\
         \\-- Heap string. 
         \\str = 'abc'

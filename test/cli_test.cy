@@ -30,7 +30,8 @@ try t.eq(lines[2], 'bar')
 
 func runPipeInput(cmd, src):
     writeFile('temp.cy', src)
-    res = execCmd([ '/bin/bash', '-c', '{cmd} | cyber temp.cy' ])
+    cyber = os.exePath()
+    res = execCmd([ '/bin/bash', '-c', '{cmd} | {cyber} temp.cy' ])
     if res.exited != 0:
         print res.out
         print res.err

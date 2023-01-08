@@ -71,9 +71,10 @@ pub const VM = struct {
     refCounts: if (TrackGlobalRC) usize else void,
 
     /// Symbol table used to lookup object methods.
-    /// First, the SymbolId indexes into the table for a SymbolMap to lookup the final SymbolEntry by StructId.
-    methodSyms: cy.List(SymbolMap),
-    methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, SymbolEntry),
+    /// A `SymbolId` indexes into `methodSyms`. If the `mruStructId` matches it uses `mruSym`.
+    /// Otherwise, the sym is looked up from the hashmap `methodTable`.
+    methodSyms: cy.List(MethodSym),
+    methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, MethodSym),
 
     /// Maps a method signature to a symbol id in `methodSyms`.
     methodSymSigs: std.HashMapUnmanaged(RelFuncSigKey, SymbolId, RelFuncSigKeyContext, 80),
@@ -192,13 +193,13 @@ pub const VM = struct {
         try self.methodTable.ensureTotalCapacity(self.alloc, 96);
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
-        try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 102);
+        try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 255);
 
         try self.parser.tokens.ensureTotalCapacityPrecise(alloc, 511);
         try self.parser.nodes.ensureTotalCapacityPrecise(alloc, 127);
 
         try self.structs.ensureTotalCapacityPrecise(alloc, 170);
-        try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 127);
+        try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
 
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
@@ -1103,29 +1104,16 @@ pub const VM = struct {
 
     pub fn getStructFieldIdx(self: *const VM, sid: StructId, propName: []const u8) ?u32 {
         const fieldId = self.fieldSymSignatures.get(propName) orelse return null;
-        const entry = self.fieldSyms.buf[fieldId];
-        switch (entry.mapT) {
-            .one => {
-                if (entry.inner.one.id == sid) {
-                    return entry.inner.one.offset;
-                }
-            },
-            .many => {
-                if (entry.inner.many.mruStructId == sid) {
-                    return entry.inner.many.mruOffset;
-                } else {
-                    const offset = self.fieldTable.get(.{ .structId = sid, .symId = fieldId }).?;
-                    self.fieldSyms.buf[fieldId].inner.many = .{
-                        .mruStructId = sid,
-                        .mruOffset = offset,
-                    };
-                    return offset;
-                }
-            },
-            .empty => {
-            },
+        const entry = &self.fieldSyms.buf[fieldId];
+
+        if (entry.mruStructId == sid) {
+            return entry.mruOffset;
+        } else {
+            const offset = self.fieldTable.get(.{ .structId = sid, .symId = fieldId }) orelse return null;
+            entry.mruStructId = sid;
+            entry.mruOffset = offset;
+            return offset;
         }
-        return null;
     }
 
     pub fn addTagType(self: *VM, name: []const u8) !TagTypeId {
@@ -1246,8 +1234,8 @@ pub const VM = struct {
         if (!res.found_existing) {
             const id = @intCast(u32, self.fieldSyms.len);
             try self.fieldSyms.append(self.alloc, .{
-                .mapT = .empty,
-                .inner = undefined,
+                .mruStructId = NullId,
+                .mruOffset = undefined,
                 .name = name,
             });
             res.value_ptr.* = id;
@@ -1275,7 +1263,8 @@ pub const VM = struct {
         if (!res.found_existing) {
             const id = @intCast(u32, self.methodSyms.len);
             try self.methodSyms.append(self.alloc, .{
-                .mapT = .empty,
+                .entryT = undefined,
+                .mruStructId = NullId,
                 .inner = undefined,
             });
             try self.methodSymExtras.append(self.alloc, name);
@@ -1287,46 +1276,26 @@ pub const VM = struct {
     }
 
     pub fn addFieldSym(self: *VM, sid: StructId, symId: SymbolId, offset: u16) !void {
-        switch (self.fieldSyms.buf[symId].mapT) {
-            .empty => {
-                self.fieldSyms.buf[symId].mapT = .one;
-                self.fieldSyms.buf[symId].inner = .{
-                    .one = .{
-                        .id = sid,
-                        .offset = @intCast(u16, offset),
-                    },
-                };
-            },
-            .one => {
-                // Convert to many.
-                var key = ObjectSymKey{
-                    .structId = self.fieldSyms.buf[symId].inner.one.id,
-                    .symId = symId,
-                };
-                try self.fieldTable.putNoClobber(self.alloc, key, self.fieldSyms.buf[symId].inner.one.offset);
-
-                key = .{
-                    .structId = sid,
-                    .symId = symId,
-                };
-                try self.fieldTable.putNoClobber(self.alloc, key, offset);
-
-                self.fieldSyms.buf[symId].mapT = .many;
-                self.fieldSyms.buf[symId].inner = .{
-                    .many = .{
-                        .mruStructId = sid,
-                        .mruOffset = offset,
-                    },
-                };
-            },
-            .many => {
-                const key = ObjectSymKey{
-                    .structId = sid,
-                    .symId = symId,
-                };
-                try self.fieldTable.putNoClobber(self.alloc, key, offset);
-            },
-            // else => stdx.panicFmt("unsupported {}", .{self.fieldSyms.buf[symId].mapT}),
+        const sym = &self.fieldSyms.buf[symId];
+        if (sym.mruStructId != NullId) {
+            // Add prev mru if it doesn't exist in hashmap.
+            const prev = ObjectSymKey{
+                .structId = sym.mruStructId,
+                .symId = symId,
+            };
+            if (!self.fieldTable.contains(prev)) {
+                try self.fieldTable.putNoClobber(self.alloc, prev, sym.mruOffset);
+            }
+            const key = ObjectSymKey{
+                .structId = sid,
+                .symId = symId,
+            };
+            try self.fieldTable.putNoClobber(self.alloc, key, offset);
+            sym.mruStructId = sid;
+            sym.mruOffset = offset;
+        } else {
+            sym.mruStructId = sid;
+            sym.mruOffset = offset;
         }
     }
 
@@ -1348,47 +1317,32 @@ pub const VM = struct {
         self.funcSyms.buf[symId] = sym;
     }
 
-    pub fn addMethodSym(self: *VM, id: StructId, symId: SymbolId, sym: SymbolEntry) !void {
-        switch (self.methodSyms.buf[symId].mapT) {
-            .empty => {
-                self.methodSyms.buf[symId].mapT = .one;
-                self.methodSyms.buf[symId].inner = .{
-                    .one = .{
-                        .id = id,
-                        .sym = sym,
-                    },
-                };
-            },
-            .one => {
-                // Convert to many.
-                var key = ObjectSymKey{
-                    .structId = self.methodSyms.buf[symId].inner.one.id,
-                    .symId = symId,
-                };
-                self.methodTable.putAssumeCapacityNoClobber(key, self.methodSyms.buf[symId].inner.one.sym);
-
-                key = .{
-                    .structId = id,
-                    .symId = symId,
-                };
-                self.methodTable.putAssumeCapacityNoClobber(key, sym);
-
-                self.methodSyms.buf[symId].mapT = .many;
-                self.methodSyms.buf[symId].inner = .{
-                    .many = .{
-                        .mruStructId = id,
-                        .mruSym = sym,
-                    },
-                };
-            },
-            .many => {
-                const key = ObjectSymKey{
-                    .structId = id,
-                    .symId = symId,
-                };
-                self.methodTable.putAssumeCapacityNoClobber(key, sym);
-            },
-            // else => stdx.panicFmt("unsupported {}", .{self.methodSyms.buf[symId].mapT}),
+    pub fn addMethodSym(self: *VM, id: StructId, symId: SymbolId, entry: MethodSym) !void {
+        const sym = &self.methodSyms.buf[symId];
+        if (sym.mruStructId != NullId) {
+            const prev = ObjectSymKey{
+                .structId = sym.mruStructId,
+                .symId = symId,
+            };
+            if (!self.methodTable.contains(prev)) {
+                try self.methodTable.putNoClobber(self.alloc, prev, sym.*);
+            }
+            const key = ObjectSymKey{
+                .structId = id,
+                .symId = symId,
+            };
+            try self.methodTable.putNoClobber(self.alloc, key, entry);
+            sym.* = .{
+                .entryT = entry.entryT,
+                .mruStructId = id,
+                .inner = entry.inner,
+            };
+        } else {
+            sym.* = .{
+                .entryT = entry.entryT,
+                .mruStructId = id,
+                .inner = entry.inner,
+            };
         }
     }
 
@@ -1692,24 +1646,22 @@ pub const VM = struct {
     fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(cy.HotSection) !void {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
-            const symMap = self.fieldSyms.buf[fieldId];
-            switch (symMap.mapT) {
-                .one => {
-                    if (obj.common.structId == symMap.inner.one.id) {
-                        obj.object.getValuePtr(symMap.inner.one.offset).* = val;
-                    } else {
-                        stdx.panic("TODO: set field fallback");
-                    }
-                },
-                .many => {
-                    stdx.fatal();
-                },
-                .empty => {
-                    stdx.panic("TODO: set field fallback");
-                },
-            } 
+            const symMap = &self.fieldSyms.buf[fieldId];
+
+            if (obj.common.structId == symMap.mruStructId) {
+                obj.object.getValuePtr(symMap.mruOffset).* = val;
+            } else {
+                const offset = self.getFieldOffset(obj, fieldId);
+                if (offset != NullByteId) {
+                    symMap.mruStructId = obj.common.structId;
+                    symMap.mruOffset = offset;
+                    obj.object.getValuePtr(offset).* = val;
+                } else {
+                    return self.getFieldMissingSymbolError();
+                }
+            }
         } else {
-            try self.setFieldNotObjectError();
+            return self.setFieldNotObjectError();
         }
     }
 
@@ -1725,10 +1677,9 @@ pub const VM = struct {
 
     fn getFieldOffsetFromTable(self: *VM, sid: StructId, symId: SymbolId) u8 {
         if (self.fieldTable.get(.{ .structId = sid, .symId = symId })) |offset| {
-            self.fieldSyms.buf[symId].inner.many = .{
-                .mruStructId = sid,
-                .mruOffset = offset,
-            };
+            const sym = &self.fieldSyms.buf[symId];
+            sym.mruStructId = sid;
+            sym.mruOffset = offset;
             return @intCast(u8, offset);
         } else {
             return NullByteId;
@@ -1737,29 +1688,11 @@ pub const VM = struct {
 
     pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
         const symMap = self.fieldSyms.buf[symId];
-        switch (symMap.mapT) {
-            .one => {
-                if (obj.common.structId == symMap.inner.one.id) {
-                    return @intCast(u8, symMap.inner.one.offset);
-                } else {
-                    return NullByteId;
-                }
-            },
-            .many => {
-                if (obj.common.structId == symMap.inner.many.mruStructId) {
-                    return @intCast(u8, symMap.inner.many.mruOffset);
-                } else {
-                    return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
-                }
-            },
-            .empty => {
-                return NullByteId;
-            },
-            // else => {
-            //     // stdx.panicFmt("unsupported {}", .{symMap.mapT});
-            //     unreachable;
-            // },
-        } 
+        if (obj.common.structId == symMap.mruStructId) {
+            return @intCast(u8, symMap.mruOffset);
+        } else {
+            return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
+        }
     }
 
     pub fn setFieldRelease(self: *VM, recv: Value, symId: SymbolId, val: Value) linksection(cy.HotSection) !void {
@@ -1885,7 +1818,7 @@ pub const VM = struct {
         }
     }
 
-    fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) !PcFramePtr {
+    fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: MethodSym, obj: *HeapObject, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) !PcFramePtr {
         switch (sym.entryT) {
             .func => {
                 if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
@@ -1972,11 +1905,13 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSymFromTable(self: *VM, sid: StructId, symId: SymbolId) ?SymbolEntry {
+    fn getCallObjSymFromTable(self: *VM, sid: StructId, symId: SymbolId) ?MethodSym {
         if (self.methodTable.get(.{ .structId = sid, .symId = symId })) |entry| {
-            self.methodSyms.buf[symId].inner.many = .{
+            const sym = &self.methodSyms.buf[symId];
+            sym.* = .{
+                .entryT = entry.entryT,
                 .mruStructId = sid,
-                .mruSym = entry,
+                .inner = entry.inner,
             };
             return entry;
         } else {
@@ -1984,29 +1919,13 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(cy.HotSection) ?SymbolEntry {
-        const map = self.methodSyms.buf[symId];
-        switch (map.mapT) {
-            .one => {
-                if (typeId == map.inner.one.id) {
-                    return map.inner.one.sym;
-                } else return null;
-            },
-            .many => {
-                if (map.inner.many.mruStructId == typeId) {
-                    return map.inner.many.mruSym;
-                } else {
-                    return @call(.never_inline, self.getCallObjSymFromTable, .{typeId, symId});
-                }
-            },
-            .empty => {
-                return null;
-            },
-            // else => {
-            //     unreachable;
-            //     // stdx.panicFmt("unsupported {}", .{map.mapT});
-            // },
-        } 
+    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(cy.HotSection) ?MethodSym {
+        const entry = self.methodSyms.buf[symId];
+        if (entry.mruStructId == typeId) {
+            return entry;
+        } else {
+            return @call(.never_inline, self.getCallObjSymFromTable, .{typeId, symId});
+        }
     }
 
     /// Stack layout: arg0, arg1, ..., receiver
@@ -2951,31 +2870,8 @@ pub const HeapObject = packed union {
 
 const SymbolMapType = enum {
     one,
-    // two,
-    // ring, // Sorted mru, up to 8 syms.
     many,
     empty,
-};
-
-/// Keeping this small is better for function calls. TODO: Reduce size.
-/// Secondary symbol data should be moved to `methodSymExtras`.
-const SymbolMap = struct {
-    mapT: SymbolMapType,
-    inner: union {
-        one: struct {
-            id: StructId,
-            sym: SymbolEntry,
-        },
-        // two: struct {
-        // },
-        // ring: struct {
-        // },
-
-        many: struct {
-            mruStructId: StructId,
-            mruSym: SymbolEntry,
-        },
-    },
 };
 
 const TagLitSym = struct {
@@ -2990,26 +2886,16 @@ const TagLitSym = struct {
 };
 
 const FieldSymbolMap = struct {
-    mapT: SymbolMapType,
-    inner: union {
-        one: struct {
-            id: StructId,
-            offset: u16,
-        },
-        many: struct {
-            mruStructId: StructId,
-            mruOffset: u16,
-        },
-    },
+    mruStructId: StructId,
+    mruOffset: u16,
     name: []const u8,
 };
 
 test "Internals." {
     try t.eq(@alignOf(UserVM), UserVMAlign);
     try t.eq(@alignOf(VM), 8);
-    try t.eq(@sizeOf(SymbolEntry), 16);
-    try t.eq(@alignOf(SymbolMap), 8);
-    try t.eq(@sizeOf(SymbolMap), 40);
+    try t.eq(@alignOf(MethodSym), 8);
+    try t.eq(@sizeOf(MethodSym), 16);
     try t.eq(@sizeOf(MapInner), 32);
     try t.eq(@sizeOf(HeapObject), 40);
     try t.eq(@alignOf(HeapObject), 8);
@@ -3020,10 +2906,10 @@ test "Internals." {
     try t.eq(@sizeOf(RelFuncSigKey), 16);
 
     try t.eq(@sizeOf(Struct), 24);
-    try t.eq(@sizeOf(FieldSymbolMap), 32);
+    try t.eq(@sizeOf(FieldSymbolMap), 24);
 }
 
-const SymbolEntryType = enum {
+const MethodSymType = enum {
     func,
     nativeFunc1,
     nativeFunc2,
@@ -3033,8 +2919,12 @@ const NativeObjFuncPtr = *const fn (*UserVM, *anyopaque, [*]const Value, u8) Val
 const NativeObjFunc2Ptr = *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair;
 const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
 
-pub const SymbolEntry = struct {
-    entryT: SymbolEntryType,
+/// Keeping this small is better for function calls.
+/// Secondary symbol data should be moved to `methodSymExtras`.
+pub const MethodSym = struct {
+    entryT: MethodSymType,
+    /// Most recent sym used is cached avoid hashmap lookup. 
+    mruStructId: StructId,
     inner: packed union {
         nativeFunc1: NativeObjFuncPtr,
         nativeFunc2: *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair,
@@ -3049,9 +2939,10 @@ pub const SymbolEntry = struct {
         },
     },
 
-    pub fn initFuncOffset(pc: usize, numLocals: u32) SymbolEntry {
+    pub fn initFuncOffset(pc: usize, numLocals: u32) MethodSym {
         return .{
             .entryT = .func,
+            .mruStructId = undefined,
             .inner = .{
                 .func = .{
                     .pc = @intCast(u32, pc),
@@ -3061,18 +2952,20 @@ pub const SymbolEntry = struct {
         };
     }
 
-    pub fn initNativeFunc1(func: NativeObjFuncPtr) SymbolEntry {
+    pub fn initNativeFunc1(func: NativeObjFuncPtr) MethodSym {
         return .{
             .entryT = .nativeFunc1,
+            .mruStructId = undefined,
             .inner = .{
                 .nativeFunc1 = func,
             },
         };
     }
 
-    pub fn initNativeFunc2(func: NativeObjFunc2Ptr) SymbolEntry {
+    pub fn initNativeFunc2(func: NativeObjFunc2Ptr) MethodSym {
         return .{
             .entryT = .nativeFunc2,
+            .mruStructId = undefined,
             .inner = .{
                 .nativeFunc2 = func,
             },
@@ -4788,7 +4681,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapO
     };
 }
 
-fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: SymbolEntry, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
+fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
     switch (sym.entryT) {
         .func => {
             if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * gvm.stack.len) {

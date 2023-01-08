@@ -1313,7 +1313,7 @@ pub const VMcompiler = struct {
 
         self.patchJumpToCurrent(jumpPc);
 
-        const sym = cy.SymbolEntry.initFuncOffset(opStart, numLocals);
+        const sym = cy.MethodSym.initFuncOffset(opStart, numLocals);
         try self.vm.addMethodSym(structId, methodId, sym);
     }
 

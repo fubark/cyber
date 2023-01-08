@@ -1,5 +1,6 @@
 const std = @import("std");
 const stdx = @import("stdx");
+const fatal = stdx.fatal;
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
@@ -24,6 +25,7 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
     try mod.setVar(alloc, "system", try self.buf.getStringConstValue(@tagName(builtin.os.tag)));
 
     try mod.setNativeFunc(alloc, "cwd", 0, cwd);
+    try mod.setNativeFunc(alloc, "exePath", 0, exePath);
     try mod.setNativeFunc(alloc, "getEnv", 1, getEnv);
     try mod.setNativeFunc(alloc, "getEnvAll", 0, getEnvAll);
     try mod.setNativeFunc(alloc, "milliTime", 0, milliTime);
@@ -39,8 +41,13 @@ pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) void {
 }
 
 pub fn cwd(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    const res = std.process.getCwdAlloc(vm.allocator()) catch stdx.fatal();
-    return vm.allocOwnedString(res) catch stdx.fatal();
+    const res = std.process.getCwdAlloc(vm.allocator()) catch fatal();
+    return vm.allocOwnedString(res) catch fatal();
+}
+
+pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    const path = std.fs.selfExePathAlloc(vm.allocator()) catch fatal();
+    return vm.allocOwnedString(path) catch fatal();
 }
 
 pub fn getEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

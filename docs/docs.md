@@ -1114,6 +1114,7 @@ for map as k, v:
 | Function | Summary |
 | -- | -- |
 | cwd() string | Returns the current working directory. |
+| exePath() string | Returns the current executable's path. |
 | getEnv(string) string | Returns an environment value by key. |
 | getEnvAll() {..} | Returns all environment entries as a map. |
 | milliTime() number | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |

@@ -32,7 +32,7 @@ pub const FmtValue = struct {
         string: []const u8,
         char: u8,
         bool: bool,
-        ptr: *anyopaque,
+        ptr: ?*anyopaque,
     },
 };
 
@@ -52,6 +52,12 @@ fn toFmtValueType(comptime T: type) FmtValueType {
                 return .enumt;
             } else if (@typeInfo(T) == .ErrorSet) {
                 return .err;
+            } else if (@typeInfo(T) == .Optional) {
+                if (@typeInfo(@typeInfo(T).Optional.child) == .Pointer) {
+                    return .ptr;
+                } else {
+                    @compileError(std.fmt.comptimePrint("Unexpected type: {}", .{T}));
+                }
             } else if (@typeInfo(T) == .Pointer) {
                 return .ptr;
             } else {

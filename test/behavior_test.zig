@@ -1336,11 +1336,14 @@ test "Lists" {
     // Iterate list
     _ = try run.eval(
         \\import t 'test'
+        \\
+        \\-- Iteration.
         \\let a = [1, 2, 3, 4, 5]
         \\let sum = 0
         \\for a as it:
         \\  sum += it
         \\try t.eq(sum, 15)
+        \\
         \\-- Pair iteration.
         \\a = [10, 20, 30]
         \\sum = 0
@@ -1350,6 +1353,31 @@ test "Lists" {
         \\  idxSum += idx
         \\try t.eq(sum, 60)
         \\try t.eq(idxSum, 3)
+        \\
+        \\-- Nested iteration.
+        \\a = [1, 2, 3]
+        \\res = 0
+        \\for a as n:
+        \\  innerSum = 0
+        \\  for a as m:
+        \\    innerSum += m
+        \\  res += n * innerSum
+        \\try t.eq(res, 36)
+        \\
+        \\-- Nested pair iteration.
+        \\a = [1, 2, 3]
+        \\res = 0
+        \\idxRes = 0
+        \\for a as i, n:
+        \\  innerSum = 0
+        \\  idxSum = 0
+        \\  for a as j, m:
+        \\    innerSum += m
+        \\    idxSum += j
+        \\  res += n * innerSum
+        \\  idxRes += i * idxSum
+        \\try t.eq(res, 36)
+        \\try t.eq(idxRes, 9)
     );
 }
 

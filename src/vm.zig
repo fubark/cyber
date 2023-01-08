@@ -18,18 +18,21 @@ const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 const StdSection = cy.StdSection;
 
-/// Reserved symbols known at comptime.
+/// Reserved object types known at comptime.
+/// Starts at 8 since primitive types go up to 7.
 pub const ListS: StructId = 8;
-pub const MapS: StructId = 9;
-pub const ClosureS: StructId = 10;
-pub const LambdaS: StructId = 11;
-pub const StringS: StructId = 12;
-pub const FiberS: StructId = 13;
-pub const BoxS: StructId = 14;
-pub const NativeFunc1S: StructId = 15;
-pub const TccStateS: StructId = 16;
-pub const OpaquePtrS: StructId = 17;
-pub const FileT: StructId = 18;
+pub const ListIteratorT: StructId = 9;
+pub const MapS: StructId = 10;
+pub const MapIteratorT: StructId = 11;
+pub const ClosureS: StructId = 12;
+pub const LambdaS: StructId = 13;
+pub const StringS: StructId = 14;
+pub const FiberS: StructId = 15;
+pub const BoxS: StructId = 16;
+pub const NativeFunc1S: StructId = 17;
+pub const TccStateS: StructId = 18;
+pub const OpaquePtrS: StructId = 19;
+pub const FileT: StructId = 20;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -974,7 +977,6 @@ pub const VM = struct {
                 .len = elems.len,
                 .cap = elems.len,
             },
-            .nextIterIdx = 0,
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -996,7 +998,6 @@ pub const VM = struct {
                 .len = 0,
                 .cap = 0,
             },
-            .nextIterIdx = 0,
         };
         if (TrackGlobalRC) {
             self.refCounts += 1;
@@ -1030,7 +1031,6 @@ pub const VM = struct {
                 .len = 0,
                 .cap = 0,
             },
-            .nextIterIdx = 0,
         };
         if (TrackGlobalRC) {
             self.refCounts += 1;
@@ -1047,14 +1047,23 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    inline fn getLocal(self: *const VM, offset: u8) linksection(cy.HotSection) Value {
-        @setRuntimeSafety(debug);
-        return self.stack[self.framePtr + offset];
-    }
-
-    inline fn setLocal(self: *const VM, offset: u8, val: Value) linksection(cy.HotSection) void {
-        @setRuntimeSafety(debug);
-        self.stack[self.framePtr + offset] = val;
+    /// Assumes list is already retained for the iterator.
+    fn allocListIterator(self: *VM, list: *List) linksection(cy.HotSection) !Value {
+        const obj = try self.allocPoolObject();
+        obj.listIter = .{
+            .structId = ListIteratorT,
+            .rc = 1,
+            .list = list,
+            .nextIdx = 0,
+        };
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        return Value.initPtr(obj);
     }
 
     pub fn ensureTagType(self: *VM, name: []const u8) !TagTypeId {
@@ -2243,6 +2252,10 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             list.deinit(vm.alloc);
             vm.freeObject(obj);
         },
+        ListIteratorT => {
+            releaseObject(vm, @ptrCast(*HeapObject, obj.listIter.list));
+            vm.freeObject(obj);
+        },
         MapS => {
             const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
             var iter = map.iterator();
@@ -2806,6 +2819,13 @@ pub const Fiber = packed struct {
     parentDstLocal: u8,
 };
 
+pub const ListIterator = packed struct {
+    structId: StructId,
+    rc: u32,
+    list: *List,
+    nextIdx: u32,
+};
+
 pub const List = packed struct {
     structId: StructId,
     rc: u32,
@@ -2814,7 +2834,6 @@ pub const List = packed struct {
         cap: usize,
         len: usize,
     },
-    nextIterIdx: u32,
 
     pub inline fn items(self: *const List) []Value {
         return self.list.ptr[0..self.list.len];
@@ -2866,6 +2885,7 @@ pub const HeapObject = packed union {
         rc: u32,
     },
     list: List,
+    listIter: ListIterator,
     fiber: Fiber,
     map: Map,
     closure: Closure,
@@ -3252,6 +3272,10 @@ pub const UserVM = struct {
 
     pub inline fn allocObject(self: *UserVM, sid: StructId, fields: []const Value) !Value {
         return @ptrCast(*VM, self).allocObject(sid, fields);
+    }
+
+    pub inline fn allocListIterator(self: *UserVM, list: *List) !Value {
+        return @ptrCast(*VM, self).allocListIterator(list);
     }
 
     pub inline fn allocOwnedString(self: *UserVM, str: []u8) !Value {

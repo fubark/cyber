@@ -47,6 +47,7 @@ pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 pub const HeapObject = vm.HeapObject;
 pub const ListS = vm.ListS;
+pub const ListIteratorT = vm.ListIteratorT;
 pub const MapS = vm.MapS;
 pub const MapInner = vm.MapInner;
 pub const ClosureS = vm.ClosureS;

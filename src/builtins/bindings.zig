@@ -1,5 +1,6 @@
 const std = @import("std");
 const stdx = @import("stdx");
+const fatal = stdx.fatal;
 const builtin = @import("builtin");
 
 const cy = @import("../cyber.zig");
@@ -106,14 +107,17 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.ListS);
     try self.addMethodSym(cy.ListS, resize, cy.SymbolEntry.initNativeFunc1(listResize));
     try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
-    try self.addMethodSym(cy.ListS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listNext));
     try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.SymbolEntry.initNativeFunc1(listIterator));
-    try self.addMethodSym(cy.ListS, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(listNextPair));
     try self.addMethodSym(cy.ListS, add, cy.SymbolEntry.initNativeFunc1(listAdd));
     try self.addMethodSym(cy.ListS, insert, cy.SymbolEntry.initNativeFunc1(listInsert));
     try self.addMethodSym(cy.ListS, remove, cy.SymbolEntry.initNativeFunc1(listRemove));
     try self.addMethodSym(cy.ListS, sort, cy.SymbolEntry.initNativeFunc1(listSort));
     try self.addMethodSym(cy.ListS, len, cy.SymbolEntry.initNativeFunc1(listLen));
+
+    id = try self.addStruct("ListIterator");
+    std.debug.assert(id == cy.ListIteratorT);
+    try self.addMethodSym(cy.ListIteratorT, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(listIteratorNext));
+    try self.addMethodSym(cy.ListIteratorT, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(listIteratorNextPair));
 
     id = try self.addStruct("Map");
     std.debug.assert(id == cy.MapS);
@@ -123,6 +127,9 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.MapS, self.pairIteratorObjSym, cy.SymbolEntry.initNativeFunc1(mapIterator));
     try self.addMethodSym(cy.MapS, self.nextObjSym, cy.SymbolEntry.initNativeFunc1(mapNext));
     try self.addMethodSym(cy.MapS, self.nextPairObjSym, cy.SymbolEntry.initNativeFunc2(mapNextPair));
+
+    id = try self.addStruct("MapIterator");
+    std.debug.assert(id == cy.MapIteratorT);
 
     id = try self.addStruct("Closure");
     std.debug.assert(id == cy.ClosureS);
@@ -281,16 +288,17 @@ fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     return Value.None;
 }
 
-fn listNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) cy.ValuePair {
+fn listIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) cy.ValuePair {
     _ = args;
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(list);
-    if (list.list.nextIterIdx < list.list.list.len) {
-        defer list.list.nextIterIdx += 1;
-        const val = list.list.list.ptr[list.list.nextIterIdx];
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const list = obj.listIter.list;
+    if (obj.listIter.nextIdx < list.list.len) {
+        defer obj.listIter.nextIdx += 1;
+        const val = list.list.ptr[obj.listIter.nextIdx];
         vm.retain(val);
         return .{
-            .left = Value.initF64(@intToFloat(f64, list.list.nextIterIdx)),
+            .left = Value.initF64(@intToFloat(f64, obj.listIter.nextIdx)),
             .right = val,
         };
     } else return .{
@@ -299,23 +307,23 @@ fn listNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) cy
     };
 }
 
-fn listNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn listIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     _ = args;
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(list);
-    if (list.list.nextIterIdx < list.list.list.len) {
-        defer list.list.nextIterIdx += 1;
-        const val = list.list.list.ptr[list.list.nextIterIdx];
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const list = obj.listIter.list;
+    if (obj.listIter.nextIdx < list.list.len) {
+        defer obj.listIter.nextIdx += 1;
+        const val = list.list.ptr[obj.listIter.nextIdx];
         vm.retain(val);
         return val;
     } else return Value.None;
 }
 
-fn listIterator(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
-    _ = args;
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    list.list.nextIterIdx = 0;
-    return Value.initPtr(ptr);
+fn listIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    // Don't need to release recv since it's retained by the iterator.
+    return vm.allocListIterator(&obj.list) catch fatal();
 }
 
 fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {

@@ -36,7 +36,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (act.asF64() == exp.asF64()) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
+                    printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -46,7 +46,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
+                    printStderr("actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -56,7 +56,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (actPtr == expPtr) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: {} != {}\n", &.{v(actPtr), v(expPtr)});
+                    printStderr("actual: {} != {}\n", &.{v(actPtr), v(expPtr)});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -66,7 +66,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (actv == expv) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
+                    printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -76,7 +76,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (actv == expv) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: {} != {}\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
+                    printStderr("actual: {} != {}\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -89,7 +89,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (actv == expv) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: error({}) != error({})\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
+                    printStderr("actual: error({}) != error({})\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -101,7 +101,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 if (actv == expv) {
                     return Value.True;
                 } else {
-                    fmt.printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
+                    printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
                     return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
                 }
             },
@@ -110,8 +110,8 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             }
         }
     } else {
-        fmt.printStderr("Types do not match:\n", &.{});
-        fmt.printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
+        printStderr("Types do not match:\n", &.{});
+        printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
         return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
     }
 }
@@ -129,16 +129,22 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
                 return Value.True;
             } else {
-                fmt.printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
+                printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
                 return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
             }
         } else {
-            fmt.printStderr("Expected number, actual: {}\n", &.{v(actType)});
+            printStderr("Expected number, actual: {}\n", &.{v(actType)});
             return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
         }
     } else {
-        fmt.printStderr("Types do not match:\n", &.{});
-        fmt.printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
+        printStderr("Types do not match:\n", &.{});
+        printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
         return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+    }
+}
+
+fn printStderr(format: []const u8, vals: []const fmt.FmtValue) void {
+    if (!cy.silentError) {
+        fmt.printStderr(format, vals);
     }
 }

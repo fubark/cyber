@@ -3253,6 +3253,14 @@ pub const UserVM = struct {
         return Value.Panic;
     }
 
+    pub fn getStaticString(self: *UserVM, start: u32, end: u32) []const u8 {
+        return @ptrCast(*VM, self).strBuf[start..end];
+    }
+
+    pub fn getStaticStringChar(self: *UserVM, idx: u32) u8 {
+        return @ptrCast(*VM, self).strBuf[idx];
+    }
+
     pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value) u32 {
         const vm = @ptrCast(*const VM, self);
         return @intCast(u32, framePtrOffsetFrom(vm.stack.ptr, args));

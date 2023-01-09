@@ -1099,42 +1099,16 @@ test "Comments" {
     try t.eq(val.asF64toI32(), 4);
 }
 
-test "Strings" {
+test "Heap Strings." {
     const run = VMrunner.create();
     defer run.destroy();
 
     _ = try run.eval(
         \\import t 'test'
         \\
-        \\-- Single quote literal with escaped single quote.
-        \\str = 'ab\'c'
-        \\try t.eq(str.len(), 4)
-        \\try t.eq(str.charAt(0), asciiCode('a'))
-        \\try t.eq(str.charAt(1), asciiCode('b'))
-        \\try t.eq(str.charAt(2), asciiCode("'"))
-        \\try t.eq(str.charAt(3), asciiCode('c'))
-        \\
-        \\-- Const string with new line escape sequence.
-        \\try t.eq('ab\nc', "ab
-        \\c")
-        \\try t.eq('ab\nc'.charAt(2), 10)
-        \\try t.eq('abc\n', "abc
-        \\")
-        \\try t.eq('abc\n'.charAt(3), 10)
-        \\
-        \\-- Carriage return.
-        \\try t.eq('ab\rc'.charAt(2), 13)
-        \\
-        \\-- Tab.
-        \\try t.eq('ab\tc'.charAt(2), 9)
-        \\
-        \\-- Escaped backslash.
-        \\try t.eq('ab\\nc'.charAt(2), 92)
-        \\try t.eq('ab\\nc'.charAt(3), asciiCode('n'))
-        \\
-        \\-- Heap string. 
-        \\str = 'abc'
-        \\try t.eq('{str}xyz', 'abcxyz')
+        \\pre = 'abc'
+        \\str = '{pre}xyz'
+        \\try t.eq(str, 'abcxyz')
     );
 
     // Multi-lines.
@@ -1153,24 +1127,6 @@ test "Strings" {
     // String functions.
     _ = try run.eval(
         \\import t 'test'
-        \\
-        \\-- Const string.
-        \\str = 'abc'
-        \\try t.eq(str.len(), 3)
-        \\try t.eq(str.charAt(1), 98)
-        \\try t.eq(str.index('bc'), 1)
-        \\try t.eq(str.index('bd'), none)
-        \\try t.eq(str.index('ab'), 0)
-        \\try t.eq(str.indexChar('a'), 0)
-        \\try t.eq(str.indexChar('b'), 1)
-        \\try t.eq(str.indexChar('c'), 2)
-        \\try t.eq(str.indexChar('d'), none)
-        \\
-        \\-- Long const string for simd.
-        \\str = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
-        \\try t.eq(str.indexChar('a'), 0)
-        \\try t.eq(str.indexChar('m'), 16)
-        \\try t.eq(str.indexChar('z'), 68)
         \\
         \\-- Heap string.
         \\str = '{'abc'}'
@@ -1203,8 +1159,76 @@ test "Static ASCII strings." {
         \\str = 'abc'
         \\try t.eq(str, 'abc')
         \\
+        \\-- Single quote literal with escaped single quote.
+        \\str = 'ab\'c'
+        \\try t.eq(str.len(), 4)
+        \\try t.eq(str.codeAt(0), asciiCode('a'))
+        \\try t.eq(str.codeAt(1), asciiCode('b'))
+        \\try t.eq(str.codeAt(2), asciiCode("'"))
+        \\try t.eq(str.codeAt(3), asciiCode('c'))
+        \\
+        \\-- Single quote literal with new line escape sequence.
+        \\try t.eq('ab\nc', "ab
+        \\c")
+        \\try t.eq('ab\nc'.codeAt(2), 10)
+        \\try t.eq('abc\n', "abc
+        \\")
+        \\try t.eq('abc\n'.codeAt(3), 10)
+        \\
+        \\-- Carriage return.
+        \\try t.eq('ab\rc'.codeAt(2), 13)
+        \\
+        \\-- Tab.
+        \\try t.eq('ab\tc'.codeAt(2), 9)
+        \\
+        \\-- Escaped backslash.
+        \\try t.eq('ab\\nc'.codeAt(2), 92)
+        \\try t.eq('ab\\nc'.codeAt(3), asciiCode('n'))
+        \\
+        \\str = 'abcxyz'
+        \\
+        \\-- charAt()
+        \\try t.eq(str.charAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.charAt(0), 'a')
+        \\try t.eq(str.charAt(3), 'x')
+        \\try t.eq(str.charAt(5), 'z')
+        \\try t.eq(str.charAt(6), error(#OutOfBounds))
+        \\
+        \\-- codeAt()
+        \\try t.eq(str.codeAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.codeAt(0), 97)
+        \\try t.eq(str.codeAt(3), 120)
+        \\try t.eq(str.codeAt(5), 122)
+        \\try t.eq(str.codeAt(6), error(#OutOfBounds))
+        \\
+        \\-- index()
+        \\try t.eq(str.index('bc'), 1)
+        \\try t.eq(str.index('bd'), none)
+        \\try t.eq(str.index('ab'), 0)
+        \\
+        \\-- indexChar()
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('b'), 1)
+        \\try t.eq(str.indexChar('c'), 2)
+        \\try t.eq(str.indexChar('d'), none)
+        \\
+        \\-- simd indexChar().
+        \\lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
+        \\try t.eq(lstr.indexChar('a'), 0)
+        \\try t.eq(lstr.indexChar('m'), 16)
+        \\try t.eq(lstr.indexChar('z'), 68)
+        \\
+        \\-- indexCode()
+        \\try t.eq(str.indexCode(97), 0)
+        \\try t.eq(str.indexCode(98), 1)
+        \\try t.eq(str.indexCode(99), 2)
+        \\try t.eq(str.indexCode(100), none)
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), true)
+        \\
+        \\-- len()
+        \\try t.eq(str.len(), 6)
     );
 }
 

@@ -67,18 +67,20 @@ pub fn bindCore(self: *cy.VM) !void {
     self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator", 0);
     self.nextPairObjSym = try self.ensureMethodSymKey("nextPair", 0);
     const add = try self.ensureMethodSymKey("add", 1);
-    const insert = try self.ensureMethodSymKey("insert", 2);
-    const remove = try self.ensureMethodSymKey("remove", 1);
-    const sort = try self.ensureMethodSymKey("sort", 1);
-    const size = try self.ensureMethodSymKey("size", 0);
-    const len = try self.ensureMethodSymKey("len", 0);
     const charAt = try self.ensureMethodSymKey("charAt", 1);
+    const codeAt = try self.ensureMethodSymKey("codeAt", 1);
+    const index = try self.ensureMethodSymKey("index", 1);
+    const indexChar = try self.ensureMethodSymKey("indexChar", 1);
+    const indexCode = try self.ensureMethodSymKey("indexCode", 1);
+    const insert = try self.ensureMethodSymKey("insert", 2);
+    const isAscii = try self.ensureMethodSymKey("isAscii", 0);
+    const len = try self.ensureMethodSymKey("len", 0);
+    const remove = try self.ensureMethodSymKey("remove", 1);
+    const size = try self.ensureMethodSymKey("size", 0);
+    const sort = try self.ensureMethodSymKey("sort", 1);
     const status = try self.ensureMethodSymKey("status", 0);
     const streamLines = try self.ensureMethodSymKey("streamLines", 0);
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
-    const index = try self.ensureMethodSymKey("index", 1);
-    const indexChar = try self.ensureMethodSymKey("indexChar", 1);
-    const isAscii = try self.ensureMethodSymKey("isAscii", 0);
 
     // Init compile time builtins.
 
@@ -92,8 +94,10 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("string");
     std.debug.assert(id == cy.StaticAstringT);
     try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(staticAstringCharAt));
+    try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(staticAstringCodeAt));
     try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(staticAstringIndex));
     try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(staticAstringIndexChar));
+    try self.addMethodSym(cy.StaticAstringT, indexCode, cy.MethodSym.initNativeFunc1(staticAstringIndexCode));
     try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(staticAstringIsAscii));
     try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(staticAstringLen));
     id = try self.addStruct("string"); // Astring and Ustring share the same string user type.
@@ -459,12 +463,26 @@ fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Va
 
 fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
-    const str = val.asStaticStringSlice();
-    const idx = @floatToInt(u32, args[0].toF64());
-    return Value.initF64(@intToFloat(f64, gvm.strBuf[str.start + idx]));
+    const slice = val.asStaticStringSlice();
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= slice.len()) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    const uidx = @intCast(u32, idx);
+    return Value.initStaticAstring(slice.start + uidx, 1);
 }
 
-fn indexOfCharCpu(buf: []const u8, needle: u8) ?usize {
+fn staticAstringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const str = val.asStaticStringSlice();
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= str.len()) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    return Value.initF64(@intToFloat(f64, vm.getStaticStringChar(str.start + @intCast(u32, idx))));
+}
+
+fn indexOfCharScalar(buf: []const u8, needle: u8) ?usize {
     for (buf) |ch, i| {
         if (ch == needle) {
             return i;
@@ -473,6 +491,7 @@ fn indexOfCharCpu(buf: []const u8, needle: u8) ?usize {
     return null;
 }
 
+/// For Ascii needle.
 fn indexOfChar(buf: []const u8, needle: u8) ?usize {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         const MaskInt = std.meta.Int(.unsigned, VecSize);
@@ -490,13 +509,13 @@ fn indexOfChar(buf: []const u8, needle: u8) ?usize {
         }
         if (i < buf.len) {
             // Remaining use cpu.
-            if (indexOfCharCpu(buf[i..], needle)) |res| {
+            if (indexOfCharScalar(buf[i..], needle)) |res| {
                 return i + res;
             }
         }
         return null;
     } else {
-        return indexOfCharCpu(buf, needle);
+        return indexOfCharScalar(buf, needle);
     }
 }
 
@@ -546,11 +565,26 @@ fn staticAstringIsAscii(_: *cy.UserVM, _: *anyopaque, _: [*]const Value, _: u8) 
 fn staticAstringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const slice = val.asStaticStringSlice();
-    const str = gvm.strBuf[slice.start..slice.end];
-    const char = valueToChar(vm, args[0]);
+    const str = vm.getStaticString(slice.start, slice.end);
+    const needle = vm.valueToTempString(args[0]);
+    if (needle.len > 0 and needle[0] & 0x80 == 0) {
+        // Must be an ascii character.
+        if (indexOfChar(str, needle[0])) |idx| {
+            return Value.initF64(@intToFloat(f64, idx));
+        } else return Value.None;
+    } else return Value.None;
+}
 
-    if (indexOfChar(str, char)) |idx| {
-        return Value.initF64(@intToFloat(f64, idx));
+fn staticAstringIndexCode(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    const needle = @floatToInt(i32, args[0].toF64());
+    if (needle > 0 and needle < 128) {
+        // Must be an ascii character.
+        if (indexOfChar(str, @intCast(u8, needle))) |idx| {
+            return Value.initF64(@intToFloat(f64, idx));
+        } else return Value.None;
     } else return Value.None;
 }
 

@@ -724,7 +724,7 @@ export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
         len.* = @intCast(u32, obj.string.len);
         return dupe.ptr;
     } else {
-        const slice = val.asConstStr();
+        const slice = val.asStaticStringSlice();
         const dupe = std.cstr.addNullByte(gvm.alloc, gvm.strBuf[slice.start..slice.end]) catch stdx.fatal();
         len.* = slice.len();
         return dupe.ptr;

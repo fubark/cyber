@@ -78,6 +78,7 @@ pub fn bindCore(self: *cy.VM) !void {
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
     const index = try self.ensureMethodSymKey("index", 1);
     const indexChar = try self.ensureMethodSymKey("indexChar", 1);
+    const isAscii = try self.ensureMethodSymKey("isAscii", 0);
 
     // Init compile time builtins.
 
@@ -88,12 +89,16 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.BooleanT);
     id = try self.addStruct("error");
     std.debug.assert(id == cy.ErrorT);
-    id = try self.addStruct("conststring");
-    std.debug.assert(id == cy.ConstStringT);
-    try self.addMethodSym(cy.ConstStringT, len, cy.MethodSym.initNativeFunc1(staticStringLen));
-    try self.addMethodSym(cy.ConstStringT, charAt, cy.MethodSym.initNativeFunc1(staticStringCharAt));
-    try self.addMethodSym(cy.ConstStringT, index, cy.MethodSym.initNativeFunc1(staticStringIndex));
-    try self.addMethodSym(cy.ConstStringT, indexChar, cy.MethodSym.initNativeFunc1(staticStringIndexChar));
+    id = try self.addStruct("string");
+    std.debug.assert(id == cy.StaticAstringT);
+    try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(staticAstringCharAt));
+    try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(staticAstringIndex));
+    try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(staticAstringIndexChar));
+    try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(staticAstringIsAscii));
+    try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(staticAstringLen));
+    id = try self.addStruct("string"); // Astring and Ustring share the same string user type.
+    std.debug.assert(id == cy.StaticUstringT);
+    try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(staticUstringIsAscii));
     id = try self.addStruct("tag");
     std.debug.assert(id == cy.UserTagT);
     id = try self.addStruct("tagliteral");
@@ -446,15 +451,15 @@ fn stringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Va
     return Value.initF64(@intToFloat(f64, obj.string.ptr[@floatToInt(u32, args[0].toF64())]));
 }
 
-fn constStringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
-    const str = val.asConstStr();
+    const str = val.asStaticStringSlice();
     return Value.initF64(@intToFloat(f64, str.len()));
 }
 
-fn constStringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
-    const str = val.asConstStr();
+    const str = val.asStaticStringSlice();
     const idx = @floatToInt(u32, args[0].toF64());
     return Value.initF64(@intToFloat(f64, gvm.strBuf[str.start + idx]));
 }
@@ -495,9 +500,9 @@ fn indexOfChar(buf: []const u8, needle: u8) ?usize {
     }
 }
 
-fn constStringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn staticAstringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asConstStr();
+    const slice = val.asStaticStringSlice();
     const str = gvm.strBuf[slice.start..slice.end];
     const needle = vm.valueToTempString(args[0]);
 
@@ -530,9 +535,17 @@ fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
     }
 }
 
-fn constStringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn staticUstringIsAscii(_: *cy.UserVM, _: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    return Value.False;
+}
+
+fn staticAstringIsAscii(_: *cy.UserVM, _: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    return Value.True;
+}
+
+fn staticAstringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asConstStr();
+    const slice = val.asStaticStringSlice();
     const str = gvm.strBuf[slice.start..slice.end];
     const char = valueToChar(vm, args[0]);
 

@@ -158,8 +158,12 @@ pub const ValueMap = struct {
                 } else stdx.unsupported();
             } else {
                 switch (key.getTag()) {
-                    cy.ConstStringT => {
-                        const slice = key.asConstStr();
+                    cy.StaticAstringT => {
+                        const slice = key.asStaticStringSlice();
+                        return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
+                    },
+                    cy.StaticUstringT => {
+                        const slice = key.asStaticStringSlice();
                         return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
                     },
                     else => stdx.unsupported(),
@@ -169,20 +173,22 @@ pub const ValueMap = struct {
     }
 
     fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(cy.Section) bool {
-        @setRuntimeSafety(debug);
         if (b.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, b.asPointer().?);
             if (obj.common.structId == cy.StringS) {
                 return std.mem.eql(u8, a, obj.string.ptr[0..obj.string.len]);
             } else return false;
         } else {
-            const bTag = b.getTag();
-            if (bTag == cy.ConstStringT) {
-                const bSlice = b.asConstStr();
-                const bStr = vm.strBuf[bSlice.start..bSlice.end];
-                return std.mem.eql(u8, a, bStr);
-            } else {
-                stdx.unsupported();
+            switch (b.getTag()) {
+                cy.StaticAstringT => {
+                    const slice = b.asStaticStringSlice();
+                    return std.mem.eql(u8, a, vm.strBuf[slice.start..slice.end]);
+                },
+                cy.StaticUstringT => {
+                    const slice = b.asStaticStringSlice();
+                    return std.mem.eql(u8, a, vm.strBuf[slice.start..slice.end]);
+                },
+                else => stdx.unsupported(),
             }
         }
     }
@@ -202,13 +208,11 @@ pub const ValueMap = struct {
                 } else stdx.unsupported();
             } else {
                 switch (a.getTag()) {
-                    cy.ConstStringT => {
-                        const bTag = b.getTag();
-                        if (bTag == cy.ConstStringT) {
-                            const aSlice = a.asConstStr();
-                            const bSlice = b.asConstStr();
+                    cy.StaticAstringT => {
+                        if (b.isString()) {
+                            const aSlice = a.asStaticStringSlice();
                             const aStr = vm.strBuf[aSlice.start..aSlice.end];
-                            const bStr = vm.strBuf[bSlice.start..bSlice.end];
+                            const bStr = vm.valueAsString(b);
                             return std.mem.eql(u8, aStr, bStr);
                         } else {
                             stdx.unsupported();

@@ -25,7 +25,7 @@ const TypeTag = enum {
     map,
     fiber,
     string,
-    constString,
+    staticString,
     box,
     tag,
     tagLiteral,
@@ -79,8 +79,8 @@ const NumberOrRequestIntegerType = Type{
     },
 };
 
-pub const ConstStringType = Type{
-    .typeT = .constString,
+pub const StaticStringType = Type{
+    .typeT = .staticString,
     .rcCandidate = false,
 };
 
@@ -843,7 +843,7 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
             return NumberType;
         },
         .string => {
-            return ConstStringType;
+            return StaticStringType;
         },
         .stringTemplate => {
             var expStringPart = true;

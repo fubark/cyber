@@ -349,7 +349,7 @@ There will be multi-line comments in Cyber but the syntax has not been determine
 [To Top.](#table-of-contents)
 
 ### Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Tags](#tags), [Tag Literals](#tags), [Errors](#error-handling), and [String Constants](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Errors with payloads](#error-handling), and several internal object types.
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Tags](#tags), [Tag Literals](#tags), [Errors](#error-handling), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas](#lambdas), [Fibers](#fibers), [Errors with payloads](#error-handling), and several internal object types.
 
 The `none` value represents an empty value. This is similar to null in other languages.
 

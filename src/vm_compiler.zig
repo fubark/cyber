@@ -1653,9 +1653,9 @@ pub const VMcompiler = struct {
     }
 
     fn genString(self: *VMcompiler, str: []const u8, dst: LocalId) !GenValue {
-        const idx = try self.buf.pushStringConst(str);
+        const idx = try self.buf.getOrPushStringConst(str);
         try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-        return self.initGenValue(dst, sema.ConstStringType);
+        return self.initGenValue(dst, sema.StaticStringType);
     }
 
     fn genConstInt(self: *VMcompiler, val: f64, dst: LocalId) !GenValue {
@@ -2018,7 +2018,7 @@ pub const VMcompiler = struct {
                     if (expStringPart) {
                         if (!discardTopExprReg) {
                             const str = self.getNodeTokenString(cur);
-                            const idx = try self.buf.pushStringConst(str);
+                            const idx = try self.buf.getOrPushStringConst(str);
                             try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                         }
                     } else {
@@ -2170,12 +2170,12 @@ pub const VMcompiler = struct {
                         switch (key.node_t) {
                             .ident => {
                                 const name = self.getNodeTokenString(key);
-                                const idx = try self.buf.pushStringConst(name);
+                                const idx = try self.buf.getOrPushStringConst(name);
                                 try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                             },
                             .string => {
                                 const name = self.getNodeTokenString(key);
-                                const idx = try self.buf.pushStringConst(name);
+                                const idx = try self.buf.getOrPushStringConst(name);
                                 try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                             },
                             else => stdx.panicFmt("unsupported key {}", .{key.node_t}),

@@ -142,15 +142,31 @@ pub const ByteCodeBuffer = struct {
         self.ops.items[idx].arg = arg;
     }
 
-    pub fn pushStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
-        const slice = try self.getStringConst(str);
+    pub fn getOrPushStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
+        const val = try self.getOrPushStringValue(str);
         const idx = @intCast(u32, self.consts.items.len);
-        const val = cy.Value.initConstStr(slice.start, @intCast(u15, slice.end - slice.start));
         try self.consts.append(self.alloc, Const.init(val.val));
         return idx;
     }
 
-    pub fn getStringConst(self: *ByteCodeBuffer, str: []const u8) !stdx.IndexSlice(u32) {
+    pub fn getOrPushUstring(self: *ByteCodeBuffer, str: []const u8) !stdx.IndexSlice(u32) {
+        const ctx = StringIndexContext{ .buf = &self.strBuf };
+        const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
+        const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
+        if (res.found_existing) {
+            return res.key_ptr.*;
+        } else {
+            // Reserve extra 32-bit mru index.
+            try self.strBuf.appendSlice(self.alloc, &.{0, 0, 0, 0});
+
+            const start = @intCast(u32, self.strBuf.items.len);
+            try self.strBuf.appendSlice(self.alloc, str);
+            res.key_ptr.* = stdx.IndexSlice(u32).init(start, @intCast(u32, self.strBuf.items.len));
+            return res.key_ptr.*;
+        }
+    }
+
+    pub fn getOrPushAstring(self: *ByteCodeBuffer, str: []const u8) !stdx.IndexSlice(u32) {
         const ctx = StringIndexContext{ .buf = &self.strBuf };
         const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
         const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
@@ -164,9 +180,14 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn getStringConstValue(self: *ByteCodeBuffer, str: []const u8) !cy.Value {
-        const slice = try self.getStringConst(str);
-        return cy.Value.initConstStr(slice.start, @intCast(u15, slice.end - slice.start));
+    pub fn getOrPushStringValue(self: *ByteCodeBuffer, str: []const u8) linksection(cy.CompilerSection) !cy.Value {
+        if (cy.isAstring(str)) {
+            const slice = try self.getOrPushAstring(str);
+            return cy.Value.initStaticAstring(slice.start, @intCast(u15, slice.end - slice.start));
+        } else {
+            const slice = try self.getOrPushUstring(str);
+            return cy.Value.initStaticUstring(slice.start, @intCast(u15, slice.end - slice.start));
+        }
     }
 
     fn printStderr(comptime format: []const u8, args: anytype) void {
@@ -250,8 +271,6 @@ pub const Const = packed union {
         return .{ .val = val };
     }
 };
-
-const ConstStringTag: u2 = 0b00;
 
 /// TODO: Rename to InstData.
 pub const OpData = packed union {

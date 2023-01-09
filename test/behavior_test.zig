@@ -1106,15 +1106,7 @@ test "Strings" {
     _ = try run.eval(
         \\import t 'test'
         \\
-        \\-- Const string with single quotes.
-        \\str = 'abc'
-        \\try t.eq(str, 'abc')
-        \\
-        \\-- Const string with unicode.
-        \\str = 'abc🦊xyz🐶'
-        \\try t.eq(str, 'abc🦊xyz🐶')
-        \\
-        \\-- Const string with escaped single quote.
+        \\-- Single quote literal with escaped single quote.
         \\str = 'ab\'c'
         \\try t.eq(str.len(), 4)
         \\try t.eq(str.charAt(0), asciiCode('a'))
@@ -1197,6 +1189,38 @@ test "Strings" {
         \\try t.eq(str.indexChar('a'), 0)
         \\try t.eq(str.indexChar('m'), 16)
         \\try t.eq(str.indexChar('z'), 68)
+    );
+}
+
+test "Static ASCII strings." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- Single quote literal.
+        \\str = 'abc'
+        \\try t.eq(str, 'abc')
+        \\
+        \\-- isAscii()
+        \\try t.eq(str.isAscii(), true)
+    );
+}
+
+test "Static UTF-8 strings." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- Single quote literal.
+        \\str = 'abc🦊xyz🐶'
+        \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- isAscii()
+        \\try t.eq(str.isAscii(), false)
     );
 }
 

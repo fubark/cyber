@@ -22,7 +22,8 @@ const TrueMask: u64 = BooleanMask | TrueBitMask;
 const TrueBitMask: u64 = 1;
 const NoneMask: u64 = TaggedValueMask | (@as(u64, TagNone) << 32);
 const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
-const ConstStringMask: u64 = TaggedValueMask | (@as(u64, TagConstString) << 32);
+const StaticAstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticAstring) << 32);
+const StaticUstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticUstring) << 32);
 const UserTagMask: u64 = TaggedValueMask | (@as(u64, TagUserTag) << 32);
 const UserTagLiteralMask: u64 = TaggedValueMask | (@as(u64, TagUserTagLiteral) << 32);
 const IntegerMask: u64 = TaggedValueMask | (@as(u64, TagInteger) << 32);
@@ -36,18 +37,20 @@ const TagId = u3;
 pub const TagNone: TagId = 0;
 pub const TagBoolean: TagId = 1;
 pub const TagError: TagId = 2;
-pub const TagConstString: TagId = 3;
-pub const TagUserTag: TagId = 4;
-pub const TagUserTagLiteral: TagId = 5;
-pub const TagInteger: TagId = 6;
+pub const TagStaticAstring: TagId = 3;
+pub const TagStaticUstring: TagId = 4;
+pub const TagUserTag: TagId = 5;
+pub const TagUserTagLiteral: TagId = 6;
+pub const TagInteger: TagId = 7;
 pub const NoneT: u32 = TagNone;
 pub const BooleanT: u32 = TagBoolean;
 pub const ErrorT: u32 = TagError;
-pub const ConstStringT: u32 = TagConstString;
+pub const StaticAstringT: u32 = TagStaticAstring; // ASCII string.
+pub const StaticUstringT: u32 = TagStaticUstring; // UTF8 string.
 pub const UserTagT: u32 = TagUserTag;
 pub const UserTagLiteralT: u32 = TagUserTagLiteral;
 pub const IntegerT: u32 = TagInteger;
-pub const NumberT: u32 = 7;
+pub const NumberT: u32 = 8;
 
 pub const ValuePair = struct {
     left: Value,
@@ -144,7 +147,8 @@ pub const Value = packed union {
                 switch (self.getTag()) {
                     cy.NoneT => return false,
                     cy.BooleanT => return self.asBool(),
-                    cy.ConstStringT => return self.asConstStr().len() > 0,
+                    cy.StaticAstringT => return self.asStaticStringSlice().len() > 0,
+                    cy.StaticUstringT => return self.asStaticStringSlice().len() > 0,
                     else => {
                         log.debug("tag {}", .{self.getTag()});
                         stdx.panic("unexpected tag");
@@ -159,7 +163,7 @@ pub const Value = packed union {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
             return obj.common.structId == cy.StringS;
         } else {
-            return self.assumeNotPtrIsConstStr();
+            return self.assumeNotPtrIsStaticString();
         }
     }
 
@@ -167,12 +171,22 @@ pub const Value = packed union {
         return a.isNumber() and b.isNumber();
     }
 
-    pub inline fn isConstString(self: *const Value) linksection(cy.HotSection) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == ConstStringMask;
+    pub inline fn isStaticString(self: *const Value) linksection(cy.HotSection) bool {
+        const mask = self.val & (TaggedPrimitiveMask | SignMask);
+        return mask == StaticAstringMask or mask == StaticUstringMask;
     }
 
-    pub inline fn assumeNotPtrIsConstString(self: *const Value) linksection(cy.HotSection) bool {
-        return self.val & TaggedPrimitiveMask == ConstStringMask;
+    pub inline fn isStaticAstring(self: *const Value) linksection(cy.HotSection) bool {
+        return self.val & (TaggedPrimitiveMask | SignMask) == StaticAstringMask;
+    }
+
+    pub inline fn isStaticUstring(self: *const Value) linksection(cy.HotSection) bool {
+        return self.val & (TaggedPrimitiveMask | SignMask) == StaticUstringMask;
+    }
+
+    pub inline fn assumeNotPtrIsStaticString(self: *const Value) linksection(cy.HotSection) bool {
+        const mask = self.val & TaggedPrimitiveMask;
+        return mask == StaticAstringMask or mask == StaticUstringMask;
     }
 
     pub inline fn isError(self: *const Value) linksection(cy.HotSection) bool {
@@ -280,15 +294,15 @@ pub const Value = packed union {
         return .{ .val = PointerMask | @ptrToInt(ptr) };
     }
 
-    pub inline fn initConstStr(start: u32, len: u15) Value {
-        return .{ .val = ConstStringMask | (@as(u64, len) << 35) | start };
+    pub inline fn initStaticAstring(start: u32, len: u15) Value {
+        return .{ .val = StaticAstringMask | (@as(u64, len) << 35) | start };
     }
 
-    pub inline fn assumeNotPtrIsConstStr(self: *const Value) bool {
-        return self.val & TaggedPrimitiveMask == ConstStringMask;
+    pub inline fn initStaticUstring(start: u32, len: u15) Value {
+        return .{ .val = StaticUstringMask | (@as(u64, len) << 35) | start };
     }
 
-    pub inline fn asConstStr(self: *const Value) stdx.IndexSlice(u32) {
+    pub inline fn asStaticStringSlice(self: *const Value) stdx.IndexSlice(u32) {
         const len = (@intCast(u32, self.val >> 32) & BeforeTagMask) >> 3;
         const start = @intCast(u32, self.val & 0xffffffff);
         return stdx.IndexSlice(u32).init(start, start + len);
@@ -345,7 +359,7 @@ pub const Value = packed union {
                     TagNone => {
                         log.info("None", .{});
                     },
-                    TagConstString => {
+                    TagStaticAstring => {
                         const slice = self.asConstStr();
                         // log.info("Const String {*} len={} str=\"{s}\"", .{&gvm.strBuf[slice.start], slice.len(), gvm.strBuf[slice.start..slice.end]});
                         log.info("Const String len={}", .{slice.len()});
@@ -382,7 +396,8 @@ pub const Value = packed union {
             } else {
                 switch (self.getTag()) {
                     TagBoolean => return .boolean,
-                    TagConstString => return .string,
+                    TagStaticAstring => return .string,
+                    TagStaticUstring => return .string,
                     TagNone => return .none,
                     TagUserTag => return .tag,
                     TagUserTagLiteral => return .tagLiteral,
@@ -435,7 +450,8 @@ test "asF64" {
 }
 
 test "Masks" {
-    try t.eq(ConstStringMask, 0x7FFC000300000000);
+    try t.eq(StaticAstringMask, 0x7FFC000300000000);
+    try t.eq(StaticUstringMask, 0x7FFC000400000000);
     try t.eq(NoneMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
 }

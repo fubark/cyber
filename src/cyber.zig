@@ -28,7 +28,8 @@ pub const ValuePair = value.ValuePair;
 pub const BooleanT = value.BooleanT;
 pub const NoneT = value.NoneT;
 pub const ErrorT = value.ErrorT;
-pub const ConstStringT = value.ConstStringT;
+pub const StaticAstringT = value.StaticAstringT;
+pub const StaticUstringT = value.StaticUstringT;
 pub const UserTagT = value.UserTagT;
 pub const UserTagLiteralT = value.UserTagLiteralT;
 pub const IntegerT = value.IntegerT;
@@ -75,6 +76,7 @@ pub const RelFuncSigKey = vm.RelFuncSigKey;
 pub const RelFuncSigKeyContext = vm.RelFuncSigKeyContext;
 pub const AbsFuncSigKey = vm.AbsFuncSigKey;
 pub const AbsFuncSigKeyContext = vm.AbsFuncSigKeyContext;
+pub const isAstring = vm.isAstring;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;
@@ -105,5 +107,6 @@ pub const DecodeValueIR = cdata.DecodeValueIR;
 pub const HotSection = if (builtin.os.tag == .macos) "DATA,.eval" else ".eval";
 pub const Section = if (builtin.os.tag == .macos) "DATA,.eval2" else ".eval2";
 pub const StdSection = if (builtin.os.tag == .macos) "DATA,.eval.std" else ".eval.std";
+pub const CompilerSection = if (builtin.os.tag == .macos) "DATA,.compiler" else ".compiler";
 
 pub var silentError = false;

@@ -19,20 +19,20 @@ pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 const StdSection = cy.StdSection;
 
 /// Reserved object types known at comptime.
-/// Starts at 8 since primitive types go up to 7.
-pub const ListS: StructId = 8;
-pub const ListIteratorT: StructId = 9;
-pub const MapS: StructId = 10;
-pub const MapIteratorT: StructId = 11;
-pub const ClosureS: StructId = 12;
-pub const LambdaS: StructId = 13;
-pub const StringS: StructId = 14;
-pub const FiberS: StructId = 15;
-pub const BoxS: StructId = 16;
-pub const NativeFunc1S: StructId = 17;
-pub const TccStateS: StructId = 18;
-pub const OpaquePtrS: StructId = 19;
-pub const FileT: StructId = 20;
+/// Starts at 9 since primitive types go up to 8.
+pub const ListS: StructId = 9;
+pub const ListIteratorT: StructId = 10;
+pub const MapS: StructId = 11;
+pub const MapIteratorT: StructId = 12;
+pub const ClosureS: StructId = 13;
+pub const LambdaS: StructId = 14;
+pub const StringS: StructId = 15;
+pub const FiberS: StructId = 16;
+pub const BoxS: StructId = 17;
+pub const NativeFunc1S: StructId = 18;
+pub const TccStateS: StructId = 19;
+pub const OpaquePtrS: StructId = 20;
+pub const FileT: StructId = 21;
 
 var tempU8Buf: [256]u8 = undefined;
 
@@ -2043,7 +2043,7 @@ pub const VM = struct {
             return obj.string.ptr[0..obj.string.len];
         } else {
             // Assume const string.
-            const slice = val.asConstStr();
+            const slice = val.asStaticStringSlice();
             return self.strBuf[slice.start..slice.end];
         }
     }
@@ -2088,9 +2088,12 @@ pub const VM = struct {
                         const litId = val.asErrorTagLit();
                         return std.fmt.bufPrint(&tempU8Buf, "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
                     },
-                    cy.ConstStringT => {
-                        // Convert into heap string.
-                        const slice = val.asConstStr();
+                    cy.StaticAstringT => {
+                        const slice = val.asStaticStringSlice();
+                        return self.strBuf[slice.start..slice.end];
+                    },
+                    cy.StaticUstringT => {
+                        const slice = val.asStaticStringSlice();
                         return self.strBuf[slice.start..slice.end];
                     },
                     cy.UserTagLiteralT => {
@@ -2421,9 +2424,16 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
             },
             cy.BooleanT => return Value.initBool(right.isPointer() or (left.asBool() != right.asBool())),
             cy.ErrorT => return Value.initBool(right.isPointer() or (left.asErrorTagLit() != right.asErrorTagLit())),
-            cy.ConstStringT => {
+            cy.StaticAstringT => {
                 if (right.isString()) {
-                    const slice = left.asConstStr();
+                    const slice = left.asStaticStringSlice();
+                    const str = gvm.strBuf[slice.start..slice.end];
+                    return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
+                } else return Value.True;
+            },
+            cy.StaticUstringT => {
+                if (right.isString()) {
+                    const slice = left.asStaticStringSlice();
                     const str = gvm.strBuf[slice.start..slice.end];
                     return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
                 } else return Value.True;
@@ -2466,9 +2476,16 @@ fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
             },
             cy.BooleanT => return Value.initBool(!right.isPointer() and (left.asBool() == right.asBool())),
             cy.ErrorT => return Value.initBool(!right.isPointer() and (left.asErrorTagLit() == right.asErrorTagLit())),
-            cy.ConstStringT => {
+            cy.StaticAstringT => {
                 if (right.isString()) {
-                    const slice = left.asConstStr();
+                    const slice = left.asStaticStringSlice();
+                    const str = gvm.strBuf[slice.start..slice.end];
+                    return Value.initBool(std.mem.eql(u8, str, gvm.valueAsString(right)));
+                } else return Value.False;
+            },
+            cy.StaticUstringT => {
+                if (right.isString()) {
+                    const slice = left.asStaticStringSlice();
                     const str = gvm.strBuf[slice.start..slice.end];
                     return Value.initBool(std.mem.eql(u8, str, gvm.valueAsString(right)));
                 } else return Value.False;
@@ -2613,8 +2630,13 @@ fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
             cy.BooleanT => return if (val.asBool()) 1 else 0,
             cy.IntegerT => return @intToFloat(f64, val.asI32()),
             cy.ErrorT => stdx.fatal(),
-            cy.ConstStringT => {
-                const slice = val.asConstStr();
+            cy.StaticAstringT => {
+                const slice = val.asStaticStringSlice();
+                const str = gvm.strBuf[slice.start..slice.end];
+                return std.fmt.parseFloat(f64, str) catch 0;
+            },
+            cy.StaticUstringT => {
+                const slice = val.asStaticStringSlice();
                 const str = gvm.strBuf[slice.start..slice.end];
                 return std.fmt.parseFloat(f64, str) catch 0;
             },
@@ -5090,7 +5112,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 cy.NoneT => {
                     fmt.printStdout("None\n", &.{});
                 },
-                cy.ConstStringT => {
+                cy.StaticStringT => {
                     const slice = val.asConstStr();
                     if (slice.len() > 20) {
                         fmt.printStdout("Const String len={} str=\"{s}\"...\n", &.{v(slice.len()), v(vm.strBuf[slice.start..20])});
@@ -5240,3 +5262,34 @@ pub const AbsFuncSigKeyContext = struct {
 /// Absolute var signature key. RelFuncSigKey is repurposed by using `numParams` as the parent sema resolved sym id.
 const AbsVarSigKey = RelFuncSigKey;
 const AbsVarSigKeyContext = RelFuncSigKeyContext;
+
+fn isAstringCpu(str: []const u8) linksection(cy.Section) bool {
+    for (str) |ch| {
+        if (ch & 0x80 > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn isAstring(str: []const u8) linksection(cy.Section) bool {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        var vbuf: @Vector(VecSize, u8) = undefined;
+        var i: usize = 0;
+        while (i + VecSize <= str.len) : (i += VecSize) {
+            vbuf = str[i..i+VecSize][0..VecSize].*;
+            const res = @reduce(.Or, vbuf);
+            if (res & 0x80 > 0) {
+                // Found non ascii char.
+                return false;
+            }
+        }
+        if (i < str.len) {
+            // Remaining use cpu.
+            return isAstringCpu(str[i..]);
+        }
+        return false;
+    } else {
+        return isAstringCpu(str);
+    }
+}

@@ -14,7 +14,7 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
         .prefix = spec,
     };
 
-    try mod.setVar(alloc, "cpu", try self.buf.getStringConstValue(@tagName(builtin.cpu.arch)));
+    try mod.setVar(alloc, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
     if (builtin.cpu.arch.endian() == .Little) {
         try mod.setVar(alloc, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.little)));
     } else {
@@ -22,7 +22,7 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
     }
     const stdin = try self.vm.allocFile(std.os.STDIN_FILENO);
     try mod.setVar(alloc, "stdin", stdin);
-    try mod.setVar(alloc, "system", try self.buf.getStringConstValue(@tagName(builtin.os.tag)));
+    try mod.setVar(alloc, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
 
     try mod.setNativeFunc(alloc, "cwd", 0, cwd);
     try mod.setNativeFunc(alloc, "exePath", 0, exePath);

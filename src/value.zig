@@ -117,8 +117,8 @@ pub const Value = packed union {
     fn otherToF64(self: *const Value) linksection(cy.HotSection) f64 {
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
-            if (obj.common.structId == cy.StringS) {
-                const str = obj.string.ptr[0..obj.string.len];
+            if (obj.common.structId == cy.AstringT) {
+                const str = obj.astring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
         } else {
@@ -138,8 +138,8 @@ pub const Value = packed union {
         } else {
             if (self.isPointer()) {
                 const obj = self.asHeapObject(*cy.HeapObject);
-                if (obj.common.structId == cy.StringS) {
-                    return obj.string.len > 0;
+                if (obj.common.structId == cy.AstringT) {
+                    return obj.astring.len > 0;
                 } else {
                     return true;
                 }
@@ -161,7 +161,7 @@ pub const Value = packed union {
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
-            return obj.common.structId == cy.StringS;
+            return obj.common.structId == cy.AstringT;
         } else {
             return self.assumeNotPtrIsStaticString();
         }
@@ -372,7 +372,7 @@ pub const Value = packed union {
         }
     }
 
-    pub fn getUserTag(self: *const Value) ValueUserTag {
+    pub fn getUserTag(self: *const Value) linksection(cy.Section) ValueUserTag {
         if (self.isNumber()) {
             return .number;
         } else {
@@ -381,7 +381,8 @@ pub const Value = packed union {
                 switch (obj.common.structId) {
                     cy.ListS => return .list,
                     cy.MapS => return .map,
-                    cy.StringS => return .string,
+                    cy.AstringT => return .string,
+                    cy.UstringT => return .string,
                     cy.ClosureS => return .closure,
                     cy.LambdaS => return .lambda,
                     cy.FiberS => return .fiber,

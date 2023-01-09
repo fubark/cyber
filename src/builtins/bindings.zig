@@ -146,12 +146,15 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("Lambda");
     std.debug.assert(id == cy.LambdaS);
 
-    id = try self.addStruct("String");
-    std.debug.assert(id == cy.StringS);
-    try self.addMethodSym(cy.StringS, len, cy.MethodSym.initNativeFunc1(stringLen));
-    try self.addMethodSym(cy.StringS, charAt, cy.MethodSym.initNativeFunc1(stringCharAt));
-    try self.addMethodSym(cy.StringS, index, cy.MethodSym.initNativeFunc1(stringIndex));
-    try self.addMethodSym(cy.StringS, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar));
+    id = try self.addStruct("string");
+    std.debug.assert(id == cy.AstringT);
+    try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(astringLen));
+    try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(astringCharAt));
+    try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(astringIndex));
+    try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(astringIndexChar));
+
+    id = try self.addStruct("string");
+    std.debug.assert(id == cy.UstringT);
 
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
@@ -443,16 +446,16 @@ fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value 
     }
 }
 
-fn stringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+fn astringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.string.len));
+    return Value.initF64(@intToFloat(f64, obj.astring.len));
 }
 
-fn stringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn astringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.string.ptr[@floatToInt(u32, args[0].toF64())]));
+    return Value.initF64(@intToFloat(f64, obj.astring.getConstSlice()[@floatToInt(u32, args[0].toF64())]));
 }
 
 fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
@@ -530,10 +533,10 @@ fn staticAstringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: 
     } else return Value.None;
 }
 
-fn stringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn astringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    const str = obj.string.ptr[0..obj.string.len];
+    const str = obj.astring.getConstSlice();
     const needle = vm.valueToTempString(args[0]);
 
     if (std.mem.indexOf(u8, str, needle)) |idx| {
@@ -588,10 +591,10 @@ fn staticAstringIndexCode(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value,
     } else return Value.None;
 }
 
-fn stringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn astringIndexChar(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    const str = obj.string.ptr[0..obj.string.len];
+    const str = obj.astring.getConstSlice();
     const char = valueToChar(vm, args[0]);
 
     if (indexOfChar(str, char)) |idx| {

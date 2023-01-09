@@ -439,7 +439,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
         };
 
         const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
-        const key = gvm.allocString(sym) catch stdx.fatal();
+        const key = vm.allocString(sym) catch stdx.fatal();
         const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
@@ -503,14 +503,14 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     };
 
     const map = gvm.allocEmptyMap() catch stdx.fatal();
-    const outKey = gvm.allocString("out") catch stdx.fatal();
+    const outKey = vm.allocString("out") catch stdx.fatal();
     const out = vm.allocOwnedString(res.stdout) catch stdx.fatal();
     gvm.setIndex(map, outKey, out) catch stdx.fatal();
-    const errKey = gvm.allocString("err") catch stdx.fatal();
+    const errKey = vm.allocString("err") catch stdx.fatal();
     const err = vm.allocOwnedString(res.stderr) catch stdx.fatal();
     gvm.setIndex(map, errKey, err) catch stdx.fatal();
     if (res.term == .Exited) {
-        const exitedKey = gvm.allocString("exited") catch stdx.fatal();
+        const exitedKey = vm.allocString("exited") catch stdx.fatal();
         gvm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
     }
     return map;
@@ -714,15 +714,21 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 export fn fromCStr(ptr: [*:0]const u8) Value {
     const slice = std.mem.span(ptr);
-    return gvm.allocString(slice) catch stdx.fatal();
+    return gvm.allocString(slice, !vm_.isAstring(slice)) catch stdx.fatal();
 }
 
 export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
     if (val.isPointer()) {
         const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
-        const dupe = std.cstr.addNullByte(gvm.alloc, obj.string.ptr[0..obj.string.len]) catch stdx.fatal();
-        len.* = @intCast(u32, obj.string.len);
-        return dupe.ptr;
+        if (obj.common.structId == cy.AstringT) {
+            const dupe = std.cstr.addNullByte(gvm.alloc, obj.astring.getConstSlice()) catch stdx.fatal();
+            len.* = @intCast(u32, obj.astring.len);
+            return dupe.ptr;
+        } else {
+            const dupe = std.cstr.addNullByte(gvm.alloc, obj.ustring.getConstSlice()) catch stdx.fatal();
+            len.* = @intCast(u32, obj.ustring.len);
+            return dupe.ptr;
+        }
     } else {
         const slice = val.asStaticStringSlice();
         const dupe = std.cstr.addNullByte(gvm.alloc, gvm.strBuf[slice.start..slice.end]) catch stdx.fatal();

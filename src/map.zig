@@ -153,8 +153,8 @@ pub const ValueMap = struct {
         } else {
             if (key.isPointer()) {
                 const obj = stdx.ptrAlignCast(*cy.HeapObject, key.asPointer().?);
-                if (obj.common.structId == cy.StringS) {
-                    return std.hash.Wyhash.hash(0, obj.string.ptr[0..obj.string.len]);
+                if (obj.common.structId == cy.AstringT) {
+                    return std.hash.Wyhash.hash(0, obj.astring.getConstSlice());
                 } else stdx.unsupported();
             } else {
                 switch (key.getTag()) {
@@ -175,8 +175,8 @@ pub const ValueMap = struct {
     fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(cy.Section) bool {
         if (b.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, b.asPointer().?);
-            if (obj.common.structId == cy.StringS) {
-                return std.mem.eql(u8, a, obj.string.ptr[0..obj.string.len]);
+            if (obj.common.structId == cy.AstringT) {
+                return std.mem.eql(u8, a, obj.astring.getConstSlice());
             } else return false;
         } else {
             switch (b.getTag()) {
@@ -199,8 +199,8 @@ pub const ValueMap = struct {
         } else {
             if (a.isPointer()) {
                 const aObj = stdx.ptrAlignCast(*cy.HeapObject, a.asPointer().?);
-                if (aObj.common.structId == cy.StringS) {
-                    const aStr = aObj.string.ptr[0..aObj.string.len];
+                if (aObj.common.structId == cy.AstringT) {
+                    const aStr = aObj.astring.getConstSlice();
                     if (b.getUserTag() == .string) {
                         const bStr = vm.valueAsString(b);
                         return std.mem.eql(u8, aStr, bStr);

@@ -56,6 +56,7 @@ pub const ClosureS = vm.ClosureS;
 pub const LambdaS = vm.LambdaS;
 pub const AstringT = vm.AstringT;
 pub const UstringT = vm.UstringT;
+pub const RawStringT = vm.RawStringT;
 pub const FiberS = vm.FiberS;
 pub const BoxS = vm.BoxS;
 pub const NativeFunc1S = vm.NativeFunc1S;
@@ -79,7 +80,9 @@ pub const AbsFuncSigKey = vm.AbsFuncSigKey;
 pub const AbsFuncSigKeyContext = vm.AbsFuncSigKeyContext;
 pub const isAstring = vm.isAstring;
 pub const Astring = vm.Astring;
+pub const RawString = vm.RawString;
 pub const MaxPoolObjectStringByteLen = vm.MaxPoolObjectAstringByteLen;
+pub const MaxPoolObjectRawStringByteLen = vm.MaxPoolObjectRawStringByteLen;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;
@@ -90,6 +93,7 @@ pub const List = list.List;
 
 const string = @import("string.zig");
 pub const HeapStringBuilder = string.HeapStringBuilder;
+pub const HeapRawStringBuilder = string.HeapRawStringBuilder;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

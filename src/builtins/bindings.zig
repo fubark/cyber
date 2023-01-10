@@ -159,6 +159,11 @@ pub fn bindCore(self: *cy.VM) !void {
     id = try self.addStruct("string");
     std.debug.assert(id == cy.UstringT);
 
+    id = try self.addStruct("rawstring");
+    std.debug.assert(id == cy.RawStringT);
+    try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(rawStringLen));
+    try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(rawStringCodeAt));
+
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
     try self.addMethodSym(cy.FiberS, status, cy.MethodSym.initNativeFunc1(fiberStatus));
@@ -479,6 +484,23 @@ fn astringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
     return Value.initF64(@intToFloat(f64, str[@floatToInt(u32, args[0].toF64())]));
 }
 
+fn rawStringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, obj.rawstring.len));
+}
+
+fn rawStringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const str = obj.rawstring.getConstSlice();
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= str.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    return Value.initF64(@intToFloat(f64, str[@floatToInt(u32, args[0].toF64())]));
+}
+
 fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const str = val.asStaticStringSlice();
@@ -733,7 +755,7 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
         const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
         if (getLineEnd(readBuf[obj.file.curPos..obj.file.readBufEnd])) |end| {
             // Found new line.
-            const line = vm.allocString(readBuf[obj.file.curPos..obj.file.curPos+end], false) catch stdx.fatal();
+            const line = vm.allocRawString(readBuf[obj.file.curPos..obj.file.curPos+end]) catch stdx.fatal();
 
             // Advance pos.
             obj.file.curPos += @intCast(u32, end);
@@ -741,11 +763,10 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
             return line;
         }
 
-        var lineBuf = cy.HeapStringBuilder.init(@ptrCast(*cy.VM, vm)) catch fatal();
+        var lineBuf = cy.HeapRawStringBuilder.init(@ptrCast(*cy.VM, vm)) catch fatal();
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
-        // var isAstring = vm_.isAstring(readBuf[obj.file.curPos..obj.file.readBufEnd]);
-        lineBuf.appendString(alloc, readBuf[obj.file.curPos..obj.file.readBufEnd], false) catch stdx.fatal();
+        lineBuf.appendString(alloc, readBuf[obj.file.curPos..obj.file.readBufEnd]) catch stdx.fatal();
 
         // Read into buffer.
         const file = std.fs.File{
@@ -761,23 +782,22 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
                 // End of stream.
                 obj.file.iterLines = false;
                 if (lineBuf.len > 0) {
-                    return vm.allocOwnedString(lineBuf.ownObject()) catch stdx.fatal();
+                    return Value.initPtr(lineBuf.ownObject(alloc));
                 } else {
                     return Value.None;
                 }
             }
             if (getLineEnd(readBuf[0..bytesRead])) |end| {
                 // Found new line.
-                // isAstring = vm_.isAstring(readBuf[0..end]);
-                lineBuf.appendString(alloc, readBuf[0..end], false) catch stdx.fatal();
+                lineBuf.appendString(alloc, readBuf[0..end]) catch stdx.fatal();
 
                 // Advance pos.
                 obj.file.curPos = @intCast(u32, end);
                 obj.file.readBufEnd = @intCast(u32, bytesRead);
 
-                return vm.allocOwnedString(lineBuf.ownObject()) catch stdx.fatal();
+                return Value.initPtr(lineBuf.ownObject(alloc));
             } else {
-                lineBuf.appendString(alloc, readBuf[0..bytesRead], false) catch stdx.fatal();
+                lineBuf.appendString(alloc, readBuf[0..bytesRead]) catch stdx.fatal();
 
                 // Advance pos.
                 obj.file.curPos = @intCast(u32, bytesRead);

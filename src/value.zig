@@ -422,7 +422,7 @@ pub const ValueUserTag = enum {
     list,
     map,
     string,
-    constString,
+    rawstring,
     closure,
     lambda,
     fiber,

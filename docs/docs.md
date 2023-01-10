@@ -408,6 +408,12 @@ Big numbers will be supported in a future version of Cyber.
 [To Top.](#table-of-contents)
 
 ### Strings.
+The [string](string-type) type represents a sequence of UTF-8 characters. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
+
+Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](string-buffer).
+
+A string is always UTF-8 validated. [rawstrings](raw-strings) outperform strings but you'll have to validate them and take care of indexing yourself.
+
 A single line string literal is surrounded in single quotes.
 ```text
 apple = 'a fruit'
@@ -1127,8 +1133,8 @@ for map as k, v:
 object **File**
 | Function | Summary |
 | -- | -- |
-| streamLines() Iterable\<string\> | Equivalent to `streamLines(4096)`. |
-| streamLines(bufSize number) Iterable\<string\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
+| streamLines() Iterable\<rawstring\> | Equivalent to `streamLines(4096)`. |
+| streamLines(bufSize number) Iterable\<rawstring\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 
 ### Test Module.
 The `test` module contains utilities for testing.

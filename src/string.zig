@@ -40,9 +40,14 @@ pub const HeapStringBuilder = struct {
         }
     }
 
-    pub fn ownObject(self: *HeapStringBuilder) *cy.HeapObject {
+    pub fn ownObject(self: *HeapStringBuilder, alloc: std.mem.Allocator) *cy.HeapObject {
         const obj = self.getHeapObject();
         obj.astring.len = self.len;
+
+        // Shrink.
+        const objBuf = (self.buf.ptr - 16)[0..self.buf.len + 16];
+        _ = alloc.resize(objBuf, self.len + 16);
+
         self.hasObject = false;
         return obj;
     }
@@ -83,7 +88,7 @@ pub const HeapStringBuilder = struct {
                 };
                 self.buf = objSlice[16..newCap];
                 std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
-                alloc.free((old.ptr - 16)[0..old.len + 16]);
+                alloc.free(oldHead);
             }
         } else {
             const oldObj = self.getHeapObject();
@@ -106,6 +111,117 @@ pub const HeapStringBuilder = struct {
     }
 
     pub fn growTotalCapacity(self: *HeapStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
+        var betterCap = self.buf.len;
+        while (true) {
+            betterCap +|= betterCap / 2 + 8;
+            if (betterCap >= newCap) {
+                break;
+            }
+        }
+        try self.growTotalCapacityPrecise(alloc, betterCap);
+    }
+};
+
+pub const HeapRawStringBuilder = struct {
+    buf: []u8,
+    len: u32,
+    hasObject: bool,
+    vm: *cy.VM,
+
+    pub fn init(vm: *cy.VM) !HeapRawStringBuilder {
+        const obj = try vm.allocPoolObject();
+        obj.rawstring = .{
+            .structId = cy.RawStringT,
+            .rc = 1,
+            .len = cy.MaxPoolObjectRawStringByteLen,
+            .bufStart = undefined,
+        };
+        return .{
+            .buf = obj.rawstring.getSlice(),
+            .len = 0,
+            .hasObject = true,
+            .vm = vm,
+        };
+    }
+
+    fn getHeapObject(self: *const HeapRawStringBuilder) *cy.HeapObject {
+        return @ptrCast(*cy.HeapObject, @alignCast(@alignOf(cy.HeapObject), self.buf.ptr - @offsetOf(cy.RawString, "bufStart")));
+    }
+
+    pub fn deinit(self: *HeapRawStringBuilder) void {
+        if (self.hasObject) {
+            const obj = self.getHeapObject();
+            obj.rawstring.len = self.len;
+            self.vm.freeObject(obj);
+            self.hasObject = false;
+        }
+    }
+
+    pub fn ownObject(self: *HeapRawStringBuilder, alloc: std.mem.Allocator) *cy.HeapObject {
+        const obj = self.getHeapObject();
+        obj.rawstring.len = self.len;
+
+        // Shrink.
+        const objBuf = (self.buf.ptr - 12)[0..self.buf.len + 12];
+        _ = alloc.resize(objBuf, self.len + 12);
+
+        self.hasObject = false;
+        return obj;
+    }
+
+    pub fn appendString(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, str: []const u8) !void {
+        try self.ensureTotalCapacity(alloc, self.len + str.len);
+        const oldLen = self.len;
+        self.len += @intCast(u32, str.len);
+        std.mem.copy(u8, self.buf[oldLen..self.len], str);
+    }
+
+    pub inline fn ensureTotalCapacity(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
+        if (newCap > self.buf.len) {
+            try self.growTotalCapacity(alloc, newCap);
+        }
+    }
+
+    pub fn growTotalCapacityPrecise(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
+        if (self.buf.len > cy.MaxPoolObjectRawStringByteLen) {
+            const oldHead = (self.buf.ptr - 12)[0..self.buf.len + 12];
+            if (alloc.resize(oldHead, 12 + newCap)) {
+                self.buf.len = newCap;
+            } else {
+                const old = self.buf;
+                const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 12 + newCap);
+                const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
+                obj.rawstring = .{
+                    .structId = cy.RawStringT,
+                    .rc = 1,
+                    .len = 0,
+                    .bufStart = undefined,
+                };
+                self.buf = objSlice[12..newCap];
+                std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
+                alloc.free(oldHead);
+            }
+        } else {
+            const oldObj = self.getHeapObject();
+            const old = self.buf;
+            const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 12 + newCap);
+            const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
+            obj.rawstring = .{
+                .structId = cy.RawStringT,
+                .rc = 1,
+                .len = 0,
+                .bufStart = undefined,
+            };
+            self.buf = objSlice[12..newCap];
+            std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
+
+            // Free pool object.
+            oldObj.rawstring.len = self.len;
+            self.vm.freeObject(oldObj);
+        }
+    }
+
+    pub fn growTotalCapacity(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
         var betterCap = self.buf.len;
         while (true) {
             betterCap +|= betterCap / 2 + 8;

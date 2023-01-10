@@ -5,4 +5,5 @@
 /site
 /docs-todo.md
 /temp.cy
+/examples/libfoo.so
 *.class

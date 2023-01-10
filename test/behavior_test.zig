@@ -1187,6 +1187,9 @@ test "Static ASCII strings." {
         \\
         \\str = 'abcxyz'
         \\
+        \\-- append()
+        \\try t.eq(str.append('123'), 'abcxyz123')
+        \\
         \\-- charAt()
         \\try t.eq(str.charAt(-1), error(#OutOfBounds))
         \\try t.eq(str.charAt(0), 'a')

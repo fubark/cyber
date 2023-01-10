@@ -61,12 +61,12 @@ pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
     forceSectionDep();
 
-    const resize = try self.ensureMethodSymKey("resize", 1);
     self.iteratorObjSym = try self.ensureMethodSymKey("iterator", 0);
     self.nextObjSym = try self.ensureMethodSymKey("next", 0);
     self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator", 0);
     self.nextPairObjSym = try self.ensureMethodSymKey("nextPair", 0);
     const add = try self.ensureMethodSymKey("add", 1);
+    const append = try self.ensureMethodSymKey("append", 1);
     const charAt = try self.ensureMethodSymKey("charAt", 1);
     const codeAt = try self.ensureMethodSymKey("codeAt", 1);
     const index = try self.ensureMethodSymKey("index", 1);
@@ -76,6 +76,7 @@ pub fn bindCore(self: *cy.VM) !void {
     const isAscii = try self.ensureMethodSymKey("isAscii", 0);
     const len = try self.ensureMethodSymKey("len", 0);
     const remove = try self.ensureMethodSymKey("remove", 1);
+    const resize = try self.ensureMethodSymKey("resize", 1);
     const size = try self.ensureMethodSymKey("size", 0);
     const sort = try self.ensureMethodSymKey("sort", 1);
     const status = try self.ensureMethodSymKey("status", 0);
@@ -93,6 +94,7 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.ErrorT);
     id = try self.addStruct("string");
     std.debug.assert(id == cy.StaticAstringT);
+    try self.addMethodSym(cy.StaticAstringT, append, cy.MethodSym.initNativeFunc1(staticAstringAppend));
     try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(staticAstringCharAt));
     try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(staticAstringCodeAt));
     try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(staticAstringIndex));
@@ -481,6 +483,18 @@ fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Va
     const val = Value{ .val = @ptrToInt(ptr) };
     const str = val.asStaticStringSlice();
     return Value.initF64(@intToFloat(f64, str.len()));
+}
+
+fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    const rstr = vm.valueToTempString(args[0]);
+    if (vm_.isAstring(rstr)) {
+        return vm.allocStringConcat(str, rstr, false) catch fatal();
+    } else {
+        return vm.allocStringConcat(str, rstr, true) catch fatal();
+    }
 }
 
 fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {

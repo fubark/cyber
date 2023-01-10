@@ -150,6 +150,7 @@ pub fn bindCore(self: *cy.VM) !void {
     std.debug.assert(id == cy.AstringT);
     try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(astringLen));
     try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(astringCharAt));
+    try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(astringCodeAt));
     try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(astringIndex));
     try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(astringIndexChar));
 
@@ -452,10 +453,28 @@ fn astringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
     return Value.initF64(@intToFloat(f64, obj.astring.len));
 }
 
-fn astringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn astringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.astring.getConstSlice()[@floatToInt(u32, args[0].toF64())]));
+    const str = obj.astring.getConstSlice();
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= str.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    const uidx = @intCast(u32, idx);
+    // TODO: return slice.
+    return vm.allocString(str[uidx..uidx + 1], false) catch fatal();
+}
+
+fn astringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const str = obj.astring.getConstSlice();
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= str.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    return Value.initF64(@intToFloat(f64, str[@floatToInt(u32, args[0].toF64())]));
 }
 
 fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {

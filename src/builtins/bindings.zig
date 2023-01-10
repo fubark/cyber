@@ -715,10 +715,11 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     if (obj.file.iterLines) {
+        const alloc = vm.allocator();
         const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
         if (getLineEnd(readBuf[obj.file.curPos..obj.file.readBufEnd])) |end| {
             // Found new line.
-            const line = vm.allocStringInfer(readBuf[obj.file.curPos..obj.file.curPos+end]) catch stdx.fatal();
+            const line = vm.allocString(readBuf[obj.file.curPos..obj.file.curPos+end], false) catch stdx.fatal();
 
             // Advance pos.
             obj.file.curPos += @intCast(u32, end);
@@ -726,9 +727,11 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
             return line;
         }
 
-        var lineBuf = std.ArrayList(u8).init(vm.allocator());
+        var lineBuf = cy.HeapStringBuilder.init(@ptrCast(*cy.VM, vm)) catch fatal();
+        defer lineBuf.deinit();
         // Start with previous string without line delimiter.
-        lineBuf.appendSlice(readBuf[obj.file.curPos..obj.file.readBufEnd]) catch stdx.fatal();
+        // var isAstring = vm_.isAstring(readBuf[obj.file.curPos..obj.file.readBufEnd]);
+        lineBuf.appendString(alloc, readBuf[obj.file.curPos..obj.file.readBufEnd], false) catch stdx.fatal();
 
         // Read into buffer.
         const file = std.fs.File{
@@ -743,25 +746,28 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
             if (bytesRead == 0) {
                 // End of stream.
                 obj.file.iterLines = false;
-                if (lineBuf.items.len > 0) {
-                    // TODO: Use allocOwnedString
-                    defer lineBuf.deinit();
-                    return vm.allocStringInfer(lineBuf.items) catch stdx.fatal();
+                if (lineBuf.len > 0) {
+                    return vm.allocOwnedString(lineBuf.ownObject()) catch stdx.fatal();
                 } else {
                     return Value.None;
                 }
             }
             if (getLineEnd(readBuf[0..bytesRead])) |end| {
                 // Found new line.
-                lineBuf.appendSlice(readBuf[0..end]) catch stdx.fatal();
+                // isAstring = vm_.isAstring(readBuf[0..end]);
+                lineBuf.appendString(alloc, readBuf[0..end], false) catch stdx.fatal();
 
                 // Advance pos.
                 obj.file.curPos = @intCast(u32, end);
                 obj.file.readBufEnd = @intCast(u32, bytesRead);
 
-                // TODO: Use allocOwnedString
-                defer lineBuf.deinit();
-                return vm.allocStringInfer(lineBuf.items) catch stdx.fatal();
+                return vm.allocOwnedString(lineBuf.ownObject()) catch stdx.fatal();
+            } else {
+                lineBuf.appendString(alloc, readBuf[0..bytesRead], false) catch stdx.fatal();
+
+                // Advance pos.
+                obj.file.curPos = @intCast(u32, bytesRead);
+                obj.file.readBufEnd = @intCast(u32, bytesRead);
             }
         }
     } else {

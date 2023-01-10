@@ -78,6 +78,8 @@ pub const RelFuncSigKeyContext = vm.RelFuncSigKeyContext;
 pub const AbsFuncSigKey = vm.AbsFuncSigKey;
 pub const AbsFuncSigKeyContext = vm.AbsFuncSigKeyContext;
 pub const isAstring = vm.isAstring;
+pub const Astring = vm.Astring;
+pub const MaxPoolObjectStringByteLen = vm.MaxPoolObjectAstringByteLen;
 
 const map = @import("map.zig");
 pub const ValueMap = map.ValueMap;
@@ -85,6 +87,9 @@ pub const ValueMapEntry = map.ValueMapEntry;
 
 const list = @import("list.zig");
 pub const List = list.List;
+
+const string = @import("string.zig");
+pub const HeapStringBuilder = string.HeapStringBuilder;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

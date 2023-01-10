@@ -1099,7 +1099,7 @@ test "Comments" {
     try t.eq(val.asF64toI32(), 4);
 }
 
-test "Heap Strings." {
+test "Heap ASCII String." {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -1109,42 +1109,32 @@ test "Heap Strings." {
         \\pre = 'abc'
         \\str = '{pre}xyz'
         \\try t.eq(str, 'abcxyz')
-    );
-
-    // Multi-lines.
-    _ = try run.eval(
-        \\import t 'test'
-        \\-- Const string multi-line double quote literal.
-        \\str = "abc
-        \\abc"
-        \\try t.eq(str, 'abc\nabc')
-        \\-- Const string multi-line triple quote literal.
-        \\str = '''abc
-        \\abc'''
-        \\try t.eq(str, 'abc\nabc')
-    );
-
-    // String functions.
-    _ = try run.eval(
-        \\import t 'test'
         \\
-        \\-- Heap string.
-        \\str = '{'abc'}'
-        \\try t.eq(str.len(), 3)
-        \\try t.eq(str.charAt(1), 98)
+        \\-- charAt()
+        \\try t.eq(str.charAt(1), 'b')
+        \\
+        \\-- codeAt()
+        \\try t.eq(str.codeAt(1), 98)
+        \\
+        \\-- index()
         \\try t.eq(str.index('bc'), 1)
         \\try t.eq(str.index('bd'), none)
         \\try t.eq(str.index('ab'), 0)
+        \\
+        \\-- indexChar()
         \\try t.eq(str.indexChar('a'), 0)
         \\try t.eq(str.indexChar('b'), 1)
         \\try t.eq(str.indexChar('c'), 2)
         \\try t.eq(str.indexChar('d'), none)
         \\
-        \\-- Long heap string for simd.
-        \\str = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'
-        \\try t.eq(str.indexChar('a'), 0)
-        \\try t.eq(str.indexChar('m'), 16)
-        \\try t.eq(str.indexChar('z'), 68)
+        \\-- simd indexChar()
+        \\lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'
+        \\try t.eq(lstr.indexChar('a'), 0)
+        \\try t.eq(lstr.indexChar('m'), 16)
+        \\try t.eq(lstr.indexChar('z'), 68)
+        \\
+        \\-- len()
+        \\try t.eq(str.len(), 6)
     );
 }
 
@@ -1184,6 +1174,16 @@ test "Static ASCII strings." {
         \\-- Escaped backslash.
         \\try t.eq('ab\\nc'.codeAt(2), 92)
         \\try t.eq('ab\\nc'.codeAt(3), asciiCode('n'))
+        \\
+        \\-- Const string multi-line double quote literal.
+        \\str = "abc
+        \\abc"
+        \\try t.eq(str, 'abc\nabc')
+        \\
+        \\-- Const string multi-line triple quote literal.
+        \\str = '''abc
+        \\abc'''
+        \\try t.eq(str, 'abc\nabc')
         \\
         \\str = 'abcxyz'
         \\

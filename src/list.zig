@@ -1,4 +1,6 @@
 const std = @import("std");
+const stdx = @import("stdx");
+const t = stdx.testing;
 const builtin = @import("builtin");
 const debug = builtin.mode == .Debug;
 
@@ -16,7 +18,6 @@ pub fn List(comptime T: type) type {
         }
 
         pub fn append(self: *ListT, alloc: std.mem.Allocator, val: T) linksection(section) !void {
-            @setRuntimeSafety(debug);
             if (self.len == self.buf.len) {
                 try self.growTotalCapacity(alloc, self.len + 1);
             }
@@ -36,13 +37,11 @@ pub fn List(comptime T: type) type {
         }
 
         pub fn appendAssumeCapacity(self: *ListT, val: T) linksection(section) void {
-            @setRuntimeSafety(debug);
             self.buf[self.len] = val;
             self.len += 1;
         }
 
         pub fn appendSlice(self: *ListT, alloc: std.mem.Allocator, slice: []const T) linksection(section) !void {
-            @setRuntimeSafety(debug);
             try self.ensureTotalCapacity(alloc, self.len + slice.len);
             const oldLen = self.len;
             self.len += slice.len;
@@ -103,6 +102,18 @@ pub fn List(comptime T: type) type {
             try self.growTotalCapacityPrecise(alloc, betterCap);
         }
     };
+}
+
+test "List." {
+    var l: List(u8) = .{};
+    defer l.deinit(t.alloc);
+
+    try l.append(t.alloc, 'a');
+    try l.appendSlice(t.alloc, "foobar");
+    try l.append(t.alloc, 'z');
+
+    try t.eq(l.len, 8);
+    try t.eqStr(l.items(), "afoobarz");
 }
 
 const Writer = struct {

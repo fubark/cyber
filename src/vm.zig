@@ -45,6 +45,8 @@ pub fn getUserVM() *UserVM {
     return @ptrCast(*UserVM, &gvm);
 }
 
+const DefaultStringInternMaxByteLen = 64;
+
 pub const VM = struct {
     alloc: std.mem.Allocator,
     parser: cy.Parser,
@@ -68,7 +70,8 @@ pub const VM = struct {
     strBuf: []const u8,
 
     /// Holds unique heap string interns (*Astring, *Ustring).
-    /// Does not include static strings.
+    /// Does not include static strings (those are interned at compile time).
+    /// By default, small strings (at most 64 bytes) are interned.
     strInterns: std.StringHashMapUnmanaged(*HeapObject),
 
     /// Object heap pages.
@@ -679,7 +682,7 @@ pub const VM = struct {
         return res;
     }
 
-    fn freeObject(self: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
+    pub fn freeObject(self: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         const prev = &(@ptrCast([*]HeapObject, obj) - 1)[0];
         if (prev.common.structId == NullId) {
             // Left is a free span. Extend length.
@@ -697,7 +700,7 @@ pub const VM = struct {
         }
     }
 
-    fn allocPoolObject(self: *VM) linksection(cy.HotSection) !*HeapObject {
+    pub fn allocPoolObject(self: *VM) linksection(cy.HotSection) !*HeapObject {
         if (self.heapFreeHead == null) {
             self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.len * 15) / 10));
         }
@@ -802,31 +805,6 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    // TODO: If no such string intern exists, `str` is added as a string intern.
-    // Otherwise, `str` is freed and the existing string intern is retained and returned.
-    pub fn allocOwnedString(self: *VM, str: *HeapObject) linksection(cy.HotSection) !Value {
-        _ = self;
-        _ = str;
-        stdx.unsupported();
-
-        // const obj = try self.allocPoolObject();
-        // obj.string = .{
-        //     .structId = StringS,
-        //     .rc = 1,
-        //     .ptr = str.ptr,
-        //     .len = str.len,
-        // };
-        // log.debug("alloc owned str {*} {s}", .{str.ptr, str});
-        // if (TraceEnabled) {
-        //     self.trace.numRetains += 1;
-        //     self.trace.numRetainAttempts += 1;
-        // }
-        // if (TrackGlobalRC) {
-        //     self.refCounts += 1;
-        // }
-        // return Value.initPtr(obj);
-    }
-
     pub fn allocOpaquePtr(self: *VM, ptr: ?*anyopaque) !Value {
         const obj = try self.allocPoolObject();
         obj.opaquePtr = .{
@@ -921,119 +899,165 @@ pub const VM = struct {
         }
 
         const isAscii = isAstring(self.u8Buf.items());
-        return self.allocString(self.u8Buf.items(), !isAscii);
+        const obj = try self.allocStringObject(self.u8Buf.items(), !isAscii);
+        return Value.initPtr(obj);
     }
 
-    pub fn allocString(self: *VM, str: []const u8, utf8: bool) !Value {
-        const res = try self.strInterns.getOrPut(self.alloc, str);
-        if (res.found_existing) {
-            self.retainObject(res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
-        } else {
-            var obj: *HeapObject = undefined;
-            var dst: []u8 = undefined;
-            if (utf8) {
-                if (str.len <= MaxPoolObjectUstringByteLen) {
-                    obj = try self.allocPoolObject();
-                } else {
-                    const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), str.len + 16);
-                    obj = @ptrCast(*HeapObject, objSlice.ptr);
-                }
-                obj.ustring = .{
-                    .structId = UstringT,
-                    .rc = 1,
-                    .len = @intCast(u32, str.len),
-                    .mruIdx = 0,
-                    .bufStart = undefined,
-                };
-                dst = @ptrCast([*]u8, &obj.ustring.bufStart)[0..str.len];
-                std.mem.copy(u8, dst, str);
+    // If no such string intern exists, `obj` is added as a string intern.
+    // Otherwise, `obj` is released and the existing string intern is retained and returned.
+    pub fn getOrAllocOwnedString(self: *VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
+        const str = obj.astring.getConstSlice();
+        if (str.len <= DefaultStringInternMaxByteLen) {
+            const res = try self.strInterns.getOrPut(self.alloc, str);
+            if (res.found_existing) {
+                releaseObject(self, obj);
+                self.retainObject(res.value_ptr.*);
+                return Value.initPtr(res.value_ptr.*);
             } else {
-                if (str.len <= MaxPoolObjectAstringByteLen) {
-                    obj = try self.allocPoolObject();
-                } else {
-                    const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), str.len + 122);
-                    obj = @ptrCast(*HeapObject, objSlice.ptr);
-                }
-                obj.astring = .{
-                    .structId = AstringT,
-                    .rc = 1,
-                    .len = @intCast(u32, str.len),
-                    .bufStart = undefined,
-                };
-                dst = @ptrCast([*]u8, &obj.astring.bufStart)[0..str.len];
-                std.mem.copy(u8, dst, str);
+                res.key_ptr.* = str;
+                res.value_ptr.* = obj;
+                return Value.initPtr(obj);
             }
-            if (TraceEnabled) {
-                self.trace.numRetains += 1;
-                self.trace.numRetainAttempts += 1;
-            }
-            if (TrackGlobalRC) {
-                self.refCounts += 1;
-            }
-            res.key_ptr.* = dst;
-            res.value_ptr.* = obj;
+        } else {
             return Value.initPtr(obj);
         }
     }
 
-    fn allocStringConcat(self: *VM, str: []const u8, str2: []const u8, utf8: bool) !Value {
-        const ctx = StringConcatContext{};
-        const concat = StringConcat{
-            .left = str,
-            .right = str2,
-        };
-        const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
-        if (res.found_existing) {
-            self.retainObject(res.value_ptr.*);
-            return Value.initPtr(res.value_ptr.*);
-        } else {
-            const len = @intCast(u32, str.len + str2.len);
-            var obj: *HeapObject = undefined;
-            var dst: []u8 = undefined;
-            if (utf8) {
-                if (str.len <= MaxPoolObjectUstringByteLen) {
-                    obj = try self.allocPoolObject();
-                } else {
-                    const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 16);
-                    obj = @ptrCast(*HeapObject, objSlice.ptr);
-                }
-                obj.ustring = .{
-                    .structId = UstringT,
-                    .rc = 1,
-                    .len = len,
-                    .mruIdx = 0,
-                    .bufStart = undefined,
-                };
-                dst = obj.ustring.getSlice();
-                std.mem.copy(u8, dst[0..str.len], str);
-                std.mem.copy(u8, dst[str.len..], str2);
+    pub fn allocString(self: *VM, str: []const u8, utf8: bool) !Value {
+        const obj = try self.allocStringObject(str, utf8);
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocStringObject(self: *VM, str: []const u8, utf8: bool) !*HeapObject {
+        var obj: *HeapObject = undefined;
+        var dst: []u8 = undefined;
+        if (utf8) {
+            if (str.len <= MaxPoolObjectUstringByteLen) {
+                obj = try self.allocPoolObject();
             } else {
-                if (str.len <= MaxPoolObjectAstringByteLen) {
-                    obj = try self.allocPoolObject();
-                } else {
-                    const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 12);
-                    obj = @ptrCast(*HeapObject, objSlice.ptr);
-                }
-                obj.astring = .{
-                    .structId = AstringT,
-                    .rc = 1,
-                    .len = len,
-                    .bufStart = undefined,
-                };
-                dst = obj.astring.getSlice();
-                std.mem.copy(u8, dst[0..str.len], str);
-                std.mem.copy(u8, dst[str.len..], str2);
+                const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), str.len + 16);
+                obj = @ptrCast(*HeapObject, objSlice.ptr);
             }
-            if (TraceEnabled) {
-                self.trace.numRetains += 1;
-                self.trace.numRetainAttempts += 1;
+            obj.ustring = .{
+                .structId = UstringT,
+                .rc = 1,
+                .len = @intCast(u32, str.len),
+                .mruIdx = 0,
+                .bufStart = undefined,
+            };
+            dst = @ptrCast([*]u8, &obj.ustring.bufStart)[0..str.len];
+            std.mem.copy(u8, dst, str);
+        } else {
+            if (str.len <= MaxPoolObjectAstringByteLen) {
+                obj = try self.allocPoolObject();
+            } else {
+                const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), str.len + 16);
+                obj = @ptrCast(*HeapObject, objSlice.ptr);
             }
-            if (TrackGlobalRC) {
-                self.refCounts += 1;
+            obj.astring = .{
+                .structId = AstringT,
+                .rc = 1,
+                .len = @intCast(u32, str.len),
+                .bufStart = undefined,
+            };
+            dst = @ptrCast([*]u8, &obj.astring.bufStart)[0..str.len];
+            std.mem.copy(u8, dst, str);
+        }
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return obj;
+    }
+
+    pub fn getOrAllocString(self: *VM, str: []const u8, utf8: bool) !Value {
+        if (str.len <= DefaultStringInternMaxByteLen) {
+            const res = try self.strInterns.getOrPut(self.alloc, str);
+            if (res.found_existing) {
+                self.retainObject(res.value_ptr.*);
+                return Value.initPtr(res.value_ptr.*);
+            } else {
+                const obj = try self.allocStringObject(str, utf8);
+                res.key_ptr.* = obj.astring.getConstSlice();
+                res.value_ptr.* = obj;
+                return Value.initPtr(obj);
             }
-            res.key_ptr.* = dst;
-            res.value_ptr.* = obj;
+        } else {
+            const obj = try self.allocStringObject(str, utf8);
+            return Value.initPtr(obj);
+        }
+    }
+
+    fn allocStringConcatObject(self: *VM, str: []const u8, str2: []const u8, utf8: bool) !*HeapObject {
+        const len = @intCast(u32, str.len + str2.len);
+        var obj: *HeapObject = undefined;
+        var dst: []u8 = undefined;
+        if (utf8) {
+            if (str.len <= MaxPoolObjectUstringByteLen) {
+                obj = try self.allocPoolObject();
+            } else {
+                const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 16);
+                obj = @ptrCast(*HeapObject, objSlice.ptr);
+            }
+            obj.ustring = .{
+                .structId = UstringT,
+                .rc = 1,
+                .len = len,
+                .mruIdx = 0,
+                .bufStart = undefined,
+            };
+            dst = obj.ustring.getSlice();
+            std.mem.copy(u8, dst[0..str.len], str);
+            std.mem.copy(u8, dst[str.len..], str2);
+        } else {
+            if (str.len <= MaxPoolObjectAstringByteLen) {
+                obj = try self.allocPoolObject();
+            } else {
+                const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 16);
+                obj = @ptrCast(*HeapObject, objSlice.ptr);
+            }
+            obj.astring = .{
+                .structId = AstringT,
+                .rc = 1,
+                .len = len,
+                .bufStart = undefined,
+            };
+            dst = obj.astring.getSlice();
+            std.mem.copy(u8, dst[0..str.len], str);
+            std.mem.copy(u8, dst[str.len..], str2);
+        }
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return obj;
+    }
+
+    fn getOrAllocStringConcat(self: *VM, str: []const u8, str2: []const u8, utf8: bool) !Value {
+        if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
+            const ctx = StringConcatContext{};
+            const concat = StringConcat{
+                .left = str,
+                .right = str2,
+            };
+            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+            if (res.found_existing) {
+                self.retainObject(res.value_ptr.*);
+                return Value.initPtr(res.value_ptr.*);
+            } else {
+                const obj = try self.allocStringConcatObject(str, str2, utf8);
+                res.key_ptr.* = obj.astring.getConstSlice();
+                res.value_ptr.* = obj;
+                return Value.initPtr(obj);
+            }
+        } else {
+            const obj = try self.allocStringConcatObject(str, str2, utf8);
             return Value.initPtr(obj);
         }
     }
@@ -2330,7 +2354,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             if (obj.astring.len <= MaxPoolObjectAstringByteLen) {
                 vm.freeObject(obj);
             } else {
-                const slice = @ptrCast([*]u8, obj)[0..12 + obj.astring.len];
+                const slice = @ptrCast([*]u8, obj)[0..16 + obj.astring.len];
                 vm.alloc.free(slice);
             }
         },
@@ -2903,16 +2927,20 @@ pub const Fiber = packed struct {
     parentDstLocal: u8,
 };
 
-/// 28 byte length can fit inside a Heap pool object.
-const MaxPoolObjectAstringByteLen = 28;
+/// 24 byte length can fit inside a Heap pool object.
+pub const MaxPoolObjectAstringByteLen = 24;
 
-const Astring = packed struct {
+pub const Astring = packed struct {
     structId: StructId,
     rc: u32,
     len: u32,
+    /// Unused placeholder to match the same `bufStart` offset as Ustring.
+    /// This makes string building easier since it can just change the `structId` to upgrade from Astring to Ustring.
+    /// Also simplifies getting the string slice if the HeapObject is known to be a string.
+    unused: u32 = undefined,
     bufStart: u8,
 
-    inline fn getSlice(self: *Astring) []u8 {
+    pub inline fn getSlice(self: *Astring) []u8 {
         return @ptrCast([*]u8, &self.bufStart)[0..self.len];
     }
 
@@ -2922,7 +2950,7 @@ const Astring = packed struct {
 };
 
 /// 24 byte length can fit inside a Heap pool object.
-const MaxPoolObjectUstringByteLen = 28;
+pub const MaxPoolObjectUstringByteLen = 24;
 
 const Ustring = packed struct {
     structId: StructId,
@@ -2931,7 +2959,7 @@ const Ustring = packed struct {
     mruIdx: u32,
     bufStart: u8,
 
-    inline fn getSlice(self: *Ustring) []u8 {
+    pub inline fn getSlice(self: *Ustring) []u8 {
         return @ptrCast([*]u8, &self.bufStart)[0..self.len];
     }
 
@@ -3361,19 +3389,19 @@ pub const UserVM = struct {
     }
 
     pub inline fn allocString(self: *UserVM, str: []const u8, utf8: bool) !Value {
-        return @ptrCast(*VM, self).allocString(str, utf8);
+        return @ptrCast(*VM, self).getOrAllocString(str, utf8);
     }
 
     pub inline fn allocStringInfer(self: *UserVM, str: []const u8) !Value {
         return @ptrCast(*VM, self).allocString(str, !@call(.never_inline, isAstring, .{str}));
     }
 
-    pub inline fn allocOwnedString(self: *UserVM, str: []u8) !Value {
-        return @ptrCast(*VM, self).allocOwnedString(str);
+    pub inline fn allocOwnedString(self: *UserVM, str: *HeapObject) !Value {
+        return @ptrCast(*VM, self).getOrAllocOwnedString(str);
     }
 
     pub inline fn allocStringConcat(self: *UserVM, left: []const u8, right: []const u8, utf8: bool) !Value {
-        return @ptrCast(*VM, self).allocStringConcat(left, right, utf8);
+        return @ptrCast(*VM, self).getOrAllocStringConcat(left, right, utf8);
     }
 
     pub inline fn allocObjectSmall(self: *UserVM, sid: StructId, fields: []const Value) !Value {
@@ -5458,7 +5486,7 @@ pub fn isAstring(str: []const u8) linksection(cy.Section) bool {
             // Remaining use cpu.
             return isAstringScalar(str[i..]);
         }
-        return false;
+        return true;
     } else {
         return isAstringScalar(str);
     }

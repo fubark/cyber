@@ -19,7 +19,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     return mod;
 }
 
-pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;
     const act = args[0];
     const exp = args[1];

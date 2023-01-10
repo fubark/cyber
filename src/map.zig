@@ -155,6 +155,8 @@ pub const ValueMap = struct {
                 const obj = stdx.ptrAlignCast(*cy.HeapObject, key.asPointer().?);
                 if (obj.common.structId == cy.AstringT) {
                     return std.hash.Wyhash.hash(0, obj.astring.getConstSlice());
+                } else if (obj.common.structId == cy.UstringT) {
+                    return std.hash.Wyhash.hash(0, obj.ustring.getConstSlice());
                 } else stdx.unsupported();
             } else {
                 switch (key.getTag()) {
@@ -177,6 +179,8 @@ pub const ValueMap = struct {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, b.asPointer().?);
             if (obj.common.structId == cy.AstringT) {
                 return std.mem.eql(u8, a, obj.astring.getConstSlice());
+            } else if (obj.common.structId == cy.UstringT) {
+                return std.mem.eql(u8, a, obj.ustring.getConstSlice());
             } else return false;
         } else {
             switch (b.getTag()) {
@@ -200,23 +204,21 @@ pub const ValueMap = struct {
             if (a.isPointer()) {
                 const aObj = stdx.ptrAlignCast(*cy.HeapObject, a.asPointer().?);
                 if (aObj.common.structId == cy.AstringT) {
+                    const bStr = vm.tryValueAsString(b) orelse return false;
                     const aStr = aObj.astring.getConstSlice();
-                    if (b.getUserTag() == .string) {
-                        const bStr = vm.valueAsString(b);
-                        return std.mem.eql(u8, aStr, bStr);
-                    } return false;
+                    return std.mem.eql(u8, aStr, bStr);
+                } else if (aObj.common.structId == cy.UstringT) {
+                    const bStr = vm.tryValueAsString(b) orelse return false;
+                    const aStr = aObj.ustring.getConstSlice();
+                    return std.mem.eql(u8, aStr, bStr);
                 } else stdx.unsupported();
             } else {
                 switch (a.getTag()) {
                     cy.StaticAstringT => {
-                        if (b.isString()) {
-                            const aSlice = a.asStaticStringSlice();
-                            const aStr = vm.strBuf[aSlice.start..aSlice.end];
-                            const bStr = vm.valueAsString(b);
-                            return std.mem.eql(u8, aStr, bStr);
-                        } else {
-                            stdx.unsupported();
-                        }
+                        const bStr = vm.tryValueAsString(b) orelse return false;
+                        const aSlice = a.asStaticStringSlice();
+                        const aStr = vm.strBuf[aSlice.start..aSlice.end];
+                        return std.mem.eql(u8, aStr, bStr);
                     },
                     else => {
                         stdx.unsupported();

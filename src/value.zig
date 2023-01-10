@@ -120,6 +120,9 @@ pub const Value = packed union {
             if (obj.common.structId == cy.AstringT) {
                 const str = obj.astring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
+            } else if (obj.common.structId == cy.UstringT) {
+                const str = obj.ustring.getConstSlice();
+                return std.fmt.parseFloat(f64, str) catch 0;
             } else stdx.panicFmt("unexpected struct {}", .{obj.common.structId});
         } else {
             switch (self.getTag()) {
@@ -140,6 +143,8 @@ pub const Value = packed union {
                 const obj = self.asHeapObject(*cy.HeapObject);
                 if (obj.common.structId == cy.AstringT) {
                     return obj.astring.len > 0;
+                } else if (obj.common.structId == cy.UstringT) {
+                    return obj.ustring.len > 0;
                 } else {
                     return true;
                 }
@@ -161,7 +166,7 @@ pub const Value = packed union {
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
-            return obj.common.structId == cy.AstringT;
+            return obj.common.structId == cy.AstringT or obj.common.structId == cy.UstringT;
         } else {
             return self.assumeNotPtrIsStaticString();
         }

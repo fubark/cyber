@@ -95,7 +95,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
             };
         }
     } else {
-        lib.* = std.DynLib.open(gvm.valueToTempString(path)) catch |err| {
+        lib.* = std.DynLib.open(vm.valueToTempString(path)) catch |err| {
             log.debug("{}", .{err});
             return Value.initErrorTagLit(@enumToInt(TagLit.NotFound));
         };
@@ -107,7 +107,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
     defer alloc.free(cfuncPtrs);
     const symf = gvm.ensureFieldSym("sym") catch stdx.fatal();
     for (cfuncs.items()) |cfunc, i| {
-        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
+        const sym = vm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const symz = std.cstr.addNullByte(alloc, sym) catch stdx.fatal();
         defer alloc.free(symz);
         if (lib.lookup(*anyopaque, symz)) |ptr| {
@@ -144,7 +144,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
     const argsf = gvm.ensureFieldSym("args") catch stdx.fatal();
     const retf = gvm.ensureFieldSym("ret") catch stdx.fatal();
     for (cfuncs.items()) |cfunc| {
-        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
+        const sym = vm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const cargsv = gvm.getField(cfunc, argsf) catch stdx.fatal();
         const ret = gvm.getField(cfunc, retf) catch stdx.fatal();
 
@@ -416,7 +416,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
 
     // Add binded symbols.
     for (cfuncs.items()) |cfunc, i| {
-        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
+        const sym = vm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const symz = std.cstr.addNullByte(alloc, sym) catch stdx.fatal();
         defer alloc.free(symz);
         _ = tcc.tcc_add_symbol(state, symz.ptr, cfuncPtrs[i]);
@@ -427,11 +427,11 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
     }
 
     // Create vm function pointers and put in map.
-    const map = gvm.allocEmptyMap() catch stdx.fatal();
+    const map = vm.allocEmptyMap() catch stdx.fatal();
     const cyState = gvm.allocTccState(state.?, lib) catch stdx.fatal();
     gvm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
     for (cfuncs.items()) |cfunc| {
-        const sym = gvm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
+        const sym = vm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
         const cySym = std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0}) catch stdx.fatal();
         defer alloc.free(cySym);
         const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
@@ -439,7 +439,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
         };
 
         const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
-        const key = vm.allocString(sym) catch stdx.fatal();
+        const key = vm.allocStringInfer(sym) catch stdx.fatal();
         const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
@@ -502,15 +502,19 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
         stdx.fatal();
     };
 
-    const map = gvm.allocEmptyMap() catch stdx.fatal();
-    const outKey = vm.allocString("out") catch stdx.fatal();
-    const out = vm.allocOwnedString(res.stdout) catch stdx.fatal();
+    const map = vm.allocEmptyMap() catch stdx.fatal();
+    const outKey = vm.allocString("out", false) catch stdx.fatal();
+    // TODO: Use allocOwnedString
+    defer alloc.free(res.stdout);
+    const out = vm.allocStringInfer(res.stdout) catch stdx.fatal();
     gvm.setIndex(map, outKey, out) catch stdx.fatal();
-    const errKey = vm.allocString("err") catch stdx.fatal();
-    const err = vm.allocOwnedString(res.stderr) catch stdx.fatal();
+    const errKey = vm.allocString("err", false) catch stdx.fatal();
+    // TODO: Use allocOwnedString
+    defer alloc.free(res.stderr);
+    const err = vm.allocStringInfer(res.stderr) catch stdx.fatal();
     gvm.setIndex(map, errKey, err) catch stdx.fatal();
     if (res.term == .Exited) {
-        const exitedKey = vm.allocString("exited") catch stdx.fatal();
+        const exitedKey = vm.allocString("exited", false) catch stdx.fatal();
         gvm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
     }
     return map;
@@ -529,7 +533,9 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .argv = &.{ "curl", url },
     }) catch stdx.fatal();
     alloc.free(res.stderr);
-    return vm.allocOwnedString(res.stdout) catch stdx.fatal();
+    defer vm.allocator().free(res.stdout);
+    // TODO: Use allocOwnedString
+    return vm.allocStringInfer(res.stdout) catch stdx.fatal();
 }
 
 pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -538,7 +544,9 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
             return Value.initErrorTagLit(@enumToInt(TagLit.EndOfStream));
         } else stdx.fatal();
     };
-    return vm.allocOwnedString(input) catch stdx.fatal();
+    defer vm.allocator().free(input);
+    // TODO: Use allocOwnedString
+    return vm.allocStringInfer(input) catch stdx.fatal();
 }
 
 pub fn int(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -625,14 +633,16 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             const map = stdx.ptrAlignCast(*cy.HeapObject, mapVal.asPointer().?);
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
-                const key = try self.allocString(entry.key_ptr.*);
+                const key = try self.allocStringInfer(entry.key_ptr.*);
                 stdMapPut(self, map, key, child);
             }
             return mapVal;
         },
         .string => {
             const str = try val.allocString();
-            return try gvm.allocOwnedString(str);
+            defer val.alloc.free(str);
+            // TODO: Use allocOwnedString
+            return try self.allocStringInfer(str);
         },
         .number => {
             return Value.initF64(try val.asF64());
@@ -664,15 +674,19 @@ pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     return Value.None;
 }
 
-pub fn readAll(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    const input = std.io.getStdIn().readToEndAlloc(gvm.alloc, 10e8) catch stdx.fatal();
-    return gvm.allocOwnedString(input) catch stdx.fatal();
+pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    const input = std.io.getStdIn().readToEndAlloc(vm.allocator(), 10e8) catch stdx.fatal();
+    defer vm.allocator().free(input);
+    // TODO: Use allocOwnString.
+    return vm.allocStringInfer(input) catch stdx.fatal();
 }
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempString(args[0]);
     const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch stdx.fatal();
-    return vm.allocOwnedString(content) catch stdx.fatal();
+    defer vm.allocator().free(content);
+    // TODO: Use allocOwnedString.
+    return vm.allocStringInfer(content) catch stdx.fatal();
 }
 
 pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -687,8 +701,8 @@ pub fn string(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     if (val.isString()) {
         return val;
     } else {
-        const str = gvm.valueToTempString(val);
-        return vm.allocString(str) catch stdx.fatal();
+        const str = vm.valueToTempString(val);
+        return vm.allocStringInfer(str) catch stdx.fatal();
     }
 }
 

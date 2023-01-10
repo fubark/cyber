@@ -804,7 +804,7 @@ pub const VM = struct {
 
     // TODO: If no such string intern exists, `str` is added as a string intern.
     // Otherwise, `str` is freed and the existing string intern is retained and returned.
-    pub fn allocOwnedString(self: *VM, str: []const u8) linksection(cy.HotSection) !Value {
+    pub fn allocOwnedString(self: *VM, str: *HeapObject) linksection(cy.HotSection) !Value {
         _ = self;
         _ = str;
         stdx.unsupported();
@@ -909,7 +909,7 @@ pub const VM = struct {
     }
 
     pub fn allocStringTemplate(self: *VM, strs: []const cy.OpData, vals: []const Value) !Value {
-        const firstStr = self.valueAsString(Value.initRaw(gvm.consts[strs[0].arg].val));
+        const firstStr = self.valueAsStaticString(Value.initRaw(self.consts[strs[0].arg].val));
         try self.u8Buf.resize(self.alloc, firstStr.len);
         std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
@@ -917,7 +917,7 @@ pub const VM = struct {
         for (vals) |val, i| {
             self.writeValueToString(writer, val);
             release(self, val);
-            try self.u8Buf.appendSlice(self.alloc, self.valueAsString(Value.initRaw(gvm.consts[strs[i+1].arg].val)));
+            try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].arg].val)));
         }
 
         const isAscii = isAstring(self.u8Buf.items());
@@ -2109,10 +2109,36 @@ pub const VM = struct {
         self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
     }
 
-    pub fn valueAsString(self: *const VM, val: Value) []const u8 {
+    fn valueAsStaticString(self: *const VM, val: Value) linksection(cy.HotSection) []const u8 {
+        const slice = val.asStaticStringSlice();
+        return self.strBuf[slice.start..slice.end];
+    }
+
+    pub fn tryValueAsString(self: *const VM, val: Value) linksection(cy.Section) ?[]const u8 {
+        if (val.isPointer()) {
+            const obj = val.asHeapObject(*HeapObject);
+            if (obj.common.structId == cy.AstringT) {
+                return obj.astring.getConstSlice();
+            } else if (obj.common.structId == cy.UstringT) {
+                return obj.ustring.getConstSlice();
+            } else return null;
+        } else {
+            if (val.assumeNotPtrIsStaticString()) {
+                const slice = val.asStaticStringSlice();
+                return self.strBuf[slice.start..slice.end];
+            } else return null;
+        }
+        return null;
+    }
+
+    pub fn valueAsString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         if (val.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
-            return obj.astring.getConstSlice();
+            if (obj.common.structId == cy.AstringT) {
+                return obj.astring.getConstSlice();
+            } else if (obj.common.structId == cy.UstringT) {
+                return obj.ustring.getConstSlice();
+            } else unreachable;
         } else {
             // Assume const string.
             const slice = val.asStaticStringSlice();
@@ -2142,7 +2168,9 @@ pub const VM = struct {
             if (val.isPointer()) {
                 const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
                 if (obj.common.structId == AstringT) {
-                    return obj.astring.getSlice();
+                    return obj.astring.getConstSlice();
+                } else if (obj.common.structId == UstringT) {
+                    return obj.ustring.getConstSlice();
                 } else if (obj.common.structId == ListS) {
                     return std.fmt.bufPrint(&tempU8Buf, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
                 } else if (obj.common.structId == MapS) {
@@ -2303,6 +2331,15 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
                 vm.freeObject(obj);
             } else {
                 const slice = @ptrCast([*]u8, obj)[0..12 + obj.astring.len];
+                vm.alloc.free(slice);
+            }
+        },
+        UstringT => {
+            _ = vm.strInterns.remove(obj.ustring.getConstSlice());
+            if (obj.ustring.len <= MaxPoolObjectUstringByteLen) {
+                vm.freeObject(obj);
+            } else {
+                const slice = @ptrCast([*]u8, obj)[0..16 + obj.ustring.len];
                 vm.alloc.free(slice);
             }
         },
@@ -2469,7 +2506,7 @@ fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(cy.HotSection) 
     return Value.initBool(left.toF64() < right.toF64());
 }
 
-fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
+fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
     @setCold(true);
     if (left.isNumber()) {
         if (right.isNumber()) {
@@ -2479,10 +2516,13 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
     if (left.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
         if (obj.common.structId == AstringT) {
-            if (right.isString()) {
-                const str = obj.astring.getConstSlice();
-                return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
-            } else return Value.True;
+            const rstr = vm.tryValueAsString(right) orelse return Value.True;
+            const str = obj.astring.getConstSlice();
+            return Value.initBool(!std.mem.eql(u8, str, rstr));
+        } else if (obj.common.structId == UstringT) {
+            const rstr = vm.tryValueAsString(right) orelse return Value.True;
+            const str = obj.ustring.getConstSlice();
+            return Value.initBool(!std.mem.eql(u8, str, rstr));
         } else {
             if (right.isPointer()) {
                 return Value.initBool(@ptrCast(*anyopaque, obj) != right.asPointer().?);
@@ -2502,18 +2542,16 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
             cy.BooleanT => return Value.initBool(right.isPointer() or (left.asBool() != right.asBool())),
             cy.ErrorT => return Value.initBool(right.isPointer() or (left.asErrorTagLit() != right.asErrorTagLit())),
             cy.StaticAstringT => {
-                if (right.isString()) {
-                    const slice = left.asStaticStringSlice();
-                    const str = gvm.strBuf[slice.start..slice.end];
-                    return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
-                } else return Value.True;
+                const rstr = vm.tryValueAsString(right) orelse return Value.True;
+                const slice = left.asStaticStringSlice();
+                const str = vm.strBuf[slice.start..slice.end];
+                return Value.initBool(!std.mem.eql(u8, str, rstr));
             },
             cy.StaticUstringT => {
-                if (right.isString()) {
-                    const slice = left.asStaticStringSlice();
-                    const str = gvm.strBuf[slice.start..slice.end];
-                    return Value.initBool(!std.mem.eql(u8, str, gvm.valueAsString(right)));
-                } else return Value.True;
+                const rstr = vm.tryValueAsString(right) orelse return Value.True;
+                const slice = left.asStaticStringSlice();
+                const str = vm.strBuf[slice.start..slice.end];
+                return Value.initBool(!std.mem.eql(u8, str, rstr));
             },
             cy.UserTagLiteralT => return Value.initBool(right.isPointer() or (left.asTagLiteralId() != right.asTagLiteralId())),
             else => stdx.panic("unexpected tag"),
@@ -2521,7 +2559,7 @@ fn evalCompareNot(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy
     }
 }
 
-fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
+fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (left.isNumber()) {
         if (right.isNumber()) {
@@ -2531,10 +2569,13 @@ fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
     if (left.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
         if (obj.common.structId == AstringT) {
-            if (right.isString()) {
-                const str = obj.astring.getConstSlice();
-                return Value.initBool(std.mem.eql(u8, str, gvm.valueAsString(right)));
-            } else return Value.False;
+            const rstr = vm.tryValueAsString(right) orelse return Value.False;
+            const str = obj.astring.getConstSlice();
+            return Value.initBool(std.mem.eql(u8, str, rstr));
+        } else if (obj.common.structId == UstringT) {
+            const rstr = vm.tryValueAsString(right) orelse return Value.False;
+            const str = obj.ustring.getConstSlice();
+            return Value.initBool(std.mem.eql(u8, str, rstr));
         } else {
             if (right.isPointer()) {
                 return Value.initBool(@ptrCast(*anyopaque, obj) == right.asPointer().?);
@@ -2554,18 +2595,16 @@ fn evalCompare(left: Value, right: Value) linksection(cy.HotSection) Value {
             cy.BooleanT => return Value.initBool(!right.isPointer() and (left.asBool() == right.asBool())),
             cy.ErrorT => return Value.initBool(!right.isPointer() and (left.asErrorTagLit() == right.asErrorTagLit())),
             cy.StaticAstringT => {
-                if (right.isString()) {
-                    const slice = left.asStaticStringSlice();
-                    const str = gvm.strBuf[slice.start..slice.end];
-                    return Value.initBool(std.mem.eql(u8, str, gvm.valueAsString(right)));
-                } else return Value.False;
+                const rstr = vm.tryValueAsString(right) orelse return Value.False;
+                const slice = left.asStaticStringSlice();
+                const str = vm.strBuf[slice.start..slice.end];
+                return Value.initBool(std.mem.eql(u8, str, rstr));
             },
             cy.StaticUstringT => {
-                if (right.isString()) {
-                    const slice = left.asStaticStringSlice();
-                    const str = gvm.strBuf[slice.start..slice.end];
-                    return Value.initBool(std.mem.eql(u8, str, gvm.valueAsString(right)));
-                } else return Value.False;
+                const rstr = vm.tryValueAsString(right) orelse return Value.False;
+                const slice = left.asStaticStringSlice();
+                const str = vm.strBuf[slice.start..slice.end];
+                return Value.initBool(std.mem.eql(u8, str, rstr));
             },
             cy.UserTagLiteralT => return Value.initBool(!right.isPointer() and (left.asTagLiteralId() == right.asTagLiteralId())),
             else => stdx.panic("unexpected tag"),
@@ -2699,6 +2738,9 @@ fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
         const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
         if (obj.common.structId == cy.AstringT) {
             const str = obj.astring.getConstSlice();
+            return std.fmt.parseFloat(f64, str) catch 0;
+        } else if (obj.common.structId == cy.UstringT) {
+            const str = obj.ustring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
         } else return gvm.panic("Cannot convert struct to number");
     } else {
@@ -3318,16 +3360,20 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).allocListFill(val, n);
     }
 
-    pub inline fn allocString(self: *UserVM, str: []const u8) !Value {
-        return @ptrCast(*VM, self).allocString(str, false);
+    pub inline fn allocString(self: *UserVM, str: []const u8, utf8: bool) !Value {
+        return @ptrCast(*VM, self).allocString(str, utf8);
+    }
+
+    pub inline fn allocStringInfer(self: *UserVM, str: []const u8) !Value {
+        return @ptrCast(*VM, self).allocString(str, !@call(.never_inline, isAstring, .{str}));
     }
 
     pub inline fn allocOwnedString(self: *UserVM, str: []u8) !Value {
         return @ptrCast(*VM, self).allocOwnedString(str);
     }
 
-    pub inline fn allocStringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
-        return @ptrCast(*VM, self).allocStringConcat(left, right);
+    pub inline fn allocStringConcat(self: *UserVM, left: []const u8, right: []const u8, utf8: bool) !Value {
+        return @ptrCast(*VM, self).allocStringConcat(left, right, utf8);
     }
 
     pub inline fn allocObjectSmall(self: *UserVM, sid: StructId, fields: []const Value) !Value {
@@ -3443,16 +3489,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             dumpEvalOp(vm, pc);
         }
         switch (pc[0].code) {
-            .true => {
-                framePtr[pc[1].arg] = Value.True;
-                pc += 2;
-                continue;
-            },
-            .false => {
-                framePtr[pc[1].arg] = Value.False;
-                pc += 2;
-                continue;
-            },
             .none => {
                 framePtr[pc[1].arg] = Value.None;
                 pc += 2;
@@ -3538,23 +3574,17 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 3;
                 continue;
             },
-            .not => {
-                const val = framePtr[pc[1].arg];
-                framePtr[pc[2].arg] = evalNot(val);
-                pc += 3;
+            .compare => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = @call(.never_inline, evalCompare, .{vm, left, right});
+                pc += 4;
                 continue;
             },
             .compareNot => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalCompareNot, .{left, right});
-                pc += 4;
-                continue;
-            },
-            .compare => {
-                const left = framePtr[pc[1].arg];
-                const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalCompare, .{left, right});
+                framePtr[pc[3].arg] = @call(.never_inline, evalCompareNot, .{vm, left, right});
                 pc += 4;
                 continue;
             },
@@ -3567,6 +3597,40 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             //     gvm.stack[gvm.framePtr + dst] = Value.initBool(left.asF64() < right.asF64());
             //     continue;
             // },
+            .add => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initF64(left.asF64() + right.asF64());
+                } else {
+                    framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ left, right });
+                }
+                pc += 4;
+                continue;
+            },
+            .addInt => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = Value.initI32(left.asI32() + right.asI32());
+                pc += 4;
+                continue;
+            },
+            .minus => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
+                    Value.initF64(left.asF64() - right.asF64())
+                else @call(.never_inline, evalMinusFallback, .{left, right});
+                pc += 4;
+                continue;
+            },
+            .minusInt => {
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = Value.initI32(left.asI32() - right.asI32());
+                pc += 4;
+                continue;
+            },
             .less => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
@@ -3608,38 +3672,20 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
                 continue;
             },
-            .add => {
-                const left = framePtr[pc[1].arg];
-                const right = framePtr[pc[2].arg];
-                if (Value.bothNumbers(left, right)) {
-                    framePtr[pc[3].arg] = Value.initF64(left.asF64() + right.asF64());
-                } else {
-                    framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ left, right });
-                }
-                pc += 4;
+            .true => {
+                framePtr[pc[1].arg] = Value.True;
+                pc += 2;
                 continue;
             },
-            .addInt => {
-                const left = framePtr[pc[1].arg];
-                const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = Value.initI32(left.asI32() + right.asI32());
-                pc += 4;
+            .false => {
+                framePtr[pc[1].arg] = Value.False;
+                pc += 2;
                 continue;
             },
-            .minus => {
-                const left = framePtr[pc[1].arg];
-                const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
-                    Value.initF64(left.asF64() - right.asF64())
-                else @call(.never_inline, evalMinusFallback, .{left, right});
-                pc += 4;
-                continue;
-            },
-            .minusInt => {
-                const left = framePtr[pc[1].arg];
-                const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = Value.initI32(left.asI32() - right.asI32());
-                pc += 4;
+            .not => {
+                const val = framePtr[pc[1].arg];
+                framePtr[pc[2].arg] = evalNot(val);
+                pc += 3;
                 continue;
             },
             .stringTemplate => {

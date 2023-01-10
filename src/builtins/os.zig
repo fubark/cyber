@@ -42,18 +42,22 @@ pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) void {
 
 pub fn cwd(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const res = std.process.getCwdAlloc(vm.allocator()) catch fatal();
-    return vm.allocOwnedString(res) catch fatal();
+    defer vm.allocator().free(res);
+    // TODO: Use allocOwnedString
+    return vm.allocStringInfer(res) catch fatal();
 }
 
 pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const path = std.fs.selfExePathAlloc(vm.allocator()) catch fatal();
-    return vm.allocOwnedString(path) catch fatal();
+    defer vm.allocator().free(path);
+    // TODO: Use allocOwnedString
+    return vm.allocStringInfer(path) catch fatal();
 }
 
 pub fn getEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const key = vm.valueToTempString(args[0]);
     const res = std.os.getenv(key) orelse return Value.None;
-    return vm.allocString(res) catch stdx.fatal();
+    return vm.allocStringInfer(res) catch stdx.fatal();
 }
 
 pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
@@ -63,8 +67,8 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const map = vm.allocEmptyMap() catch stdx.fatal();
     var iter = env.iterator();
     while (iter.next()) |entry| {
-        const key = vm.allocString(entry.key_ptr.*) catch stdx.fatal();
-        const val = vm.allocString(entry.value_ptr.*) catch stdx.fatal();
+        const key = vm.allocStringInfer(entry.key_ptr.*) catch stdx.fatal();
+        const val = vm.allocStringInfer(entry.value_ptr.*) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
     return map;
@@ -77,7 +81,9 @@ pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
 pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempString(args[0]);
     const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch stdx.fatal();
-    return vm.allocOwnedString(res) catch stdx.fatal();
+    defer vm.allocator().free(res);
+    // TODO: Use allocOwnedString.
+    return vm.allocStringInfer(res) catch stdx.fatal();
 }
 
 pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

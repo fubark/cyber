@@ -699,7 +699,7 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
         const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
         if (getLineEnd(readBuf[obj.file.curPos..obj.file.readBufEnd])) |end| {
             // Found new line.
-            const line = vm.allocString(readBuf[obj.file.curPos..obj.file.curPos+end]) catch stdx.fatal();
+            const line = vm.allocStringInfer(readBuf[obj.file.curPos..obj.file.curPos+end]) catch stdx.fatal();
 
             // Advance pos.
             obj.file.curPos += @intCast(u32, end);
@@ -725,7 +725,9 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
                 // End of stream.
                 obj.file.iterLines = false;
                 if (lineBuf.items.len > 0) {
-                    return vm.allocOwnedString(lineBuf.toOwnedSlice() catch stdx.fatal()) catch stdx.fatal();
+                    // TODO: Use allocOwnedString
+                    defer lineBuf.deinit();
+                    return vm.allocStringInfer(lineBuf.items) catch stdx.fatal();
                 } else {
                     return Value.None;
                 }
@@ -738,7 +740,9 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
                 obj.file.curPos = @intCast(u32, end);
                 obj.file.readBufEnd = @intCast(u32, bytesRead);
 
-                return vm.allocOwnedString(lineBuf.toOwnedSlice() catch stdx.fatal()) catch stdx.fatal();
+                // TODO: Use allocOwnedString
+                defer lineBuf.deinit();
+                return vm.allocStringInfer(lineBuf.items) catch stdx.fatal();
             }
         }
     } else {

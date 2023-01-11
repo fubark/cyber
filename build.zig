@@ -14,6 +14,8 @@ pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
+    const selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
+
     {
         const exe = b.addExecutable("cyber", "src/main.zig");
         exe.setBuildMode(mode);
@@ -44,8 +46,9 @@ pub fn build(b: *std.build.Builder) !void {
         mimalloc.addPackage(exe);
         mimalloc.buildAndLink(exe, .{});
         tcc.addPackage(exe);
-        tcc.buildAndLink(exe, .{});
-
+        tcc.buildAndLink(exe, .{
+            .selinux = selinux,
+        });
         b.step("cli", "Build main cli.").dependOn(&exe.step);
     }
 
@@ -64,16 +67,22 @@ pub fn build(b: *std.build.Builder) !void {
         step.rdynamic = true;
 
         tcc.addPackage(step);
-        tcc.buildAndLink(step, .{});
+        tcc.buildAndLink(step, .{
+            .selinux = selinux,
+        });
 
-        const traceTest = addTraceTest(b, mode, target);
+        const traceTest = addTraceTest(b, mode, target, .{
+            .selinux = selinux,
+        });
         traceTest.step.dependOn(&step.step);
         b.step("test", "Run tests.").dependOn(&traceTest.step);
     }
 
     {
         // Just trace test.
-        const traceTest = addTraceTest(b, mode, target);
+        const traceTest = addTraceTest(b, mode, target, .{
+            .selinux = selinux,
+        });
         b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
     }
 
@@ -82,7 +91,11 @@ pub fn build(b: *std.build.Builder) !void {
     b.step("version", "Get the short version.").dependOn(&printStep.step);
 }
 
-fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget) *std.build.LibExeObjStep {
+const Config = struct {
+    selinux: bool = false,
+};
+
+fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, config: Config) *std.build.LibExeObjStep {
     const step = b.addTest("./test/trace_test.zig");
     step.setBuildMode(mode);
     step.setTarget(target);
@@ -96,7 +109,9 @@ fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.C
     step.addPackage(stdxPkg);
 
     tcc.addPackage(step);
-    tcc.buildAndLink(step, .{});
+    tcc.buildAndLink(step, .{
+        .selinux = config.selinux,
+    });
     return step;
 }
 

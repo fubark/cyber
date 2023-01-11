@@ -13,10 +13,10 @@ pub fn addPackage(step: *std.build.LibExeObjStep) void {
 }
 
 const BuildOptions = struct {
+    selinux: bool = false,
 };
 
 pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
-    _ = opts;
     const b = step.builder;
     const lib = b.addStaticLibrary("mimalloc", null);
     lib.setTarget(step.target);
@@ -26,6 +26,9 @@ pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
     lib.disable_sanitize_c = true;
 
     var c_flags = std.ArrayList([]const u8).init(b.allocator);
+    if (opts.selinux) {
+        c_flags.append("-DHAVE_SELINUX=1") catch @panic("error");
+    }
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
     if (step.target.getOsTag() == .windows) {
     }

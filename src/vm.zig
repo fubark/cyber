@@ -1019,12 +1019,40 @@ pub const VM = struct {
         }
     }
 
+    fn allocRawStringConcat(self: *VM, str: []const u8, str2: []const u8) !Value {
+        const len = @intCast(u32, str.len + str2.len);
+        var obj: *HeapObject = undefined;
+        if (len <= MaxPoolObjectRawStringByteLen) {
+            obj = try self.allocPoolObject();
+        } else {
+            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 12);
+            obj = @ptrCast(*HeapObject, objSlice.ptr);
+        }
+        obj.rawstring = .{
+            .structId = RawStringT,
+            .rc = 1,
+            .len = len,
+            .bufStart = undefined,
+        };
+        const dst = @ptrCast([*]u8, &obj.rawstring.bufStart)[0..len];
+        std.mem.copy(u8, dst[0..str.len], str);
+        std.mem.copy(u8, dst[str.len..], str2);
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
     fn allocStringConcatObject(self: *VM, str: []const u8, str2: []const u8, utf8: bool) !*HeapObject {
         const len = @intCast(u32, str.len + str2.len);
         var obj: *HeapObject = undefined;
         var dst: []u8 = undefined;
         if (utf8) {
-            if (str.len <= MaxPoolObjectUstringByteLen) {
+            if (len <= MaxPoolObjectUstringByteLen) {
                 obj = try self.allocPoolObject();
             } else {
                 const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 16);
@@ -1041,7 +1069,7 @@ pub const VM = struct {
             std.mem.copy(u8, dst[0..str.len], str);
             std.mem.copy(u8, dst[str.len..], str2);
         } else {
-            if (str.len <= MaxPoolObjectAstringByteLen) {
+            if (len <= MaxPoolObjectAstringByteLen) {
                 obj = try self.allocPoolObject();
             } else {
                 const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 16);
@@ -2207,9 +2235,20 @@ pub const VM = struct {
         return try self.alloc.dupe(u8, str);
     }
 
-    /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
     pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
+        return self.valueToTempStringCommon(val, undefined, false);
+    }
+
+    pub fn valueToTempString2(self: *const VM, val: Value, outAscii: *bool) linksection(cy.Section) []const u8 {
+        return self.valueToTempStringCommon(val, outAscii, true);
+    }
+
+    /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
+    fn valueToTempStringCommon(self: *const VM, val: Value, outAscii: *bool, comptime getAscii: bool) linksection(cy.Section) []const u8 {
         if (val.isNumber()) {
+            if (getAscii) {
+                outAscii.* = true;
+            }
             const f = val.asF64();
             if (Value.floatIsSpecial(f)) {
                 return std.fmt.bufPrint(&tempU8Buf, "{}", .{f}) catch stdx.fatal();
@@ -2224,41 +2263,84 @@ pub const VM = struct {
             if (val.isPointer()) {
                 const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
                 if (obj.common.structId == AstringT) {
+                    if (getAscii) {
+                        outAscii.* = true;
+                    }
                     return obj.astring.getConstSlice();
                 } else if (obj.common.structId == UstringT) {
+                    if (getAscii) {
+                        outAscii.* = false;
+                    }
                     return obj.ustring.getConstSlice();
                 } else if (obj.common.structId == RawStringT) {
+                    if (getAscii) {
+                        outAscii.* = false;
+                    }
                     return obj.rawstring.getConstSlice();
                 } else if (obj.common.structId == ListS) {
+                    if (getAscii) {
+                        outAscii.* = true;
+                    }
                     return std.fmt.bufPrint(&tempU8Buf, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
                 } else if (obj.common.structId == MapS) {
+                    if (getAscii) {
+                        outAscii.* = true;
+                    }
                     return std.fmt.bufPrint(&tempU8Buf, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
                 } else {
+                    if (getAscii) {
+                        outAscii.* = true;
+                    }
                     return self.structs.buf[obj.common.structId].name;
                 }
             } else {
                 switch (val.getTag()) {
-                    cy.NoneT => return "none",
+                    cy.NoneT => {
+                        if (getAscii) {
+                            outAscii.* = true;
+                        }
+                        return "none";
+                    },
                     cy.BooleanT => {
+                        if (getAscii) {
+                            outAscii.* = true;
+                        }
                         if (val.asBool()) return "true" else return "false";
                     },
                     cy.ErrorT => {
+                        if (getAscii) {
+                            outAscii.* = true;
+                        }
                         const litId = val.asErrorTagLit();
                         return std.fmt.bufPrint(&tempU8Buf, "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
                     },
                     cy.StaticAstringT => {
+                        if (getAscii) {
+                            outAscii.* = true;
+                        }
                         const slice = val.asStaticStringSlice();
                         return self.strBuf[slice.start..slice.end];
                     },
                     cy.StaticUstringT => {
+                        if (getAscii) {
+                            outAscii.* = false;
+                        }
                         const slice = val.asStaticStringSlice();
                         return self.strBuf[slice.start..slice.end];
                     },
                     cy.UserTagLiteralT => {
+                        if (getAscii) {
+                            outAscii.* = true;
+                        }
                         const litId = val.asTagLiteralId();
                         return std.fmt.bufPrint(&tempU8Buf, "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
                     },
-                    cy.IntegerT => return std.fmt.bufPrint(&tempU8Buf, "{}", .{val.asI32()}) catch stdx.fatal(),
+                    cy.IntegerT => {
+                        if (getAscii) {
+                            outAscii.* = true;
+                        }
+                        return std.fmt.bufPrint(&tempU8Buf, "{}", .{val.asI32()}) catch stdx.fatal();
+                    },
                     else => {
                         log.debug("unexpected tag {}", .{val.getTag()});
                         stdx.fatal();
@@ -3484,6 +3566,10 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).getOrAllocOwnedString(str);
     }
 
+    pub inline fn allocRawStringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
+        return @ptrCast(*VM, self).allocRawStringConcat(left, right);
+    }
+
     pub inline fn allocStringConcat(self: *UserVM, left: []const u8, right: []const u8, utf8: bool) !Value {
         return @ptrCast(*VM, self).getOrAllocStringConcat(left, right, utf8);
     }
@@ -3510,6 +3596,10 @@ pub const UserVM = struct {
 
     pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
         return @ptrCast(*const VM, self).valueToTempString(val);
+    }
+
+    pub inline fn valueToTempString2(self: *UserVM, val: Value, outUtf8: *bool) []const u8 {
+        return @ptrCast(*const VM, self).valueToTempString2(val, outUtf8);
     }
 
     pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {

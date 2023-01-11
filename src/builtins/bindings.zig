@@ -117,6 +117,7 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("string"); // Astring and Ustring share the same string user type.
     std.debug.assert(id == cy.StaticUstringT);
+    try self.addMethodSym(cy.StaticUstringT, append, cy.MethodSym.initNativeFunc1(staticUstringAppend));
     try self.addMethodSym(cy.StaticUstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
     try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(staticUstringIsAscii));
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
@@ -166,6 +167,7 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("string");
     std.debug.assert(id == cy.AstringT);
+    try self.addMethodSym(cy.AstringT, append, cy.MethodSym.initNativeFunc1(astringAppend));
     try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(astringCharAt));
     try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(astringCodeAt));
     try self.addMethodSym(cy.AstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith));
@@ -177,12 +179,14 @@ pub fn bindCore(self: *cy.VM) !void {
 
     id = try self.addStruct("string");
     std.debug.assert(id == cy.UstringT);
+    try self.addMethodSym(cy.UstringT, append, cy.MethodSym.initNativeFunc1(ustringAppend));
     try self.addMethodSym(cy.UstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith));
     try self.addMethodSym(cy.UstringT, isAscii, cy.MethodSym.initNativeFunc1(ustringIsAscii));
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith));
 
     id = try self.addStruct("rawstring");
     std.debug.assert(id == cy.RawStringT);
+    try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(rawStringAppend));
     try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(rawStringCodeAt));
     try self.addMethodSym(cy.RawStringT, endsWith, cy.MethodSym.initNativeFunc1(rawStringEndsWith));
     try self.addMethodSym(cy.RawStringT, isAscii, cy.MethodSym.initNativeFunc1(rawStringIsAscii));
@@ -535,12 +539,63 @@ fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Va
     return Value.initF64(@intToFloat(f64, str.len()));
 }
 
-fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn astringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const str = obj.astring.getConstSlice();
+    var rascii: bool = undefined;
+    const rstr = vm.valueToTempString2(args[0], &rascii);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    if (rascii) {
+        return vm.allocStringConcat(str, rstr, false) catch fatal();
+    } else {
+        return vm.allocStringConcat(str, rstr, true) catch fatal();
+    }
+}
+
+fn ustringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const str = obj.ustring.getConstSlice();
+    const rstr = vm.valueToTempString(args[0]);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    return vm.allocStringConcat(str, rstr, true) catch fatal();
+}
+
+fn rawStringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const str = obj.rawstring.getConstSlice();
+    const rstr = vm.valueToTempString(args[0]);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    return vm.allocRawStringConcat(str, rstr) catch fatal();
+}
+
+fn staticUstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const slice = val.asStaticStringSlice();
     const str = vm.getStaticString(slice.start, slice.end);
     const rstr = vm.valueToTempString(args[0]);
-    if (vm_.isAstring(rstr)) {
+    defer {
+        vm.release(args[0]);
+    }
+    return vm.allocStringConcat(str, rstr, true) catch fatal();
+}
+
+fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    var rascii: bool = undefined;
+    const rstr = vm.valueToTempString2(args[0], &rascii);
+    defer vm.release(args[0]);
+    if (rascii) {
         return vm.allocStringConcat(str, rstr, false) catch fatal();
     } else {
         return vm.allocStringConcat(str, rstr, true) catch fatal();

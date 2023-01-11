@@ -1110,6 +1110,11 @@ test "Heap ASCII String." {
         \\str = '{pre}xyz'
         \\try t.eq(str, 'abcxyz')
         \\
+        \\-- append()
+        \\try t.eq(str.append('123'), 'abcxyz123')
+        \\try t.eq(str.append('123').isAscii(), true)
+        \\try t.eq(str.append('🦊').isAscii(), false)
+        \\
         \\-- charAt()
         \\try t.eq(str.charAt(1), 'b')
         \\
@@ -1160,6 +1165,9 @@ test "Heap UTF-8 String." {
         \\str = '{pre}xyz🐶'
         \\try t.eq(str, 'abc🦊xyz🐶')
         \\
+        \\-- append()
+        \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
+        \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)
         \\try t.eq(str.endsWith('xyz'), false)
@@ -1182,6 +1190,9 @@ test "Heap RawString." {
         \\
         \\str = rawstring('abc🦊xyz🐶')
         \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- append()
+        \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
         \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)
@@ -1248,6 +1259,8 @@ test "Static ASCII strings." {
         \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abcxyz123')
+        \\try t.eq(str.append('123').isAscii(), true)
+        \\try t.eq(str.append('🦊').isAscii(), false)
         \\
         \\-- charAt()
         \\try t.eq(str.charAt(-1), error(#OutOfBounds))
@@ -1312,6 +1325,9 @@ test "Static UTF-8 strings." {
         \\-- Single quote literal.
         \\str = 'abc🦊xyz🐶'
         \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- append()
+        \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
         \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)

@@ -1,7 +1,9 @@
 const std = @import("std");
+const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 
 /// Like `ArrayList` except the buffer is allocated as a `Astring` or `Ustring`.
+/// TODO: Might not need the Astring -> Ustring upgrade logic now that there is HeapRawStringBuilder.
 pub const HeapStringBuilder = struct {
     buf: []u8,
     len: u32,
@@ -232,3 +234,88 @@ pub const HeapRawStringBuilder = struct {
         try self.growTotalCapacityPrecise(alloc, betterCap);
     }
 };
+
+fn isAstringScalar(str: []const u8) linksection(cy.Section) bool {
+    for (str) |ch| {
+        if (ch & 0x80 > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+pub fn isAstring(str: []const u8) linksection(cy.Section) bool {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        var vbuf: @Vector(VecSize, u8) = undefined;
+        var i: usize = 0;
+        while (i + VecSize <= str.len) : (i += VecSize) {
+            vbuf = str[i..i+VecSize][0..VecSize].*;
+            const res = @reduce(.Or, vbuf);
+            if (res & 0x80 > 0) {
+                // Found non ascii char.
+                return false;
+            }
+        }
+        if (i < str.len) {
+            // Remaining use cpu.
+            return isAstringScalar(str[i..]);
+        }
+        return true;
+    } else {
+        return isAstringScalar(str);
+    }
+}
+
+/// Validates a utf8 string and returns the char length.
+/// If the char length returned is the same as the byte len, it's also a valid ascii string.
+/// TODO: Implement SIMD version.
+pub fn validateUtf8(s: []const u8) linksection(cy.Section) ?usize {
+    var charLen: usize = 0;
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return null;
+        if (i + cp_len > s.len) {
+            return null;
+        }
+        _ = std.unicode.utf8Decode(s[i .. i + cp_len]) catch {
+            return null;
+        };
+        i += cp_len;
+        charLen += 1;
+    }
+    return charLen;
+}
+
+pub fn utf8CharSliceAt(str: []const u8, idx: usize) ?[]const u8 {
+    const cp_len = std.unicode.utf8ByteSequenceLength(str[idx]) catch return null;
+    if (idx + cp_len > str.len) {
+        return null;
+    }
+    const slice = str[idx .. idx + cp_len];
+    _ = std.unicode.utf8Decode(slice) catch {
+        return null;
+    };
+    return slice;
+}
+
+pub fn ustringSeekCharIndexSliceAt(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) stdx.IndexSlice(u32) {
+    var iter = std.unicode.Utf8Iterator{
+        .bytes = str,
+        .i = 0,
+    };
+    var curCharIdx: u32 = 0;
+    if (charIdx >= seekCharIdx) {
+        iter.i = seekIdx;
+        curCharIdx = seekCharIdx;
+    }
+    while (true) {
+        const start = @intCast(u32, iter.i);
+        _ = iter.nextCodepointSlice();
+        if (curCharIdx == charIdx) {
+            return stdx.IndexSlice(u32).init(start, @intCast(u32, iter.i));
+        } else {
+            curCharIdx += 1;
+        }
+    }
+    stdx.fatal();
+}

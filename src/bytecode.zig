@@ -149,19 +149,22 @@ pub const ByteCodeBuffer = struct {
         return idx;
     }
 
-    pub fn getOrPushUstring(self: *ByteCodeBuffer, str: []const u8) !stdx.IndexSlice(u32) {
+    pub fn getOrPushUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !stdx.IndexSlice(u32) {
         const ctx = StringIndexContext{ .buf = &self.strBuf };
         const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
         const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
         if (res.found_existing) {
             return res.key_ptr.*;
         } else {
-            // Reserve extra 32-bit mru index.
-            try self.strBuf.appendSlice(self.alloc, &.{0, 0, 0, 0});
-
+            // Reserve 12 bytes for charLen, mruIdx, mruCharIdx.
+            try self.strBuf.ensureUnusedCapacity(self.alloc, 12);
             const start = @intCast(u32, self.strBuf.items.len);
+            @ptrCast(*align(1) u32, self.strBuf.items.ptr + start).* = charLen;
+            @ptrCast(*align(1) u32, self.strBuf.items.ptr + start + 4).* = 0;
+            @ptrCast(*align(1) u32, self.strBuf.items.ptr + start + 8).* = 0;
+            self.strBuf.items.len += 12;
             try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = stdx.IndexSlice(u32).init(start, @intCast(u32, self.strBuf.items.len));
+            res.key_ptr.* = stdx.IndexSlice(u32).init(start + 12, @intCast(u32, self.strBuf.items.len));
             return res.key_ptr.*;
         }
     }
@@ -181,12 +184,16 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn getOrPushStringValue(self: *ByteCodeBuffer, str: []const u8) linksection(cy.CompilerSection) !cy.Value {
-        if (cy.isAstring(str)) {
-            const slice = try self.getOrPushAstring(str);
-            return cy.Value.initStaticAstring(slice.start, @intCast(u15, slice.end - slice.start));
+        if (cy.validateUtf8(str)) |charLen| {
+            if (charLen == str.len) {
+                const slice = try self.getOrPushAstring(str);
+                return cy.Value.initStaticAstring(slice.start, @intCast(u15, slice.end - slice.start));
+            } else {
+                const slice = try self.getOrPushUstring(str, @intCast(u32, charLen));
+                return cy.Value.initStaticUstring(slice.start, @intCast(u15, slice.end - slice.start));
+            }
         } else {
-            const slice = try self.getOrPushUstring(str);
-            return cy.Value.initStaticUstring(slice.start, @intCast(u15, slice.end - slice.start));
+            return error.InvalidUtf8;
         }
     }
 

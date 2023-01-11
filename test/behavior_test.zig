@@ -1116,10 +1116,18 @@ test "Heap ASCII String." {
         \\try t.eq(str.append('🦊').isAscii(), false)
         \\
         \\-- charAt()
-        \\try t.eq(str.charAt(1), 'b')
+        \\try t.eq(str.charAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.charAt(0), 'a')
+        \\try t.eq(str.charAt(3), 'x')
+        \\try t.eq(str.charAt(5), 'z')
+        \\try t.eq(str.charAt(6), error(#OutOfBounds))
         \\
         \\-- codeAt()
-        \\try t.eq(str.codeAt(1), 98)
+        \\try t.eq(str.codeAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.codeAt(0), 97)
+        \\try t.eq(str.codeAt(3), 120)
+        \\try t.eq(str.codeAt(5), 122)
+        \\try t.eq(str.codeAt(6), error(#OutOfBounds))
         \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz'), true)
@@ -1168,6 +1176,22 @@ test "Heap UTF-8 String." {
         \\-- append()
         \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
         \\
+        \\-- charAt().
+        \\try t.eq(str.charAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.charAt(0), 'a')
+        \\try t.eq(str.charAt(0).isAscii(), true)
+        \\try t.eq(str.charAt(3), '🦊')
+        \\try t.eq(str.charAt(3).isAscii(), false)
+        \\try t.eq(str.charAt(7), '🐶')
+        \\try t.eq(str.charAt(8), error(#OutOfBounds))
+        \\
+        \\-- codeAt()
+        \\try t.eq(str.codeAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.codeAt(0), 97)
+        \\try t.eq(str.codeAt(3), 129418)
+        \\try t.eq(str.codeAt(7), 128054)
+        \\try t.eq(str.codeAt(8), error(#OutOfBounds))
+        \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)
         \\try t.eq(str.endsWith('xyz'), false)
@@ -1194,9 +1218,32 @@ test "Heap RawString." {
         \\-- append()
         \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
         \\
+        \\-- charAt().
+        \\try t.eq(str.charAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.charAt(0), 'a')
+        \\try t.eq(str.charAt(0).isAscii(), true)
+        \\try t.eq(str.charAt(3), '🦊')
+        \\try t.eq(str.charAt(3).isAscii(), false)
+        \\try t.eq(str.charAt(4), error(#InvalidChar))
+        \\try t.eq(str.charAt(10), '🐶')
+        \\try t.eq(str.charAt(13), error(#InvalidChar))
+        \\try t.eq(str.charAt(14), error(#OutOfBounds))
+        \\
+        \\-- codeAt()
+        \\try t.eq(str.codeAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.codeAt(0), 97)
+        \\try t.eq(str.codeAt(3), 129418)
+        \\try t.eq(str.codeAt(4), error(#InvalidChar))
+        \\try t.eq(str.codeAt(10), 128054)
+        \\try t.eq(str.codeAt(13), error(#InvalidChar))
+        \\try t.eq(str.codeAt(14), error(#OutOfBounds))
+        \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)
         \\try t.eq(str.endsWith('xyz'), false)
+        \\
+        \\-- insertByte()
+        \\try t.eq(str.insertByte(2, 97), 'abac🦊xyz🐶')
         \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)
@@ -1328,6 +1375,22 @@ test "Static UTF-8 strings." {
         \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
+        \\
+        \\-- charAt().
+        \\try t.eq(str.charAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.charAt(0), 'a')
+        \\try t.eq(str.charAt(0).isAscii(), true)
+        \\try t.eq(str.charAt(3), '🦊')
+        \\try t.eq(str.charAt(3).isAscii(), false)
+        \\try t.eq(str.charAt(7), '🐶')
+        \\try t.eq(str.charAt(8), error(#OutOfBounds))
+        \\
+        \\-- codeAt()
+        \\try t.eq(str.codeAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.codeAt(0), 97)
+        \\try t.eq(str.codeAt(3), 129418)
+        \\try t.eq(str.codeAt(7), 128054)
+        \\try t.eq(str.codeAt(8), error(#OutOfBounds))
         \\
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)

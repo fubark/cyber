@@ -34,6 +34,7 @@ pub const UserTagT = value.UserTagT;
 pub const UserTagLiteralT = value.UserTagLiteralT;
 pub const IntegerT = value.IntegerT;
 pub const NumberT = value.NumberT;
+pub const StaticUstringHeader = value.StaticUstringHeader;
 
 pub const ValueUserTag = value.ValueUserTag;
 
@@ -78,7 +79,6 @@ pub const RelFuncSigKey = vm.RelFuncSigKey;
 pub const RelFuncSigKeyContext = vm.RelFuncSigKeyContext;
 pub const AbsFuncSigKey = vm.AbsFuncSigKey;
 pub const AbsFuncSigKeyContext = vm.AbsFuncSigKeyContext;
-pub const isAstring = vm.isAstring;
 pub const Astring = vm.Astring;
 pub const RawString = vm.RawString;
 pub const MaxPoolObjectStringByteLen = vm.MaxPoolObjectAstringByteLen;
@@ -94,6 +94,10 @@ pub const List = list.List;
 const string = @import("string.zig");
 pub const HeapStringBuilder = string.HeapStringBuilder;
 pub const HeapRawStringBuilder = string.HeapRawStringBuilder;
+pub const isAstring = string.isAstring;
+pub const validateUtf8 = string.validateUtf8;
+pub const ustringSeekCharIndexSliceAt = string.ustringSeekCharIndexSliceAt;
+pub const utf8CharSliceAt = string.utf8CharSliceAt;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

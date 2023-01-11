@@ -52,6 +52,12 @@ pub const UserTagLiteralT: u32 = TagUserTagLiteral;
 pub const IntegerT: u32 = TagInteger;
 pub const NumberT: u32 = 8;
 
+pub const StaticUstringHeader = struct {
+    charLen: u32,
+    mruIdx: u32,
+    mruCharIdx: u32,
+};
+
 pub const ValuePair = struct {
     left: Value,
     right: Value,

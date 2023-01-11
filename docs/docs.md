@@ -16,8 +16,9 @@
 - [Data Types](#data-types)
     - [Booleans](#booleans)
     - [Numbers](#numbers)
-    - [Strings](#strings)
+    - [Strings](#strings) ([type](#object-string))
         - [String Interpolation](#string-interpolation)
+        - [rawstring](#raw-string) ([type](#object-rawstring))
     - [Lists](#lists)
     - [Maps](#maps)
     - [Objects](#objects)
@@ -408,11 +409,11 @@ Big numbers will be supported in a future version of Cyber.
 [To Top.](#table-of-contents)
 
 ### Strings.
-The [string](string-type) type represents a sequence of UTF-8 characters. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
+The `string` type represents a sequence of UTF-8 characters. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
 
-Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](string-buffer).
+Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](#string-buffer).
 
-A string is always UTF-8 validated. [rawstrings](raw-strings) outperform strings but you'll have to validate them and take care of indexing yourself.
+A string is always UTF-8 validated. [rawstrings](#raw-strings) outperform strings but you'll have to validate them and take care of indexing yourself.
 
 A single line string literal is surrounded in single quotes.
 ```text
@@ -459,6 +460,17 @@ poem = "line a
 
 [To Top.](#table-of-contents)
 
+#### object string
+| Method | Summary |
+| ------------- | ----- |
+| append(str string) string | Returns a new string that concats this string and `str`. | 
+| charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string.  | 
+| codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`.  | 
+| endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
+| isAscii() bool | Returns whether the string contains all ASCII characters. | 
+
+[To Top.](#table-of-contents)
+
 ### String Interpolation.
 
 You can embed expressions into string templates using braces.
@@ -476,6 +488,19 @@ str = 'Scoreboard: \{ Bob \} {points}'
 String templates can not contain nested string templates.
 
 [To Top.](#table-of-contents)
+
+### rawstring.
+A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 characters.
+
+#### object rawstring
+| Method | Summary |
+| ------------- | ----- |
+| append(str string) string | Returns a new string that concats this string and `str`. | 
+| charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
+| codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-9 character, `error(#InvalidChar)` is returned. | 
+| insertByte(idx number, byte number) string | Returns a new string with `byte` inserted at index `idx`. | 
+| isAscii() bool | Returns whether the string contains all ASCII characters. | 
+| endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
 
 ### Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.
@@ -1137,6 +1162,8 @@ object **File**
 | streamLines() Iterable\<rawstring\> | Equivalent to `streamLines(4096)`. |
 | streamLines(bufSize number) Iterable\<rawstring\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 
+[To Top.](#table-of-contents)
+
 ### Test Module.
 The `test` module contains utilities for testing.
 
@@ -1186,7 +1213,7 @@ The `CFunc` object lets you declare the argument and return types as [tag litera
 | #u32 | number | uint32_t, unsigned int |
 | #f32 | number | float |
 | #f64 | number | double |
-| #charPtrZ | string | char* (null terminated) |
+| #charPtrZ | rawstring | char* (null terminated) |
 | #ptr | opaque | void* |
 
 `bindLib` returns a map of the binded functions with the symbols as keys. These functions have a reference to an internal TCCState which owns the loaded JIT code.

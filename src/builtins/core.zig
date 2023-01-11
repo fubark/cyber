@@ -504,18 +504,18 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     };
 
     const map = vm.allocEmptyMap() catch stdx.fatal();
-    const outKey = vm.allocString("out", false) catch stdx.fatal();
+    const outKey = vm.allocAstring("out") catch stdx.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stdout);
     const out = vm.allocStringInfer(res.stdout) catch stdx.fatal();
     gvm.setIndex(map, outKey, out) catch stdx.fatal();
-    const errKey = vm.allocString("err", false) catch stdx.fatal();
+    const errKey = vm.allocAstring("err") catch stdx.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stderr);
     const err = vm.allocStringInfer(res.stderr) catch stdx.fatal();
     gvm.setIndex(map, errKey, err) catch stdx.fatal();
     if (res.term == .Exited) {
-        const exitedKey = vm.allocString("exited", false) catch stdx.fatal();
+        const exitedKey = vm.allocAstring("exited") catch stdx.fatal();
         gvm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
     }
     return map;
@@ -735,7 +735,7 @@ pub fn rawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 export fn fromCStr(ptr: [*:0]const u8) Value {
     const slice = std.mem.span(ptr);
-    return gvm.allocString(slice, !vm_.isAstring(slice)) catch stdx.fatal();
+    return gvm.allocRawString(slice) catch stdx.fatal();
 }
 
 export fn toCStr(val: Value, len: *u32) [*:0]const u8 {

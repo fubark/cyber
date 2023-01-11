@@ -1116,6 +1116,10 @@ test "Heap ASCII String." {
         \\-- codeAt()
         \\try t.eq(str.codeAt(1), 98)
         \\
+        \\-- endsWith()
+        \\try t.eq(str.endsWith('xyz'), true)
+        \\try t.eq(str.endsWith('xy'), false)
+        \\
         \\-- index()
         \\try t.eq(str.index('bc'), 1)
         \\try t.eq(str.index('bd'), none)
@@ -1127,14 +1131,69 @@ test "Heap ASCII String." {
         \\try t.eq(str.indexChar('c'), 2)
         \\try t.eq(str.indexChar('d'), none)
         \\
-        \\-- simd indexChar()
+        \\-- indexChar() simd
         \\lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'
         \\try t.eq(lstr.indexChar('a'), 0)
         \\try t.eq(lstr.indexChar('m'), 16)
         \\try t.eq(lstr.indexChar('z'), 68)
         \\
+        \\-- isAscii()
+        \\try t.eq(str.isAscii(), true)
+        \\
         \\-- len()
         \\try t.eq(str.len(), 6)
+        \\
+        \\-- startsWith()
+        \\try t.eq(str.startsWith('abc'), true)
+        \\try t.eq(str.startsWith('bc'), false)
+    );
+}
+
+test "Heap UTF-8 String." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\pre = 'abc🦊'
+        \\str = '{pre}xyz🐶'
+        \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- endsWith()
+        \\try t.eq(str.endsWith('xyz🐶'), true)
+        \\try t.eq(str.endsWith('xyz'), false)
+        \\
+        \\-- isAscii()
+        \\try t.eq(str.isAscii(), false)
+        \\
+        \\-- startsWith()
+        \\try t.eq(str.startsWith('abc🦊'), true)
+        \\try t.eq(str.startsWith('bc🦊'), false)
+    );
+}
+
+test "Heap RawString." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\str = rawstring('abc🦊xyz🐶')
+        \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- endsWith()
+        \\try t.eq(str.endsWith('xyz🐶'), true)
+        \\try t.eq(str.endsWith('xyz'), false)
+        \\
+        \\-- isAscii()
+        \\try t.eq(str.isAscii(), false)
+        \\try t.eq(rawstring('abc').isAscii(), true)
+        \\
+        \\-- startsWith()
+        \\try t.eq(str.startsWith('abc🦊'), true)
+        \\try t.eq(str.startsWith('bc🦊'), false)
     );
 }
 
@@ -1204,6 +1263,10 @@ test "Static ASCII strings." {
         \\try t.eq(str.codeAt(5), 122)
         \\try t.eq(str.codeAt(6), error(#OutOfBounds))
         \\
+        \\-- endsWith()
+        \\try t.eq(str.endsWith('xyz'), true)
+        \\try t.eq(str.endsWith('xy'), false)
+        \\
         \\-- index()
         \\try t.eq(str.index('bc'), 1)
         \\try t.eq(str.index('bd'), none)
@@ -1232,6 +1295,10 @@ test "Static ASCII strings." {
         \\
         \\-- len()
         \\try t.eq(str.len(), 6)
+        \\
+        \\-- startsWith()
+        \\try t.eq(str.startsWith('abc'), true)
+        \\try t.eq(str.startsWith('bc'), false)
     );
 }
 
@@ -1246,8 +1313,16 @@ test "Static UTF-8 strings." {
         \\str = 'abc🦊xyz🐶'
         \\try t.eq(str, 'abc🦊xyz🐶')
         \\
+        \\-- endsWith()
+        \\try t.eq(str.endsWith('xyz🐶'), true)
+        \\try t.eq(str.endsWith('xyz'), false)
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)
+        \\
+        \\-- startsWith()
+        \\try t.eq(str.startsWith('abc🦊'), true)
+        \\try t.eq(str.startsWith('bc🦊'), false)
     );
 }
 

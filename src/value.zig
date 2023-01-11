@@ -388,6 +388,7 @@ pub const Value = packed union {
                     cy.MapS => return .map,
                     cy.AstringT => return .string,
                     cy.UstringT => return .string,
+                    cy.RawStringT => return .rawstring,
                     cy.ClosureS => return .closure,
                     cy.LambdaS => return .lambda,
                     cy.FiberS => return .fiber,

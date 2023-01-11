@@ -1026,6 +1026,7 @@ print contents
 | parseCyon(cyon string) any | Parses a CYON string into a value. | 
 | print(s string) none | Prints a value as a string to stdout. The new line is also printed. | 
 | prints(s string) none | Prints a value as a string to stdout. | 
+| rawstring(str string) rawstring | Converts a string to a `rawstring`. | 
 | readAll() string | Reads stdin to the end as a string. | 
 | readFile(path string) string | Reads a file into a string value. | 
 | readLine() string | Deprecated: Use `getInput` instead. |

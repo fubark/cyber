@@ -37,6 +37,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     try mod.setNativeFunc(alloc, "parseCyon", 1, parseCyon);
     try mod.setNativeFunc(alloc, "print", 1, print);
     try mod.setNativeFunc(alloc, "prints", 1, prints);
+    try mod.setNativeFunc(alloc, "rawstring", 1, rawstring);
     try mod.setNativeFunc(alloc, "readAll", 0, readAll);
     try mod.setNativeFunc(alloc, "readFile", 1, readFile);
     try mod.setNativeFunc(alloc, "readLine", 0, readLine);
@@ -655,7 +656,7 @@ fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void 
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
-pub fn print(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn print(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;
     const str = vm.valueToTempString(args[0]);
     const w = std.io.getStdOut().writer();
@@ -665,7 +666,7 @@ pub fn print(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     return Value.None;
 }
 
-pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;
     const str = gvm.valueToTempString(args[0]);
     const w = std.io.getStdOut().writer();
@@ -718,12 +719,18 @@ pub fn valtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const path = vm.valueToString(args[0]) catch stdx.fatal();
     defer vm.allocator().free(path);
     const content = vm.valueToTempString(args[1]);
     std.fs.cwd().writeFile(path, content) catch stdx.fatal();
     return Value.None;
+}
+
+pub fn rawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const str = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
+    return vm.allocRawString(str) catch stdx.fatal();
 }
 
 export fn fromCStr(ptr: [*:0]const u8) Value {

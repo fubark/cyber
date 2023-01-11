@@ -19,6 +19,13 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     return mod;
 }
 
+fn getComparableTag(val: Value) cy.ValueUserTag {
+    const tag = val.getUserTag();
+    if (tag == .rawstring) {
+        return .string;
+    } else return tag;
+}
+
 pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;
     const act = args[0];
@@ -28,8 +35,8 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
         vm.release(exp);
     }
 
-    const actType = act.getUserTag();
-    const expType = exp.getUserTag();
+    const actType = getComparableTag(act);
+    const expType = getComparableTag(exp);
     if (actType == expType) {
         switch (actType) {
             .number => {

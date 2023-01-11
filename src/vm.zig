@@ -3472,10 +3472,6 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).getOrAllocString(str, utf8);
     }
 
-    pub inline fn allocStringSlice(self: *UserVM, str: []const u8, utf8: bool) !Value {
-        return @ptrCast(*VM, self).allocStringSlice(str, utf8);
-    }
-
     pub inline fn allocStringNoIntern(self: *UserVM, str: []const u8, utf8: bool) !Value {
         return @ptrCast(*VM, self).allocString(str, utf8);
     }
@@ -3528,11 +3524,11 @@ pub const UserVM = struct {
         return Value.Panic;
     }
 
-    pub fn getStaticString(self: *UserVM, start: u32, end: u32) []const u8 {
+    pub inline fn getStaticString(self: *UserVM, start: u32, end: u32) []const u8 {
         return @ptrCast(*VM, self).strBuf[start..end];
     }
 
-    pub fn getStaticStringChar(self: *UserVM, idx: u32) u8 {
+    pub inline fn getStaticStringChar(self: *UserVM, idx: u32) u8 {
         return @ptrCast(*VM, self).strBuf[idx];
     }
 

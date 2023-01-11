@@ -54,12 +54,19 @@ pub const TagLit = enum {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
-// This keeps .eval section first in order.
-pub export fn forceSectionDep() linksection(cy.HotSection) callconv(.C) void {}
+pub export fn stdSection() linksection(cy.StdSection) callconv(.C) void {}
+pub export fn section() linksection(cy.Section) callconv(.C) void {}
+pub export fn hotSection() linksection(cy.HotSection) callconv(.C) void {}
+
+/// Force the compiler to order linksection first on given function.
+/// Use exported c function so release builds don't remove them.
+pub fn forceSectionDep(_: *const fn() callconv(.C) void) void {} 
 
 pub fn bindCore(self: *cy.VM) !void {
     @setCold(true);
-    forceSectionDep();
+    forceSectionDep(hotSection);
+    forceSectionDep(section);
+    forceSectionDep(stdSection);
 
     self.iteratorObjSym = try self.ensureMethodSymKey("iterator", 0);
     self.nextObjSym = try self.ensureMethodSymKey("next", 0);
@@ -327,7 +334,7 @@ fn listIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _
     };
 }
 
-fn listIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn listIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     _ = args;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
@@ -340,13 +347,13 @@ fn listIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8
     } else return Value.None;
 }
 
-fn listIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+fn listIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     // Don't need to release recv since it's retained by the iterator.
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
-fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn listResize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
@@ -378,7 +385,7 @@ fn mapIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8
     };
 }
 
-fn mapIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(Section) Value {
+fn mapIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
@@ -388,7 +395,7 @@ fn mapIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) li
     } else return Value.None;
 }
 
-fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     _ = args;
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
@@ -396,7 +403,7 @@ fn mapSize(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
     return Value.initF64(@intToFloat(f64, inner.size));
 }
 
-fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value {
+fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(@ptrCast(*cy.VM, vm), args[0]);
@@ -404,14 +411,13 @@ fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value
     return Value.None;
 }
 
-fn listLen(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(Section) Value {
+fn listLen(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     _ = args;
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     vm_.releaseObject(gvm, list);
     return Value.initF64(@intToFloat(f64, inner.len));
 }
-
 
 // Keep as reference in case resume should be a function call.
 // Although it works, it requires native func calls to perform additional copies of pc and framePtr back to the eval loop,

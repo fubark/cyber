@@ -532,7 +532,7 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const res = std.ChildProcess.exec(.{
         .allocator = alloc,
         // Use curl, follow redirects.
-        .argv = &.{ "curlx", "-L", url },
+        .argv = &.{ "curl", "-L", url },
     }) catch |err| {
         if (err == error.FileNotFound) {
             return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));

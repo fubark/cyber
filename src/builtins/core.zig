@@ -498,9 +498,17 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     const res = std.ChildProcess.exec(.{
         .allocator = alloc,
         .argv = buf.items,
+        .max_output_bytes = 1024 * 1024 * 10,
     }) catch |err| {
-        std.debug.print("exec err {}\n", .{err});
-        stdx.fatal();
+        switch (err) {
+            error.FileNotFound => 
+                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound)),
+            error.StdoutStreamTooLong =>
+                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+            error.StderrStreamTooLong =>
+                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+            else => stdx.panicFmt("exec err {}\n", .{err}),
+        }
     };
 
     const map = vm.allocEmptyMap() catch stdx.fatal();
@@ -533,11 +541,16 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .allocator = alloc,
         // Use curl, follow redirects.
         .argv = &.{ "curl", "-L", url },
+        .max_output_bytes = 1024 * 1024 * 10,
     }) catch |err| {
-        if (err == error.FileNotFound) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
-        } else {
-            stdx.panicFmt("{}", .{err});
+        switch (err) {
+            error.FileNotFound => 
+                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound)),
+            error.StdoutStreamTooLong =>
+                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+            error.StderrStreamTooLong =>
+                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+            else => stdx.panicFmt("curl err {}\n", .{err}),
         }
     };
     alloc.free(res.stderr);

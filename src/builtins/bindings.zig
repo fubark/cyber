@@ -41,6 +41,7 @@ pub const TagLit = enum {
     EndOfStream,
     OutOfBounds,
     InvalidChar,
+    StreamTooLong,
 
     running,
     paused,
@@ -268,6 +269,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
     try ensureTagLitSym(self, "OutOfBounds", .OutOfBounds);
     try ensureTagLitSym(self, "InvalidChar", .InvalidChar);
+    try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
 
     try ensureTagLitSym(self, "running", .running);
     try ensureTagLitSym(self, "paused", .paused);

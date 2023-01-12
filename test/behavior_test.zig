@@ -1150,6 +1150,12 @@ test "Heap ASCII String." {
         \\try t.eq(lstr.indexChar('m'), 16)
         \\try t.eq(lstr.indexChar('z'), 68)
         \\
+        \\-- indexCode()
+        \\try t.eq(str.indexCode(97), 0)
+        \\try t.eq(str.indexCode(98), 1)
+        \\try t.eq(str.indexCode(99), 2)
+        \\try t.eq(str.indexCode(100), none)
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), true)
         \\
@@ -1196,6 +1202,24 @@ test "Heap UTF-8 String." {
         \\try t.eq(str.endsWith('xyz🐶'), true)
         \\try t.eq(str.endsWith('xyz'), false)
         \\
+        \\-- index()
+        \\try t.eq(str.index('bc🦊'), 1)
+        \\try t.eq(str.index('xy'), 4)
+        \\try t.eq(str.index('bd'), none)
+        \\try t.eq(str.index('ab'), 0)
+        \\
+        \\-- indexChar()
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('🦊'), 3)
+        \\try t.eq(str.indexChar('x'), 4)
+        \\try t.eq(str.indexChar('d'), none)
+        \\
+        \\-- indexCode()
+        \\try t.eq(str.indexCode(97), 0)
+        \\try t.eq(str.indexCode(129418), 3)
+        \\try t.eq(str.indexCode(128054), 7)
+        \\try t.eq(str.indexCode(100), none)
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)
         \\
@@ -1241,6 +1265,24 @@ test "Heap RawString." {
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)
         \\try t.eq(str.endsWith('xyz'), false)
+        \\
+        \\-- index()
+        \\try t.eq(str.index('bc🦊'), 1)
+        \\try t.eq(str.index('xy'), 7)
+        \\try t.eq(str.index('bd'), none)
+        \\try t.eq(str.index('ab'), 0)
+        \\
+        \\-- indexChar()
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('🦊'), 3)
+        \\try t.eq(str.indexChar('x'), 7)
+        \\try t.eq(str.indexChar('d'), none)
+        \\
+        \\-- indexCode()
+        \\try t.eq(str.indexCode(97), 0)
+        \\try t.eq(str.indexCode(129418), 3)
+        \\try t.eq(str.indexCode(128054), 10)
+        \\try t.eq(str.indexCode(100), none)
         \\
         \\-- insertByte()
         \\try t.eq(str.insertByte(2, 97), 'abac🦊xyz🐶')
@@ -1395,6 +1437,24 @@ test "Static UTF-8 strings." {
         \\-- endsWith()
         \\try t.eq(str.endsWith('xyz🐶'), true)
         \\try t.eq(str.endsWith('xyz'), false)
+        \\
+        \\-- index()
+        \\try t.eq(str.index('bc🦊'), 1)
+        \\try t.eq(str.index('xy'), 4)
+        \\try t.eq(str.index('bd'), none)
+        \\try t.eq(str.index('ab'), 0)
+        \\
+        \\-- indexChar()
+        \\try t.eq(str.indexChar('a'), 0)
+        \\try t.eq(str.indexChar('🦊'), 3)
+        \\try t.eq(str.indexChar('x'), 4)
+        \\try t.eq(str.indexChar('d'), none)
+        \\
+        \\-- indexCode()
+        \\try t.eq(str.indexCode(97), 0)
+        \\try t.eq(str.indexCode(129418), 3)
+        \\try t.eq(str.indexCode(128054), 7)
+        \\try t.eq(str.indexCode(100), none)
         \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)

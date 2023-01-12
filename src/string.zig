@@ -286,7 +286,7 @@ pub fn validateUtf8(s: []const u8) linksection(cy.Section) ?usize {
     return charLen;
 }
 
-pub fn utf8CharSliceAt(str: []const u8, idx: usize) ?[]const u8 {
+pub fn utf8CharSliceAt(str: []const u8, idx: usize) linksection(cy.Section) ?[]const u8 {
     const cp_len = std.unicode.utf8ByteSequenceLength(str[idx]) catch return null;
     if (idx + cp_len > str.len) {
         return null;
@@ -298,7 +298,7 @@ pub fn utf8CharSliceAt(str: []const u8, idx: usize) ?[]const u8 {
     return slice;
 }
 
-pub fn ustringSeekCharIndexSliceAt(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) stdx.IndexSlice(u32) {
+pub fn ustringSeekCharIndexSliceAt(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) linksection(cy.Section) stdx.IndexSlice(u32) {
     var iter = std.unicode.Utf8Iterator{
         .bytes = str,
         .i = 0,
@@ -318,4 +318,121 @@ pub fn ustringSeekCharIndexSliceAt(str: []const u8, seekIdx: u32, seekCharIdx: u
         }
     }
     stdx.fatal();
+}
+
+fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
+    for (buf) |ch, i| {
+        if (ch == needle) {
+            return i;
+        }
+    }
+    return null;
+}
+
+/// For Ascii needle.
+pub fn indexOfChar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        const MaskInt = std.meta.Int(.unsigned, VecSize);
+        var vbuf: @Vector(VecSize, u8) = undefined;
+        const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
+        var i: usize = 0;
+        while (i + VecSize <= buf.len) : (i += VecSize) {
+            vbuf = buf[i..i+VecSize][0..VecSize].*;
+            const hitMask = @bitCast(MaskInt, vbuf == vneedle);
+            const bitIdx = @ctz(hitMask);
+            if (bitIdx < VecSize) {
+                // Found.
+                return i + bitIdx;
+            }
+        }
+        if (i < buf.len) {
+            // Remaining use cpu.
+            if (indexOfCharScalar(buf[i..], needle)) |res| {
+                return i + res;
+            }
+        }
+        return null;
+    } else {
+        return indexOfCharScalar(buf, needle);
+    }
+}
+
+pub fn toUtf8CharIdx(str: []const u8, idx: usize) linksection(cy.Section) usize {
+    var charIdx: usize = 0;
+    var i: usize = 0;
+    while (i < idx) {
+        const cpLen = std.unicode.utf8ByteSequenceLength(str[i]) catch stdx.fatal();
+        i += cpLen;
+        charIdx += 1;
+    }
+    return charIdx;
+}
+
+pub fn charIndexOfCodepoint(str: []const u8, needle: u21) linksection(cy.Section) ?usize {
+    var charIdx: usize = 0;
+    var i: usize = 0;
+    while (i < str.len) {
+        const cpLen = std.unicode.utf8ByteSequenceLength(str[i]) catch stdx.fatal();
+        const cp = std.unicode.utf8Decode(str[i..i+cpLen]) catch stdx.fatal();
+        if (cp == needle) {
+            return charIdx;
+        }
+        i += cpLen;
+        charIdx += 1;
+    }
+    return null;
+}
+
+fn getLineEndCpu(buf: []const u8) linksection(cy.StdSection) ?usize {
+    for (buf) |ch, i| {
+        if (ch == '\n') {
+            return i + 1;
+        } else if (ch == '\r') {
+            if (i + 1 < buf.len) {
+                if (buf[i+1] == '\n') {
+                    return i + 2;
+                }
+            }
+            return i + 1;
+        }
+    }
+    return null;
+}
+
+pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        const MaskInt = std.meta.Int(.unsigned, VecSize);
+        var vbuf: @Vector(VecSize, u8) = undefined;
+        const lfNeedle: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, '\n'));
+        const crNeedle: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, '\r'));
+        var i: usize = 0;
+        while (i + VecSize <= buf.len) : (i += VecSize) {
+            vbuf = buf[i..i+VecSize][0..VecSize].*;
+            const lfHits = @bitCast(MaskInt, vbuf == lfNeedle);
+            const crHits = @bitCast(MaskInt, vbuf == crNeedle);
+            const bitIdx = @ctz(lfHits | crHits);
+            if (bitIdx < VecSize) {
+                // Found.
+                const res = i + bitIdx;
+                if (buf[res] == '\n') {
+                    return res + 1;
+                } else {
+                    if (res + 1 < buf.len and buf[res+1] == '\n') {
+                        return res + 2;
+                    } else {
+                        return res + 1;
+                    }
+                }
+            }
+        }
+        if (i < buf.len) {
+            // Remaining use cpu.
+            if (getLineEndCpu(buf[i..])) |res| {
+                return i + res;
+            }
+        }
+        return null;
+    } else {
+        return getLineEndCpu(buf);
+    }
 }

@@ -98,6 +98,10 @@ pub const isAstring = string.isAstring;
 pub const validateUtf8 = string.validateUtf8;
 pub const ustringSeekCharIndexSliceAt = string.ustringSeekCharIndexSliceAt;
 pub const utf8CharSliceAt = string.utf8CharSliceAt;
+pub const indexOfChar = string.indexOfChar;
+pub const toUtf8CharIdx = string.toUtf8CharIdx;
+pub const charIndexOfCodepoint = string.charIndexOfCodepoint;
+pub const getLineEnd = string.getLineEnd;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

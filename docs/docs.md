@@ -467,6 +467,9 @@ poem = "line a
 | charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string.  | 
 | codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`.  | 
 | endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
+| index(needle string) number? | Returns the first index of substring `needle` in the string or `none` if not found. | 
+| indexChar(needle string) number? | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
+| indexCode(needle number) number? | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
 | isAscii() bool | Returns whether the string contains all ASCII characters. | 
 
 [To Top.](#table-of-contents)
@@ -497,7 +500,10 @@ A `rawstring` does not automatically validate the string and is indexed by bytes
 | ------------- | ----- |
 | append(str string) string | Returns a new string that concats this string and `str`. | 
 | charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
-| codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-9 character, `error(#InvalidChar)` is returned. | 
+| codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
+| index(needle string) number? | Returns the first index of substring `needle` in the string or `none` if not found. | 
+| indexChar(needle string) number? | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
+| indexCode(needle number) number? | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
 | insertByte(idx number, byte number) string | Returns a new string with `byte` inserted at index `idx`. | 
 | isAscii() bool | Returns whether the string contains all ASCII characters. | 
 | endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 

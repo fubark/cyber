@@ -2293,16 +2293,14 @@ pub const VMcompiler = struct {
 
                 if (!discardTopExprReg) {
                     if (isReverseIndex) {
-                        if (retainEscapeTop) {
-                            try self.buf.pushOp3(.reverseIndexRetain, leftv.local, indexv.local, dst);
-                        } else {
-                            try self.buf.pushOp3(.reverseIndex, leftv.local, indexv.local, dst);
+                        try self.buf.pushOp3(.reverseIndex, leftv.local, indexv.local, dst);
+                        if (!retainEscapeTop and self.isTempLocal(dst)) {
+                            try self.setReservedTempLocal(dst);
                         }
                     } else {
-                        if (retainEscapeTop) {
-                            try self.buf.pushOp3(.indexRetain, leftv.local, indexv.local, dst);
-                        } else {
-                            try self.buf.pushOp3(.index, leftv.local, indexv.local, dst);
+                        try self.buf.pushOp3(.index, leftv.local, indexv.local, dst);
+                        if (!retainEscapeTop and self.isTempLocal(dst)) {
+                            try self.setReservedTempLocal(dst);
                         }
                     }
                     return self.initGenValue(dst, sema.AnyType);
@@ -2874,6 +2872,7 @@ fn isArcTempNode(nodeT: cy.NodeType) bool {
         .arr_literal,
         .map_literal,
         .stringTemplate,
+        .arr_access_expr,
         .coinit,
         .structInit => return true,
         else => return false,

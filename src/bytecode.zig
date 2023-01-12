@@ -351,8 +351,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         },
         .setIndex,
         .setIndexRelease,
-        .indexRetain,
-        .reverseIndexRetain,
         .index,
         .reverseIndex,
         .jumpNotNone,
@@ -463,8 +461,13 @@ pub const OpCode = enum(u8) {
     setIndexRelease,
 
     copyRetainSrc,
+
+    /// [leftLocal] [indexLocal] Retains the result of an index operation.
     index,
-    indexRetain,
+
+    /// [leftLocal] [indexLocal] Retains the result of a reverse index operation.
+    reverseIndex,
+
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
     list,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
@@ -516,8 +519,6 @@ pub const OpCode = enum(u8) {
     /// Perform modulus on the two locals and stores result to a dst local.
     mod,
 
-    reverseIndex,
-    reverseIndexRetain,
     compareNot,
 
     /// [startLocal] [exprCount] [dst] [..string consts]
@@ -569,7 +570,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 93);
+    try t.eq(std.enums.values(OpCode).len, 91);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

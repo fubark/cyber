@@ -458,6 +458,13 @@ poem = "line a
        |     indented further"
 ```
 
+Using the index operator will return the UTF-8 character at the given character index. This is equivalent to calling the method `charAt()`.
+```text
+str = 'abcd'
+print str[1]     -- "b"
+print str[-1]    -- "d"
+```
+
 [To Top.](#table-of-contents)
 
 #### object string
@@ -470,7 +477,10 @@ poem = "line a
 | index(needle string) number? | Returns the first index of substring `needle` in the string or `none` if not found. | 
 | indexChar(needle string) number? | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
 | indexCode(needle number) number? | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
+| insert(idx number, str string) string | Returns a new string with `str` inserted at index `idx`. |
 | isAscii() bool | Returns whether the string contains all ASCII characters. | 
+| len() number | Returns the number of UTF-8 characters in the string. | 
+| startsWith(prefix string) bool | Returns whether the string starts with `prefix`. | 
 
 [To Top.](#table-of-contents)
 
@@ -495,18 +505,29 @@ String templates can not contain nested string templates.
 ### rawstring.
 A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 characters.
 
+Using the index operator will return the UTF-8 character starting at the given byte index. If the index does not begin a valid UTF-8 character, `error(#InvalidChar)` is returned. This is equivalent to calling the method `charAt()`.
+```text
+str = rawstring('abcd').insertByte(1, 255)
+print str[0]     -- "a"
+print str[1]     -- error(#InvalidChar)
+print str[-1]    -- "d"
+```
+
 #### object rawstring
 | Method | Summary |
 | ------------- | ----- |
 | append(str string) string | Returns a new string that concats this string and `str`. | 
 | charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
 | codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
+| endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
 | index(needle string) number? | Returns the first index of substring `needle` in the string or `none` if not found. | 
 | indexChar(needle string) number? | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
 | indexCode(needle number) number? | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
+| insert(idx number, str string) string | Returns a new string with `str` inserted at index `idx`. |
 | insertByte(idx number, byte number) string | Returns a new string with `byte` inserted at index `idx`. | 
 | isAscii() bool | Returns whether the string contains all ASCII characters. | 
-| endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
+| len() number | Returns the number of bytes in the string. | 
+| startsWith(prefix string) bool | Returns whether the string starts with `prefix`. | 
 
 ### Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.

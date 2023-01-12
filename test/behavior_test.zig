@@ -1110,6 +1110,13 @@ test "Heap ASCII String." {
         \\str = '{pre}xyz'
         \\try t.eq(str, 'abcxyz')
         \\
+        \\-- index operator
+        \\try t.eq(str[-1], 'z')
+        \\try t.eq(str[0], 'a')
+        \\try t.eq(str[3], 'x')
+        \\try t.eq(str[5], 'z')
+        \\try t.eq(str[6], error(#OutOfBounds))
+        \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abcxyz123')
         \\try t.eq(str.append('123').isAscii(), true)
@@ -1156,6 +1163,16 @@ test "Heap ASCII String." {
         \\try t.eq(str.indexCode(99), 2)
         \\try t.eq(str.indexCode(100), none)
         \\
+        \\-- insert()
+        \\try t.eq(str.insert(-1, 'foo'), error(#OutOfBounds))
+        \\try t.eq(str.insert(0, 'foo'), 'fooabcxyz')
+        \\try t.eq(str.insert(0, 'foo').isAscii(), true)
+        \\try t.eq(str.insert(3, 'foo🦊'), 'abcfoo🦊xyz')
+        \\try t.eq(str.insert(3, 'foo🦊').isAscii(), false)
+        \\try t.eq(str.insert(5, 'foo'), 'abcxyfooz')
+        \\try t.eq(str.insert(6, 'foo'), 'abcxyzfoo')
+        \\try t.eq(str.insert(7, 'foo'), error(#OutOfBounds))
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), true)
         \\
@@ -1178,6 +1195,15 @@ test "Heap UTF-8 String." {
         \\pre = 'abc🦊'
         \\str = '{pre}xyz🐶'
         \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- index operator
+        \\try t.eq(str[-1], '🐶')
+        \\try t.eq(str[0], 'a')
+        \\try t.eq(str[0].isAscii(), true)
+        \\try t.eq(str[3], '🦊')
+        \\try t.eq(str[3].isAscii(), false)
+        \\try t.eq(str[7], '🐶')
+        \\try t.eq(str[8], error(#OutOfBounds))
         \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
@@ -1220,8 +1246,19 @@ test "Heap UTF-8 String." {
         \\try t.eq(str.indexCode(128054), 7)
         \\try t.eq(str.indexCode(100), none)
         \\
+        \\-- insert()
+        \\try t.eq(str.insert(-1, 'foo'), error(#OutOfBounds))
+        \\try t.eq(str.insert(0, 'foo'), 'fooabc🦊xyz🐶')
+        \\try t.eq(str.insert(3, 'foo🦊'), 'abcfoo🦊🦊xyz🐶')
+        \\try t.eq(str.insert(7, 'foo'), 'abc🦊xyzfoo🐶')
+        \\try t.eq(str.insert(8, 'foo'), 'abc🦊xyz🐶foo')
+        \\try t.eq(str.insert(9, 'foo'), error(#OutOfBounds))
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)
+        \\
+        \\-- len()
+        \\try t.eq(str.len(), 8)
         \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)
@@ -1238,6 +1275,18 @@ test "Heap RawString." {
         \\
         \\str = rawstring('abc🦊xyz🐶')
         \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- index operator
+        \\try t.eq(str[-1], error(#InvalidChar))
+        \\try t.eq(str[-4], '🐶')
+        \\try t.eq(str[0], 'a')
+        \\try t.eq(str[0].isAscii(), true)
+        \\try t.eq(str[3], '🦊')
+        \\try t.eq(str[3].isAscii(), false)
+        \\try t.eq(str[4], error(#InvalidChar))
+        \\try t.eq(str[10], '🐶')
+        \\try t.eq(str[13], error(#InvalidChar))
+        \\try t.eq(str[14], error(#OutOfBounds))
         \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
@@ -1287,9 +1336,20 @@ test "Heap RawString." {
         \\-- insertByte()
         \\try t.eq(str.insertByte(2, 97), 'abac🦊xyz🐶')
         \\
+        \\-- insert()
+        \\try t.eq(str.insert(-1, 'foo'), error(#OutOfBounds))
+        \\try t.eq(str.insert(0, 'foo'), 'fooabc🦊xyz🐶')
+        \\try t.eq(str.insert(3, 'foo🦊'), 'abcfoo🦊🦊xyz🐶')
+        \\try t.eq(str.insert(10, 'foo'), 'abc🦊xyzfoo🐶')
+        \\try t.eq(str.insert(14, 'foo'), 'abc🦊xyz🐶foo')
+        \\try t.eq(str.insert(15, 'foo'), error(#OutOfBounds))
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)
         \\try t.eq(rawstring('abc').isAscii(), true)
+        \\
+        \\-- len()
+        \\try t.eq(str.len(), 14)
         \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)
@@ -1346,6 +1406,13 @@ test "Static ASCII strings." {
         \\
         \\str = 'abcxyz'
         \\
+        \\-- index operator
+        \\try t.eq(str[-1], 'z')
+        \\try t.eq(str[0], 'a')
+        \\try t.eq(str[3], 'x')
+        \\try t.eq(str[5], 'z')
+        \\try t.eq(str[6], error(#OutOfBounds))
+        \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abcxyz123')
         \\try t.eq(str.append('123').isAscii(), true)
@@ -1380,7 +1447,7 @@ test "Static ASCII strings." {
         \\try t.eq(str.indexChar('c'), 2)
         \\try t.eq(str.indexChar('d'), none)
         \\
-        \\-- simd indexChar().
+        \\-- indexChar() simd
         \\lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
         \\try t.eq(lstr.indexChar('a'), 0)
         \\try t.eq(lstr.indexChar('m'), 16)
@@ -1391,6 +1458,16 @@ test "Static ASCII strings." {
         \\try t.eq(str.indexCode(98), 1)
         \\try t.eq(str.indexCode(99), 2)
         \\try t.eq(str.indexCode(100), none)
+        \\
+        \\-- insert()
+        \\try t.eq(str.insert(-1, 'foo'), error(#OutOfBounds))
+        \\try t.eq(str.insert(0, 'foo'), 'fooabcxyz')
+        \\try t.eq(str.insert(0, 'foo').isAscii(), true)
+        \\try t.eq(str.insert(3, 'foo🦊'), 'abcfoo🦊xyz')
+        \\try t.eq(str.insert(3, 'foo🦊').isAscii(), false)
+        \\try t.eq(str.insert(5, 'foo'), 'abcxyfooz')
+        \\try t.eq(str.insert(6, 'foo'), 'abcxyzfoo')
+        \\try t.eq(str.insert(7, 'foo'), error(#OutOfBounds))
         \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), true)
@@ -1414,6 +1491,15 @@ test "Static UTF-8 strings." {
         \\-- Single quote literal.
         \\str = 'abc🦊xyz🐶'
         \\try t.eq(str, 'abc🦊xyz🐶')
+        \\
+        \\-- index operator
+        \\try t.eq(str[-1], '🐶')
+        \\try t.eq(str[0], 'a')
+        \\try t.eq(str[0].isAscii(), true)
+        \\try t.eq(str[3], '🦊')
+        \\try t.eq(str[3].isAscii(), false)
+        \\try t.eq(str[7], '🐶')
+        \\try t.eq(str[8], error(#OutOfBounds))
         \\
         \\-- append()
         \\try t.eq(str.append('123'), 'abc🦊xyz🐶123')
@@ -1456,8 +1542,19 @@ test "Static UTF-8 strings." {
         \\try t.eq(str.indexCode(128054), 7)
         \\try t.eq(str.indexCode(100), none)
         \\
+        \\-- insert()
+        \\try t.eq(str.insert(-1, 'foo'), error(#OutOfBounds))
+        \\try t.eq(str.insert(0, 'foo'), 'fooabc🦊xyz🐶')
+        \\try t.eq(str.insert(3, 'foo🦊'), 'abcfoo🦊🦊xyz🐶')
+        \\try t.eq(str.insert(7, 'foo'), 'abc🦊xyzfoo🐶')
+        \\try t.eq(str.insert(8, 'foo'), 'abc🦊xyz🐶foo')
+        \\try t.eq(str.insert(9, 'foo'), error(#OutOfBounds))
+        \\
         \\-- isAscii()
         \\try t.eq(str.isAscii(), false)
+        \\
+        \\-- len()
+        \\try t.eq(str.len(), 8)
         \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)

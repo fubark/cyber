@@ -929,7 +929,9 @@ pub const VM = struct {
     }
 
     pub fn allocAstring(self: *VM, str: []const u8) linksection(cy.Section) !Value {
-        const obj = try self.allocAstringObject(str);
+        const obj = try self.allocUnsetAstringObject(str.len);
+        const dst = obj.astring.getSlice();
+        std.mem.copy(u8, dst, str);
         return Value.initPtr(obj);
     }
 
@@ -962,22 +964,20 @@ pub const VM = struct {
         return obj;
     }
 
-    pub fn allocAstringObject(self: *VM, str: []const u8) linksection(cy.Section) !*HeapObject {
+    pub fn allocUnsetAstringObject(self: *VM, len: usize) linksection(cy.Section) !*HeapObject {
         var obj: *HeapObject = undefined;
-        if (str.len <= MaxPoolObjectAstringByteLen) {
+        if (len <= MaxPoolObjectAstringByteLen) {
             obj = try self.allocPoolObject();
         } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), str.len + Astring.BufOffset);
+            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Astring.BufOffset);
             obj = @ptrCast(*HeapObject, objSlice.ptr);
         }
         obj.astring = .{
             .structId = AstringT,
             .rc = 1,
-            .len = @intCast(u32, str.len),
+            .len = @intCast(u32, len),
             .bufStart = undefined,
         };
-        const dst = @ptrCast([*]u8, &obj.astring.bufStart)[0..str.len];
-        std.mem.copy(u8, dst, str);
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
@@ -1022,11 +1022,9 @@ pub const VM = struct {
     fn getOrAllocStringInfer(self: *VM, str: []const u8) linksection(cy.Section) !Value {
         if (cy.validateUtf8(str)) |charLen| {
             if (str.len == charLen) {
-                const obj = try self.allocAstringObject(str);
-                return Value.initPtr(obj);
+                return try self.getOrAllocAstring(str);
             } else {
-                const obj = try self.allocUstringObject(str, @intCast(u32, charLen));
-                return Value.initPtr(obj);
+                return try self.getOrAllocUstring(str, @intCast(u32, charLen));
             }
         } else {
             return self.allocRawString(str);
@@ -1041,7 +1039,7 @@ pub const VM = struct {
                 return Value.initPtr(res.value_ptr.*);
             } else {
                 const obj = try self.allocUstringObject(str, charLen);
-                res.key_ptr.* = obj.astring.getConstSlice();
+                res.key_ptr.* = obj.ustring.getConstSlice();
                 res.value_ptr.* = obj;
                 return Value.initPtr(obj);
             }
@@ -1097,8 +1095,7 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocUstringConcatObject(self: *VM, str: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-        const len = @intCast(u32, str.len + str2.len);
+    fn allocUnsetUstringObject(self: *VM, len: usize) linksection(cy.Section) !*HeapObject {
         var obj: *HeapObject = undefined;
         if (len <= MaxPoolObjectUstringByteLen) {
             obj = try self.allocPoolObject();
@@ -1109,15 +1106,12 @@ pub const VM = struct {
         obj.ustring = .{
             .structId = UstringT,
             .rc = 1,
-            .len = len,
-            .charLen = charLen,
+            .len = @intCast(u32, len),
+            .charLen = 0,
             .mruIdx = 0,
             .mruCharIdx = 0,
             .bufStart = undefined,
         };
-        const dst = obj.ustring.getSlice();
-        std.mem.copy(u8, dst[0..str.len], str);
-        std.mem.copy(u8, dst[str.len..], str2);
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
@@ -1128,31 +1122,46 @@ pub const VM = struct {
         return obj;
     }
 
-    fn allocAstringConcatObject(self: *VM, str: []const u8, str2: []const u8) linksection(cy.Section) !*HeapObject {
-        const len = @intCast(u32, str.len + str2.len);
-        var obj: *HeapObject = undefined;
-        if (len <= MaxPoolObjectAstringByteLen) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Astring.BufOffset);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.astring = .{
-            .structId = AstringT,
-            .rc = 1,
-            .len = len,
-            .bufStart = undefined,
-        };
+    fn allocUstringConcat3Object(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
+        const obj = try self.allocUnsetUstringObject(str1.len + str2.len + str3.len);
+        const dst = obj.ustring.getSlice();
+        obj.ustring.charLen = charLen;
+        std.mem.copy(u8, dst[0..str1.len], str1);
+        std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
+        std.mem.copy(u8, dst[str1.len+str2.len..], str3);
+        return obj;
+    }
+
+    fn allocUstringConcatObject(self: *VM, str1: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
+        const obj = try self.allocUnsetUstringObject(str1.len + str2.len);
+        const dst = obj.ustring.getSlice();
+        obj.ustring.charLen = charLen;
+        std.mem.copy(u8, dst[0..str1.len], str1);
+        std.mem.copy(u8, dst[str1.len..], str2);
+        return obj;
+    }
+    
+    fn allocAstringObject(self: *VM, str: []const u8) linksection(cy.Section) !*HeapObject {
+        const obj = try self.allocUnsetAstringObject(str.len);
         const dst = obj.astring.getSlice();
-        std.mem.copy(u8, dst[0..str.len], str);
-        std.mem.copy(u8, dst[str.len..], str2);
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
+        std.mem.copy(u8, dst, str);
+        return obj;
+    }
+
+    fn allocAstringConcat3Object(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !*HeapObject {
+        const obj = try self.allocUnsetAstringObject(str1.len + str2.len + str3.len);
+        const dst = obj.astring.getSlice();
+        std.mem.copy(u8, dst[0..str1.len], str1);
+        std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
+        std.mem.copy(u8, dst[str1.len+str2.len..], str3);
+        return obj;
+    }
+
+    fn allocAstringConcatObject(self: *VM, str1: []const u8, str2: []const u8) linksection(cy.Section) !*HeapObject {
+        const obj = try self.allocUnsetAstringObject(str1.len + str2.len);
+        const dst = obj.astring.getSlice();
+        std.mem.copy(u8, dst[0..str1.len], str1);
+        std.mem.copy(u8, dst[str1.len..], str2);
         return obj;
     }
 
@@ -1175,6 +1184,54 @@ pub const VM = struct {
             }
         } else {
             const obj = try self.allocAstringConcatObject(str, str2);
+            return Value.initPtr(obj);
+        }
+    }
+
+    fn getOrAllocAstringConcat3(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !Value {
+        if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
+            const ctx = StringConcat3Context{};
+            const concat = StringConcat3{
+                .str1 = str1,
+                .str2 = str2,
+                .str3 = str3,
+            };
+            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+            if (res.found_existing) {
+                self.retainObject(res.value_ptr.*);
+                return Value.initPtr(res.value_ptr.*);
+            } else {
+                const obj = try self.allocAstringConcat3Object(str1, str2, str3);
+                res.key_ptr.* = obj.astring.getConstSlice();
+                res.value_ptr.* = obj;
+                return Value.initPtr(obj);
+            }
+        } else {
+            const obj = try self.allocAstringConcat3Object(str1, str2, str3);
+            return Value.initPtr(obj);
+        }
+    }
+
+    fn getOrAllocUstringConcat3(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !Value {
+        if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
+            const ctx = StringConcat3Context{};
+            const concat = StringConcat3{
+                .str1 = str1,
+                .str2 = str2,
+                .str3 = str3,
+            };
+            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
+            if (res.found_existing) {
+                self.retainObject(res.value_ptr.*);
+                return Value.initPtr(res.value_ptr.*);
+            } else {
+                const obj = try self.allocUstringConcat3Object(str1, str2, str3, charLen);
+                res.key_ptr.* = obj.ustring.getConstSlice();
+                res.value_ptr.* = obj;
+                return Value.initPtr(obj);
+            }
+        } else {
+            const obj = try self.allocUstringConcat3Object(str1, str2, str3, charLen);
             return Value.initPtr(obj);
         }
     }
@@ -1653,7 +1710,7 @@ pub const VM = struct {
     }
 
     /// Assumes sign of index is preserved.
-    fn getReverseIndex(self: *const VM, left: Value, index: Value) !Value {
+    fn getReverseIndex(self: *VM, left: Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
@@ -1661,7 +1718,9 @@ pub const VM = struct {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
                     if (idx < list.len) {
-                        return list.buf[@intCast(u32, idx)];
+                        const res = list.buf[@intCast(u32, idx)];
+                        retain(self, res);
+                        return res;
                     } else {
                         return error.OutOfBounds;
                     }
@@ -1670,19 +1729,52 @@ pub const VM = struct {
                     const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
                     const key = Value.initF64(index.toF64());
                     if (map.get(self, key)) |val| {
+                        retain(self, val);
                         return val;
                     } else return Value.None;
                 },
+                AstringT => {
+                    const idx = @intToFloat(f64, @intCast(i32, obj.astring.len) + @floatToInt(i32, index.toF64()));
+                    retainObject(self, obj);
+                    return bindings.astringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                },
+                UstringT => {
+                    const idx = @intToFloat(f64, @intCast(i32, obj.ustring.charLen) + @floatToInt(i32, index.toF64()));
+                    retainObject(self, obj);
+                    return bindings.ustringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                },
+                RawStringT => {
+                    const idx = @intToFloat(f64, @intCast(i32, obj.rawstring.len) + @floatToInt(i32, index.toF64()));
+                    retainObject(self, obj);
+                    return bindings.rawStringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                },
                 else => {
-                    stdx.panic("expected map or list");
+                    return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
                 },
             }
         } else {
-            return stdx.panic("expected pointer");
+            if (left.isNumber()) {
+                return self.panic("Unsupported reverse index operation on type `number`.");
+            } else {
+                switch (left.getTag()) {
+                    cy.StaticAstringT => {
+                        const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
+                        return bindings.staticAstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
+                    },
+                    cy.StaticUstringT => {
+                        const start = left.asStaticStringSlice().start;
+                        const idx = @intToFloat(f64, @intCast(i32, getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
+                        return bindings.staticUstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
+                    },
+                    else => {
+                        return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
+                    },
+                }
+            }
         }
     }
 
-    fn getIndex(self: *VM, left: Value, index: Value) !Value {
+    fn getIndex(self: *VM, left: Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
@@ -1690,6 +1782,7 @@ pub const VM = struct {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
+                        retain(self, list.buf[idx]);
                         return list.buf[idx];
                     } else {
                         return error.OutOfBounds;
@@ -1698,19 +1791,42 @@ pub const VM = struct {
                 MapS => {
                     const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
                     if (@call(.never_inline, map.get, .{self, index})) |val| {
+                        retain(self, val);
                         return val;
                     } else return Value.None;
                 },
+                AstringT => {
+                    retainObject(self, obj);
+                    return bindings.astringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                },
+                UstringT => {
+                    retainObject(self, obj);
+                    return bindings.ustringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                },
+                RawStringT => {
+                    retainObject(self, obj);
+                    return bindings.rawStringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                },
                 else => {
-                    return stdx.panic("expected map or list");
+                    return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
                 },
             }
         } else {
-            return stdx.panic("expected pointer");
+            if (left.isNumber()) {
+                return self.panic("Unsupported index operation on type `number`.");
+            } else {
+                switch (left.getTag()) {
+                    cy.StaticAstringT => return bindings.staticAstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
+                    cy.StaticUstringT => return bindings.staticUstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
+                    else => {
+                        return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
+                    },
+                }
+            }
         }
     }
 
-    fn panicFmt(self: *VM, comptime format: []const u8, args: []const fmt.FmtValue) error{Panic, OutOfMemory} {
+    fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic, OutOfMemory} {
         @setCold(true);
         self.panicMsg = fmt.allocFormat(self.alloc, format, args) catch |err| {
             if (err == error.OutOfMemory) {
@@ -3652,6 +3768,10 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).allocListFill(val, n);
     }
 
+    pub inline fn allocUnsetAstringObject(self: *UserVM, len: usize) !*HeapObject {
+        return @ptrCast(*VM, self).allocUnsetAstringObject(len);
+    }
+
     pub inline fn allocUnsetRawStringObject(self: *UserVM, len: usize) !*HeapObject {
         return @ptrCast(*VM, self).allocUnsetRawStringObject(len);
     }
@@ -3682,6 +3802,14 @@ pub const UserVM = struct {
 
     pub inline fn allocRawStringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
         return @ptrCast(*VM, self).allocRawStringConcat(left, right);
+    }
+
+    pub inline fn allocAstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
+        return @ptrCast(*VM, self).getOrAllocAstringConcat3(str1, str2, str3);
+    }
+
+    pub inline fn allocUstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) !Value {
+        return @ptrCast(*VM, self).getOrAllocUstringConcat3(str1, str2, str3, charLen);
     }
 
     pub inline fn allocAstringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
@@ -3733,7 +3861,7 @@ pub const UserVM = struct {
     }
 
     pub inline fn getStaticUstringHeader(self: *UserVM, start: u32) *align (1) cy.StaticUstringHeader {
-        return @ptrCast(*align (1) cy.StaticUstringHeader, @ptrCast(*VM, self).strBuf.ptr + start - 12);
+        return Root.getStaticUstringHeader(@ptrCast(*VM, self), start);
     }
 
     pub inline fn getStaticString(self: *UserVM, start: u32, end: u32) []const u8 {
@@ -4138,45 +4266,17 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 continue;
             },
             .index => {
-                const left = pc[1].arg;
-                const index = pc[2].arg;
-                const dst = pc[3].arg;
+                const leftv = framePtr[pc[1].arg];
+                const indexv = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = try @call(.never_inline, vm.getIndex, .{leftv, indexv});
                 pc += 4;
-                const indexv = framePtr[index];
-                const leftv = framePtr[left];
-                framePtr[dst] = try @call(.never_inline, gvm.getIndex, .{leftv, indexv});
-                continue;
-            },
-            .indexRetain => {
-                const left = pc[1].arg;
-                const index = pc[2].arg;
-                const dst = pc[3].arg;
-                pc += 4;
-                const indexv = framePtr[index];
-                const leftv = framePtr[left];
-                framePtr[dst] = try @call(.never_inline, gvm.getIndex, .{leftv, indexv});
-                vm.retain(framePtr[dst]);
                 continue;
             },
             .reverseIndex => {
-                const left = pc[1].arg;
-                const index = pc[2].arg;
-                const dst = pc[3].arg;
+                const leftv = framePtr[pc[1].arg];
+                const indexv = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = try @call(.never_inline, vm.getReverseIndex, .{leftv, indexv});
                 pc += 4;
-                const indexv = framePtr[index];
-                const leftv = framePtr[left];
-                framePtr[dst] = try @call(.never_inline, gvm.getReverseIndex, .{leftv, indexv});
-                continue;
-            },
-            .reverseIndexRetain => {
-                const left = pc[1].arg;
-                const index = pc[2].arg;
-                const dst = pc[3].arg;
-                pc += 4;
-                const indexv = framePtr[index];
-                const leftv = framePtr[left];
-                framePtr[dst] = try @call(.never_inline, gvm.getReverseIndex, .{leftv, indexv});
-                vm.retain(framePtr[dst]);
                 continue;
             },
             .jump => {
@@ -5780,6 +5880,35 @@ pub const StringConcatContext = struct {
     }
 };
 
+const StringConcat3 = struct {
+    str1: []const u8,
+    str2: []const u8,
+    str3: []const u8,
+};
+
+pub const StringConcat3Context = struct {
+    pub fn hash(_: StringConcat3Context, concat: StringConcat3) u64 {
+        return @call(.always_inline, computeStringConcat3Hash, .{concat.str1, concat.str2, concat.str3});
+    }
+
+    pub fn eql(_: StringConcat3Context, a: StringConcat3, b: []const u8) bool {
+        if (a.str1.len + a.str2.len + a.str3.len != b.len) {
+            return false;
+        }
+        return std.mem.eql(u8, a.str1, b[0..a.str1.len]) and 
+            std.mem.eql(u8, a.str2, b[a.str1.len..a.str1.len+a.str2.len]) and
+            std.mem.eql(u8, a.str3, b[a.str1.len+a.str2.len..]);
+    }
+};
+
+fn computeStringConcat3Hash(str1: []const u8, str2: []const u8, str3: []const u8) u64 {
+    var c = std.hash.Wyhash.init(0);
+    @call(.always_inline, c.update, .{str1});
+    @call(.always_inline, c.update, .{str2});
+    @call(.always_inline, c.update, .{str3});
+    return @call(.always_inline, c.final, .{});
+}
+
 fn computeStringConcatHash(left: []const u8, right: []const u8) u64 {
     var c = std.hash.Wyhash.init(0);
     @call(.always_inline, c.update, .{left});
@@ -5790,4 +5919,9 @@ fn computeStringConcatHash(left: []const u8, right: []const u8) u64 {
 test "computeStringConcatHash() matches the concated string hash." {
     const exp = std.hash.Wyhash.hash(0, "foobar");
     try t.eq(computeStringConcatHash("foo", "bar"), exp);
+    try t.eq(computeStringConcat3Hash("fo", "ob", "ar"), exp);
+}
+
+fn getStaticUstringHeader(vm: *const VM, start: usize) *align(1) cy.StaticUstringHeader {
+    return @ptrCast(*align (1) cy.StaticUstringHeader, vm.strBuf.ptr + start - 12);
 }

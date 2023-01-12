@@ -114,6 +114,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(staticAstringIndex));
     try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(staticAstringIndexChar));
     try self.addMethodSym(cy.StaticAstringT, indexCode, cy.MethodSym.initNativeFunc1(staticAstringIndexCode));
+    try self.addMethodSym(cy.StaticAstringT, insert, cy.MethodSym.initNativeFunc1(staticAstringInsert));
     try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(staticAstringIsAscii));
     try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(staticAstringLen));
     try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
@@ -127,7 +128,9 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.StaticUstringT, index, cy.MethodSym.initNativeFunc1(staticUstringIndex));
     try self.addMethodSym(cy.StaticUstringT, indexChar, cy.MethodSym.initNativeFunc1(staticUstringIndexChar));
     try self.addMethodSym(cy.StaticUstringT, indexCode, cy.MethodSym.initNativeFunc1(staticUstringIndexCode));
+    try self.addMethodSym(cy.StaticUstringT, insert, cy.MethodSym.initNativeFunc1(staticUstringInsert));
     try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(staticUstringIsAscii));
+    try self.addMethodSym(cy.StaticUstringT, len, cy.MethodSym.initNativeFunc1(staticUstringLen));
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
 
     id = try self.addStruct("tag");
@@ -182,6 +185,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(rawOrAstringIndex));
     try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(astringIndexChar));
     try self.addMethodSym(cy.AstringT, indexCode, cy.MethodSym.initNativeFunc1(astringIndexCode));
+    try self.addMethodSym(cy.AstringT, insert, cy.MethodSym.initNativeFunc1(astringInsert));
     try self.addMethodSym(cy.AstringT, isAscii, cy.MethodSym.initNativeFunc1(astringIsAscii));
     try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(astringLen));
     try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
@@ -195,7 +199,9 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.UstringT, index, cy.MethodSym.initNativeFunc1(ustringIndex));
     try self.addMethodSym(cy.UstringT, indexChar, cy.MethodSym.initNativeFunc1(ustringIndexChar));
     try self.addMethodSym(cy.UstringT, indexCode, cy.MethodSym.initNativeFunc1(ustringIndexCode));
+    try self.addMethodSym(cy.UstringT, insert, cy.MethodSym.initNativeFunc1(ustringInsert));
     try self.addMethodSym(cy.UstringT, isAscii, cy.MethodSym.initNativeFunc1(ustringIsAscii));
+    try self.addMethodSym(cy.UstringT, len, cy.MethodSym.initNativeFunc1(ustringLen));
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(ustringStartsWith));
 
     id = try self.addStruct("rawstring");
@@ -207,6 +213,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.RawStringT, index, cy.MethodSym.initNativeFunc1(rawOrAstringIndex));
     try self.addMethodSym(cy.RawStringT, indexChar, cy.MethodSym.initNativeFunc1(rawStringIndexChar));
     try self.addMethodSym(cy.RawStringT, indexCode, cy.MethodSym.initNativeFunc1(rawStringIndexCode));
+    try self.addMethodSym(cy.RawStringT, insert, cy.MethodSym.initNativeFunc1(rawStringInsert));
     try self.addMethodSym(cy.RawStringT, insertByte, cy.MethodSym.initNativeFunc1(rawStringInsertByte));
     try self.addMethodSym(cy.RawStringT, isAscii, cy.MethodSym.initNativeFunc1(rawStringIsAscii));
     try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(rawStringLen));
@@ -499,13 +506,19 @@ fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value 
     }
 }
 
+fn ustringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, obj.ustring.charLen));
+}
+
 fn astringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     return Value.initF64(@intToFloat(f64, obj.astring.len));
 }
 
-fn astringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn astringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     const str = obj.astring.getConstSlice();
@@ -527,6 +540,27 @@ fn astringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
         return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
     }
     return Value.initF64(@intToFloat(f64, str[@floatToInt(u32, args[0].toF64())]));
+}
+
+fn rawStringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const index = @floatToInt(i64, args[0].toF64());
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[1]);
+    }
+    const str = obj.rawstring.getConstSlice();
+    if (index < 0 or index > str.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    } 
+    const insert = vm.valueToTempString(args[1]);
+    const new = vm.allocUnsetRawStringObject(obj.rawstring.len + insert.len) catch stdx.fatal();
+    const buf = new.rawstring.getSlice();
+    const uidx = @intCast(u32, index);
+    std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
+    std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
+    std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
+    return Value.initPtr(new);
 }
 
 fn rawStringInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
@@ -560,6 +594,13 @@ fn rawStringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     return Value.initF64(@intToFloat(f64, obj.rawstring.len));
+}
+
+fn staticUstringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const str = val.asStaticStringSlice();
+    const header = vm.getStaticUstringHeader(str.start);
+    return Value.initF64(@intToFloat(f64, header.charLen));
 }
 
 fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
@@ -634,7 +675,7 @@ fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     }
 }
 
-fn ustringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn ustringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const str = obj.ustring.getConstSlice();
     defer {
@@ -675,7 +716,7 @@ fn ustringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
     return Value.initF64(@intToFloat(f64, cp));
 }
 
-fn staticUstringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn staticUstringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const slice = val.asStaticStringSlice();
     const header = vm.getStaticUstringHeader(slice.start);
@@ -712,7 +753,7 @@ fn staticUstringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     return Value.initF64(@intToFloat(f64, cp));
 }
 
-fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const slice = val.asStaticStringSlice();
     const idx = @floatToInt(i32, args[0].toF64());
@@ -721,6 +762,82 @@ fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: 
     }
     const uidx = @intCast(u32, idx);
     return Value.initStaticAstring(slice.start + uidx, 1);
+}
+
+fn ustringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[1]);
+    }
+    const str = obj.ustring.getConstSlice();
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx > obj.ustring.charLen) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    var insertCharLen: u32 = undefined;
+    const insert = vm.valueToTempString2(args[1], &insertCharLen);
+    const uidx = @intCast(u32, idx);
+    const res = cy.ustringSeekCharIndexSliceAt(str, obj.ustring.mruIdx, obj.ustring.mruCharIdx, uidx);
+    obj.ustring.mruIdx = res.start;
+    obj.ustring.mruCharIdx = uidx;
+    return vm.allocUstringConcat3(str[0..res.start], insert, str[res.start..], @intCast(u32, obj.ustring.charLen + insertCharLen)) catch fatal();
+}
+
+fn staticUstringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    const header = vm.getStaticUstringHeader(slice.start);
+    defer {
+        vm.release(args[1]);
+    }
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx > header.charLen) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    var insertCharLen: u32 = undefined;
+    const insert = vm.valueToTempString2(args[1], &insertCharLen);
+    const uidx = @intCast(u32, idx);
+    const res = cy.ustringSeekCharIndexSliceAt(str, header.mruIdx, header.mruCharIdx, uidx);
+    header.mruIdx = res.start;
+    header.mruCharIdx = uidx;
+    return vm.allocUstringConcat3(str[0..res.start], insert, str[res.start..], @intCast(u32, header.charLen + insertCharLen)) catch fatal();
+}
+
+fn astringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[1]);
+    }
+    const str = obj.astring.getConstSlice();
+    return astringInsertCommon(vm, str, args[0], args[1]);
+}
+
+fn astringInsertCommon(vm: *cy.UserVM, str: []const u8, idxv: Value, insertv: Value) linksection(cy.StdSection) Value {
+    const idx = @floatToInt(i32, idxv.toF64());
+    if (idx < 0 or idx > str.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    var insertCharLen: u32 = undefined;
+    const insert = vm.valueToTempString2(insertv, &insertCharLen);
+    const uidx = @intCast(u32, idx);
+    if (insertCharLen == insert.len) {
+        return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
+    } else {
+        return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..], @intCast(u32, str.len + insertCharLen)) catch fatal();
+    }
+}
+
+fn staticAstringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    defer {
+        vm.release(args[1]);
+    }
+    return astringInsertCommon(vm, str, args[0], args[1]);
 }
 
 fn staticAstringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -818,7 +935,7 @@ fn ustringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u
     return Value.initBool(std.mem.startsWith(u8, str, needle));
 }
 
-fn rawStringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn rawStringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer {
         vm.releaseObject(obj);

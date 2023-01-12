@@ -231,9 +231,9 @@ test "Errors." {
 
     _ = try run.eval(
         \\import t 'test'
-        \\err = error(#NotFound)
+        \\err = error(#FileNotFound)
         \\try t.eq(valtag(err), #error)
-        \\try t.eq(err, error(#NotFound))
+        \\try t.eq(err, error(#FileNotFound))
     );
 }
 
@@ -296,7 +296,7 @@ test "FFI." {
             \\
             \\-- Not found.
             \\lib = bindLib('xyz123.so', [])
-            \\try t.eq(lib, error(#NotFound))
+            \\try t.eq(lib, error(#FileNotFound))
             \\
             \\-- Missing symbol.
             \\lib = bindLib(none, [ CFunc{ sym: 'missing123', args: [], ret: #int }])

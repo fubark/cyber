@@ -36,7 +36,7 @@ pub const TagLit = enum {
     big,
 
     AssertError,
-    NotFound,
+    FileNotFound,
     MissingSymbol,
     EndOfStream,
     OutOfBounds,
@@ -263,7 +263,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try ensureTagLitSym(self, "big", .big);
 
     try ensureTagLitSym(self, "AssertError", .AssertError);
-    try ensureTagLitSym(self, "NotFound", .NotFound);
+    try ensureTagLitSym(self, "FileNotFound", .FileNotFound);
     try ensureTagLitSym(self, "MissingSymbol", .MissingSymbol);
     try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
     try ensureTagLitSym(self, "OutOfBounds", .OutOfBounds);

@@ -98,7 +98,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
     } else {
         lib.* = std.DynLib.open(vm.valueToTempString(path)) catch |err| {
             log.debug("{}", .{err});
-            return Value.initErrorTagLit(@enumToInt(TagLit.NotFound));
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
         };
     }
 
@@ -531,8 +531,15 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const url = vm.valueToTempString(args[0]);
     const res = std.ChildProcess.exec(.{
         .allocator = alloc,
-        .argv = &.{ "curl", url },
-    }) catch stdx.fatal();
+        // Use curl, follow redirects.
+        .argv = &.{ "curlx", "-L", url },
+    }) catch |err| {
+        if (err == error.FileNotFound) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+        } else {
+            stdx.panicFmt("{}", .{err});
+        }
+    };
     alloc.free(res.stderr);
     defer vm.allocator().free(res.stdout);
     // TODO: Use allocOwnedString

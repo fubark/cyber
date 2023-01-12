@@ -124,7 +124,7 @@ func InitGame():
 
 func UpdateGame():
     if !gameOver:
-        if ray.IsKeyPressed(char('P')):
+        if ray.IsKeyPressed(asciiCode('P')):
             pause = !pause
 
         if !pause:

@@ -36,7 +36,9 @@ pub const TccStateS: StructId = 21;
 pub const OpaquePtrS: StructId = 22;
 pub const FileT: StructId = 23;
 
+/// Temp buf for toString conversions when the len is known to be small.
 var tempU8Buf: [256]u8 = undefined;
+var tempU8BufLen: u32 = undefined;
 
 /// Going forward, references to gvm should be replaced with pointer access to allow multiple VMs.
 /// Once all references are replaced, gvm can be removed and the default VM can be allocated from the heap.
@@ -120,6 +122,7 @@ pub const VM = struct {
     tagLitSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     u8Buf: cy.List(u8),
+    u32Buf: cy.List(u32),
 
     stackTrace: StackTrace,
 
@@ -183,6 +186,7 @@ pub const VM = struct {
             .nextPairObjSym = undefined,
             .trace = undefined,
             .u8Buf = .{},
+            .u32Buf = .{},
             .stackTrace = .{},
             .debugTable = undefined,
             .refCounts = if (TrackGlobalRC) 0 else undefined,
@@ -276,6 +280,7 @@ pub const VM = struct {
         self.tagLitSymSignatures.deinit(self.alloc);
 
         self.u8Buf.deinit(self.alloc);
+        self.u32Buf.deinit(self.alloc);
         self.stackTrace.deinit(self.alloc);
         self.alloc.free(self.panicMsg);
 
@@ -903,10 +908,17 @@ pub const VM = struct {
         return self.getOrAllocStringInfer(self.u8Buf.items());
     }
 
+    pub fn getOrAllocOwnedAstring(self: *VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
+        return self.getOrAllocOwnedString(obj, obj.astring.getConstSlice());
+    }
+
+    pub fn getOrAllocOwnedUstring(self: *VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
+        return self.getOrAllocOwnedString(obj, obj.ustring.getConstSlice());
+    }
+
     // If no such string intern exists, `obj` is added as a string intern.
     // Otherwise, `obj` is released and the existing string intern is retained and returned.
-    pub fn getOrAllocOwnedString(self: *VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
-        const str = obj.astring.getConstSlice();
+    pub fn getOrAllocOwnedString(self: *VM, obj: *HeapObject, str: []const u8) linksection(cy.HotSection) !Value {
         if (str.len <= DefaultStringInternMaxByteLen) {
             const res = try self.strInterns.getOrPut(self.alloc, str);
             if (res.found_existing) {
@@ -936,24 +948,29 @@ pub const VM = struct {
     }
 
     pub fn allocUstringObject(self: *VM, str: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
+        const obj = try self.allocUnsetUstringObject(str.len, charLen);
+        const dst = obj.ustring.getSlice();
+        std.mem.copy(u8, dst, str);
+        return obj;
+    }
+
+    pub fn allocUnsetUstringObject(self: *VM, len: usize, charLen: u32) linksection(cy.Section) !*HeapObject {
         var obj: *HeapObject = undefined;
-        if (str.len <= MaxPoolObjectUstringByteLen) {
+        if (len <= MaxPoolObjectUstringByteLen) {
             obj = try self.allocPoolObject();
         } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), str.len + Ustring.BufOffset);
+            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Ustring.BufOffset);
             obj = @ptrCast(*HeapObject, objSlice.ptr);
         }
         obj.ustring = .{
             .structId = UstringT,
             .rc = 1,
-            .len = @intCast(u32, str.len),
+            .len = @intCast(u32, len),
             .charLen = charLen,
             .mruIdx = 0,
             .mruCharIdx = 0,
             .bufStart = undefined,
         };
-        const dst = @ptrCast([*]u8, &obj.ustring.bufStart)[0..str.len];
-        std.mem.copy(u8, dst, str);
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
@@ -1095,37 +1112,9 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    fn allocUnsetUstringObject(self: *VM, len: usize) linksection(cy.Section) !*HeapObject {
-        var obj: *HeapObject = undefined;
-        if (len <= MaxPoolObjectUstringByteLen) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Ustring.BufOffset);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.ustring = .{
-            .structId = UstringT,
-            .rc = 1,
-            .len = @intCast(u32, len),
-            .charLen = 0,
-            .mruIdx = 0,
-            .mruCharIdx = 0,
-            .bufStart = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return obj;
-    }
-
     fn allocUstringConcat3Object(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetUstringObject(str1.len + str2.len + str3.len);
+        const obj = try self.allocUnsetUstringObject(str1.len + str2.len + str3.len, charLen);
         const dst = obj.ustring.getSlice();
-        obj.ustring.charLen = charLen;
         std.mem.copy(u8, dst[0..str1.len], str1);
         std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
         std.mem.copy(u8, dst[str1.len+str2.len..], str3);
@@ -1133,9 +1122,8 @@ pub const VM = struct {
     }
 
     fn allocUstringConcatObject(self: *VM, str1: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetUstringObject(str1.len + str2.len);
+        const obj = try self.allocUnsetUstringObject(str1.len + str2.len, charLen);
         const dst = obj.ustring.getSlice();
-        obj.ustring.charLen = charLen;
         std.mem.copy(u8, dst[0..str1.len], str1);
         std.mem.copy(u8, dst[str1.len..], str2);
         return obj;
@@ -2436,10 +2424,20 @@ pub const VM = struct {
     }
 
     pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
+        tempU8BufLen = 0;
         return self.valueToTempStringCommon(val, undefined, false);
     }
 
     pub fn valueToTempString2(self: *const VM, val: Value, outCharLen: *u32) linksection(cy.Section) []const u8 {
+        tempU8BufLen = 0;
+        return self.valueToTempStringCommon(val, outCharLen, true);
+    }
+
+    pub fn valueToNextTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
+        return self.valueToTempStringCommon(val, undefined, false);
+    }
+
+    pub fn valueToNextTempString2(self: *const VM, val: Value, outCharLen: *u32) linksection(cy.Section) []const u8 {
         return self.valueToTempStringCommon(val, outCharLen, true);
     }
 
@@ -2449,12 +2447,12 @@ pub const VM = struct {
             const f = val.asF64();
             var res: []const u8 = undefined;
             if (Value.floatIsSpecial(f)) {
-                res = std.fmt.bufPrint(&tempU8Buf, "{}", .{f}) catch stdx.fatal();
+                res = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{}", .{f}) catch stdx.fatal();
             } else {
                 if (Value.floatCanBeInteger(f)) {
-                    res = std.fmt.bufPrint(&tempU8Buf, "{d:.0}", .{f}) catch stdx.fatal();
+                    res = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{d:.0}", .{f}) catch stdx.fatal();
                 } else {
-                    res = std.fmt.bufPrint(&tempU8Buf, "{d:.10}", .{f}) catch stdx.fatal();
+                    res = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{d:.10}", .{f}) catch stdx.fatal();
                 }
             }
             if (getCharLen) {
@@ -2476,19 +2474,19 @@ pub const VM = struct {
                     }
                     return obj.ustring.getConstSlice();
                 } else if (obj.common.structId == RawStringT) {
-                    const buf = std.fmt.bufPrint(&tempU8Buf, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
+                    const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
                     if (getCharLen) {
                         outCharLen.* = @intCast(u32, buf.len);
                     }
                     return buf;
                 } else if (obj.common.structId == ListS) {
-                    const buf = std.fmt.bufPrint(&tempU8Buf, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
+                    const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "List ({})", .{obj.list.list.len}) catch stdx.fatal();
                     if (getCharLen) {
                         outCharLen.* = @intCast(u32, buf.len);
                     }
                     return buf;
                 } else if (obj.common.structId == MapS) {
-                    const buf = std.fmt.bufPrint(&tempU8Buf, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
+                    const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
                     if (getCharLen) {
                         outCharLen.* = @intCast(u32, buf.len);
                     }
@@ -2523,7 +2521,7 @@ pub const VM = struct {
                     },
                     cy.ErrorT => {
                         const litId = val.asErrorTagLit();
-                        const buf = std.fmt.bufPrint(&tempU8Buf, "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, buf.len);
                         }
@@ -2546,14 +2544,14 @@ pub const VM = struct {
                     },
                     cy.UserTagLiteralT => {
                         const litId = val.asTagLiteralId();
-                        const buf = std.fmt.bufPrint(&tempU8Buf, "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, buf.len);
                         }
                         return buf;
                     },
                     cy.IntegerT => {
-                        const buf = std.fmt.bufPrint(&tempU8Buf, "{}", .{val.asI32()}) catch stdx.fatal();
+                        const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{}", .{val.asI32()}) catch stdx.fatal();
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, buf.len);
                         }
@@ -3768,6 +3766,10 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).allocListFill(val, n);
     }
 
+    pub inline fn allocUnsetUstringObject(self: *UserVM, len: usize, charLen: u32) !*HeapObject {
+        return @ptrCast(*VM, self).allocUnsetUstringObject(len, charLen);
+    }
+
     pub inline fn allocUnsetAstringObject(self: *UserVM, len: usize) !*HeapObject {
         return @ptrCast(*VM, self).allocUnsetAstringObject(len);
     }
@@ -3796,8 +3798,12 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).getOrAllocStringInfer(str);
     }
 
-    pub inline fn allocOwnedString(self: *UserVM, str: *HeapObject) !Value {
-        return @ptrCast(*VM, self).getOrAllocOwnedString(str);
+    pub inline fn allocOwnedAstring(self: *UserVM, str: *HeapObject) !Value {
+        return @ptrCast(*VM, self).getOrAllocOwnedAstring(str);
+    }
+
+    pub inline fn allocOwnedUstring(self: *UserVM, str: *HeapObject) !Value {
+        return @ptrCast(*VM, self).getOrAllocOwnedUstring(str);
     }
 
     pub inline fn allocRawStringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
@@ -3846,6 +3852,14 @@ pub const UserVM = struct {
 
     pub inline fn valueToTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
         return @ptrCast(*const VM, self).valueToTempString2(val, outCharLen);
+    }
+
+    pub inline fn valueToNextTempString(self: *UserVM, val: Value) []const u8 {
+        return @ptrCast(*const VM, self).valueToNextTempString(val);
+    }
+
+    pub inline fn valueToNextTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
+        return @ptrCast(*const VM, self).valueToNextTempString2(val, outCharLen);
     }
 
     pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {

@@ -436,3 +436,40 @@ pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
         return getLineEndCpu(buf);
     }
 }
+
+/// Like std.mem.replacementSize but also records the idxes.
+pub fn prepReplacement(alloc: std.mem.Allocator, str: []const u8, needle: []const u8, replacement: []const u8, outIdxes: *cy.List(u32)) linksection(cy.StdSection) !usize {
+    if (needle.len == 0) {
+        return str.len;
+    }
+    var i: usize = 0;
+    var size: usize = str.len;
+    while (i < str.len) {
+        if (std.mem.startsWith(u8, str[i..], needle)) {
+            size = size - needle.len + replacement.len;
+            try outIdxes.append(alloc, @intCast(u32, i));
+            i += needle.len;
+        } else {
+            i += 1;
+        }
+    }
+    return size;
+}
+
+pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: []const u8, idxes: []const u32) linksection(cy.StdSection) void {
+    var dstIdx: usize = 0;
+    var srcIdx: usize = 0;
+    for (idxes) |idx| {
+        // First copy segment between last `idx` and this `idx`.
+        const preSegmentLen = idx - srcIdx;
+        std.mem.copy(u8, dst[dstIdx..dstIdx + preSegmentLen], src[srcIdx..idx]);
+        dstIdx += preSegmentLen;
+
+        // Copy replacement.
+        std.mem.copy(u8, dst[dstIdx..dstIdx + replacement.len], replacement);
+        dstIdx += replacement.len;
+        srcIdx += idx + needleLen;
+    }
+    // Copy end segment.
+    std.mem.copy(u8, dst[dstIdx..], src[srcIdx..]);
+}

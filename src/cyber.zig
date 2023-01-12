@@ -102,6 +102,8 @@ pub const indexOfChar = string.indexOfChar;
 pub const toUtf8CharIdx = string.toUtf8CharIdx;
 pub const charIndexOfCodepoint = string.charIndexOfCodepoint;
 pub const getLineEnd = string.getLineEnd;
+pub const prepReplacement = string.prepReplacement;
+pub const replaceAtIdxes = string.replaceAtIdxes;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

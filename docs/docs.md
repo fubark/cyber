@@ -470,17 +470,20 @@ print str[-1]    -- "d"
 #### object string
 | Method | Summary |
 | ------------- | ----- |
-| append(str string) string | Returns a new string that concats this string and `str`. | 
-| charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string.  | 
-| codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`.  | 
-| endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
-| index(needle string) number? | Returns the first index of substring `needle` in the string or `none` if not found. | 
-| indexChar(needle string) number? | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
-| indexCode(needle number) number? | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
-| insert(idx number, str string) string | Returns a new string with `str` inserted at index `idx`. |
-| isAscii() bool | Returns whether the string contains all ASCII characters. | 
-| len() number | Returns the number of UTF-8 characters in the string. | 
-| startsWith(prefix string) bool | Returns whether the string starts with `prefix`. | 
+| `append(str string) string` | Returns a new string that concats this string and `str`. | 
+| `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string.  | 
+| `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`.  | 
+| `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
+| `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
+| `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
+| `indexCode(needle number) number?` | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
+| `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
+| `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
+| `len() number` | Returns the number of UTF-8 characters in the string. | 
+| `lower() string` | Returns this string in lowercase. | 
+| `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+| `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
+| `upper() string` | Returns this string in uppercase. | 
 
 [To Top.](#table-of-contents)
 
@@ -516,18 +519,21 @@ print str[-1]    -- "d"
 #### object rawstring
 | Method | Summary |
 | ------------- | ----- |
-| append(str string) string | Returns a new string that concats this string and `str`. | 
-| charAt(idx number) string | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
-| codeAt(idx number) number | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
-| endsWith(suffix string) bool | Returns whether the string ends with `suffix`. | 
-| index(needle string) number? | Returns the first index of substring `needle` in the string or `none` if not found. | 
-| indexChar(needle string) number? | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
-| indexCode(needle number) number? | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
-| insert(idx number, str string) string | Returns a new string with `str` inserted at index `idx`. |
-| insertByte(idx number, byte number) string | Returns a new string with `byte` inserted at index `idx`. | 
-| isAscii() bool | Returns whether the string contains all ASCII characters. | 
-| len() number | Returns the number of bytes in the string. | 
-| startsWith(prefix string) bool | Returns whether the string starts with `prefix`. | 
+| `append(str string) string` | Returns a new string that concats this string and `str`. | 
+| `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
+| `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
+| `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
+| `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
+| `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
+| `indexCode(needle number) number?` | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
+| `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
+| `insertByte(idx number, byte number) string` | Returns a new string with `byte` inserted at index `idx`. | 
+| `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
+| `len() number` | Returns the number of bytes in the string. | 
+| `lower() string` | Returns this string in lowercase. | 
+| `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+| `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
+| `upper() string` | Returns this string in uppercase. | 
 
 ### Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.

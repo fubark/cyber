@@ -17,6 +17,10 @@ pub fn List(comptime T: type) type {
             alloc.free(self.buf);
         }
 
+        pub inline fn clearRetainingCapacity(self: *ListT) void {
+            self.len = 0;
+        }
+
         pub fn append(self: *ListT, alloc: std.mem.Allocator, val: T) linksection(section) !void {
             if (self.len == self.buf.len) {
                 try self.growTotalCapacity(alloc, self.len + 1);

@@ -1179,9 +1179,24 @@ test "Heap ASCII String." {
         \\-- len()
         \\try t.eq(str.len(), 6)
         \\
+        \\-- lower()
+        \\try t.eq('ABC'.lower(), 'abc')
+        \\
+        \\-- replace()
+        \\try t.eq(str.replace('abc', 'foo'), 'fooxyz')
+        \\try t.eq(str.replace('bc', 'foo'), 'afooxyz')
+        \\try t.eq(str.replace('bc', 'foo🦊'), 'afoo🦊xyz')
+        \\try t.eq(str.replace('bc', 'foo🦊').isAscii(), false)
+        \\try t.eq(str.replace('xy', 'foo'), 'abcfooz')
+        \\try t.eq(str.replace('xyz', 'foo'), 'abcfoo')
+        \\try t.eq(str.replace('abcd', 'foo'), 'abcxyz')
+        \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc'), true)
         \\try t.eq(str.startsWith('bc'), false)
+        \\
+        \\-- upper()
+        \\try t.eq(str.upper(), 'ABCXYZ')
     );
 }
 
@@ -1260,9 +1275,23 @@ test "Heap UTF-8 String." {
         \\-- len()
         \\try t.eq(str.len(), 8)
         \\
+        \\-- lower()
+        \\try t.eq('AB🦊C'.lower(), 'ab🦊c')
+        \\
+        \\-- replace()
+        \\try t.eq(str.replace('abc🦊', 'foo'), 'fooxyz🐶')
+        \\try t.eq(str.replace('bc🦊', 'foo'), 'afooxyz🐶')
+        \\try t.eq(str.replace('bc', 'foo🦊'), 'afoo🦊🦊xyz🐶')
+        \\try t.eq(str.replace('xy', 'foo'), 'abc🦊fooz🐶')
+        \\try t.eq(str.replace('xyz🐶', 'foo'), 'abc🦊foo')
+        \\try t.eq(str.replace('abcd', 'foo'), 'abc🦊xyz🐶')
+        \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)
         \\try t.eq(str.startsWith('bc🦊'), false)
+        \\
+        \\-- upper()
+        \\try t.eq(str.upper(), 'ABC🦊XYZ🐶')
     );
 }
 
@@ -1351,9 +1380,23 @@ test "Heap RawString." {
         \\-- len()
         \\try t.eq(str.len(), 14)
         \\
+        \\-- lower()
+        \\try t.eq(rawstring('AB🦊C').lower(), 'ab🦊c')
+        \\
+        \\-- replace()
+        \\try t.eq(str.replace('abc🦊', 'foo'), 'fooxyz🐶')
+        \\try t.eq(str.replace('bc🦊', 'foo'), 'afooxyz🐶')
+        \\try t.eq(str.replace('bc', 'foo🦊'), 'afoo🦊🦊xyz🐶')
+        \\try t.eq(str.replace('xy', 'foo'), 'abc🦊fooz🐶')
+        \\try t.eq(str.replace('xyz🐶', 'foo'), 'abc🦊foo')
+        \\try t.eq(str.replace('abcd', 'foo'), 'abc🦊xyz🐶')
+        \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)
         \\try t.eq(str.startsWith('bc🦊'), false)
+        \\
+        \\-- upper()
+        \\try t.eq(str.upper(), 'ABC🦊XYZ🐶')
     );
 }
 
@@ -1475,9 +1518,24 @@ test "Static ASCII strings." {
         \\-- len()
         \\try t.eq(str.len(), 6)
         \\
+        \\-- lower()
+        \\try t.eq('ABC'.lower(), 'abc')
+        \\
+        \\-- replace()
+        \\try t.eq(str.replace('abc', 'foo'), 'fooxyz')
+        \\try t.eq(str.replace('bc', 'foo'), 'afooxyz')
+        \\try t.eq(str.replace('bc', 'foo🦊'), 'afoo🦊xyz')
+        \\try t.eq(str.replace('bc', 'foo🦊').isAscii(), false)
+        \\try t.eq(str.replace('xy', 'foo'), 'abcfooz')
+        \\try t.eq(str.replace('xyz', 'foo'), 'abcfoo')
+        \\try t.eq(str.replace('abcd', 'foo'), 'abcxyz')
+        \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc'), true)
         \\try t.eq(str.startsWith('bc'), false)
+        \\
+        \\-- upper()
+        \\try t.eq(str.upper(), 'ABCXYZ')
     );
 }
 
@@ -1556,9 +1614,23 @@ test "Static UTF-8 strings." {
         \\-- len()
         \\try t.eq(str.len(), 8)
         \\
+        \\-- lower()
+        \\try t.eq('AB🦊C'.lower(), 'ab🦊c')
+        \\
+        \\-- replace()
+        \\try t.eq(str.replace('abc🦊', 'foo'), 'fooxyz🐶')
+        \\try t.eq(str.replace('bc🦊', 'foo'), 'afooxyz🐶')
+        \\try t.eq(str.replace('bc', 'foo🦊'), 'afoo🦊🦊xyz🐶')
+        \\try t.eq(str.replace('xy', 'foo'), 'abc🦊fooz🐶')
+        \\try t.eq(str.replace('xyz🐶', 'foo'), 'abc🦊foo')
+        \\try t.eq(str.replace('abcd', 'foo'), 'abc🦊xyz🐶')
+        \\
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)
         \\try t.eq(str.startsWith('bc🦊'), false)
+        \\
+        \\-- upper()
+        \\try t.eq(str.upper(), 'ABC🦊XYZ🐶')
     );
 }
 

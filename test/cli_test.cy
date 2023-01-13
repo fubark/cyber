@@ -39,10 +39,32 @@ try t.eq(lines[1], 'foobar\\r\\n')
 try t.eq(lines[2], 'deadbeef')
 ")
 
+runArgs(['123', 'foobar'], "
+import t 'test'
+import os 'os'
+args = os.args()
+try t.eq(args.len(), 4)
+try t.eq(args[0], os.exePath())
+try t.eq(args[1], 'temp.cy')
+try t.eq(args[2], '123')
+try t.eq(args[3], 'foobar')
+")
+
 func runPipeInput(cmd, src):
     writeFile('temp.cy', src)
     cyber = os.exePath()
     res = execCmd([ '/bin/bash', '-c', '{cmd} | {cyber} temp.cy' ])
+    if res.exited != 0:
+        print res.out
+        print res.err
+    try t.eq(res.exited, 0)
+
+func runArgs(args, src):
+    writeFile('temp.cy', src)
+    cyber = os.exePath()
+    cmd = [ cyber, 'temp.cy' ]
+    cmd.concat(args)
+    res = execCmd(cmd)
     if res.exited != 0:
         print res.out
         print res.err

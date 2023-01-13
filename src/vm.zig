@@ -582,6 +582,27 @@ pub const VM = struct {
         }
     }
 
+    pub fn allocEmptyList(self: *VM) linksection(cy.Section) !Value {
+        const obj = try self.allocPoolObject();
+        obj.list = .{
+            .structId = ListS,
+            .rc = 1,
+            .list = .{
+                .ptr = undefined,
+                .len = 0,
+                .cap = 0,
+            },
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
     pub fn allocEmptyMap(self: *VM) !Value {
         const obj = try self.allocPoolObject();
         obj.map = .{
@@ -600,7 +621,7 @@ pub const VM = struct {
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -3773,6 +3794,10 @@ pub const UserVM = struct {
         return @ptrCast(*const VM, self).alloc;
     }
 
+    pub inline fn allocEmptyList(self: *UserVM) !Value {
+        return @ptrCast(*VM, self).allocEmptyList();
+    }
+
     pub inline fn allocEmptyMap(self: *UserVM) !Value {
         return @ptrCast(*VM, self).allocEmptyMap();
     }
@@ -4191,14 +4216,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[3].arg;
                 pc += 4;
                 const elems = framePtr[startLocal..startLocal + numElems];
-                const list = try gvm.allocList(elems);
+                const list = try vm.allocList(elems);
                 framePtr[dst] = list;
                 continue;
             },
             .mapEmpty => {
                 const dst = pc[1].arg;
                 pc += 2;
-                framePtr[dst] = try gvm.allocEmptyMap();
+                framePtr[dst] = try vm.allocEmptyMap();
                 continue;
             },
             .objectSmall => {
@@ -4229,7 +4254,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const keyIdxes = pc[4..4+numEntries];
                 pc += 4 + numEntries;
                 const vals = framePtr[startLocal .. startLocal + numEntries];
-                framePtr[dst] = try gvm.allocMap(keyIdxes, vals);
+                framePtr[dst] = try vm.allocMap(keyIdxes, vals);
                 continue;
             },
             .slice => {
@@ -4238,7 +4263,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const end = framePtr[pc[3].arg];
                 const dst = pc[4].arg;
                 pc += 5;
-                framePtr[dst] = try gvm.sliceList(list, start, end);
+                framePtr[dst] = try vm.sliceList(list, start, end);
                 continue;
             },
             .setInitN => {
@@ -4251,25 +4276,19 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 continue;
             },
             .setIndex => {
-                const left = pc[1].arg;
-                const index = pc[2].arg;
-                const right = pc[3].arg;
+                const leftv = framePtr[pc[1].arg];
+                const indexv = framePtr[pc[2].arg];
+                const rightv = framePtr[pc[3].arg];
+                try @call(.never_inline, vm.setIndex, .{leftv, indexv, rightv});
                 pc += 4;
-                const rightv = framePtr[right];
-                const indexv = framePtr[index];
-                const leftv = framePtr[left];
-                try gvm.setIndex(leftv, indexv, rightv);
                 continue;
             },
             .setIndexRelease => {
-                const left = pc[1].arg;
-                const index = pc[2].arg;
-                const right = pc[3].arg;
+                const leftv = framePtr[pc[1].arg];
+                const indexv = framePtr[pc[2].arg];
+                const rightv = framePtr[pc[3].arg];
+                try @call(.never_inline, vm.setIndexRelease, .{leftv, indexv, rightv});
                 pc += 4;
-                const rightv = framePtr[right];
-                const indexv = framePtr[index];
-                const leftv = framePtr[left];
-                try gvm.setIndexRelease(leftv, indexv, rightv);
                 continue;
             },
             .copy => {

@@ -24,6 +24,7 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
     try mod.setVar(alloc, "stdin", stdin);
     try mod.setVar(alloc, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
 
+    try mod.setNativeFunc(alloc, "args", 0, osArgs);
     try mod.setNativeFunc(alloc, "cwd", 0, cwd);
     try mod.setNativeFunc(alloc, "exePath", 0, exePath);
     try mod.setNativeFunc(alloc, "getEnv", 1, getEnv);
@@ -40,7 +41,20 @@ pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) void {
     vm_.release(c.vm, mod.getVarVal("stdin").?);
 }
 
-pub fn cwd(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const alloc = vm.allocator();
+    var iter = std.process.argsWithAllocator(alloc) catch stdx.fatal();
+    defer iter.deinit();
+    const listv = vm.allocEmptyList() catch stdx.fatal();
+    const listo = listv.asHeapObject(*cy.HeapObject);
+    while (iter.next()) |arg| {
+        const argv = vm.allocRawString(arg) catch stdx.fatal();
+        listo.list.append(vm.allocator(), argv);
+    }
+    return listv;
+}
+
+pub fn cwd(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const res = std.process.getCwdAlloc(vm.allocator()) catch fatal();
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString

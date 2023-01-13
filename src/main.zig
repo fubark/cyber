@@ -42,7 +42,7 @@ pub fn main() !void {
     defer std.process.argsFree(alloc, args);
 
     var cmd = Command.none;
-    var arg0: []const u8 = "";
+    var arg0: ?[]const u8 = null;
     var verbose = false;
     for (args[1..]) |arg| {
         if (arg[0] == '-') {
@@ -59,21 +59,33 @@ pub fn main() !void {
                     cmd = .help;
                 } else {
                     cmd = .eval;
-                    arg0 = arg;
+                    if (arg0 == null) {
+                        arg0 = arg;
+                    }
                 }
 
             } else {
-                arg0 = arg;
+                if (arg0 == null) {
+                    arg0 = arg;
+                }
             }
         }
     }
 
     switch (cmd) {
         .eval => {
-            try evalPath(alloc, arg0, verbose);
+            if (arg0) |path| {
+                try evalPath(alloc, path, verbose);
+            } else {
+                return error.MissingFilePath;
+            }
         },
         .compile => {
-            try compilePath(alloc, arg0);
+            if (arg0) |path| {
+                try compilePath(alloc, path);
+            } else {
+                return error.MissingFilePath;
+            }
         },
         .help => {
             help();

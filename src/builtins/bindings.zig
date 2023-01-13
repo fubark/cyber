@@ -147,6 +147,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == cy.ListS);
     try self.addMethodSym(cy.ListS, add, cy.MethodSym.initNativeFunc1(listAdd));
     try self.addMethodSym(cy.ListS, append, cy.MethodSym.initNativeFunc1(listAppend));
+    try self.addMethodSym(cy.ListS, concat, cy.MethodSym.initNativeFunc1(listConcat));
     try self.addMethodSym(cy.ListS, insert, cy.MethodSym.initNativeFunc1(listInsert));
     try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
     try self.addMethodSym(cy.ListS, len, cy.MethodSym.initNativeFunc1(listLen));
@@ -372,6 +373,22 @@ fn listAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     obj.list.append(vm.allocator(), args[0]);
     vm.releaseObject(obj);
+    return Value.None;
+}
+
+fn listConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    if (args[0].isList()) {
+        const list = args[0].asHeapObject(*cy.HeapObject);
+        for (list.list.items()) |it| {
+            vm.retain(it);
+            obj.list.append(vm.allocator(), it);
+        }
+    }
     return Value.None;
 }
 

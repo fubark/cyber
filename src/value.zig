@@ -169,6 +169,10 @@ pub const Value = packed union {
         }
     }
 
+    pub inline fn isList(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject(*cy.HeapObject).common.structId == cy.ListS;
+    }
+
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
             const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);

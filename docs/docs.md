@@ -564,7 +564,7 @@ List operations.
 ```text
 list = [234]
 -- Append a value.
-list.add 123
+list.append 123
 print list[-1]     -- Prints '123'
 
 -- Inserting a value at an index.
@@ -591,6 +591,7 @@ list.remove(1)
 | ------------- | ----- |
 | `add(val any) none` | Deprecated: Use `append()`. |
 | `append(val any) none` | Appends a value to the end of the list. |
+| `concat(val any) none` | Concats the elements of another list to the end of this list. |
 | `insert(idx number, val any) none` | Inserts a value at index `idx`. |
 | `len() number` | Returns the number of elements in the list. |
 | `remove(idx number) none` | Removes an element at index `idx`. |

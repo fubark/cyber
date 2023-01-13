@@ -1690,16 +1690,40 @@ test "Lists" {
         \\a[2] = 3
         \\try t.eq(a[2], 3)
         \\
-        \\-- insert() at index
-        \\a.insert(1, 123)
-        \\try t.eq(a[1], 123)
+        \\-- append()
+        \\a = []
+        \\a.append(1)
+        \\try t.eq(a.len(), 1)
+        \\try t.eq(a[0], 1)
+        \\
+        \\-- concat()
+        \\a = [1, 2, 3]
+        \\a.concat([4, 5, 6])
+        \\try t.eqList(a, [1, 2, 3, 4, 5, 6])
+        \\
+        \\-- insert() in empty
+        \\a = []
+        \\a.insert(0, 1)
+        \\try t.eq(a[0], 1)
+        \\
+        \\-- insert() at start
+        \\a.insert(0, 2)
+        \\try t.eqList(a, [2, 1])
+        \\
+        \\-- insert() at end
+        \\a.insert(2, 3)
+        \\try t.eqList(a, [2, 1, 3])
+        \\
+        \\-- insert() in middle
+        \\a.insert(1, 4)
+        \\try t.eqList(a, [2, 4, 1, 3])
         \\
         \\-- insert() at index out of bounds.
         \\try t.eq(a.insert(-1, 123), error(#OutOfBounds))
         \\try t.eq(a.insert(100, 123), error(#OutOfBounds))
-        \\try t.eq(a.len(), 4)
         \\
         \\-- len()
+        \\a = [1, 2, 3, 4]
         \\try t.eq(a.len(), 4)
         \\
         \\-- remove()

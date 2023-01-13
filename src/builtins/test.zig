@@ -9,12 +9,13 @@ const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const v = fmt.v;
 
-pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
+pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .prefix = spec,
     };
     try mod.setNativeFunc(alloc, "eq", 2, eq);
+    try mod.setNativeFunc(alloc, "eqList", 2, eqList);
     try mod.setNativeFunc(alloc, "eqNear", 2, eqNear);
     return mod;
 }
@@ -26,78 +27,70 @@ fn getComparableTag(val: Value) cy.ValueUserTag {
     } else return tag;
 }
 
-pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    _ = nargs;
-    const act = args[0];
-    const exp = args[1];
-    defer {
-        vm.release(act);
-        vm.release(exp);
-    }
-
+fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
     const actType = getComparableTag(act);
     const expType = getComparableTag(exp);
     if (actType == expType) {
         switch (actType) {
             .number => {
                 if (act.asF64() == exp.asF64()) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             .string => {
                 const actStr = vm.valueAsString(act);
                 const expStr = vm.valueAsString(exp);
                 if (std.mem.eql(u8, actStr, expStr)) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             .opaquePtr => {
                 const actPtr = stdx.ptrAlignCast(*cy.OpaquePtr, act.asPointer().?).ptr;
                 const expPtr = stdx.ptrAlignCast(*cy.OpaquePtr, exp.asPointer().?).ptr;
                 if (actPtr == expPtr) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: {} != {}\n", &.{v(actPtr), v(expPtr)});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             .boolean => {
                 const actv = act.asBool();
                 const expv = exp.asBool();
                 if (actv == expv) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             .tagLiteral => {
                 const actv = act.asTagLiteralId();
                 const expv = exp.asTagLiteralId();
                 if (actv == expv) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: {} != {}\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             .none => {
-                return Value.True;
+                return true;
             },
             .errorVal => {
                 const actv = act.asErrorTagLit();
                 const expv = exp.asErrorTagLit();
                 if (actv == expv) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: error({}) != error({})\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             .map,
@@ -106,10 +99,10 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
                 const actv = act.asPointer().?;
                 const expv = exp.asPointer().?;
                 if (actv == expv) {
-                    return Value.True;
+                    return true;
                 } else {
                     printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    return false;
                 }
             },
             else => {
@@ -119,6 +112,22 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
     } else {
         printStderr("Types do not match:\n", &.{});
         printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
+        return false;
+    }
+
+}
+
+pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    _ = nargs;
+    const act = args[0];
+    const exp = args[1];
+    defer {
+        vm.release(act);
+        vm.release(exp);
+    }
+    if (eq2(vm, act, exp)) {
+        return Value.True;
+    } else {
         return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
     }
 }
@@ -141,6 +150,46 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
             }
         } else {
             printStderr("Expected number, actual: {}\n", &.{v(actType)});
+            return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+        }
+    } else {
+        printStderr("Types do not match:\n", &.{});
+        printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
+        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+    }
+}
+
+pub fn eqList(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const act = args[0];
+    const exp = args[1];
+    defer {
+        vm.release(act);
+        vm.release(exp);
+    }
+
+    const actType = act.getUserTag();
+    const expType = exp.getUserTag();
+    if (actType == expType) {
+        if (actType == .list) {
+            const acto = act.asHeapObject(*cy.HeapObject);
+            const expo = exp.asHeapObject(*cy.HeapObject);
+            if (acto.list.list.len == expo.list.list.len) {
+                var i: u32 = 0;
+                const actItems = acto.list.items();
+                const expItems = expo.list.items();
+                while (i < acto.list.list.len) : (i += 1) {
+                    if (!eq2(vm, actItems[i], expItems[i])) {
+                        printStderr("Item mismatch at idx: {}\n", &.{v(i)});
+                        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                    }
+                }
+                return Value.True;
+            } else {
+                printStderr("actual list len: {} != {}\n", &.{v(acto.list.list.len), v(expo.list.list.len)});
+                return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+            }
+        } else {
+            printStderr("Expected list, actual: {}\n", &.{v(actType)});
             return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
         }
     } else {

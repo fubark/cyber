@@ -145,14 +145,15 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addStruct("List");
     std.debug.assert(id == cy.ListS);
-    try self.addMethodSym(cy.ListS, resize, cy.MethodSym.initNativeFunc1(listResize));
-    try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
-    try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
     try self.addMethodSym(cy.ListS, add, cy.MethodSym.initNativeFunc1(listAdd));
+    try self.addMethodSym(cy.ListS, append, cy.MethodSym.initNativeFunc1(listAppend));
     try self.addMethodSym(cy.ListS, insert, cy.MethodSym.initNativeFunc1(listInsert));
-    try self.addMethodSym(cy.ListS, remove, cy.MethodSym.initNativeFunc1(listRemove));
-    try self.addMethodSym(cy.ListS, sort, cy.MethodSym.initNativeFunc1(listSort));
+    try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
     try self.addMethodSym(cy.ListS, len, cy.MethodSym.initNativeFunc1(listLen));
+    try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
+    try self.addMethodSym(cy.ListS, remove, cy.MethodSym.initNativeFunc1(listRemove));
+    try self.addMethodSym(cy.ListS, resize, cy.MethodSym.initNativeFunc1(listResize));
+    try self.addMethodSym(cy.ListS, sort, cy.MethodSym.initNativeFunc1(listSort));
 
     id = try self.addStruct("ListIterator");
     std.debug.assert(id == cy.ListIteratorT);
@@ -308,6 +309,11 @@ fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
 
 fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const compare = args[0];
+    defer {
+        vm.releaseObject(obj);
+        vm.release(compare);
+    }
     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
         lessFn: Value,
@@ -327,7 +333,6 @@ fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linkse
         }
     };
     std.sort.sort(Value, list.items(), &lessCtx, S.less);
-    vm.releaseObject(obj);
     return Value.None;
 }
 
@@ -358,21 +363,15 @@ fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     return Value.None;
 }
 
-fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
-    if (inner.len == inner.buf.len) {
-        // After reaching a certain size, use power of two ceil.
-        // This reduces allocations for big lists while not over allocating for smaller lists.
-        if (inner.len > 512) {
-            const newCap = std.math.ceilPowerOfTwo(u32, @intCast(u32, inner.len) + 1) catch stdx.fatal();
-            inner.growTotalCapacityPrecise(vm.allocator(), newCap) catch stdx.fatal();
-        } else {
-            inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
-        }
-    }
-    inner.appendAssumeCapacity(args[0]);
-    vm.releaseObject(list);
+fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
+    fmt.printDeprecated("list.add()", "0.1", "Use list.append() instead.", &.{});
+    return listAppend(vm, ptr, args, nargs);
+}
+
+fn listAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    obj.list.append(vm.allocator(), args[0]);
+    vm.releaseObject(obj);
     return Value.None;
 }
 
@@ -418,7 +417,19 @@ fn listResize(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
-    inner.resize(vm.allocator(), size) catch stdx.fatal();
+    if (inner.len < size) {
+        const oldLen = inner.len;
+        inner.resize(vm.allocator(), size) catch stdx.fatal();
+        for (inner.items()[oldLen..size]) |*item| {
+            item.* = Value.None;
+        }
+    } else if (inner.len > size) {
+        // Remove items.
+        for (inner.items()[size..inner.len]) |item| {
+            vm.release(item);
+        }
+        inner.resize(vm.allocator(), size) catch stdx.fatal();
+    }
     vm.releaseObject(list);
     return Value.None;
 }

@@ -3366,6 +3366,22 @@ pub const List = packed struct {
     pub inline fn items(self: *const List) []Value {
         return self.list.ptr[0..self.list.len];
     }
+
+    /// Assumes `val` is retained.
+    pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) linksection(cy.Section) void {
+        const list = stdx.ptrAlignCast(*cy.List(Value), &self.list);
+        if (list.len == list.buf.len) {
+            // After reaching a certain size, use power of two ceil.
+            // This reduces allocations for big lists while not over allocating for smaller lists.
+            if (list.len > 512) {
+                const newCap = std.math.ceilPowerOfTwo(u32, @intCast(u32, list.len) + 1) catch stdx.fatal();
+                list.growTotalCapacityPrecise(alloc, newCap) catch stdx.fatal();
+            } else {
+                list.growTotalCapacity(alloc, list.len + 1) catch stdx.fatal();
+            }
+        }
+        list.appendAssumeCapacity(val);
+    }
 };
 
 const Object = packed struct {

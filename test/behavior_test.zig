@@ -116,7 +116,7 @@ test "Fibers" {
     var val = try run.eval(
         \\func foo(list):
         \\  coyield
-        \\  list.add(123)
+        \\  list.append(123)
         \\list = []
         \\f = coinit foo(list)
         \\list.len()
@@ -127,7 +127,7 @@ test "Fibers" {
     val = try run.eval(
         \\func foo(list):
         \\  coyield
-        \\  list.add(123)
+        \\  list.append(123)
         \\list = []
         \\f = coinit foo(list)
         \\coresume f
@@ -138,7 +138,7 @@ test "Fibers" {
     // Start fiber without yield.
     val = try run.eval(
         \\func foo(list):
-        \\  list.add(123)
+        \\  list.append(123)
         \\list = []
         \\f = coinit foo(list)
         \\coresume f
@@ -150,7 +150,7 @@ test "Fibers" {
     val = try run.eval(
         \\import t 'test'
         \\func foo(list):
-        \\  list.add(123)
+        \\  list.append(123)
         \\  return list[0]
         \\list = []
         \\f = coinit foo(list)
@@ -164,7 +164,7 @@ test "Fibers" {
         \\  coyield
         \\func foo(list):
         \\  bar()
-        \\  list.add(123)
+        \\  list.append(123)
         \\list = []
         \\f = coinit foo(list)
         \\coresume f
@@ -175,9 +175,9 @@ test "Fibers" {
     // Continue to resume fiber.
     val = try run.eval(
         \\func foo(list):
-        \\  list.add(123)
+        \\  list.append(123)
         \\  coyield
-        \\  list.add(234)
+        \\  list.append(234)
         \\list = []
         \\f = coinit foo(list)
         \\coresume f
@@ -1690,51 +1690,65 @@ test "Lists" {
         \\a[2] = 3
         \\try t.eq(a[2], 3)
         \\
-        \\-- Insert at index
+        \\-- insert() at index
         \\a.insert(1, 123)
         \\try t.eq(a[1], 123)
         \\
-        \\-- Insert at index out of bounds.
+        \\-- insert() at index out of bounds.
         \\try t.eq(a.insert(-1, 123), error(#OutOfBounds))
         \\try t.eq(a.insert(100, 123), error(#OutOfBounds))
         \\try t.eq(a.len(), 4)
         \\
-        \\-- Get size.
+        \\-- len()
         \\try t.eq(a.len(), 4)
         \\
-        \\-- Remove.
+        \\-- remove()
         \\a = [1, 2, 3]
         \\a.remove(1)
         \\try t.eq(a.len(), 2)
         \\try t.eq(a[0], 1)
         \\try t.eq(a[1], 3)
         \\
-        \\-- Remove first item.
+        \\-- remove() first item.
         \\a = [1, 2, 3]
         \\a.remove(0)
         \\try t.eq(a.len(), 2)
         \\try t.eq(a[0], 2)
         \\try t.eq(a[1], 3)
-
-        \\-- Remove last item.
+        \\
+        \\-- remove() last item.
         \\a = [1, 2, 3]
         \\a.remove(2)
         \\try t.eq(a.len(), 2)
         \\try t.eq(a[0], 1)
         \\try t.eq(a[1], 2)
         \\
-        \\-- Remove out of bounds.
+        \\-- remove() out of bounds.
         \\a = [1, 2, 3]
         \\try t.eq(a.remove(-1), error(#OutOfBounds))
         \\try t.eq(a.remove(3), error(#OutOfBounds))
         \\try t.eq(a.len(), 3)
         \\
-        \\-- Remove rc item.
+        \\-- remove() rc item.
         \\a = [1, [123], 3]
         \\a.remove(1)
         \\try t.eq(a.len(), 2)
         \\try t.eq(a[0], 1)
         \\try t.eq(a[1], 3)
+        \\
+        \\-- resize()
+        \\a = [1, 2, 3]
+        \\a.resize(4)
+        \\try t.eq(a.len(), 4)
+        \\try t.eq(a[3], none)
+        \\a.resize(2)
+        \\try t.eq(a.len(), 2)
+        \\try t.eq(a[1], 2)
+        \\
+        \\-- sort()
+        \\a = [3, 1, 2]
+        \\a.sort((a, b) => a < b)
+        \\try t.eqList(a, [1, 2, 3])
     );
 
     // Start to end index slice.
@@ -2526,7 +2540,7 @@ test "Native function call." {
     var val = try run.eval(
         \\list = []
         \\for 0..10 as i:
-        \\   list.add(i)
+        \\   list.append(i)
         \\list[9]
     );
     try t.eq(val.asF64toI32(), 9);
@@ -2793,27 +2807,29 @@ test "Lambdas." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // No params.
-    var val = try run.eval(
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- No params.
         \\foo = () => 2 + 2
-        \\foo()
-    );
-    try t.eq(val.asF64toI32(), 4);
-
-    // One param.
-    val = try run.eval(
+        \\try t.eq(foo(), 4)
+        \\
+        \\-- One param.
         \\foo = a => a + 1
-        \\foo(10)
-    );
-    try t.eq(val.asF64toI32(), 11);
-
-    // Lambda with multiple param.
-    val = try run.eval(
+        \\try t.eq(foo(10), 11)
+        \\
+        \\-- Multiple params.
         \\foo = (bar, inc) => bar + inc
-        \\foo(20, 10)
+        \\try t.eq(foo(20, 10), 30)
+        \\
+        \\-- Pass lambda as arg.
+        \\func call(f):
+        \\  return f(14)
+        \\try t.eq(call(a => a + 1), 15)
+        \\
+        // \\-- Invoking lambda temp.
+        // \\try t.eq((a => a + 1)(14), 15)
     );
-    try t.eq(val.asF64toI32(), 30);
-
 //     // Lambda assign declaration.
 //     val = try run.eval(
 //         \\foo = {}

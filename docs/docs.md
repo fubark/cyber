@@ -19,7 +19,7 @@
     - [Strings](#strings) ([type](#object-string))
         - [String Interpolation](#string-interpolation)
         - [rawstring](#raw-string) ([type](#object-rawstring))
-    - [Lists](#lists)
+    - [Lists](#lists) ([type](#object-list))
     - [Maps](#maps)
     - [Objects](#objects)
     - [Tags](#tags)
@@ -586,6 +586,17 @@ list.remove(1)
 
 [To Top.](#table-of-contents)
 
+#### object list
+| Method | Summary |
+| ------------- | ----- |
+| `add(val any) none` | Deprecated: Use `append()`. |
+| `append(val any) none` | Appends a value to the end of the list. |
+| `insert(idx number, val any) none` | Inserts a value at index `idx`. |
+| `len() number` | Returns the number of elements in the list. |
+| `remove(idx number) none` | Removes an element at index `idx`. |
+| `resize(len number) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
+| `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
+
 ### Maps.
 Maps are a builtin type that store key value pairs in dictionaries.
 ```text
@@ -1067,32 +1078,32 @@ print contents
 
 | Function | Summary |
 | ------------- | ----- |
-| arrayFill(val any, n number) [..] | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
-| asciiCode(val any) number | Converts the first character of a string to an ASCII code number. | 
-| bool(val any) bool | Converts a value to either `true` or `false`. | 
-| bindLib(fns []CFunc) {..} | Creates an FFI binding to a dynamic library and it's symbols. | 
-| char(val any) number | Deprecated: Use `asciiCode` instead. |
-| copy(val any) any | Copies a primitive value or creates a shallow copy of an object value. | 
-| execCmd(args []string) { out, err, exited } | Runs a shell command and returns the stdout/stderr. | 
-| exit(status number) noreturn | Exits the program with a status code. | 
-| error(any) error | Create an error from a tag or tag literal. | 
-| fetchUrl(url string) string | Uses previously installed `curl` to fetch the contents at a URL. If `curl` does not exist, `error(#FileNotFound)` is returned. Cyber has not included an http/tls library yet. | 
-| getInput() string | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
-| int(val any) int | Converts a value to an 32-bit integer. | 
-| must(val any) any \| noreturn | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
-| number(val any) number | Converts a value to a number. | 
-| opaque(val any) opaque | Converts a value to an opaque pointer value. This is usually used with FFI. | 
-| panic(e taglit) noreturn | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors). |
-| parseCyon(cyon string) any | Parses a CYON string into a value. | 
-| print(s string) none | Prints a value as a string to stdout. The new line is also printed. | 
-| prints(s string) none | Prints a value as a string to stdout. | 
-| rawstring(str string) rawstring | Converts a string to a `rawstring`. | 
-| readAll() string | Reads stdin to the end as a string. | 
-| readFile(path string) string | Reads a file into a string value. | 
-| readLine() string | Deprecated: Use `getInput` instead. |
-| string(val any) string | Converts a value to a string. | 
-| valtag(any) #taglit | Returns the value's type as a tag literal. |
-| writeFile(path string, contents string) none | Writes a string value to a file. | 
+| `arrayFill(val any, n number) list` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
+| `asciiCode(val any) number` | Converts the first character of a string to an ASCII code number. | 
+| `bool(val any) bool` | Converts a value to either `true` or `false`. | 
+| `bindLib(fns []CFunc) map` | Creates an FFI binding to a dynamic library and it's symbols. | 
+| `char(val any) number` | Deprecated: Use `asciiCode` instead. |
+| `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
+| `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
+| `exit(status number) noreturn` | Exits the program with a status code. | 
+| `error(any) error` | Create an error from a tag or tag literal. | 
+| `fetchUrl(url string) string` | Uses previously installed `curl` to fetch the contents at a URL. If `curl` does not exist, `error(#FileNotFound)` is returned. Cyber has not included an http/tls library yet. | 
+| `getInput() string` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
+| `int(val any) int` | Converts a value to an 32-bit integer. | 
+| `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
+| `number(val any) number` | Converts a value to a number. | 
+| `opaque(val any) opaque` | Converts a value to an opaque pointer value. This is usually used with FFI. | 
+| `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](#unexpected-errors). |
+| `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
+| `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
+| `prints(s string) none` | Prints a value as a string to stdout. | 
+| `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
+| `readAll() string` | Reads stdin to the end as a string. | 
+| `readFile(path string) string` | Reads a file into a string value. | 
+| `readLine() string` | Deprecated: Use `getInput` instead. |
+| `string(val any) string` | Converts a value to a string. | 
+| `valtag(any) #taglit` | Returns the value's type as a tag literal. |
+| `writeFile(path string, contents string) none` | Writes a string value to a file. | 
 
 [To Top.](#table-of-contents)
 
@@ -1181,21 +1192,22 @@ for map as k, v:
 
 | Function | Summary |
 | -- | -- |
-| cwd() string | Returns the current working directory. |
-| exePath() string | Returns the current executable's path. |
-| getEnv(string) string | Returns an environment value by key. |
-| getEnvAll() {..} | Returns all environment entries as a map. |
-| milliTime() number | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
-| realPath(path string) string | Returns the absolute path of the given path. |
-| setEnv(key string, value string) none | Sets an environment value by key. |
-| sleep(ms number) none | Pauses the current thread for given milliseconds. |
-| unsetEnv(string) none | Removes an environment value by key. |
+| `args() list<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
+| `cwd() string` | Returns the current working directory. |
+| `exePath() string` | Returns the current executable's path. |
+| `getEnv(string) string` | Returns an environment value by key. |
+| `getEnvAll() map` | Returns all environment entries as a map. |
+| `milliTime() number` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
+| `realPath(path string) string` | Returns the absolute path of the given path. |
+| `setEnv(key string, value string) none` | Sets an environment value by key. |
+| `sleep(ms number) none` | Pauses the current thread for given milliseconds. |
+| `unsetEnv(string) none` | Removes an environment value by key. |
 
 object **File**
 | Function | Summary |
 | -- | -- |
-| streamLines() Iterable\<rawstring\> | Equivalent to `streamLines(4096)`. |
-| streamLines(bufSize number) Iterable\<rawstring\> | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
+| `streamLines() Iterable<rawstring>` | Equivalent to `streamLines(4096)`. |
+| `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 
 [To Top.](#table-of-contents)
 
@@ -1212,8 +1224,9 @@ try t.eq(a, 444)
 
 | Function | Summary |
 | -- | -- |
-| eq(a any, b any) bool | Returns whether two values are equal. Returns `false` if types do not match up. |
-| eqNear(a any, b any) bool | Returns two numbers are near each other within epsilon 1e-5. |
+| `eq(a any, b any) true \| error` | Returns whether two values are equal. Returns `error(#AssertError)` if types do not match up. |
+| `eqList(a any, b any) true \| error` | Returns true if two lists have the same size and the elements are equal as if `eq` was called on those corresponding elements. |
+| `eqNear(a any, b any) true \| error` | Returns two numbers are near each other within epsilon 1e-5. |
 
 [To Top.](#table-of-contents)
 

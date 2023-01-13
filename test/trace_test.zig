@@ -86,8 +86,8 @@ test "ARC." {
     val = try run.eval(
         \\a = []
         \\b = []
-        \\a.add(b)
-        \\b.add(a)
+        \\a.append(b)
+        \\b.append(a)
     );
     try t.eq(trace.numRetains, 6);
     try t.eq(trace.numReleases, 4);

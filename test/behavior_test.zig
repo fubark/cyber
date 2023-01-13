@@ -74,7 +74,8 @@ test "core module" {
         \\s = rawstring('').insertByte(0, 255)
         \\writeFile('test.txt', s)
         \\read = readFile('test.txt')
-        \\try t.eq(read, s)
+        \\try t.eq(read.len(), 1)
+        \\try t.eq(read.byteAt(0), 255)
     );
 }
 
@@ -1323,6 +1324,15 @@ test "Heap RawString." {
         \\try t.eq(str[13], error(#InvalidChar))
         \\try t.eq(str[14], error(#OutOfBounds))
         \\
+        \\-- byteAt()
+        \\try t.eq(str.byteAt(-1), error(#OutOfBounds))
+        \\try t.eq(str.byteAt(0), 97)
+        \\try t.eq(str.byteAt(3), 240)
+        \\try t.eq(str.byteAt(4), 159)
+        \\try t.eq(str.byteAt(10), 240)
+        \\try t.eq(str.byteAt(13), 182)
+        \\try t.eq(str.byteAt(14), error(#OutOfBounds))
+        \\
         \\-- charAt().
         \\try t.eq(str.charAt(-1), error(#OutOfBounds))
         \\try t.eq(str.charAt(0), 'a')
@@ -1400,6 +1410,13 @@ test "Heap RawString." {
         \\-- startsWith()
         \\try t.eq(str.startsWith('abc🦊'), true)
         \\try t.eq(str.startsWith('bc🦊'), false)
+        \\
+        \\-- toString()
+        \\try t.eq(str.toString(), 'abc🦊xyz🐶')
+        \\try t.eq(str.toString().isAscii(), false)
+        \\try t.eq(rawstring('abc').toString(), 'abc')
+        \\try t.eq(rawstring('abc').isAscii(), true)
+        \\try t.eq(rawstring('').insertByte(0, 255).toString(), error(#InvalidChar))
         \\
         \\-- upper()
         \\try t.eq(str.upper(), 'ABC🦊XYZ🐶')

@@ -65,6 +65,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     self.nextPairObjSym = try self.ensureMethodSymKey("nextPair", 0);
     const add = try self.ensureMethodSymKey("add", 1);
     const append = try self.ensureMethodSymKey("append", 1);
+    const byteAt = try self.ensureMethodSymKey("byteAt", 1);
     const charAt = try self.ensureMethodSymKey("charAt", 1);
     const codeAt = try self.ensureMethodSymKey("codeAt", 1);
     const concat = try self.ensureMethodSymKey("concat", 1);
@@ -86,6 +87,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const status = try self.ensureMethodSymKey("status", 0);
     const streamLines = try self.ensureMethodSymKey("streamLines", 0);
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
+    const toString = try self.ensureMethodSymKey("toString", 0);
     const upper = try self.ensureMethodSymKey("upper", 0);
 
     // Init compile time builtins.
@@ -218,6 +220,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addStruct("rawstring");
     std.debug.assert(id == cy.RawStringT);
     try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(rawStringAppend));
+    try self.addMethodSym(cy.RawStringT, byteAt, cy.MethodSym.initNativeFunc1(rawStringByteAt));
     try self.addMethodSym(cy.RawStringT, charAt, cy.MethodSym.initNativeFunc1(rawStringCharAt));
     try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(rawStringCodeAt));
     try self.addMethodSym(cy.RawStringT, concat, cy.MethodSym.initNativeFunc1(rawStringConcat));
@@ -232,6 +235,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, lower, cy.MethodSym.initNativeFunc1(rawStringLower));
     try self.addMethodSym(cy.RawStringT, replace, cy.MethodSym.initNativeFunc1(rawStringReplace));
     try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
+    try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
     try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(rawStringUpper));
 
     id = try self.addStruct("Fiber");
@@ -1249,6 +1253,33 @@ pub fn rawStringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     } else {
         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidChar));
     }
+}
+
+fn rawStringToString(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const str = obj.rawstring.getConstSlice();
+    if (cy.validateUtf8(str)) |size| {
+        if (size == str.len) {
+            return vm.allocAstring(str) catch fatal();
+        } else {
+            return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
+        }
+    } else {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidChar));
+    }
+}
+
+fn rawStringByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= obj.rawstring.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    const str = obj.rawstring.getConstSlice();
+    const uidx = @intCast(u32, idx);
+    return Value.initF64(@intToFloat(f64, str[uidx]));
 }
 
 fn rawStringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

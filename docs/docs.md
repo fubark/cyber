@@ -521,6 +521,7 @@ print str[-1]    -- "d"
 | Method | Summary |
 | ------------- | ----- |
 | `append(str string) string` | Deprecated: Use `concat()`. | 
+| `byteAt(idx number) number` | Returns the byte value (0-255) at the given index `idx`. | 
 | `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
 | `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
 | `concat(str string) string` | Returns a new string that concats this string and `str`. | 
@@ -535,6 +536,7 @@ print str[-1]    -- "d"
 | `lower() string` | Returns this string in lowercase. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
+| `toString() string` | Returns a valid UTF-8 string or returns `error(#InvalidChar)`. | 
 | `upper() string` | Returns this string in uppercase. | 
 
 ### Lists.

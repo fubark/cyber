@@ -128,5 +128,24 @@ pub const HotSection = if (builtin.os.tag == .macos) "DATA,.eval" else ".eval";
 pub const Section = if (builtin.os.tag == .macos) "DATA,.eval2" else ".eval2";
 pub const StdSection = if (builtin.os.tag == .macos) "DATA,.eval.std" else ".eval.std";
 pub const CompilerSection = if (builtin.os.tag == .macos) "DATA,.compiler" else ".compiler";
+pub const InitSection = if (builtin.os.tag == .macos) "DATA,.cyInit" else ".cyInit";
+
+pub export fn initSection() linksection(InitSection) callconv(.C) void {}
+pub export fn compilerSection() linksection(CompilerSection) callconv(.C) void {}
+pub export fn stdSection() linksection(StdSection) callconv(.C) void {}
+pub export fn section() linksection(Section) callconv(.C) void {}
+pub export fn hotSection() linksection(HotSection) callconv(.C) void {}
+
+/// Force the compiler to order linksection first on given function.
+/// Use exported c function so release builds don't remove them.
+pub fn forceSectionDep(_: *const fn() callconv(.C) void) void {} 
+
+pub fn forceSectionDeps() !void {
+    forceSectionDep(hotSection);
+    forceSectionDep(section);
+    forceSectionDep(stdSection);
+    forceSectionDep(compilerSection);
+    forceSectionDep(initSection);
+}
 
 pub var silentError = false;

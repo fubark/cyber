@@ -8,7 +8,7 @@ const vm_ = @import("../vm.zig");
 const gvm = &vm_.gvm;
 const TagLit = @import("bindings.zig").TagLit;
 
-pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
+pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const u8) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .prefix = spec,

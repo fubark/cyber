@@ -220,6 +220,9 @@ pub const VM = struct {
         // Initialize heap.
         self.heapFreeHead = try self.growHeapPages(1);
 
+        // Force linksection order. Using `try` makes this work.
+        try @call(.never_inline, cy.forceSectionDeps, .{});
+
         // Core bindings.
         try @call(.never_inline, bindings.bindCore, .{self});
     }

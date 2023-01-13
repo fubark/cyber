@@ -56,19 +56,8 @@ pub const TagLit = enum {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
-pub export fn stdSection() linksection(cy.StdSection) callconv(.C) void {}
-pub export fn section() linksection(cy.Section) callconv(.C) void {}
-pub export fn hotSection() linksection(cy.HotSection) callconv(.C) void {}
-
-/// Force the compiler to order linksection first on given function.
-/// Use exported c function so release builds don't remove them.
-pub fn forceSectionDep(_: *const fn() callconv(.C) void) void {} 
-
-pub fn bindCore(self: *cy.VM) !void {
+pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
-    forceSectionDep(hotSection);
-    forceSectionDep(section);
-    forceSectionDep(stdSection);
 
     self.iteratorObjSym = try self.ensureMethodSymKey("iterator", 0);
     self.nextObjSym = try self.ensureMethodSymKey("next", 0);

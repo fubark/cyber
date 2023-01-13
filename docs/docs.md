@@ -20,7 +20,7 @@
         - [String Interpolation](#string-interpolation)
         - [rawstring](#raw-string) ([type](#object-rawstring))
     - [Lists](#lists) ([type](#object-list))
-    - [Maps](#maps)
+    - [Maps](#maps) ([type](#object-map))
     - [Objects](#objects)
     - [Tags](#tags)
 - [Control Flow](#control-flow)
@@ -600,6 +600,8 @@ list.remove(1)
 | `resize(len number) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
 | `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
 
+[To Top.](#table-of-contents)
+
 ### Maps.
 Maps are a builtin type that store key value pairs in dictionaries.
 ```text
@@ -650,6 +652,14 @@ map.remove 123
 for map as val, key:
     print '{key} -> {value}'
 ```
+
+[To Top.](#table-of-contents)
+
+#### object map
+| Method | Summary |
+| ------------- | ----- |
+| `remove(key any) none` | Removes the element with the given key `key`. |
+| `size() number` | Returns the number of key-value pairs in the map. |
 
 [To Top.](#table-of-contents)
 
@@ -1065,7 +1075,7 @@ Cyber currently contains the builtin modules:
 - [core](#core-module): Cyber related functions and commonly used utilities.
 - [math](#math-module): Math constants and functions.
 - [os](#os-module): System level functions.
-- test: Utilities for testing.
+- [test](#test-module): Utilities for testing.
 
 [To Top.](#table-of-contents)
 

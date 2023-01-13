@@ -1090,8 +1090,8 @@ print contents
 | `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
 | `exit(status number) noreturn` | Exits the program with a status code. | 
 | `error(any) error` | Create an error from a tag or tag literal. | 
-| `fetchUrl(url string) string` | Uses previously installed `curl` to fetch the contents at a URL. If `curl` does not exist, `error(#FileNotFound)` is returned. Cyber has not included an http/tls library yet. | 
-| `getInput() string` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
+| `fetchUrl(url string) rawstring` | Uses previously installed `curl` to fetch the contents at a URL. If `curl` does not exist, `error(#FileNotFound)` is returned. Cyber has not included an http/tls library yet. | 
+| `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
@@ -1101,9 +1101,9 @@ print contents
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
-| `readAll() string` | Reads stdin to the end as a string. | 
-| `readFile(path string) string` | Reads a file into a string value. | 
-| `readLine() string` | Deprecated: Use `getInput` instead. |
+| `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
+| `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
+| `readLine() rawstring` | Deprecated: Use `getInput` instead. |
 | `string(val any) string` | Converts a value to a string. | 
 | `valtag(any) #taglit` | Returns the value's type as a tag literal. |
 | `writeFile(path string, contents string) none` | Writes a string value to a file. | 

@@ -556,7 +556,7 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     alloc.free(res.stderr);
     defer vm.allocator().free(res.stdout);
     // TODO: Use allocOwnedString
-    return vm.allocStringInfer(res.stdout) catch stdx.fatal();
+    return vm.allocRawString(res.stdout) catch stdx.fatal();
 }
 
 pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -567,7 +567,7 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     };
     defer vm.allocator().free(input);
     // TODO: Use allocOwnedString
-    return vm.allocStringInfer(input) catch stdx.fatal();
+    return vm.allocRawString(input) catch stdx.fatal();
 }
 
 pub fn int(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -699,7 +699,7 @@ pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     const input = std.io.getStdIn().readToEndAlloc(vm.allocator(), 10e8) catch stdx.fatal();
     defer vm.allocator().free(input);
     // TODO: Use allocOwnString.
-    return vm.allocStringInfer(input) catch stdx.fatal();
+    return vm.allocRawString(input) catch stdx.fatal();
 }
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -707,7 +707,7 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch stdx.fatal();
     defer vm.allocator().free(content);
     // TODO: Use allocOwnedString.
-    return vm.allocStringInfer(content) catch stdx.fatal();
+    return vm.allocRawString(content) catch stdx.fatal();
 }
 
 pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {

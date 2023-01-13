@@ -470,9 +470,10 @@ print str[-1]    -- "d"
 #### object string
 | Method | Summary |
 | ------------- | ----- |
-| `append(str string) string` | Returns a new string that concats this string and `str`. | 
+| `append(str string) string` | Deprecated: Use `concat()`. | 
 | `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string.  | 
 | `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`.  | 
+| `concat(str string) string` | Returns a new string that concats this string and `str`. | 
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
 | `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
 | `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
@@ -519,9 +520,10 @@ print str[-1]    -- "d"
 #### object rawstring
 | Method | Summary |
 | ------------- | ----- |
-| `append(str string) string` | Returns a new string that concats this string and `str`. | 
+| `append(str string) string` | Deprecated: Use `concat()`. | 
 | `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
 | `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
+| `concat(str string) string` | Returns a new string that concats this string and `str`. | 
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
 | `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
 | `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 

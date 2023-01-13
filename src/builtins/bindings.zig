@@ -78,6 +78,7 @@ pub fn bindCore(self: *cy.VM) !void {
     const append = try self.ensureMethodSymKey("append", 1);
     const charAt = try self.ensureMethodSymKey("charAt", 1);
     const codeAt = try self.ensureMethodSymKey("codeAt", 1);
+    const concat = try self.ensureMethodSymKey("concat", 1);
     const endsWith = try self.ensureMethodSymKey("endsWith", 1);
     const index = try self.ensureMethodSymKey("index", 1);
     const indexChar = try self.ensureMethodSymKey("indexChar", 1);
@@ -113,6 +114,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.StaticAstringT, append, cy.MethodSym.initNativeFunc1(staticAstringAppend));
     try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(staticAstringCharAt));
     try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(staticAstringCodeAt));
+    try self.addMethodSym(cy.StaticAstringT, concat, cy.MethodSym.initNativeFunc1(staticAstringConcat));
     try self.addMethodSym(cy.StaticAstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
     try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(staticAstringIndex));
     try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(staticAstringIndexChar));
@@ -130,6 +132,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.StaticUstringT, append, cy.MethodSym.initNativeFunc1(staticUstringAppend));
     try self.addMethodSym(cy.StaticUstringT, charAt, cy.MethodSym.initNativeFunc1(staticUstringCharAt));
     try self.addMethodSym(cy.StaticUstringT, codeAt, cy.MethodSym.initNativeFunc1(staticUstringCodeAt));
+    try self.addMethodSym(cy.StaticUstringT, concat, cy.MethodSym.initNativeFunc1(staticUstringConcat));
     try self.addMethodSym(cy.StaticUstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
     try self.addMethodSym(cy.StaticUstringT, index, cy.MethodSym.initNativeFunc1(staticUstringIndex));
     try self.addMethodSym(cy.StaticUstringT, indexChar, cy.MethodSym.initNativeFunc1(staticUstringIndexChar));
@@ -190,6 +193,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.AstringT, append, cy.MethodSym.initNativeFunc1(astringAppend));
     try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(astringCharAt));
     try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(astringCodeAt));
+    try self.addMethodSym(cy.AstringT, concat, cy.MethodSym.initNativeFunc1(astringConcat));
     try self.addMethodSym(cy.AstringT, endsWith, cy.MethodSym.initNativeFunc1(rawOrAstringEndsWith));
     try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(rawOrAstringIndex));
     try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(astringIndexChar));
@@ -207,6 +211,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.UstringT, append, cy.MethodSym.initNativeFunc1(ustringAppend));
     try self.addMethodSym(cy.UstringT, charAt, cy.MethodSym.initNativeFunc1(ustringCharAt));
     try self.addMethodSym(cy.UstringT, codeAt, cy.MethodSym.initNativeFunc1(ustringCodeAt));
+    try self.addMethodSym(cy.UstringT, concat, cy.MethodSym.initNativeFunc1(ustringConcat));
     try self.addMethodSym(cy.UstringT, endsWith, cy.MethodSym.initNativeFunc1(ustringEndsWith));
     try self.addMethodSym(cy.UstringT, index, cy.MethodSym.initNativeFunc1(ustringIndex));
     try self.addMethodSym(cy.UstringT, indexChar, cy.MethodSym.initNativeFunc1(ustringIndexChar));
@@ -224,6 +229,7 @@ pub fn bindCore(self: *cy.VM) !void {
     try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(rawStringAppend));
     try self.addMethodSym(cy.RawStringT, charAt, cy.MethodSym.initNativeFunc1(rawStringCharAt));
     try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(rawStringCodeAt));
+    try self.addMethodSym(cy.RawStringT, concat, cy.MethodSym.initNativeFunc1(rawStringConcat));
     try self.addMethodSym(cy.RawStringT, endsWith, cy.MethodSym.initNativeFunc1(rawOrAstringEndsWith));
     try self.addMethodSym(cy.RawStringT, index, cy.MethodSym.initNativeFunc1(rawOrAstringIndex));
     try self.addMethodSym(cy.RawStringT, indexChar, cy.MethodSym.initNativeFunc1(rawStringIndexChar));
@@ -853,7 +859,12 @@ fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) li
     return Value.initF64(@intToFloat(f64, str.len()));
 }
 
-fn astringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn astringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
+    return astringConcat(vm, ptr, args, nargs);
+}
+
+fn astringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const str = obj.astring.getConstSlice();
     var rcharLen: u32 = undefined;
@@ -869,7 +880,12 @@ fn astringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
     }
 }
 
-fn ustringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn ustringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
+    return ustringConcat(vm, ptr, args, nargs);
+}
+
+fn ustringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const str = obj.ustring.getConstSlice();
     var rcharLen: u32 = undefined;
@@ -881,7 +897,12 @@ fn ustringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
     return vm.allocUstringConcat(str, rstr, obj.ustring.charLen + rcharLen) catch fatal();
 }
 
-fn rawStringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn rawStringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
+    return rawStringConcat(vm, ptr, args, nargs);
+}
+
+fn rawStringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     const str = obj.rawstring.getConstSlice();
     const rstr = vm.valueToTempString(args[0]);
@@ -892,7 +913,12 @@ fn rawStringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8)
     return vm.allocRawStringConcat(str, rstr) catch fatal();
 }
 
-fn staticUstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn staticUstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
+    return staticUstringConcat(vm, ptr, args, nargs);
+}
+
+fn staticUstringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const slice = val.asStaticStringSlice();
     const header = vm.getStaticUstringHeader(slice.start);
@@ -905,7 +931,12 @@ fn staticUstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     return vm.allocUstringConcat(str, rstr, header.charLen + rcharLen) catch fatal();
 }
 
-fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
+    return staticAstringConcat(vm, ptr, args, nargs);
+}
+
+fn staticAstringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = Value{ .val = @ptrToInt(ptr) };
     const slice = val.asStaticStringSlice();
     const str = vm.getStaticString(slice.start, slice.end);

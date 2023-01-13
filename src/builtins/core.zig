@@ -740,9 +740,18 @@ pub fn valtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+        vm.release(args[1]);
+    }
     const path = vm.valueToString(args[0]) catch stdx.fatal();
     defer vm.allocator().free(path);
-    const content = vm.valueToTempString(args[1]);
+    var content: []const u8 = undefined;
+    if (args[1].isRawString()) {
+        content = args[1].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+    } else {
+        content = vm.valueToTempString(args[1]);
+    }
     std.fs.cwd().writeFile(path, content) catch stdx.fatal();
     return Value.None;
 }

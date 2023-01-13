@@ -69,6 +69,12 @@ test "core module" {
         \\try t.eq(newS == s, false)
         \\try t.eq(newS.foo, 123)
         \\try t.eq(newS.bar, rcList)
+        \\
+        \\-- writeFile() rawstring
+        \\s = rawstring('').insertByte(0, 255)
+        \\writeFile('test.txt', s)
+        \\read = readFile('test.txt')
+        \\try t.eq(read, s)
     );
 }
 

@@ -6,6 +6,7 @@ const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const gvm = &vm_.gvm;
+const fmt = @import("../fmt.zig");
 const TagLit = @import("bindings.zig").TagLit;
 
 pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const u8) linksection(cy.InitSection) !cy.Module {
@@ -25,11 +26,18 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
     try mod.setVar(alloc, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
 
     try mod.setNativeFunc(alloc, "args", 0, osArgs);
+    try mod.setNativeFunc(alloc, "createDir", 1, createDir);
+    try mod.setNativeFunc(alloc, "createFile", 2, createFile);
     try mod.setNativeFunc(alloc, "cwd", 0, cwd);
     try mod.setNativeFunc(alloc, "exePath", 0, exePath);
     try mod.setNativeFunc(alloc, "getEnv", 1, getEnv);
     try mod.setNativeFunc(alloc, "getEnvAll", 0, getEnvAll);
     try mod.setNativeFunc(alloc, "milliTime", 0, milliTime);
+    try mod.setNativeFunc(alloc, "openDir", 1, openDir);
+    try mod.setNativeFunc(alloc, "openDir", 2, openDir2);
+    try mod.setNativeFunc(alloc, "openFile", 2, openFile);
+    try mod.setNativeFunc(alloc, "removeDir", 1, removeDir);
+    try mod.setNativeFunc(alloc, "removeFile", 1, removeFile);
     try mod.setNativeFunc(alloc, "realPath", 1, realPath);
     try mod.setNativeFunc(alloc, "setEnv", 2, setEnv);
     try mod.setNativeFunc(alloc, "sleep", 1, sleep);
@@ -38,7 +46,123 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
 }
 
 pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) void {
+    // Mark as closed to avoid closing.
+    const stdin = mod.getVarVal("stdin").?;
+    stdin.asHeapObject(*cy.HeapObject).file.closed = true;
     vm_.release(c.vm, mod.getVarVal("stdin").?);
+}
+
+fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    return openDir2(vm, &[_]Value{ args[0], Value.False }, nargs);
+}
+
+fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const path = vm.valueToTempString(args[0]);
+    const iterable = args[1].toBool();
+    var fd: std.os.fd_t = undefined;
+    if (iterable) {
+        const dir = std.fs.cwd().openIterableDir(path, .{}) catch |err| {
+            if (err == error.FileNotFound) {
+                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            } else {
+                fmt.printStderr("openDir {}", &.{fmt.v(err)});
+                return Value.None;
+            }
+        };
+        fd = dir.dir.fd;
+    } else {
+        const dir = std.fs.cwd().openDir(path, .{}) catch |err| {
+            if (err == error.FileNotFound) {
+                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            } else {
+                fmt.printStderr("openDir {}", &.{fmt.v(err)});
+                return Value.None;
+            }
+        };
+        fd = dir.fd;
+    }
+    return vm.allocDir(fd) catch fatal();
+}
+
+fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const path = vm.valueToTempString(args[0]);
+    std.fs.cwd().deleteDir(path) catch |err| {
+        fmt.printStderr("removeDir {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return Value.True;
+}
+
+fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const path = vm.valueToTempString(args[0]);
+    std.fs.cwd().deleteFile(path) catch |err| {
+        fmt.printStderr("removeFile {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return Value.True;
+}
+
+fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const path = vm.valueToTempString(args[0]);
+    std.fs.cwd().makeDir(path) catch |err| {
+        fmt.printStderr("createDir {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return Value.True;
+}
+
+fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const path = vm.valueToTempString(args[0]);
+    const truncate = args[1].toBool();
+    const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
+        fmt.printStderr("createFile {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return vm.allocFile(file.handle) catch fatal();
+}
+
+fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const path = vm.valueToTempString(args[0]);
+    if (args[1].isTagLiteral()) {
+        const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
+        const zmode: std.fs.File.OpenMode = switch (mode) {
+            .read => .read_only,
+            .write => .write_only,
+            .readWrite => .read_write,
+            else => {
+                return Value.None;
+            }
+        };
+        const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
+            if (err == error.FileNotFound) {
+                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            } else {
+                fmt.printStderr("openFile {}", &.{fmt.v(err)});
+                return Value.None;
+            }
+        };
+        return vm.allocFile(file.handle) catch fatal();
+    } else {
+        return Value.None;
+    }
 }
 
 fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {

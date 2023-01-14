@@ -40,6 +40,7 @@ pub const TagLit = enum {
     MissingSymbol,
     EndOfStream,
     OutOfBounds,
+    InvalidArgument,
     InvalidChar,
     StreamTooLong,
 
@@ -51,6 +52,17 @@ pub const TagLit = enum {
     number,
     object,
     map,
+
+    // Open modes.
+    read,
+    write,
+    readWrite,
+
+    // File types.
+    file,
+    dir,
+
+    unknown,
 };
 
 const StdSection = cy.StdSection;
@@ -79,18 +91,25 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const joinString = try self.ensureMethodSymKey("joinString", 1);
     const len = try self.ensureMethodSymKey("len", 0);
     const lower = try self.ensureMethodSymKey("lower", 0);
+    const read = try self.ensureMethodSymKey("read", 1);
+    const readToEnd = try self.ensureMethodSymKey("readToEnd", 0);
     const remove = try self.ensureMethodSymKey("remove", 1);
     const replace = try self.ensureMethodSymKey("replace", 2);
     const resize = try self.ensureMethodSymKey("resize", 1);
+    const seek = try self.ensureMethodSymKey("seek", 1);
+    const seekFromCur = try self.ensureMethodSymKey("seekFromCur", 1);
+    const seekFromEnd = try self.ensureMethodSymKey("seekFromEnd", 1);
     const size = try self.ensureMethodSymKey("size", 0);
     const sort = try self.ensureMethodSymKey("sort", 1);
     const startsWith = try self.ensureMethodSymKey("startsWith", 1);
+    const stat = try self.ensureMethodSymKey("stat", 0);
     const status = try self.ensureMethodSymKey("status", 0);
     const streamLines = try self.ensureMethodSymKey("streamLines", 0);
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
     const toString = try self.ensureMethodSymKey("toString", 0);
     const upper = try self.ensureMethodSymKey("upper", 0);
-
+    const write = try self.ensureMethodSymKey("write", 1);
+    
     // Init compile time builtins.
 
     // Primitive types.
@@ -258,10 +277,21 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addStruct("File");
     std.debug.assert(id == cy.FileT);
-    try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(fileStreamLines));
-    try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(fileStreamLines1));
     try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(fileIterator));
     try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(fileNext));
+    try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(fileRead));
+    try self.addMethodSym(cy.FileT, readToEnd, cy.MethodSym.initNativeFunc1(fileReadToEnd));
+    try self.addMethodSym(cy.FileT, seek, cy.MethodSym.initNativeFunc1(fileSeek));
+    try self.addMethodSym(cy.FileT, seekFromCur, cy.MethodSym.initNativeFunc1(fileSeekFromCur));
+    try self.addMethodSym(cy.FileT, seekFromEnd, cy.MethodSym.initNativeFunc1(fileSeekFromEnd));
+    try self.addMethodSym(cy.FileT, stat, cy.MethodSym.initNativeFunc1(fileStat));
+    try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(fileStreamLines));
+    try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(fileStreamLines1));
+    try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(fileWrite));
+
+    id = try self.addStruct("Dir");
+    std.debug.assert(id == cy.DirT);
+    try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(fileStat));
 
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
@@ -296,6 +326,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "MissingSymbol", .MissingSymbol);
     try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
     try ensureTagLitSym(self, "OutOfBounds", .OutOfBounds);
+    try ensureTagLitSym(self, "InvalidArgument", .InvalidArgument);
     try ensureTagLitSym(self, "InvalidChar", .InvalidChar);
     try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
 
@@ -307,6 +338,15 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "number", .number);
     try ensureTagLitSym(self, "object", .object);
     try ensureTagLitSym(self, "map", .map);
+
+    try ensureTagLitSym(self, "read", .read);
+    try ensureTagLitSym(self, "write", .write);
+    try ensureTagLitSym(self, "readWrite", .readWrite);
+
+    try ensureTagLitSym(self, "file", .file);
+    try ensureTagLitSym(self, "dir", .dir);
+
+    try ensureTagLitSym(self, "unknown", .unknown);
 }
 
 fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
@@ -1683,6 +1723,170 @@ pub fn fileIterator(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) li
     return Value.initPtr(ptr);
 }
 
+pub fn fileSeekFromEnd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+
+    const numBytes = @floatToInt(i32, args[0].toF64());
+    if (numBytes > 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+
+    const file = obj.file.getStdFile();
+    file.seekFromEnd(numBytes) catch |err| {
+        fmt.printStderr("seekFromEnd {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return Value.None;
+}
+
+pub fn fileSeekFromCur(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+
+    const numBytes = @floatToInt(i32, args[0].toF64());
+
+    const file = obj.file.getStdFile();
+    file.seekBy(numBytes) catch |err| {
+        fmt.printStderr("seekFromCur {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return Value.None;
+}
+
+pub fn fileSeek(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+
+    const numBytes = @floatToInt(i32, args[0].toF64());
+    if (numBytes < 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+
+    const file = obj.file.getStdFile();
+    const unumBytes = @intCast(u32, numBytes);
+    file.seekTo(unumBytes) catch |err| {
+        fmt.printStderr("seek {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    return Value.None;
+}
+
+pub fn fileWrite(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+
+    var buf: []const u8 = undefined;
+    if (args[0].isRawString()) {
+        buf = args[0].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+    } else {
+        buf = vm.valueToTempString(args[0]);
+    }
+
+    const file = obj.file.getStdFile();
+    const numWritten = file.write(buf) catch |err| {
+        fmt.printStderr("read {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+
+    return Value.initF64(@intToFloat(f64, numWritten));
+}
+
+pub fn fileRead(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+
+    const numBytes = @floatToInt(i32, args[0].toF64());
+    if (numBytes <= 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+    const unumBytes = @intCast(u32, numBytes);
+    const file = obj.file.getStdFile();
+
+    const alloc = vm.allocator();
+    const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+    tempBuf.clearRetainingCapacity();
+    defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
+    tempBuf.ensureTotalCapacityPrecise(alloc, unumBytes) catch fatal();
+
+    const numRead = file.read(tempBuf.buf[0..unumBytes]) catch |err| {
+        fmt.printStderr("read {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+    if (numRead > 0) {
+        return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
+    } else {
+        return Value.initStaticAstring(0, 0);
+    }
+}
+
+pub fn fileReadToEnd(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const file = obj.file.getStdFile();
+
+    const alloc = vm.allocator();
+    const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+    tempBuf.clearRetainingCapacity();
+    defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
+
+    const MinReadBufSize = 4096;
+    tempBuf.ensureTotalCapacity(alloc, MinReadBufSize) catch fatal();
+
+    while (true) {
+        const buf = tempBuf.buf[tempBuf.len .. tempBuf.buf.len];
+        const numRead = file.readAll(buf) catch |err| {
+            fmt.printStderr("readToEnd {}", &.{fmt.v(err)});
+            return Value.None;
+        };
+        tempBuf.len += numRead;
+        if (numRead < buf.len) {
+            // Done.
+            const all = tempBuf.items();
+            if (all.len > 0) {
+                return vm.allocRawString(all) catch fatal();
+            } else {
+                return Value.initStaticAstring(0, 0);
+            }
+        } else {
+            tempBuf.ensureUnusedCapacity(alloc, MinReadBufSize) catch fatal();
+        }
+    }
+}
+
+pub fn fileStat(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const file = obj.file.getStdFile();
+    const stat = file.stat() catch |err| {
+        fmt.printStderr("stat {}", &.{fmt.v(err)});
+        return Value.None;
+    };
+
+    const map = vm.allocEmptyMap() catch fatal();
+    const sizeKey = vm.allocAstring("size") catch fatal();
+    gvm.setIndex(map, sizeKey, Value.initF64(@intToFloat(f64, stat.size))) catch fatal();
+    const modeKey = vm.allocAstring("mode") catch fatal();
+    gvm.setIndex(map, modeKey, Value.initF64(@intToFloat(f64, stat.mode))) catch fatal();
+    const typeKey = vm.allocAstring("type") catch fatal();
+    const typeTag: TagLit = switch (stat.kind) {
+        .File => .file,
+        .Directory => .dir,
+        else => .unknown,
+    };
+    gvm.setIndex(map, typeKey, Value.initTagLiteral(@enumToInt(typeTag))) catch fatal();
+    const atimeKey = vm.allocAstring("atime") catch fatal();
+    gvm.setIndex(map, atimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.atime, 1000000)))) catch fatal();
+    const ctimeKey = vm.allocAstring("ctime") catch fatal();
+    gvm.setIndex(map, ctimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.ctime, 1000000)))) catch fatal();
+    const mtimeKey = vm.allocAstring("mtime") catch fatal();
+    gvm.setIndex(map, mtimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.mtime, 1000000)))) catch fatal();
+    return map;
+}
+
 pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
@@ -1705,11 +1909,7 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
         lineBuf.appendString(alloc, readBuf[obj.file.curPos..obj.file.readBufEnd]) catch stdx.fatal();
 
         // Read into buffer.
-        const file = std.fs.File{
-            .handle = @bitCast(i32, obj.file.fd),
-            .capable_io_mode = .blocking,
-            .intended_io_mode = .blocking,
-        };
+        const file = obj.file.getStdFile();
         const reader = file.reader();
 
         while (true) {

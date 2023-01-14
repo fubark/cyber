@@ -79,6 +79,7 @@ test "core module" {
     );
 }
 
+const os_test = @embedFile("os_test.cy");
 test "os module" {
     const run = VMrunner.create();
     defer run.destroy();
@@ -105,14 +106,7 @@ test "os module" {
         try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.big));
     }
 
-    _ = try run.eval(
-        \\import os 'os'
-        \\import t 'test'
-        \\os.setEnv('testfoo', 'testbar')
-        \\try t.eq(os.getEnv('testfoo'), 'testbar')
-        \\os.unsetEnv('testfoo')
-        \\try t.eq(os.getEnv('testfoo'), none)
-    );
+    _ = try run.eval(os_test);
 }
 
 test "Fibers" {

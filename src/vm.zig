@@ -35,6 +35,7 @@ pub const NativeFunc1S: StructId = 20;
 pub const TccStateS: StructId = 21;
 pub const OpaquePtrS: StructId = 22;
 pub const FileT: StructId = 23;
+pub const DirT: StructId = 24;
 
 /// Temp buf for toString conversions when the len is known to be small.
 var tempU8Buf: [256]u8 = undefined;
@@ -853,6 +854,23 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
+    pub fn allocDir(self: *VM, fd: std.os.fd_t) linksection(StdSection) !Value {
+        const obj = try self.allocPoolObject();
+        obj.dir = .{
+            .structId = DirT,
+            .rc = 1,
+            .fd = fd,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
     pub fn allocFile(self: *VM, fd: std.os.fd_t) linksection(StdSection) !Value {
         const obj = try self.allocPoolObject();
         obj.file = .{
@@ -865,6 +883,7 @@ pub const VM = struct {
             .readBuf = undefined,
             .readBufCap = 0,
             .readBufEnd = 0,
+            .closed = false,
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -2776,6 +2795,12 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             if (obj.file.hasReadBuf) {
                 vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
             }
+            obj.file.close();
+            vm.freeObject(obj);
+        },
+        DirT => {
+            var dir = obj.dir.getStdDir();
+            dir.close();   
             vm.freeObject(obj);
         },
         else => {
@@ -3222,6 +3247,18 @@ pub const OpaquePtr = packed struct {
     ptr: ?*anyopaque,
 };
 
+const Dir = packed struct {
+    structId: StructId,
+    rc: u32,
+    fd: std.os.fd_t,
+
+    pub fn getStdDir(self: *const Dir) std.fs.Dir {
+        return std.fs.Dir{
+            .fd = self.fd,
+        };
+    }
+};
+
 const File = packed struct {
     structId: StructId,
     rc: u32,
@@ -3232,6 +3269,23 @@ const File = packed struct {
     readBufEnd: u32,
     iterLines: bool,
     hasReadBuf: bool,
+    closed: bool,
+
+    pub fn getStdFile(self: *const File) std.fs.File {
+        return std.fs.File{
+            .handle = @bitCast(i32, self.fd),
+            .capable_io_mode = .blocking,
+            .intended_io_mode = .blocking,
+        };
+    }
+
+    pub fn close(self: *File) void {
+        if (!self.closed) {
+            const file = self.getStdFile();
+            file.close();
+            self.closed = true;
+        }
+    }
 };
 
 const TccState = packed struct {
@@ -3478,6 +3532,7 @@ pub const HeapObject = packed union {
     nativeFunc1: NativeFunc1,
     tccState: TccState,
     file: File,
+    dir: Dir,
     opaquePtr: OpaquePtr,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
@@ -3898,6 +3953,14 @@ pub const UserVM = struct {
 
     pub inline fn allocMapIterator(self: *UserVM, map: *Map) !Value {
         return @ptrCast(*VM, self).allocMapIterator(map);
+    }
+
+    pub inline fn allocDir(self: *UserVM, fd: std.os.fd_t) !Value {
+        return @ptrCast(*VM, self).allocDir(fd);
+    }
+
+    pub inline fn allocFile(self: *UserVM, fd: std.os.fd_t) !Value {
+        return @ptrCast(*VM, self).allocFile(fd);
     }
 
     pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {

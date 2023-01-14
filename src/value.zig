@@ -283,6 +283,10 @@ pub const Value = packed union {
         return .{ .val = UserTagMask | (@as(u32, tag) << 8) | val };
     }
 
+    pub inline fn isTagLiteral(self: *const Value) bool {
+        return self.val & (TaggedPrimitiveMask | SignMask) == UserTagLiteralMask;
+    }
+
     pub inline fn initTagLiteral(symId: u8) linksection(cy.HotSection) Value {
         return .{ .val = UserTagLiteralMask | symId };
     }

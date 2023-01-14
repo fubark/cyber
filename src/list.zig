@@ -21,6 +21,10 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
             alloc.free(self.buf);
         }
 
+        pub inline fn expand(self: *ListT) void {
+            self.len = self.buf.len;
+        }
+
         pub inline fn clearRetainingCapacity(self: *ListT) void {
             self.len = 0;
         }
@@ -81,6 +85,12 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
                 alloc.free(self.buf);
                 self.buf = try alloc.alignedAlloc(T, Align, maxCap);
                 self.len = 0;
+            }
+        }
+
+        pub inline fn ensureUnusedCapacity(self: *ListT, alloc: std.mem.Allocator, unused: usize) !void {
+            if (self.len + unused > self.buf.len) {
+                try self.growTotalCapacity(alloc, self.len + unused);
             }
         }
 

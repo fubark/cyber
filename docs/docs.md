@@ -1207,12 +1207,17 @@ for map as k, v:
 | Function | Summary |
 | -- | -- |
 | `args() list<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
+| `createDir(path string) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
+| `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cwd() string` | Returns the current working directory. |
 | `exePath() string` | Returns the current executable's path. |
 | `getEnv(string) string` | Returns an environment value by key. |
 | `getEnvAll() map` | Returns all environment entries as a map. |
 | `milliTime() number` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
+| `openFile(path string, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
 | `realPath(path string) string` | Returns the absolute path of the given path. |
+| `removeDir(path string) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
+| `removeFile(path string) true \| error` | Removes the file at `path`. Returns `true` if successful. |
 | `setEnv(key string, value string) none` | Sets an environment value by key. |
 | `sleep(ms number) none` | Pauses the current thread for given milliseconds. |
 | `unsetEnv(string) none` | Removes an environment value by key. |
@@ -1220,8 +1225,20 @@ for map as k, v:
 object **File**
 | Function | Summary |
 | -- | -- |
+| `read(n number) rawstring` | Reads at most `n` bytes as a `rawstring`. `n` must be at least 1. A result with length 0 indicates the end of file was reached. |
+| `readToEnd() rawstring` | Reads to the end of the file and returns the content as a `rawstring`. |
+| `seek(pos number) none` | Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid. |
+| `seekFromCur(pos number) none` | Seeks the read/write position by `pos` bytes from the current position. |
+| `seekFromEnd(pos number) none` | Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid. |
+| `stat() map` | Returns info about the file as a map. |
 | `streamLines() Iterable<rawstring>` | Equivalent to `streamLines(4096)`. |
 | `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
+| `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
+
+object **Dir**
+| Function | Summary |
+| -- | -- |
+| `stat() map` | Returns info about the file as a map. |
 
 [To Top.](#table-of-contents)
 

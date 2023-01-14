@@ -1745,6 +1745,14 @@ test "Lists" {
         \\try t.eq(a.insert(-1, 123), error(#OutOfBounds))
         \\try t.eq(a.insert(100, 123), error(#OutOfBounds))
         \\
+        \\-- joinString()
+        \\try t.eq([].joinString(','), '')
+        \\try t.eq([1].joinString(','), '1')
+        \\try t.eq([1, 2, 3].joinString(','), '1,2,3')
+        \\try t.eq([1, 2, 3].joinString(',').isAscii(), true)
+        \\try t.eq([1, 2, 3].joinString('🦊'), '1🦊2🦊3')
+        \\try t.eq([1, 2, 3].joinString('🦊').isAscii(), false)
+        \\
         \\-- len()
         \\a = [1, 2, 3, 4]
         \\try t.eq(a.len(), 4)

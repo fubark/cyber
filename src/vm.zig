@@ -38,7 +38,8 @@ pub const FileT: StructId = 23;
 
 /// Temp buf for toString conversions when the len is known to be small.
 var tempU8Buf: [256]u8 = undefined;
-var tempU8BufLen: u32 = undefined;
+var tempU8BufIdx: u32 = undefined;
+var tempU8Writer = SliceWriter{ .buf = &tempU8Buf, .idx = &tempU8BufIdx };
 
 /// Going forward, references to gvm should be replaced with pointer access to allow multiple VMs.
 /// Once all references are replaced, gvm can be removed and the default VM can be allocated from the heap.
@@ -121,8 +122,8 @@ pub const VM = struct {
     tagLitSyms: cy.List(TagLitSym),
     tagLitSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
-    u8Buf: cy.List(u8),
-    u32Buf: cy.List(u32),
+    u8Buf: cy.ListAligned(u8, 8),
+    u8Buf2: cy.ListAligned(u8, 8),
 
     stackTrace: StackTrace,
 
@@ -186,7 +187,7 @@ pub const VM = struct {
             .nextPairObjSym = undefined,
             .trace = undefined,
             .u8Buf = .{},
-            .u32Buf = .{},
+            .u8Buf2 = .{},
             .stackTrace = .{},
             .debugTable = undefined,
             .refCounts = if (TrackGlobalRC) 0 else undefined,
@@ -283,7 +284,7 @@ pub const VM = struct {
         self.tagLitSymSignatures.deinit(self.alloc);
 
         self.u8Buf.deinit(self.alloc);
-        self.u32Buf.deinit(self.alloc);
+        self.u8Buf2.deinit(self.alloc);
         self.stackTrace.deinit(self.alloc);
         self.alloc.free(self.panicMsg);
 
@@ -921,7 +922,7 @@ pub const VM = struct {
         try self.u8Buf.resize(self.alloc, firstStr.len);
         std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
-        var writer = self.u8Buf.writer(self.alloc);
+        const writer = self.u8Buf.writer(self.alloc);
         for (vals) |val, i| {
             self.writeValueToString(writer, val);
             release(self, val);
@@ -2448,41 +2449,42 @@ pub const VM = struct {
     }
 
     pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
-        tempU8BufLen = 0;
-        return self.valueToTempStringCommon(val, undefined, false);
+        tempU8Writer.reset();
+        return self.getOrWriteValueString(tempU8Writer, val, undefined, false);
     }
 
     pub fn valueToTempString2(self: *const VM, val: Value, outCharLen: *u32) linksection(cy.Section) []const u8 {
-        tempU8BufLen = 0;
-        return self.valueToTempStringCommon(val, outCharLen, true);
+        tempU8Writer.reset();
+        return self.getOrWriteValueString(tempU8Writer, val, outCharLen, true);
     }
 
     pub fn valueToNextTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
-        return self.valueToTempStringCommon(val, undefined, false);
+        return self.getOrWriteValueString(tempU8Writer, val, undefined, false);
     }
 
     pub fn valueToNextTempString2(self: *const VM, val: Value, outCharLen: *u32) linksection(cy.Section) []const u8 {
-        return self.valueToTempStringCommon(val, outCharLen, true);
+        return self.getOrWriteValueString(tempU8Writer, val, outCharLen, true);
     }
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-    fn valueToTempStringCommon(self: *const VM, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
+    fn getOrWriteValueString(self: *const VM, writer: anytype, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
         if (val.isNumber()) {
             const f = val.asF64();
-            var res: []const u8 = undefined;
+            const start = writer.pos();
             if (Value.floatIsSpecial(f)) {
-                res = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{}", .{f}) catch stdx.fatal();
+                std.fmt.format(writer, "{}", .{f}) catch stdx.fatal();
             } else {
                 if (Value.floatCanBeInteger(f)) {
-                    res = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{d:.0}", .{f}) catch stdx.fatal();
+                    std.fmt.format(writer, "{d:.0}", .{f}) catch stdx.fatal();
                 } else {
-                    res = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{d:.10}", .{f}) catch stdx.fatal();
+                    std.fmt.format(writer, "{d:.10}", .{f}) catch stdx.fatal();
                 }
             }
+            const slice = writer.sliceFrom(start);
             if (getCharLen) {
-                outCharLen.* = @intCast(u32, res.len);
+                outCharLen.* = @intCast(u32, slice.len);
             }
-            return res;
+            return slice;
         } else {
             if (val.isPointer()) {
                 const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
@@ -2498,23 +2500,29 @@ pub const VM = struct {
                     }
                     return obj.ustring.getConstSlice();
                 } else if (obj.common.structId == RawStringT) {
-                    const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
+                    const start = writer.pos();
+                    std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
+                    const slice = writer.sliceFrom(start);
                     if (getCharLen) {
-                        outCharLen.* = @intCast(u32, buf.len);
+                        outCharLen.* = @intCast(u32, slice.len);
                     }
-                    return buf;
+                    return slice;
                 } else if (obj.common.structId == ListS) {
-                    const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "List ({})", .{obj.list.list.len}) catch stdx.fatal();
+                    const start = writer.pos();
+                    std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
+                    const slice = writer.sliceFrom(start);
                     if (getCharLen) {
-                        outCharLen.* = @intCast(u32, buf.len);
+                        outCharLen.* = @intCast(u32, slice.len);
                     }
-                    return buf;
+                    return slice;
                 } else if (obj.common.structId == MapS) {
-                    const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
+                    const start = writer.pos();
+                    std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
+                    const slice = writer.sliceFrom(start);
                     if (getCharLen) {
-                        outCharLen.* = @intCast(u32, buf.len);
+                        outCharLen.* = @intCast(u32, slice.len);
                     }
-                    return buf;
+                    return slice;
                 } else {
                     const buf = self.structs.buf[obj.common.structId].name;
                     if (getCharLen) {
@@ -2544,12 +2552,14 @@ pub const VM = struct {
                         }
                     },
                     cy.ErrorT => {
+                        const start = writer.pos();
                         const litId = val.asErrorTagLit();
-                        const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        std.fmt.format(writer, "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, buf.len);
+                            outCharLen.* = @intCast(u32, slice.len);
                         }
-                        return buf;
+                        return slice;
                     },
                     cy.StaticAstringT => {
                         const slice = val.asStaticStringSlice();
@@ -2567,19 +2577,23 @@ pub const VM = struct {
                         return self.strBuf[slice.start..slice.end];
                     },
                     cy.UserTagLiteralT => {
+                        const start = writer.pos();
                         const litId = val.asTagLiteralId();
-                        const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        std.fmt.format(writer, "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, buf.len);
+                            outCharLen.* = @intCast(u32, slice.len);
                         }
-                        return buf;
+                        return slice;
                     },
                     cy.IntegerT => {
-                        const buf = std.fmt.bufPrint(tempU8Buf[tempU8BufLen..], "{}", .{val.asI32()}) catch stdx.fatal();
+                        const start = writer.pos();
+                        std.fmt.format(writer, "{}", .{val.asI32()}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, buf.len);
+                            outCharLen.* = @intCast(u32, slice.len);
                         }
-                        return buf;
+                        return slice;
                     },
                     else => {
                         log.debug("unexpected tag {}", .{val.getTag()});
@@ -3888,6 +3902,10 @@ pub const UserVM = struct {
 
     pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {
         return @ptrCast(*const VM, self).valueAsString(val);
+    }
+
+    pub inline fn getOrWriteValueString(self: *UserVM, writer: anytype, val: Value, charLen: *u32) []const u8 {
+        return @ptrCast(*const VM, self).getOrWriteValueString(writer, val, charLen, true);
     }
 
     pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
@@ -5977,3 +5995,47 @@ test "computeStringConcatHash() matches the concated string hash." {
 fn getStaticUstringHeader(vm: *const VM, start: usize) *align(1) cy.StaticUstringHeader {
     return @ptrCast(*align (1) cy.StaticUstringHeader, vm.strBuf.ptr + start - 12);
 }
+
+const SliceWriter = struct {
+    buf: []u8,
+    idx: *u32,
+
+    pub const Error = error{OutOfMemory};
+
+    fn reset(self: *SliceWriter) void {
+        self.idx.* = 0;
+    }
+
+    inline fn pos(self: *const SliceWriter) u32 {
+        return self.idx.*;
+    }
+
+    inline fn sliceFrom(self: *const SliceWriter, start: u32) []const u8 {
+        return self.buf[start..self.idx.*];
+    }
+
+    pub fn write(self: SliceWriter, data: []const u8) linksection(cy.Section) Error!usize {
+        if (builtin.mode != .ReleaseFast) {
+            if (self.idx.* + data.len > self.buf.len) {
+                return Error.OutOfMemory;
+            }
+        }
+        std.mem.copy(u8, self.buf[self.idx.*..self.idx.*+data.len], data);
+        self.idx.* += @intCast(u32, data.len);
+        return data.len;
+    }
+
+    pub fn writeAll(self: SliceWriter, data: []const u8) linksection(cy.Section) Error!void {
+        _ = try self.write(data);
+    }
+
+    pub fn writeByteNTimes(self: SliceWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {
+        if (builtin.mode != .ReleaseFast) {
+            if (self.idx.* + n > self.buf.len) {
+                return Error.OutOfMemory;
+            }
+        }
+        std.mem.set(u8, self.buf[self.idx.*..self.idx.*+n], byte);
+        self.idx.* += @intCast(u32, n);
+    }
+};

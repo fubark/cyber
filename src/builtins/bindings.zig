@@ -76,6 +76,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const insert = try self.ensureMethodSymKey("insert", 2);
     const insertByte = try self.ensureMethodSymKey("insertByte", 2);
     const isAscii = try self.ensureMethodSymKey("isAscii", 0);
+    const joinString = try self.ensureMethodSymKey("joinString", 1);
     const len = try self.ensureMethodSymKey("len", 0);
     const lower = try self.ensureMethodSymKey("lower", 0);
     const remove = try self.ensureMethodSymKey("remove", 1);
@@ -151,6 +152,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.ListS, append, cy.MethodSym.initNativeFunc1(listAppend));
     try self.addMethodSym(cy.ListS, concat, cy.MethodSym.initNativeFunc1(listConcat));
     try self.addMethodSym(cy.ListS, insert, cy.MethodSym.initNativeFunc1(listInsert));
+    try self.addMethodSym(cy.ListS, joinString, cy.MethodSym.initNativeFunc1(listJoinString));
     try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
     try self.addMethodSym(cy.ListS, len, cy.MethodSym.initNativeFunc1(listLen));
     try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
@@ -378,6 +380,74 @@ fn listAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     obj.list.append(vm.allocator(), args[0]);
     vm.releaseObject(obj);
     return Value.None;
+}
+
+fn listJoinString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    const items = obj.list.items();
+    if (items.len > 0) {
+        var sepCharLen: u32 = undefined;
+        const sep = vm.valueToTempString2(args[0], &sepCharLen);
+
+        const alloc = vm.allocator();
+        const tempSlices = &@ptrCast(*cy.VM, vm).u8Buf2;
+        tempSlices.clearRetainingCapacity();
+        const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+        tempBuf.clearRetainingCapacity();
+        const tempBufWriter = tempBuf.writer(alloc);
+        defer {
+            tempSlices.ensureMaxCapOrClear(alloc, 4096) catch fatal();
+            tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
+        }
+
+        var charLenSum: u32 = 0;
+        var byteLen: u32 = 0;
+        var charLen: u32 = undefined;
+
+        // Record first string part.
+        var str = vm.getOrWriteValueString(tempBufWriter, items[0], &charLen);
+        tempSlices.appendSlice(alloc, std.mem.asBytes(&str)) catch fatal();
+        charLenSum += charLen;
+        byteLen += @intCast(u32, str.len);
+
+        // Record other string parts.
+        for (items[1..]) |item| {
+            str = vm.getOrWriteValueString(tempBufWriter, item, &charLen);
+            tempSlices.appendSlice(alloc, std.mem.asBytes(&str)) catch fatal();
+            charLenSum += charLen;
+            byteLen += @intCast(u32, str.len);
+        }
+        charLenSum += @intCast(u32, sepCharLen * (items.len-1));
+        byteLen += @intCast(u32, sep.len * (items.len-1));
+
+        // Allocate final buffer and perform join.
+        var newObj: *cy.HeapObject = undefined;
+        var buf: []u8 = undefined;
+        if (charLenSum == byteLen) {
+            newObj = vm.allocUnsetAstringObject(byteLen) catch fatal();
+            buf = newObj.astring.getSlice();
+        } else {
+            newObj = vm.allocUnsetUstringObject(byteLen, charLenSum) catch fatal();
+            buf = newObj.ustring.getSlice();
+        }
+        const slices = @ptrCast([*][]const u8, tempSlices.buf.ptr)[0..items.len];
+        std.mem.copy(u8, buf[0..slices[0].len], slices[0]);
+        var dst: usize = slices[0].len;
+        for (slices[1..]) |slice| {
+            std.mem.copy(u8, buf[dst..dst+sep.len], sep);
+            dst += sep.len;
+            std.mem.copy(u8, buf[dst..dst+slice.len], slice);
+            dst += slice.len;
+        }
+        return Value.initPtr(newObj);
+    } else {
+        // Empty string.
+        return Value.initStaticAstring(0, 0);
+    }
 }
 
 fn listConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -744,13 +814,16 @@ fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     var rcharLen: u32 = undefined;
     const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
 
-    const idxBuf = &@ptrCast(*cy.VM, vm).u32Buf;
+    const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
     idxBuf.clearRetainingCapacity();
-    const newLen = cy.prepReplacement(vm.allocator(), str, needle, replacement, idxBuf) catch fatal();
-    if (idxBuf.len > 0) {
+    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
+    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
+    const numIdxes = @divExact(idxBuf.len, 4);
+    if (numIdxes > 0) {
         const new = vm.allocUnsetUstringObject(newLen, @intCast(u32, str.len + idxBuf.len * rcharLen - idxBuf.len * ncharLen)) catch fatal();
         const newBuf = new.ustring.getSlice();
-        cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxBuf.items());
+        const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
+        cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
         return vm.allocOwnedUstring(new) catch fatal();
     } else {
         return null;
@@ -783,13 +856,16 @@ fn rawStringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8
     const needle = vm.valueToTempString(args[0]);
     const replacement = vm.valueToNextTempString(args[1]);
 
-    const idxBuf = &@ptrCast(*cy.VM, vm).u32Buf;
+    const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
     idxBuf.clearRetainingCapacity();
-    const newLen = cy.prepReplacement(vm.allocator(), str, needle, replacement, idxBuf) catch fatal();
-    if (idxBuf.len > 0) {
+    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
+    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
+    const numIdxes = @divExact(idxBuf.len, 4);
+    if (numIdxes > 0) {
         const new = vm.allocUnsetRawStringObject(newLen) catch fatal();
         const newBuf = new.rawstring.getSlice();
-        cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxBuf.items());
+        const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
+        cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
         return Value.initPtr(new);
     } else {
         vm.retainObject(obj);
@@ -833,19 +909,23 @@ fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     const needle = vm.valueToTempString(needlev);
     var rcharLen: u32 = undefined;
     const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
-    const idxBuf = &@ptrCast(*cy.VM, vm).u32Buf;
+    const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
     idxBuf.clearRetainingCapacity();
-    const newLen = cy.prepReplacement(vm.allocator(), str, needle, replacement, idxBuf) catch fatal();
-    if (idxBuf.len > 0) {
+    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
+    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
+    const numIdxes = @divExact(idxBuf.len, 4);
+    if (numIdxes > 0) {
         if (rcharLen == replacement.len) {
             const new = vm.allocUnsetAstringObject(newLen) catch fatal();
             const newBuf = new.astring.getSlice();
-            cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxBuf.items());
+            const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
+            cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
             return vm.allocOwnedAstring(new) catch fatal();
         } else {
             const new = vm.allocUnsetUstringObject(newLen, @intCast(u32, str.len + idxBuf.len * rcharLen - idxBuf.len * needle.len)) catch fatal();
             const newBuf = new.ustring.getSlice();
-            cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxBuf.items());
+            const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
+            cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
             return vm.allocOwnedUstring(new) catch fatal();
         }
     } else {

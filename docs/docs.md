@@ -595,6 +595,7 @@ list.remove(1)
 | `append(val any) none` | Appends a value to the end of the list. |
 | `concat(val any) none` | Concats the elements of another list to the end of this list. |
 | `insert(idx number, val any) none` | Inserts a value at index `idx`. |
+| `joinString(separator any) string` | Returns a new string that joins the elements with `separator`. |
 | `len() number` | Returns the number of elements in the list. |
 | `remove(idx number) none` | Removes an element at index `idx`. |
 | `resize(len number) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |

@@ -438,7 +438,7 @@ pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
 }
 
 /// Like std.mem.replacementSize but also records the idxes.
-pub fn prepReplacement(alloc: std.mem.Allocator, str: []const u8, needle: []const u8, replacement: []const u8, outIdxes: *cy.List(u32)) linksection(cy.StdSection) !usize {
+pub fn prepReplacement(str: []const u8, needle: []const u8, replacement: []const u8, idxesWriter: anytype) linksection(cy.StdSection) !usize {
     if (needle.len == 0) {
         return str.len;
     }
@@ -447,7 +447,7 @@ pub fn prepReplacement(alloc: std.mem.Allocator, str: []const u8, needle: []cons
     while (i < str.len) {
         if (std.mem.startsWith(u8, str[i..], needle)) {
             size = size - needle.len + replacement.len;
-            try outIdxes.append(alloc, @intCast(u32, i));
+            _ = try idxesWriter.write(std.mem.asBytes(&@intCast(u32, i)));
             i += needle.len;
         } else {
             i += 1;

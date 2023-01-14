@@ -80,11 +80,8 @@ pub const Allocator = struct {
             }
         } else {
             if (new_len > buf.len) {
-                const available = c.mi_usable_size(buf.ptr);
-                if (available > new_len) {
-                    if (c.mi_expand(buf.ptr, new_len)) |_| {
-                        return true;
-                    }
+                if (c.mi_expand(buf.ptr, new_len)) |_| {
+                    return true;
                 }
                 return false;
             } else {

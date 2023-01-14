@@ -90,6 +90,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const isAscii = try self.ensureMethodSymKey("isAscii", 0);
     const joinString = try self.ensureMethodSymKey("joinString", 1);
     const len = try self.ensureMethodSymKey("len", 0);
+    const less = try self.ensureMethodSymKey("less", 1);
     const lower = try self.ensureMethodSymKey("lower", 0);
     const read = try self.ensureMethodSymKey("read", 1);
     const readToEnd = try self.ensureMethodSymKey("readToEnd", 0);
@@ -133,6 +134,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticAstringT, insert, cy.MethodSym.initNativeFunc1(staticAstringInsert));
     try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(staticAstringIsAscii));
     try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(staticAstringLen));
+    try self.addMethodSym(cy.StaticAstringT, less, cy.MethodSym.initNativeFunc1(staticStringLess));
     try self.addMethodSym(cy.StaticAstringT, lower, cy.MethodSym.initNativeFunc1(staticAstringLower));
     try self.addMethodSym(cy.StaticAstringT, replace, cy.MethodSym.initNativeFunc1(staticAstringReplace));
     try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
@@ -151,6 +153,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticUstringT, insert, cy.MethodSym.initNativeFunc1(staticUstringInsert));
     try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(staticUstringIsAscii));
     try self.addMethodSym(cy.StaticUstringT, len, cy.MethodSym.initNativeFunc1(staticUstringLen));
+    try self.addMethodSym(cy.StaticUstringT, less, cy.MethodSym.initNativeFunc1(staticStringLess));
     try self.addMethodSym(cy.StaticUstringT, lower, cy.MethodSym.initNativeFunc1(staticUstringLower));
     try self.addMethodSym(cy.StaticUstringT, replace, cy.MethodSym.initNativeFunc1(staticUstringReplace));
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
@@ -171,8 +174,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.ListS, append, cy.MethodSym.initNativeFunc1(listAppend));
     try self.addMethodSym(cy.ListS, concat, cy.MethodSym.initNativeFunc1(listConcat));
     try self.addMethodSym(cy.ListS, insert, cy.MethodSym.initNativeFunc1(listInsert));
-    try self.addMethodSym(cy.ListS, joinString, cy.MethodSym.initNativeFunc1(listJoinString));
     try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
+    try self.addMethodSym(cy.ListS, joinString, cy.MethodSym.initNativeFunc1(listJoinString));
     try self.addMethodSym(cy.ListS, len, cy.MethodSym.initNativeFunc1(listLen));
     try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
     try self.addMethodSym(cy.ListS, remove, cy.MethodSym.initNativeFunc1(listRemove));
@@ -215,6 +218,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.AstringT, insert, cy.MethodSym.initNativeFunc1(astringInsert));
     try self.addMethodSym(cy.AstringT, isAscii, cy.MethodSym.initNativeFunc1(astringIsAscii));
     try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(astringLen));
+    try self.addMethodSym(cy.AstringT, less, cy.MethodSym.initNativeFunc1(astringLess));
     try self.addMethodSym(cy.AstringT, lower, cy.MethodSym.initNativeFunc1(astringLower));
     try self.addMethodSym(cy.AstringT, replace, cy.MethodSym.initNativeFunc1(astringReplace));
     try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
@@ -233,6 +237,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.UstringT, insert, cy.MethodSym.initNativeFunc1(ustringInsert));
     try self.addMethodSym(cy.UstringT, isAscii, cy.MethodSym.initNativeFunc1(ustringIsAscii));
     try self.addMethodSym(cy.UstringT, len, cy.MethodSym.initNativeFunc1(ustringLen));
+    try self.addMethodSym(cy.UstringT, less, cy.MethodSym.initNativeFunc1(ustringLess));
     try self.addMethodSym(cy.UstringT, lower, cy.MethodSym.initNativeFunc1(ustringLower));
     try self.addMethodSym(cy.UstringT, replace, cy.MethodSym.initNativeFunc1(ustringReplace));
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(ustringStartsWith));
@@ -253,6 +258,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, insertByte, cy.MethodSym.initNativeFunc1(rawStringInsertByte));
     try self.addMethodSym(cy.RawStringT, isAscii, cy.MethodSym.initNativeFunc1(rawStringIsAscii));
     try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(rawStringLen));
+    try self.addMethodSym(cy.RawStringT, less, cy.MethodSym.initNativeFunc1(rawStringLess));
     try self.addMethodSym(cy.RawStringT, lower, cy.MethodSym.initNativeFunc1(rawStringLower));
     try self.addMethodSym(cy.RawStringT, replace, cy.MethodSym.initNativeFunc1(rawStringReplace));
     try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
@@ -703,6 +709,41 @@ fn astringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
     return vm.allocOwnedAstring(new) catch fatal();
 }
 
+fn rawStringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    var right: []const u8 = undefined;
+    if (args[0].isRawString()) {
+        right = args[0].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+    } else {
+        right = vm.valueToTempString(args[0]);
+    }
+    return Value.initBool(std.mem.lessThan(u8, obj.rawstring.getConstSlice(), right));
+}
+
+fn ustringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    const right = vm.valueToTempString(args[0]);
+    return Value.initBool(std.mem.lessThan(u8, obj.ustring.getConstSlice(), right));
+}
+
+fn astringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
+    const right = vm.valueToTempString(args[0]);
+    return Value.initBool(std.mem.lessThan(u8, obj.astring.getConstSlice(), right));
+}
+
 fn astringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
@@ -992,6 +1033,17 @@ fn staticUstringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8)
     const newBuf = new.ustring.getSlice();
     _ = std.ascii.lowerString(newBuf, str);
     return vm.allocOwnedUstring(new) catch fatal();
+}
+
+fn staticStringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer {
+        vm.release(args[0]);
+    }
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    const right = vm.valueToTempString(args[0]);
+    return Value.initBool(std.mem.lessThan(u8, str, right));
 }
 
 fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {

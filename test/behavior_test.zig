@@ -1180,6 +1180,10 @@ test "Heap ASCII String." {
         \\-- len()
         \\try t.eq(str.len(), 6)
         \\
+        \\-- less()
+        \\try t.eq(str.less('ac'), true)
+        \\try t.eq(str.less('aa'), false)
+        \\
         \\-- lower()
         \\try t.eq('ABC'.lower(), 'abc')
         \\
@@ -1275,6 +1279,10 @@ test "Heap UTF-8 String." {
         \\
         \\-- len()
         \\try t.eq(str.len(), 8)
+        \\
+        \\-- less()
+        \\try t.eq(str.less('ac'), true)
+        \\try t.eq(str.less('aa'), false)
         \\
         \\-- lower()
         \\try t.eq('AB🦊C'.lower(), 'ab🦊c')
@@ -1389,6 +1397,10 @@ test "Heap RawString." {
         \\
         \\-- len()
         \\try t.eq(str.len(), 14)
+        \\
+        \\-- less()
+        \\try t.eq(str.less('ac'), true)
+        \\try t.eq(str.less('aa'), false)
         \\
         \\-- lower()
         \\try t.eq(rawstring('AB🦊C').lower(), 'ab🦊c')
@@ -1535,6 +1547,10 @@ test "Static ASCII strings." {
         \\-- len()
         \\try t.eq(str.len(), 6)
         \\
+        \\-- less()
+        \\try t.eq(str.less('ac'), true)
+        \\try t.eq(str.less('aa'), false)
+        \\
         \\-- lower()
         \\try t.eq('ABC'.lower(), 'abc')
         \\
@@ -1630,6 +1646,10 @@ test "Static UTF-8 strings." {
         \\
         \\-- len()
         \\try t.eq(str.len(), 8)
+        \\
+        \\-- less()
+        \\try t.eq(str.less('ac'), true)
+        \\try t.eq(str.less('aa'), false)
         \\
         \\-- lower()
         \\try t.eq('AB🦊C'.lower(), 'ab🦊c')

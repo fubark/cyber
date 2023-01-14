@@ -472,7 +472,7 @@ print str[-1]    -- "d"
 | ------------- | ----- |
 | `append(str string) string` | Deprecated: Use `concat()`. | 
 | `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string.  | 
-| `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`.  | 
+| `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`. | 
 | `concat(str string) string` | Returns a new string that concats this string and `str`. | 
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
 | `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
@@ -481,6 +481,7 @@ print str[-1]    -- "d"
 | `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
 | `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
 | `len() number` | Returns the number of UTF-8 characters in the string. | 
+| `less(str string) bool` | Returns whether this string is lexicographically before `str`. |
 | `lower() string` | Returns this string in lowercase. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
@@ -533,6 +534,7 @@ print str[-1]    -- "d"
 | `insertByte(idx number, byte number) string` | Returns a new string with `byte` inserted at index `idx`. | 
 | `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
 | `len() number` | Returns the number of bytes in the string. | 
+| `less(str rawstring) bool` | Returns whether this rawstring is lexicographically before `str`. |
 | `lower() string` | Returns this string in lowercase. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 

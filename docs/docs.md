@@ -1221,6 +1221,8 @@ for map as k, v:
 | `getEnvAll() map` | Returns all environment entries as a map. |
 | `milliTime() number` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
 | `openFile(path string, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
+| `openDir(path string) Dir \| error` | Invokes `openDir(path, false)`. |
+| `openDir(path string, iterable bool) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |
 | `realPath(path string) string` | Returns the absolute path of the given path. |
 | `removeDir(path string) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
 | `removeFile(path string) true \| error` | Removes the file at `path`. Returns `true` if successful. |

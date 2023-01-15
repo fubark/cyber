@@ -18,7 +18,7 @@ runPipeInput('printf "abc\nfoo\r\nbar"', "
 import os 'os'
 import t 'test'
 lines = []
-for os.stdin.streamLines() as line:
+for os.stdin.streamLines() each line:
   lines.add(line)
 try t.eq(lines.len(), 3)
 try t.eq(lines[0], 'abc\\n')
@@ -31,7 +31,7 @@ runPipeInput('printf "abcxyz\nfoobar\r\ndeadbeef"', "
 import os 'os'
 import t 'test'
 lines = []
-for os.stdin.streamLines(4) as line:
+for os.stdin.streamLines(4) each line:
   lines.add(line)
 try t.eq(lines.len(), 3)
 try t.eq(lines[0], 'abcxyz\\n')

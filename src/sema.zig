@@ -672,11 +672,11 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
 
             _ = try semaExpr(c, node.head.for_iter_stmt.iterable, false);
 
-            const as_clause = c.nodes[node.head.for_iter_stmt.as_clause];
-            if (as_clause.head.as_iter_clause.key != NullId) {
-                _ = try ensureLocalBodyVar(c, as_clause.head.as_iter_clause.key, AnyType);
+            const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
+            if (eachClause.head.eachClause.key != NullId) {
+                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, AnyType);
             }
-            _ = try ensureLocalBodyVar(c, as_clause.head.as_iter_clause.value, AnyType);
+            _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, AnyType);
 
             try semaStmts(c, node.head.for_iter_stmt.body_head, false);
             try endIterSubBlock(c);
@@ -684,9 +684,9 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
         .for_range_stmt => {
             try pushIterSubBlock(c);
 
-            if (node.head.for_range_stmt.as_clause != NullId) {
-                const asClause = c.nodes[node.head.for_range_stmt.as_clause];
-                _ = try ensureLocalBodyVar(c, asClause.head.as_range_clause.ident, NumberType);
+            if (node.head.for_range_stmt.eachClause != NullId) {
+                const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
+                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, NumberType);
             }
 
             const range_clause = c.nodes[node.head.for_range_stmt.range_clause];

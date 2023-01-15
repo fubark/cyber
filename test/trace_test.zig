@@ -283,7 +283,7 @@ test "ARC in loops." {
         \\func foo(it):
         \\  pass
         \\list = [123, 234] -- +1a +1 
-        \\for list as it:   -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
+        \\for list each it:   -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
         \\  foo(it)         -- +2a
     );
     try t.eq(trace.numRetainAttempts, 10);
@@ -292,7 +292,7 @@ test "ARC in loops." {
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     _ = try run.eval(
         \\list = [{a: 123}, {a: 234}] -- +3a +3
-        \\for list as it:             -- +7a +7 -2
+        \\for list each it:             -- +7a +7 -2
         \\  pass                      
         \\                            --        -8
     );

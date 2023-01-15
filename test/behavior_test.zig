@@ -30,7 +30,7 @@ test "core module" {
         \\-- arrayFill with primitive.
         \\a = arrayFill(123, 10)
         \\try t.eq(a.len(), 10)
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\  try t.eq(a[i], 123)
         \\
         \\-- arrayFill with object performs shallow copy.
@@ -1857,7 +1857,7 @@ test "Lists" {
         \\-- Iteration.
         \\let a = [1, 2, 3, 4, 5]
         \\let sum = 0
-        \\for a as it:
+        \\for a each it:
         \\  sum += it
         \\try t.eq(sum, 15)
         \\
@@ -1865,7 +1865,7 @@ test "Lists" {
         \\a = [10, 20, 30]
         \\sum = 0
         \\let idxSum = 0
-        \\for a as idx, it:
+        \\for a each idx, it:
         \\  sum += it
         \\  idxSum += idx
         \\try t.eq(sum, 60)
@@ -1874,9 +1874,9 @@ test "Lists" {
         \\-- Nested iteration.
         \\a = [1, 2, 3]
         \\res = 0
-        \\for a as n:
+        \\for a each n:
         \\  innerSum = 0
-        \\  for a as m:
+        \\  for a each m:
         \\    innerSum += m
         \\  res += n * innerSum
         \\try t.eq(res, 36)
@@ -1885,10 +1885,10 @@ test "Lists" {
         \\a = [1, 2, 3]
         \\res = 0
         \\idxRes = 0
-        \\for a as i, n:
+        \\for a each i, n:
         \\  innerSum = 0
         \\  idxSum = 0
-        \\  for a as j, m:
+        \\  for a each j, m:
         \\    innerSum += m
         \\    idxSum += j
         \\  res += n * innerSum
@@ -1977,14 +1977,14 @@ test "Maps" {
         \\-- Iterator.
         \\let m = { a: 2, b: 3, c: 4 }
         \\let sum = 0
-        \\for m as v:
+        \\for m each v:
         \\  sum += v 
         \\try t.eq(sum, 9)
         \\
         \\-- Pair Iterator.
         \\sum = 0
         \\codeSum = 0
-        \\for m as k, v:
+        \\for m each k, v:
         \\  sum += v
         \\  codeSum += asciiCode(k)
         \\try t.eq(sum, 9)
@@ -1993,9 +1993,9 @@ test "Maps" {
         \\-- Nested iteration.
         \\m = { a: 1, b: 2, c: 3 }
         \\res = 0
-        \\for m as n:
+        \\for m each n:
         \\  innerSum = 0
-        \\  for m as nn:
+        \\  for m each nn:
         \\    innerSum += nn
         \\  res += n * innerSum
         \\try t.eq(res, 36)
@@ -2004,9 +2004,9 @@ test "Maps" {
         \\m = { a: 1, b: 2, c: 3 }
         \\res = 0
         \\codeSum = 0
-        \\for m as k, n:
+        \\for m each k, n:
         \\  innerSum = 0
-        \\  for m as kk, nn:
+        \\  for m each kk, nn:
         \\    innerSum += nn
         \\    codeSum += asciiCode(kk)
         \\  res += n * innerSum
@@ -2018,7 +2018,7 @@ test "Maps" {
         \\m = { a: [2], b: [3], c: [4] }
         \\sum = 0
         \\codeSum = 0
-        \\for m as k, v:
+        \\for m each k, v:
         \\  sum += v[0]
         \\  codeSum += asciiCode(k)
         \\try t.eq(sum, 9)
@@ -2255,7 +2255,7 @@ test "Local variable assignment." {
 
     // Using a variable that was assigned in a loop.
     val = try run.eval(
-        \\for 2..3 as i:
+        \\for 2..3 each i:
         \\  a = i
         \\a
     );
@@ -2263,7 +2263,7 @@ test "Local variable assignment." {
 
     // Using a variable that was not assigned in a loop.
     val = try run.eval(
-        \\for 2..2 as i:
+        \\for 2..2 each i:
         \\  a = i
         \\a
     );
@@ -2486,21 +2486,21 @@ test "For iterator." {
         \\-- Basic.
         \\list = [1, 2, 3]
         \\sum = 0
-        \\for list as it:
+        \\for list each it:
         \\   sum += it
         \\try t.eq(sum, 6)
         \\
         \\-- Loop iterator var overwrites the user var.
         \\elem = 123
         \\list = [1, 2, 3]
-        \\for list as elem:
+        \\for list each elem:
         \\  pass
         \\try t.eq(elem, none)
         \\
         \\-- Break.
         \\list = [1, 2, 3]
         \\sum = 0
-        \\for list as it:
+        \\for list each it:
         \\   if it == 3:
         \\      break
         \\   sum += it
@@ -2509,7 +2509,7 @@ test "For iterator." {
         \\-- Continue.
         \\list = [1, 2, 3]
         \\sum = 0
-        \\for list as it:
+        \\for list each it:
         \\   if it == 1:
         \\      continue
         \\   sum += it
@@ -2526,32 +2526,32 @@ test "For loop over range." {
         \\
         \\-- Basic.
         \\iters = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   iters += 1
         \\try t.eq(iters, 10)
         \\
         \\-- two `for` with range don't interfere with each other
         \\iters = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   iters += 1
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   iters += 1
         \\try t.eq(iters, 20)
         \\
         \\-- two `for` with non const max value don't interfere with each other
         \\foo = 10
         \\iters = 0
-        \\for 0..foo as i:
+        \\for 0..foo each i:
         \\   iters += 1
-        \\for 0..foo as i:
+        \\for 0..foo each i:
         \\   iters += 1
         \\try t.eq(iters, 20)
         \\
         \\-- Nested for loop.
         \\count = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\  inner = 0
-        \\  for 0..10 as j:
+        \\  for 0..10 each j:
         \\    inner += 1
         \\  count += inner
         \\try t.eq(count, 100)
@@ -2559,19 +2559,19 @@ test "For loop over range." {
         \\-- Index vars overwrites user var.
         \\i = 123
         \\sum = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\  sum += i
         \\try t.eq(i, 9)
         \\
         \\-- Reverse direction.
         \\sum = 0
-        \\for 10..0 as i:
+        \\for 10..0 each i:
         \\  sum += i
         \\try t.eq(sum, 55)
         \\
         \\-- Break.
         \\iters = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   if i == 2:
         \\       break
         \\   iters += 1
@@ -2579,7 +2579,7 @@ test "For loop over range." {
         \\
         \\-- Continue.
         \\iters = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   if i == 2:
         \\       continue
         \\   iters += 1
@@ -2589,7 +2589,7 @@ test "For loop over range." {
     // Custom step.
     // val = try run.eval(
     //     \\sum = 0
-    //     \\for 0..10, 2 as i:
+    //     \\for 0..10, 2 each i:
     //     \\  sum += i
     //     \\sum
     // );
@@ -2599,9 +2599,9 @@ test "For loop over range." {
     // val = try run.eval(
     //     \\iters = 0
     //     \\step = 3
-    //     \\for 0..10 as i += step:
+    //     \\for 0..10 each i += step:
     //     \\   iters += 1
-    //     \\for 0..10 as i += step:
+    //     \\for 0..10 each i += step:
     //     \\   iters += 1
     //     \\iters
     // );
@@ -2615,7 +2615,7 @@ test "Native function call." {
 
     var val = try run.eval(
         \\list = []
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   list.append(i)
         \\list[9]
     );
@@ -2848,7 +2848,7 @@ test "Function declarations." {
         \\func foo():
         \\    return 2 + 2
         \\sum = 0
-        \\for 0..10 as i:
+        \\for 0..10 each i:
         \\   sum += foo()
         \\sum
     );

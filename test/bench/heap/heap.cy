@@ -198,11 +198,11 @@ object Heap:
         return top
 
 h = Heap.new()
-for 1..20000 as i:
+for 1..20000 each i:
     h.insert(i) 
 
 sum = 0
-for 1..20000 as i:
+for 1..20000 each i:
     sum = sum + h.popTop().value
 
 print(sum)

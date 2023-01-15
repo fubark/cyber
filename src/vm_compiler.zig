@@ -1035,17 +1035,17 @@ pub const VMcompiler = struct {
 
                 const iterable = try self.genExpr(node.head.for_iter_stmt.iterable, false);
 
-                const asClause = self.nodes[node.head.for_iter_stmt.as_clause];
+                const eachClause = self.nodes[node.head.for_iter_stmt.eachClause];
 
                 var keyVar: sema.LocalVar = undefined;
                 var keyIdent: cy.Node = undefined;
                 var pairIter = false;
-                if (asClause.head.as_iter_clause.key != NullId) {
-                    keyIdent = self.nodes[asClause.head.as_iter_clause.key];
+                if (eachClause.head.eachClause.key != NullId) {
+                    keyIdent = self.nodes[eachClause.head.eachClause.key];
                     keyVar = self.genGetVar(keyIdent.head.ident.semaVarId).?;
                     pairIter = true;
                 }
-                const valIdent = self.nodes[asClause.head.as_iter_clause.value];
+                const valIdent = self.nodes[eachClause.head.eachClause.value];
                 const valVar = self.genGetVar(valIdent.head.ident.semaVarId).?;
 
                 // At this point the temp var is loosely defined.
@@ -1110,9 +1110,9 @@ pub const VMcompiler = struct {
                 defer self.prevSemaSubBlock();
 
                 var local: u8 = NullIdU8;
-                if (node.head.for_range_stmt.as_clause != NullId) {
-                    const asClause = self.nodes[node.head.for_range_stmt.as_clause];
-                    const ident = self.nodes[asClause.head.as_range_clause.ident];
+                if (node.head.for_range_stmt.eachClause != NullId) {
+                    const eachClause = self.nodes[node.head.for_range_stmt.eachClause];
+                    const ident = self.nodes[eachClause.head.eachClause.value];
                     local = self.genGetVar(ident.head.ident.semaVarId).?.local;
 
                     // inc = as_clause.head.as_range_clause.inc;

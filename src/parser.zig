@@ -25,6 +25,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "continue", .continue_k },
     .{ "coresume", .coresume_k },
     .{ "coyield", .coyield_k },
+    .{ "each", .each_k },
     .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "func", .func_k },
@@ -1062,11 +1063,11 @@ pub const Parser = struct {
                         .for_range_stmt = .{
                             .range_clause = range_clause,
                             .body_head = first_stmt,
-                            .as_clause = NullId,
+                            .eachClause = NullId,
                         },
                     };
                     return for_stmt;
-                } else if (token.tag() == .as_k) {
+                } else if (token.tag() == .each_k) {
                     self.advanceToken();
 
                     token = self.peekToken();
@@ -1082,12 +1083,11 @@ pub const Parser = struct {
                             const first_stmt = try self.parseIndentedBodyStatements();
                             self.popBlock();
 
-                            const as_clause = try self.pushNode(.as_range_clause, start);
-                            self.nodes.items[as_clause].head = .{
-                                .as_range_clause = .{
-                                    .ident = ident,
-                                    .step = NullId,
-                                    .inc = true,
+                            const eachClause = try self.pushNode(.eachClause, start);
+                            self.nodes.items[eachClause].head = .{
+                                .eachClause = .{
+                                    .value = ident,
+                                    .key = NullId,
                                 }
                             };
 
@@ -1096,7 +1096,7 @@ pub const Parser = struct {
                                 .for_range_stmt = .{
                                     .range_clause = range_clause,
                                     .body_head = first_stmt,
-                                    .as_clause = as_clause,
+                                    .eachClause = eachClause,
                                 },
                             };
                             return for_stmt;
@@ -1109,7 +1109,7 @@ pub const Parser = struct {
                 } else {
                     return self.reportParseErrorAt("Expected :.", &.{}, token);
                 }
-            } else if (token.tag() == .as_k) {
+            } else if (token.tag() == .each_k) {
                 self.advanceToken();
                 token = self.peekToken();
                 const ident = (try self.parseExpr(.{})) orelse {
@@ -1123,9 +1123,9 @@ pub const Parser = struct {
                         const body_head = try self.parseIndentedBodyStatements();
                         self.popBlock();
 
-                        const as_clause = try self.pushNode(.as_iter_clause, start);
-                        self.nodes.items[as_clause].head = .{
-                            .as_iter_clause = .{
+                        const each = try self.pushNode(.eachClause, start);
+                        self.nodes.items[each].head = .{
+                            .eachClause = .{
                                 .value = ident,
                                 .key = NullId,
                             }
@@ -1136,7 +1136,7 @@ pub const Parser = struct {
                             .for_iter_stmt = .{
                                 .iterable = expr_id,
                                 .body_head = body_head,
-                                .as_clause = as_clause,
+                                .eachClause = each,
                             },
                         };
                         return for_stmt;
@@ -1153,9 +1153,9 @@ pub const Parser = struct {
                                 const body_head = try self.parseIndentedBodyStatements();
                                 self.popBlock();
 
-                                const as_clause = try self.pushNode(.as_iter_clause, start);
-                                self.nodes.items[as_clause].head = .{
-                                    .as_iter_clause = .{
+                                const each = try self.pushNode(.eachClause, start);
+                                self.nodes.items[each].head = .{
+                                    .eachClause = .{
                                         .value = secondIdent,
                                         .key = ident,
                                     }
@@ -1166,7 +1166,7 @@ pub const Parser = struct {
                                     .for_iter_stmt = .{
                                         .iterable = expr_id,
                                         .body_head = body_head,
-                                        .as_clause = as_clause,
+                                        .eachClause = each,
                                     },
                                 };
                                 return for_stmt;
@@ -2370,6 +2370,7 @@ pub const Parser = struct {
                 .and_k,
                 .then_k,
                 .as_k,
+                .each_k,
                 .string,
                 .number,
                 .ident,
@@ -2508,6 +2509,7 @@ pub const Parser = struct {
                 .colon,
                 .dot_dot,
                 .as_k,
+                .each_k,
                 .new_line,
                 .none => break,
                 else => {
@@ -2853,6 +2855,7 @@ pub const TokenType = enum(u6) {
     for_k,
     await_k,
     true_k,
+    each_k,
     false_k,
     or_k,
     and_k,
@@ -2939,7 +2942,7 @@ pub const NodeType = enum {
     for_iter_stmt,
     range_clause,
     as_range_clause,
-    as_iter_clause,
+    eachClause,
     label_decl,
     func_decl,
     structDecl,
@@ -3082,19 +3085,19 @@ pub const Node = struct {
         for_range_stmt: struct {
             range_clause: NodeId,
             body_head: NodeId,
-            as_clause: NodeId,
+            eachClause: NodeId,
         },
         for_iter_stmt: struct {
             iterable: NodeId,
             body_head: NodeId,
-            as_clause: NodeId,
+            eachClause: NodeId,
         },
         as_range_clause: struct {
             ident: NodeId,
             step: NodeId,
             inc: bool,
         },
-        as_iter_clause: struct {
+        eachClause: struct {
             value: NodeId,
             key: NodeId,
         },
@@ -4129,6 +4132,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 56);
-    try t.eq(keywords.kvs.len, 30);
+    try t.eq(std.enums.values(TokenType).len, 57);
+    try t.eq(keywords.kvs.len, 31);
 }

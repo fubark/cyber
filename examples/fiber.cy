@@ -1,7 +1,7 @@
 func go():
     print 'start'
     coyield
-    for 0..100 as i:
+    for 0..100 each i:
         print '{i}'
         coyield
 

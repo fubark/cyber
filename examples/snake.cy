@@ -105,7 +105,7 @@ func InitGame():
     offset.x = screenWidth % SQUARE_SIZE
     offset.y = screenHeight % SQUARE_SIZE
 
-    for 0..SNAKE_LENGTH as i:
+    for 0..SNAKE_LENGTH each i:
         snake[i].pos = Vec2{ x: offset.x/2, y: offset.y/2 }
         snake[i].size = Vec2{ x: SQUARE_SIZE, y: SQUARE_SIZE }
         snake[i].speed = Vec2{ x: SQUARE_SIZE, y: 0 }
@@ -115,7 +115,7 @@ func InitGame():
         else:
             snake[i].color = BLUE
 
-    for 0..SNAKE_LENGTH as i:
+    for 0..SNAKE_LENGTH each i:
         snakePosition[i] = Vec2{ x: 0, y: 0 }
 
     fruit.size = Vec2{ x: SQUARE_SIZE, y: SQUARE_SIZE }
@@ -143,11 +143,11 @@ func UpdateGame():
                 allowMove = false
 
             -- Snake movement
-            for 0..counterTail as i:
+            for 0..counterTail each i:
                 snakePosition[i] = copy(snake[i].pos)
 
             if framesCounter % 5 == 0:
-                for 0..counterTail as i:
+                for 0..counterTail each i:
                     if i == 0:
                         snake[0].pos.x += snake[0].speed.x
                         snake[0].pos.y += snake[0].speed.y
@@ -162,7 +162,7 @@ func UpdateGame():
                 gameOver = true
 
             -- Collision with yourself
-            for 1..counterTail as i:
+            for 1..counterTail each i:
                 if snake[0].pos.x == snake[i].pos.x and
                     snake[0].pos.y == snake[i].pos.y:
                     gameOver = true
@@ -181,7 +181,7 @@ func UpdateGame():
                         y: ray.GetRandomValue(0, screenHeight/SQUARE_SIZE - 1) * SQUARE_SIZE + offset.y/2
                     }
                     hit = false
-                    for 0..counterTail as i:
+                    for 0..counterTail each i:
                         if fruit.pos.x == snake[i].pos.x and fruit.pos.y == snake[i].pos.y:
                             hit = true
                             break
@@ -210,18 +210,18 @@ func DrawGame():
 
     if !gameOver:
         -- Draw grid lines
-        for 0..screenWidth/SQUARE_SIZE + 1 as i:
+        for 0..screenWidth/SQUARE_SIZE + 1 each i:
             ray.DrawLine(
                 SQUARE_SIZE*i + offset.x/2, offset.y/2,
                 SQUARE_SIZE*i + offset.x/2, screenHeight - offset.y/2, LIGHTGRAY)
 
-        for 0..screenHeight/SQUARE_SIZE + 1 as i:
+        for 0..screenHeight/SQUARE_SIZE + 1 each i:
             ray.DrawLine(
                 offset.x/2, SQUARE_SIZE*i + offset.y/2,
                 screenWidth - offset.x/2, SQUARE_SIZE*i + offset.y/2, LIGHTGRAY)
 
         -- Draw snake
-        for 0..counterTail as i:
+        for 0..counterTail each i:
             ray.DrawRectangle(snake[i].pos.x, snake[i].pos.y, snake[i].size.x, snake[i].size.y, snake[i].color)
 
         -- Draw fruit to pick

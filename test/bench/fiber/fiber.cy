@@ -9,9 +9,9 @@ fibers = []
 for 0..100000:
     f = coinit inc()
     coresume f
-    fibers.add(f)
+    fibers.append(f)
 
-for fibers as f:
+for fibers each f:
     coresume f
 
 print(count)

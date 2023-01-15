@@ -80,7 +80,7 @@ Cyber is easy to learn. These docs provide a reference manual for the language. 
 ### Hello World.
 ```text
 worlds = ['World', '世界', 'दुनिया', 'mundo']
-for worlds as w:
+for worlds each w:
     print 'Hello, {w}!'
 ```
 
@@ -101,7 +101,7 @@ if true:
 ```
 The first statement in a block must be indented further than the block declaration. The rest of the statements in the block must follow the indentation. When the next statement recedes from this indentation the block ends.
 ```text
-for items as it:
+for items each it:
     if it == 20:
         print it
         print it
@@ -227,11 +227,11 @@ The final resulting value that is set to the static variable is provided by a `b
 [To Top.](#table-of-contents)
 
 ### Keywords.
-There are currently `30` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `31` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow](#control-flow): `if` `then` `else` `for` `as` `break` `continue` `pass`
+- [Control Flow](#control-flow): `if` `then` `else` `for` `each` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
-- [Variables](#variables): `var` `let`
+- [Variables](#variables): `var` `let` `as`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
 - [Data Types](#data-types): `object` `tagtype` `true` `false` `none`
@@ -581,7 +581,7 @@ print list.len()  -- Prints '2'
 list.sort((a, b) => a < b)
 
 -- Iterating a list.
-for list as it:
+for list each it:
     print it
 
 -- Remove an element at a specific index.
@@ -654,7 +654,7 @@ print map.size()
 map.remove 123
 
 -- Iterating a list.
-for map as val, key:
+for map each val, key:
     print '{key} -> {value}'
 ```
 
@@ -774,16 +774,16 @@ for running:
 ```
 `for` loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
 ```text
-for 0..100 as i:
+for 0..100 each i:
     print i    -- 0, 1, 2, ... , 99
 
-for 0..100, 10 as i:
+for 0..100, 10 each i:
     print i    -- 0, 10, 20, ... , 90
 
-for 100..0, 1 as i:
+for 100..0, 1 each i:
     print i    -- 100, 99, 98, ... , 1
 
-for 100..=0, 1 as i:
+for 100..=0, 1 each i:
     print i    -- 100, 99, 98, ... , 0
 ```
 The `for` clause can iterate over an `Iterable` object. An Iterable type contains an `iterator()` method that returns an `Iterator` object. An Iterator type contains a `next()` method that returns the next value or `none` when finished.
@@ -792,18 +792,18 @@ You can iterate lists since they are Iterable.
 list = [1, 2, 3, 4, 5]
 
 -- Iterate on values.
-for list as n:
+for list each n:
     print n
 ```
 When the `as` clause contains two variables, the for loop will iterate a `PairIterable` object. A PairIterable type contains a `pairIterator()` method that returns a `PairIterator` object. A PairIterator type contains a `nextPair()` method that returns two values or `none` on the first value when finished. 
 The list object is also a PairIterable and the key is the index of the value in the list.
 ```text
 -- Iterate on values and indexes.
-for list as i, n:
+for list each i, n:
     print '{i} -> {n}'
 
 -- Iterate on just indexes.
-for list as i, _:
+for list each i, _:
     print i 
 ```
 The `for` clause can also iterate over maps with the same idea.
@@ -811,20 +811,20 @@ The `for` clause can also iterate over maps with the same idea.
 map = { a: 123, b: 234 }
 
 -- Iterate on values.
-for map as v:
+for map each v:
     print v
 
 -- Iterate on values and keys.
-for map as k, v:
+for map each k, v:
     print '{k} -> {v}'
 
 -- Iterate on just keys.
-for map as k, _:
+for map each k, _:
     print k
 ```
 You can exit a loop using `break`.
 ```text
-for 0..10 as i:
+for 0..10 each i:
     if i == 4:
         break
     print i
@@ -832,7 +832,7 @@ for 0..10 as i:
 ```
 You can skip the rest of the loop and go to the next iteration using `continue`.
 ```text
-for 0..10 as i:
+for 0..10 each i:
     if i == 4:
         continue
     print i
@@ -1200,7 +1200,7 @@ Sample usage:
 import os 'os'
 
 let map = os.getEnvAll()
-for map as k, v:
+for map each k, v:
     print '{k} -> {v}'
 ```
 | Variable | Type | Summary |

@@ -1,3 +1,3 @@
 worlds = ['World', '世界', 'दुनिया', 'mundo']
-for worlds as w:
+for worlds each w:
     print 'Hello, {w}!'

@@ -31,6 +31,9 @@ jobs:
           - host: ubuntu-22.04
             target: x86_64-linux-gnu
             mode: release
+          - host: ubuntu-22.04
+            target: x86_64-selinux-gnu
+            mode: release
           - host: macos-12
             target: x86_64-macos.12-none
             mode: release
@@ -48,6 +51,7 @@ jobs:
         ${{ fromJson('{
           "x86_64-windows-gnu": "cyber-windows-x64.zip",
           "x86_64-linux-gnu": "cyber-linux-x64.zip",
+          "x86_64-selinux-gnu": "cyber-selinux-x64.zip",
           "x86_64-macos.12-none": "cyber-macos-x64.zip",
           "aarch64-macos.12-none": "cyber-macos-arm64.zip",
         }')[matrix.config.target] }}
@@ -55,6 +59,7 @@ jobs:
         ${{ fromJson('{
           "x86_64-windows-gnu": "-Dtarget=x86_64-windows-gnu -Dcpu=baseline",
           "x86_64-linux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline",
+          "x86_64-selinux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline -Dselinux",
           "x86_64-macos.12-none": "-Dtarget=x86_64-macos.12-none -Dcpu=baseline",
           "aarch64-macos.12-none": "-Dtarget=aarch64-macos.12-none -Dcpu=baseline",
         }')[matrix.config.target] }}
@@ -88,12 +93,12 @@ jobs:
       - name: Install zig.
         if: env.BUILD_HOST == 'ubuntu-22.04'
         run: |
-          wget -c https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.944+a193ec432.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.1247+87b223428.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Install zig.
         if: env.BUILD_HOST == 'macos-12'
         run: |
-          wget -c https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.944+a193ec432.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.1247+87b223428.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
           xcode-select --print-path
 
       - name: Setup script.
@@ -205,5 +210,6 @@ jobs:
           title: v${{ needs.build.outputs.short_version }}-Latest
           files: |
             cyber-linux-x64.zip
+            cyber-selinux-x64.zip
             cyber-macos-x64.zip
             cyber-macos-arm64.zip

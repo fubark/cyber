@@ -27,6 +27,7 @@ test "core module" {
 
     _ = try run.eval(
         \\import t 'test'
+        \\
         \\-- arrayFill with primitive.
         \\a = arrayFill(123, 10)
         \\try t.eq(a.len(), 10)

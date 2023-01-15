@@ -3444,7 +3444,7 @@ pub const Astring = packed struct {
     len: u32,
     bufStart: u8,
 
-    const BufOffset = @offsetOf(Ustring, "bufStart");
+    const BufOffset = @offsetOf(Astring, "bufStart");
 
     pub inline fn getSlice(self: *Astring) []u8 {
         return @ptrCast([*]u8, &self.bufStart)[0..self.len];
@@ -3486,7 +3486,7 @@ pub const RawString = packed struct {
     len: u32,
     bufStart: u8,
 
-    const BufOffset = @offsetOf(Ustring, "bufStart");
+    pub const BufOffset = @offsetOf(RawString, "bufStart");
 
     pub inline fn getSlice(self: *RawString) []u8 {
         return @ptrCast([*]u8, &self.bufStart)[0..self.len];
@@ -3656,6 +3656,48 @@ test "Internals." {
 
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 24);
+
+    const rstr = RawString{
+        .structId = RawStringT,
+        .rc = 1,
+        .len = 1,
+        .bufStart = undefined,
+    };
+    try t.eq(@ptrToInt(&rstr.structId), @ptrToInt(&rstr));
+    try t.eq(@ptrToInt(&rstr.rc), @ptrToInt(&rstr) + 4);
+    try t.eq(@ptrToInt(&rstr.len), @ptrToInt(&rstr) + 8);
+    try t.eq(RawString.BufOffset, 12);
+    try t.eq(@ptrToInt(&rstr.bufStart), @ptrToInt(&rstr) + RawString.BufOffset);
+
+    const astr = Astring{
+        .structId = AstringT,
+        .rc = 1,
+        .len = 1,
+        .bufStart = undefined,
+    };
+    try t.eq(@ptrToInt(&astr.structId), @ptrToInt(&astr));
+    try t.eq(@ptrToInt(&astr.rc), @ptrToInt(&astr) + 4);
+    try t.eq(@ptrToInt(&astr.len), @ptrToInt(&astr) + 8);
+    try t.eq(Astring.BufOffset, 12);
+    try t.eq(@ptrToInt(&astr.bufStart), @ptrToInt(&astr) + Astring.BufOffset);
+
+    const ustr = Ustring{
+        .structId = UstringT,
+        .rc = 1,
+        .len = 1,
+        .charLen = 1,
+        .mruIdx = 0,
+        .mruCharIdx = 0,
+        .bufStart = undefined,
+    };
+    try t.eq(@ptrToInt(&ustr.structId), @ptrToInt(&ustr));
+    try t.eq(@ptrToInt(&ustr.rc), @ptrToInt(&ustr) + 4);
+    try t.eq(@ptrToInt(&ustr.len), @ptrToInt(&ustr) + 8);
+    try t.eq(@ptrToInt(&ustr.charLen), @ptrToInt(&ustr) + 12);
+    try t.eq(@ptrToInt(&ustr.mruIdx), @ptrToInt(&ustr) + 16);
+    try t.eq(@ptrToInt(&ustr.mruCharIdx), @ptrToInt(&ustr) + 20);
+    try t.eq(Ustring.BufOffset, 24);
+    try t.eq(@ptrToInt(&ustr.bufStart), @ptrToInt(&ustr) + Ustring.BufOffset);
 }
 
 const MethodSymType = enum {
@@ -5881,11 +5923,20 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
             switch (obj.common.structId) {
                 cy.ListS => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
                 cy.MapS => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
-                cy.StringS => {
-                    if (obj.string.len > 20) {
-                        fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..20])});
+                cy.AstringT => {
+                    const str = obj.astring.getConstSlice();
+                    if (str.len > 20) {
+                        fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(str.len), v(str[0..20])});
                     } else {
-                        fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(obj.string.len), v(obj.string.ptr[0..obj.string.len])});
+                        fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(str.len), v(str)});
+                    }
+                },
+                cy.UstringT => {
+                    const str = obj.ustring.getConstSlice();
+                    if (str.len > 20) {
+                        fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(str.len), v(str[0..20])});
+                    } else {
+                        fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(str.len), v(str)});
                     }
                 },
                 cy.LambdaS => fmt.printStdout("Lambda {}\n", &.{v(obj)}),
@@ -5901,8 +5952,9 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 cy.NoneT => {
                     fmt.printStdout("None\n", &.{});
                 },
-                cy.StaticStringT => {
-                    const slice = val.asConstStr();
+                cy.StaticUstringT,
+                cy.StaticAstringT => {
+                    const slice = val.asStaticStringSlice();
                     if (slice.len() > 20) {
                         fmt.printStdout("Const String len={} str=\"{s}\"...\n", &.{v(slice.len()), v(vm.strBuf[slice.start..20])});
                     } else {

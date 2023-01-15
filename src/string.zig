@@ -147,7 +147,7 @@ pub const HeapRawStringBuilder = struct {
     }
 
     fn getHeapObject(self: *const HeapRawStringBuilder) *cy.HeapObject {
-        return @ptrCast(*cy.HeapObject, @alignCast(@alignOf(cy.HeapObject), self.buf.ptr - @offsetOf(cy.RawString, "bufStart")));
+        return @ptrCast(*cy.HeapObject, @alignCast(@alignOf(cy.HeapObject), self.buf.ptr - cy.RawString.BufOffset));
     }
 
     pub fn deinit(self: *HeapRawStringBuilder) void {
@@ -185,13 +185,13 @@ pub const HeapRawStringBuilder = struct {
     }
 
     pub fn growTotalCapacityPrecise(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
-        if (self.buf.len > cy.MaxPoolObjectRawStringByteLen) {
-            const oldHead = (self.buf.ptr - 12)[0..self.buf.len + 12];
-            if (alloc.resize(oldHead, 12 + newCap)) {
+        if (self.buf.len < cy.MaxPoolObjectRawStringByteLen) {
+            const oldHead = @alignCast(@alignOf(cy.HeapObject), (self.buf.ptr - cy.RawString.BufOffset)[0..self.buf.len + cy.RawString.BufOffset]);
+            if (alloc.resize(oldHead, cy.RawString.BufOffset + newCap)) {
                 self.buf.len = newCap;
             } else {
                 const old = self.buf;
-                const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 12 + newCap);
+                const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
                 const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
                 obj.rawstring = .{
                     .structId = cy.RawStringT,
@@ -199,14 +199,14 @@ pub const HeapRawStringBuilder = struct {
                     .len = 0,
                     .bufStart = undefined,
                 };
-                self.buf = objSlice[12..newCap];
+                self.buf = objSlice[cy.RawString.BufOffset..cy.RawString.BufOffset+newCap];
                 std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
                 alloc.free(oldHead);
             }
         } else {
             const oldObj = self.getHeapObject();
             const old = self.buf;
-            const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 12 + newCap);
+            const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
             const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
             obj.rawstring = .{
                 .structId = cy.RawStringT,
@@ -214,7 +214,7 @@ pub const HeapRawStringBuilder = struct {
                 .len = 0,
                 .bufStart = undefined,
             };
-            self.buf = objSlice[12..newCap];
+            self.buf = objSlice[cy.RawString.BufOffset..cy.RawString.BufOffset+newCap];
             std.mem.copy(u8, self.buf[0..self.len], old[0..self.len]);
 
             // Free pool object.

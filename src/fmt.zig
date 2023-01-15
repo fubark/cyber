@@ -123,7 +123,7 @@ pub fn v(val: anytype) FmtValue {
         .ptr =>  return .{
             .valT = .ptr,
             .inner = .{
-                .ptr = val,
+                .ptr = @intToPtr(?*anyopaque, @ptrToInt(val)),
             }
         },
     }

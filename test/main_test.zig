@@ -5,5 +5,8 @@ test {
     const cyber = @import("../src/cyber.zig");
     t.refAllDecls(cyber);
 
+    const vm = @import("../src/vm.zig");
+    t.refAllDecls(vm);
+
     _ = @import("behavior_test.zig");
 } 

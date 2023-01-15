@@ -69,6 +69,8 @@ pub const NumberType = Type{
     },
 };
 
+/// Number constants are numbers by default, but some constants can be requested as an integer during codegen.
+/// Once a constant has been assigned to a variable, it becomes a `NumberType`.
 const NumberOrRequestIntegerType = Type{
     .typeT = .number,
     .rcCandidate = false,
@@ -1247,7 +1249,7 @@ fn pushLocalVar(c: *cy.VMcompiler, name: []const u8, vtype: Type) !LocalVarId {
         res.value_ptr.* = id;
         try c.vars.append(c.alloc, .{
             .name = if (builtin.mode == .Debug) name else {},
-            .vtype = vtype,
+            .vtype = toLocalType(vtype),
             .lifetimeRcCandidate = vtype.rcCandidate,
         });
         return id;
@@ -1583,6 +1585,15 @@ fn lookupVar(self: *cy.VMcompiler, name: []const u8, searchParentScope: bool) ?V
     return null;
 }
 
+/// To a local type before assigning to a local variable.
+fn toLocalType(vtype: Type) Type {
+    if (vtype.typeT == .number and vtype.inner.number.canRequestInteger) {
+        return NumberType;
+    } else {
+        return vtype;
+    }
+}
+
 fn assignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type, isLocalDecl: bool) !void {
     // log.debug("set var {s}", .{name});
     const node = self.nodes[ident];
@@ -1622,7 +1633,7 @@ fn assignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type, isLocalDecl: b
 
         // Update current type after checking for branched assignment.
         if (svar.vtype.typeT != vtype.typeT) {
-            svar.vtype = vtype;
+            svar.vtype = toLocalType(vtype);
             if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
                 svar.lifetimeRcCandidate = true;
             }
@@ -1676,7 +1687,7 @@ fn opAssignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type) !void {
 
         // Update current type after checking for branched assignment.
         if (svar.vtype.typeT != vtype.typeT) {
-            svar.vtype = vtype;
+            svar.vtype = toLocalType(vtype);
             if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
                 svar.lifetimeRcCandidate = true;
             }

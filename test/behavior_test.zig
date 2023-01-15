@@ -996,6 +996,19 @@ test "Indentation." {
     try t.eq(val.asF64toI32(), 123);
 }
 
+test "Integers." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    _ = try run.eval(
+        \\import t 'test'
+        \\
+        \\-- Once a int requestable number constant is assigned to a local, it loses that trait and becomes a number.
+        \\a = 10
+        \\try t.eq(a < 4, false) -- This should generate less op. If lessInt is generated this would be `true` because the @bitCast(i32, lower a) == 0.
+    );
+}
+
 test "Numbers." {
     const run = VMrunner.create();
     defer run.destroy();

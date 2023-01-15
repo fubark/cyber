@@ -216,6 +216,14 @@ pub const ByteCodeBuffer = struct {
             const code = ops[pc].code;
             const len = getInstLenAt(self.ops.items.ptr + pc);
             switch (ops[pc].code) {
+                .callSym => {
+                    const startLocal = ops[pc + 1].arg;
+                    const numArgs = ops[pc + 2].arg;
+                    const numRet = ops[pc + 3].arg;
+                    const symId = ops[pc + 4].arg;
+                    fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, symId={}\n", &.{v(pc), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
+                    pc += len;
+                },
                 .jumpNotCond => {
                     const jump = @ptrCast(*const align(1) u16, &ops[pc + 1]).*;
                     fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pc), v(code), v(jump), v(ops[pc + 3].arg)});

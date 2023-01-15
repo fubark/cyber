@@ -362,11 +362,20 @@ pub const Value = packed union {
                 switch (obj.common.structId) {
                     cy.ListS => log.info("List {*} len={}", .{obj, obj.list.list.len}),
                     cy.MapS => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
-                    cy.StringS => {
-                        if (obj.string.len > 20) {
-                            log.info("String {*} len={} str=\"{s}\"...", .{obj, obj.string.len, obj.string.ptr[0..20]});
+                    cy.AstringT => {
+                        const str = obj.astring.getConstSlice();
+                        if (str.len > 20) {
+                            log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
                         } else {
-                            log.info("String {*} len={} str={s}", .{obj, obj.string.len, obj.string.ptr[0..obj.string.len]});
+                            log.info("String {*} len={} str={s}", .{obj, str.len, str});
+                        }
+                    },
+                    cy.UstringT => {
+                        const str = obj.ustring.getConstSlice();
+                        if (str.len > 20) {
+                            log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
+                        } else {
+                            log.info("String {*} len={} str={s}", .{obj, str.len, str});
                         }
                     },
                     cy.LambdaS => log.info("Lambda {*}", .{obj}),
@@ -382,13 +391,17 @@ pub const Value = packed union {
                     TagNone => {
                         log.info("None", .{});
                     },
+                    TagInteger => {
+                        log.info("Integer {}", .{self.asI32()});
+                    },
+                    TagStaticUstring,
                     TagStaticAstring => {
-                        const slice = self.asConstStr();
+                        const slice = self.asStaticStringSlice();
                         // log.info("Const String {*} len={} str=\"{s}\"", .{&gvm.strBuf[slice.start], slice.len(), gvm.strBuf[slice.start..slice.end]});
                         log.info("Const String len={}", .{slice.len()});
                     },
                     else => {
-                        log.info("{}", .{self.val});
+                        log.info("Unknown {}", .{self.val});
                     },
                 }
             }

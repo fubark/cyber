@@ -84,7 +84,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         };
         fd = dir.fd;
     }
-    return vm.allocDir(fd) catch fatal();
+    return vm.allocDir(fd, iterable) catch fatal();
 }
 
 fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

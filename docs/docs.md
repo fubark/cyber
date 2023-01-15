@@ -597,8 +597,10 @@ list.remove(1)
 | `append(val any) none` | Appends a value to the end of the list. |
 | `concat(val any) none` | Concats the elements of another list to the end of this list. |
 | `insert(idx number, val any) none` | Inserts a value at index `idx`. |
+| `iterator() Iterator<any>` | Returns a new iterator over the list elements. |
 | `joinString(separator any) string` | Returns a new string that joins the elements with `separator`. |
 | `len() number` | Returns the number of elements in the list. |
+| `pairIterator() PairIterator<number, any>` | Returns a new pair iterator over the list elements. |
 | `remove(idx number) none` | Removes an element at index `idx`. |
 | `resize(len number) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
 | `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
@@ -661,6 +663,8 @@ for map as val, key:
 #### object map
 | Method | Summary |
 | ------------- | ----- |
+| `iterator() Iterator<any>` | Returns a new iterator over the map elements. |
+| `pairIterator() PairIterator<number, any>` | Returns a new pair iterator over the map elements. |
 | `remove(key any) none` | Removes the element with the given key `key`. |
 | `size() number` | Returns the number of key-value pairs in the map. |
 
@@ -1225,7 +1229,7 @@ for map as k, v:
 | `unsetEnv(string) none` | Removes an environment value by key. |
 
 object **File**
-| Function | Summary |
+| Method | Summary |
 | -- | -- |
 | `read(n number) rawstring` | Reads at most `n` bytes as a `rawstring`. `n` must be at least 1. A result with length 0 indicates the end of file was reached. |
 | `readToEnd() rawstring` | Reads to the end of the file and returns the content as a `rawstring`. |
@@ -1238,9 +1242,24 @@ object **File**
 | `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
 
 object **Dir**
-| Function | Summary |
+| Method | Summary |
 | -- | -- |
+| `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
 | `stat() map` | Returns info about the file as a map. |
+| `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
+
+map **DirEntry**
+| Entry | Summary |
+| -- | -- |
+| `'name' -> rawstring` | The name of the file or directory. |
+| `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
+
+map **DirWalkEntry**
+| Entry | Summary |
+| -- | -- |
+| `'name' -> rawstring` | The name of the file or directory. |
+| `'path' -> rawstring` | The path of the file or directory relative to the walker's root directory. |
+| `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
 [To Top.](#table-of-contents)
 

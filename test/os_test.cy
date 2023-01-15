@@ -7,9 +7,9 @@ os.unsetEnv('testfoo')
 try t.eq(os.getEnv('testfoo'), none)
 
 -- createDir()
-os.removeDir('test/dir')
-try t.eq(os.createDir('test/dir'), true)
-dir = os.openDir('test/dir')
+os.removeDir('test/tempdir')
+try t.eq(os.createDir('test/tempdir'), true)
+dir = os.openDir('test/tempdir')
 try t.eq(dir.stat().type, #dir)
 
 -- createFile() new file.
@@ -79,3 +79,35 @@ file = os.openFile('test/write.txt', #write)
 file.seekFromEnd(0)
 try t.eq(file.write('abcxyz'), 6)
 try t.eq(readFile('test/write.txt'), 'foobarabcxyz')
+
+-- Dir.iterator()
+dir = os.openDir('test/dir', true)
+iter = dir.iterator()
+entries = []
+n = iter.next()
+for n:
+    entries.append(n)
+    n = iter.next()
+try t.eq(entries.len(), 3)
+entries.sort((a, b) => a.name.less(b.name))
+try t.eq(entries[0].name, 'dir2')
+try t.eq(entries[0].type, #dir)
+try t.eq(entries[1].name, 'file.txt')
+try t.eq(entries[1].type, #file)
+try t.eq(entries[2].name, 'file2.txt')
+try t.eq(entries[2].type, #file)
+
+-- Dir.walk()
+dir = os.openDir('test/dir', true)
+iter = dir.walk()
+entries = []
+n = iter.next()
+for n:
+    entries.append(n)
+    n = iter.next()
+try t.eq(entries.len(), 4)
+entries.sort((a, b) => a.path.less(b.path))
+try t.eq(entries[0].path, 'dir2')
+try t.eq(entries[1].path, 'dir2/file.txt')
+try t.eq(entries[2].path, 'file.txt')
+try t.eq(entries[3].path, 'file2.txt')

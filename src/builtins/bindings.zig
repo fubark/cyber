@@ -43,6 +43,8 @@ pub const TagLit = enum {
     InvalidArgument,
     InvalidChar,
     StreamTooLong,
+    NotAllowed,
+    UnknownError,
 
     running,
     paused,
@@ -109,6 +111,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
     const toString = try self.ensureMethodSymKey("toString", 0);
     const upper = try self.ensureMethodSymKey("upper", 0);
+    const walk = try self.ensureMethodSymKey("walk", 0);
     const write = try self.ensureMethodSymKey("write", 1);
     
     // Init compile time builtins.
@@ -297,7 +300,13 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addStruct("Dir");
     std.debug.assert(id == cy.DirT);
+    try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(dirIterator));
     try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(fileStat));
+    try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(dirWalk));
+
+    id = try self.addStruct("DirIterator");
+    std.debug.assert(id == cy.DirIteratorT);
+    try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(dirIteratorNext));
 
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
@@ -335,6 +344,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "InvalidArgument", .InvalidArgument);
     try ensureTagLitSym(self, "InvalidChar", .InvalidChar);
     try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
+    try ensureTagLitSym(self, "NotAllowed", .NotAllowed);
+    try ensureTagLitSym(self, "UnknownError", .UnknownError);
 
     try ensureTagLitSym(self, "running", .running);
     try ensureTagLitSym(self, "paused", .paused);
@@ -1767,6 +1778,28 @@ pub fn fileStreamLines1(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _
     return Value.initPtr(ptr);
 }
 
+pub fn dirWalk(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    if (obj.dir.iterable) {
+        vm.retainObject(obj);
+        return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), true) catch fatal();
+    } else {
+        return Value.initErrorTagLit(@enumToInt(TagLit.NotAllowed));
+    }
+}
+
+pub fn dirIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    if (obj.dir.iterable) {
+        vm.retainObject(obj);
+        return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), false) catch fatal();
+    } else {
+        return Value.initErrorTagLit(@enumToInt(TagLit.NotAllowed));
+    }
+}
+
 pub fn fileIterator(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
@@ -1937,6 +1970,56 @@ pub fn fileStat(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
     const mtimeKey = vm.allocAstring("mtime") catch fatal();
     gvm.setIndex(map, mtimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.mtime, 1000000)))) catch fatal();
     return map;
+}
+
+pub fn dirIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+
+    const iter = @ptrCast(*cy.DirIterator, obj);
+    if (iter.recursive) {
+        const entryOpt = iter.inner.walker.next() catch |err| {
+            fmt.printStderr("next {}", &.{fmt.v(err)});
+            return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+        };
+        if (entryOpt) |entry| {
+            const map = vm.allocEmptyMap() catch fatal();
+            const pathKey = vm.allocAstring("path") catch fatal();
+            gvm.setIndex(map, pathKey, vm.allocRawString(entry.path) catch fatal()) catch fatal();
+            const nameKey = vm.allocAstring("name") catch fatal();
+            gvm.setIndex(map, nameKey, vm.allocRawString(entry.basename) catch fatal()) catch fatal();
+            const typeKey = vm.allocAstring("type") catch fatal();
+            const typeTag: TagLit = switch (entry.kind) {
+                .File => .file,
+                .Directory => .dir,
+                else => .unknown,
+            };
+            gvm.setIndex(map, typeKey, Value.initTagLiteral(@enumToInt(typeTag))) catch fatal();
+            return map;
+        } else {
+            return Value.None;
+        }
+    } else {
+        const entryOpt = iter.inner.iter.next() catch |err| {
+            fmt.printStderr("next {}", &.{fmt.v(err)});
+            return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+        };
+        if (entryOpt) |entry| {
+            const map = vm.allocEmptyMap() catch fatal();
+            const nameKey = vm.allocAstring("name") catch fatal();
+            gvm.setIndex(map, nameKey, vm.allocRawString(entry.name) catch fatal()) catch fatal();
+            const typeKey = vm.allocAstring("type") catch fatal();
+            const typeTag: TagLit = switch (entry.kind) {
+                .File => .file,
+                .Directory => .dir,
+                else => .unknown,
+            };
+            gvm.setIndex(map, typeKey, Value.initTagLiteral(@enumToInt(typeTag))) catch fatal();
+            return map;
+        } else {
+            return Value.None;
+        }
+    }
 }
 
 pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {

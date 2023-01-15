@@ -36,6 +36,7 @@ pub const TccStateS: StructId = 21;
 pub const OpaquePtrS: StructId = 22;
 pub const FileT: StructId = 23;
 pub const DirT: StructId = 24;
+pub const DirIteratorT: StructId = 25;
 
 /// Temp buf for toString conversions when the len is known to be small.
 var tempU8Buf: [256]u8 = undefined;
@@ -854,12 +855,13 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocDir(self: *VM, fd: std.os.fd_t) linksection(StdSection) !Value {
+    pub fn allocDir(self: *VM, fd: std.os.fd_t, iterable: bool) linksection(StdSection) !Value {
         const obj = try self.allocPoolObject();
         obj.dir = .{
             .structId = DirT,
             .rc = 1,
             .fd = fd,
+            .iterable = iterable,
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -885,6 +887,35 @@ pub const VM = struct {
             .readBufEnd = 0,
             .closed = false,
         };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocDirIterator(self: *VM, dir: *Dir, recursive: bool) linksection(StdSection) !Value {
+        const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), @sizeOf(DirIterator));
+        const obj = @ptrCast(*DirIterator, objSlice.ptr);
+        obj.* = .{
+            .structId = DirIteratorT,
+            .rc = 1,
+            .dir = dir,
+            .inner = undefined,
+            .recursive = recursive,
+        };
+        if (recursive) {
+            obj.inner = .{
+                .walker = try dir.getStdIterableDir().walk(self.alloc),
+            };
+        } else {
+            obj.inner = .{
+                .iter = dir.getStdIterableDir().iterate(),
+            };
+        }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
@@ -2803,6 +2834,15 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             dir.close();   
             vm.freeObject(obj);
         },
+        DirIteratorT => {
+            var dir = @ptrCast(*DirIterator, obj);
+            if (dir.recursive) {
+                dir.inner.walker.deinit();   
+            }
+            releaseObject(vm, @ptrCast(*HeapObject, dir.dir));
+            const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
+            vm.alloc.free(slice);
+        },
         else => {
             log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});
             // Struct deinit.
@@ -3247,14 +3287,35 @@ pub const OpaquePtr = packed struct {
     ptr: ?*anyopaque,
 };
 
-const Dir = packed struct {
+pub const DirIterator = struct {
+    structId: StructId,
+    rc: u32,
+    dir: *Dir,
+    inner: union {
+        iter: std.fs.IterableDir.Iterator,
+        walker: std.fs.IterableDir.Walker,
+    },
+    /// If `recursive` is true, `walker` is used.
+    recursive: bool,
+};
+
+pub const Dir = packed struct {
     structId: StructId,
     rc: u32,
     fd: std.os.fd_t,
+    iterable: bool,
 
     pub fn getStdDir(self: *const Dir) std.fs.Dir {
         return std.fs.Dir{
             .fd = self.fd,
+        };
+    }
+
+    pub fn getStdIterableDir(self: *const Dir) std.fs.IterableDir {
+        return std.fs.IterableDir{
+            .dir = std.fs.Dir{
+                .fd = self.fd,
+            },
         };
     }
 };
@@ -3955,8 +4016,12 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).allocMapIterator(map);
     }
 
-    pub inline fn allocDir(self: *UserVM, fd: std.os.fd_t) !Value {
-        return @ptrCast(*VM, self).allocDir(fd);
+    pub inline fn allocDir(self: *UserVM, fd: std.os.fd_t, iterable: bool) !Value {
+        return @ptrCast(*VM, self).allocDir(fd, iterable);
+    }
+
+    pub inline fn allocDirIterator(self: *UserVM, dir: *Dir, recursive: bool) !Value {
+        return @ptrCast(*VM, self).allocDirIterator(dir, recursive);
     }
 
     pub inline fn allocFile(self: *UserVM, fd: std.os.fd_t) !Value {

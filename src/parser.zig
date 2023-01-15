@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const fatal = stdx.fatal;
 const fmt = @import("fmt.zig");
+const v = fmt.v;
 
 pub const NodeId = u32;
 const NullId = std.math.maxInt(u32);
@@ -14,35 +15,35 @@ const IndexSlice = stdx.IndexSlice(u32);
 const dumpParseErrorStackTrace = builtin.mode == .Debug and true;
 
 const keywords = std.ComptimeStringMap(TokenType, .{
-    .{ "return", .return_k },
-    .{ "if", .if_k },
-    .{ "then", .then_k },
-    .{ "else", .else_k },
+    .{ "and", .and_k },
+    .{ "as", .as_k },
+    .{ "await", .await_k },
+    .{ "break", .break_k },
+    .{ "catch", .catch_k },
+    .{ "coinit", .coinit_k },
+    .{ "compt", .compt_k },
+    .{ "continue", .continue_k },
+    .{ "coresume", .coresume_k },
+    .{ "coyield", .coyield_k },
+    .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "func", .func_k },
-    .{ "break", .break_k },
-    .{ "continue", .continue_k },
-    .{ "await", .await_k },
-    .{ "true", .true_k },
-    .{ "false", .false_k },
-    .{ "or", .or_k },
-    .{ "and", .and_k },
-    .{ "not", .not_k },
-    .{ "as", .as_k },
-    .{ "pass", .pass_k },
-    .{ "object", .object_k },
-    .{ "tagtype", .tagtype_k },
-    .{ "none", .none_k },
-    .{ "is", .is_k },
-    .{ "coinit", .coinit_k },
-    .{ "coyield", .coyield_k },
-    .{ "coresume", .coresume_k },
+    .{ "else", .else_k },
+    .{ "if", .if_k },
     .{ "import", .import_k },
-    .{ "try", .try_k },
-    .{ "catch", .catch_k },
-    .{ "recover", .recover_k },
-    .{ "compt", .compt_k },
+    .{ "is", .is_k },
     .{ "let", .let_k },
+    .{ "none", .none_k },
+    .{ "not", .not_k },
+    .{ "object", .object_k },
+    .{ "or", .or_k },
+    .{ "pass", .pass_k },
+    .{ "recover", .recover_k },
+    .{ "return", .return_k },
+    .{ "tagtype", .tagtype_k },
+    .{ "then", .then_k },
+    .{ "true", .true_k },
+    .{ "try", .try_k },
     .{ "var", .var_k },
 });
 
@@ -2513,11 +2514,12 @@ pub const Parser = struct {
                     // Attempt to parse as no paren call expr.
                     const left = self.nodes.items[left_id];
                     switch (left.node_t) {
+                        .accessExpr,
                         .ident => {
                             return try self.parseNoParenCallExpression(left_id);
                         },
                         else => {
-                            return self.reportParseErrorAt("Unknown token", &.{}, next);
+                            return self.reportParseErrorAt("Unsupported shorthand caller {}", &.{v(left.node_t)}, next);
                         }
                     }
                 }

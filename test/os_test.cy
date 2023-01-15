@@ -84,10 +84,8 @@ try t.eq(readFile('test/write.txt'), 'foobarabcxyz')
 dir = os.openDir('test/dir', true)
 iter = dir.iterator()
 entries = []
-n = iter.next()
-for n:
+for iter.next() as n:
     entries.append(n)
-    n = iter.next()
 try t.eq(entries.len(), 3)
 entries.sort((a, b) => a.name.less(b.name))
 try t.eq(entries[0].name, 'dir2')
@@ -101,10 +99,8 @@ try t.eq(entries[2].type, #file)
 dir = os.openDir('test/dir', true)
 iter = dir.walk()
 entries = []
-n = iter.next()
-for n:
+for iter.next() as n:
     entries.append(n)
-    n = iter.next()
 try t.eq(entries.len(), 4)
 entries.sort((a, b) => a.path.less(b.path))
 try t.eq(entries[0].path, 'dir2')

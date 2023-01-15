@@ -1029,14 +1029,44 @@ pub const Parser = struct {
                 const first_stmt = try self.parseIndentedBodyStatements();
                 self.popBlock();
 
-                const for_stmt = try self.pushNode(.for_cond_stmt, start);
-                self.nodes.items[for_stmt].head = .{
-                    .left_right = .{
-                        .left = expr_id,
-                        .right = first_stmt,
+                const forCond = try self.pushNode(.forCondStmt, start);
+                self.nodes.items[forCond].head = .{
+                    .forCondStmt = .{
+                        .cond = expr_id,
+                        .bodyHead = first_stmt,
+                        .as = NullId,
                     },
                 };
-                return for_stmt;
+                return forCond;
+            } else if (token.tag() == .as_k) {
+                self.advanceToken();
+                token = self.peekToken();
+                const ident = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseErrorAt("Expected ident.", &.{}, token);
+                };
+                if (self.nodes.items[ident].node_t == .ident) {
+                    token = self.peekToken();
+                    if (token.tag() == .colon) {
+                        self.advanceToken();
+                        try self.pushBlock();
+                        const bodyHead = try self.parseIndentedBodyStatements();
+                        self.popBlock();
+
+                        const forCond = try self.pushNode(.forCondStmt, start);
+                        self.nodes.items[forCond].head = .{
+                            .forCondStmt = .{
+                                .cond = expr_id,
+                                .bodyHead = bodyHead,
+                                .as = ident,
+                            },
+                        };
+                        return forCond;
+                    } else {
+                        return self.reportParseErrorAt("Expected :.", &.{}, token);
+                    }
+                } else {
+                    return self.reportParseErrorAt("Expected ident.", &.{}, token);
+                }
             } else if (token.tag() == .dot_dot) {
                 self.advanceToken();
                 const right_range_expr = (try self.parseExpr(.{})) orelse {
@@ -2937,11 +2967,10 @@ pub const NodeType = enum {
     if_stmt,
     else_clause,
     for_inf_stmt,
-    for_cond_stmt,
+    forCondStmt,
     for_range_stmt,
     for_iter_stmt,
     range_clause,
-    as_range_clause,
     eachClause,
     label_decl,
     func_decl,
@@ -3082,6 +3111,11 @@ pub const Node = struct {
             name: NodeId,
             memberHead: NodeId,
         },
+        forCondStmt: struct {
+            cond: NodeId,
+            bodyHead: NodeId,
+            as: NodeId,
+        },
         for_range_stmt: struct {
             range_clause: NodeId,
             body_head: NodeId,
@@ -3091,11 +3125,6 @@ pub const Node = struct {
             iterable: NodeId,
             body_head: NodeId,
             eachClause: NodeId,
-        },
-        as_range_clause: struct {
-            ident: NodeId,
-            step: NodeId,
-            inc: bool,
         },
         eachClause: struct {
             value: NodeId,

@@ -2464,6 +2464,7 @@ test "Conditional for loop." {
 
     _ = try run.eval(
         \\import t 'test'
+        \\
         \\-- `for` with condition expression.
         \\i = 0
         \\for i != 10:
@@ -2486,6 +2487,32 @@ test "Conditional for loop." {
         \\    continue
         \\  count += 1
         \\try t.eq(count, 9)
+        \\
+        \\-- Assign to variable.
+        \\a = 0 
+        \\next = func():
+        \\  if a < 4:
+        \\    a += 1
+        \\    return a
+        \\  else:
+        \\    return none
+        \\sum = 0
+        \\for next() as res:
+        \\  sum += res
+        \\try t.eq(sum, 10)
+        \\
+        \\-- Assign rc value to variable.
+        \\a = 0 
+        \\next = func ():
+        \\  if a < 4:
+        \\    a += 1
+        \\    return [a]
+        \\  else:
+        \\    return none
+        \\sum = 0
+        \\for next() as res:
+        \\  sum += res[0]
+        \\try t.eq(sum, 10)
     );
 }
 

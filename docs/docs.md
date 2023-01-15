@@ -772,6 +772,13 @@ for running:
     -- Keep looping until `running` is false.
     pass
 ```
+If you need to use the expression in a conditional `for` loop, you can assign it to variable with `as`.
+```text
+iter = dir.walk()
+for iter.next() as entry:
+    print entry.name
+```
+
 `for` loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
 ```text
 for 0..100 each i:

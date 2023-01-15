@@ -655,12 +655,16 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
             const symId = try resolveLocalFuncSym(c, null, node.head.func.decl_id, retType.?);
             c.funcDecls[node.head.func.decl_id].semaSymId = symId;
         },
-        .for_cond_stmt => {
+        .forCondStmt => {
             try pushIterSubBlock(c);
 
-            _ = try semaExpr(c, node.head.left_right.left, false);
+            const condt = try semaExpr(c, node.head.forCondStmt.cond, false);
+            if (node.head.forCondStmt.as != NullId) {
+                _ = try ensureLocalBodyVar(c, node.head.forCondStmt.as, AnyType);
+                _ = try assignVar(c, node.head.forCondStmt.as, condt, false);
+            }
 
-            try semaStmts(c, node.head.left_right.right, false);
+            try semaStmts(c, node.head.forCondStmt.bodyHead, false);
 
             try endIterSubBlock(c);
         },

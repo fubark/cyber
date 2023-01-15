@@ -987,18 +987,28 @@ pub const VMcompiler = struct {
             .func_decl => {
                 try self.genFuncDecl(nodeId);
             },
-            .for_cond_stmt => {
+            .forCondStmt => {
                 self.nextSemaSubBlock();
 
                 const topPc = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
                 defer self.subBlockJumpStack.items.len = jumpStackSave;
 
-                const condv = try self.genExpr(node.head.left_right.left, false);
+                var condLocal: LocalId = undefined;
+                if (node.head.forCondStmt.as != NullId) {
+                    const as = self.nodes[node.head.forCondStmt.as];
+                    condLocal = self.genGetVar(as.head.ident.semaVarId).?.local;
+                    // Since this variable is used in the loop, it is considered defined before codegen.
+                    self.vars.items[as.head.ident.semaVarId].genIsDefined = true;
+                    try self.genSetVarToExpr(node.head.forCondStmt.as, node.head.forCondStmt.cond, false);
+                } else {
+                    const condv = try self.genExpr(node.head.forCondStmt.cond, false);
+                    condLocal = condv.local;
+                }
 
-                var jumpPc = try self.pushEmptyJumpNotCond(condv.local);
+                var jumpPc = try self.pushEmptyJumpNotCond(condLocal);
 
-                try self.genStatements(node.head.left_right.right, false);
+                try self.genStatements(node.head.forCondStmt.bodyHead, false);
                 try self.pushJumpBackTo(topPc);
 
                 self.patchJumpToCurrent(jumpPc);

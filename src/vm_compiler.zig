@@ -31,7 +31,12 @@ pub const VMcompiler = struct {
     /// Used to return additional info for an error.
     errorPayload: cy.NodeId,
 
-    /// Context vars.
+    /// -- Context vars
+
+    /// Since nodes are currently processed recursively,
+    /// set the current node so that error reporting has a better
+    /// location context for helper methods that simply return no context errors.
+    curNodeId: cy.NodeId,
     src: []const u8,
     nodes: []cy.Node,
     tokens: []const cy.Token,
@@ -101,6 +106,7 @@ pub const VMcompiler = struct {
             .lastErrNode = undefined,
             .errorPayload = undefined,
             .curSemaSymVar = NullId,
+            .curNodeId = NullId,
             .nodes = undefined,
             .tokens = undefined,
             .funcDecls = undefined,
@@ -265,31 +271,8 @@ pub const VMcompiler = struct {
         try self.buf.pushOp2(.setStatic, @intCast(u8, rtSymId), exprv.local);
     }
 
-    pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
-        self.buf.clear();
-        self.blocks.clearRetainingCapacity();
-
-        for (self.semaBlocks.items) |*block| {
-            block.deinit(self.alloc);
-        }
-        self.semaBlocks.clearRetainingCapacity();
-
-        for (self.semaSubBlocks.items) |*block| {
-            block.deinit(self.alloc);
-        }
-        self.semaSubBlocks.clearRetainingCapacity();
-
-        // Dummy first element to avoid len > 0 check during pop.
-        try self.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
-        try self.semaBlocks.append(self.alloc, sema.Block.init(0));
-
-        self.nodes = ast.nodes.items;
-        self.funcDecls = ast.func_decls.items;
-        self.funcParams = ast.func_params;
-        self.src = ast.src;
-        self.tokens = ast.tokens;
-        self.semaBlockDepth = 0;
-
+    /// Wrap compile so all errors can be handled in one place.
+    fn compileInner(self: *VMcompiler, ast: cy.ParseResultView) !void {
         // Import core module into local namespace.
         const modId = try sema.getOrLoadModule(self, "core", NullId);
         try sema.importAllFromModule(self, modId);
@@ -306,15 +289,9 @@ pub const VMcompiler = struct {
         }
 
         try sema.pushBlock(self);
-        sema.semaStmts(self, root.head.child_head, true) catch {
+        sema.semaStmts(self, root.head.child_head, true) catch |err| {
             try sema.endBlock(self);
-            if (dumpCompileErrorStackTrace and !cy.silentError) {
-                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-            }
-            return ResultView{
-                .buf = self.buf,
-                .hasError = true,
-            };
+            return err;
         };
         try sema.endBlock(self);
 
@@ -342,15 +319,7 @@ pub const VMcompiler = struct {
         self.resetNextFreeTemp();
 
         try self.genInitLocals();
-        self.genStatements(root.head.child_head, true) catch {
-            if (dumpCompileErrorStackTrace) {
-                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-            }
-            return ResultView{
-                .buf = self.buf,
-                .hasError = true,
-            };
-        };
+        try self.genStatements(root.head.child_head, true);
         self.popBlock();
         self.buf.mainStackSize = @intCast(u32, self.curBlock.getRequiredStackSize());
 
@@ -390,7 +359,46 @@ pub const VMcompiler = struct {
         //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset };
         //     }
         // }
+    }
 
+    pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
+        self.buf.clear();
+        self.blocks.clearRetainingCapacity();
+
+        for (self.semaBlocks.items) |*block| {
+            block.deinit(self.alloc);
+        }
+        self.semaBlocks.clearRetainingCapacity();
+
+        for (self.semaSubBlocks.items) |*block| {
+            block.deinit(self.alloc);
+        }
+        self.semaSubBlocks.clearRetainingCapacity();
+
+        // Dummy first element to avoid len > 0 check during pop.
+        try self.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
+        try self.semaBlocks.append(self.alloc, sema.Block.init(0));
+
+        self.nodes = ast.nodes.items;
+        self.funcDecls = ast.func_decls.items;
+        self.funcParams = ast.func_params;
+        self.src = ast.src;
+        self.tokens = ast.tokens;
+        self.semaBlockDepth = 0;
+
+        self.compileInner(ast) catch |err| {
+            if (dumpCompileErrorStackTrace and !cy.silentError) {
+                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+            }
+            if (err != error.CompileError) {
+                // Report other errors with curNodeId.
+                try self.setErrorAt("Error: {}", &.{v(err)}, self.curNodeId);
+            }
+            return ResultView{
+                .buf = self.buf,
+                .hasError = true,
+            };
+        };
         return ResultView{
             .buf = self.buf,
             .hasError = false,
@@ -589,7 +597,7 @@ pub const VMcompiler = struct {
     }
 
     fn reserveLocalVar(self: *VMcompiler, varId: sema.LocalVarId) !LocalId {
-        const local = try self.curBlock.reserveLocal();
+        const local = try self.reserveLocal(self.curBlock);
         self.vars.items[varId].local = local;
         return local;
     }
@@ -606,8 +614,9 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn genSetVarToExpr(self: *VMcompiler, varId: sema.LocalVarId, exprId: cy.NodeId, comptime discardTopExprReg: bool) !void {
+    fn genSetVarToExpr(self: *VMcompiler, leftId: cy.NodeId, exprId: cy.NodeId, comptime discardTopExprReg: bool) !void {
         _ = discardTopExprReg;
+        const varId = self.nodes[leftId].head.ident.semaVarId;
         const expr = self.nodes[exprId];
         if (self.genGetVarPtr(varId)) |svar| {
             if (svar.isBoxed) {
@@ -702,24 +711,34 @@ pub const VMcompiler = struct {
                 svar.vtype = exprv.vtype;
             }
         } else {
-            log.debug("Undefined var.", .{});
-            return error.CompileError;
+            const left = self.nodes[leftId];
+            return self.reportErrorAt("Undefined var: `{}`", &.{v(self.getNodeTokenString(left))}, leftId);
+        }
+    }
+
+    fn reserveLocal(self: *VMcompiler, block: *Block) !u8 {
+        const idx = block.numLocals;
+        block.numLocals += 1;
+        if (idx <= std.math.maxInt(u8)) {
+            return @intCast(u8, idx);
+        } else {
+            return self.reportError("Exceeded max local count: {}", &.{v(@as(u8, std.math.maxInt(u8)))});
         }
     }
 
     // Reserve params and captured vars.
     fn reserveFuncParams(self: *VMcompiler) !void {
         // First local is reserved for a single return value.
-        _ = try self.curBlock.reserveLocal();
+        _ = try self.reserveLocal(self.curBlock);
 
         // Second local is reserved for the return info.
-        _ = try self.curBlock.reserveLocal();
+        _ = try self.reserveLocal(self.curBlock);
 
         // Third local is reserved for the return address.
-        _ = try self.curBlock.reserveLocal();
+        _ = try self.reserveLocal(self.curBlock);
 
         // Fourth local is reserved for the previous frame pointer.
-        _ = try self.curBlock.reserveLocal();
+        _ = try self.reserveLocal(self.curBlock);
 
         const sblock = sema.curBlock(self);
         for (sblock.params.items) |varId| {
@@ -785,8 +804,7 @@ pub const VMcompiler = struct {
 
         const accessRight = self.nodes[left.head.accessExpr.right];
         if (accessRight.node_t != .ident) {
-            log.debug("Expected ident.", .{});
-            return error.CompileError;
+            return self.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
         }
         const fieldName = self.getNodeTokenString(accessRight);
         const fieldId = try self.vm.ensureFieldSym(fieldName);
@@ -807,6 +825,7 @@ pub const VMcompiler = struct {
     /// resulting expr to persist to return from `eval`.
     fn genStatement(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
         // log.debug("gen stmt {}", .{node.node_t});
+        self.curNodeId = nodeId;
 
         self.resetNextFreeTemp();
 
@@ -868,7 +887,7 @@ pub const VMcompiler = struct {
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
                     if (left.head.ident.semaVarId != NullId) {
-                        try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
+                        try self.genSetVarToExpr(node.head.left_right.left, node.head.left_right.right, false);
                     } else {
                         const sym = self.semaSyms.items[left.head.ident.semaSymId];
                         const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
@@ -891,8 +910,7 @@ pub const VMcompiler = struct {
 
                     const accessRight = self.nodes[left.head.accessExpr.right];
                     if (accessRight.node_t != .ident) {
-                        log.debug("Expected ident.", .{});
-                        return error.CompileError;
+                        return self.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
                     }
 
                     const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
@@ -909,9 +927,8 @@ pub const VMcompiler = struct {
                 // Nop. Static variables are hoisted and initialized at the start of the program.
             },
             .localDecl => {
-                const left = self.nodes[node.head.left_right.left];
                 // Can assume left is .ident from sema.
-                try self.genSetVarToExpr(left.head.ident.semaVarId, node.head.left_right.right, false);
+                try self.genSetVarToExpr(node.head.left_right.left, node.head.left_right.right, false);
             },
             .tagDecl => {
                 // Nop.
@@ -1824,6 +1841,7 @@ pub const VMcompiler = struct {
     }
 
     fn genExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!GenValue {
+        self.curNodeId = nodeId;
         return self.genExpr2(nodeId, sema.AnyType, discardTopExprReg);
     }
 
@@ -2059,15 +2077,13 @@ pub const VMcompiler = struct {
                 const name = self.nodes[node.head.left_right.left];
                 const tname = self.getNodeTokenString(name);
                 const tid = self.vm.tagTypeSignatures.get(tname) orelse {
-                    log.debug("Missing tag type {s}", .{tname});
-                    return error.CompileError;
+                    return self.reportErrorAt("Missing tag type: `{}`", &.{v(tname)}, nodeId);
                 };
 
                 const tagLit = self.nodes[node.head.left_right.right];
                 const lname = self.getNodeTokenString(tagLit);
                 const symId = self.vm.tagLitSymSignatures.get(lname) orelse {
-                    log.debug("Missing tag literal {s}", .{lname});
-                    return error.CompileError;
+                    return self.reportErrorAt("Missing tag literal: `{}`", &.{v(lname)}, nodeId);
                 };
                 const sym = self.vm.tagLitSyms.buf[symId];
                 if (sym.symT == .one) {
@@ -2077,16 +2093,13 @@ pub const VMcompiler = struct {
                         return self.initGenValue(dst, vtype);
                     }
                 }
-
-                log.debug("Tag {s} does not have member {s}", .{tname, lname});
-                return error.CompileError;
+                return self.reportErrorAt("Tag `{}` does not have member `{}`", &.{v(tname), v(lname)}, nodeId); 
             },
             .structInit => {
                 const stype = self.nodes[node.head.structInit.name];
                 const sname = self.getNodeTokenString(stype);
                 const sid = self.vm.getStruct(sname) orelse {
-                    log.debug("Missing struct {s}", .{sname});
-                    return error.CompileError;
+                    return self.reportErrorAt("Missing object type: `{}`", &.{v(sname)}, nodeId);
                 };
 
                 const initializer = self.nodes[node.head.structInit.initializer];
@@ -2728,14 +2741,18 @@ pub const VMcompiler = struct {
         }
     }
 
-    pub fn reportError(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
-        return self.reportErrorAt(format, args, NullId);
-    }
-
-    pub fn reportErrorAt(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
+    fn setErrorAt(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) !void {
         self.alloc.free(self.lastErr);
         self.lastErr = try fmt.allocFormat(self.alloc, format, args);
         self.lastErrNode = nodeId;
+    }
+
+    pub fn reportError(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
+        return self.reportErrorAt(format, args, self.curNodeId);
+    }
+
+    pub fn reportErrorAt(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
+        try self.setErrorAt(format, args, nodeId);
         return error.CompileError;
     }
 
@@ -2810,17 +2827,6 @@ const Block = struct {
 
     fn getRequiredStackSize(self: *const Block) u8 {
         return @intCast(u8, self.numLocals + self.numTempLocals);
-    }
-
-    fn reserveLocal(self: *Block) !u8 {
-        const idx = self.numLocals;
-        self.numLocals += 1;
-        if (idx <= std.math.maxInt(u8)) {
-            return @intCast(u8, idx);
-        } else {
-            log.debug("Exceeded max local count.", .{});
-            return error.CompileError;
-        }
     }
 };
 

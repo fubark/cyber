@@ -464,6 +464,7 @@ pub fn semaStmts(self: *cy.VMcompiler, head: cy.NodeId, comptime attachEnd: bool
 
 pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
     // log.debug("sema stmt {}", .{node.node_t});
+    c.curNodeId = nodeId;
     const node = c.nodes[nodeId];
     switch (node.node_t) {
         .pass_stmt => {
@@ -572,12 +573,11 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
             const name = c.getNodeTokenString(nameN);
 
             if (c.vm.getStruct(name) != null) {
-                log.debug("struct already exists", .{});
-                return error.CompileError;
+                return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
             }
 
             if (getSym(c, null, name, null) != null) {
-                return c.reportErrorAt("object type `{}` already exists", &.{v(name)}, nodeId);
+                return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
             }
             const objSymId = try resolveLocalObjectSym(c, null, name, nodeId);
 
@@ -761,6 +761,7 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
 }
 
 fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!Type {
+    c.curNodeId = nodeId;
     const node = c.nodes[nodeId];
     // log.debug("sema expr {}", .{node.node_t});
     switch (node.node_t) {
@@ -1241,7 +1242,7 @@ fn pushLocalVar(c: *cy.VMcompiler, name: []const u8, vtype: Type) !LocalVarId {
     const id = @intCast(u32, c.vars.items.len);
     const res = try sblock.nameToVar.getOrPut(c.alloc, name);
     if (res.found_existing) {
-        return error.VarExists;
+        return c.reportError("Var `{}` already exists", &.{v(name)});
     } else {
         res.value_ptr.* = id;
         try c.vars.append(c.alloc, .{

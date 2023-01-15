@@ -2424,6 +2424,13 @@ test "Infinite for loop." {
         \\    break
         \\try t.eq(i, 10)
         \\
+        \\-- Break from else.
+        \\for:
+        \\  if false:
+        \\    pass
+        \\  else:
+        \\    break
+        \\
         \\-- Continue.
         \\i = 0
         \\count = 0

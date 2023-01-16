@@ -2054,7 +2054,8 @@ pub const VMcompiler = struct {
                     const cur = self.nodes[curId];
                     if (expStringPart) {
                         if (!discardTopExprReg) {
-                            const str = self.getNodeTokenString(cur);
+                            const raw = self.getNodeTokenString(cur);
+                            const str = try self.unescapeString(raw);
                             const idx = try self.buf.getOrPushStringConst(str);
                             try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
                         }

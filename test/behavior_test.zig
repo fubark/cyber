@@ -80,7 +80,6 @@ test "core module" {
     );
 }
 
-const os_test = @embedFile("os_test.cy");
 test "os module" {
     const run = VMrunner.create();
     defer run.destroy();
@@ -107,7 +106,7 @@ test "os module" {
         try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.big));
     }
 
-    _ = try run.eval(os_test);
+    _ = try run.eval(@embedFile("os_test.cy"));
 }
 
 test "Fibers" {
@@ -1701,24 +1700,7 @@ test "toString." {
 test "String interpolation." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\-- Using single quotes.
-        \\a = 'World'
-        \\b = 123
-        \\try t.eq('Hello {a} {b}', 'Hello World 123')
-        \\-- Using double quotes.
-        \\try t.eq("Hello {a} {b}", 'Hello World 123')
-        \\-- Using triple quotes.
-        \\try t.eq('''Hello {a} {b}''', 'Hello World 123')
-        \\-- With expr at start.
-        \\try t.eq('{10}', '10')
-        \\-- With adjacent exprs at start.
-        \\try t.eq('{10}{20}', '1020')
-        \\-- With nested paren group.
-        \\try t.eq('{(1 + 2) * 3}', '9')
-    );
+    _ = try run.eval(@embedFile("string_interpolation_test.cy"));
 }
 
 test "Lists" {

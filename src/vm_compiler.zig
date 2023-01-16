@@ -97,6 +97,8 @@ pub const VMcompiler = struct {
 
     typeNames: std.StringHashMapUnmanaged(sema.Type),
 
+    config: Config,
+
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -140,6 +142,7 @@ pub const VMcompiler = struct {
             .typeNames = .{},
             .dataNodes = .{},
             .semaVarDeclDeps = .{},
+            .config = .{},
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
     }
@@ -361,7 +364,7 @@ pub const VMcompiler = struct {
         // }
     }
 
-    pub fn compile(self: *VMcompiler, ast: cy.ParseResultView) !ResultView {
+    pub fn compile(self: *VMcompiler, ast: cy.ParseResultView, config: Config) !ResultView {
         self.buf.clear();
         self.blocks.clearRetainingCapacity();
 
@@ -385,6 +388,7 @@ pub const VMcompiler = struct {
         self.src = ast.src;
         self.tokens = ast.tokens;
         self.semaBlockDepth = 0;
+        self.config = config;
 
         self.compileInner(ast) catch |err| {
             if (dumpCompileErrorStackTrace and !cy.silentError) {
@@ -564,7 +568,9 @@ pub const VMcompiler = struct {
         if (node.node_t == .expr_stmt) {
             if (attachEnd) {
                 const local = try self.genExprStmt(cur_id, true, false);
-                try self.endLocals();
+                if (self.config.genMainScopeReleaseOps) {
+                    try self.endLocals();
+                }
                 try self.buf.pushOp1(.end, local);
             } else {
                 _ = try self.genStatement(cur_id, true);
@@ -572,7 +578,9 @@ pub const VMcompiler = struct {
         } else {
             if (attachEnd) {
                 try self.genStatement(cur_id, false);
-                try self.endLocals();
+                if (self.config.genMainScopeReleaseOps) {
+                    try self.endLocals();
+                }
                 try self.buf.pushOp1(.end, 255);
             } else {
                 try self.genStatement(cur_id, true);
@@ -2998,4 +3006,8 @@ const DataNode = packed struct {
         },
     },
     next: u32,
+};
+
+const Config = struct {
+    genMainScopeReleaseOps: bool = true,
 };

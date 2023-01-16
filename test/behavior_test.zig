@@ -2354,7 +2354,7 @@ const VMrunner = struct {
         cy.silentError = true;
         defer cy.silentError = false;
         try self.resetEnv();
-        return self.vm.eval("main", src) catch |err| {
+        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             return err;
         };
     }
@@ -2362,7 +2362,7 @@ const VMrunner = struct {
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {
         // Eval with new env.
         try self.resetEnv();
-        return self.vm.eval("main", src) catch |err| {
+        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
                 try self.vm.dumpPanicStackTrace();
             }
@@ -2382,7 +2382,7 @@ const VMrunner = struct {
     }
 
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.vm.eval("main", src) catch |err| {
+        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
                 try self.vm.dumpPanicStackTrace();
             }

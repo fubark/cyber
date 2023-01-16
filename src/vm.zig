@@ -359,7 +359,9 @@ pub const VM = struct {
         tt.endPrint("parse");
 
         tt = stdx.debug.trace();
-        const res = try self.compiler.compile(astRes);
+        const res = try self.compiler.compile(astRes, .{
+            .genMainScopeReleaseOps = true,
+        });
         if (res.hasError) {
             if (self.compiler.lastErrNode != NullId) {
                 const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
@@ -375,7 +377,7 @@ pub const VM = struct {
         return res.buf;
     }
 
-    pub fn eval(self: *VM, srcUri: []const u8, src: []const u8) !Value {
+    pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
         var tt = stdx.debug.trace();
         const astRes = try self.parser.parse(src);
         if (astRes.has_error) {
@@ -390,7 +392,9 @@ pub const VM = struct {
         tt.endPrint("parse");
 
         tt = stdx.debug.trace();
-        const res = try self.compiler.compile(astRes);
+        const res = try self.compiler.compile(astRes, .{
+            .genMainScopeReleaseOps = !config.singleRun,
+        });
         if (res.hasError) {
             if (self.compiler.lastErrNode != NullId) {
                 const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
@@ -3958,8 +3962,8 @@ pub const UserVM = struct {
         return @ptrCast(*VM, self).compile(srcUri, src);
     }
 
-    pub inline fn eval(self: *UserVM, srcUri: []const u8, src: []const u8) !Value {
-        return @ptrCast(*VM, self).eval(srcUri, src);
+    pub inline fn eval(self: *UserVM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
+        return @ptrCast(*VM, self).eval(srcUri, src, config);
     }
 
     pub inline fn allocator(self: *const UserVM) std.mem.Allocator {
@@ -6218,4 +6222,10 @@ const SliceWriter = struct {
         std.mem.set(u8, self.buf[self.idx.*..self.idx.*+n], byte);
         self.idx.* += @intCast(u32, n);
     }
+};
+
+const EvalConfig = struct {
+    /// Whether this process intends to perform eval once and exit.
+    /// In that scenario, the compiler can skip generating the final release ops for the main block.
+    singleRun: bool = false,
 };

@@ -347,7 +347,7 @@ const VMrunner = struct {
         self.deinit();
         try self.vm.init(t.alloc);
         self.vm.setTrace(&self.trace);
-        return self.vm.eval("main", src) catch |err| {
+        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
                 try self.vm.dumpPanicStackTrace();
             }

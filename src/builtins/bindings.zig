@@ -976,7 +976,11 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
                         buf = new.rawstring.getSlice();
                     },
                 }
-                var dst: u32 = 0;
+                // Have at least one copy initially, so it can double.
+                std.mem.copy(u8, buf[0..str.len], str);
+                var dst = @intCast(u32, str.len);
+                un -= 1;
+
                 while (true) {
                     if (un & 1 == 1) {
                         // Copy original str once.

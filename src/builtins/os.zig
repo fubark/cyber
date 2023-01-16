@@ -24,6 +24,11 @@ pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const 
     const stdin = try self.vm.allocFile(std.os.STDIN_FILENO);
     try mod.setVar(alloc, "stdin", stdin);
     try mod.setVar(alloc, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        try mod.setVar(alloc, "vecBitSize", cy.Value.initF64(VecSize * 8));
+    } else {
+        try mod.setVar(alloc, "vecBitSize", cy.Value.initF64(0));
+    }
 
     try mod.setNativeFunc(alloc, "args", 0, osArgs);
     try mod.setNativeFunc(alloc, "createDir", 1, createDir);

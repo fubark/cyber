@@ -1218,6 +1218,7 @@ for map each k, v:
 | endian | #little, #big | The current arch's endianness. |
 | stdin | File | Standard input file descriptor. |
 | system | string | The current operating system's tag name. |
+| vecBitSize | number | Default SIMD vector bit size. |
 
 | Function | Summary |
 | -- | -- |

@@ -954,7 +954,7 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
                 return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
             }
 
-            const un = @intCast(u32, n);
+            var un = @intCast(u32, n);
             const len = un * str.len;
             if (un > 1 and len > 0) {
                 var new: *cy.HeapObject = undefined;
@@ -976,11 +976,20 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
                         buf = new.rawstring.getSlice();
                     },
                 }
-                var i: u32 = 0;
                 var dst: u32 = 0;
-                while (i < un) : (i += 1) {
-                    std.mem.copy(u8, buf[dst..dst + str.len], str);
-                    dst += @intCast(u32, str.len);
+                while (true) {
+                    if (un & 1 == 1) {
+                        // Copy original str once.
+                        std.mem.copy(u8, buf[dst..dst + str.len], str);
+                        dst += @intCast(u32, str.len);
+                    }
+                    un >>= 1;
+                    if (un == 0) {
+                        break;
+                    }
+                    // Double current string.
+                    std.mem.copy(u8, buf[dst..2 * dst], buf[0..dst]);
+                    dst *= 2;
                 }
                 return Value.initPtr(new);
             } else {

@@ -97,6 +97,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const read = try self.ensureMethodSymKey("read", 1);
     const readToEnd = try self.ensureMethodSymKey("readToEnd", 0);
     const remove = try self.ensureMethodSymKey("remove", 1);
+    const repeat = try self.ensureMethodSymKey("repeat", 1);
     const replace = try self.ensureMethodSymKey("replace", 2);
     const resize = try self.ensureMethodSymKey("resize", 1);
     const seek = try self.ensureMethodSymKey("seek", 1);
@@ -140,6 +141,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticAstringT, less, cy.MethodSym.initNativeFunc1(staticStringLess));
     try self.addMethodSym(cy.StaticAstringT, lower, cy.MethodSym.initNativeFunc1(staticAstringLower));
     try self.addMethodSym(cy.StaticAstringT, replace, cy.MethodSym.initNativeFunc1(staticAstringReplace));
+    try self.addMethodSym(cy.StaticAstringT, repeat, cy.MethodSym.initNativeFunc1(staticAstringRepeat));
     try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
     try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(staticAstringUpper));
 
@@ -158,6 +160,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticUstringT, len, cy.MethodSym.initNativeFunc1(staticUstringLen));
     try self.addMethodSym(cy.StaticUstringT, less, cy.MethodSym.initNativeFunc1(staticStringLess));
     try self.addMethodSym(cy.StaticUstringT, lower, cy.MethodSym.initNativeFunc1(staticUstringLower));
+    try self.addMethodSym(cy.StaticUstringT, repeat, cy.MethodSym.initNativeFunc1(staticUstringRepeat));
     try self.addMethodSym(cy.StaticUstringT, replace, cy.MethodSym.initNativeFunc1(staticUstringReplace));
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
     try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(staticUstringUpper));
@@ -224,6 +227,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.AstringT, less, cy.MethodSym.initNativeFunc1(astringLess));
     try self.addMethodSym(cy.AstringT, lower, cy.MethodSym.initNativeFunc1(astringLower));
     try self.addMethodSym(cy.AstringT, replace, cy.MethodSym.initNativeFunc1(astringReplace));
+    try self.addMethodSym(cy.AstringT, repeat, cy.MethodSym.initNativeFunc1(astringRepeat));
     try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
     try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(astringUpper));
 
@@ -242,6 +246,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.UstringT, len, cy.MethodSym.initNativeFunc1(ustringLen));
     try self.addMethodSym(cy.UstringT, less, cy.MethodSym.initNativeFunc1(ustringLess));
     try self.addMethodSym(cy.UstringT, lower, cy.MethodSym.initNativeFunc1(ustringLower));
+    try self.addMethodSym(cy.UstringT, repeat, cy.MethodSym.initNativeFunc1(ustringRepeat));
     try self.addMethodSym(cy.UstringT, replace, cy.MethodSym.initNativeFunc1(ustringReplace));
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(ustringStartsWith));
     try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(ustringUpper));
@@ -263,6 +268,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(rawStringLen));
     try self.addMethodSym(cy.RawStringT, less, cy.MethodSym.initNativeFunc1(rawStringLess));
     try self.addMethodSym(cy.RawStringT, lower, cy.MethodSym.initNativeFunc1(rawStringLower));
+    try self.addMethodSym(cy.RawStringT, repeat, cy.MethodSym.initNativeFunc1(rawStringRepeat));
     try self.addMethodSym(cy.RawStringT, replace, cy.MethodSym.initNativeFunc1(rawStringReplace));
     try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
     try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
@@ -919,6 +925,173 @@ fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
         return vm.allocOwnedUstring(new) catch fatal();
     } else {
         return null;
+    }
+}
+
+fn staticUstringRepeat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+    const head = vm.getStaticUstringHeader(slice.start);
+
+    const n = @floatToInt(i32, args[0].toF64());
+    if (n < 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+    const un = @intCast(u32, n);
+
+    const charLen = un * head.charLen;
+    const len = un * str.len;
+    if (un > 1 and len > 0) {
+        const obj = vm.allocUnsetUstringObject(len, charLen) catch fatal();
+        const buf = obj.ustring.getSlice();
+        var i: u32 = 0;
+        var dst: u32 = 0;
+        while (i < un) : (i += 1) {
+            std.mem.copy(u8, buf[dst..dst + str.len], str);
+            dst += @intCast(u32, str.len);
+        }
+        return Value.initPtr(obj);
+    } else {
+        if (un == 0) {
+            return Value.initStaticAstring(0, 0);
+        } else {
+            return val;
+        }
+    }
+}
+
+fn staticAstringRepeat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = Value{ .val = @ptrToInt(ptr) };
+    const slice = val.asStaticStringSlice();
+    const str = vm.getStaticString(slice.start, slice.end);
+
+    const n = @floatToInt(i32, args[0].toF64());
+    if (n < 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+    const un = @intCast(u32, n);
+
+    const len = un * str.len;
+    if (un > 1 and len > 0) {
+        const obj = vm.allocUnsetAstringObject(len) catch fatal();
+        const buf = obj.astring.getSlice();
+        var i: u32 = 0;
+        var dst: u32 = 0;
+        while (i < un) : (i += 1) {
+            std.mem.copy(u8, buf[dst..dst + str.len], str);
+            dst += @intCast(u32, str.len);
+        }
+        return Value.initPtr(obj);
+    } else {
+        if (un == 0) {
+            return Value.initStaticAstring(0, 0);
+        } else {
+            return val;
+        }
+    }
+}
+
+fn rawStringRepeat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+    }
+    const str = obj.rawstring.getConstSlice();
+
+    const n = @floatToInt(i32, args[0].toF64());
+    if (n < 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+    const un = @intCast(u32, n);
+
+    const len = un * str.len;
+    if (un > 1 and len > 0) {
+        const new = vm.allocUnsetRawStringObject(len) catch fatal();
+        const buf = new.rawstring.getSlice();
+        var i: u32 = 0;
+        var dst: u32 = 0;
+        while (i < un) : (i += 1) {
+            std.mem.copy(u8, buf[dst..dst + str.len], str);
+            dst += @intCast(u32, str.len);
+        }
+        return Value.initPtr(new);
+    } else {
+        if (un == 0) {
+            return Value.initStaticAstring(0, 0);
+        } else {
+            vm.retainObject(obj);
+            return Value.initPtr(obj);
+        }
+    }
+}
+
+fn astringRepeat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+    }
+    const str = obj.astring.getConstSlice();
+
+    const n = @floatToInt(i32, args[0].toF64());
+    if (n < 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+    const un = @intCast(u32, n);
+
+    const len = un * str.len;
+    if (un > 1 and len > 0) {
+        const new = vm.allocUnsetAstringObject(len) catch fatal();
+        const buf = new.astring.getSlice();
+        var i: u32 = 0;
+        var dst: u32 = 0;
+        while (i < un) : (i += 1) {
+            std.mem.copy(u8, buf[dst..dst + str.len], str);
+            dst += @intCast(u32, str.len);
+        }
+        return Value.initPtr(new);
+    } else {
+        if (un == 0) {
+            return Value.initStaticAstring(0, 0);
+        } else {
+            vm.retainObject(obj);
+            return Value.initPtr(obj);
+        }
+    }
+}
+
+fn ustringRepeat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer {
+        vm.releaseObject(obj);
+    }
+    const str = obj.ustring.getConstSlice();
+
+    const n = @floatToInt(i32, args[0].toF64());
+    if (n < 0) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+    const un = @intCast(u32, n);
+
+    const len = un * str.len;
+    const charLen = un * obj.ustring.charLen;
+    if (un > 1 and len > 0) {
+        const new = vm.allocUnsetUstringObject(len, charLen) catch fatal();
+        const buf = new.ustring.getSlice();
+        var i: u32 = 0;
+        var dst: u32 = 0;
+        while (i < un) : (i += 1) {
+            std.mem.copy(u8, buf[dst..dst + str.len], str);
+            dst += @intCast(u32, str.len);
+        }
+        return Value.initPtr(new);
+    } else {
+        if (un == 0) {
+            return Value.initStaticAstring(0, 0);
+        } else {
+            vm.retainObject(obj);
+            return Value.initPtr(obj);
+        }
     }
 }
 

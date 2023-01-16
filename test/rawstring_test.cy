@@ -94,6 +94,12 @@ try t.eq(str.less('aa'), false)
 -- lower()
 try t.eq(rawstring('AB🦊C').lower(), 'ab🦊c')
 
+-- repeat()
+try t.eq(str.repeat(-1), error(#InvalidArgument))
+try t.eq(str.repeat(0), '')
+try t.eq(str.repeat(1), 'abc🦊xyz🐶')
+try t.eq(str.repeat(2), 'abc🦊xyz🐶abc🦊xyz🐶')
+
 -- replace()
 try t.eq(str.replace('abc🦊', 'foo'), 'fooxyz🐶')
 try t.eq(str.replace('bc🦊', 'foo'), 'afooxyz🐶')

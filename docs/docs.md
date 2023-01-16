@@ -484,6 +484,7 @@ print str[-1]    -- "d"
 | `less(str string) bool` | Returns whether this string is lexicographically before `str`. |
 | `lower() string` | Returns this string in lowercase. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+| `repeat(n number) string` | Returns a new string with this string repeated `n` times. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `upper() string` | Returns this string in uppercase. | 
 
@@ -536,6 +537,7 @@ print str[-1]    -- "d"
 | `len() number` | Returns the number of bytes in the string. | 
 | `less(str rawstring) bool` | Returns whether this rawstring is lexicographically before `str`. |
 | `lower() string` | Returns this string in lowercase. | 
+| `repeat(n number) rawstring` | Returns a new rawstring with this rawstring repeated `n` times. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `toString() string` | Returns a valid UTF-8 string or returns `error(#InvalidChar)`. | 
@@ -1237,7 +1239,7 @@ for map each k, v:
 | `sleep(ms number) none` | Pauses the current thread for given milliseconds. |
 | `unsetEnv(string) none` | Removes an environment value by key. |
 
-object **File**
+#### object File
 | Method | Summary |
 | -- | -- |
 | `read(n number) rawstring` | Reads at most `n` bytes as a `rawstring`. `n` must be at least 1. A result with length 0 indicates the end of file was reached. |
@@ -1250,20 +1252,20 @@ object **File**
 | `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 | `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
 
-object **Dir**
+#### object Dir
 | Method | Summary |
 | -- | -- |
 | `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
 | `stat() map` | Returns info about the file as a map. |
 | `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
 
-map **DirEntry**
+#### map DirEntry
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
-map **DirWalkEntry**
+#### map DirWalkEntry
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |

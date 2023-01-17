@@ -976,25 +976,15 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
                         buf = new.rawstring.getSlice();
                     },
                 }
-                // Have at least one copy initially, so it can double.
-                std.mem.copy(u8, buf[0..str.len], str);
-                var dst = @intCast(u32, str.len);
-                un -= 1;
-
-                while (true) {
-                    if (un & 1 == 1) {
-                        // Copy original str once.
-                        std.mem.copy(u8, buf[dst..dst + str.len], str);
-                        dst += @intCast(u32, str.len);
-                    }
-                    un >>= 1;
-                    if (un == 0) {
-                        break;
-                    }
-                    // Double current string.
-                    std.mem.copy(u8, buf[dst..2 * dst], buf[0..dst]);
-                    dst *= 2;
+                // This is already quite fast since it has good cache locality.
+                // Might be faster if the front of the buffer up to a certain size was used to memcpy instead of just 1 `str`.
+                var i: u32 = 0;
+                var dst: u32 = 0;
+                while (i < un) : (i += 1) {
+                    std.mem.copy(u8, buf[dst..dst + str.len], str);
+                    dst += @intCast(u32, str.len);
                 }
+
                 return Value.initPtr(new);
             } else {
                 if (un == 0) {

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 
@@ -329,26 +330,139 @@ fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize
     return null;
 }
 
-/// For Ascii needle.
-pub fn indexOfChar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        const MaskInt = std.meta.Int(.unsigned, VecSize);
-        var vbuf: @Vector(VecSize, u8) = undefined;
+pub fn negIotaIntExt(comptime len: usize, comptime offset: u32, comptime factor: u32) @Vector(len, i32) {
+    var out: [len]i32 = undefined;
+    for (out) |*element, i| {
+        element.* = ~@intCast(i32, offset + i * factor);
+    }
+    return @as(@Vector(len, i32), out);
+}
+
+pub fn iotaExt(comptime T: type, comptime len: usize, comptime offset: T, comptime factor: T) @Vector(len, T) {
+    var out: [len]T = undefined;
+    for (out) |*element, i| {
+        element.* = switch (@typeInfo(T)) {
+            .Int => offset + @intCast(T, i) * factor,
+            .Float => offset + @intToFloat(T, i) * factor,
+            else => @compileError("Can't use type " ++ @typeName(T) ++ " in iota."),
+        };
+    }
+    return @as(@Vector(len, T), out);
+}
+
+fn indexOfCharSimdRemain(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
+    const MaskInt = std.meta.Int(.unsigned, VecSize);
+    const vbuf: @Vector(VecSize, u8) = @intToPtr(*[VecSize]u8, @ptrToInt(buf.ptr)).*;
+    const mask: MaskInt = (@as(MaskInt, 1) << @intCast(std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt))), buf.len)) - 1;
+    const hitMask = @bitCast(MaskInt, vbuf == @splat(VecSize, needle)) & mask;
+    if (hitMask > 0) {
+        return @ctz(hitMask);
+    }
+    return null;
+}
+
+fn indexOfCharSimdFixed4(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
+    if (VecSize == 32 and hasAvx2 and builtin.cpu.arch == .x86_64) {
+        // const MaskInt = std.meta.Int(.unsigned, VecSize);
         const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
         var i: usize = 0;
-        while (i + VecSize <= buf.len) : (i += VecSize) {
+        while (i + VecSize * 4 <= buf.len) : (i += VecSize * 4) {
+            var vbuf: @Vector(VecSize, u8) = undefined;
             vbuf = buf[i..i+VecSize][0..VecSize].*;
-            const hitMask = @bitCast(MaskInt, vbuf == vneedle);
-            const bitIdx = @ctz(hitMask);
-            if (bitIdx < VecSize) {
-                // Found.
-                return i + bitIdx;
+
+            // Inline asm to avoid extra vpmovmskb.
+            // TODO: There is a slight perf gain to be had when using 32-byte aligned memory.
+            const hitMask = asm (
+                \\vpcmpeqb (%rsi, %r8), %%ymm0, %%ymm1
+                \\vpcmpeqb 32(%rsi, %r8), %%ymm0, %%ymm2
+                \\vpcmpeqb 64(%rsi, %r8), %%ymm0, %%ymm3
+                \\vpcmpeqb 96(%rsi, %r8), %%ymm0, %%ymm4
+                \\vpor %%ymm1, %%ymm2, %%ymm5
+                \\vpor %%ymm3, %%ymm4, %%ymm6
+                \\vpor %%ymm5, %%ymm6, %%ymm5
+                \\vpmovmskb %%ymm5, %eax 
+                : [ret] "={eax}" (-> u32)
+                : [needle] "{ymm0}" (vneedle),
+                  [buf] "{rsi}" (buf.ptr),
+                  [i] "{r8}" (i),
+            );
+            if (hitMask > 0) {
+                // Find out which one contains the result.
+                var mask = asm (
+                    \\vpmovmskb %%ymm1, %eax
+                    : [ret] "={eax}" (-> u32)
+                );
+                if (mask > 0) {
+                    const bitIdx = @ctz(mask);
+                    return i + bitIdx;
+                }
+                mask = asm (
+                    \\vpmovmskb %%ymm2, %eax
+                    : [ret] "={eax}" (-> u32)
+                );
+                if (mask > 0) {
+                    const bitIdx = @ctz(mask);
+                    return i + bitIdx + 32;
+                }
+                mask = asm (
+                    \\vpmovmskb %%ymm3, %eax
+                    : [ret] "={eax}" (-> u32)
+                );
+                if (mask > 0) {
+                    const bitIdx = @ctz(mask);
+                    return i + bitIdx + 64;
+                } else {
+                    const bitIdx = @ctz(mask);
+                    return i + bitIdx + 96;
+                }
             }
         }
+        return null;
+    } else {
+        return indexOfCharSimdFixed(VecSize, buf, needle);
+    }
+}
+
+fn indexOfCharSimdFixed(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
+    const MaskInt = std.meta.Int(.unsigned, VecSize);
+    var vbuf: @Vector(VecSize, u8) = undefined;
+    const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
+    var i: usize = 0;
+    while (i + VecSize <= buf.len) : (i += VecSize) {
+        vbuf = buf[i..i+VecSize][0..VecSize].*;
+        const hitMask = @bitCast(MaskInt, vbuf == vneedle);
+        if (hitMask > 0) {
+            const bitIdx = @ctz(hitMask);
+            return i + bitIdx;
+        }
+    }
+    return null;
+}
+
+const hasAvx2 = std.Target.x86.featureSetHasAny(builtin.cpu.features, .{ .avx2 });
+
+/// For Ascii needle.
+pub fn indexOfChar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
+    // SIMD is approx 5x faster than scalar.
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        var i: usize = 0;
+        var iters = @divTrunc(buf.len, VecSize * 4);
+        if (iters > 0) {
+            if (indexOfCharSimdFixed4(VecSize, buf[0..iters * VecSize * 4], needle)) |idx| {
+                return idx;
+            }
+            i += iters * VecSize * 4;
+        }
+        iters = @divTrunc(buf.len - i, VecSize);
+        if (iters > 0) {
+            if (indexOfCharSimdFixed(VecSize, buf[i..i + iters * VecSize], needle)) |idx| {
+                return i + idx;
+            }
+            i += iters * VecSize;
+        }
         if (i < buf.len) {
-            // Remaining use cpu.
-            if (indexOfCharScalar(buf[i..], needle)) |res| {
-                return i + res;
+            if (indexOfCharSimdRemain(VecSize, buf[i..], needle)) |idx| {
+                return i + idx;
             }
         }
         return null;

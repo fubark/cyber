@@ -421,6 +421,109 @@ fn indexOfCharSimdFixed(comptime VecSize: usize, buf: []const u8, needle: u8) ?u
 const hasAvx2 = std.Target.x86.featureSetHasAny(builtin.cpu.features, .{ .avx2 });
 const NullId = std.math.maxInt(u32);
 
+fn indexOfScalar(str: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+    return std.mem.indexOf(u8, str, needle);
+}
+
+/// `needle` can be any UTF-8 string.
+/// `str` is assumed to have `needle.len` additional bytes so that an offset buffer can loaded without bounds check.
+fn indexOfSimdFixed(comptime VecSize: usize, str: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+    const MaskInt = std.meta.Int(.unsigned, VecSize);
+    // Algorithm based on: http://0x80.pl/articles/simd-strfind.html.
+
+    // Set up hashing. Hash end is currently always the last char position in needle.
+    const offset = needle.len - 1;
+    const first: @Vector(VecSize, u8) = @splat(VecSize, needle[0]);
+    const last: @Vector(VecSize, u8) = @splat(VecSize, needle[needle.len-1]);
+
+    var i: usize = 0;
+    while (i + VecSize <= str.len) : (i += VecSize) {
+        const buf1: @Vector(VecSize, u8) = str[i..i + VecSize][0..VecSize].*;
+        const firstMask = @bitCast(MaskInt, buf1 == first);
+        if (firstMask > 0) {
+            const buf2: @Vector(VecSize, u8) = @ptrCast([*]const u8, str.ptr + i + offset)[0..VecSize].*;
+            const lastMask = @bitCast(MaskInt, buf2 == last);
+            if (lastMask > 0) {
+                var hitMask = firstMask & lastMask;
+                // Visit each potential substring match until a match is found.
+                while (hitMask > 0) {
+                    const idx = @ctz(hitMask);
+                    if (std.mem.eql(u8, @ptrCast([*]const u8, str.ptr + i + idx)[0..needle.len], needle)) {
+                        return i + idx;
+                    }
+                    hitMask = unsetLowestBit(hitMask, idx);
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/// `str.len` can be assumed to be >= 1 and < VecSize + needle.len.
+fn indexOfSimdRemain(comptime VecSize: usize, str_: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+    const MaskInt = std.meta.Int(.unsigned, VecSize);
+
+    // This will check up to `VecSize` bytes and any extras after that
+    // can be discarded since the length will be < `needle.len`.
+    const str = if (str_.len > VecSize) str_[0..VecSize] else str_;
+
+    // Algorithm based on: http://0x80.pl/articles/simd-strfind.html.
+
+    // Set up hashing. Hash end is currently always the last char position in needle.
+    const offset = needle.len - 1;
+    const first: @Vector(VecSize, u8) = @splat(VecSize, needle[0]);
+    const last: @Vector(VecSize, u8) = @splat(VecSize, needle[needle.len-1]);
+
+    // Don't need a remainMask since the eq op on `first` and `last` will be false.
+    const buf1 = cy.simd.load(VecSize, u8, str);
+    const firstMask = @bitCast(MaskInt, buf1 == first);
+    if (firstMask > 0) {
+        const buf2 = cy.simd.load(VecSize, u8, str_[offset..]);
+        const lastMask = @bitCast(MaskInt, buf2 == last);
+        if (lastMask > 0) {
+            var hitMask = firstMask & lastMask;
+            // Visit each potential substring match until a match is found.
+            while (hitMask > 0) {
+                const idx = @ctz(hitMask);
+                if (std.mem.eql(u8, @ptrCast([*]const u8, str.ptr + idx)[0..needle.len], needle)) {
+                    return idx;
+                }
+                hitMask = unsetLowestBit(hitMask, idx);
+            }
+        }
+    }
+    return null;
+}
+
+inline fn unsetLowestBit(mask: anytype, idx: anytype) @TypeOf(mask) {
+    const Mask = @TypeOf(mask);
+    const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(Mask)));
+    return mask & ~(@as(Mask, 1) << @intCast(MaskShiftInt, idx));
+}
+
+/// `needle.len` is assumed to be at most `str.len`.
+pub fn indexOf(str: []const u8, needle: []const u8) linksection(cy.StdSection) ?usize {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        var i: usize = 0;
+        // Ensure that there is `needle.len` additional bytes after the fixed width.
+        const iters = @divTrunc(str.len - needle.len, VecSize);
+        if (iters > 0) {
+            if (indexOfSimdFixed(VecSize, str[0..iters * VecSize], needle)) |idx| {
+                return idx;
+            }
+            i += iters * VecSize;
+        }
+        if (i < str.len) {
+            if (indexOfSimdRemain(VecSize, str[i..], needle)) |idx| {
+                return i + idx;
+            }
+        }
+        return null;
+    } else {
+        return indexOfScalar(str, needle);
+    }
+}
+
 fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
     for (str) |code, i| {
         if (indexOfChar(set, code) != null) {
@@ -432,6 +535,7 @@ fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSec
 
 pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
+    const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
 
     if (VecSize == 32 and hasAvx2) {
         // Same as SimdFixed version with a mask at the end.
@@ -475,7 +579,6 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
               [upper] "{ymm4}" (upper),
         );
 
-        const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
         const remainMask: MaskInt = (@as(MaskInt, 1) << @intCast(MaskShiftInt, str.len)) - 1;
         var hitMask = @bitCast(MaskInt, (needle & upperMask) == upperMask) & remainMask;
         if (hitMask > 0) {
@@ -484,13 +587,13 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
                 return res;
             } else {
                 // Non-ascii result. Move to next bit in `hitMask`.
-                hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                hitMask = unsetLowestBit(hitMask, res);
                 while (hitMask > 0) {
                     res = @ctz(hitMask);
                     if (str[res] & 0x80 == 0) {
                         return res;
                     }
-                    hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                    hitMask = unsetLowestBit(hitMask, res);
                 }
             }
         }
@@ -502,7 +605,6 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
 
 pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
-    const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
 
     if (VecSize == 32 and hasAvx2) {
         // Based on the algorithm: http://0x80.pl/articles/simd-byte-lookup.html
@@ -557,13 +659,13 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
                     return res;
                 } else {
                     // Non-ascii result. Move to next bit in `hitMask`.
-                    hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                    hitMask = unsetLowestBit(hitMask, res);
                     while (hitMask > 0) {
                         res = i + @ctz(hitMask);
                         if (str[res] & 0x80 == 0) {
                             return res;
                         }
-                        hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                        hitMask = unsetLowestBit(hitMask, res);
                     }
                 }
             }

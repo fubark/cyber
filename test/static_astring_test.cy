@@ -79,6 +79,22 @@ try t.eq(str.index('bc'), 1)
 try t.eq(str.index('bd'), none)
 try t.eq(str.index('ab'), 0)
 
+-- index() simd 32-byte fixed. Need 'aaa' padding for needle.len = 3 to trigger simd fixed.
+try t.eq('abcdefghijklmnopqrstuvwxyz123456aaa'.index('bc'), 1)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456aaa'.index('bd'), none)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456aaa'.index('ab'), 0)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456aaa'.index('456'), 29)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456aaa'.index('56'), 30)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456aaa'.index('6'), 31)
+
+-- index() simd 32-byte remain.
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.index('7'), 32)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.index('78'), 32)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.index('789'), 32)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.index('780'), none)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.index('mnopqrstuv'), 12)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.index('mnopqrstuw'), none)
+
 -- indexChar()
 try t.eq(str.indexChar('a'), 0)
 try t.eq(str.indexChar('b'), 1)

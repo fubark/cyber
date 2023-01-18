@@ -98,7 +98,7 @@ const list = @import("list.zig");
 pub const List = list.List;
 pub const ListAligned = list.ListAligned;
 
-const string = @import("string.zig");
+pub const string = @import("string.zig");
 pub const HeapStringBuilder = string.HeapStringBuilder;
 pub const HeapRawStringBuilder = string.HeapRawStringBuilder;
 pub const isAstring = string.isAstring;

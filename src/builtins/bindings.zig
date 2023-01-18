@@ -135,7 +135,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(staticAstringCodeAt));
     try self.addMethodSym(cy.StaticAstringT, concat, cy.MethodSym.initNativeFunc1(staticAstringConcat));
     try self.addMethodSym(cy.StaticAstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
-    try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(staticAstringIndex));
+    try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, indexCode, cy.MethodSym.initNativeFunc1(staticAstringIndexCode));
@@ -156,7 +156,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticUstringT, codeAt, cy.MethodSym.initNativeFunc1(staticUstringCodeAt));
     try self.addMethodSym(cy.StaticUstringT, concat, cy.MethodSym.initNativeFunc1(staticUstringConcat));
     try self.addMethodSym(cy.StaticUstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
-    try self.addMethodSym(cy.StaticUstringT, index, cy.MethodSym.initNativeFunc1(staticUstringIndex));
+    try self.addMethodSym(cy.StaticUstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, indexCode, cy.MethodSym.initNativeFunc1(staticUstringIndexCode));
@@ -223,7 +223,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(astringCodeAt));
     try self.addMethodSym(cy.AstringT, concat, cy.MethodSym.initNativeFunc1(astringConcat));
     try self.addMethodSym(cy.AstringT, endsWith, cy.MethodSym.initNativeFunc1(rawOrAstringEndsWith));
-    try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(rawOrAstringIndex));
+    try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.astring)));
     try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.astring)));
     try self.addMethodSym(cy.AstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.astring)));
     try self.addMethodSym(cy.AstringT, indexCode, cy.MethodSym.initNativeFunc1(astringIndexCode));
@@ -244,7 +244,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.UstringT, codeAt, cy.MethodSym.initNativeFunc1(ustringCodeAt));
     try self.addMethodSym(cy.UstringT, concat, cy.MethodSym.initNativeFunc1(ustringConcat));
     try self.addMethodSym(cy.UstringT, endsWith, cy.MethodSym.initNativeFunc1(ustringEndsWith));
-    try self.addMethodSym(cy.UstringT, index, cy.MethodSym.initNativeFunc1(ustringIndex));
+    try self.addMethodSym(cy.UstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.ustring)));
     try self.addMethodSym(cy.UstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.ustring)));
     try self.addMethodSym(cy.UstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.ustring)));
     try self.addMethodSym(cy.UstringT, indexCode, cy.MethodSym.initNativeFunc1(ustringIndexCode));
@@ -266,7 +266,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(rawStringCodeAt));
     try self.addMethodSym(cy.RawStringT, concat, cy.MethodSym.initNativeFunc1(rawStringConcat));
     try self.addMethodSym(cy.RawStringT, endsWith, cy.MethodSym.initNativeFunc1(rawOrAstringEndsWith));
-    try self.addMethodSym(cy.RawStringT, index, cy.MethodSym.initNativeFunc1(rawOrAstringIndex));
+    try self.addMethodSym(cy.RawStringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.rawstring)));
     try self.addMethodSym(cy.RawStringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.rawstring)));
     try self.addMethodSym(cy.RawStringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.rawstring)));
     try self.addMethodSym(cy.RawStringT, indexCode, cy.MethodSym.initNativeFunc1(rawStringIndexCode));
@@ -1486,27 +1486,41 @@ fn staticStringEndsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _
     return Value.initBool(std.mem.endsWith(u8, str, needle));
 }
 
-fn staticUstringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const needle = vm.valueToTempString(args[0]);
-
-    if (std.mem.indexOf(u8, str, needle)) |idx| {
-        const charIdx = cy.toUtf8CharIdx(str, idx);
-        return Value.initF64(@intToFloat(f64, charIdx));
-    } else return Value.None;
-}
-
-fn staticAstringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const needle = vm.valueToTempString(args[0]);
-
-    if (std.mem.indexOf(u8, str, needle)) |idx| {
-        return Value.initF64(@intToFloat(f64, idx));
-    } else return Value.None;
+fn stringIndex(comptime T: StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const needle = vm.valueToTempString(args[0]);
+            if (needle.len > 0 and needle.len <= str.len) {
+                if (needle.len == 1) {
+                    // One ascii char special case. Perform indexOfChar.
+                    if (cy.string.indexOfChar(str, needle[0])) |idx| {
+                        if (T == .ustring or T == .staticUstring) {
+                            const charIdx = cy.toUtf8CharIdx(str, idx);
+                            return Value.initF64(@intToFloat(f64, charIdx));
+                        } else {
+                            return Value.initF64(@intToFloat(f64, idx));
+                        }
+                    }
+                }
+                if (cy.string.indexOf(str, needle)) |idx| {
+                    if (T == .ustring or T == .staticUstring) {
+                        const charIdx = cy.toUtf8CharIdx(str, idx);
+                        return Value.initF64(@intToFloat(f64, charIdx));
+                    } else {
+                        return Value.initF64(@intToFloat(f64, idx));
+                    }
+                }
+            }
+            return Value.None;
+        }
+    };
+    return S.inner;
 }
 
 fn staticStringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -1651,35 +1665,6 @@ fn rawOrAstringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value,
         vm.release(args[0]);
     }
     return Value.initBool(std.mem.startsWith(u8, str, needle));
-}
-
-fn ustringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const str = obj.ustring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-
-    if (std.mem.indexOf(u8, str, needle)) |idx| {
-        const charIdx = cy.toUtf8CharIdx(str, idx);
-        return Value.initF64(@intToFloat(f64, charIdx));
-    } else return Value.None;
-}
-
-fn rawOrAstringIndex(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const str = obj.astring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-
-    if (std.mem.indexOf(u8, str, needle)) |idx| {
-        return Value.initF64(@intToFloat(f64, idx));
-    } else return Value.None;
 }
 
 fn valueToChar(vm: *cy.UserVM, val: Value) u8 {

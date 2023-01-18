@@ -848,3 +848,8 @@ pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
     const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
     return std.unicode.utf8Decode(str[0..len]) catch stdx.fatal();
 }
+
+pub fn utf8CharSliceAtNoCheck(str: []const u8, idx: usize) []const u8 {
+    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
+    return str[0..len];
+}

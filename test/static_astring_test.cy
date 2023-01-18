@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 -- Single quote literal.
@@ -88,6 +90,32 @@ lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
 try t.eq(lstr.indexChar('a'), 0)
 try t.eq(lstr.indexChar('m'), 16)
 try t.eq(lstr.indexChar('z'), 68)
+
+-- indexCharSet()
+try t.eq(str.indexCharSet('a'), 0)
+try t.eq(str.indexCharSet('ae'), 0)
+try t.eq(str.indexCharSet('ea'), 0)
+try t.eq(str.indexCharSet('fe'), none)
+try t.eq(str.indexCharSet('cd'), 2)
+try t.eq(str.indexCharSet('dc'), 2)
+try t.eq(str.indexCharSet('cdi'), 2)
+
+-- indexCharSet() simd 32-byte fixed
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('a'), 0)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('m'), 12)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('6'), 31)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('6m'), 12)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('0'), none)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('07'), none)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456'.indexCharSet('07m'), 12)
+
+-- indexCharSet() simd 32-byte remain
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.indexCharSet('7'), 32)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.indexCharSet('8'), 33)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.indexCharSet('9'), 34)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.indexCharSet('98'), 33)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.indexCharSet('0'), none)
+try t.eq('abcdefghijklmnopqrstuvwxyz123456789'.indexCharSet('08'), 33)
 
 -- indexCode()
 try t.eq(str.indexCode(97), 0)

@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 pre = 'abc'
@@ -50,6 +52,12 @@ lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza
 try t.eq(lstr.indexChar('a'), 0)
 try t.eq(lstr.indexChar('m'), 16)
 try t.eq(lstr.indexChar('z'), 68)
+
+-- indexCharSet()
+try t.eq(str.indexCharSet('a'), 0)
+try t.eq(str.indexCharSet('ae'), 0)
+try t.eq(str.indexCharSet('fe'), none)
+try t.eq(str.indexCharSet('cd'), 2)
 
 -- indexCode()
 try t.eq(str.indexCode(97), 0)

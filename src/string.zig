@@ -1,3 +1,5 @@
+// Copyright (c) 2023 Cyber (See LICENSE)
+
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
@@ -367,9 +369,6 @@ fn indexOfCharSimdFixed4(comptime VecSize: usize, buf: []const u8, needle: u8) ?
         const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
         var i: usize = 0;
         while (i + VecSize * 4 <= buf.len) : (i += VecSize * 4) {
-            var vbuf: @Vector(VecSize, u8) = undefined;
-            vbuf = buf[i..i+VecSize][0..VecSize].*;
-
             // Inline asm to avoid extra vpmovmskb.
             // TODO: There is a slight perf gain to be had when using 32-byte aligned memory.
             const hitMask = asm (
@@ -440,9 +439,184 @@ fn indexOfCharSimdFixed(comptime VecSize: usize, buf: []const u8, needle: u8) ?u
 }
 
 const hasAvx2 = std.Target.x86.featureSetHasAny(builtin.cpu.features, .{ .avx2 });
+const NullId = std.math.maxInt(u32);
+
+fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+    for (str) |code, i| {
+        if (indexOfChar(set, code) != null) {
+            return i;
+        }
+    }
+    return null;
+}
+
+pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+    const MaskInt = std.meta.Int(.unsigned, VecSize);
+
+    if (VecSize == 32 and hasAvx2) {
+        // Same as SimdFixed version with a mask at the end.
+
+        // Construct the LUT.
+        // Since it's ASCII, the upper needle mask can have at most 8 bits.
+        var lut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        for (set) |code| {
+            const lower = code & 0xF;
+            const upper = code >> 4; // At most 7.
+            lut[lower] = @as(u8, 1) << @intCast(u3, upper);
+            // Dupe to upper offset 128 for 256bit vpshufb.
+            lut[16 + lower] = @as(u8, 1) << @intCast(u3, upper);
+        }
+
+        var upperMaskLut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        comptime var j = 0;
+        inline while (j < 8) : (j += 1) {
+            upperMaskLut[j] = 1 << j;
+            upperMaskLut[8 + j] = 255;
+            // Dupe to upper offset 128 for 256bit vpshufb.
+            upperMaskLut[16 + j] = 1 << j;
+            upperMaskLut[24 + j] = 255;
+        }
+
+        const buf: @Vector(VecSize, u8) = @intToPtr(*[VecSize]u8, @ptrToInt(str.ptr)).*;
+        const lower: @Vector(VecSize, u8) = buf & @splat(VecSize, @as(u8, 0xF));
+        const upper: @Vector(VecSize, u8) = buf >> @splat(VecSize, @as(u8, 4));
+
+        const needle = asm (
+            \\vpshufb %%ymm3, %%ymm0, %%ymm5
+            : [ret] "={ymm5}" (-> @Vector(VecSize, u8))
+            : [lut] "{ymm0}" (lut),
+              [lower] "{ymm3}" (lower),
+        );
+
+        const upperMask = asm (
+            \\vpshufb %%ymm4, %%ymm1, %%ymm6
+            : [ret] "={ymm6}" (-> @Vector(VecSize, u8))
+            : [upperMaskLut] "{ymm1}" (upperMaskLut),
+              [upper] "{ymm4}" (upper),
+        );
+
+        const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
+        const remainMask: MaskInt = (@as(MaskInt, 1) << @intCast(MaskShiftInt, str.len)) - 1;
+        var hitMask = @bitCast(MaskInt, (needle & upperMask) == upperMask) & remainMask;
+        if (hitMask > 0) {
+            var res = @ctz(hitMask);
+            if (str[res] & 0x80 == 0) {
+                return res;
+            } else {
+                // Non-ascii result. Move to next bit in `hitMask`.
+                hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                while (hitMask > 0) {
+                    res = @ctz(hitMask);
+                    if (str[res] & 0x80 == 0) {
+                        return res;
+                    }
+                    hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                }
+            }
+        }
+        return null;
+    } else {
+        return indexOfAsciiSetScalar(str, set);
+    }
+}
+
+pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+    const MaskInt = std.meta.Int(.unsigned, VecSize);
+    const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
+
+    if (VecSize == 32 and hasAvx2) {
+        // Based on the algorithm: http://0x80.pl/articles/simd-byte-lookup.html
+
+        // Construct the LUT.
+        // Since it's ASCII, the upper needle mask can have at most 8 bits.
+        var lut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        for (set) |code| {
+            const lower = code & 0xF;
+            const upper = code >> 4; // At most 7.
+            lut[lower] = @as(u8, 1) << @intCast(u3, upper);
+            // Dupe to upper offset 128 for 256bit vpshufb.
+            lut[16 + lower] = @as(u8, 1) << @intCast(u3, upper);
+        }
+
+        var upperMaskLut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        comptime var j = 0;
+        inline while (j < 8) : (j += 1) {
+            upperMaskLut[j] = 1 << j;
+            // Non-ascii maps to full mask.
+            // This is unlikely to match the `lut` but if it does, the final resulting char is validated. 
+            upperMaskLut[8 + j] = 255;
+            // Dupe to upper offset 128 for 256bit vpshufb.
+            upperMaskLut[16 + j] = 1 << j;
+            upperMaskLut[24 + j] = 255;
+        }
+
+        var i: usize = 0;
+        while (i + VecSize <= str.len) : (i += VecSize) {
+            const buf: @Vector(VecSize, u8) = str[i..i+VecSize][0..VecSize].*;
+            const lower: @Vector(VecSize, u8) = buf & @splat(VecSize, @as(u8, 0xF));
+            const upper: @Vector(VecSize, u8) = buf >> @splat(VecSize, @as(u8, 4));
+
+            const needle = asm (
+                \\vpshufb %%ymm3, %%ymm0, %%ymm5
+                : [ret] "={ymm5}" (-> @Vector(VecSize, u8))
+                : [lut] "{ymm0}" (lut),
+                  [lower] "{ymm3}" (lower),
+            );
+
+            const upperMask = asm (
+                \\vpshufb %%ymm4, %%ymm1, %%ymm6
+                : [ret] "={ymm6}" (-> @Vector(VecSize, u8))
+                : [upperMaskLut] "{ymm1}" (upperMaskLut),
+                  [upper] "{ymm4}" (upper),
+            );
+
+            var hitMask = @bitCast(MaskInt, (needle & upperMask) == upperMask);
+            if (hitMask > 0) {
+                var res = i + @ctz(hitMask);
+                if (str[res] & 0x80 == 0) {
+                    return res;
+                } else {
+                    // Non-ascii result. Move to next bit in `hitMask`.
+                    hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                    while (hitMask > 0) {
+                        res = i + @ctz(hitMask);
+                        if (str[res] & 0x80 == 0) {
+                            return res;
+                        }
+                        hitMask &= ~(@as(MaskInt, 1) << @intCast(MaskShiftInt, res));
+                    }
+                }
+            }
+        }
+        return null;
+    } else {
+        return indexOfAsciiSetScalar(str, set);
+    }
+}
+
+pub fn indexOfAsciiSet(str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        var i: usize = 0;
+        const iters = @divTrunc(str.len, VecSize);
+        if (iters > 0) {
+            if (indexOfAsciiSetSimdFixed(VecSize, str[i..i + iters * VecSize], set)) |idx| {
+                return i + idx;
+            }
+            i += iters * VecSize;
+        }
+        if (i < str.len) {
+            if (indexOfAsciiSetSimdRemain(VecSize, str[i..], set)) |idx| {
+                return i + idx;
+            }
+        }
+        return null;
+    } else {
+        return indexOfAsciiSetScalar(str, set);
+    }
+}
 
 /// For Ascii needle.
-pub fn indexOfChar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
+pub fn indexOfChar(buf: []const u8, needle: u8) linksection(cy.StdSection) ?usize {
     // SIMD is approx 5x faster than scalar.
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         var i: usize = 0;
@@ -586,4 +760,9 @@ pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: [
     }
     // Copy end segment.
     std.mem.copy(u8, dst[dstIdx..], src[srcIdx..]);
+}
+
+pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
+    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
+    return std.unicode.utf8Decode(str[0..len]) catch stdx.fatal();
 }

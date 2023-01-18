@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 pre = 'abc🦊'
@@ -47,6 +49,13 @@ try t.eq(str.indexChar('a'), 0)
 try t.eq(str.indexChar('🦊'), 3)
 try t.eq(str.indexChar('x'), 4)
 try t.eq(str.indexChar('d'), none)
+
+-- indexCharSet()
+try t.eq(str.indexCharSet('a'), 0)
+try t.eq(str.indexCharSet('🦊'), 3)
+try t.eq(str.indexCharSet('🦊a'), 0)
+try t.eq(str.indexCharSet('xy'), 4)
+try t.eq(str.indexCharSet('ef'), none)
 
 -- indexCode()
 try t.eq(str.indexCode(97), 0)

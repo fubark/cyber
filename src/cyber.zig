@@ -1,3 +1,5 @@
+// Copyright (c) 2023 Cyber (See LICENSE)
+
 const builtin = @import("builtin");
 
 const parser = @import("parser.zig");
@@ -104,11 +106,13 @@ pub const validateUtf8 = string.validateUtf8;
 pub const ustringSeekCharIndexSliceAt = string.ustringSeekCharIndexSliceAt;
 pub const utf8CharSliceAt = string.utf8CharSliceAt;
 pub const indexOfChar = string.indexOfChar;
+pub const indexOfAsciiSet = string.indexOfAsciiSet;
 pub const toUtf8CharIdx = string.toUtf8CharIdx;
 pub const charIndexOfCodepoint = string.charIndexOfCodepoint;
 pub const getLineEnd = string.getLineEnd;
 pub const prepReplacement = string.prepReplacement;
 pub const replaceAtIdxes = string.replaceAtIdxes;
+pub const utf8CodeAtNoCheck = string.utf8CodeAtNoCheck;
 
 const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;

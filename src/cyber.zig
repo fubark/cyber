@@ -158,3 +158,5 @@ pub fn forceSectionDeps() !void {
 }
 
 pub var silentError = false;
+
+pub const simd = @import("simd.zig");

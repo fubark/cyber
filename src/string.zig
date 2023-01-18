@@ -332,29 +332,9 @@ fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize
     return null;
 }
 
-pub fn negIotaIntExt(comptime len: usize, comptime offset: u32, comptime factor: u32) @Vector(len, i32) {
-    var out: [len]i32 = undefined;
-    for (out) |*element, i| {
-        element.* = ~@intCast(i32, offset + i * factor);
-    }
-    return @as(@Vector(len, i32), out);
-}
-
-pub fn iotaExt(comptime T: type, comptime len: usize, comptime offset: T, comptime factor: T) @Vector(len, T) {
-    var out: [len]T = undefined;
-    for (out) |*element, i| {
-        element.* = switch (@typeInfo(T)) {
-            .Int => offset + @intCast(T, i) * factor,
-            .Float => offset + @intToFloat(T, i) * factor,
-            else => @compileError("Can't use type " ++ @typeName(T) ++ " in iota."),
-        };
-    }
-    return @as(@Vector(len, T), out);
-}
-
 fn indexOfCharSimdRemain(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
-    const vbuf: @Vector(VecSize, u8) = @intToPtr(*[VecSize]u8, @ptrToInt(buf.ptr)).*;
+    const vbuf = cy.simd.load(VecSize, u8, buf);
     const mask: MaskInt = (@as(MaskInt, 1) << @intCast(std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt))), buf.len)) - 1;
     const hitMask = @bitCast(MaskInt, vbuf == @splat(VecSize, needle)) & mask;
     if (hitMask > 0) {
@@ -477,7 +457,7 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
             upperMaskLut[24 + j] = 255;
         }
 
-        const buf: @Vector(VecSize, u8) = @intToPtr(*[VecSize]u8, @ptrToInt(str.ptr)).*;
+        const buf = cy.simd.load(VecSize, u8, str);
         const lower: @Vector(VecSize, u8) = buf & @splat(VecSize, @as(u8, 0xF));
         const upper: @Vector(VecSize, u8) = buf >> @splat(VecSize, @as(u8, 4));
 

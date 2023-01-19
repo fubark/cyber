@@ -506,7 +506,7 @@ test "Optionals" {
 //     run.deinitValue(val);
 // }
 
-test "Comparison ops." {
+test "Compare numbers." {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -523,66 +523,19 @@ test "Comparison ops." {
         \\try t.eq(2 >= 2, true)
         \\try t.eq(3 >= 2, true)
         \\
-        \\-- Using `is` keyword.
-        \\try t.eq(3 is 2, false)
-        \\try t.eq(3 is 3, true)
-        \\
-        \\-- Number equals.
-        \\try t.eq(3 == 2, false)
-        \\try t.eq(3 == 3, true)
-        \\
-        \\-- Const string equals.
-        \\try t.eq('foo' == 'bar', false)
-        \\try t.eq('foo' == 'foo', true)
-        \\
-        \\-- Heap string equals.
-        \\foo = '{'fo'}{'o'}'
-        \\try t.eq(foo == 'bar', false)
-        \\foo = '{'fo'}{'o'}'
-        \\try t.eq(foo == 'foo', true)
-        \\
-        \\-- Object equals.
-        \\object S:
-        \\  value
-        \\s = S{ value: 123 }
-        \\a = S{ value: 123 }
-        \\try t.eq(a == s, false)
-        \\a = s
-        \\try t.eq(a == s, true)
-        \\
-        \\-- Error equals.
-        \\try t.eq(error(#SomeError) == error(#OtherError), false)
-        \\try t.eq(error(#SomeError) == error(#SomeError), true)
     );
 }
 
-test "Not equal comparison." {
+test "Compare equals." {
     const run = VMrunner.create();
     defer run.destroy();
+    _= try run.eval(@embedFile("compare_eq_test.cy"));
+}
 
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- Using `is not` op.
-        \\try t.eq(3 is not 2, true)
-        \\try t.eq(3 is not 3, false)
-        \\
-        \\-- Comparing objects.
-        \\object S:
-        \\  value
-        \\o = S{ value: 3 }
-        \\try t.eq(o != 123, true)
-        \\o2 = o
-        \\try t.eq(o != o2, false)
-        \\
-        \\-- Compare tag literal.
-        \\try t.eq(#abc != #xyz, true) 
-        \\try t.eq(#abc != #abc, false)
-        \\
-        \\-- Compare errors.
-        \\try t.eq(error(#SomeError) != error(#OtherError), true)
-        \\try t.eq(error(#SomeError) != error(#SomeError), false)
-    );
+test "Compare not equals." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("compare_neq_test.cy"));
 }
 
 test "Truthy evaluation." {
@@ -859,6 +812,18 @@ test "Comments" {
     try t.eq(val.asF64toI32(), 4);
 }
 
+test "Static ASCII strings." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("static_astring_test.cy"));
+}
+
+test "Static UTF-8 strings." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("static_ustring_test.cy"));
+}
+
 test "Heap ASCII String." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -871,22 +836,28 @@ test "Heap UTF-8 String." {
     _ = try run.eval(@embedFile("ustring_test.cy"));
 }
 
+test "Heap ASCII String Slice." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("astring_slice_test.cy"));
+}
+
+test "Heap UTF-8 String Slice." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("ustring_slice_test.cy"));
+}
+
 test "Heap RawString." {
     const run = VMrunner.create();
     defer run.destroy();
     _ = try run.eval(@embedFile("rawstring_test.cy"));
 }
 
-test "Static ASCII strings." {
+test "Heap RawString Slice." {
     const run = VMrunner.create();
     defer run.destroy();
-    _ = try run.eval(@embedFile("static_astring_test.cy"));
-}
-
-test "Static UTF-8 strings." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("static_ustring_test.cy"));
+    _ = try run.eval(@embedFile("rawstring_slice_test.cy"));
 }
 
 test "toString." {

@@ -1,10 +1,16 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
+-- Same tests as ustring_test.cy except using a slice.
+
 import t 'test'
 
--- Single quote literal.
-str = 'abc🦊xyz🐶'
+pre = 'abc🦊'
+str = '{pre}xyz🐶'
+str = str[0..]  -- Sets up the slice.
 try t.eq(str, 'abc🦊xyz🐶')
+
+-- Sets up the slice.
+upper = '{'abc🦊xyz🐶'}'[0..]
 
 -- index operator
 try t.eq(str[-1], '🐶')
@@ -104,7 +110,7 @@ try t.eq(str.less('ac'), true)
 try t.eq(str.less('aa'), false)
 
 -- lower()
-try t.eq('AB🦊C'.lower(), 'ab🦊c')
+try t.eq(upper.lower(), 'abc🦊xyz🐶')
 
 -- repeat()
 try t.eq(str.repeat(-1), error(#InvalidArgument))

@@ -465,6 +465,22 @@ print str[1]     -- "b"
 print str[-1]    -- "d"
 ```
 
+Using the slice index operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the character length of the string.
+```text
+str = 'abcxyz'
+sub = str[0..3]
+print sub        -- "abc"
+print str[..5]   -- "abcxy"
+print str[1..]   -- "bcxyz"
+
+-- One way to use slices is to continue a string operation.
+str = 'abcabcabc'
+i = str.indexChar('c')
+print(i)                            -- "2"
+i += 1
+print(i + str[i..].indexChar('c'))  -- "5"
+```
+
 [To Top.](#table-of-contents)
 
 #### object string
@@ -477,6 +493,7 @@ print str[-1]    -- "d"
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
 | `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
 | `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
+| `indexCharSet(set string) number?` | Returns the first index of any UTF-8 character in `set` or `none` if not found. | 
 | `indexCode(needle number) number?` | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
 | `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
 | `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
@@ -485,6 +502,7 @@ print str[-1]    -- "d"
 | `lower() string` | Returns this string in lowercase. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `repeat(n number) string` | Returns a new string with this string repeated `n` times. | 
+| `slice(start number, end number) string` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `upper() string` | Returns this string in uppercase. | 
 
@@ -530,6 +548,7 @@ print str[-1]    -- "d"
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
 | `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
 | `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
+| `indexCharSet(set string) number?` | Returns the first index of any UTF-8 character in `set` or `none` if not found. |
 | `indexCode(needle number) number?` | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
 | `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
 | `insertByte(idx number, byte number) string` | Returns a new string with `byte` inserted at index `idx`. | 
@@ -539,6 +558,7 @@ print str[-1]    -- "d"
 | `lower() string` | Returns this string in lowercase. | 
 | `repeat(n number) rawstring` | Returns a new rawstring with this rawstring repeated `n` times. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+| `slice(start number, end number) rawstring` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `toString() string` | Returns a valid UTF-8 string or returns `error(#InvalidChar)`. | 
 | `upper() string` | Returns this string in uppercase. | 
@@ -556,7 +576,7 @@ print list[0]    -- Prints '1'
 print list[-1]   -- Prints '3'
 ```
 
-Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive.
+Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive. Negative start or end values count from the end of the list.
 ```text
 list = [ 1, 2, 3, 4, 5 ]
 list[0..0]  -- []          Empty list.

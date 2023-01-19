@@ -1,11 +1,15 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
+-- Same tests as rawstring_test.cy except using a slice.
+
 import t 'test'
 
 str = rawstring('abc🦊xyz🐶')
+str = str[0..]  -- Sets up the slice.
 try t.eq(str, rawstring('abc🦊xyz🐶'))
 
-upper = rawstring('ABC🦊XYZ🐶')
+-- Sets up the slice
+upper = rawstring('ABC🦊XYZ🐶')[0..]
 
 -- index operator
 try t.eq(str[-1], error(#InvalidChar))

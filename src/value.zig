@@ -251,6 +251,8 @@ pub const Value = packed union {
         const obj = self.asHeapObject(*cy.HeapObject);
         if (obj.common.structId == cy.RawStringT) {
             return obj.rawstring.getConstSlice();
+        } else if (obj.common.structId == cy.RawStringSliceT) {
+            return obj.rawstringSlice.getConstSlice();
         } else unreachable;
     }
 
@@ -426,7 +428,9 @@ pub const Value = packed union {
                     cy.MapS => return .map,
                     cy.AstringT => return .string,
                     cy.UstringT => return .string,
+                    cy.StringSliceT => return .string,
                     cy.RawStringT => return .rawstring,
+                    cy.RawStringSliceT => return .rawstring,
                     cy.ClosureS => return .closure,
                     cy.LambdaS => return .lambda,
                     cy.FiberS => return .fiber,

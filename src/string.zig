@@ -301,26 +301,23 @@ pub fn utf8CharSliceAt(str: []const u8, idx: usize) linksection(cy.Section) ?[]c
     return slice;
 }
 
-pub fn ustringSeekCharIndexSliceAt(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) linksection(cy.Section) stdx.IndexSlice(u32) {
-    var iter = std.unicode.Utf8Iterator{
-        .bytes = str,
-        .i = 0,
-    };
+/// Assumes str is valid UTF-8 and charIdx is at most charLen.
+pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, charIdx: u32) linksection(cy.Section) usize {
+    var i: usize = 0;
     var curCharIdx: u32 = 0;
     if (charIdx >= seekCharIdx) {
-        iter.i = seekIdx;
+        i = seekIdx;
         curCharIdx = seekCharIdx;
     }
     while (true) {
-        const start = @intCast(u32, iter.i);
-        _ = iter.nextCodepointSlice();
         if (curCharIdx == charIdx) {
-            return stdx.IndexSlice(u32).init(start, @intCast(u32, iter.i));
+            return i;
         } else {
+            const len = std.unicode.utf8ByteSequenceLength(str[i]) catch stdx.fatal();
+            i += len;
             curCharIdx += 1;
         }
     }
-    stdx.fatal();
 }
 
 fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
@@ -851,5 +848,5 @@ pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
 
 pub fn utf8CharSliceAtNoCheck(str: []const u8, idx: usize) []const u8 {
     const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
-    return str[0..len];
+    return str[idx..idx+len];
 }

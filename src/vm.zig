@@ -28,15 +28,17 @@ pub const ClosureS: StructId = 13;
 pub const LambdaS: StructId = 14;
 pub const AstringT: StructId = 15;
 pub const UstringT: StructId = 16;
-pub const RawStringT: StructId = 17;
-pub const FiberS: StructId = 18;
-pub const BoxS: StructId = 19;
-pub const NativeFunc1S: StructId = 20;
-pub const TccStateS: StructId = 21;
-pub const OpaquePtrS: StructId = 22;
-pub const FileT: StructId = 23;
-pub const DirT: StructId = 24;
-pub const DirIteratorT: StructId = 25;
+pub const StringSliceT: StructId = 17;
+pub const RawStringT: StructId = 18;
+pub const RawStringSliceT: StructId = 19;
+pub const FiberS: StructId = 20;
+pub const BoxS: StructId = 21;
+pub const NativeFunc1S: StructId = 22;
+pub const TccStateS: StructId = 23;
+pub const OpaquePtrS: StructId = 24;
+pub const FileT: StructId = 25;
+pub const DirT: StructId = 26;
+pub const DirIteratorT: StructId = 27;
 
 /// Temp buf for toString conversions when the len is known to be small.
 var tempU8Buf: [256]u8 = undefined;
@@ -561,31 +563,64 @@ pub const VM = struct {
         }
     }
 
-    fn sliceList(self: *VM, listV: Value, startV: Value, endV: Value) !Value {
-        if (listV.isPointer()) {
-            const obj = stdx.ptrAlignCast(*HeapObject, listV.asPointer().?);
-            if (obj.retainedCommon.structId == ListS) {
-                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                var start = @floatToInt(i32, startV.toF64());
-                if (start < 0) {
-                    start = @intCast(i32, list.len) + start + 1;
-                }
-                var end = @floatToInt(i32, endV.toF64());
-                if (end < 0) {
-                    end = @intCast(i32, list.len) + end + 1;
-                }
-                if (start < 0 or start > list.len) {
-                    return self.panic("Index out of bounds");
-                }
-                if (end < start or end > list.len) {
-                    return self.panic("Index out of bounds");
-                }
-                return self.allocList(list.buf[@intCast(u32, start)..@intCast(u32, end)]);
-            } else {
-                stdx.panic("expected list");
+    fn sliceOp(self: *VM, recv: Value, startV: Value, endV: Value) !Value {
+        if (recv.isPointer()) {
+            const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+            switch (obj.retainedCommon.structId) {
+                ListS => {
+                    const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+                    var start = @floatToInt(i32, startV.toF64());
+                    if (start < 0) {
+                        start = @intCast(i32, list.len) + start;
+                    }
+                    var end = if (endV.isNone()) @intCast(i32, list.len) else @floatToInt(i32, endV.toF64());
+                    if (end < 0) {
+                        end = @intCast(i32, list.len) + end;
+                    }
+                    if (start < 0 or start > list.len) {
+                        return self.panic("Index out of bounds");
+                    }
+                    if (end < start or end > list.len) {
+                        return self.panic("Index out of bounds");
+                    }
+                    return self.allocList(list.buf[@intCast(u32, start)..@intCast(u32, end)]);
+                },
+                AstringT => {
+                    retainObject(self, obj);
+                    return bindings.stringSlice(.astring)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
+                },
+                UstringT => {
+                    retainObject(self, obj);
+                    return bindings.stringSlice(.ustring)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
+                },
+                StringSliceT => {
+                    retainObject(self, obj);
+                    return bindings.stringSlice(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
+                },
+                RawStringT => {
+                    retainObject(self, obj);
+                    return bindings.stringSlice(.rawstring)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
+                },
+                RawStringSliceT => {
+                    retainObject(self, obj);
+                    return bindings.stringSlice(.rawSlice)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
+                },
+                else => {
+                    return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(self.structs.buf[obj.retainedCommon.structId].name)});
+                },
             }
         } else {
-            stdx.panic("expected pointer");
+            if (recv.isNumber()) {
+                return self.panic("Unsupported slice operation on type `number`.");
+            } else {
+                switch (recv.getTag()) {
+                    cy.StaticAstringT => return bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, recv.val), &[_]Value{startV, endV}, 2),
+                    cy.StaticUstringT => return bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, recv.val), &[_]Value{startV, endV}, 2),
+                    else => {
+                        return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@intCast(u8, recv.getTag()))});
+                    },
+                }
+            }
         }
     }
 
@@ -1012,6 +1047,71 @@ pub const VM = struct {
         } else {
             return Value.initPtr(obj);
         }
+    }
+
+    pub fn allocRawStringSlice(self: *VM, slice: []const u8, parent: *HeapObject) !Value {
+        const obj = try self.allocPoolObject();
+        obj.rawstringSlice = .{
+            .structId = RawStringSliceT,
+            .rc = 1,
+            .buf = slice.ptr,
+            .len = @intCast(u32, slice.len),
+            .parent = @ptrCast(*RawString, parent),
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocUstringSlice(self: *VM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
+        const obj = try self.allocPoolObject();
+        obj.stringSlice = .{
+            .structId = StringSliceT,
+            .rc = 1,
+            .buf = slice.ptr,
+            .len = @intCast(u32, slice.len),
+            .uCharLen = charLen,
+            .uMruIdx = 0,
+            .uMruCharIdx = 0,
+            .parentPtr = @intCast(u63, @ptrToInt(parent)),
+            .isAscii = 0,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
+    }
+
+    pub fn allocAstringSlice(self: *VM, slice: []const u8, parent: *HeapObject) !Value {
+        const obj = try self.allocPoolObject();
+        obj.stringSlice = .{
+            .structId = StringSliceT,
+            .rc = 1,
+            .buf = slice.ptr,
+            .len = @intCast(u32, slice.len),
+            .uCharLen = undefined,
+            .uMruIdx = undefined,
+            .uMruCharIdx = undefined,
+            .parentPtr = @intCast(u63, @ptrToInt(parent)),
+            .isAscii = 1,
+        };
+        if (TraceEnabled) {
+            self.trace.numRetains += 1;
+            self.trace.numRetainAttempts += 1;
+        }
+        if (TrackGlobalRC) {
+            self.refCounts += 1;
+        }
+        return Value.initPtr(obj);
     }
 
     pub fn allocUstring(self: *VM, str: []const u8, charLen: u32) linksection(cy.Section) !Value {
@@ -1803,17 +1903,33 @@ pub const VM = struct {
                 AstringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.astring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.astringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringCharAt(.astring)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 UstringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.ustring.charLen) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.ustringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringCharAt(.ustring)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                },
+                StringSliceT => {
+                    if (obj.stringSlice.isAstring()) {
+                        const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.len) + @floatToInt(i32, index.toF64()));
+                        retainObject(self, obj);
+                        return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                    } else {
+                        const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.uCharLen) + @floatToInt(i32, index.toF64()));
+                        retainObject(self, obj);
+                        return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                    }
                 },
                 RawStringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.rawStringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringCharAt(.rawstring)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
+                },
+                RawStringSliceT => {
+                    const idx = @intToFloat(f64, @intCast(i32, obj.rawstringSlice.len) + @floatToInt(i32, index.toF64()));
+                    retainObject(self, obj);
+                    return bindings.stringCharAt(.rawSlice)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 else => {
                     return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
@@ -1826,12 +1942,12 @@ pub const VM = struct {
                 switch (left.getTag()) {
                     cy.StaticAstringT => {
                         const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
-                        return bindings.staticAstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
                     },
                     cy.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
                         const idx = @intToFloat(f64, @intCast(i32, getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
-                        return bindings.staticUstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
                     },
                     else => {
                         return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
@@ -1864,15 +1980,23 @@ pub const VM = struct {
                 },
                 AstringT => {
                     retainObject(self, obj);
-                    return bindings.astringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                    return bindings.stringCharAt(.astring)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
                 UstringT => {
                     retainObject(self, obj);
-                    return bindings.ustringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                    return bindings.stringCharAt(.ustring)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                },
+                StringSliceT => {
+                    retainObject(self, obj);
+                    return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
                 RawStringT => {
                     retainObject(self, obj);
-                    return bindings.rawStringCharAt(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                    return bindings.stringCharAt(.rawstring)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
+                },
+                RawStringSliceT => {
+                    retainObject(self, obj);
+                    return bindings.stringCharAt(.rawSlice)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
                 else => {
                     return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
@@ -1883,8 +2007,8 @@ pub const VM = struct {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 switch (left.getTag()) {
-                    cy.StaticAstringT => return bindings.staticAstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
-                    cy.StaticUstringT => return bindings.staticUstringCharAt(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
+                    cy.StaticAstringT => return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
+                    cy.StaticUstringT => return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
                     else => {
                         return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
                     },
@@ -1989,11 +2113,11 @@ pub const VM = struct {
         return true;
     }
 
-    pub inline fn retainObject(self: *const VM, obj: *HeapObject) linksection(cy.HotSection) void {
+    pub inline fn retainObject(self: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         obj.retainedCommon.rc += 1;
         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -2461,15 +2585,20 @@ pub const VM = struct {
         return self.strBuf[slice.start..slice.end];
     }
 
-    pub fn tryValueAsString(self: *const VM, val: Value) linksection(cy.Section) ?[]const u8 {
+    /// A comparable string can be any string or a rawstring.
+    pub fn tryValueAsComparableString(self: *const VM, val: Value) linksection(cy.Section) ?[]const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject(*HeapObject);
             if (obj.common.structId == cy.AstringT) {
                 return obj.astring.getConstSlice();
             } else if (obj.common.structId == cy.UstringT) {
                 return obj.ustring.getConstSlice();
+            } else if (obj.common.structId == cy.StringSliceT) {
+                return obj.stringSlice.getConstSlice();
             } else if (obj.common.structId == cy.RawStringT) {
                 return obj.rawstring.getConstSlice();
+            } else if (obj.common.structId == cy.RawStringSliceT) {
+                return obj.rawstringSlice.getConstSlice();
             } else return null;
         } else {
             if (val.assumeNotPtrIsStaticString()) {
@@ -2495,9 +2624,17 @@ pub const VM = struct {
                 const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
                 return obj.ustring.getConstSlice();
             },
+            .slice => {
+                const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
+                return obj.stringSlice.getConstSlice();
+            },
             .rawstring => {
                 const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
                 return obj.rawstring.getConstSlice();
+            },
+            .rawSlice => {
+                const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
+                return obj.rawstringSlice.getConstSlice();
             },
         }
     }
@@ -2509,8 +2646,8 @@ pub const VM = struct {
                 return obj.astring.getConstSlice();
             } else if (obj.common.structId == cy.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.common.structId == cy.RawStringT) {
-                return obj.rawstring.getConstSlice();
+            } else if (obj.common.structId == cy.StringSliceT) {
+                return obj.stringSlice.getConstSlice();
             } else unreachable;
         } else {
             // Assume const string.
@@ -2828,6 +2965,13 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
                 vm.alloc.free(slice);
             }
         },
+        StringSliceT => {
+            if (obj.stringSlice.parentPtr != 0) {
+                const parent = @intToPtr(*cy.HeapObject, obj.stringSlice.parentPtr);
+                releaseObject(vm, parent);
+            }
+            vm.freeObject(obj);
+        },
         RawStringT => {
             if (obj.rawstring.len <= MaxPoolObjectRawStringByteLen) {
                 vm.freeObject(obj);
@@ -2835,6 +2979,11 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
                 const slice = @ptrCast([*]u8, obj)[0..12 + obj.rawstring.len];
                 vm.alloc.free(slice);
             }
+        },
+        RawStringSliceT => {
+            const parent = @ptrCast(*cy.HeapObject, obj.rawstringSlice.parent);
+            releaseObject(vm, parent);
+            vm.freeObject(obj);
         },
         FiberS => {
             releaseFiberStack(vm, &obj.fiber);
@@ -3019,7 +3168,9 @@ pub const StringType = enum {
     staticUstring,
     astring,
     ustring,
+    slice,
     rawstring,
+    rawSlice,
 };
 
 fn getComparableStringType(val: Value) ?StringType {
@@ -3029,8 +3180,12 @@ fn getComparableStringType(val: Value) ?StringType {
             return .astring;
         } else if (obj.common.structId == UstringT) {
             return .ustring;
+        } else if (obj.common.structId == StringSliceT) {
+            return .slice;
         } else if (obj.common.structId == RawStringT) {
             return .rawstring;
+        } else if (obj.common.structId == RawStringSliceT) {
+            return .rawSlice;
         }
         return null;
     } else {
@@ -3415,6 +3570,41 @@ pub const Fiber = packed struct {
     parentDstLocal: u8,
 };
 
+const RawStringSlice = packed struct {
+    structId: StructId,
+    rc: u32,
+    buf: [*]const u8,
+    len: u32,
+    parent: *RawString,
+
+    pub inline fn getConstSlice(self: *const RawStringSlice) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+
+const StringSlice = packed struct {
+    structId: StructId,
+    rc: u32,
+    buf: [*]const u8,
+    len: u32,
+
+    uCharLen: u32,
+    uMruIdx: u32,
+    uMruCharIdx: u32,
+
+    /// A Ustring slice may have a null or 0 parentPtr if it's sliced from StaticUstring.
+    parentPtr: u63,
+    isAscii: u1,
+
+    pub inline fn isAstring(self: *const StringSlice) bool {
+        return self.isAscii == 1;
+    }
+
+    pub inline fn getConstSlice(self: *const StringSlice) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+
 /// 28 byte length can fit inside a Heap pool object.
 pub const MaxPoolObjectAstringByteLen = 28;
 
@@ -3567,7 +3757,9 @@ pub const HeapObject = packed union {
     lambda: Lambda,
     astring: Astring,
     ustring: Ustring,
+    stringSlice: StringSlice,
     rawstring: RawString,
+    rawstringSlice: RawStringSlice,
     object: Object,
     box: Box,
     nativeFunc1: NativeFunc1,
@@ -3678,6 +3870,39 @@ test "Internals." {
     try t.eq(@ptrToInt(&ustr.mruCharIdx), @ptrToInt(&ustr) + 20);
     try t.eq(Ustring.BufOffset, 24);
     try t.eq(@ptrToInt(&ustr.bufStart), @ptrToInt(&ustr) + Ustring.BufOffset);
+
+    const slice = StringSlice{
+        .structId = StringSliceT,
+        .rc = 1,
+        .buf = undefined,
+        .len = 1,
+        .uCharLen = undefined,
+        .uMruIdx = undefined,
+        .uMruCharIdx = undefined,
+        .parentPtr = undefined,
+        .isAscii = undefined,
+    };
+    try t.eq(@ptrToInt(&slice.structId), @ptrToInt(&slice));
+    try t.eq(@ptrToInt(&slice.rc), @ptrToInt(&slice) + 4);
+    try t.eq(@ptrToInt(&slice.buf), @ptrToInt(&slice) + 8);
+    try t.eq(@ptrToInt(&slice.len), @ptrToInt(&slice) + 16);
+    try t.eq(@ptrToInt(&slice.uCharLen), @ptrToInt(&slice) + 20);
+    try t.eq(@ptrToInt(&slice.uMruIdx), @ptrToInt(&slice) + 24);
+    try t.eq(@ptrToInt(&slice.uMruCharIdx), @ptrToInt(&slice) + 28);
+    try t.eq(@ptrToInt(&slice.parentPtr), @ptrToInt(&slice) + 32);
+
+    const rslice = RawStringSlice{
+        .structId = RawStringSliceT,
+        .rc = 1,
+        .buf = undefined,
+        .len = 1,
+        .parent = undefined,
+    };
+    try t.eq(@ptrToInt(&rslice.structId), @ptrToInt(&rslice));
+    try t.eq(@ptrToInt(&rslice.rc), @ptrToInt(&rslice) + 4);
+    try t.eq(@ptrToInt(&rslice.buf), @ptrToInt(&rslice) + 8);
+    try t.eq(@ptrToInt(&rslice.len), @ptrToInt(&rslice) + 16);
+    try t.eq(@ptrToInt(&rslice.parent), @ptrToInt(&rslice) + 20);
 }
 
 const MethodSymType = enum {
@@ -3992,6 +4217,18 @@ pub const UserVM = struct {
 
     pub inline fn allocStringInfer(self: *UserVM, str: []const u8) !Value {
         return @ptrCast(*VM, self).getOrAllocStringInfer(str);
+    }
+
+    pub inline fn allocRawStringSlice(self: *UserVM, slice: []const u8, parent: *HeapObject) !Value {
+        return @ptrCast(*VM, self).allocRawStringSlice(slice, parent);
+    }
+
+    pub inline fn allocAstringSlice(self: *UserVM, slice: []const u8, parent: *HeapObject) !Value {
+        return @ptrCast(*VM, self).allocAstringSlice(slice, parent);
+    }
+
+    pub inline fn allocUstringSlice(self: *UserVM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
+        return @ptrCast(*VM, self).allocUstringSlice(slice, charLen, parent);
     }
 
     pub inline fn allocOwnedAstring(self: *UserVM, str: *HeapObject) !Value {
@@ -4433,9 +4670,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const list = framePtr[pc[1].arg];
                 const start = framePtr[pc[2].arg];
                 const end = framePtr[pc[3].arg];
-                const dst = pc[4].arg;
+                framePtr[pc[4].arg] = try @call(.never_inline, vm.sliceOp, .{list, start, end});
                 pc += 5;
-                framePtr[dst] = try vm.sliceList(list, start, end);
                 continue;
             },
             .setInitN => {

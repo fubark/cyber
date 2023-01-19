@@ -204,18 +204,23 @@ pub const ValueMap = struct {
             if (a.isPointer()) {
                 const aObj = stdx.ptrAlignCast(*cy.HeapObject, a.asPointer().?);
                 if (aObj.common.structId == cy.AstringT) {
-                    const bStr = vm.tryValueAsString(b) orelse return false;
+                    const bStr = vm.tryValueAsComparableString(b) orelse return false;
                     const aStr = aObj.astring.getConstSlice();
                     return std.mem.eql(u8, aStr, bStr);
                 } else if (aObj.common.structId == cy.UstringT) {
-                    const bStr = vm.tryValueAsString(b) orelse return false;
+                    const bStr = vm.tryValueAsComparableString(b) orelse return false;
                     const aStr = aObj.ustring.getConstSlice();
+                    return std.mem.eql(u8, aStr, bStr);
+                } else if (aObj.common.structId == cy.StringSliceT) {
+                    const bStr = vm.tryValueAsComparableString(b) orelse return false;
+                    const aStr = aObj.stringSlice.getConstSlice();
                     return std.mem.eql(u8, aStr, bStr);
                 } else stdx.unsupported();
             } else {
                 switch (a.getTag()) {
+                    cy.StaticUstringT,
                     cy.StaticAstringT => {
-                        const bStr = vm.tryValueAsString(b) orelse return false;
+                        const bStr = vm.tryValueAsComparableString(b) orelse return false;
                         const aSlice = a.asStaticStringSlice();
                         const aStr = vm.strBuf[aSlice.start..aSlice.end];
                         return std.mem.eql(u8, aStr, bStr);

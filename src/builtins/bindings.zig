@@ -107,6 +107,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const seekFromCur = try self.ensureMethodSymKey("seekFromCur", 1);
     const seekFromEnd = try self.ensureMethodSymKey("seekFromEnd", 1);
     const size = try self.ensureMethodSymKey("size", 0);
+    const slice = try self.ensureMethodSymKey("slice", 2);
     const sort = try self.ensureMethodSymKey("sort", 1);
     const startsWith = try self.ensureMethodSymKey("startsWith", 1);
     const stat = try self.ensureMethodSymKey("stat", 0);
@@ -130,45 +131,47 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addStruct("string");
     std.debug.assert(id == cy.StaticAstringT);
-    try self.addMethodSym(cy.StaticAstringT, append, cy.MethodSym.initNativeFunc1(staticAstringAppend));
-    try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(staticAstringCharAt));
-    try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(staticAstringCodeAt));
-    try self.addMethodSym(cy.StaticAstringT, concat, cy.MethodSym.initNativeFunc1(staticAstringConcat));
-    try self.addMethodSym(cy.StaticAstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
+    try self.addMethodSym(cy.StaticAstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, insert, cy.MethodSym.initNativeFunc1(staticAstringInsert));
-    try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(staticAstringIsAscii));
-    try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(staticAstringLen));
-    try self.addMethodSym(cy.StaticAstringT, less, cy.MethodSym.initNativeFunc1(staticStringLess));
-    try self.addMethodSym(cy.StaticAstringT, lower, cy.MethodSym.initNativeFunc1(staticAstringLower));
-    try self.addMethodSym(cy.StaticAstringT, replace, cy.MethodSym.initNativeFunc1(staticAstringReplace));
+    try self.addMethodSym(cy.StaticAstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
-    try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(staticAstringUpper));
+    try self.addMethodSym(cy.StaticAstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticAstring)));
 
     id = try self.addStruct("string"); // Astring and Ustring share the same string user type.
     std.debug.assert(id == cy.StaticUstringT);
-    try self.addMethodSym(cy.StaticUstringT, append, cy.MethodSym.initNativeFunc1(staticUstringAppend));
-    try self.addMethodSym(cy.StaticUstringT, charAt, cy.MethodSym.initNativeFunc1(staticUstringCharAt));
-    try self.addMethodSym(cy.StaticUstringT, codeAt, cy.MethodSym.initNativeFunc1(staticUstringCodeAt));
-    try self.addMethodSym(cy.StaticUstringT, concat, cy.MethodSym.initNativeFunc1(staticUstringConcat));
-    try self.addMethodSym(cy.StaticUstringT, endsWith, cy.MethodSym.initNativeFunc1(staticStringEndsWith));
+    try self.addMethodSym(cy.StaticUstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, insert, cy.MethodSym.initNativeFunc1(staticUstringInsert));
-    try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(staticUstringIsAscii));
-    try self.addMethodSym(cy.StaticUstringT, len, cy.MethodSym.initNativeFunc1(staticUstringLen));
-    try self.addMethodSym(cy.StaticUstringT, less, cy.MethodSym.initNativeFunc1(staticStringLess));
-    try self.addMethodSym(cy.StaticUstringT, lower, cy.MethodSym.initNativeFunc1(staticUstringLower));
+    try self.addMethodSym(cy.StaticUstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, replace, cy.MethodSym.initNativeFunc1(staticUstringReplace));
-    try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(staticStringStartsWith));
-    try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(staticUstringUpper));
+    try self.addMethodSym(cy.StaticUstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticUstring)));
 
     id = try self.addStruct("tag");
     std.debug.assert(id == cy.UserTagT);
@@ -218,69 +221,119 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addStruct("string");
     std.debug.assert(id == cy.AstringT);
-    try self.addMethodSym(cy.AstringT, append, cy.MethodSym.initNativeFunc1(astringAppend));
-    try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(astringCharAt));
-    try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(astringCodeAt));
-    try self.addMethodSym(cy.AstringT, concat, cy.MethodSym.initNativeFunc1(astringConcat));
-    try self.addMethodSym(cy.AstringT, endsWith, cy.MethodSym.initNativeFunc1(rawOrAstringEndsWith));
+    try self.addMethodSym(cy.AstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.astring)));
+    try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.astring)));
+    try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.astring)));
+    try self.addMethodSym(cy.AstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.astring)));
+    try self.addMethodSym(cy.AstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.astring)));
     try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.astring)));
     try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.astring)));
     try self.addMethodSym(cy.AstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.astring)));
     try self.addMethodSym(cy.AstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.astring)));
-    try self.addMethodSym(cy.AstringT, insert, cy.MethodSym.initNativeFunc1(astringInsert));
-    try self.addMethodSym(cy.AstringT, isAscii, cy.MethodSym.initNativeFunc1(astringIsAscii));
-    try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(astringLen));
-    try self.addMethodSym(cy.AstringT, less, cy.MethodSym.initNativeFunc1(astringLess));
-    try self.addMethodSym(cy.AstringT, lower, cy.MethodSym.initNativeFunc1(astringLower));
-    try self.addMethodSym(cy.AstringT, replace, cy.MethodSym.initNativeFunc1(astringReplace));
+    try self.addMethodSym(cy.AstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.astring)));
+    try self.addMethodSym(cy.AstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.astring)));
+    try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.astring)));
+    try self.addMethodSym(cy.AstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.astring)));
+    try self.addMethodSym(cy.AstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.astring)));
+    try self.addMethodSym(cy.AstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.astring)));
     try self.addMethodSym(cy.AstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.astring)));
-    try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
-    try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(astringUpper));
+    try self.addMethodSym(cy.AstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.astring)));
+    try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.astring)));
+    try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.astring)));
 
     id = try self.addStruct("string");
     std.debug.assert(id == cy.UstringT);
-    try self.addMethodSym(cy.UstringT, append, cy.MethodSym.initNativeFunc1(ustringAppend));
-    try self.addMethodSym(cy.UstringT, charAt, cy.MethodSym.initNativeFunc1(ustringCharAt));
-    try self.addMethodSym(cy.UstringT, codeAt, cy.MethodSym.initNativeFunc1(ustringCodeAt));
-    try self.addMethodSym(cy.UstringT, concat, cy.MethodSym.initNativeFunc1(ustringConcat));
-    try self.addMethodSym(cy.UstringT, endsWith, cy.MethodSym.initNativeFunc1(ustringEndsWith));
+    try self.addMethodSym(cy.UstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.ustring)));
+    try self.addMethodSym(cy.UstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.ustring)));
+    try self.addMethodSym(cy.UstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.ustring)));
+    try self.addMethodSym(cy.UstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.ustring)));
+    try self.addMethodSym(cy.UstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.ustring)));
     try self.addMethodSym(cy.UstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.ustring)));
     try self.addMethodSym(cy.UstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.ustring)));
     try self.addMethodSym(cy.UstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.ustring)));
     try self.addMethodSym(cy.UstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.ustring)));
-    try self.addMethodSym(cy.UstringT, insert, cy.MethodSym.initNativeFunc1(ustringInsert));
-    try self.addMethodSym(cy.UstringT, isAscii, cy.MethodSym.initNativeFunc1(ustringIsAscii));
-    try self.addMethodSym(cy.UstringT, len, cy.MethodSym.initNativeFunc1(ustringLen));
-    try self.addMethodSym(cy.UstringT, less, cy.MethodSym.initNativeFunc1(ustringLess));
-    try self.addMethodSym(cy.UstringT, lower, cy.MethodSym.initNativeFunc1(ustringLower));
+    try self.addMethodSym(cy.UstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.ustring)));
+    try self.addMethodSym(cy.UstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.ustring)));
+    try self.addMethodSym(cy.UstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.ustring)));
+    try self.addMethodSym(cy.UstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.ustring)));
+    try self.addMethodSym(cy.UstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.ustring)));
     try self.addMethodSym(cy.UstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.ustring)));
-    try self.addMethodSym(cy.UstringT, replace, cy.MethodSym.initNativeFunc1(ustringReplace));
-    try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(ustringStartsWith));
-    try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(ustringUpper));
+    try self.addMethodSym(cy.UstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.ustring)));
+    try self.addMethodSym(cy.UstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.ustring)));
+    try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.ustring)));
+    try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.ustring)));
+
+    id = try self.addStruct("string");
+    std.debug.assert(id == cy.StringSliceT);
+    try self.addMethodSym(cy.StringSliceT, append, cy.MethodSym.initNativeFunc1(stringAppend(.slice)));
+    try self.addMethodSym(cy.StringSliceT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.slice)));
+    try self.addMethodSym(cy.StringSliceT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.slice)));
+    try self.addMethodSym(cy.StringSliceT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.slice)));
+    try self.addMethodSym(cy.StringSliceT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.slice)));
+    try self.addMethodSym(cy.StringSliceT, index, cy.MethodSym.initNativeFunc1(stringIndex(.slice)));
+    try self.addMethodSym(cy.StringSliceT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.slice)));
+    try self.addMethodSym(cy.StringSliceT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.slice)));
+    try self.addMethodSym(cy.StringSliceT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.slice)));
+    try self.addMethodSym(cy.StringSliceT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.slice)));
+    try self.addMethodSym(cy.StringSliceT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.slice)));
+    try self.addMethodSym(cy.StringSliceT, len, cy.MethodSym.initNativeFunc1(stringLen(.slice)));
+    try self.addMethodSym(cy.StringSliceT, less, cy.MethodSym.initNativeFunc1(stringLess(.slice)));
+    try self.addMethodSym(cy.StringSliceT, lower, cy.MethodSym.initNativeFunc1(stringLower(.slice)));
+    try self.addMethodSym(cy.StringSliceT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.slice)));
+    try self.addMethodSym(cy.StringSliceT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.slice)));
+    try self.addMethodSym(cy.StringSliceT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.slice)));
+    try self.addMethodSym(cy.StringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.slice)));
+    try self.addMethodSym(cy.StringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.slice)));
 
     id = try self.addStruct("rawstring");
     std.debug.assert(id == cy.RawStringT);
-    try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(rawStringAppend));
+    try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.rawstring)));
     try self.addMethodSym(cy.RawStringT, byteAt, cy.MethodSym.initNativeFunc1(rawStringByteAt));
-    try self.addMethodSym(cy.RawStringT, charAt, cy.MethodSym.initNativeFunc1(rawStringCharAt));
-    try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(rawStringCodeAt));
-    try self.addMethodSym(cy.RawStringT, concat, cy.MethodSym.initNativeFunc1(rawStringConcat));
-    try self.addMethodSym(cy.RawStringT, endsWith, cy.MethodSym.initNativeFunc1(rawOrAstringEndsWith));
+    try self.addMethodSym(cy.RawStringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.rawstring)));
     try self.addMethodSym(cy.RawStringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.rawstring)));
     try self.addMethodSym(cy.RawStringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.rawstring)));
     try self.addMethodSym(cy.RawStringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.rawstring)));
     try self.addMethodSym(cy.RawStringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, insert, cy.MethodSym.initNativeFunc1(rawStringInsert));
+    try self.addMethodSym(cy.RawStringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.rawstring)));
     try self.addMethodSym(cy.RawStringT, insertByte, cy.MethodSym.initNativeFunc1(rawStringInsertByte));
-    try self.addMethodSym(cy.RawStringT, isAscii, cy.MethodSym.initNativeFunc1(rawStringIsAscii));
-    try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(rawStringLen));
-    try self.addMethodSym(cy.RawStringT, less, cy.MethodSym.initNativeFunc1(rawStringLess));
-    try self.addMethodSym(cy.RawStringT, lower, cy.MethodSym.initNativeFunc1(rawStringLower));
+    try self.addMethodSym(cy.RawStringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(stringLen(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, less, cy.MethodSym.initNativeFunc1(stringLess(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.rawstring)));
     try self.addMethodSym(cy.RawStringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, replace, cy.MethodSym.initNativeFunc1(rawStringReplace));
-    try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(rawOrAstringStartsWith));
+    try self.addMethodSym(cy.RawStringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawstring)));
     try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
-    try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(rawStringUpper));
+    try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawstring)));
+
+    id = try self.addStruct("rawstring");
+    std.debug.assert(id == cy.RawStringSliceT);
+    try self.addMethodSym(cy.RawStringSliceT, append, cy.MethodSym.initNativeFunc1(stringAppend(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, byteAt, cy.MethodSym.initNativeFunc1(rawStringSliceByteAt));
+    try self.addMethodSym(cy.RawStringSliceT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, index, cy.MethodSym.initNativeFunc1(stringIndex(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, insertByte, cy.MethodSym.initNativeFunc1(rawStringSliceInsertByte));
+    try self.addMethodSym(cy.RawStringSliceT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, len, cy.MethodSym.initNativeFunc1(stringLen(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, less, cy.MethodSym.initNativeFunc1(stringLess(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, lower, cy.MethodSym.initNativeFunc1(stringLower(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, toString, cy.MethodSym.initNativeFunc1(rawStringSliceToString));
+    try self.addMethodSym(cy.RawStringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawSlice)));
 
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
@@ -692,147 +745,229 @@ fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value 
     }
 }
 
-fn ustringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.ustring.charLen));
+pub fn stringUpper(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+            }
+            const str = getStringSlice(T, vm, obj);
+            if (isAstringObject(T, obj)) {
+                const new = vm.allocUnsetAstringObject(str.len) catch fatal();
+                const newBuf = new.astring.getSlice();
+                _ = std.ascii.upperString(newBuf, str);
+                return vm.allocOwnedAstring(new) catch fatal();
+            } else if (isUstringObject(T, obj)) {
+                const new = vm.allocUnsetUstringObject(str.len, getStringCharLen(T, vm, obj)) catch fatal();
+                const newBuf = new.ustring.getSlice();
+                _ = std.ascii.upperString(newBuf, str);
+                return vm.allocOwnedUstring(new) catch fatal();
+            } else if (isRawStringObject(T)) {
+                const new = vm.allocUnsetRawStringObject(str.len) catch fatal();
+                const newBuf = new.rawstring.getSlice();
+                _ = std.ascii.upperString(newBuf, str);
+                return Value.initPtr(new);
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn ustringUpper(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const new = vm.allocUnsetUstringObject(obj.ustring.len, obj.ustring.charLen) catch fatal();
-    const newBuf = new.ustring.getSlice();
-    _ = std.ascii.upperString(newBuf, obj.ustring.getConstSlice());
-    return vm.allocOwnedUstring(new) catch fatal();
+pub fn stringLower(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+            }
+            const str = getStringSlice(T, vm, obj);
+            if (isAstringObject(T, obj)) {
+                const new = vm.allocUnsetAstringObject(str.len) catch fatal();
+                const newBuf = new.astring.getSlice();
+                _ = std.ascii.lowerString(newBuf, str);
+                return vm.allocOwnedAstring(new) catch fatal();
+            } else if (isUstringObject(T, obj)) {
+                const new = vm.allocUnsetUstringObject(str.len, getStringCharLen(T, vm, obj)) catch fatal();
+                const newBuf = new.ustring.getSlice();
+                _ = std.ascii.lowerString(newBuf, str);
+                return vm.allocOwnedUstring(new) catch fatal();
+            } else if (isRawStringObject(T)) {
+                const new = vm.allocUnsetRawStringObject(str.len) catch fatal();
+                const newBuf = new.rawstring.getSlice();
+                _ = std.ascii.lowerString(newBuf, str);
+                return Value.initPtr(new);
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn ustringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const new = vm.allocUnsetUstringObject(obj.ustring.len, obj.ustring.charLen) catch fatal();
-    const newBuf = new.ustring.getSlice();
-    _ = std.ascii.lowerString(newBuf, obj.ustring.getConstSlice());
-    return vm.allocOwnedUstring(new) catch fatal();
+pub fn stringLess(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            if (isRawStringObject(T)) {
+                var right: []const u8 = undefined;
+                if (args[0].isRawString()) {
+                    right = args[0].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+                } else {
+                    right = vm.valueToTempString(args[0]);
+                }
+                return Value.initBool(std.mem.lessThan(u8, str, right));
+            } else {
+                const right = vm.valueToTempString(args[0]);
+                return Value.initBool(std.mem.lessThan(u8, str, right));
+            }
+        }
+    };
+    return S.inner;
 }
 
-fn astringUpper(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const new = vm.allocUnsetAstringObject(obj.astring.len) catch fatal();
-    const newBuf = new.astring.getSlice();
-    _ = std.ascii.upperString(newBuf, obj.astring.getConstSlice());
-    return vm.allocOwnedAstring(new) catch fatal();
+pub fn stringLen(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+            }
+            if (isAstringObject(T, obj)) {
+                if (T == .astring) {
+                    return Value.initF64(@intToFloat(f64, obj.astring.len));
+                } else if (T == .staticAstring) {
+                    return Value.initF64(@intToFloat(f64, obj.len()));
+                } else if (T == .slice) {
+                    return Value.initF64(@intToFloat(f64, obj.stringSlice.len));
+                } else fatal();
+            } else if (isUstringObject(T, obj)) {
+                return Value.initF64(@intToFloat(f64, getStringCharLen(T, vm, obj)));
+            } else if (T == .rawstring) {
+                return Value.initF64(@intToFloat(f64, obj.rawstring.len));
+            } else if (T == .rawSlice) {
+                return Value.initF64(@intToFloat(f64, obj.rawstringSlice.len));
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn astringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const new = vm.allocUnsetAstringObject(obj.astring.len) catch fatal();
-    const newBuf = new.astring.getSlice();
-    _ = std.ascii.lowerString(newBuf, obj.astring.getConstSlice());
-    return vm.allocOwnedAstring(new) catch fatal();
+pub fn stringCharAt(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const idx = @floatToInt(i32, args[0].toF64());
+
+            if (isAstringObject(T, obj)) {
+                if (idx < 0 or idx >= str.len) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const uidx = @intCast(u32, idx);
+                if (T == .staticAstring) {
+                    return Value.initStaticAstring(obj.start + uidx, 1);
+                } else {
+                    // TODO: return slice.
+                    return vm.allocAstring(str[uidx..uidx + 1]) catch fatal();
+                }
+            } else if (isUstringObject(T, obj)) {
+                if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const uidx = @intCast(u32, idx);
+                const mru = getUstringMruChar(T, vm, obj);
+                const start = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+                const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
+
+                setUstringMruChar(T, vm, obj, uidx, start);
+                if (slice.len == 1) {
+                    if (T == .staticUstring) {
+                        return Value.initStaticAstring(obj.start + start, 1);
+                    } else {
+                        return vm.allocAstring(slice) catch fatal();
+                    }
+                } else {
+                    return vm.allocUstring(slice, 1) catch fatal();
+                }
+            } else if (isRawStringObject(T)) {
+                if (idx < 0 or idx >= str.len) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const uidx = @intCast(u32, idx);
+                if (cy.utf8CharSliceAt(str, uidx)) |slice| {
+                    if (slice.len == 1) {
+                        return vm.allocAstring(slice) catch fatal();
+                    } else {
+                        return vm.allocUstring(slice, 1) catch fatal();
+                    }
+                } else {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidChar));
+                }
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn rawStringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    var right: []const u8 = undefined;
-    if (args[0].isRawString()) {
-        right = args[0].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
-    } else {
-        right = vm.valueToTempString(args[0]);
-    }
-    return Value.initBool(std.mem.lessThan(u8, obj.rawstring.getConstSlice(), right));
+fn stringCodeAt(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const idx = @floatToInt(i32, args[0].toF64());
+            if (isAstringObject(T, obj)) {
+                if (idx < 0 or idx >= str.len) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                return Value.initF64(@intToFloat(f64, str[@intCast(u32, idx)]));
+            } else if (isUstringObject(T, obj)) {
+                if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const uidx = @intCast(u32, idx);
+                const mru = getUstringMruChar(T, vm, obj);
+                const start = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+                const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
+
+                const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
+                setUstringMruChar(T, vm, obj, uidx, start);
+                return Value.initF64(@intToFloat(f64, cp));
+            } else if (isRawStringObject(T)) {
+                if (idx < 0 or idx >= str.len) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const uidx = @intCast(u32, idx);
+                if (cy.utf8CharSliceAt(str, uidx)) |slice| {
+                    const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
+                    return Value.initF64(@intToFloat(f64, cp));
+                } else {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidChar));
+                }
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn ustringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const right = vm.valueToTempString(args[0]);
-    return Value.initBool(std.mem.lessThan(u8, obj.ustring.getConstSlice(), right));
-}
-
-fn astringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const right = vm.valueToTempString(args[0]);
-    return Value.initBool(std.mem.lessThan(u8, obj.astring.getConstSlice(), right));
-}
-
-fn astringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.astring.len));
-}
-
-pub fn astringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const str = obj.astring.getConstSlice();
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= str.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-    // TODO: return slice.
-    return vm.allocAstring(str[uidx..uidx + 1]) catch fatal();
-}
-
-fn astringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const str = obj.astring.getConstSlice();
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= str.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    return Value.initF64(@intToFloat(f64, str[@floatToInt(u32, args[0].toF64())]));
-}
-
-fn rawStringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index = @floatToInt(i64, args[0].toF64());
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[1]);
-    }
-    const str = obj.rawstring.getConstSlice();
+fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
+    const index = @floatToInt(i64, indexv.toF64());
     if (index < 0 or index > str.len) {
         return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
     } 
-    const insert = vm.valueToTempString(args[1]);
-    const new = vm.allocUnsetRawStringObject(obj.rawstring.len + insert.len) catch stdx.fatal();
-    const buf = new.rawstring.getSlice();
-    const uidx = @intCast(u32, index);
-    std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
-    std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
-    std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
-    return Value.initPtr(new);
-}
-
-fn rawStringInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index = @floatToInt(i64, args[0].toF64());
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[1]);
-    }
-    const str = obj.rawstring.getConstSlice();
-    if (index < 0 or index > str.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    } 
-    const byte = @floatToInt(u8, args[1].toF64());
-    const new = vm.allocUnsetRawStringObject(obj.rawstring.len + 1) catch stdx.fatal();
+    const byte = @floatToInt(u8, val.toF64());
+    const new = vm.allocUnsetRawStringObject(str.len + 1) catch stdx.fatal();
     const buf = new.rawstring.getSlice();
     const uidx = @intCast(u32, index);
     std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
@@ -841,62 +976,26 @@ fn rawStringInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     return Value.initPtr(new);
 }
 
-fn rawStringIsAscii(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn rawStringInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    return Value.initBool(cy.isAstring(obj.rawstring.getConstSlice()));
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+        vm.release(args[1]);
+    }
+    const str = obj.rawstring.getConstSlice();
+    return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
 
-fn rawStringUpper(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn rawStringSliceInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const new = vm.allocUnsetRawStringObject(obj.rawstring.len) catch fatal();
-    const newBuf = new.rawstring.getSlice();
-    _ = std.ascii.upperString(newBuf, obj.rawstring.getConstSlice());
-    return Value.initPtr(new);
-}
-
-fn rawStringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const new = vm.allocUnsetRawStringObject(obj.rawstring.len) catch fatal();
-    const newBuf = new.rawstring.getSlice();
-    _ = std.ascii.lowerString(newBuf, obj.rawstring.getConstSlice());
-    return Value.initPtr(new);
-}
-
-fn rawStringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.rawstring.len));
-}
-
-fn staticUstringLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const str = val.asStaticStringSlice();
-    const header = vm.getStaticUstringHeader(str.start);
-    return Value.initF64(@intToFloat(f64, header.charLen));
-}
-
-fn staticAstringUpper(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const new = vm.allocUnsetAstringObject(str.len) catch fatal();
-    const newBuf = new.astring.getSlice();
-    _ = std.ascii.upperString(newBuf, str);
-    return vm.allocOwnedAstring(new) catch fatal();
-}
-
-fn staticUstringUpper(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const header = vm.getStaticUstringHeader(slice.start);
-    const new = vm.allocUnsetUstringObject(str.len, header.charLen) catch fatal();
-    const newBuf = new.ustring.getSlice();
-    _ = std.ascii.upperString(newBuf, str);
-    return vm.allocOwnedUstring(new) catch fatal();
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+        vm.release(args[1]);
+    }
+    const str = obj.rawstringSlice.getConstSlice();
+    return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
 
 fn staticUstringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -936,17 +1035,21 @@ fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     }
 }
 
-const StringType = enum {
-    staticAstring,
-    staticUstring,
-    astring,
-    ustring,
-    rawstring,
-};
+inline fn isRawStringObject(comptime T: cy.StringType) bool {
+    return T == .rawstring or T == .rawSlice;
+}
+
+inline fn isUstringObject(comptime T: cy.StringType, obj: StringObject(T)) bool {
+    return T == .staticUstring or T == .ustring or (T == .slice and !obj.stringSlice.isAstring());
+}
+
+inline fn isAstringObject(comptime T: cy.StringType, obj: StringObject(T)) bool {
+    return T == .staticAstring or T == .astring or (T == .slice and obj.stringSlice.isAstring());
+}
 
 const NativeFunc = fn (vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value;
 
-fn stringRepeat(comptime T: StringType) NativeFunc {
+fn stringRepeat(comptime T: cy.StringType) NativeFunc {
     const S = struct {
         fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, ptr);
@@ -967,23 +1070,17 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
             if (un > 1 and len > 0) {
                 var new: *cy.HeapObject = undefined;
                 var buf: []u8 = undefined;
-                switch (T) {
-                    .staticAstring,
-                    .astring => {
-                        new = vm.allocUnsetAstringObject(len) catch fatal();
-                        buf = new.astring.getSlice();
-                    },
-                    .staticUstring,
-                    .ustring => {
-                        const charLen = getStringCharLen(vm, obj);
-                        new = vm.allocUnsetUstringObject(len, charLen) catch fatal();
-                        buf = new.ustring.getSlice();
-                    },
-                    .rawstring => {
-                        new = vm.allocUnsetRawStringObject(len) catch fatal();
-                        buf = new.rawstring.getSlice();
-                    },
-                }
+                if (isAstringObject(T, obj)) {
+                    new = vm.allocUnsetAstringObject(len) catch fatal();
+                    buf = new.astring.getSlice();
+                } else if (isUstringObject(T, obj)) {
+                    const charLen = getStringCharLen(T, vm, obj);
+                    new = vm.allocUnsetUstringObject(len, charLen) catch fatal();
+                    buf = new.ustring.getSlice();
+                } else if (isRawStringObject(T)) {
+                    new = vm.allocUnsetRawStringObject(len) catch fatal();
+                    buf = new.rawstring.getSlice();
+                } else fatal();
                 // This is already quite fast since it has good cache locality.
                 // Might be faster if the front of the buffer up to a certain size was used to memcpy instead of just 1 `str`.
                 var i: u32 = 0;
@@ -996,7 +1093,11 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
                 return Value.initPtr(new);
             } else {
                 if (un == 0) {
-                    return Value.initStaticAstring(0, 0);
+                    if (isRawStringObject(T)) {
+                        return vm.allocRawString("") catch fatal();
+                    } else {
+                        return Value.initStaticAstring(0, 0);
+                    }
                 } else {
                     if (isHeapString(T)) {
                         vm.retainObject(obj);
@@ -1011,27 +1112,29 @@ fn stringRepeat(comptime T: StringType) NativeFunc {
     return S.inner;
 }
 
-inline fn isHeapString(comptime T: StringType) bool {
-    return T == .astring or T == .ustring or T == .rawstring;
+inline fn isHeapString(comptime T: cy.StringType) bool {
+    return T == .astring or T == .ustring or T == .rawstring or T == .slice or T == .rawSlice;
 }
 
-fn StringObject(comptime T: StringType) type {
+fn StringObject(comptime T: cy.StringType) type {
     return switch (T) {
         .staticAstring,
         .staticUstring => stdx.IndexSlice(u32),
         .astring,
         .ustring,
+        .slice,
+        .rawSlice,
         .rawstring => *cy.HeapObject,
     };
 }
 
-inline fn releaseStringObject(comptime T: StringType, vm: *cy.UserVM, obj: StringObject(T)) void {
+inline fn releaseStringObject(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) void {
     if (StringObject(T) == *cy.HeapObject) {
         vm.releaseObject(obj);
     }
 }
 
-inline fn getStringObject(comptime T: StringType, ptr: *anyopaque) StringObject(T) {
+inline fn getStringObject(comptime T: cy.StringType, ptr: *anyopaque) StringObject(T) {
     switch (StringObject(T)) {
         *cy.HeapObject => {
             return stdx.ptrAlignCast(*cy.HeapObject, ptr);
@@ -1044,15 +1147,56 @@ inline fn getStringObject(comptime T: StringType, ptr: *anyopaque) StringObject(
     }
 }
 
-inline fn getStringCharLen(vm: *cy.UserVM, obj: anytype) u32 {
-    if (@TypeOf(obj) == *cy.HeapObject) {
-        return obj.ustring.charLen;
-    } else {
-        return vm.getStaticUstringHeader(obj.start).charLen;
-    }
+const UstringMruChar = struct {
+    charIdx: u32,
+    byteIdx: u32,
+};
+
+inline fn setUstringMruChar(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T), charIdx: u32, byteIdx: u32) void {
+    if (T == .ustring) {
+        obj.ustring.mruCharIdx = charIdx;
+        obj.ustring.mruIdx = byteIdx;
+    } else if (T == .slice) {
+        obj.stringSlice.uMruCharIdx = charIdx;
+        obj.stringSlice.uMruIdx = byteIdx;
+    } else if (T == .staticUstring) {
+        const header = vm.getStaticUstringHeader(obj.start);
+        header.mruCharIdx = charIdx;
+        header.mruIdx = byteIdx;
+    } else @compileError("Unexpected " ++ @tagName(T));
 }
 
-inline fn getStringSlice(comptime T: StringType, vm: *cy.UserVM, obj: StringObject(T)) []const u8 {
+inline fn getUstringMruChar(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) UstringMruChar {
+    if (T == .ustring) {
+        return .{
+            .charIdx = obj.ustring.mruCharIdx,
+            .byteIdx = obj.ustring.mruIdx,
+        };
+    } else if (T == .slice) {
+        return .{
+            .charIdx = obj.stringSlice.uMruCharIdx,
+            .byteIdx = obj.stringSlice.uMruIdx,
+        };
+    } else if (T == .staticUstring) {
+        const header = vm.getStaticUstringHeader(obj.start);
+        return .{
+            .charIdx = header.mruCharIdx,
+            .byteIdx = header.mruIdx,
+        };
+    } else @compileError("Unexpected " ++ @tagName(T));
+}
+
+inline fn getStringCharLen(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) u32 {
+    if (T == .ustring) {
+        return obj.ustring.charLen;
+    } else if (T == .slice) {
+        return obj.stringSlice.uCharLen;
+    } else if (T == .staticUstring) {
+        return vm.getStaticUstringHeader(obj.start).charLen;
+    } else @compileError("Unexpected " ++ @tagName(T));
+}
+
+inline fn getStringSlice(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringObject(T)) []const u8 {
     switch (T) {
         .staticAstring,
         .staticUstring => {
@@ -1064,85 +1208,73 @@ inline fn getStringSlice(comptime T: StringType, vm: *cy.UserVM, obj: StringObje
         .ustring => {
             return obj.ustring.getConstSlice();
         },
+        .slice => {
+            return obj.stringSlice.getConstSlice();
+        },
         .rawstring => {
             return obj.rawstring.getConstSlice();
+        },
+        .rawSlice => {
+            return obj.rawstringSlice.getConstSlice();
         },
     }
 }
 
-fn staticAstringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    if (astringReplaceCommon(vm, str, args[0], args[1])) |res| {
-        return res;
-    } else {
-        return val;
-    }
-}
+fn stringReplace(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+                vm.release(args[1]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            if (isAstringObject(T, obj)) {
+                if (astringReplaceCommon(vm, str, args[0], args[1])) |val| {
+                    return val;
+                } else {
+                    if (T != .staticAstring) {
+                        vm.retainObject(obj);
+                        return Value.initPtr(obj);
+                    } else {
+                        return Value{ .val = @ptrToInt(ptr) };
+                    }
+                }
+            } else if (isUstringObject(T, obj)) {
+                if (ustringReplaceCommon(vm, str, args[0], args[1])) |val| {
+                    return val;
+                } else {
+                    if (T != .staticUstring) {
+                        vm.retainObject(obj);
+                        return Value.initPtr(obj);
+                    } else {
+                        return Value{ .val = @ptrToInt(ptr) };
+                    }
+                }
+            } else if (isRawStringObject(T)) {
+                const needle = vm.valueToTempString(args[0]);
+                const replacement = vm.valueToNextTempString(args[1]);
 
-fn rawStringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
-    const str = obj.rawstring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    const replacement = vm.valueToNextTempString(args[1]);
-
-    const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
-    idxBuf.clearRetainingCapacity();
-    defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
-    const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
-    const numIdxes = @divExact(idxBuf.len, 4);
-    if (numIdxes > 0) {
-        const new = vm.allocUnsetRawStringObject(newLen) catch fatal();
-        const newBuf = new.rawstring.getSlice();
-        const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
-        cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
-        return Value.initPtr(new);
-    } else {
-        vm.retainObject(obj);
-        return Value.initPtr(obj);
-    }
-}
-
-fn ustringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
-    const str = obj.ustring.getConstSlice();
-    if (ustringReplaceCommon(vm, str, args[0], args[1])) |val| {
-        return val;
-    } else {
-        vm.retainObject(obj);
-        return Value.initPtr(obj);
-    }
-}
-
-fn astringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
-    const str = obj.astring.getConstSlice();
-    if (astringReplaceCommon(vm, str, args[0], args[1])) |val| {
-        return val;
-    } else {
-        vm.retainObject(obj);
-        return Value.initPtr(obj);
-    }
+                const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+                idxBuf.clearRetainingCapacity();
+                defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
+                const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
+                const numIdxes = @divExact(idxBuf.len, 4);
+                if (numIdxes > 0) {
+                    const new = vm.allocUnsetRawStringObject(newLen) catch fatal();
+                    const newBuf = new.rawstring.getSlice();
+                    const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
+                    cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
+                    return Value.initPtr(new);
+                } else {
+                    vm.retainObject(obj);
+                    return Value.initPtr(obj);
+                }
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
 fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
@@ -1173,320 +1305,182 @@ fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     }
 }
 
-fn staticAstringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const new = vm.allocUnsetAstringObject(str.len) catch fatal();
-    const newBuf = new.astring.getSlice();
-    _ = std.ascii.lowerString(newBuf, str);
-    return vm.allocOwnedAstring(new) catch fatal();
+pub fn stringSlice(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+                vm.release(args[1]);
+            }
+            const str = getStringSlice(T, vm, obj);
+
+            if (isAstringObject(T, obj)) {
+                var start = @floatToInt(i32, args[0].toF64());
+                if (start < 0) {
+                    start = @intCast(i32, str.len) + start;
+                }
+                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].toF64());
+                if (end < 0) {
+                    end = @intCast(i32, str.len) + end;
+                }
+                if (start < 0 or end > str.len or end < start) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const ustart = @intCast(u32, start);
+                const uend = @intCast(u32, end);
+
+                if (T == .staticAstring) {
+                    return Value.initStaticAstring(obj.start + ustart, @intCast(u15, uend - ustart));
+                } else {
+                    vm.retainObject(obj);
+                    return vm.allocAstringSlice(str[ustart..uend], obj) catch fatal();
+                }
+            } else if (isUstringObject(T, obj)) {
+                const charLen = getStringCharLen(T, vm, obj);
+                var start = @floatToInt(i32, args[0].toF64());
+                if (start < 0) {
+                    start = @intCast(i32, charLen) + start;
+                }
+                var end = if (args[1].isNone()) @intCast(i32, charLen) else @floatToInt(i32, args[1].toF64());
+                if (end < 0) {
+                    end = @intCast(i32, charLen) + end;
+                }
+                if (start < 0 or end > charLen or end < start) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                const ustart = @intCast(u32, start);
+                const uend = @intCast(u32, end);
+
+                const mru = getUstringMruChar(T, vm, obj);
+                const startByteIdx = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, ustart));
+                setUstringMruChar(T, vm, obj, ustart, startByteIdx);
+                const endByteIdx = @intCast(u32, cy.string.ustringSeekByCharIndex(str, startByteIdx, ustart, uend));
+
+                if (T == .staticUstring) {
+                    return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, null) catch fatal();
+                } else {
+                    vm.retainObject(obj);
+                    return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, obj) catch fatal();
+                }
+            } else if (isRawStringObject(T)) {
+                var start = @floatToInt(i32, args[0].toF64());
+                if (start < 0) {
+                    start = @intCast(i32, str.len) + start;
+                }
+                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].toF64());
+                if (end < 0) {
+                    end = @intCast(i32, str.len) + end;
+                }
+                if (start < 0 or end > str.len or end < start) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+
+                vm.retainObject(obj);
+                return vm.allocRawStringSlice(str[@intCast(u32, start)..@intCast(u32, end)], obj) catch fatal();
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn staticUstringLower(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const header = vm.getStaticUstringHeader(slice.start);
-    const new = vm.allocUnsetUstringObject(str.len, header.charLen) catch fatal();
-    const newBuf = new.ustring.getSlice();
-    _ = std.ascii.lowerString(newBuf, str);
-    return vm.allocOwnedUstring(new) catch fatal();
+fn stringAppend(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+            fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
+            return stringConcat(T)(vm, ptr, args, nargs);
+        }
+    };
+    return S.inner;
 }
 
-fn staticStringLess(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const right = vm.valueToTempString(args[0]);
-    return Value.initBool(std.mem.lessThan(u8, str, right));
+fn stringConcat(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            if (isAstringObject(T, obj)) {
+                var rcharLen: u32 = undefined;
+                const rstr = vm.valueToTempString2(args[0], &rcharLen);
+                if (rcharLen == rstr.len) {
+                    return vm.allocAstringConcat(str, rstr) catch fatal();
+                } else {
+                    return vm.allocUstringConcat(str, rstr, @intCast(u32, str.len + rcharLen)) catch fatal();
+                }
+            } else if (isUstringObject(T, obj)) {
+                var rcharLen: u32 = undefined;
+                const rstr = vm.valueToTempString2(args[0], &rcharLen);
+                const charLen = getStringCharLen(T, vm, obj);
+                return vm.allocUstringConcat(str, rstr, charLen + rcharLen) catch fatal();
+            } else if (isRawStringObject(T)) {
+                const rstr = vm.valueToTempString(args[0]);
+                return vm.allocRawStringConcat(str, rstr) catch fatal();
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn staticAstringLen(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const str = val.asStaticStringSlice();
-    return Value.initF64(@intToFloat(f64, str.len()));
+fn stringInsert(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+                vm.release(args[1]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const idx = @floatToInt(i32, args[0].toF64());
+            if (isAstringObject(T, obj)) {
+                if (idx < 0 or idx > str.len) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                var insertCharLen: u32 = undefined;
+                const insert = vm.valueToTempString2(args[1], &insertCharLen);
+                const uidx = @intCast(u32, idx);
+                if (insertCharLen == insert.len) {
+                    return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
+                } else {
+                    return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..], @intCast(u32, str.len + insertCharLen)) catch fatal();
+                }
+            } else if (isUstringObject(T, obj)) {
+                const charLen = getStringCharLen(T, vm, obj);
+                if (idx < 0 or idx > charLen) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                }
+                var insertCharLen: u32 = undefined;
+                const insert = vm.valueToTempString2(args[1], &insertCharLen);
+                const uidx = @intCast(u32, idx);
+                const mru = getUstringMruChar(T, vm, obj);
+                const start = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+
+                setUstringMruChar(T, vm, obj, uidx, start);
+                return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(u32, charLen + insertCharLen)) catch fatal();
+            } else if (isRawStringObject(T)) {
+                if (idx < 0 or idx > str.len) {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                } 
+                const insert = vm.valueToTempString(args[1]);
+                const new = vm.allocUnsetRawStringObject(str.len + insert.len) catch stdx.fatal();
+                const buf = new.rawstring.getSlice();
+                const uidx = @intCast(u32, idx);
+                std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
+                std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
+                std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
+                return Value.initPtr(new);
+            } else fatal();
+        }
+    };
+    return S.inner;
 }
 
-fn astringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-    return astringConcat(vm, ptr, args, nargs);
-}
-
-fn astringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.astring.getConstSlice();
-    var rcharLen: u32 = undefined;
-    const rstr = vm.valueToTempString2(args[0], &rcharLen);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    if (rcharLen == rstr.len) {
-        return vm.allocAstringConcat(str, rstr) catch fatal();
-    } else {
-        return vm.allocUstringConcat(str, rstr, @intCast(u32, str.len + rcharLen)) catch fatal();
-    }
-}
-
-fn ustringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-    return ustringConcat(vm, ptr, args, nargs);
-}
-
-fn ustringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.ustring.getConstSlice();
-    var rcharLen: u32 = undefined;
-    const rstr = vm.valueToTempString2(args[0], &rcharLen);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return vm.allocUstringConcat(str, rstr, obj.ustring.charLen + rcharLen) catch fatal();
-}
-
-fn rawStringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-    return rawStringConcat(vm, ptr, args, nargs);
-}
-
-fn rawStringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.rawstring.getConstSlice();
-    const rstr = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return vm.allocRawStringConcat(str, rstr) catch fatal();
-}
-
-fn staticUstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-    return staticUstringConcat(vm, ptr, args, nargs);
-}
-
-fn staticUstringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const header = vm.getStaticUstringHeader(slice.start);
-    const str = vm.getStaticString(slice.start, slice.end);
-    var rcharLen: u32 = undefined;
-    const rstr = vm.valueToTempString2(args[0], &rcharLen);
-    defer {
-        vm.release(args[0]);
-    }
-    return vm.allocUstringConcat(str, rstr, header.charLen + rcharLen) catch fatal();
-}
-
-fn staticAstringAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-    return staticAstringConcat(vm, ptr, args, nargs);
-}
-
-fn staticAstringConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    var rcharLen: u32 = undefined;
-    const rstr = vm.valueToTempString2(args[0], &rcharLen);
-    defer vm.release(args[0]);
-    if (rcharLen == rstr.len) {
-        return vm.allocAstringConcat(str, rstr) catch fatal();
-    } else {
-        return vm.allocUstringConcat(str, rstr, @intCast(u32, str.len + rcharLen)) catch fatal();
-    }
-}
-
-pub fn ustringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.ustring.getConstSlice();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= obj.ustring.charLen) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-    const res = cy.ustringSeekCharIndexSliceAt(str, obj.ustring.mruIdx, obj.ustring.mruCharIdx, uidx);
-    obj.ustring.mruIdx = res.start;
-    obj.ustring.mruCharIdx = uidx;
-    if (res.start + 1 == res.end) {
-        return vm.allocAstring(str[res.start..res.end]) catch fatal();
-    } else {
-        return vm.allocUstring(str[res.start..res.end], 1) catch fatal();
-    }
-}
-
-fn ustringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.ustring.getConstSlice();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= obj.ustring.charLen) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-    const res = cy.ustringSeekCharIndexSliceAt(str, obj.ustring.mruIdx, obj.ustring.mruCharIdx, uidx);
-    const cp = std.unicode.utf8Decode(str[res.start..res.end]) catch stdx.fatal();
-    obj.ustring.mruIdx = res.start;
-    obj.ustring.mruCharIdx = uidx;
-    return Value.initF64(@intToFloat(f64, cp));
-}
-
-pub fn staticUstringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const header = vm.getStaticUstringHeader(slice.start);
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= header.charLen) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-    const str = vm.getStaticString(slice.start, slice.end);
-    const res = cy.ustringSeekCharIndexSliceAt(str, header.mruIdx, header.mruCharIdx, uidx);
-    header.mruIdx = res.start;
-    header.mruCharIdx = uidx;
-    if (res.start + 1 == res.end) {
-        return Value.initStaticAstring(slice.start + res.start, 1);
-    } else {
-        return vm.allocUstring(str[res.start..res.end], 1) catch fatal();
-    }
-}
-
-fn staticUstringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const header = vm.getStaticUstringHeader(slice.start);
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= header.charLen) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-    const str = vm.getStaticString(slice.start, slice.end);
-    const res = cy.ustringSeekCharIndexSliceAt(str, header.mruIdx, header.mruCharIdx, uidx);
-    const cp = std.unicode.utf8Decode(str[res.start..res.end]) catch stdx.fatal();
-    header.mruIdx = res.start;
-    header.mruCharIdx = uidx;
-    return Value.initF64(@intToFloat(f64, cp));
-}
-
-pub fn staticAstringCharAt(_: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= slice.len()) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-    return Value.initStaticAstring(slice.start + uidx, 1);
-}
-
-fn ustringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[1]);
-    }
-    const str = obj.ustring.getConstSlice();
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx > obj.ustring.charLen) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    var insertCharLen: u32 = undefined;
-    const insert = vm.valueToTempString2(args[1], &insertCharLen);
-    const uidx = @intCast(u32, idx);
-    const res = cy.ustringSeekCharIndexSliceAt(str, obj.ustring.mruIdx, obj.ustring.mruCharIdx, uidx);
-    obj.ustring.mruIdx = res.start;
-    obj.ustring.mruCharIdx = uidx;
-    return vm.allocUstringConcat3(str[0..res.start], insert, str[res.start..], @intCast(u32, obj.ustring.charLen + insertCharLen)) catch fatal();
-}
-
-fn staticUstringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const header = vm.getStaticUstringHeader(slice.start);
-    defer {
-        vm.release(args[1]);
-    }
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx > header.charLen) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    var insertCharLen: u32 = undefined;
-    const insert = vm.valueToTempString2(args[1], &insertCharLen);
-    const uidx = @intCast(u32, idx);
-    const res = cy.ustringSeekCharIndexSliceAt(str, header.mruIdx, header.mruCharIdx, uidx);
-    header.mruIdx = res.start;
-    header.mruCharIdx = uidx;
-    return vm.allocUstringConcat3(str[0..res.start], insert, str[res.start..], @intCast(u32, header.charLen + insertCharLen)) catch fatal();
-}
-
-fn astringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[1]);
-    }
-    const str = obj.astring.getConstSlice();
-    return astringInsertCommon(vm, str, args[0], args[1]);
-}
-
-fn astringInsertCommon(vm: *cy.UserVM, str: []const u8, idxv: Value, insertv: Value) linksection(cy.StdSection) Value {
-    const idx = @floatToInt(i32, idxv.toF64());
-    if (idx < 0 or idx > str.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    var insertCharLen: u32 = undefined;
-    const insert = vm.valueToTempString2(insertv, &insertCharLen);
-    const uidx = @intCast(u32, idx);
-    if (insertCharLen == insert.len) {
-        return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
-    } else {
-        return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..], @intCast(u32, str.len + insertCharLen)) catch fatal();
-    }
-}
-
-fn staticAstringInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    defer {
-        vm.release(args[1]);
-    }
-    return astringInsertCommon(vm, str, args[0], args[1]);
-}
-
-fn staticAstringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const str = val.asStaticStringSlice();
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= str.len()) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    return Value.initF64(@intToFloat(f64, vm.getStaticStringChar(str.start + @intCast(u32, idx))));
-}
-
-fn staticStringEndsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const needle = vm.valueToTempString(args[0]);
-    defer vm.release(args[0]);
-    return Value.initBool(std.mem.endsWith(u8, str, needle));
-}
-
-fn stringIndex(comptime T: StringType) NativeFunc {
+fn stringIndex(comptime T: cy.StringType) NativeFunc {
     const S = struct {
         fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, ptr);
@@ -1500,7 +1494,7 @@ fn stringIndex(comptime T: StringType) NativeFunc {
                 if (needle.len == 1) {
                     // One ascii char special case. Perform indexOfChar.
                     if (cy.string.indexOfChar(str, needle[0])) |idx| {
-                        if (T == .ustring or T == .staticUstring) {
+                        if (isUstringObject(T, obj)) {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
                             return Value.initF64(@intToFloat(f64, charIdx));
                         } else {
@@ -1509,7 +1503,7 @@ fn stringIndex(comptime T: StringType) NativeFunc {
                     }
                 }
                 if (cy.string.indexOf(str, needle)) |idx| {
-                    if (T == .ustring or T == .staticUstring) {
+                    if (isUstringObject(T, obj)) {
                         const charIdx = cy.toUtf8CharIdx(str, idx);
                         return Value.initF64(@intToFloat(f64, charIdx));
                     } else {
@@ -1523,77 +1517,47 @@ fn stringIndex(comptime T: StringType) NativeFunc {
     return S.inner;
 }
 
-fn staticStringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    const needle = vm.valueToTempString(args[0]);
-    defer vm.release(args[0]);
-    return Value.initBool(std.mem.startsWith(u8, str, needle));
+fn stringStartsWith(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const needle = vm.valueToTempString(args[0]);
+            return Value.initBool(std.mem.startsWith(u8, str, needle));
+        }
+    };
+    return S.inner;
 }
 
-fn ustringEndsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.ustring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return Value.initBool(std.mem.endsWith(u8, str, needle));
+fn stringEndsWith(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, ptr);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const needle = vm.valueToTempString(args[0]);
+            return Value.initBool(std.mem.endsWith(u8, str, needle));
+        }
+    };
+    return S.inner;
 }
 
-fn astringEndsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn rawStringSliceToString(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.astring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return Value.initBool(std.mem.endsWith(u8, str, needle));
-}
-
-fn astringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.astring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return Value.initBool(std.mem.startsWith(u8, str, needle));
-}
-
-fn ustringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.ustring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return Value.initBool(std.mem.startsWith(u8, str, needle));
-}
-
-pub fn rawStringCharAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    const str = obj.rawstring.getConstSlice();
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= obj.rawstring.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const uidx = @intCast(u32, idx);
-
-    if (cy.utf8CharSliceAt(str, uidx)) |slice| {
-        if (slice.len == 1) {
-            return vm.allocAstring(slice) catch fatal();
+    defer vm.releaseObject(obj);
+    const str = obj.rawstringSlice.getConstSlice();
+    if (cy.validateUtf8(str)) |size| {
+        if (size == str.len) {
+            return vm.allocAstring(str) catch fatal();
         } else {
-            return vm.allocUstring(slice, 1) catch fatal();
+            return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
         }
     } else {
         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidChar));
@@ -1615,6 +1579,18 @@ fn rawStringToString(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) 
     }
 }
 
+fn rawStringSliceByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    defer vm.releaseObject(obj);
+    const idx = @floatToInt(i32, args[0].toF64());
+    if (idx < 0 or idx >= obj.rawstringSlice.len) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+    }
+    const str = obj.rawstringSlice.getConstSlice();
+    const uidx = @intCast(u32, idx);
+    return Value.initF64(@intToFloat(f64, str[uidx]));
+}
+
 fn rawStringByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
@@ -1625,46 +1601,6 @@ fn rawStringByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8)
     const str = obj.rawstring.getConstSlice();
     const uidx = @intCast(u32, idx);
     return Value.initF64(@intToFloat(f64, str[uidx]));
-}
-
-fn rawStringCodeAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    const idx = @floatToInt(i32, args[0].toF64());
-    if (idx < 0 or idx >= obj.rawstring.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
-    }
-    const str = obj.rawstring.getConstSlice();
-    const uidx = @intCast(u32, idx);
-
-    if (cy.utf8CharSliceAt(str, uidx)) |slice| {
-        const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
-        return Value.initF64(@intToFloat(f64, cp));
-    } else {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidChar));
-    }
-}
-
-fn rawOrAstringEndsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.astring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return Value.initBool(std.mem.endsWith(u8, str, needle));
-}
-
-fn rawOrAstringStartsWith(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    const str = obj.astring.getConstSlice();
-    const needle = vm.valueToTempString(args[0]);
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
-    return Value.initBool(std.mem.startsWith(u8, str, needle));
 }
 
 fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
@@ -1680,27 +1616,32 @@ fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
     }
 }
 
-fn staticUstringIsAscii(_: *cy.UserVM, _: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return Value.False;
+fn stringIsAscii(comptime T: cy.StringType) NativeFunc {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            if (T == .staticAstring) {
+                return Value.True;
+            } else if (T == .staticUstring) {
+                return Value.False;
+            } else {
+                const obj = getStringObject(T, ptr);
+                defer {
+                    releaseStringObject(T, vm, obj);
+                }
+                if (isAstringObject(T, obj)) {
+                    return Value.True;
+                } else if (isUstringObject(T, obj)) {
+                    return Value.False;
+                } else if (isRawStringObject(T)) {
+                    return Value.initBool(cy.isAstring(obj.rawstring.getConstSlice()));
+                } else fatal();
+            }
+        }
+    };
+    return S.inner;
 }
 
-fn staticAstringIsAscii(_: *cy.UserVM, _: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return Value.True;
-}
-
-fn ustringIsAscii(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    return Value.False;
-}
-
-fn astringIsAscii(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
-    defer vm.releaseObject(obj);
-    return Value.True;
-}
-
-fn stringIndexCharSet(comptime T: StringType) NativeFunc {
+fn stringIndexCharSet(comptime T: cy.StringType) NativeFunc {
     const S = struct {
         fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, ptr);
@@ -1714,7 +1655,7 @@ fn stringIndexCharSet(comptime T: StringType) NativeFunc {
             const setIsAscii = setCharLen == set.len;
 
             if (set.len > 0) {
-                if (T == .staticAstring or T == .astring) {
+                if (isAstringObject(T, obj)) {
                     if (setIsAscii) {
                         if (@call(.never_inline, cy.indexOfAsciiSet, .{str, set})) |idx| {
                             return Value.initF64(@intToFloat(f64, idx));
@@ -1740,7 +1681,7 @@ fn stringIndexCharSet(comptime T: StringType) NativeFunc {
                             }
                         }
                     }
-                } else if (T == .staticUstring or T == .ustring) {
+                } else if (isUstringObject(T, obj)) {
                     if (setIsAscii) {
                         if (cy.indexOfAsciiSet(str, set)) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
@@ -1764,7 +1705,7 @@ fn stringIndexCharSet(comptime T: StringType) NativeFunc {
                             return Value.initF64(@intToFloat(f64, minIndex));
                         }
                     }
-                } else {
+                } else if (isRawStringObject(T)) {
                     if (setIsAscii) {
                         if (cy.indexOfAsciiSet(str, set)) |idx| {
                             return Value.initF64(@intToFloat(f64, idx));
@@ -1787,7 +1728,7 @@ fn stringIndexCharSet(comptime T: StringType) NativeFunc {
                             return Value.initF64(@intToFloat(f64, minIndex));
                         }
                     }
-                }
+                } else fatal();
             }
             return Value.None;
         }
@@ -1795,7 +1736,7 @@ fn stringIndexCharSet(comptime T: StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringIndexCode(comptime T: StringType) NativeFunc {
+fn stringIndexCode(comptime T: cy.StringType) NativeFunc {
     const S = struct {
         fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, ptr);
@@ -1809,13 +1750,13 @@ fn stringIndexCode(comptime T: StringType) NativeFunc {
             if (needle > 0) {
                 const code = @intCast(u21, needle);
                 const needleIsAscii = code < 128;
-                if (T == .staticAstring or T == .astring) {
+                if (isAstringObject(T, obj)) {
                     if (needleIsAscii) {
                         if (cy.string.indexOfChar(str, @intCast(u8, code))) |idx| {
                             return Value.initF64(@intToFloat(f64, idx));
                         }
                     }
-                } else if (T == .staticUstring or T == .ustring) {
+                } else if (isUstringObject(T, obj)) {
                     if (needleIsAscii) {
                         if (cy.string.indexOfChar(str, @intCast(u8, code))) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
@@ -1829,7 +1770,7 @@ fn stringIndexCode(comptime T: StringType) NativeFunc {
                             return Value.initF64(@intToFloat(f64, charIdx));
                         }
                     }
-                } else {
+                } else if (isRawStringObject(T)) {
                     if (needleIsAscii) {
                         if (cy.indexOfChar(str, @intCast(u8, code))) |idx| {
                             return Value.initF64(@intToFloat(f64, idx));
@@ -1841,7 +1782,7 @@ fn stringIndexCode(comptime T: StringType) NativeFunc {
                             return Value.initF64(@intToFloat(f64, idx));
                         }
                     }
-                }
+                } else fatal();
             }
             return Value.None;
         }
@@ -1849,7 +1790,7 @@ fn stringIndexCode(comptime T: StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringIndexChar(comptime T: StringType) NativeFunc {
+fn stringIndexChar(comptime T: cy.StringType) NativeFunc {
     const S = struct {
         fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, ptr);
@@ -1862,13 +1803,13 @@ fn stringIndexChar(comptime T: StringType) NativeFunc {
             const needleIsAscii = needle[0] & 0x80 == 0;
 
             if (needle.len > 0) {
-                if (T == .staticAstring or T == .astring) {
+                if (isAstringObject(T, obj)) {
                     if (needleIsAscii) {
                         if (cy.string.indexOfChar(str, needle[0])) |idx| {
                             return Value.initF64(@intToFloat(f64, idx));
                         }
                     }
-                } else if (T == .staticUstring or T == .ustring) {
+                } else if (isUstringObject(T, obj)) {
                     if (needleIsAscii) {
                         if (cy.string.indexOfChar(str, needle[0])) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
@@ -1881,7 +1822,7 @@ fn stringIndexChar(comptime T: StringType) NativeFunc {
                             return Value.initF64(@intToFloat(f64, charIdx));
                         }
                     }
-                } else {
+                } else if (isRawStringObject(T)) {
                     if (needleIsAscii) {
                         if (cy.indexOfChar(str, needle[0])) |idx| {
                             return Value.initF64(@intToFloat(f64, idx));
@@ -1892,7 +1833,7 @@ fn stringIndexChar(comptime T: StringType) NativeFunc {
                             return Value.initF64(@intToFloat(f64, idx));
                         }
                     }
-                }
+                } else fatal();
             }
             return Value.None;
         }
@@ -2051,11 +1992,8 @@ pub fn fileRead(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) li
         fmt.printStderr("read {}", &.{fmt.v(err)});
         return Value.None;
     };
-    if (numRead > 0) {
-        return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
-    } else {
-        return Value.initStaticAstring(0, 0);
-    }
+    // Can return empty string when numRead == 0.
+    return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
 }
 
 pub fn fileReadToEnd(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
@@ -2081,11 +2019,8 @@ pub fn fileReadToEnd(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) 
         if (numRead < buf.len) {
             // Done.
             const all = tempBuf.items();
-            if (all.len > 0) {
-                return vm.allocRawString(all) catch fatal();
-            } else {
-                return Value.initStaticAstring(0, 0);
-            }
+            // Can return empty string.
+            return vm.allocRawString(all) catch fatal();
         } else {
             tempBuf.ensureUnusedCapacity(alloc, MinReadBufSize) catch fatal();
         }

@@ -6,12 +6,37 @@ pre = 'abc'
 str = '{pre}xyz'
 try t.eq(str, 'abcxyz')
 
+lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'
+ustr = '{'ABCXYZ'}'
+
 -- index operator
 try t.eq(str[-1], 'z')
 try t.eq(str[0], 'a')
 try t.eq(str[3], 'x')
 try t.eq(str[5], 'z')
 try t.eq(str[6], error(#OutOfBounds))
+
+-- slice operator
+try t.eq(str[0..], 'abcxyz')
+try t.eq(str[3..], 'xyz')
+try t.eq(str[5..], 'z')
+try t.eq(str[-1..], 'z')
+try t.eq(str[6..], '')
+try t.eq(str[7..], error(#OutOfBounds))
+try t.eq(str[-10..], error(#OutOfBounds))
+try t.eq(str[..0], '')
+try t.eq(str[..3], 'abc')
+try t.eq(str[..5], 'abcxy')
+try t.eq(str[..-1], 'abcxy')
+try t.eq(str[..6], 'abcxyz')
+try t.eq(str[..7], error(#OutOfBounds))
+try t.eq(str[0..0], '')
+try t.eq(str[0..1], 'a')
+try t.eq(str[3..6], 'xyz')
+try t.eq(str[5..6], 'z')
+try t.eq(str[6..6], '')
+try t.eq(str[6..7], error(#OutOfBounds))
+try t.eq(str[3..1], error(#OutOfBounds))
 
 -- charAt()
 try t.eq(str.charAt(-1), error(#OutOfBounds))
@@ -48,7 +73,6 @@ try t.eq(str.indexChar('c'), 2)
 try t.eq(str.indexChar('d'), none)
 
 -- indexChar() simd
-lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'
 try t.eq(lstr.indexChar('a'), 0)
 try t.eq(lstr.indexChar('m'), 16)
 try t.eq(lstr.indexChar('z'), 68)
@@ -86,7 +110,7 @@ try t.eq(str.less('ac'), true)
 try t.eq(str.less('aa'), false)
 
 -- lower()
-try t.eq('ABC'.lower(), 'abc')
+try t.eq(ustr.lower(), 'abcxyz')
 
 -- repeat()
 try t.eq(str.repeat(-1), error(#InvalidArgument))

@@ -2307,9 +2307,9 @@ pub const VMcompiler = struct {
                     if (!discardTopExprReg) {
                         if (usedDstAsTemp) {
                             const rightDst = try self.nextFreeTempLocal();
-                            rightv = try self.genConst(-1, rightDst);
+                            rightv = try self.genNone(rightDst);
                         } else {
-                            rightv = try self.genConst(-1, dst);
+                            rightv = try self.genNone(dst);
                             usedDstAsTemp = true;
                         }
                     }

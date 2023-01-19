@@ -6,6 +6,8 @@ pre = 'abc🦊'
 str = '{pre}xyz🐶'
 try t.eq(str, 'abc🦊xyz🐶')
 
+upper = '{'abc🦊xyz🐶'}'
+
 -- index operator
 try t.eq(str[-1], '🐶')
 try t.eq(str[0], 'a')
@@ -14,6 +16,28 @@ try t.eq(str[3], '🦊')
 try t.eq(str[3].isAscii(), false)
 try t.eq(str[7], '🐶')
 try t.eq(str[8], error(#OutOfBounds))
+
+-- slice operator
+try t.eq(str[0..], 'abc🦊xyz🐶')
+try t.eq(str[4..], 'xyz🐶')
+try t.eq(str[7..], '🐶')
+try t.eq(str[-1..], '🐶')
+try t.eq(str[8..], '')
+try t.eq(str[9..], error(#OutOfBounds))
+try t.eq(str[-10..], error(#OutOfBounds))
+try t.eq(str[..0], '')
+try t.eq(str[..4], 'abc🦊')
+try t.eq(str[..7], 'abc🦊xyz')
+try t.eq(str[..-1], 'abc🦊xyz')
+try t.eq(str[..8], 'abc🦊xyz🐶')
+try t.eq(str[..9], error(#OutOfBounds))
+try t.eq(str[0..0], '')
+try t.eq(str[0..1], 'a')
+try t.eq(str[4..8], 'xyz🐶')
+try t.eq(str[7..8], '🐶')
+try t.eq(str[8..8], '')
+try t.eq(str[8..9], error(#OutOfBounds))
+try t.eq(str[3..1], error(#OutOfBounds))
 
 -- charAt().
 try t.eq(str.charAt(-1), error(#OutOfBounds))
@@ -82,7 +106,7 @@ try t.eq(str.less('ac'), true)
 try t.eq(str.less('aa'), false)
 
 -- lower()
-try t.eq('AB🦊C'.lower(), 'ab🦊c')
+try t.eq(upper.lower(), 'abc🦊xyz🐶')
 
 -- repeat()
 try t.eq(str.repeat(-1), error(#InvalidArgument))

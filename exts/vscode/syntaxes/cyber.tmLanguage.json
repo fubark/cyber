@@ -1,0 +1,49 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Cyber",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#comment"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.control.cyber",
+				"match": "\\b(import|if|then|else|and|or|not|try|catch|for|each|break|return|as|var|func|object|is|coinit|coresume|coyield)\\b"
+			}]
+		},
+		"strings": {
+			"name": "string.quoted.double.cyber",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.cyber",
+					"match": "\\\\."
+				}
+			]
+		},
+		"comment": {
+			"patterns": [
+				{
+					"begin": "--",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.definition.comment.cyber"
+						}
+					},
+					"end": "\\n",
+					"name": "comment.line.double-dash.cyber"
+				}
+			]
+		}
+	},
+	"scopeName": "source.cyber"
+}

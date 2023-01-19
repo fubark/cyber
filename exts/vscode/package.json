@@ -1,0 +1,25 @@
+{
+  "name": "cyber",
+  "displayName": "Cyber",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "cyber",
+      "aliases": ["Cyber", "cyber"],
+      "extensions": [".cy"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "cyber",
+      "scopeName": "source.cyber",
+      "path": "./syntaxes/cyber.tmLanguage.json"
+    }]
+  }
+}

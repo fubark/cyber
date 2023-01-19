@@ -2775,7 +2775,13 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         },
         AstringT => {
             if (obj.astring.len <= DefaultStringInternMaxByteLen) {
-                _ = vm.strInterns.remove(obj.astring.getConstSlice());
+                // Check both the key and value to make sure this object is the intern entry.
+                const key = obj.astring.getConstSlice();
+                if (vm.strInterns.get(key)) |val| {
+                    if (val == obj) {
+                        _ = vm.strInterns.remove(key);
+                    }
+                }
             }
             if (obj.astring.len <= MaxPoolObjectAstringByteLen) {
                 vm.freeObject(obj);
@@ -2786,7 +2792,12 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         },
         UstringT => {
             if (obj.ustring.len <= DefaultStringInternMaxByteLen) {
-                _ = vm.strInterns.remove(obj.ustring.getConstSlice());
+                const key = obj.ustring.getConstSlice();
+                if (vm.strInterns.get(key)) |val| {
+                    if (val == obj) {
+                        _ = vm.strInterns.remove(key);
+                    }
+                }
             }
             if (obj.ustring.len <= MaxPoolObjectUstringByteLen) {
                 vm.freeObject(obj);

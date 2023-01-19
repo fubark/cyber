@@ -2480,6 +2480,28 @@ pub const VM = struct {
         return null;
     }
 
+    fn valueAsStringType(self: *const VM, val: Value, strT: StringType) linksection(cy.Section) []const u8 {
+        switch (strT) {
+            .staticAstring,
+            .staticUstring => {
+                const slice = val.asStaticStringSlice();
+                return self.strBuf[slice.start..slice.end];
+            },
+            .astring => {
+                const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
+                return obj.astring.getConstSlice();
+            },
+            .ustring => {
+                const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
+                return obj.ustring.getConstSlice();
+            },
+            .rawstring => {
+                const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
+                return obj.rawstring.getConstSlice();
+            },
+        }
+    }
+
     pub fn valueAsString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         if (val.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
@@ -2992,118 +3014,61 @@ fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(cy.HotSection) 
     return Value.initBool(left.toF64() < right.toF64());
 }
 
-fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
-    @setCold(true);
-    if (left.isNumber()) {
-        if (right.isNumber()) {
-            return Value.initBool(left.asF64() != right.asF64());
-        } else return Value.True;
-    }
-    if (left.isPointer()) {
-        const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
+pub const StringType = enum {
+    staticAstring,
+    staticUstring,
+    astring,
+    ustring,
+    rawstring,
+};
+
+fn getComparableStringType(val: Value) ?StringType {
+    if (val.isPointer()) {
+        const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
         if (obj.common.structId == AstringT) {
-            const rstr = vm.tryValueAsString(right) orelse return Value.True;
-            const str = obj.astring.getConstSlice();
-            return Value.initBool(!std.mem.eql(u8, str, rstr));
+            return .astring;
         } else if (obj.common.structId == UstringT) {
-            const rstr = vm.tryValueAsString(right) orelse return Value.True;
-            const str = obj.ustring.getConstSlice();
-            return Value.initBool(!std.mem.eql(u8, str, rstr));
+            return .ustring;
         } else if (obj.common.structId == RawStringT) {
-            const rstr = vm.tryValueAsString(right) orelse return Value.True;
-            const str = obj.rawstring.getConstSlice();
-            return Value.initBool(!std.mem.eql(u8, str, rstr));
-        } else {
-            if (right.isPointer()) {
-                return Value.initBool(@ptrCast(*anyopaque, obj) != right.asPointer().?);
-            } else return Value.True;
+            return .rawstring;
         }
+        return null;
     } else {
-        const tag = left.getTag();
-        if (right.isNumber() or tag != right.getTag()) {
-            return Value.True;
+        if (val.isNumber()) {
+            return null;
         }
-        switch (tag) {
-            cy.NoneT => {
-                if (right.isPointer()) {
-                    return Value.True;
-                } else return Value.False;
-            },
-            cy.BooleanT => return Value.initBool(right.isPointer() or (left.asBool() != right.asBool())),
-            cy.ErrorT => return Value.initBool(right.isPointer() or (left.asErrorTagLit() != right.asErrorTagLit())),
-            cy.StaticAstringT => {
-                const rstr = vm.tryValueAsString(right) orelse return Value.True;
-                const slice = left.asStaticStringSlice();
-                const str = vm.strBuf[slice.start..slice.end];
-                return Value.initBool(!std.mem.eql(u8, str, rstr));
-            },
+        switch (val.getTag()) {
             cy.StaticUstringT => {
-                const rstr = vm.tryValueAsString(right) orelse return Value.True;
-                const slice = left.asStaticStringSlice();
-                const str = vm.strBuf[slice.start..slice.end];
-                return Value.initBool(!std.mem.eql(u8, str, rstr));
+                return .staticUstring;
             },
-            cy.UserTagLiteralT => return Value.initBool(right.isPointer() or (left.asTagLiteralId() != right.asTagLiteralId())),
-            else => stdx.panic("unexpected tag"),
+            cy.StaticAstringT => {
+                return .staticAstring;
+            },
+            else => return null,
         }
     }
 }
 
+fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
+    if (getComparableStringType(left)) |lstrT| {
+        if (getComparableStringType(right)) |rstrT| {
+            const lstr = vm.valueAsStringType(left, lstrT);
+            const rstr = vm.valueAsStringType(right, rstrT);
+            return Value.initBool(!std.mem.eql(u8, lstr, rstr));
+        }
+    }
+    return Value.True;
+}
+
 fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (left.isNumber()) {
-        if (right.isNumber()) {
-            return Value.initBool(left.asF64() == right.asF64());
-        } else return Value.False;
-    }
-    if (left.isPointer()) {
-        const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
-        if (obj.common.structId == AstringT) {
-            const rstr = vm.tryValueAsString(right) orelse return Value.False;
-            const str = obj.astring.getConstSlice();
-            return Value.initBool(std.mem.eql(u8, str, rstr));
-        } else if (obj.common.structId == UstringT) {
-            const rstr = vm.tryValueAsString(right) orelse return Value.False;
-            const str = obj.ustring.getConstSlice();
-            return Value.initBool(std.mem.eql(u8, str, rstr));
-        } else if (obj.common.structId == RawStringT) {
-            const rstr = vm.tryValueAsString(right) orelse return Value.False;
-            const str = obj.rawstring.getConstSlice();
-            return Value.initBool(std.mem.eql(u8, str, rstr));
-        } else {
-            if (right.isPointer()) {
-                return Value.initBool(@ptrCast(*anyopaque, obj) == right.asPointer().?);
-            } else return Value.False;
-        }
-    } else {
-        const tag = left.getTag();
-        if (right.isNumber() or tag != right.getTag()) {
-            return Value.False;
-        }
-        switch (tag) {
-            cy.NoneT => {
-                if (!right.isPointer()) {
-                    return Value.True;
-                } else return Value.False;
-            },
-            cy.BooleanT => return Value.initBool(!right.isPointer() and (left.asBool() == right.asBool())),
-            cy.ErrorT => return Value.initBool(!right.isPointer() and (left.asErrorTagLit() == right.asErrorTagLit())),
-            cy.StaticAstringT => {
-                const rstr = vm.tryValueAsString(right) orelse return Value.False;
-                const slice = left.asStaticStringSlice();
-                const str = vm.strBuf[slice.start..slice.end];
-                return Value.initBool(std.mem.eql(u8, str, rstr));
-            },
-            cy.StaticUstringT => {
-                const rstr = vm.tryValueAsString(right) orelse return Value.False;
-                const slice = left.asStaticStringSlice();
-                const str = vm.strBuf[slice.start..slice.end];
-                return Value.initBool(std.mem.eql(u8, str, rstr));
-            },
-            cy.UserTagLiteralT => return Value.initBool(!right.isPointer() and (left.asTagLiteralId() == right.asTagLiteralId())),
-            else => stdx.panic("unexpected tag"),
+    if (getComparableStringType(left)) |lstrT| {
+        if (getComparableStringType(right)) |rstrT| {
+            const lstr = vm.valueAsStringType(left, lstrT);
+            const rstr = vm.valueAsStringType(right, rstrT);
+            return Value.initBool(std.mem.eql(u8, lstr, rstr));
         }
     }
+    return Value.False;
 }
 
 fn evalMinusFallback(left: Value, right: Value) linksection(cy.HotSection) Value {
@@ -4290,14 +4255,18 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             .compare => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalCompare, .{vm, left, right});
+                // Can immediately match numbers, objects, primitives.
+                framePtr[pc[3].arg] = if (left.val == right.val) Value.True else 
+                    @call(.never_inline, evalCompare, .{vm, left, right});
                 pc += 4;
                 continue;
             },
             .compareNot => {
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalCompareNot, .{vm, left, right});
+                // Can immediately match numbers, objects, primitives.
+                framePtr[pc[3].arg] = if (left.val == right.val) Value.False else 
+                    @call(.never_inline, evalCompareNot, .{vm, left, right});
                 pc += 4;
                 continue;
             },

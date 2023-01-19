@@ -13,7 +13,8 @@ try t.eqNear(m.sqrt2, 1.41421356)
 -- nan
 try t.eq(m.isNaN(m.nan), true)
 try t.eq(m.isNaN(1), false)
-try t.eq(m.nan == m.nan, false)
+try t.eq(m.nan == m.nan, true)
+try t.eq(m.nan == m.nan + 1, false)
 
 try t.eq(m.abs(1), 1)
 try t.eq(m.abs(-1), 1)

@@ -1154,7 +1154,7 @@ print(m.pi * r^2)
 | log2e | number | Base-2 logarithm of E; approximately 1.443. |
 | ln10 | number | Natural logarithm of 10; approximately 2.303. |
 | ln2 | number | Natural logarithm of 2; approximately 0.693. |
-| nan | number | Not a number. Note that nan != nan. |
+| nan | number | Not a number. Note that nan == nan, however, if a nan came from an arithmetic operation, the comparison is undefined (it may be true or false, so it is not reliable). |
 | neginf | number | Negative infinity. |
 | pi | number | Ratio of a circle's circumference to its diameter; approximately 3.14159. |
 | sqrt1_2 | number | Square root of ½; approximately 0.707. |

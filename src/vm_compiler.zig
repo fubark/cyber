@@ -759,8 +759,9 @@ pub const VMcompiler = struct {
 
     /// ARC managed temps need to be released at the end of the current ARC expression.
     fn beginArcExpr(self: *VMcompiler) u32 {
+        const cur = self.curBlock.arcTempLocalStart;
         self.curBlock.arcTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
-        return self.curBlock.arcTempLocalStart;
+        return cur;
     }
 
     fn endArcExpr(self: *VMcompiler, arcTempLocalStart: u32) !void {
@@ -854,6 +855,8 @@ pub const VMcompiler = struct {
                 try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .cont, .pc = pc });
             },
             .opAssignStmt => {
+                const arcLocalStart = self.beginArcExpr();
+
                 const left = self.nodes[node.head.opAssignStmt.left];
                 const genOp: cy.OpCode = switch (node.head.opAssignStmt.op) {
                     .plus => .add,
@@ -890,8 +893,12 @@ pub const VMcompiler = struct {
                 } else {
                     unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
+
+                try self.endArcExpr(arcLocalStart);
             },
             .assign_stmt => {
+                const arcLocalStart = self.beginArcExpr();
+
                 const left = self.nodes[node.head.left_right.left];
                 if (left.node_t == .ident) {
                     if (left.head.ident.semaVarId != NullId) {
@@ -930,6 +937,8 @@ pub const VMcompiler = struct {
                 } else {
                     unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
                 }
+                
+                try self.endArcExpr(arcLocalStart);
             },
             .varDecl => {
                 // Nop. Static variables are hoisted and initialized at the start of the program.

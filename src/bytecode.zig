@@ -208,34 +208,46 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn dump(self: ByteCodeBuffer) void {
-        var pc: usize = 0;
+        var pcOffset: usize = 0;
         const ops = self.ops.items;
+        var pc = @ptrCast([*]OpData, self.ops.items.ptr);
 
         fmt.printStderr("Bytecode:\n", &.{});
-        while (pc < ops.len) {
-            const code = ops[pc].code;
-            const len = getInstLenAt(self.ops.items.ptr + pc);
-            switch (ops[pc].code) {
+        while (pcOffset < ops.len) {
+            const code = pc[0].code;
+            const len = getInstLenAt(pc);
+            switch (code) {
+                .stringTemplate => {
+                    const startLocal = pc[1].arg;
+                    const exprCount = pc[2].arg;
+                    const dst = pc[3].arg;
+                    fmt.printStderr("{} {} startLocal={}, exprCount={}, dst={}\n", &.{v(pcOffset), v(code), v(startLocal), v(exprCount), v(dst)});
+                },
+                .slice => {
+                    const recv = pc[1].arg;
+                    const start = pc[2].arg;
+                    const end = pc[3].arg;
+                    fmt.printStderr("{} {} recv={}, start={}, end={}\n", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
+                },
                 .callSym => {
-                    const startLocal = ops[pc + 1].arg;
-                    const numArgs = ops[pc + 2].arg;
-                    const numRet = ops[pc + 3].arg;
-                    const symId = ops[pc + 4].arg;
-                    fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, symId={}\n", &.{v(pc), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
-                    pc += len;
+                    const startLocal = pc[1].arg;
+                    const numArgs = pc[2].arg;
+                    const numRet = pc[3].arg;
+                    const symId = pc[4].arg;
+                    fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, symId={}\n", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
                 },
                 .jumpNotCond => {
-                    const jump = @ptrCast(*const align(1) u16, &ops[pc + 1]).*;
-                    fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pc), v(code), v(jump), v(ops[pc + 3].arg)});
-                    pc += len;
+                    const jump = @ptrCast(*const align(1) u16, &(pc + 1)).*;
+                    fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
                 },
                 else => {
-                    fmt.printStderr("{} {}", &.{v(pc), v(code)});
-                    printStderr(" {any}", .{std.mem.sliceAsBytes(ops[pc+1..pc+len])});
+                    fmt.printStderr("{} {}", &.{v(pcOffset), v(code)});
+                    printStderr(" {any}", .{std.mem.sliceAsBytes(pc[1..len])});
                     fmt.printStderr("\n", &.{});
-                    pc += len;
                 },
             }
+            pcOffset += len;
+            pc += len;
         }
 
         fmt.printStderr("\nConstants:\n", &.{});
@@ -544,7 +556,12 @@ pub const OpCode = enum(u8) {
     coreturn,
     retain,
     copyRetainRelease,
+
+    /// Lifts a source local to a box object and stores the result in `dstLocal`.
+    /// The source local is also retained.
+    /// [srcLocal] [dstLocal]
     box,
+
     setBoxValue,
     setBoxValueRelease,
     boxValue,

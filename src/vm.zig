@@ -5026,7 +5026,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             },
             .box => {
                 const value = framePtr[pc[1].arg];
-                framePtr[pc[2].arg] = try allocBox(value);
+                vm.retain(value);
+                framePtr[pc[2].arg] = try allocBox(vm, value);
                 pc += 3;
                 continue;
             },
@@ -5846,21 +5847,20 @@ fn boxValueRetain(box: Value) linksection(cy.HotSection) Value {
     }
 }
 
-fn allocBox(val: Value) !Value {
-    const obj = try gvm.allocPoolObject();
+fn allocBox(vm: *VM, val: Value) !Value {
+    const obj = try vm.allocPoolObject();
     obj.box = .{
         .structId = BoxS,
         .rc = 1,
         .val = val,
     };
     if (TraceEnabled) {
-        gvm.trace.numRetainAttempts += 1;
-        gvm.trace.numRetains += 1;
+        vm.trace.numRetainAttempts += 1;
+        vm.trace.numRetains += 1;
     }
     if (TrackGlobalRC) {
-        gvm.refCounts += 1;
+        vm.refCounts += 1;
     }
-
     return Value.initPtr(obj);
 }
 

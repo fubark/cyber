@@ -297,14 +297,14 @@ const SymType = enum {
 /// Represents a sema symbol in the current module. It can be an intermediate sym in a sym path or a sym leaf.
 /// Since module namespaces use the same accessor operator as local variables, a symbol doesn't always get resolved post sema.
 pub const Sym = struct {
-    symT: SymType,
-
     /// key.parentId points to the parent sym in the current module.
     /// If key.parentId == NullId, then this sym is at the root of the module.
     key: AbsSymSigKey,
 
     /// After the sema pass, all semaSyms are resolved.
     resolvedSymId: ResolvedSymId = NullId,
+
+    symT: SymType,
 
     /// Whether this sym is used in the script.
     /// TODO: This might not be necessary once resolving syms ends up using the parent path symbol.
@@ -1965,6 +1965,6 @@ fn endFuncSymBlock(self: *cy.VMcompiler, symId: u32, numParams: u32) !void {
 
 test "Internals." {
     try t.eq(@sizeOf(LocalVar), 32);
-    try t.eq(@sizeOf(Sym), 32);
+    try t.eq(@sizeOf(Sym), 24);
     try t.eq(@sizeOf(Type), 3);
 }

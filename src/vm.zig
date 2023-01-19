@@ -3544,7 +3544,7 @@ const Map = extern struct {
     },
 };
 
-const Box = packed struct {
+const Box = extern struct {
     structId: StructId,
     rc: u32,
     val: Value,
@@ -3722,7 +3722,7 @@ pub const List = extern struct {
     }
 };
 
-const Object = packed struct {
+const Object = extern struct {
     structId: StructId,
     rc: u32,
     firstValue: Value,

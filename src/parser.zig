@@ -2111,8 +2111,8 @@ pub const Parser = struct {
                 self.advanceToken();
                 break :b try self.pushNode(.string, start);
             },
-            .templateString => {
-                return self.parseStringTemplate();
+            .templateString => b: {
+                break :b try self.parseStringTemplate();
             },
             .at => b: {
                 self.advanceToken();
@@ -2273,95 +2273,93 @@ pub const Parser = struct {
                     } else return self.reportParseErrorAt("Expected ident", &.{}, next2);
                 },
                 .left_bracket => {
-                    // If left is an accessor expression or identifier, parse as access expression.
-                    const left_t = self.nodes.items[left_id].node_t;
-                    if (left_t == .ident or left_t == .accessExpr) {
-                        // Consume left bracket.
+                    // Index or slice operator.
+
+                    // Consume left bracket.
+                    self.advanceToken();
+
+                    token = self.peekToken();
+                    if (token.tag() == .dot_dot) {
+                        // Start of list to end index slice.
                         self.advanceToken();
+                        const right_range = (try self.parseExpr(.{})) orelse {
+                            return self.reportParseErrorAt("Expected expression.", &.{}, self.peekToken());
+                        };
 
                         token = self.peekToken();
-                        if (token.tag() == .dot_dot) {
-                            // Start of list to end index slice.
+                        if (token.tag() == .right_bracket) {
                             self.advanceToken();
-                            const right_range = (try self.parseExpr(.{})) orelse {
-                                return self.reportParseErrorAt("Expected expression.", &.{}, self.peekToken());
+                            const res = try self.pushNode(.arr_range_expr, start);
+                            self.nodes.items[res].head = .{
+                                .arr_range_expr = .{
+                                    .arr = left_id,
+                                    .left = NullId,
+                                    .right = right_range,
+                                },
                             };
+                            left_id = res;
+                            start = self.next_pos;
+                        } else {
+                            return self.reportParseErrorAt("Expected right bracket.", &.{}, token);
+                        }
+                    } else {
+                        const expr_id = (try self.parseExpr(.{})) orelse {
+                            return self.reportParseErrorAt("Expected expression.", &.{}, self.peekToken());
+                        };
 
+                        token = self.peekToken();
+                        if (token.tag() == .right_bracket) {
+                            self.advanceToken();
+                            const access_id = try self.pushNode(.arr_access_expr, start);
+                            self.nodes.items[access_id].head = .{
+                                .left_right = .{
+                                    .left = left_id,
+                                    .right = expr_id,
+                                },
+                            };
+                            left_id = access_id;
+                            start = self.next_pos;
+                        } else if (token.tag() == .dot_dot) {
+                            self.advanceToken();
                             token = self.peekToken();
                             if (token.tag() == .right_bracket) {
+                                // Start index to end of list slice.
                                 self.advanceToken();
                                 const res = try self.pushNode(.arr_range_expr, start);
                                 self.nodes.items[res].head = .{
                                     .arr_range_expr = .{
                                         .arr = left_id,
-                                        .left = NullId,
-                                        .right = right_range,
+                                        .left = expr_id,
+                                        .right = NullId,
                                     },
                                 };
                                 left_id = res;
                                 start = self.next_pos;
                             } else {
-                                return self.reportParseErrorAt("Expected right bracket.", &.{}, token);
-                            }
-                        } else {
-                            const expr_id = (try self.parseExpr(.{})) orelse {
-                                return self.reportParseErrorAt("Expected expression.", &.{}, self.peekToken());
-                            };
-
-                            token = self.peekToken();
-                            if (token.tag() == .right_bracket) {
-                                self.advanceToken();
-                                const access_id = try self.pushNode(.arr_access_expr, start);
-                                self.nodes.items[access_id].head = .{
-                                    .left_right = .{
-                                        .left = left_id,
-                                        .right = expr_id,
-                                    },
+                                const right_expr = (try self.parseExpr(.{})) orelse {
+                                    return self.reportParseErrorAt("Expected expression.", &.{}, self.peekToken());
                                 };
-                                left_id = access_id;
-                                start = self.next_pos;
-                            } else if (token.tag() == .dot_dot) {
-                                self.advanceToken();
                                 token = self.peekToken();
                                 if (token.tag() == .right_bracket) {
-                                    // Start index to end of list slice.
                                     self.advanceToken();
                                     const res = try self.pushNode(.arr_range_expr, start);
                                     self.nodes.items[res].head = .{
                                         .arr_range_expr = .{
                                             .arr = left_id,
                                             .left = expr_id,
-                                            .right = NullId,
+                                            .right = right_expr,
                                         },
                                     };
                                     left_id = res;
                                     start = self.next_pos;
                                 } else {
-                                    const right_expr = (try self.parseExpr(.{})) orelse {
-                                        return self.reportParseErrorAt("Expected expression.", &.{}, self.peekToken());
-                                    };
-                                    token = self.peekToken();
-                                    if (token.tag() == .right_bracket) {
-                                        self.advanceToken();
-                                        const res = try self.pushNode(.arr_range_expr, start);
-                                        self.nodes.items[res].head = .{
-                                            .arr_range_expr = .{
-                                                .arr = left_id,
-                                                .left = expr_id,
-                                                .right = right_expr,
-                                            },
-                                        };
-                                        left_id = res;
-                                        start = self.next_pos;
-                                    } else {
-                                        return self.reportParseErrorAt("Expected right bracket.", &.{}, token);
-                                    }
+                                    return self.reportParseErrorAt("Expected right bracket.", &.{}, token);
                                 }
-                            } else {
-                                return self.reportParseErrorAt("Expected right bracket.", &.{}, token);
                             }
+                        } else {
+                            return self.reportParseErrorAt("Expected right bracket.", &.{}, token);
                         }
-                    } else return self.reportParseErrorAt("Expected variable to left of access expression.", &.{}, next);
+                    }
                 },
                 .left_paren => {
                     // If left is an accessor expression or identifier, parse as call expression.

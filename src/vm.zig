@@ -1078,8 +1078,7 @@ pub const VM = struct {
             .uCharLen = charLen,
             .uMruIdx = 0,
             .uMruCharIdx = 0,
-            .parentPtr = @intCast(u63, @ptrToInt(parent)),
-            .isAscii = 0,
+            .extra = @intCast(u63, @ptrToInt(parent)),
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -1101,8 +1100,7 @@ pub const VM = struct {
             .uCharLen = undefined,
             .uMruIdx = undefined,
             .uMruCharIdx = undefined,
-            .parentPtr = @intCast(u63, @ptrToInt(parent)),
-            .isAscii = 1,
+            .extra = @ptrToInt(parent) | (1 << 63),
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -2966,8 +2964,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             }
         },
         StringSliceT => {
-            if (obj.stringSlice.parentPtr != 0) {
-                const parent = @intToPtr(*cy.HeapObject, obj.stringSlice.parentPtr);
+            if (obj.stringSlice.getParentPtr()) |parent| {
                 releaseObject(vm, parent);
             }
             vm.freeObject(obj);
@@ -3416,7 +3413,7 @@ const NullByteId = std.math.maxInt(u8);
 const NullIdU16 = std.math.maxInt(u16);
 const NullId = std.math.maxInt(u32);
 
-pub const OpaquePtr = packed struct {
+pub const OpaquePtr = extern struct {
     structId: StructId,
     rc: u32,
     ptr: ?*anyopaque,
@@ -3434,8 +3431,8 @@ pub const DirIterator = struct {
     recursive: bool,
 };
 
-pub const Dir = packed struct {
-    structId: StructId,
+pub const Dir = extern struct {
+    structId: StructId align(8),
     rc: u32,
     fd: std.os.fd_t,
     iterable: bool,
@@ -3455,7 +3452,7 @@ pub const Dir = packed struct {
     }
 };
 
-const File = packed struct {
+const File = extern struct {
     structId: StructId,
     rc: u32,
     fd: std.os.fd_t,
@@ -3484,14 +3481,14 @@ const File = packed struct {
     }
 };
 
-const TccState = packed struct {
+const TccState = extern struct {
     structId: StructId,
     rc: u32,
     state: *tcc.TCCState,
     lib: *std.DynLib,
 };
 
-const NativeFunc1 = packed struct {
+const NativeFunc1 = extern struct {
     structId: StructId,
     rc: u32,
     func: *const fn (*UserVM, [*]Value, u8) Value,
@@ -3499,7 +3496,7 @@ const NativeFunc1 = packed struct {
     hasTccState: bool,
 };
 
-const Lambda = packed struct {
+const Lambda = extern struct {
     structId: StructId,
     rc: u32,
     funcPc: u32, 
@@ -3508,7 +3505,7 @@ const Lambda = packed struct {
     numLocals: u8,
 };
 
-pub const Closure = packed struct {
+pub const Closure = extern struct {
     structId: StructId,
     rc: u32,
     funcPc: u32, 
@@ -3524,7 +3521,7 @@ pub const Closure = packed struct {
     }
 };
 
-pub const MapIterator = packed struct {
+pub const MapIterator = extern struct {
     structId: StructId,
     rc: u32,
     map: *Map,
@@ -3532,10 +3529,10 @@ pub const MapIterator = packed struct {
 };
 
 pub const MapInner = cy.ValueMap;
-const Map = packed struct {
+const Map = extern struct {
     structId: StructId,
     rc: u32,
-    inner: packed struct {
+    inner: extern struct {
         metadata: ?[*]u64,
         entries: ?[*]cy.ValueMapEntry,
         size: u32,
@@ -3553,7 +3550,7 @@ const Box = packed struct {
     val: Value,
 };
 
-pub const Fiber = packed struct {
+pub const Fiber = extern struct {
     structId: StructId,
     rc: u32,
     prevFiber: ?*Fiber,
@@ -3562,19 +3559,35 @@ pub const Fiber = packed struct {
     /// If pc == NullId, the fiber is done.
     pc: u32,
 
-    /// [*]Value reduced to 48 bits.
-    framePtr: u48,
+    /// Contains framePtr in the lower 48 bits and adjacent 8 bit parentDstLocal.
+    /// parentDstLocal:
+    ///   Where coyield and coreturn should copy the return value to.
+    ///   If this is the NullByteId, no value is copied and instead released.
+    extra: u64,
 
-    /// Where coyield and coreturn should copy the return value to.
-    /// If this is the NullByteId, no value is copied and instead released.
-    parentDstLocal: u8,
+    inline fn setFramePtr(self: *Fiber, ptr: [*]Value) void {
+        self.extra = (self.extra & 0xff000000000000) | @ptrToInt(ptr);
+    }
+
+    inline fn getFramePtr(self: *const Fiber) [*]Value {
+        return @intToPtr([*]Value, self.extra & 0xffffffffffff);
+    }
+
+    inline fn setParentDstLocal(self: *Fiber, parentDstLocal: u8) void {
+        self.extra = (self.extra & 0xffffffffffff) | (@as(u64, parentDstLocal) << 48);
+    }
+
+    inline fn getParentDstLocal(self: *const Fiber) u8 {
+        return @intCast(u8, (self.extra & 0xff000000000000) >> 48);
+    }
 };
 
-const RawStringSlice = packed struct {
+const RawStringSlice = extern struct {
     structId: StructId,
     rc: u32,
     buf: [*]const u8,
     len: u32,
+    padding: u32 = 0,
     parent: *RawString,
 
     pub inline fn getConstSlice(self: *const RawStringSlice) []const u8 {
@@ -3582,7 +3595,7 @@ const RawStringSlice = packed struct {
     }
 };
 
-const StringSlice = packed struct {
+const StringSlice = extern struct {
     structId: StructId,
     rc: u32,
     buf: [*]const u8,
@@ -3593,11 +3606,16 @@ const StringSlice = packed struct {
     uMruCharIdx: u32,
 
     /// A Ustring slice may have a null or 0 parentPtr if it's sliced from StaticUstring.
-    parentPtr: u63,
-    isAscii: u1,
+    /// The lower 63 bits contains the parentPtr.
+    /// The last bit contains an isAscii flag.
+    extra: u64,
+
+    pub inline fn getParentPtr(self: *const StringSlice) ?*cy.HeapObject {
+        return @intToPtr(?*cy.HeapObject, self.extra & 0x7fffffffffffffff);
+    }
 
     pub inline fn isAstring(self: *const StringSlice) bool {
-        return self.isAscii == 1;
+        return self.extra & (1 << 63) > 0;
     }
 
     pub inline fn getConstSlice(self: *const StringSlice) []const u8 {
@@ -3608,7 +3626,7 @@ const StringSlice = packed struct {
 /// 28 byte length can fit inside a Heap pool object.
 pub const MaxPoolObjectAstringByteLen = 28;
 
-pub const Astring = packed struct {
+pub const Astring = extern struct {
     structId: StructId,
     rc: u32,
     len: u32,
@@ -3628,7 +3646,7 @@ pub const Astring = packed struct {
 /// 16 byte length can fit inside a Heap pool object.
 pub const MaxPoolObjectUstringByteLen = 16;
 
-const Ustring = packed struct {
+const Ustring = extern struct {
     structId: StructId,
     rc: u32,
     len: u32,
@@ -3650,8 +3668,8 @@ const Ustring = packed struct {
 
 pub const MaxPoolObjectRawStringByteLen = 28;
 
-pub const RawString = packed struct {
-    structId: StructId,
+pub const RawString = extern struct {
+    structId: StructId align(8),
     rc: u32,
     len: u32,
     bufStart: u8,
@@ -3667,17 +3685,17 @@ pub const RawString = packed struct {
     }
 };
 
-pub const ListIterator = packed struct {
+pub const ListIterator = extern struct {
     structId: StructId,
     rc: u32,
     list: *List,
     nextIdx: u32,
 };
 
-pub const List = packed struct {
+pub const List = extern struct {
     structId: StructId,
     rc: u32,
-    list: packed struct {
+    list: extern struct {
         ptr: [*]Value,
         cap: usize,
         len: usize,
@@ -3733,18 +3751,18 @@ const HeapPage = struct {
 
 const HeapObjectId = u32;
 
-/// Total of 40 bytes per object. If structs are bigger they are allocated on the gpa.
-pub const HeapObject = packed union {
-    common: packed struct {
+/// Total of 40 bytes per object. If objects are bigger, they are allocated on the gpa.
+pub const HeapObject = extern union {
+    common: extern struct {
         structId: StructId,
     },
-    freeSpan: packed struct {
+    freeSpan: extern struct {
         structId: StructId,
         len: u32,
         start: *HeapObject,
         next: ?*HeapObject,
     },
-    retainedCommon: packed struct {
+    retainedCommon: extern struct {
         structId: StructId,
         rc: u32,
     },
@@ -3829,6 +3847,11 @@ test "Internals." {
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 24);
 
+    try t.eq(@alignOf(List), 8);
+    var list: List = undefined;
+    try t.eq(@ptrToInt(&list.list.ptr), @ptrToInt(&list) + 8);
+    try t.eq(@alignOf(ListIterator), 8);
+
     const rstr = RawString{
         .structId = RawStringT,
         .rc = 1,
@@ -3879,8 +3902,7 @@ test "Internals." {
         .uCharLen = undefined,
         .uMruIdx = undefined,
         .uMruCharIdx = undefined,
-        .parentPtr = undefined,
-        .isAscii = undefined,
+        .extra = undefined,
     };
     try t.eq(@ptrToInt(&slice.structId), @ptrToInt(&slice));
     try t.eq(@ptrToInt(&slice.rc), @ptrToInt(&slice) + 4);
@@ -3889,7 +3911,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&slice.uCharLen), @ptrToInt(&slice) + 20);
     try t.eq(@ptrToInt(&slice.uMruIdx), @ptrToInt(&slice) + 24);
     try t.eq(@ptrToInt(&slice.uMruCharIdx), @ptrToInt(&slice) + 28);
-    try t.eq(@ptrToInt(&slice.parentPtr), @ptrToInt(&slice) + 32);
+    try t.eq(@ptrToInt(&slice.extra), @ptrToInt(&slice) + 32);
 
     const rslice = RawStringSlice{
         .structId = RawStringSliceT,
@@ -3902,7 +3924,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&rslice.rc), @ptrToInt(&rslice) + 4);
     try t.eq(@ptrToInt(&rslice.buf), @ptrToInt(&rslice) + 8);
     try t.eq(@ptrToInt(&rslice.len), @ptrToInt(&rslice) + 16);
-    try t.eq(@ptrToInt(&rslice.parent), @ptrToInt(&rslice) + 20);
+    try t.eq(@ptrToInt(&rslice.parent), @ptrToInt(&rslice) + 24);
 }
 
 const MethodSymType = enum {
@@ -5833,8 +5855,8 @@ fn popFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, retValue: Valu
     vm.curFiber.stackPtr = vm.stack.ptr;
     vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
     vm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    vm.curFiber.framePtr = @intCast(u48, @ptrToInt(curFramePtr));
-    const dstLocal = vm.curFiber.parentDstLocal;
+    vm.curFiber.setFramePtr(curFramePtr);
+    const dstLocal = vm.curFiber.getParentDstLocal();
 
     // Release current fiber.
     const nextFiber = vm.curFiber.prevFiber.?;
@@ -5845,7 +5867,7 @@ fn popFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, retValue: Valu
 
     // Copy return value to parent local.
     if (dstLocal != NullByteId) {
-        @intToPtr([*]Value, vm.curFiber.framePtr)[dstLocal] = retValue;
+        vm.curFiber.getFramePtr()[dstLocal] = retValue;
     } else {
         release(vm, retValue);
     }
@@ -5855,7 +5877,7 @@ fn popFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, retValue: Valu
     log.debug("fiber set to {} {*}", .{vm.curFiber.pc, vm.framePtr});
     return PcFramePtr{
         .pc = toPc(vm.curFiber.pc),
-        .framePtr = @intToPtr([*]Value, vm.curFiber.framePtr),
+        .framePtr = vm.curFiber.getFramePtr(),
     };
 }
 
@@ -5865,11 +5887,11 @@ fn pushFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber
     vm.curFiber.stackPtr = vm.stack.ptr;
     vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
     vm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    vm.curFiber.framePtr = @intCast(u48, @ptrToInt(curFramePtr));
+    vm.curFiber.setFramePtr(curFramePtr);
 
     // Push new fiber.
     fiber.prevFiber = vm.curFiber;
-    fiber.parentDstLocal = parentDstLocal;
+    fiber.setParentDstLocal(parentDstLocal);
     vm.curFiber = fiber;
     vm.stack = fiber.stackPtr[0..fiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
@@ -5878,13 +5900,13 @@ fn pushFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber
         log.debug("fiber set to {} {*}", .{fiber.pc + 3, vm.framePtr});
         return .{
             .pc = toPc(fiber.pc + 3),
-            .framePtr = @intToPtr([*]Value, fiber.framePtr),
+            .framePtr = fiber.getFramePtr(),
         };
     } else {
         log.debug("fiber set to {} {*}", .{fiber.pc, vm.framePtr});
         return .{
             .pc = toPc(fiber.pc),
-            .framePtr = @intToPtr([*]Value, fiber.framePtr),
+            .framePtr = fiber.getFramePtr(),
         };
     }
 }
@@ -5897,15 +5919,15 @@ fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection
     std.mem.copy(Value, stack[5..5+args.len], args);
 
     const obj = try gvm.allocPoolObject();
+    const parentDstLocal = NullByteId;
     obj.fiber = .{
         .structId = FiberS,
         .rc = 1,
         .stackPtr = stack.ptr,
         .stackLen = @intCast(u32, stack.len),
         .pc = @intCast(u32, pc),
-        .framePtr = @intCast(u48, @ptrToInt(stack.ptr)),
+        .extra = @ptrToInt(stack.ptr) | (parentDstLocal << 48),
         .prevFiber = undefined,
-        .parentDstLocal = NullByteId,
     };
     if (TraceEnabled) {
         gvm.trace.numRetainAttempts += 1;
@@ -5933,7 +5955,7 @@ fn runReleaseOps(vm: *VM, stack: []const Value, framePtr: usize, startPc: usize)
 fn releaseFiberStack(vm: *VM, fiber: *Fiber) void {
     log.debug("release fiber stack", .{});
     var stack = fiber.stackPtr[0..fiber.stackLen];
-    var framePtr = (@intCast(usize, fiber.framePtr) - @ptrToInt(stack.ptr)) >> 3;
+    var framePtr = (@ptrToInt(fiber.getFramePtr()) - @ptrToInt(stack.ptr)) >> 3;
     var pc = fiber.pc;
 
     if (pc != NullId) {
@@ -5944,7 +5966,7 @@ fn releaseFiberStack(vm: *VM, fiber: *Fiber) void {
             .callSym => {
                 if (vm.ops[pc + 11].code == .coreturn) {
                     const numArgs = vm.ops[pc - 4].arg;
-                    for (@intToPtr([*]Value, fiber.framePtr)[5..5 + numArgs]) |arg| {
+                    for (fiber.getFramePtr()[5..5 + numArgs]) |arg| {
                         release(vm, arg);
                     }
                 }

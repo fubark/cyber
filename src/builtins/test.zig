@@ -21,10 +21,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) linksection(cy.Ini
 }
 
 fn getComparableTag(val: Value) cy.ValueUserTag {
-    const tag = val.getUserTag();
-    if (tag == .rawstring) {
-        return .string;
-    } else return tag;
+    return val.getUserTag();
 }
 
 fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
@@ -43,6 +40,16 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
             .string => {
                 const actStr = vm.valueAsString(act);
                 const expStr = vm.valueAsString(exp);
+                if (std.mem.eql(u8, actStr, expStr)) {
+                    return true;
+                } else {
+                    printStderr("actual: '{}' != '{}'\n", &.{v(actStr), v(expStr)});
+                    return false;
+                }
+            },
+            .rawstring => {
+                const actStr = act.asRawStringSlice();
+                const expStr = exp.asRawStringSlice();
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {

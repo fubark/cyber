@@ -247,6 +247,13 @@ pub const Value = packed union {
         return @intToPtr(?*anyopaque, self.val & ~PointerMask);
     }
 
+    pub inline fn asRawStringSlice(self: *const Value) []const u8 {
+        const obj = self.asHeapObject(*cy.HeapObject);
+        if (obj.common.structId == cy.RawStringT) {
+            return obj.rawstring.getConstSlice();
+        } else unreachable;
+    }
+
     pub inline fn asHeapObject(self: *const Value, comptime Ptr: type) linksection(cy.HotSection) Ptr {
         return @intToPtr(Ptr, self.val & ~PointerMask);
     }

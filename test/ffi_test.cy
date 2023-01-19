@@ -33,10 +33,10 @@ try t.eq(lib.testU32(4294967295), 4294967295)
 try t.eqNear(lib.testF32(1.2345), 1.2345)
 try t.eq(lib.testF64(1.2345), 1.2345)
 -- pass in const string
-try t.eq(lib.testCharPtrZ('foo'), 'foo')
+try t.eq(lib.testCharPtrZ('foo'), rawstring('foo'))
 -- pass in heap string
 str = 'foo{123}'
-try t.eq(lib.testCharPtrZ(str), 'foo123')
+try t.eq(lib.testCharPtrZ(str), rawstring('foo123'))
 try t.eq(lib.testPtr(opaque(123)), opaque(123))
 
 -- void return and no args.

@@ -3,7 +3,7 @@
 import t 'test'
 
 str = rawstring('abc🦊xyz🐶')
-try t.eq(str, 'abc🦊xyz🐶')
+try t.eq(str, rawstring('abc🦊xyz🐶'))
 
 -- index operator
 try t.eq(str[-1], error(#InvalidChar))
@@ -47,7 +47,7 @@ try t.eq(str.codeAt(13), error(#InvalidChar))
 try t.eq(str.codeAt(14), error(#OutOfBounds))
 
 -- concat()
-try t.eq(str.concat('123'), 'abc🦊xyz🐶123')
+try t.eq(str.concat('123'), rawstring('abc🦊xyz🐶123'))
 
 -- endsWith()
 try t.eq(str.endsWith('xyz🐶'), true)
@@ -79,14 +79,14 @@ try t.eq(str.indexCode(128054), 10)
 try t.eq(str.indexCode(100), none)
 
 -- insertByte()
-try t.eq(str.insertByte(2, 97), 'abac🦊xyz🐶')
+try t.eq(str.insertByte(2, 97), rawstring('abac🦊xyz🐶'))
 
 -- insert()
 try t.eq(str.insert(-1, 'foo'), error(#OutOfBounds))
-try t.eq(str.insert(0, 'foo'), 'fooabc🦊xyz🐶')
-try t.eq(str.insert(3, 'foo🦊'), 'abcfoo🦊🦊xyz🐶')
-try t.eq(str.insert(10, 'foo'), 'abc🦊xyzfoo🐶')
-try t.eq(str.insert(14, 'foo'), 'abc🦊xyz🐶foo')
+try t.eq(str.insert(0, 'foo'), rawstring('fooabc🦊xyz🐶'))
+try t.eq(str.insert(3, 'foo🦊'), rawstring('abcfoo🦊🦊xyz🐶'))
+try t.eq(str.insert(10, 'foo'), rawstring('abc🦊xyzfoo🐶'))
+try t.eq(str.insert(14, 'foo'), rawstring('abc🦊xyz🐶foo'))
 try t.eq(str.insert(15, 'foo'), error(#OutOfBounds))
 
 -- isAscii()
@@ -101,21 +101,21 @@ try t.eq(str.less('ac'), true)
 try t.eq(str.less('aa'), false)
 
 -- lower()
-try t.eq(rawstring('AB🦊C').lower(), 'ab🦊c')
+try t.eq(rawstring('AB🦊C').lower(), rawstring('ab🦊c'))
 
 -- repeat()
 try t.eq(str.repeat(-1), error(#InvalidArgument))
-try t.eq(str.repeat(0), '')
-try t.eq(str.repeat(1), 'abc🦊xyz🐶')
-try t.eq(str.repeat(2), 'abc🦊xyz🐶abc🦊xyz🐶')
+try t.eq(str.repeat(0), rawstring(''))
+try t.eq(str.repeat(1), rawstring('abc🦊xyz🐶'))
+try t.eq(str.repeat(2), rawstring('abc🦊xyz🐶abc🦊xyz🐶'))
 
 -- replace()
-try t.eq(str.replace('abc🦊', 'foo'), 'fooxyz🐶')
-try t.eq(str.replace('bc🦊', 'foo'), 'afooxyz🐶')
-try t.eq(str.replace('bc', 'foo🦊'), 'afoo🦊🦊xyz🐶')
-try t.eq(str.replace('xy', 'foo'), 'abc🦊fooz🐶')
-try t.eq(str.replace('xyz🐶', 'foo'), 'abc🦊foo')
-try t.eq(str.replace('abcd', 'foo'), 'abc🦊xyz🐶')
+try t.eq(str.replace('abc🦊', 'foo'), rawstring('fooxyz🐶'))
+try t.eq(str.replace('bc🦊', 'foo'), rawstring('afooxyz🐶'))
+try t.eq(str.replace('bc', 'foo🦊'), rawstring('afoo🦊🦊xyz🐶'))
+try t.eq(str.replace('xy', 'foo'), rawstring('abc🦊fooz🐶'))
+try t.eq(str.replace('xyz🐶', 'foo'), rawstring('abc🦊foo'))
+try t.eq(str.replace('abcd', 'foo'), rawstring('abc🦊xyz🐶'))
 
 -- startsWith()
 try t.eq(str.startsWith('abc🦊'), true)
@@ -129,4 +129,4 @@ try t.eq(rawstring('abc').isAscii(), true)
 try t.eq(rawstring('').insertByte(0, 255).toString(), error(#InvalidChar))
 
 -- upper()
-try t.eq(str.upper(), 'ABC🦊XYZ🐶')
+try t.eq(str.upper(), rawstring('ABC🦊XYZ🐶'))

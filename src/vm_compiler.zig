@@ -1932,7 +1932,7 @@ pub const VMcompiler = struct {
     fn dumpLocals(self: *VMcompiler) !void {
         if (builtin.mode == .Debug) {
             const sblock = sema.curBlock(self);
-            fmt.printStdout("Compiler (dump locals):\n", &.{});
+            fmt.printStderr("Compiler (dump locals):\n", &.{});
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
                 fmt.printStdout("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
@@ -1942,7 +1942,7 @@ pub const VMcompiler = struct {
             }
             for (sblock.locals.items) |varId| {
                 const svar = self.vars.items[varId];
-                fmt.printStdout("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
                     v(svar.name), v(svar.local), v(svar.vtype.typeT),
                     v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
                 });

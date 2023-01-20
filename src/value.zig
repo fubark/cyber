@@ -438,6 +438,9 @@ pub const Value = packed union {
                     cy.NativeFunc1S => return .nativeFunc,
                     cy.TccStateS => return .tccState,
                     cy.OpaquePtrS => return .opaquePtr,
+                    cy.FileT => return .file,
+                    cy.DirT => return .dir,
+                    cy.DirIteratorT => return .dirIter,
                     else => {
                         return .object;
                     },
@@ -476,6 +479,9 @@ pub const ValueUserTag = enum {
     tag,
     tagLiteral,
     errorVal,
+    file,
+    dir,
+    dirIter,
     none,
 };
 

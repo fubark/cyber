@@ -947,13 +947,11 @@ pub const VM = struct {
             .recursive = recursive,
         };
         if (recursive) {
-            obj.inner = .{
-                .walker = try dir.getStdIterableDir().walk(self.alloc),
-            };
+            const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &obj.inner.walker);
+            walker.* = try dir.getStdIterableDir().walk(self.alloc);
         } else {
-            obj.inner = .{
-                .iter = dir.getStdIterableDir().iterate(),
-            };
+            const iter = stdx.ptrAlignCast(*std.fs.IterableDir.Iterator, &obj.inner.iter);
+            iter.* = dir.getStdIterableDir().iterate();
         }
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -2943,7 +2941,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             if (obj.astring.len <= MaxPoolObjectAstringByteLen) {
                 vm.freeObject(obj);
             } else {
-                const slice = @ptrCast([*]u8, obj)[0..16 + obj.astring.len];
+                const slice = @ptrCast([*]u8, obj)[0..Astring.BufOffset + obj.astring.len];
                 vm.alloc.free(slice);
             }
         },
@@ -2959,7 +2957,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             if (obj.ustring.len <= MaxPoolObjectUstringByteLen) {
                 vm.freeObject(obj);
             } else {
-                const slice = @ptrCast([*]u8, obj)[0..16 + obj.ustring.len];
+                const slice = @ptrCast([*]u8, obj)[0..Ustring.BufOffset + obj.ustring.len];
                 vm.alloc.free(slice);
             }
         },
@@ -2973,7 +2971,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             if (obj.rawstring.len <= MaxPoolObjectRawStringByteLen) {
                 vm.freeObject(obj);
             } else {
-                const slice = @ptrCast([*]u8, obj)[0..12 + obj.rawstring.len];
+                const slice = @ptrCast([*]u8, obj)[0..RawString.BufOffset + obj.rawstring.len];
                 vm.alloc.free(slice);
             }
         },
@@ -3020,7 +3018,8 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
         DirIteratorT => {
             var dir = @ptrCast(*DirIterator, obj);
             if (dir.recursive) {
-                dir.inner.walker.deinit();   
+                const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
+                walker.deinit();   
             }
             releaseObject(vm, @ptrCast(*HeapObject, dir.dir));
             const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
@@ -3419,13 +3418,13 @@ pub const OpaquePtr = extern struct {
     ptr: ?*anyopaque,
 };
 
-pub const DirIterator = struct {
+pub const DirIterator = extern struct {
     structId: StructId,
     rc: u32,
     dir: *Dir,
-    inner: union {
-        iter: std.fs.IterableDir.Iterator,
-        walker: std.fs.IterableDir.Walker,
+    inner: extern union {
+        iter: [@sizeOf(std.fs.IterableDir.Iterator)]u8,
+        walker: [@sizeOf(std.fs.IterableDir.Walker)]u8,
     },
     /// If `recursive` is true, `walker` is used.
     recursive: bool,
@@ -3799,6 +3798,9 @@ pub const HeapObject = extern union {
             cy.NativeFunc1S => return .nativeFunc,
             cy.TccStateS => return .tccState,
             cy.OpaquePtrS => return .opaquePtr,
+            cy.FileT => return .file,
+            cy.DirT => return .dir,
+            cy.DirIteratorT => return .dirIter,
             cy.BoxS => return .box,
             else => {
                 return .object;
@@ -3851,6 +3853,16 @@ test "Internals." {
     var list: List = undefined;
     try t.eq(@ptrToInt(&list.list.ptr), @ptrToInt(&list) + 8);
     try t.eq(@alignOf(ListIterator), 8);
+
+    try t.eq(@alignOf(Dir), 8);
+    var dir: Dir = undefined;
+    try t.eq(@ptrToInt(&dir.structId), @ptrToInt(&dir));
+    try t.eq(@ptrToInt(&dir.rc), @ptrToInt(&dir) + 4);
+
+    try t.eq(@alignOf(DirIterator), 8);
+    var dirIter: DirIterator = undefined;
+    try t.eq(@ptrToInt(&dirIter.structId), @ptrToInt(&dirIter));
+    try t.eq(@ptrToInt(&dirIter.rc), @ptrToInt(&dirIter) + 4);
 
     const rstr = RawString{
         .structId = RawStringT,
@@ -4103,8 +4115,7 @@ const RcNode = struct {
 
 const Root = @This();
 
-/// Match VM 16-byte alignment on arm64.
-const UserVMAlign = if (builtin.cpu.arch == .aarch64) 16 else 8;
+const UserVMAlign = 8;
 
 /// A simplified VM handle.
 pub const UserVM = struct {

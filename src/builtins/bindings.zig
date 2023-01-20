@@ -2063,7 +2063,8 @@ pub fn dirIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8
 
     const iter = @ptrCast(*cy.DirIterator, obj);
     if (iter.recursive) {
-        const entryOpt = iter.inner.walker.next() catch |err| {
+        const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
+        const entryOpt = walker.next() catch |err| {
             fmt.printStderr("next {}", &.{fmt.v(err)});
             return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
         };
@@ -2085,7 +2086,8 @@ pub fn dirIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8
             return Value.None;
         }
     } else {
-        const entryOpt = iter.inner.iter.next() catch |err| {
+        const stdIter = stdx.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
+        const entryOpt = stdIter.next() catch |err| {
             fmt.printStderr("next {}", &.{fmt.v(err)});
             return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
         };

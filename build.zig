@@ -31,15 +31,7 @@ pub fn build(b: *std.build.Builder) !void {
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
 
-        const buildTag = std.os.getenv("BUILD") orelse "local";
-        const commitTag = std.os.getenv("COMMIT") orelse "local";
-        const build_options = b.addOptions();
-        build_options.addOption([]const u8, "version", Version);
-        build_options.addOption([]const u8, "build", buildTag);
-        build_options.addOption([]const u8, "commit", commitTag);
-        build_options.addOption(bool, "trace", false);
-        // build_options.addOption(bool, "trace", true);
-        exe.addPackage(build_options.getPackage("build_options"));
+        addBuildOptions(b, exe, false);
 
         // exe.linkLibC();
         exe.addPackage(stdxPkg);
@@ -53,16 +45,92 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
+        const lib = b.addSharedLibrary("cyber", "src/lib.zig", .unversioned);
+        lib.setBuildMode(mode);
+        if (mode != .Debug) {
+            lib.strip = true;
+        }
+        lib.setTarget(target);
+        lib.setOutputDir("zig-out/lib");
+
+        // Allow dynamic libraries to be loaded by filename in the cwd.
+        // lib.addRPath(".");
+
+        // Allow exported symbols to be visible to dlopen.
+        // Also needed to export symbols in wasm lib.
+        lib.rdynamic = true;
+
+        addBuildOptions(b, lib, false);
+
+        // lib.linkLibC();
+        lib.addPackage(stdxPkg);
+        mimalloc.addPackage(lib);
+        mimalloc.buildAndLink(lib, .{});
+
+        if (!target.getCpuArch().isWasm()) {
+            tcc.addPackage(lib);
+            tcc.buildAndLink(lib, .{
+                .selinux = selinux,
+            });
+        } else {
+            lib.addPackage(.{
+                .name = "tcc",
+                .source = .{ .path = srcPath() ++ "/src/nopkg.zig" },
+            });
+            // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
+            lib.stack_protector = false;
+        }
+        b.step("lib", "Build as a library.").dependOn(&lib.step);
+    }
+
+    {
+        const lib = b.addSharedLibrary("test", "test/wasm_test.zig", .unversioned);
+        lib.setBuildMode(mode);
+        if (mode != .Debug) {
+            lib.strip = true;
+        }
+        lib.setTarget(target);
+        lib.setOutputDir("zig-out/test");
+        lib.setMainPkgPath(".");
+        lib.addIncludePath(srcPath() ++ "/src");
+
+        // Allow dynamic libraries to be loaded by filename in the cwd.
+        // lib.addRPath(".");
+
+        // Allow exported symbols to be visible to dlopen.
+        // Also needed to export symbols in wasm lib.
+        lib.rdynamic = true;
+
+        addBuildOptions(b, lib, false);
+
+        // lib.linkLibC();
+        lib.addPackage(stdxPkg);
+        mimalloc.addPackage(lib);
+        mimalloc.buildAndLink(lib, .{});
+
+        if (!target.getCpuArch().isWasm()) {
+            tcc.addPackage(lib);
+            tcc.buildAndLink(lib, .{
+                .selinux = selinux,
+            });
+        } else {
+            lib.addPackage(.{
+                .name = "tcc",
+                .source = .{ .path = srcPath() ++ "/src/nopkg.zig" },
+            });
+            // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
+            lib.stack_protector = false;
+        }
+        b.step("wasm-test", "Build the wasm test runner.").dependOn(&lib.step);
+    }
+
+    {
         const step = b.addTest("./test/main_test.zig");
         step.setBuildMode(mode);
         step.setTarget(target);
         step.setMainPkgPath(".");
-        {
-            const build_options = b.addOptions();
-            build_options.addOption(cy_config.Engine, "cyEngine", .vm);
-            build_options.addOption(bool, "trace", false);
-            step.addPackage(build_options.getPackage("build_options"));
-        }
+
+        addBuildOptions(b, step, false);
         step.addPackage(stdxPkg);
         step.rdynamic = true;
 
@@ -95,17 +163,25 @@ const Config = struct {
     selinux: bool = false,
 };
 
+fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace: bool) void {
+    const buildTag = std.os.getenv("BUILD") orelse "local";
+    const commitTag = std.os.getenv("COMMIT") orelse "local";
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", Version);
+    build_options.addOption([]const u8, "build", buildTag);
+    build_options.addOption([]const u8, "commit", commitTag);
+    build_options.addOption(cy_config.Engine, "cyEngine", .vm);
+    build_options.addOption(bool, "trace", trace);
+    // build_options.addOption(bool, "trace", true);
+    step.addPackage(build_options.getPackage("build_options"));
+}
+
 fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, config: Config) *std.build.LibExeObjStep {
     const step = b.addTest("./test/trace_test.zig");
     step.setBuildMode(mode);
     step.setTarget(target);
     step.setMainPkgPath(".");
-    {
-        const build_options = b.addOptions();
-        build_options.addOption(cy_config.Engine, "cyEngine", .vm);
-        build_options.addOption(bool, "trace", true);
-        step.addPackage(build_options.getPackage("build_options"));
-    }
+    addBuildOptions(b, step, true);
     step.addPackage(stdxPkg);
 
     tcc.addPackage(step);
@@ -117,11 +193,11 @@ fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.C
 
 const stdxPkg = std.build.Pkg{
     .name = "stdx",
-    .source = .{ .path = srcPath() ++ "/stdx/stdx.zig" },
+    .source = .{ .path = srcPath() ++ "/src/stdx/stdx.zig" },
 };
 
-fn srcPath() []const u8 {
-    return std.fs.path.dirname(@src().file) orelse unreachable;
+inline fn srcPath() []const u8 {
+    return comptime std.fs.path.dirname(@src().file) orelse unreachable;
 }
 
 pub const PrintStep = struct {

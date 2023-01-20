@@ -614,8 +614,8 @@ pub const VM = struct {
                 return self.panic("Unsupported slice operation on type `number`.");
             } else {
                 switch (recv.getTag()) {
-                    cy.StaticAstringT => return bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, recv.val), &[_]Value{startV, endV}, 2),
-                    cy.StaticUstringT => return bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, recv.val), &[_]Value{startV, endV}, 2),
+                    cy.StaticAstringT => return bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, recv.val)), &[_]Value{startV, endV}, 2),
+                    cy.StaticUstringT => return bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, recv.val)), &[_]Value{startV, endV}, 2),
                     else => {
                         return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@intCast(u8, recv.getTag()))});
                     },
@@ -1098,7 +1098,7 @@ pub const VM = struct {
             .uCharLen = undefined,
             .uMruIdx = undefined,
             .uMruCharIdx = undefined,
-            .extra = @ptrToInt(parent) | (1 << 63),
+            .extra = @as(u64, @ptrToInt(parent)) | (1 << 63),
         };
         if (TraceEnabled) {
             self.trace.numRetains += 1;
@@ -1938,12 +1938,12 @@ pub const VM = struct {
                 switch (left.getTag()) {
                     cy.StaticAstringT => {
                         const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{Value.initF64(idx)}, 1);
                     },
                     cy.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
                         const idx = @intToFloat(f64, @intCast(i32, getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{Value.initF64(idx)}, 1);
                     },
                     else => {
                         return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
@@ -2003,8 +2003,8 @@ pub const VM = struct {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 switch (left.getTag()) {
-                    cy.StaticAstringT => return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
-                    cy.StaticUstringT => return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, left.val), &[_]Value{index}, 1),
+                    cy.StaticAstringT => return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{index}, 1),
+                    cy.StaticUstringT => return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{index}, 1),
                     else => {
                         return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
                     },
@@ -2896,7 +2896,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             vm.freeObject(obj);
         },
         ListIteratorT => {
-            releaseObject(vm, @ptrCast(*HeapObject, obj.listIter.list));
+            releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.listIter.list));
             vm.freeObject(obj);
         },
         MapS => {
@@ -2910,7 +2910,7 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             vm.freeObject(obj);
         },
         MapIteratorT => {
-            releaseObject(vm, @ptrCast(*HeapObject, obj.mapIter.map));
+            releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.mapIter.map));
             vm.freeObject(obj);
         },
         ClosureS => {
@@ -2995,33 +2995,43 @@ fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
             vm.freeObject(obj);
         },
         TccStateS => {
-            tcc.tcc_delete(obj.tccState.state);
-            obj.tccState.lib.close();
-            vm.alloc.destroy(obj.tccState.lib);
-            vm.freeObject(obj);
+            if (cy.hasJit) {
+                tcc.tcc_delete(obj.tccState.state);
+                obj.tccState.lib.close();
+                vm.alloc.destroy(obj.tccState.lib);
+                vm.freeObject(obj);
+            } else {
+                unreachable;
+            }
         },
         OpaquePtrS => {
             vm.freeObject(obj);
         },
         FileT => {
-            if (obj.file.hasReadBuf) {
-                vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
+            if (cy.hasStdFiles) {
+                if (obj.file.hasReadBuf) {
+                    vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
+                }
+                obj.file.close();
             }
-            obj.file.close();
             vm.freeObject(obj);
         },
         DirT => {
-            var dir = obj.dir.getStdDir();
-            dir.close();   
+            if (cy.hasStdFiles) {
+                var dir = obj.dir.getStdDir();
+                dir.close();   
+            }
             vm.freeObject(obj);
         },
         DirIteratorT => {
-            var dir = @ptrCast(*DirIterator, obj);
-            if (dir.recursive) {
-                const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
-                walker.deinit();   
+            if (cy.hasStdFiles) {
+                var dir = @ptrCast(*DirIterator, obj);
+                if (dir.recursive) {
+                    const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
+                    walker.deinit();   
+                }
+                releaseObject(vm, @ptrCast(*HeapObject, dir.dir));
             }
-            releaseObject(vm, @ptrCast(*HeapObject, dir.dir));
             const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
             vm.alloc.free(slice);
         },
@@ -3423,8 +3433,8 @@ pub const DirIterator = extern struct {
     rc: u32,
     dir: *Dir,
     inner: extern union {
-        iter: [@sizeOf(std.fs.IterableDir.Iterator)]u8,
-        walker: [@sizeOf(std.fs.IterableDir.Walker)]u8,
+        iter: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Iterator)]u8 else void,
+        walker: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Walker)]u8 else void,
     },
     /// If `recursive` is true, `walker` is used.
     recursive: bool,
@@ -3433,7 +3443,7 @@ pub const DirIterator = extern struct {
 pub const Dir = extern struct {
     structId: StructId align(8),
     rc: u32,
-    fd: std.os.fd_t,
+    fd: if (cy.hasStdFiles) std.os.fd_t else u32,
     iterable: bool,
 
     pub fn getStdDir(self: *const Dir) std.fs.Dir {
@@ -3569,7 +3579,7 @@ pub const Fiber = extern struct {
     }
 
     inline fn getFramePtr(self: *const Fiber) [*]Value {
-        return @intToPtr([*]Value, self.extra & 0xffffffffffff);
+        return @intToPtr([*]Value, @intCast(usize, self.extra & 0xffffffffffff));
     }
 
     inline fn setParentDstLocal(self: *Fiber, parentDstLocal: u8) void {
@@ -3610,7 +3620,7 @@ const StringSlice = extern struct {
     extra: u64,
 
     pub inline fn getParentPtr(self: *const StringSlice) ?*cy.HeapObject {
-        return @intToPtr(?*cy.HeapObject, self.extra & 0x7fffffffffffffff);
+        return @intToPtr(?*cy.HeapObject, @intCast(usize, self.extra & 0x7fffffffffffffff));
     }
 
     pub inline fn isAstring(self: *const StringSlice) bool {
@@ -3668,7 +3678,7 @@ const Ustring = extern struct {
 pub const MaxPoolObjectRawStringByteLen = 28;
 
 pub const RawString = extern struct {
-    structId: StructId align(8),
+    structId: if (cy.isWasm) StructId else StructId align(8),
     rc: u32,
     len: u32,
     bufStart: u8,
@@ -3780,9 +3790,9 @@ pub const HeapObject = extern union {
     object: Object,
     box: Box,
     nativeFunc1: NativeFunc1,
-    tccState: TccState,
-    file: File,
-    dir: Dir,
+    tccState: if (cy.hasJit) TccState else void,
+    file: if (cy.hasStdFiles) File else void,
+    dir: if (cy.hasStdFiles) Dir else void,
     opaquePtr: OpaquePtr,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
@@ -4837,7 +4847,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     @ptrCast([*]u8, framePtr + 1)[1] = 0;
                     framePtr[2] = Value{ .retPcPtr = pc + 14 };
                     framePtr[3] = retFramePtr;
-                    pc = @intToPtr([*]cy.OpData, @ptrCast(*align(1) u48, pc + 6).*);
+                    pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
                     continue;
                 }
 
@@ -4855,7 +4865,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     obj = recv.asHeapObject(*HeapObject);
                     typeId = obj.common.structId;
                 } else {
-                    obj = @intToPtr(*HeapObject, recv.val);
+                    obj = @intToPtr(*HeapObject, @intCast(usize, recv.val));
                     typeId = recv.getPrimitiveTypeId();
                 }
 
@@ -4863,7 +4873,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (typeId == cachedStruct) {
                     // const newFramePtr = framePtr + startLocal;
                     vm.framePtr = framePtr;
-                    const func = @intToPtr(NativeObjFuncPtr, @ptrCast(*align (1) u48, pc + 6).*);
+                    const func = @intToPtr(NativeObjFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 6).*));
                     const res = func(@ptrCast(*UserVM, vm), obj, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
                     if (res.isPanic()) {
                         return error.Panic;
@@ -4907,7 +4917,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[2] = Value{ .retPcPtr = pc + 11 };
                 framePtr[3] = retFramePtr;
 
-                pc = @intToPtr([*]cy.OpData, @ptrCast(*align(1) u48, pc + 5).*);
+                pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 5).*));
                 continue;
             },
             .callNativeFuncIC => {
@@ -4916,7 +4926,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 const newFramePtr = framePtr + startLocal;
                 vm.framePtr = newFramePtr;
-                const func = @intToPtr(NativeFuncPtr, @ptrCast(*align (1) u48, pc + 5).*);
+                const func = @intToPtr(NativeFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 5).*));
                 const res = func(@ptrCast(*UserVM, vm), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (res.isPanic()) {
                     return error.Panic;
@@ -5419,7 +5429,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     // Don't check alignment in @intToPtr. Pointer is only used to go back to value.
                     @setRuntimeSafety(false);
-                    obj = @intToPtr(*HeapObject, recv.val);
+                    obj = @intToPtr(*HeapObject, @intCast(usize, recv.val));
                     typeId = recv.getPrimitiveTypeId();
                 }
 
@@ -5937,7 +5947,7 @@ fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection
         .stackPtr = stack.ptr,
         .stackLen = @intCast(u32, stack.len),
         .pc = @intCast(u32, pc),
-        .extra = @ptrToInt(stack.ptr) | (parentDstLocal << 48),
+        .extra = @as(u64, @ptrToInt(stack.ptr)) | (parentDstLocal << 48),
         .prevFiber = undefined,
     };
     if (TraceEnabled) {

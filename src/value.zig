@@ -244,7 +244,7 @@ pub const Value = packed union {
     }
 
     pub inline fn asPointer(self: *const Value) linksection(cy.HotSection) ?*anyopaque {
-        return @intToPtr(?*anyopaque, self.val & ~PointerMask);
+        return @intToPtr(?*anyopaque, @intCast(usize, self.val & ~PointerMask));
     }
 
     pub inline fn asRawStringSlice(self: *const Value) []const u8 {
@@ -257,7 +257,7 @@ pub const Value = packed union {
     }
 
     pub inline fn asHeapObject(self: *const Value, comptime Ptr: type) linksection(cy.HotSection) Ptr {
-        return @intToPtr(Ptr, self.val & ~PointerMask);
+        return @intToPtr(Ptr, @intCast(usize, self.val & ~PointerMask));
     }
 
     pub inline fn asBool(self: *const Value) linksection(cy.HotSection) bool {

@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
+const cy = @import("cyber.zig");
 
 const log = stdx.log.scoped(.fmt);
 
@@ -281,10 +282,12 @@ pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
 
 pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     @setCold(true);
-    printMutex.lock();
-    defer printMutex.unlock();
-    const w = std.io.getStdErr().writer();
-    try format(w, fmt, vals);
+    if (!cy.isWasm) {
+        printMutex.lock();
+        defer printMutex.unlock();
+        const w = std.io.getStdErr().writer();
+        try format(w, fmt, vals);
+    }
 }
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {

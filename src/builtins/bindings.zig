@@ -353,27 +353,51 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addStruct("File");
     std.debug.assert(id == cy.FileT);
-    try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(fileIterator));
-    try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(fileNext));
-    try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(fileRead));
-    try self.addMethodSym(cy.FileT, readToEnd, cy.MethodSym.initNativeFunc1(fileReadToEnd));
-    try self.addMethodSym(cy.FileT, seek, cy.MethodSym.initNativeFunc1(fileSeek));
-    try self.addMethodSym(cy.FileT, seekFromCur, cy.MethodSym.initNativeFunc1(fileSeekFromCur));
-    try self.addMethodSym(cy.FileT, seekFromEnd, cy.MethodSym.initNativeFunc1(fileSeekFromEnd));
-    try self.addMethodSym(cy.FileT, stat, cy.MethodSym.initNativeFunc1(fileStat));
-    try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(fileStreamLines));
-    try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(fileStreamLines1));
-    try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(fileWrite));
+    if (cy.hasStdFiles) {
+        try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(fileIterator));
+        try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(fileNext));
+        try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(fileRead));
+        try self.addMethodSym(cy.FileT, readToEnd, cy.MethodSym.initNativeFunc1(fileReadToEnd));
+        try self.addMethodSym(cy.FileT, seek, cy.MethodSym.initNativeFunc1(fileSeek));
+        try self.addMethodSym(cy.FileT, seekFromCur, cy.MethodSym.initNativeFunc1(fileSeekFromCur));
+        try self.addMethodSym(cy.FileT, seekFromEnd, cy.MethodSym.initNativeFunc1(fileSeekFromEnd));
+        try self.addMethodSym(cy.FileT, stat, cy.MethodSym.initNativeFunc1(fileStat));
+        try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(fileStreamLines));
+        try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(fileStreamLines1));
+        try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(fileWrite));
+    } else {
+        try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(objNop1));
+        try self.addMethodSym(cy.FileT, readToEnd, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.FileT, seek, cy.MethodSym.initNativeFunc1(objNop1));
+        try self.addMethodSym(cy.FileT, seekFromCur, cy.MethodSym.initNativeFunc1(objNop1));
+        try self.addMethodSym(cy.FileT, seekFromEnd, cy.MethodSym.initNativeFunc1(objNop1));
+        try self.addMethodSym(cy.FileT, stat, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(objNop1));
+        try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(objNop1));
+    }
 
     id = try self.addStruct("Dir");
     std.debug.assert(id == cy.DirT);
-    try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(dirIterator));
-    try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(fileStat));
-    try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(dirWalk));
+    if (cy.hasStdFiles) {
+        try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(dirIterator));
+        try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(fileStat));
+        try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(dirWalk));
+    } else {
+        try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(objNop0));
+        try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(objNop0));
+    }
 
     id = try self.addStruct("DirIterator");
     std.debug.assert(id == cy.DirIteratorT);
-    try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(dirIteratorNext));
+    if (cy.hasStdFiles) {
+        try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(dirIteratorNext));
+    } else {
+        try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
+    }
 
     const sid = try self.ensureStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
@@ -2165,4 +2189,32 @@ pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
     } else {
         return Value.None;
     }
+}
+
+pub fn nop0(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    return Value.None;
+}
+
+pub fn nop1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    vm.release(args[0]);
+    return Value.None;
+}
+
+pub fn nop2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    vm.release(args[0]);
+    vm.release(args[1]);
+    return Value.None;
+}
+
+pub fn objNop0(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    vm.releaseObject(obj);
+    return Value.None;
+}
+
+pub fn objNop1(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    vm.releaseObject(obj);
+    vm.release(args[0]);
+    return Value.None;
 }

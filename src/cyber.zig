@@ -166,3 +166,7 @@ pub var silentError = false;
 pub var silentInternal = false;
 
 pub const simd = @import("simd.zig");
+
+pub const isWasm = builtin.cpu.arch.isWasm();
+pub const hasJit = !isWasm;
+pub const hasStdFiles = !isWasm;

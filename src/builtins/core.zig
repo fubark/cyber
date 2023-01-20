@@ -6,7 +6,8 @@ const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const gvm = &vm_.gvm;
-const TagLit = @import("bindings.zig").TagLit;
+const bindings = @import("bindings.zig");
+const TagLit = bindings.TagLit;
 const fmt = @import("../fmt.zig");
 
 const log = stdx.log.scoped(.core);
@@ -19,15 +20,27 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     try mod.syms.ensureTotalCapacity(alloc, 13);
     try mod.setNativeFunc(alloc, "arrayFill", 2, arrayFill);
     try mod.setNativeFunc(alloc, "asciiCode", 1, asciiCode);
-    try mod.setNativeFunc(alloc, "bindLib", 2, bindLib);
+    if (cy.isWasm) {
+        try mod.setNativeFunc(alloc, "bindLib", 2, bindings.nop2);
+    } else {
+        try mod.setNativeFunc(alloc, "bindLib", 2, bindLib);
+    }
     try mod.setNativeFunc(alloc, "bool", 1, coreBool);
     try mod.setNativeFunc(alloc, "char", 1, char);
     try mod.setNativeFunc(alloc, "copy", 1, copy);
     try mod.setNativeFunc(alloc, "error", 1, coreError);
-    try mod.setNativeFunc(alloc, "execCmd", 1, execCmd);
+    if (cy.isWasm) {
+        try mod.setNativeFunc(alloc, "execCmd", 1, bindings.nop1);
+    } else {
+        try mod.setNativeFunc(alloc, "execCmd", 1, execCmd);
+    }
     try mod.setNativeFunc(alloc, "exit", 1, exit);
     try mod.setNativeFunc(alloc, "fetchUrl", 1, fetchUrl);
-    try mod.setNativeFunc(alloc, "getInput", 0, getInput);
+    if (cy.hasStdFiles) {
+        try mod.setNativeFunc(alloc, "getInput", 0, getInput);
+    } else {
+        try mod.setNativeFunc(alloc, "getInput", 0, bindings.nop0);
+    }
     try mod.setNativeFunc(alloc, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try mod.setNativeFunc(alloc, "must", 1, must);
@@ -38,12 +51,22 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     try mod.setNativeFunc(alloc, "print", 1, print);
     try mod.setNativeFunc(alloc, "prints", 1, prints);
     try mod.setNativeFunc(alloc, "rawstring", 1, rawstring);
-    try mod.setNativeFunc(alloc, "readAll", 0, readAll);
-    try mod.setNativeFunc(alloc, "readFile", 1, readFile);
-    try mod.setNativeFunc(alloc, "readLine", 0, readLine);
+    if (cy.hasStdFiles) {
+        try mod.setNativeFunc(alloc, "readAll", 0, readAll);
+        try mod.setNativeFunc(alloc, "readFile", 1, readFile);
+        try mod.setNativeFunc(alloc, "readLine", 0, readLine);
+    } else {
+        try mod.setNativeFunc(alloc, "readAll", 0, bindings.nop0);
+        try mod.setNativeFunc(alloc, "readFile", 1, bindings.nop1);
+        try mod.setNativeFunc(alloc, "readLine", 0, bindings.nop0);
+    }
     try mod.setNativeFunc(alloc, "string", 1, string);
     try mod.setNativeFunc(alloc, "valtag", 1, valtag);
-    try mod.setNativeFunc(alloc, "writeFile", 2, writeFile);
+    if (cy.hasStdFiles) {
+        try mod.setNativeFunc(alloc, "writeFile", 2, writeFile);
+    } else {
+        try mod.setNativeFunc(alloc, "writeFile", 2, bindings.nop2);
+    }
     return mod;
 }
 
@@ -537,27 +560,34 @@ pub fn exit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const alloc = vm.allocator();
     const url = vm.valueToTempString(args[0]);
-    const res = std.ChildProcess.exec(.{
-        .allocator = alloc,
-        // Use curl, follow redirects.
-        .argv = &.{ "curl", "-L", url },
-        .max_output_bytes = 1024 * 1024 * 10,
-    }) catch |err| {
-        switch (err) {
-            error.FileNotFound => 
-                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound)),
-            error.StdoutStreamTooLong =>
-                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
-            error.StderrStreamTooLong =>
-                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
-            else => stdx.panicFmt("curl err {}\n", .{err}),
-        }
-    };
-    alloc.free(res.stderr);
-    defer vm.allocator().free(res.stdout);
-    // TODO: Use allocOwnedString
-    return vm.allocRawString(res.stdout) catch stdx.fatal();
+    if (cy.isWasm) {
+        hostFetchUrl(url.ptr, url.len);
+        return Value.None;
+    } else {
+        const res = std.ChildProcess.exec(.{
+            .allocator = alloc,
+            // Use curl, follow redirects.
+            .argv = &.{ "curl", "-L", url },
+            .max_output_bytes = 1024 * 1024 * 10,
+        }) catch |err| {
+            switch (err) {
+                error.FileNotFound => 
+                    return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound)),
+                error.StdoutStreamTooLong =>
+                    return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+                error.StderrStreamTooLong =>
+                    return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+                else => stdx.panicFmt("curl err {}\n", .{err}),
+            }
+        };
+        alloc.free(res.stderr);
+        defer vm.allocator().free(res.stdout);
+        // TODO: Use allocOwnedString
+        return vm.allocRawString(res.stdout) catch stdx.fatal();
+    }
 }
+
+extern fn hostFetchUrl(url: [*]const u8, urlLen: usize) void;
 
 pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.allocator(), '\n', 10e8) catch |err| {
@@ -611,7 +641,7 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     _ = nargs;
     const val = args[0];
     if (val.isNumber()) {
-        return gvm.allocOpaquePtr(@intToPtr(?*anyopaque, @floatToInt(u64, val.asF64()))) catch stdx.fatal();
+        return gvm.allocOpaquePtr(@intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch stdx.fatal();
     } else {
         stdx.panicFmt("Unsupported conversion", .{});
     }
@@ -676,23 +706,32 @@ fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void 
     map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
 }
 
-pub fn print(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    _ = nargs;
+pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
     const str = vm.valueToTempString(args[0]);
-    const w = std.io.getStdOut().writer();
-    w.writeAll(str) catch stdx.fatal();
-    w.writeByte('\n') catch stdx.fatal();
-    vm.release(args[0]);
+    if (cy.isWasm) {
+        hostPrint(str.ptr, str.len);
+    } else {
+        const w = std.io.getStdOut().writer();
+        w.writeAll(str) catch stdx.fatal();
+        w.writeByte('\n') catch stdx.fatal();
+    }
     return Value.None;
 }
 
+extern fn hostPrint(str: [*]const u8, strLen: usize) void;
+
 pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;
-    const str = gvm.valueToTempString(args[0]);
-    const w = std.io.getStdOut().writer();
-    w.writeAll(str) catch stdx.fatal();
-    vm.release(args[0]);
-    return Value.None;
+    if (cy.isWasm) {
+        return Value.None;
+    } else {
+        const str = gvm.valueToTempString(args[0]);
+        const w = std.io.getStdOut().writer();
+        w.writeAll(str) catch stdx.fatal();
+        vm.release(args[0]);
+        return Value.None;
+    }
 }
 
 pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
@@ -703,6 +742,7 @@ pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 }
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    defer vm.release(args[0]);
     const path = vm.valueToTempString(args[0]);
     const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch stdx.fatal();
     defer vm.allocator().free(content);
@@ -803,18 +843,18 @@ export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {
     return gvm.allocOpaquePtr(ptr) catch stdx.fatal();
 }
 
-export fn printInt(n: i32) void {
-    std.debug.print("print int: {}\n", .{n});
-}
+// export fn printInt(n: i32) void {
+//     std.debug.print("print int: {}\n", .{n});
+// }
 
-export fn printU64(n: u64) void {
-    std.debug.print("print u64: {}\n", .{n});
-}
+// export fn printU64(n: u64) void {
+//     std.debug.print("print u64: {}\n", .{n});
+// }
 
-export fn printF64(n: f64) void {
-    std.debug.print("print f64: {}\n", .{n});
-}
+// export fn printF64(n: f64) void {
+//     std.debug.print("print f64: {}\n", .{n});
+// }
 
-export fn printF32(n: f32) void {
-    std.debug.print("print f32: {}\n", .{n});
-}
+// export fn printF32(n: f32) void {
+//     std.debug.print("print f32: {}\n", .{n});
+// }

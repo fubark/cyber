@@ -5,6 +5,7 @@ const t = stdx.testing;
 const fatal = stdx.fatal;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
+const cy = @import("cyber.zig");
 
 pub const NodeId = u32;
 const NullId = std.math.maxInt(u32);
@@ -12,7 +13,7 @@ const NullIdU16 = std.math.maxInt(u16);
 const log = stdx.log.scoped(.parser);
 const IndexSlice = stdx.IndexSlice(u32);
 
-const dumpParseErrorStackTrace = builtin.mode == .Debug and true;
+const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
@@ -3843,7 +3844,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 next.hadTemplateExpr = 1;
                 return next;
             } else {
-                stdx.panic("Expected template expr '{'");
+                stdx.panicFmt("Expected template expr '{{'", .{});
             }
         }
 

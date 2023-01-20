@@ -17,7 +17,7 @@ const NullIdU8 = std.math.maxInt(u8);
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
 
-const dumpCompileErrorStackTrace = builtin.mode == .Debug and true;
+const dumpCompileErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 
 const Root = @This();
 

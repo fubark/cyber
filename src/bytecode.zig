@@ -203,7 +203,9 @@ pub const ByteCodeBuffer = struct {
                 std.debug.print(format, args);
             }
         } else {
-            std.debug.print(format, args);
+            if (!cy.isWasm) {
+                std.debug.print(format, args);
+            }
         }
     }
 

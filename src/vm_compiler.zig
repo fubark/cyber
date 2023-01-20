@@ -1930,12 +1930,12 @@ pub const VMcompiler = struct {
     }
 
     fn dumpLocals(self: *VMcompiler) !void {
-        if (builtin.mode == .Debug) {
+        if (builtin.mode == .Debug and !cy.silentInternal) {
             const sblock = sema.curBlock(self);
             fmt.printStderr("Compiler (dump locals):\n", &.{});
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
-                fmt.printStdout("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
                     v(svar.name), v(svar.local), v(svar.vtype.typeT),
                     v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
                 });

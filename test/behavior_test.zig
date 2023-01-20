@@ -15,6 +15,8 @@ test "compile time" {
     defer run.destroy();
 
     // compt is valid syntax
+    cy.silentInternal = true;
+    defer cy.silentInternal = false;
     _ = try run.eval(
         \\func foo(a):
         \\  compt compilerDumpLocals()

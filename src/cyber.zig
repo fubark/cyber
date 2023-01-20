@@ -159,6 +159,10 @@ pub fn forceSectionDeps() !void {
     forceSectionDep(initSection);
 }
 
+/// Compile errors are not printed.
 pub var silentError = false;
+
+/// Internal messages are not printed.
+pub var silentInternal = false;
 
 pub const simd = @import("simd.zig");

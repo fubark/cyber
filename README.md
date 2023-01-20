@@ -7,3 +7,10 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 - [Building](https://github.com/fubark/cyber/blob/master/docs/build.md)
 - [Downloads](https://github.com/fubark/cyber/releases)
 - [Documentation](https://github.com/fubark/cyber/blob/master/docs/docs.md)
+
+### Supported Platforms
+- Linux x64 (Ubuntu, Fedora)
+- MacOS x64
+- MacOS arm64
+- Web/Wasm (soon)
+- Windows x64 (soon)

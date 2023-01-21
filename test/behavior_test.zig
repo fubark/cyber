@@ -1584,208 +1584,34 @@ test "if statement" {
     try t.eq(val.asF64toI32(), 123);
 }
 
-test "Infinite for loop." {
+test "Infinite while loop." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\-- Infinite loop clause.
-        \\i = 0
-        \\for:
-        \\  i += 1
-        \\  if i == 10:
-        \\    break
-        \\try t.eq(i, 10)
-        \\
-        \\-- Break from else.
-        \\for:
-        \\  if false:
-        \\    pass
-        \\  else:
-        \\    break
-        \\
-        \\-- Continue.
-        \\i = 0
-        \\count = 0
-        \\for:
-        \\  i += 1
-        \\  if i == 4:
-        \\    continue
-        \\  count += 1
-        \\  if i == 10:
-        \\    break
-        \\try t.eq(count, 9)
-    );
+    _ = try run.eval(@embedFile("while_inf_test.cy"));
 }
 
-test "Conditional for loop." {
+test "While conditional." {
     const run = VMrunner.create();
     defer run.destroy();
+    _ = try run.eval(@embedFile("while_cond_test.cy"));
+}
 
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- `for` with condition expression.
-        \\i = 0
-        \\for i != 10:
-        \\  i += 1
-        \\try t.eq(i, 10)
-        \\
-        \\-- break
-        \\i = 0
-        \\for i != 10:
-        \\  i += 1
-        \\  break
-        \\try t.eq(i, 1)
-        \\
-        \\-- continue
-        \\i = 0
-        \\count = 0
-        \\for i != 10:
-        \\  i += 1
-        \\  if i == 2:
-        \\    continue
-        \\  count += 1
-        \\try t.eq(count, 9)
-        \\
-        \\-- Assign to variable.
-        \\a = 0 
-        \\next = func():
-        \\  if a < 4:
-        \\    a += 1
-        \\    return a
-        \\  else:
-        \\    return none
-        \\sum = 0
-        \\for next() as res:
-        \\  sum += res
-        \\try t.eq(sum, 10)
-        \\
-        \\-- Assign rc value to variable.
-        \\a = 0 
-        \\next = func ():
-        \\  if a < 4:
-        \\    a += 1
-        \\    return [a]
-        \\  else:
-        \\    return none
-        \\sum = 0
-        \\for next() as res:
-        \\  sum += res[0]
-        \\try t.eq(sum, 10)
-    );
+test "For optional." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("for_opt_test.cy"));
 }
 
 test "For iterator." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- Basic.
-        \\list = [1, 2, 3]
-        \\sum = 0
-        \\for list each it:
-        \\   sum += it
-        \\try t.eq(sum, 6)
-        \\
-        \\-- Loop iterator var overwrites the user var.
-        \\elem = 123
-        \\list = [1, 2, 3]
-        \\for list each elem:
-        \\  pass
-        \\try t.eq(elem, none)
-        \\
-        \\-- Break.
-        \\list = [1, 2, 3]
-        \\sum = 0
-        \\for list each it:
-        \\   if it == 3:
-        \\      break
-        \\   sum += it
-        \\try t.eq(sum, 3)
-        \\
-        \\-- Continue.
-        \\list = [1, 2, 3]
-        \\sum = 0
-        \\for list each it:
-        \\   if it == 1:
-        \\      continue
-        \\   sum += it
-        \\try t.eq(sum, 5)
-    );
+    _ = try run.eval(@embedFile("for_iter_test.cy"));
 }
 
 test "For loop over range." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- Basic.
-        \\iters = 0
-        \\for 0..10 each i:
-        \\   iters += 1
-        \\try t.eq(iters, 10)
-        \\
-        \\-- two `for` with range don't interfere with each other
-        \\iters = 0
-        \\for 0..10 each i:
-        \\   iters += 1
-        \\for 0..10 each i:
-        \\   iters += 1
-        \\try t.eq(iters, 20)
-        \\
-        \\-- two `for` with non const max value don't interfere with each other
-        \\foo = 10
-        \\iters = 0
-        \\for 0..foo each i:
-        \\   iters += 1
-        \\for 0..foo each i:
-        \\   iters += 1
-        \\try t.eq(iters, 20)
-        \\
-        \\-- Nested for loop.
-        \\count = 0
-        \\for 0..10 each i:
-        \\  inner = 0
-        \\  for 0..10 each j:
-        \\    inner += 1
-        \\  count += inner
-        \\try t.eq(count, 100)
-        \\
-        \\-- Index vars overwrites user var.
-        \\i = 123
-        \\sum = 0
-        \\for 0..10 each i:
-        \\  sum += i
-        \\try t.eq(i, 9)
-        \\
-        \\-- Reverse direction.
-        \\sum = 0
-        \\for 10..0 each i:
-        \\  sum += i
-        \\try t.eq(sum, 55)
-        \\
-        \\-- Break.
-        \\iters = 0
-        \\for 0..10 each i:
-        \\   if i == 2:
-        \\       break
-        \\   iters += 1
-        \\try t.eq(iters, 2)
-        \\
-        \\-- Continue.
-        \\iters = 0
-        \\for 0..10 each i:
-        \\   if i == 2:
-        \\       continue
-        \\   iters += 1
-        \\try t.eq(iters, 9)
-    );
+    _ = try run.eval(@embedFile("for_range_test.cy"));
 
     // Custom step.
     // val = try run.eval(

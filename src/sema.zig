@@ -655,20 +655,28 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
             const symId = try resolveLocalFuncSym(c, null, node.head.func.decl_id, retType.?);
             c.funcDecls[node.head.func.decl_id].semaSymId = symId;
         },
-        .forCondStmt => {
+        .whileCondStmt => {
             try pushIterSubBlock(c);
 
-            const condt = try semaExpr(c, node.head.forCondStmt.cond, false);
-            if (node.head.forCondStmt.as != NullId) {
-                _ = try ensureLocalBodyVar(c, node.head.forCondStmt.as, AnyType);
-                _ = try assignVar(c, node.head.forCondStmt.as, condt, false);
-            }
-
-            try semaStmts(c, node.head.forCondStmt.bodyHead, false);
+            _ = try semaExpr(c, node.head.whileCondStmt.cond, false);
+            try semaStmts(c, node.head.whileCondStmt.bodyHead, false);
 
             try endIterSubBlock(c);
         },
-        .for_inf_stmt => {
+        .forOptStmt => {
+            try pushIterSubBlock(c);
+
+            const optt = try semaExpr(c, node.head.forOptStmt.opt, false);
+            if (node.head.forOptStmt.as != NullId) {
+                _ = try ensureLocalBodyVar(c, node.head.forOptStmt.as, AnyType);
+                _ = try assignVar(c, node.head.forOptStmt.as, optt, false);
+            }
+
+            try semaStmts(c, node.head.forOptStmt.bodyHead, false);
+
+            try endIterSubBlock(c);
+        },
+        .whileInfStmt => {
             try pushIterSubBlock(c);
             try semaStmts(c, node.head.child_head, false);
             try endIterSubBlock(c);

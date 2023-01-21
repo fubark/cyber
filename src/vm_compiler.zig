@@ -1004,28 +1004,50 @@ pub const VMcompiler = struct {
             .func_decl => {
                 try self.genFuncDecl(nodeId);
             },
-            .forCondStmt => {
+            .forOptStmt => {
                 self.nextSemaSubBlock();
 
                 const topPc = @intCast(u32, self.buf.ops.items.len);
                 const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
                 defer self.subBlockJumpStack.items.len = jumpStackSave;
 
-                var condLocal: LocalId = undefined;
-                if (node.head.forCondStmt.as != NullId) {
-                    const as = self.nodes[node.head.forCondStmt.as];
-                    condLocal = self.genGetVar(as.head.ident.semaVarId).?.local;
+                var optLocal: LocalId = undefined;
+                if (node.head.forOptStmt.as != NullId) {
+                    const as = self.nodes[node.head.forOptStmt.as];
+                    optLocal = self.genGetVar(as.head.ident.semaVarId).?.local;
                     // Since this variable is used in the loop, it is considered defined before codegen.
                     self.vars.items[as.head.ident.semaVarId].genIsDefined = true;
-                    try self.genSetVarToExpr(node.head.forCondStmt.as, node.head.forCondStmt.cond, false);
+                    try self.genSetVarToExpr(node.head.forOptStmt.as, node.head.forOptStmt.opt, false);
                 } else {
-                    const condv = try self.genExpr(node.head.forCondStmt.cond, false);
-                    condLocal = condv.local;
+                    const optv = try self.genExpr(node.head.forOptStmt.opt, false);
+                    optLocal = optv.local;
                 }
+
+                const skipSkipJump = try self.pushEmptyJumpNotNone(optLocal);
+                const skipBodyJump = try self.pushEmptyJump();
+                self.patchJumpToCurrent(skipSkipJump);
+
+                try self.genStatements(node.head.forOptStmt.bodyHead, false);
+                try self.pushJumpBackTo(topPc);
+
+                self.patchJumpToCurrent(skipBodyJump);
+
+                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
+                self.prevSemaSubBlock();
+            },
+            .whileCondStmt => {
+                self.nextSemaSubBlock();
+
+                const topPc = @intCast(u32, self.buf.ops.items.len);
+                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
+                defer self.subBlockJumpStack.items.len = jumpStackSave;
+
+                const condv = try self.genExpr(node.head.whileCondStmt.cond, false);
+                const condLocal = condv.local;
 
                 var jumpPc = try self.pushEmptyJumpNotCond(condLocal);
 
-                try self.genStatements(node.head.forCondStmt.bodyHead, false);
+                try self.genStatements(node.head.whileCondStmt.bodyHead, false);
                 try self.pushJumpBackTo(topPc);
 
                 self.patchJumpToCurrent(jumpPc);
@@ -1033,7 +1055,7 @@ pub const VMcompiler = struct {
                 self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
                 self.prevSemaSubBlock();
             },
-            .for_inf_stmt => {
+            .whileInfStmt => {
                 self.nextSemaSubBlock();
 
                 const pcSave = @intCast(u32, self.buf.ops.items.len);

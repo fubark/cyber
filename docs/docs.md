@@ -227,9 +227,9 @@ The final resulting value that is set to the static variable is provided by a `b
 [To Top.](#table-of-contents)
 
 ### Keywords.
-There are currently `31` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `32` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow](#control-flow): `if` `then` `else` `for` `each` `break` `continue` `pass`
+- [Control Flow](#control-flow): `if` `then` `else` `while` `for` `each` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
 - [Variables](#variables): `var` `let` `as`
 - [Functions](#functions): `func` `return`
@@ -782,25 +782,18 @@ str = if a == 10 then 'red' else 'blue'
 [To Top.](#table-of-contents)
 
 ### Iterations.
-Loops and iterations start with the `for` keyword. An infinite loop continues to run the code in the block until a `break` or `return` is reached.
-When the `for` clause contains a condition, the loop continues to run until the condition is evaluated to `false`.
+Infinite and conditional loops start with the `while` keyword. An infinite loop continues to run the code in the block until a `break` or `return` is reached.
+When the `while` clause contains a condition, the loop continues to run until the condition is evaluated to `false`.
 ```text
 -- Infinite loop.
-for:
+while:
     pass
 
 running = true
-for running:
+while running:
     -- Keep looping until `running` is false.
     pass
 ```
-If you need to use the expression in a conditional `for` loop, you can assign it to variable with `as`.
-```text
-iter = dir.walk()
-for iter.next() as entry:
-    print entry.name
-```
-
 `for` loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
 ```text
 for 0..100 each i:
@@ -851,6 +844,13 @@ for map each k, v:
 for map each k, _:
     print k
 ```
+If you have an iterator already, you can use the optional `for` loop to continue executing an expression until it is the `none` value. Adding an `as` clause will save the expression's value to the given variable.
+```text
+iter = dir.walk()
+for iter.next() as entry:
+    print entry.name
+```
+
 You can exit a loop using `break`.
 ```text
 for 0..10 each i:

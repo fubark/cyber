@@ -5,7 +5,7 @@
 
 import os 'os'
 
---raylibPath = '/home/fubar/Downloads/raylib-4.2.0_linux_amd64/lib/libraylib.so'
+-- raylibPath = '/home/fubar/Downloads/raylib-4.2.0_linux_amd64/lib/libraylib.so'
 raylibPath = '/Users/fubar/Downloads/raylib-4.2.0_macos/lib/libraylib.dylib'
 
 ray = bindLib(raylibPath, [
@@ -84,7 +84,7 @@ func main():
     ray.SetTargetFPS(60)
 
     -- Main game loop
-    for !ray.WindowShouldClose():  -- Detect window close button or ESC key
+    while !ray.WindowShouldClose():  -- Detect window close button or ESC key
         UpdateGame()
         DrawGame()
 
@@ -175,7 +175,7 @@ func UpdateGame():
                     y: ray.GetRandomValue(0, screenHeight/SQUARE_SIZE - 1) * SQUARE_SIZE + offset.y/2
                 }
 
-                for:
+                while:
                     fruit.pos = Vec2{
                         x: ray.GetRandomValue(0, screenWidth/SQUARE_SIZE - 1) * SQUARE_SIZE + offset.x/2,
                         y: ray.GetRandomValue(0, screenHeight/SQUARE_SIZE - 1) * SQUARE_SIZE + offset.y/2

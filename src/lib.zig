@@ -29,15 +29,35 @@ export fn cyVmCreate() *cy.UserVM {
 
     const vm = cy.getUserVM();
     vm.init(alloc) catch stdx.fatal();
+    if (cy.isWasm) {
+        stdx.log.wasm.init(alloc);
+    }
     return vm;
 }
 
 export fn cyVmDestroy(vm: *cy.UserVM) void {
     vm.deinit();
+    if (cy.isWasm) {
+        stdx.log.wasm.deinit();
+    }
+}
+
+/// This is useful when calling into wasm to allocate some memory.
+export fn cyVmAlloc(vm: *cy.UserVM, size: usize) [*]const u8 {
+    const slice = vm.allocator().alloc(u8, size) catch stdx.fatal();
+    return slice.ptr;
+}
+
+export fn cyVmFree(vm: *cy.UserVM, ptr: [*]const u8, size: usize) void {
+    vm.allocator().free(ptr[0..size]);
 }
 
 export fn cyVmEval(vm: *cy.UserVM, src: [*]const u8, srcLen: usize) cy.Value {
     return vm.eval("main", src[0..srcLen], .{
         .singleRun = false,
     }) catch stdx.fatal();
+}
+
+export fn cyVmRelease(vm: *cy.UserVM, val: cy.Value) void {
+    vm.release(val);
 }

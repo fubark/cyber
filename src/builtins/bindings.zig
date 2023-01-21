@@ -1022,21 +1022,6 @@ fn rawStringSliceInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Valu
     return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
 
-fn staticUstringReplace(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
-    const val = Value{ .val = @ptrToInt(ptr) };
-    const slice = val.asStaticStringSlice();
-    const str = vm.getStaticString(slice.start, slice.end);
-    if (ustringReplaceCommon(vm, str, args[0], args[1])) |res| {
-        return res;
-    } else {
-        return val;
-    }
-}
-
 fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
     var ncharLen: u32 = undefined;
     const needle = vm.valueToTempString2(needlev, &ncharLen);
@@ -1127,7 +1112,7 @@ fn stringRepeat(comptime T: cy.StringType) NativeFunc {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return Value{ .val = @ptrToInt(ptr) };
+                        return @intToPtr(*Value, @ptrToInt(ptr)).*;
                     }
                 }
             }
@@ -1164,7 +1149,7 @@ inline fn getStringObject(comptime T: cy.StringType, ptr: *anyopaque) StringObje
             return stdx.ptrAlignCast(*cy.HeapObject, ptr);
         },
         stdx.IndexSlice(u32) => {
-            const val = Value{ .val = @ptrToInt(ptr) };
+            const val = @intToPtr(*Value, @ptrToInt(ptr)).*;
             return val.asStaticStringSlice();
         },
         else => @compileError("Unexpected type: " ++ @typeName(StringObject(T))),
@@ -1262,7 +1247,7 @@ fn stringReplace(comptime T: cy.StringType) NativeFunc {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return Value{ .val = @ptrToInt(ptr) };
+                        return @intToPtr(*Value, @ptrToInt(ptr)).*;
                     }
                 }
             } else if (isUstringObject(T, obj)) {
@@ -1273,7 +1258,7 @@ fn stringReplace(comptime T: cy.StringType) NativeFunc {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return Value{ .val = @ptrToInt(ptr) };
+                        return @intToPtr(*Value, @ptrToInt(ptr)).*;
                     }
                 }
             } else if (isRawStringObject(T)) {

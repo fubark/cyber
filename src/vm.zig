@@ -563,7 +563,7 @@ pub const VM = struct {
         }
     }
 
-    fn sliceOp(self: *VM, recv: Value, startV: Value, endV: Value) !Value {
+    fn sliceOp(self: *VM, recv: *Value, startV: Value, endV: Value) !Value {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             switch (obj.retainedCommon.structId) {
@@ -614,8 +614,8 @@ pub const VM = struct {
                 return self.panic("Unsupported slice operation on type `number`.");
             } else {
                 switch (recv.getTag()) {
-                    cy.StaticAstringT => return bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, recv.val)), &[_]Value{startV, endV}, 2),
-                    cy.StaticUstringT => return bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, recv.val)), &[_]Value{startV, endV}, 2),
+                    cy.StaticAstringT => return bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), recv, &[_]Value{startV, endV}, 2),
+                    cy.StaticUstringT => return bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), recv, &[_]Value{startV, endV}, 2),
                     else => {
                         return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@intCast(u8, recv.getTag()))});
                     },
@@ -1873,7 +1873,7 @@ pub const VM = struct {
     }
 
     /// Assumes sign of index is preserved.
-    fn getReverseIndex(self: *VM, left: Value, index: Value) linksection(cy.Section) !Value {
+    fn getReverseIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
@@ -1938,12 +1938,12 @@ pub const VM = struct {
                 switch (left.getTag()) {
                     cy.StaticAstringT => {
                         const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), left, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     cy.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
                         const idx = @intToFloat(f64, @intCast(i32, getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), left, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     else => {
                         return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
@@ -1953,7 +1953,7 @@ pub const VM = struct {
         }
     }
 
-    fn getIndex(self: *VM, left: Value, index: Value) linksection(cy.Section) !Value {
+    fn getIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
@@ -2003,8 +2003,8 @@ pub const VM = struct {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 switch (left.getTag()) {
-                    cy.StaticAstringT => return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{index}, 1),
-                    cy.StaticUstringT => return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), @intToPtr(*anyopaque, @intCast(usize, left.val)), &[_]Value{index}, 1),
+                    cy.StaticAstringT => return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), left, &[_]Value{index}, 1),
+                    cy.StaticUstringT => return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), left, &[_]Value{index}, 1),
                     else => {
                         return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
                     },
@@ -4710,10 +4710,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 continue;
             },
             .slice => {
-                const list = framePtr[pc[1].arg];
+                const slice = &framePtr[pc[1].arg];
                 const start = framePtr[pc[2].arg];
                 const end = framePtr[pc[3].arg];
-                framePtr[pc[4].arg] = try @call(.never_inline, vm.sliceOp, .{list, start, end});
+                framePtr[pc[4].arg] = try @call(.never_inline, vm.sliceOp, .{slice, start, end});
                 pc += 5;
                 continue;
             },
@@ -4769,16 +4769,16 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 continue;
             },
             .index => {
-                const leftv = framePtr[pc[1].arg];
+                const recv = &framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = try @call(.never_inline, vm.getIndex, .{leftv, indexv});
+                framePtr[pc[3].arg] = try @call(.never_inline, vm.getIndex, .{recv, indexv});
                 pc += 4;
                 continue;
             },
             .reverseIndex => {
-                const leftv = framePtr[pc[1].arg];
+                const recv = &framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = try @call(.never_inline, vm.getReverseIndex, .{leftv, indexv});
+                framePtr[pc[3].arg] = try @call(.never_inline, vm.getReverseIndex, .{recv, indexv});
                 pc += 4;
                 continue;
             },
@@ -4858,14 +4858,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             .callObjNativeFuncIC => {
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
-                const recv = framePtr[startLocal + numArgs + 4 - 1];
+                const recv = &framePtr[startLocal + numArgs + 4 - 1];
                 var obj: *HeapObject = undefined;
                 var typeId: u32 = undefined;
                 if (recv.isPointer()) {
                     obj = recv.asHeapObject(*HeapObject);
                     typeId = obj.common.structId;
                 } else {
-                    obj = @intToPtr(*HeapObject, @intCast(usize, recv.val));
+                    obj = @ptrCast(*HeapObject, recv);
                     typeId = recv.getPrimitiveTypeId();
                 }
 
@@ -5420,16 +5420,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numRet = pc[3].arg;
                 const symId = pc[4].arg;
 
-                const recv = framePtr[startLocal + numArgs + 4 - 1];
+                const recv = &framePtr[startLocal + numArgs + 4 - 1];
                 var obj: *HeapObject = undefined;
                 var typeId: u32 = undefined;
                 if (recv.isPointer()) {
                     obj = recv.asHeapObject(*HeapObject);
                     typeId = obj.common.structId;
                 } else {
-                    // Don't check alignment in @intToPtr. Pointer is only used to go back to value.
-                    @setRuntimeSafety(false);
-                    obj = @intToPtr(*HeapObject, @intCast(usize, recv.val));
+                    obj = @ptrCast(*HeapObject, recv);
                     typeId = recv.getPrimitiveTypeId();
                 }
 

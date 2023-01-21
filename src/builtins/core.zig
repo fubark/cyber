@@ -710,7 +710,8 @@ pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     defer vm.release(args[0]);
     const str = vm.valueToTempString(args[0]);
     if (cy.isWasm) {
-        hostPrint(str.ptr, str.len);
+        hostFileWrite(1, str.ptr, str.len);
+        hostFileWrite(1, "\n", 1);
     } else {
         const w = std.io.getStdOut().writer();
         w.writeAll(str) catch stdx.fatal();
@@ -719,7 +720,7 @@ pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return Value.None;
 }
 
-extern fn hostPrint(str: [*]const u8, strLen: usize) void;
+pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 
 pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     _ = nargs;

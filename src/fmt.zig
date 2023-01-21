@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const core = @import("builtins/core.zig");
 
 const log = stdx.log.scoped(.fmt);
 
@@ -287,8 +288,37 @@ pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
         defer printMutex.unlock();
         const w = std.io.getStdErr().writer();
         try format(w, fmt, vals);
+    } else {
+        const w = HostFileWriter{ .fid = 2 };
+        try format(w, fmt, vals);
     }
 }
+
+const HostFileWriter = struct {
+    fid: u32,
+
+    pub const Error = error{};
+
+    pub fn writeByte(self: HostFileWriter, byte: u8) linksection(cy.Section) Error!void {
+        core.hostFileWrite(self.fid, @ptrCast([*]const u8, &byte), 1);
+    }
+
+    pub fn writeAll(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
+        core.hostFileWrite(self.fid, data.ptr, data.len);
+    }
+
+    pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {
+        var bytes: [256]u8 = undefined;
+        std.mem.set(u8, bytes[0..], byte);
+
+        var remaining = n;
+        while (remaining > 0) {
+            const to_write = std.math.min(remaining, bytes.len);
+            try self.writeAll(bytes[0..to_write]);
+            remaining -= to_write;
+        }
+    }
+};
 
 pub fn panic(fmt: []const u8, vals: []const FmtValue) noreturn {
     @setCold(true);

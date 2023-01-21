@@ -55,7 +55,14 @@ export fn cyVmFree(vm: *cy.UserVM, ptr: [*]const u8, size: usize) void {
 export fn cyVmEval(vm: *cy.UserVM, src: [*]const u8, srcLen: usize) cy.Value {
     return vm.eval("main", src[0..srcLen], .{
         .singleRun = false,
-    }) catch stdx.fatal();
+    }) catch |err| {
+        if (err == error.Panic) {
+            vm.dumpPanicStackTrace() catch stdx.fatal();
+            return cy.Value.Panic;
+        } else {
+            stdx.panicFmt("{}", .{err});
+        }
+    };
 }
 
 export fn cyVmRelease(vm: *cy.UserVM, val: cy.Value) void {

@@ -86,8 +86,9 @@ pub const Value = packed union {
     pub const True = Value{ .val = TrueMask };
     pub const False = Value{ .val = FalseMask };
 
-    /// Panic value. Represented as a null object pointer. Can be returned from native functions.
-    pub const Panic = Value{ .val = PointerMask };
+    /// Panic value. Represented as an error tag literal with a null tag id.
+    /// Can be returned from native functions.
+    pub const Panic = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
     pub inline fn asI32(self: *const Value) i32 {
         return @bitCast(i32, @intCast(u32, self.val & 0xffffffff));
@@ -273,7 +274,7 @@ pub const Value = packed union {
     }
 
     pub inline fn isPanic(self: *const Value) linksection(cy.HotSection) bool {
-        return self.val == PointerMask;
+        return self.val == Panic.val;
     }
 
     pub inline fn isBool(self: *const Value) linksection(cy.HotSection) bool {
@@ -504,7 +505,9 @@ test "asF64" {
     try t.eq(val.asF64(), -std.math.inf_f64);
 }
 
-test "Masks" {
+test "Internals." {
+    try t.eq(@sizeOf(Value), 8);
+    try t.eq(@alignOf(Value), 8);
     try t.eq(StaticAstringMask, 0x7FFC000300000000);
     try t.eq(StaticUstringMask, 0x7FFC000400000000);
     try t.eq(NoneMask, 0x7FFC000000000000);

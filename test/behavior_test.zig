@@ -992,6 +992,11 @@ test "Lists" {
         \\a = [3, 1, 2]
         \\a.sort((a, b) => a < b)
         \\try t.eqList(a, [1, 2, 3])
+        \\a = [[3], [1], [2]]
+        \\a.sort((a, b) => a[0] < b[0])
+        \\try t.eq(a[0][0], 1)
+        \\try t.eq(a[1][0], 2)
+        \\try t.eq(a[2][0], 3)
     );
 
     // Start to end index slice.

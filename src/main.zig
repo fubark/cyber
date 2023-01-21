@@ -143,7 +143,9 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    _ = vm.eval(path, src, .{ .singleRun = true }) catch |err| {
+    _ = vm.eval(path, src, .{
+        .singleRun = builtin.mode == .ReleaseFast,
+    }) catch |err| {
         switch (err) {
             error.Panic => {
                 try vm.dumpPanicStackTrace();

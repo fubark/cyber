@@ -30,6 +30,7 @@ pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
     try mod.setNativeFunc(alloc, "copy", 1, copy);
     try mod.setNativeFunc(alloc, "error", 1, coreError);
     if (cy.isWasm) {
+        try mod.setNativeFunc(alloc, "evalJS", 1, evalJS);
         try mod.setNativeFunc(alloc, "execCmd", 1, bindings.nop1);
     } else {
         try mod.setNativeFunc(alloc, "execCmd", 1, execCmd);
@@ -727,7 +728,7 @@ pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.St
     if (cy.isWasm) {
         return Value.None;
     } else {
-        const str = gvm.valueToTempString(args[0]);
+        const str = vm.valueToTempString(args[0]);
         const w = std.io.getStdOut().writer();
         w.writeAll(str) catch stdx.fatal();
         vm.release(args[0]);
@@ -859,3 +860,12 @@ export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {
 // export fn printF32(n: f32) void {
 //     std.debug.print("print f32: {}\n", .{n});
 // }
+
+pub fn evalJS(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    const str = vm.valueToTempString(args[0]);
+    hostEvalJS(str.ptr, str.len);
+    return Value.None;
+}
+
+extern fn hostEvalJS(ptr: [*]const u8, len: usize) void;

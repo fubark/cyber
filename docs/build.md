@@ -17,15 +17,36 @@ zig build test
 
 # Runs just the tracing tests.
 zig build test-trace
+
+# WASM tests. For WASM target only.
+zig build wasm-test -Drelease-fast -Dtarget=wasm32-freestanding
+wasm3 zig-out/test/test.wasm
 ```
 
 ## Build the CLI.
 Cyber is optimized for the release-fast build.
 ```sh
+# For your native target.
 zig build cli -Drelease-fast
+
+# For cross platform build. eg. Host: Linux x64, Target: MacOS arm64
+zig build cli -Drelease-fast -Dtarget=aarch64-macos.12-none
 
 # For a debug build instead.
 zig build cli
+```
+
+## Build as a Library.
+When using Cyber as a API library, you'll need to build a library instead.
+```sh
+# For your native target.
+zig build lib -Drelease-fast
+
+# For cross platform build. eg. Host: Linux x64, Target: MacOS arm64
+zig build lib -Drelease-fast -Dtarget=aarch64-macos.12-none
+
+# For Web/WASM.
+zig build lib -Drelease-fast -Dtarget=wasm32-freestanding
 ```
 
 ## Troubleshooting.

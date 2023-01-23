@@ -68,3 +68,7 @@ export fn cyVmEval(vm: *cy.UserVM, src: [*]const u8, srcLen: usize) cy.Value {
 export fn cyVmRelease(vm: *cy.UserVM, val: cy.Value) void {
     vm.release(val);
 }
+
+export fn cyValueIsPanic(val: cy.Value) bool {
+    return val.isPanic();
+}

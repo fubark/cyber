@@ -28,7 +28,11 @@ pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSec
     } else {
         try mod.setVar(self, "stdin", Value.None);
     }
-    try mod.setVar(self, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
+    if (builtin.cpu.arch.isWasm()) {
+        try mod.setVar(self, "system", try self.buf.getOrPushStringValue("wasm"));
+    } else {
+        try mod.setVar(self, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
+    }
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         try mod.setVar(self, "vecBitSize", cy.Value.initF64(VecSize * 8));
     } else {

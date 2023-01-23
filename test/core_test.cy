@@ -1,4 +1,5 @@
 import t 'test'
+import os 'os'
 
 -- arrayFill with primitive.
 a = arrayFill(123, 10)
@@ -44,8 +45,9 @@ try t.eq(newS.foo, 123)
 try t.eq(newS.bar, rcList)
 
 -- writeFile() rawstring
-s = rawstring('').insertByte(0, 255)
-writeFile('test.txt', s)
-read = readFile('test.txt')
-try t.eq(read.len(), 1)
-try t.eq(read.byteAt(0), 255)
+if os.system != 'wasm':
+  s = rawstring('').insertByte(0, 255)
+  writeFile('test.txt', s)
+  read = readFile('test.txt')
+  try t.eq(read.len(), 1)
+  try t.eq(read.byteAt(0), 255)

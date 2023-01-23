@@ -2,9 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx.zig");
 
-extern "stdx" fn jsWarn(ptr: [*]const u8, len: usize) void;
-pub extern "stdx" fn jsLog(ptr: [*]const u8, len: usize) void;
-extern "stdx" fn jsErr(ptr: [*]const u8, len: usize) void;
+extern fn jsWarn(ptr: [*]const u8, len: usize) void;
+pub extern fn jsLog(ptr: [*]const u8, len: usize) void;
+extern fn jsErr(ptr: [*]const u8, len: usize) void;
 
 const DebugLog = builtin.mode == .Debug and true;
 

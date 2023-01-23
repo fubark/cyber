@@ -40,6 +40,9 @@ jobs:
           - host: macos-12
             target: aarch64-macos.12-none
             mode: release
+          - host: ubuntu-22.04
+            target: wasm32-freestanding
+            mode: release
           #- host: windows-2019
           #  target: x86_64-windows-gnu
           #  mode: release
@@ -54,6 +57,7 @@ jobs:
           "x86_64-selinux-gnu": "cyber-selinux-x64.zip",
           "x86_64-macos.12-none": "cyber-macos-x64.zip",
           "aarch64-macos.12-none": "cyber-macos-arm64.zip",
+          "wasm32-freestanding": "cyber.wasm",
         }')[matrix.config.target] }}
       ZIG_TARGET_FLAG: >-
         ${{ fromJson('{
@@ -62,6 +66,7 @@ jobs:
           "x86_64-selinux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline -Dselinux",
           "x86_64-macos.12-none": "-Dtarget=x86_64-macos.12-none -Dcpu=baseline",
           "aarch64-macos.12-none": "-Dtarget=aarch64-macos.12-none -Dcpu=baseline",
+          "wasm32-freestanding": "-Dtarget=wasm32-freestanding",
         }')[matrix.config.target] }}
       BUILD_HOST: ${{ matrix.config.host }}
       BUILD_TARGET: ${{ matrix.config.target }}
@@ -94,6 +99,12 @@ jobs:
         if: env.BUILD_HOST == 'ubuntu-22.04'
         run: |
           wget -c https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.1247+87b223428.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+
+      - name: Install wasm3.
+        if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'wasm32-freestanding'
+        run: |
+          wget -c https://github.com/wasm3/wasm3/releases/download/v0.5.0/wasm3-linux-x64.elf -O wasm3-linux-x64.elf
+          chmod a+x wasm3-linux-x64.elf
 
       - name: Install zig.
         if: env.BUILD_HOST == 'macos-12'
@@ -138,12 +149,23 @@ jobs:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
       - name: Run tests.
-        #if: env.BUILD_TARGET != 'aarch64-macos.12-none' && env.BUILD_TARGET != 'x86_64-windows-gnu'
+        if: env.BUILD_TARGET != 'wasm32-freestanding'
         #run: zig build test ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }} 
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
+      - name: Run tests.
+        if: env.BUILD_TARGET == 'wasm32-freestanding'
+        run: |
+          zig build wasm-test ${{ env.ZIG_TARGET_FLAG }} ${{ env.ZIG_MODE_FLAG }} 
+          wasm3-linux-x64.elf zig-out/test/test.wasm
+
       - name: Build.
+        if: env.BUILD_TARGET != 'wasm32-freestanding'
         run: zig build cli ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
+
+      - name: Build.
+        if: env.BUILD_TARGET == 'wasm32-freestanding'
+        run: zig build lib ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
 
       # Remove when zig strip is fixed.
       - name: Strip (Linux)
@@ -171,15 +193,20 @@ jobs:
       #     zig-out/${{ env.BUILD_TARGET }}/main/cosmic${{ env.BIN_EXT }}
 
       - name: Zip. (linux/macos)
-        if: env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12'
+        if: (env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12') && env.BUILD_TARGET != 'wasm32-freestanding'
         run: |
            (cd zig-out/cyber && zip - cyber${{env.BIN_EXT}}) > ${{ env.BIN_ZIP }}
 
       - name: Zip. (windows)
-        if: env.BUILD_HOST == 'windows-2019'
+        if: env.BUILD_HOST == 'windows-2019' && env.BUILD_TARGET != 'wasm32-freestanding'
         shell: wsl-bash {0}
         run: |
           (cd zig-out/cyber && zip - cyber${{env.BIN_EXT}}) > ${{ env.BIN_ZIP }}
+
+      - name: Move. (wasm)
+        if: env.BUILD_TARGET == 'wasm32-freestanding'
+        run: |
+          mv zig-out/lib/cyber.wasm ${{ env.BIN_ZIP }}
 
       - name: Save artifact.
         uses: actions/upload-artifact@v2
@@ -213,3 +240,4 @@ jobs:
             cyber-selinux-x64.zip
             cyber-macos-x64.zip
             cyber-macos-arm64.zip
+            cyber.wasm

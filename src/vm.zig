@@ -2072,7 +2072,7 @@ pub const VM = struct {
                 stdx.panic("unexpected");
             }
         };
-        self.panicPayload = @intCast(u64, @ptrToInt(msg.ptr)) | (msg.len << 48);
+        self.panicPayload = @intCast(u64, @ptrToInt(msg.ptr)) | (@as(u64, msg.len) << 48);
         self.panicType = .msg;
         log.debug("{s}", .{msg});
         return error.Panic;
@@ -2081,7 +2081,7 @@ pub const VM = struct {
     fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
         const dupe = try self.alloc.dupe(u8, msg);
-        self.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (dupe.len << 48);
+        self.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         self.panicType = .msg;
         log.debug("{s}", .{dupe});
         return error.Panic;
@@ -4454,7 +4454,7 @@ pub const UserVM = struct {
         @setCold(true);
         const vm = @ptrCast(*VM, self);
         const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
-        vm.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (dupe.len << 48);
+        vm.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         vm.panicType = .msg;
         return Value.Panic;
     }

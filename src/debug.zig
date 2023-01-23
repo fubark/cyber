@@ -206,8 +206,8 @@ pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
         },
         .msg => {
             const ptr = vm.panicPayload & ((1 << 48) - 1);
-            const len = vm.panicPayload >> 48;
-            return vm.alloc.dupe(u8, @intToPtr([*]const u8, ptr)[0..len]);
+            const len = @intCast(usize, vm.panicPayload >> 48);
+            return vm.alloc.dupe(u8, @intToPtr([*]const u8, @intCast(usize, ptr))[0..len]);
         },
         .none => {
             stdx.panic("Unexpected panic type.");
@@ -220,8 +220,8 @@ pub fn freePanicPayload(vm: *const cy.VM) void {
         .err => {},
         .msg => {
             const ptr = vm.panicPayload & ((1 << 48) - 1);
-            const len = vm.panicPayload >> 48;
-            vm.alloc.free(@intToPtr([*]const u8, ptr)[0..len]);
+            const len = @intCast(usize, vm.panicPayload >> 48);
+            vm.alloc.free(@intToPtr([*]const u8, @intCast(usize, ptr))[0..len]);
         },
         .none => {},
     }

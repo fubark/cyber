@@ -185,3 +185,44 @@ pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, srcU
         });
     }
 }
+
+pub const PanicPayload = u64;
+
+pub const PanicType = enum {
+    /// User error. Error value is in `panicPayload`.
+    err,
+
+    /// Msg string is in `panicPayload`. Lower u48 is the pointer, and upper u16 is the length.
+    msg,
+
+    none,
+};
+
+pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
+    switch (vm.panicType) {
+        .err => {
+            const str = vm.valueToTempString(cy.Value{ .val = vm.panicPayload });
+            return try fmt.allocFormat(vm.alloc, "{}", &.{fmt.v(str)});
+        },
+        .msg => {
+            const ptr = vm.panicPayload & ((1 << 48) - 1);
+            const len = vm.panicPayload >> 48;
+            return vm.alloc.dupe(u8, @intToPtr([*]const u8, ptr)[0..len]);
+        },
+        .none => {
+            stdx.panic("Unexpected panic type.");
+        },
+    }
+}
+
+pub fn freePanicPayload(vm: *const cy.VM) void {
+    switch (vm.panicType) {
+        .err => {},
+        .msg => {
+            const ptr = vm.panicPayload & ((1 << 48) - 1);
+            const len = vm.panicPayload >> 48;
+            vm.alloc.free(@intToPtr([*]const u8, ptr)[0..len]);
+        },
+        .none => {},
+    }
+}

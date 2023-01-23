@@ -361,7 +361,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .boxValue,
         .boxValueRetain,
         .tagLiteral,
-        .tryValue,
         .staticFunc,
         .staticVar,
         .setStaticVar,
@@ -415,6 +414,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .slice,
         .object,
         .objectSmall,
+        .tryValue,
         .lambda => {
             return 5;
         },
@@ -577,7 +577,11 @@ pub const OpCode = enum(u8) {
     setCapValToFuncSyms,
     tag,
     tagLiteral,
+
+    /// Copies a non error value to a local or jumps to end of the function.
+    /// [srcLocal] [dstLocal] [jumpOffset: u16]
     tryValue,
+
     bitwiseAnd,
     bitwiseOr,
     bitwiseXor,

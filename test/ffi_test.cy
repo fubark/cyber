@@ -17,7 +17,7 @@ else:
 lib = bindLib(libPath, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
 try t.eq(lib, error(#MissingSymbol))
 
-lib = bindLib(libPath, [
+lib = try bindLib(libPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
   CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }
   CFunc{ sym: 'testU8', args: [#u8], ret: #u8 }

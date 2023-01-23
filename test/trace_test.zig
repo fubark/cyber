@@ -112,7 +112,7 @@ test "ARC for static variable declarations." {
     );
     run.deinit();
     try t.eq(trace.numRetainAttempts, 2);
-    try t.eq(trace.numReleaseAttempts, 5);
+    try t.eq(trace.numReleaseAttempts, 4);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 }
@@ -133,7 +133,7 @@ test "ARC assignments." {
         \\try t.eq(a[0], 234)
     );
     try t.eq(trace.numRetainAttempts, 2);
-    try t.eq(trace.numReleaseAttempts, 6);
+    try t.eq(trace.numReleaseAttempts, 5);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
@@ -146,7 +146,7 @@ test "ARC assignments." {
         \\try t.eq(valtag(a[0]), #map)
     );
     try t.eq(trace.numRetainAttempts, 4);
-    try t.eq(trace.numReleaseAttempts, 7);
+    try t.eq(trace.numReleaseAttempts, 6);
     try t.eq(trace.numRetains, 4);
     try t.eq(trace.numReleases, 3);
 }

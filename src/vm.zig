@@ -134,7 +134,6 @@ pub const VM = struct {
 
     methodSymExtras: cy.List([]const u8),
     debugTable: []const cy.OpDebug,
-    panicMsg: []const u8,
 
     curFiber: *Fiber,
     mainFiber: Fiber,
@@ -144,6 +143,8 @@ pub const VM = struct {
     endLocal: u8,
 
     mainUri: []const u8,
+    panicType: debug.PanicType,
+    panicPayload: debug.PanicPayload,
 
     trace: if (TraceEnabled) *TraceInfo else void,
 
@@ -196,7 +197,8 @@ pub const VM = struct {
             .stackTrace = .{},
             .debugTable = undefined,
             .refCounts = if (TrackGlobalRC) 0 else undefined,
-            .panicMsg = "",
+            .panicType = .none,
+            .panicPayload = Value.None.val,
             .mainFiber = undefined,
             .curFiber = undefined,
             .endLocal = undefined,
@@ -237,6 +239,8 @@ pub const VM = struct {
         if (self.deinited) {
             return;
         }
+
+        debug.freePanicPayload(self);
 
         // Deinit runtime related resources first, since they may depend on
         // compiled/debug resources.
@@ -291,7 +295,6 @@ pub const VM = struct {
         self.u8Buf.deinit(self.alloc);
         self.u8Buf2.deinit(self.alloc);
         self.stackTrace.deinit(self.alloc);
-        self.alloc.free(self.panicMsg);
 
         self.strInterns.deinit(self.alloc);
 
@@ -532,8 +535,8 @@ pub const VM = struct {
 
     fn prepareEvalCold(self: *VM, buf: cy.ByteCodeBuffer) void {
         @setCold(true);
-        self.alloc.free(self.panicMsg);
-        self.panicMsg = "";
+        debug.freePanicPayload(self);
+        self.panicType = .none;
         self.debugTable = buf.debugTable.items;
     }
 
@@ -2062,21 +2065,25 @@ pub const VM = struct {
 
     fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic, OutOfMemory} {
         @setCold(true);
-        self.panicMsg = fmt.allocFormat(self.alloc, format, args) catch |err| {
+        const msg = fmt.allocFormat(self.alloc, format, args) catch |err| {
             if (err == error.OutOfMemory) {
                 return error.OutOfMemory;
             } else {
                 stdx.panic("unexpected");
             }
         };
-        log.debug("{s}", .{self.panicMsg});
+        self.panicPayload = @intCast(u64, @ptrToInt(msg.ptr)) | (msg.len << 48);
+        self.panicType = .msg;
+        log.debug("{s}", .{msg});
         return error.Panic;
     }
 
     fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
-        self.panicMsg = try self.alloc.dupe(u8, msg);
-        log.debug("{s}", .{self.panicMsg});
+        const dupe = try self.alloc.dupe(u8, msg);
+        self.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (dupe.len << 48);
+        self.panicType = .msg;
+        log.debug("{s}", .{dupe});
         return error.Panic;
     }
 
@@ -4236,14 +4243,16 @@ pub const UserVM = struct {
         return @ptrCast(*const VM, self).compiler.lastErr;
     }
 
-    pub fn getPanicMsg(self: *const UserVM) []const u8 {
-        return @ptrCast(*const VM, self).panicMsg;
+    pub fn allocPanicMsg(self: *const UserVM) ![]const u8 {
+        return debug.allocPanicMsg(@ptrCast(*const VM, self));
     }
 
     pub fn dumpPanicStackTrace(self: *UserVM) !void {
         @setCold(true);
         const vm = @ptrCast(*VM, self);
-        fmt.printStderr("panic: {}\n\n", &.{fmt.v(vm.panicMsg)});
+        const msg = try self.allocPanicMsg();
+        defer vm.alloc.free(msg);
+        fmt.printStderr("panic: {}\n\n", &.{v(msg)});
         const trace = vm.getStackTrace();
         try trace.dump(vm);
     }
@@ -4444,7 +4453,9 @@ pub const UserVM = struct {
     pub fn returnPanic(self: *UserVM, msg: []const u8) Value {
         @setCold(true);
         const vm = @ptrCast(*VM, self);
-        vm.panicMsg = vm.alloc.dupe(u8, msg) catch stdx.fatal();
+        const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
+        vm.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (dupe.len << 48);
+        vm.panicType = .msg;
         return Value.Panic;
     }
 
@@ -5448,10 +5459,18 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = framePtr[pc[1].arg];
                 if (!val.isError()) {
                     framePtr[pc[2].arg] = val;
-                    pc += 3;
+                    pc += 5;
                     continue;
                 } else {
-                    return vm.panicFmt("{}", &.{fmt.v(vm.tagLitSyms.buf[val.asErrorTagLit()].name)});
+                    if (framePtr != vm.stack.ptr) {
+                        framePtr[0] = val;
+                        pc += @ptrCast(*const align(1) u16, pc + 3).*;
+                    } else {
+                        // Panic on root block.
+                        vm.panicType = .err;
+                        vm.panicPayload = val.val;
+                        return error.Panic;
+                    }
                 }
             },
             .bitwiseAnd => {

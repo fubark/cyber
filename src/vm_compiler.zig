@@ -344,7 +344,10 @@ pub const VMcompiler = struct {
         self.resetNextFreeTemp();
 
         try self.genInitLocals();
+        const jumpStackStart = self.blockJumpStack.items.len;
         try self.genStatements(root.head.child_head, true);
+        self.patchBlockJumps(jumpStackStart);
+        self.blockJumpStack.items.len = jumpStackStart;
         self.popBlock();
         self.buf.mainStackSize = @intCast(u32, self.curBlock.getRequiredStackSize());
 
@@ -429,6 +432,16 @@ pub const VMcompiler = struct {
             .buf = self.buf,
             .hasError = false,
         };
+    }
+
+    fn genBlockEnding(self: *VMcompiler) !void {
+        self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+        try self.endLocals();
+        if (self.curBlock.requiresEndingRet1) {
+            try self.buf.pushOp(.ret1);
+        } else {
+            try self.buf.pushOp(.ret0);
+        }
     }
 
     fn endLocals(self: *VMcompiler) !void {
@@ -551,7 +564,7 @@ pub const VMcompiler = struct {
         for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .jumpToEndLocals => {
-                    self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, self.curBlock.endLocalsPc - jump.pc));
+                    self.buf.setOpArgU16(jump.pc + jump.pcOffset, @intCast(u16, self.curBlock.endLocalsPc - jump.pc));
                 }
             }
         }
@@ -591,6 +604,7 @@ pub const VMcompiler = struct {
             if (attachEnd) {
                 const local = try self.genExprStmt(cur_id, true, false);
                 if (self.config.genMainScopeReleaseOps) {
+                    self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
                     try self.endLocals();
                 }
                 try self.buf.pushOp1(.end, local);
@@ -601,6 +615,7 @@ pub const VMcompiler = struct {
             if (attachEnd) {
                 try self.genStatement(cur_id, false);
                 if (self.config.genMainScopeReleaseOps) {
+                    self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
                     try self.endLocals();
                 }
                 try self.buf.pushOp1(.end, 255);
@@ -1437,8 +1452,7 @@ pub const VMcompiler = struct {
         try self.genInitLocals();
         try self.genStatements(node.head.func.body_head, false);
         // TODO: Check last statement to skip adding ret.
-        try self.endLocals();
-        try self.buf.pushOp(.ret0);
+        try self.genBlockEnding();
 
         // Reserve another local for the call return info.
         const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
@@ -1476,11 +1490,8 @@ pub const VMcompiler = struct {
         try self.genInitLocals();
         try self.genStatements(node.head.func.body_head, false);
         // TODO: Check last statement to skip adding ret.
-        self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+        try self.genBlockEnding();
         self.nodes[nodeId].head.func.genEndLocalsPc = self.curBlock.endLocalsPc;
-        
-        try self.endLocals();
-        try self.buf.pushOp(.ret0);
 
         // Reserve another local for the call return info.
         const sblock = sema.curBlock(self);
@@ -2556,8 +2567,17 @@ pub const VMcompiler = struct {
                 }
             },
             .tryExpr => {
-                const child = try self.genExpr(node.head.child_head, false);
-                try self.buf.pushOp2(.tryValue, child.local, dst);
+                var child: GenValue = undefined;
+                if (retainEscapeTop) {
+                    child = try self.genRetainedTempExpr(node.head.child_head, false);
+                } else {
+                    child = try self.genExpr(node.head.child_head, false);
+                }
+                const pc = self.buf.ops.items.len;
+                try self.buf.pushOpSlice(.tryValue, &.{child.local, dst, 0, 0});
+                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc), .pcOffset = 3 });
+                self.curBlock.requiresEndingRet1 = true;
+
                 try self.pushDebugSym(nodeId);
                 return self.initGenValue(dst, sema.AnyType);
             },
@@ -2763,8 +2783,7 @@ pub const VMcompiler = struct {
 
                     try self.genStatements(node.head.func.body_head, false);
 
-                    try self.endLocals();
-                    try self.buf.pushOp(.ret0);
+                    try self.genBlockEnding();
                     self.patchJumpToCurrent(jumpPc);
 
                     const sblock = sema.curBlock(self);
@@ -2888,7 +2907,7 @@ pub const VMcompiler = struct {
             .coyield => {
                 const pc = self.buf.ops.items.len;
                 try self.buf.pushOp2(.coyield, 0, 0);
-                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc) });
+                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc), .pcOffset = 1 });
 
                 // TODO: return coyield expression.
                 if (!discardTopExprReg) {
@@ -2975,6 +2994,10 @@ const Block = struct {
     /// knows which ARC expr they belong to.
     arcTempLocalStart: u32,
 
+    /// Whether codegen should create an ending that returns 1 arg.
+    /// Otherwise `ret0` is generated.
+    requiresEndingRet1: bool,
+
     fn init() Block {
         return .{
             .numLocals = 0,
@@ -2983,6 +3006,7 @@ const Block = struct {
             .firstFreeTempLocal = 0,
             .reservedTempLocalStart = 0,
             .arcTempLocalStart = 0,
+            .requiresEndingRet1 = false,
         };
     }
 
@@ -3007,6 +3031,9 @@ const BlockJumpType = enum {
 const BlockJump = struct {
     jumpT: BlockJumpType,
     pc: u32,
+
+    /// Offset from `pc` to where the jump value should be encoded.
+    pcOffset: u16,
 };
 
 const SubBlockJumpType = enum {

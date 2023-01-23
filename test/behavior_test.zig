@@ -175,6 +175,19 @@ test "Fibers" {
     );
 }
 
+test "try value" {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Try failure at root block panics.
+    const res = run.evalSilent(
+        \\try error(#boom)
+    );
+    try t.expectError(res, error.Panic);
+
+    _ = try run.eval(@embedFile("try_test.cy"));
+}
+
 test "Errors." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -396,7 +409,7 @@ test "must()" {
     );
     try t.expectError(res, error.Panic);
     var trace = run.getStackTrace();
-    try t.eqStr(run.getPanicMsg(), "error#boom");
+    try run.assertPanicMsg("error#boom");
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
@@ -417,7 +430,7 @@ test "panic()" {
     );
     try t.expectError(res, error.Panic);
     var trace = run.getStackTrace();
-    try t.eqStr(run.getPanicMsg(), "#boom");
+    try run.assertPanicMsg("#boom");
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
@@ -2120,8 +2133,14 @@ const VMrunner = struct {
         return self.vm.getStackTrace();
     }
 
-    fn getPanicMsg(self: *VMrunner) []const u8 {
-        return self.vm.getPanicMsg();
+    fn assertPanicMsg(self: *VMrunner, exp: []const u8) !void {
+        const msg = try self.allocPanicMsg();
+        defer self.vm.allocator().free(msg);
+        try t.eqStr(msg, exp);
+    }
+
+    fn allocPanicMsg(self: *VMrunner) ![]const u8 {
+        return self.vm.allocPanicMsg();
     }
 
     /// Don't print panic errors.

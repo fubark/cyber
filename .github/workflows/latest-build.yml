@@ -157,7 +157,7 @@ jobs:
         if: env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
           zig build wasm-test ${{ env.ZIG_TARGET_FLAG }} ${{ env.ZIG_MODE_FLAG }} 
-          wasm3-linux-x64.elf zig-out/test/test.wasm
+          ./wasm3-linux-x64.elf zig-out/test/test.wasm
 
       - name: Build.
         if: env.BUILD_TARGET != 'wasm32-freestanding'

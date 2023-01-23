@@ -1,14 +1,23 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
+import os 'os'
 
 -- Not found.
 lib = bindLib('xyz123.so', [])
 try t.eq(lib, error(#FileNotFound))
 
+if os.system == 'macos':
+  -- rdynamic doesn't work atm for MacOS.
+  libPath = 'test/macos_lib.dylib'
+else:
+  libPath = none
+
 -- Missing symbol.
-lib = bindLib(none, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
+lib = bindLib(libPath, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
 try t.eq(lib, error(#MissingSymbol))
 
-lib = bindLib(none, [
+lib = bindLib(libPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
   CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }
   CFunc{ sym: 'testU8', args: [#u8], ret: #u8 }

@@ -239,10 +239,7 @@ test "FFI." {
     };
     _ = S;
 
-    // Can't get rdynamic to work on macos, so these tests can't be used atm.
-    if (builtin.os.tag != .macos) {
-        _ = try run.eval(@embedFile("ffi_test.cy"));
-    }
+    _ = try run.eval(@embedFile("ffi_test.cy"));
 }
 
 test "Tag types." {

@@ -12,60 +12,60 @@ const fmt = @import("../fmt.zig");
 
 const log = stdx.log.scoped(.core);
 
-pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
+pub fn initModule(self: *cy.VMcompiler, spec: []const u8) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .prefix = spec,
     };
-    try mod.syms.ensureTotalCapacity(alloc, 13);
-    try mod.setNativeFunc(alloc, "arrayFill", 2, arrayFill);
-    try mod.setNativeFunc(alloc, "asciiCode", 1, asciiCode);
+    try mod.syms.ensureTotalCapacity(self.alloc, 13);
+    try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);
+    try mod.setNativeFunc(self, "asciiCode", 1, asciiCode);
     if (cy.isWasm) {
-        try mod.setNativeFunc(alloc, "bindLib", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
     } else {
-        try mod.setNativeFunc(alloc, "bindLib", 2, bindLib);
+        try mod.setNativeFunc(self, "bindLib", 2, bindLib);
     }
-    try mod.setNativeFunc(alloc, "bool", 1, coreBool);
-    try mod.setNativeFunc(alloc, "char", 1, char);
-    try mod.setNativeFunc(alloc, "copy", 1, copy);
-    try mod.setNativeFunc(alloc, "error", 1, coreError);
+    try mod.setNativeFunc(self, "bool", 1, coreBool);
+    try mod.setNativeFunc(self, "char", 1, char);
+    try mod.setNativeFunc(self, "copy", 1, copy);
+    try mod.setNativeFunc(self, "error", 1, coreError);
     if (cy.isWasm) {
-        try mod.setNativeFunc(alloc, "execCmd", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "execCmd", 1, bindings.nop1);
     } else {
-        try mod.setNativeFunc(alloc, "execCmd", 1, execCmd);
+        try mod.setNativeFunc(self, "execCmd", 1, execCmd);
     }
-    try mod.setNativeFunc(alloc, "exit", 1, exit);
-    try mod.setNativeFunc(alloc, "fetchUrl", 1, fetchUrl);
+    try mod.setNativeFunc(self, "exit", 1, exit);
+    try mod.setNativeFunc(self, "fetchUrl", 1, fetchUrl);
     if (cy.hasStdFiles) {
-        try mod.setNativeFunc(alloc, "getInput", 0, getInput);
+        try mod.setNativeFunc(self, "getInput", 0, getInput);
     } else {
-        try mod.setNativeFunc(alloc, "getInput", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "getInput", 0, bindings.nop0);
     }
-    try mod.setNativeFunc(alloc, "int", 1, int);
+    try mod.setNativeFunc(self, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
-    try mod.setNativeFunc(alloc, "must", 1, must);
-    try mod.setNativeFunc(alloc, "number", 1, number);
-    try mod.setNativeFunc(alloc, "opaque", 1, coreOpaque);
-    try mod.setNativeFunc(alloc, "panic", 1, panic);
-    try mod.setNativeFunc(alloc, "parseCyon", 1, parseCyon);
-    try mod.setNativeFunc(alloc, "print", 1, print);
-    try mod.setNativeFunc(alloc, "prints", 1, prints);
-    try mod.setNativeFunc(alloc, "rawstring", 1, rawstring);
+    try mod.setNativeFunc(self, "must", 1, must);
+    try mod.setNativeFunc(self, "number", 1, number);
+    try mod.setNativeFunc(self, "opaque", 1, coreOpaque);
+    try mod.setNativeFunc(self, "panic", 1, panic);
+    try mod.setNativeFunc(self, "parseCyon", 1, parseCyon);
+    try mod.setNativeFunc(self, "print", 1, print);
+    try mod.setNativeFunc(self, "prints", 1, prints);
+    try mod.setNativeFunc(self, "rawstring", 1, rawstring);
     if (cy.hasStdFiles) {
-        try mod.setNativeFunc(alloc, "readAll", 0, readAll);
-        try mod.setNativeFunc(alloc, "readFile", 1, readFile);
-        try mod.setNativeFunc(alloc, "readLine", 0, readLine);
+        try mod.setNativeFunc(self, "readAll", 0, readAll);
+        try mod.setNativeFunc(self, "readFile", 1, readFile);
+        try mod.setNativeFunc(self, "readLine", 0, readLine);
     } else {
-        try mod.setNativeFunc(alloc, "readAll", 0, bindings.nop0);
-        try mod.setNativeFunc(alloc, "readFile", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "readLine", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "readAll", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "readFile", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
-    try mod.setNativeFunc(alloc, "string", 1, string);
-    try mod.setNativeFunc(alloc, "valtag", 1, valtag);
+    try mod.setNativeFunc(self, "string", 1, string);
+    try mod.setNativeFunc(self, "valtag", 1, valtag);
     if (cy.hasStdFiles) {
-        try mod.setNativeFunc(alloc, "writeFile", 2, writeFile);
+        try mod.setNativeFunc(self, "writeFile", 2, writeFile);
     } else {
-        try mod.setNativeFunc(alloc, "writeFile", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "writeFile", 2, bindings.nop2);
     }
     return mod;
 }
@@ -462,9 +462,12 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
             stdx.panic("Failed to get symbol.");
         };
 
+        const cargsv = gvm.getField(cfunc, argsf) catch stdx.fatal();
+        const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+
         const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
         const key = vm.allocStringInfer(sym) catch stdx.fatal();
-        const val = gvm.allocNativeFunc1(func, cyState) catch stdx.fatal();
+        const val = gvm.allocNativeFunc1(func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
 

@@ -43,6 +43,7 @@ pub const TagLit = enum {
     EndOfStream,
     OutOfBounds,
     InvalidArgument,
+    InvalidSignature,
     InvalidChar,
     StreamTooLong,
     NotAllowed,
@@ -433,6 +434,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
     try ensureTagLitSym(self, "OutOfBounds", .OutOfBounds);
     try ensureTagLitSym(self, "InvalidArgument", .InvalidArgument);
+    try ensureTagLitSym(self, "InvalidSignature", .InvalidSignature);
     try ensureTagLitSym(self, "InvalidChar", .InvalidChar);
     try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
     try ensureTagLitSym(self, "NotAllowed", .NotAllowed);

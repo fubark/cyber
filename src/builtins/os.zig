@@ -10,80 +10,80 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 
-pub fn initModule(self: *cy.VMcompiler, alloc: std.mem.Allocator, spec: []const u8) linksection(cy.InitSection) !cy.Module {
+pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .prefix = spec,
     };
 
-    try mod.setVar(alloc, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
+    try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
     if (builtin.cpu.arch.endian() == .Little) {
-        try mod.setVar(alloc, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.little)));
+        try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.little)));
     } else {
-        try mod.setVar(alloc, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.big)));
+        try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.big)));
     }
     if (cy.hasStdFiles) {
         const stdin = try self.vm.allocFile(std.os.STDIN_FILENO);
-        try mod.setVar(alloc, "stdin", stdin);
+        try mod.setVar(self, "stdin", stdin);
     } else {
-        try mod.setVar(alloc, "stdin", Value.None);
+        try mod.setVar(self, "stdin", Value.None);
     }
-    try mod.setVar(alloc, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
+    try mod.setVar(self, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        try mod.setVar(alloc, "vecBitSize", cy.Value.initF64(VecSize * 8));
+        try mod.setVar(self, "vecBitSize", cy.Value.initF64(VecSize * 8));
     } else {
-        try mod.setVar(alloc, "vecBitSize", cy.Value.initF64(0));
+        try mod.setVar(self, "vecBitSize", cy.Value.initF64(0));
     }
 
-    try mod.setNativeFunc(alloc, "args", 0, osArgs);
+    try mod.setNativeFunc(self, "args", 0, osArgs);
     if (cy.isWasm) {
-        try mod.setNativeFunc(alloc, "createDir", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "createFile", 2, bindings.nop2);
-        try mod.setNativeFunc(alloc, "cwd", 0, bindings.nop0);
-        try mod.setNativeFunc(alloc, "exePath", 0, bindings.nop0);
-        try mod.setNativeFunc(alloc, "getEnv", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "getEnvAll", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "createDir", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "createFile", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "cwd", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "exePath", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
     } else {
-        try mod.setNativeFunc(alloc, "createDir", 1, createDir);
-        try mod.setNativeFunc(alloc, "createFile", 2, createFile);
-        try mod.setNativeFunc(alloc, "cwd", 0, cwd);
-        try mod.setNativeFunc(alloc, "exePath", 0, exePath);
-        try mod.setNativeFunc(alloc, "getEnv", 1, getEnv);
-        try mod.setNativeFunc(alloc, "getEnvAll", 0, getEnvAll);
+        try mod.setNativeFunc(self, "createDir", 1, createDir);
+        try mod.setNativeFunc(self, "createFile", 2, createFile);
+        try mod.setNativeFunc(self, "cwd", 0, cwd);
+        try mod.setNativeFunc(self, "exePath", 0, exePath);
+        try mod.setNativeFunc(self, "getEnv", 1, getEnv);
+        try mod.setNativeFunc(self, "getEnvAll", 0, getEnvAll);
     }
-    try mod.setNativeFunc(alloc, "milliTime", 0, milliTime);
+    try mod.setNativeFunc(self, "milliTime", 0, milliTime);
     if (cy.isWasm) {
-        try mod.setNativeFunc(alloc, "openDir", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "openDir", 2, bindings.nop2);
-        try mod.setNativeFunc(alloc, "openFile", 2, bindings.nop2);
-        try mod.setNativeFunc(alloc, "removeDir", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "removeFile", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "realPath", 1, bindings.nop1);
-        try mod.setNativeFunc(alloc, "setEnv", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "openDir", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "openDir", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "openFile", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "removeDir", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "removeFile", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "realPath", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "setEnv", 2, bindings.nop2);
     } else {
-        try mod.setNativeFunc(alloc, "openDir", 1, openDir);
-        try mod.setNativeFunc(alloc, "openDir", 2, openDir2);
-        try mod.setNativeFunc(alloc, "openFile", 2, openFile);
-        try mod.setNativeFunc(alloc, "removeDir", 1, removeDir);
-        try mod.setNativeFunc(alloc, "removeFile", 1, removeFile);
-        try mod.setNativeFunc(alloc, "realPath", 1, realPath);
-        try mod.setNativeFunc(alloc, "setEnv", 2, setEnv);
+        try mod.setNativeFunc(self, "openDir", 1, openDir);
+        try mod.setNativeFunc(self, "openDir", 2, openDir2);
+        try mod.setNativeFunc(self, "openFile", 2, openFile);
+        try mod.setNativeFunc(self, "removeDir", 1, removeDir);
+        try mod.setNativeFunc(self, "removeFile", 1, removeFile);
+        try mod.setNativeFunc(self, "realPath", 1, realPath);
+        try mod.setNativeFunc(self, "setEnv", 2, setEnv);
     }
-    try mod.setNativeFunc(alloc, "sleep", 1, sleep);
+    try mod.setNativeFunc(self, "sleep", 1, sleep);
     if (cy.isWasm) {
-        try mod.setNativeFunc(alloc, "unsetEnv", 1, bindings.nop1);
+        try mod.setNativeFunc(self, "unsetEnv", 1, bindings.nop1);
     } else {
-        try mod.setNativeFunc(alloc, "unsetEnv", 1, unsetEnv);
+        try mod.setNativeFunc(self, "unsetEnv", 1, unsetEnv);
     }
     return mod;
 }
 
-pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) void {
+pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) !void {
     if (cy.hasStdFiles) {
         // Mark as closed to avoid closing.
-        const stdin = mod.getVarVal("stdin").?;
+        const stdin = (try mod.getVarVal(c, "stdin")).?;
         stdin.asHeapObject(*cy.HeapObject).file.closed = true;
-        vm_.release(c.vm, mod.getVarVal("stdin").?);
+        vm_.release(c.vm, stdin);
     }
 }
 

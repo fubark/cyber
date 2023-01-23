@@ -7,6 +7,7 @@ const tcc = @import("tcc");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const sema = @import("sema.zig");
 const bindings = @import("builtins/bindings.zig");
 const Value = cy.Value;
 const debug = @import("debug.zig");
@@ -95,15 +96,15 @@ pub const VM = struct {
     methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, MethodSym),
 
     /// Maps a method signature to a symbol id in `methodSyms`.
-    methodSymSigs: std.HashMapUnmanaged(RelFuncSigKey, SymbolId, RelFuncSigKeyContext, 80),
+    methodSymSigs: std.HashMapUnmanaged(RelFuncSigKey, SymbolId, KeyU64Context, 80),
 
     /// Regular function symbol table.
     funcSyms: cy.List(FuncSymbolEntry),
-    funcSymSigs: std.HashMapUnmanaged(AbsFuncSigKey, SymbolId, AbsFuncSigKeyContext, 80),
+    funcSymSigs: std.HashMapUnmanaged(AbsFuncSigKey, SymbolId, KeyU96Context, 80),
     funcSymDetails: cy.List(FuncSymDetail),
 
     varSyms: cy.List(VarSym),
-    varSymSigs: std.HashMapUnmanaged(AbsVarSigKey, SymbolId, AbsVarSigKeyContext, 80),
+    varSymSigs: std.HashMapUnmanaged(AbsVarSigKey, SymbolId, KeyU64Context, 80),
 
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
@@ -240,7 +241,7 @@ pub const VM = struct {
         // Deinit runtime related resources first, since they may depend on
         // compiled/debug resources.
         for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == .closure) {
+            if (sym.entryT == @enumToInt(FuncSymbolEntryType.closure)) {
                 releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
             }
         }
@@ -481,10 +482,11 @@ pub const VM = struct {
             var iter = self.funcSymSigs.iterator();
             while (iter.next()) |it| {
                 const key = it.key_ptr.*;
-                if (key.numParams == NullIdU16) {
-                    fmt.printStderr("\t{}: {}\n", &.{v(key.namePtr[0..key.nameLen]), v(it.value_ptr.*)});
+                const name = sema.getName(&self.compiler, key.rtFuncSymKey.nameId);
+                if (key.rtFuncSymKey.numParams == NullId) {
+                    fmt.printStderr("\t{}: {}\n", &.{v(name), v(it.value_ptr.*)});
                 } else {
-                    fmt.printStderr("\t{}({}): {}\n", &.{v(key.namePtr[0..key.nameLen]), v(key.numParams), v(it.value_ptr.*)});
+                    fmt.printStderr("\t{}({}): {}\n", &.{v(name), v(key.rtFuncSymKey.numParams), v(it.value_ptr.*)});
                 }
             }
         }
@@ -796,6 +798,23 @@ pub const VM = struct {
         }
     }
 
+    fn allocFuncFromSym(self: *VM, symId: SymbolId) !Value {
+        const sym = self.funcSyms.buf[symId];
+        switch (@intToEnum(FuncSymbolEntryType, sym.entryT)) {
+            .nativeFunc1 => {
+                return self.allocNativeFunc1(sym.inner.nativeFunc1, sym.innerExtra.nativeFunc1.numParams, null);
+            },
+            .func => {
+                return self.allocLambda(sym.inner.func.pc, @intCast(u8, sym.inner.func.numParams), @intCast(u8, sym.inner.func.numLocals));
+            },
+            .closure => {
+                self.retainObject(@ptrCast(*HeapObject, sym.inner.closure));
+                return Value.initPtr(sym.inner.closure);
+            },
+            .none => return Value.None,
+        }
+    }
+
     fn allocLambda(self: *VM, funcPc: usize, numParams: u8, numLocals: u8) !Value {
         const obj = try self.allocPoolObject();
         obj.lambda = .{
@@ -981,12 +1000,13 @@ pub const VM = struct {
         return Value.initPtr(obj);
     }
 
-    pub fn allocNativeFunc1(self: *VM, func: *const fn (*UserVM, [*]Value, u8) Value, tccState: ?Value) !Value {
+    pub fn allocNativeFunc1(self: *VM, func: *const fn (*UserVM, [*]Value, u8) Value, numParams: u32, tccState: ?Value) !Value {
         const obj = try self.allocPoolObject();
         obj.nativeFunc1 = .{
             .structId = NativeFunc1S,
             .rc = 1,
             .func = func,
+            .numParams = numParams,
             .tccState = undefined,
             .hasTccState = false,
         };
@@ -999,7 +1019,7 @@ pub const VM = struct {
             self.trace.numRetainAttempts += 1;
         }
         if (TrackGlobalRC) {
-            gvm.refCounts += 1;
+            self.refCounts += 1;
         }
         return Value.initPtr(obj);
     }
@@ -1607,30 +1627,33 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn getFuncSym(self: *const VM, resolvedParentId: u32, name: []const u8, numParams: u16) ?SymbolId {
+    pub inline fn getFuncSym(self: *const VM, resolvedParentId: u32, nameId: u32, numParams: u32) ?SymbolId {
         const key = AbsFuncSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u16, name.len),
-            .parentId = resolvedParentId,
-            .numParams = numParams,
+            .rtFuncSymKey = .{
+                .resolvedParentSymId = resolvedParentId,
+                .nameId = nameId,
+                .numParams = numParams,
+            },
         };
         return self.funcSymSigs.get(key);
     }
 
-    pub inline fn getVarSym(self: *const VM, resolvedParentId: u32, name: []const u8) ?SymbolId {
+    pub inline fn getVarSym(self: *const VM, resolvedParentId: u32, nameId: u32) ?SymbolId {
         const key = AbsVarSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
-            .numParams = resolvedParentId,
+            .rtVarSymKey = .{
+                .resolvedParentSymId = resolvedParentId,
+                .nameId = nameId,
+            }
         };
         return self.varSymSigs.get(key);
     }
 
-    pub fn ensureVarSym(self: *VM, parentId: SymbolId, name: []const u8) !SymbolId {
-        const key = AbsVarSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
-            .numParams = parentId,
+    pub fn ensureVarSym(self: *VM, parentId: SymbolId, nameId: u32) !SymbolId {
+        const key = KeyU64{
+            .rtVarSymKey = .{
+                .resolvedParentSymId = parentId,
+                .nameId = nameId,
+            },
         };
         const res = try self.varSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
@@ -1643,18 +1666,19 @@ pub const VM = struct {
         }
     }
     
-    pub fn ensureFuncSym(self: *VM, resolvedParentId: SymbolId, name: []const u8, numParams: u16) !SymbolId {
-        const key = AbsFuncSigKey{
-            .namePtr = name.ptr,
-            .parentId = resolvedParentId,
-            .nameLen = @intCast(u16, name.len),
-            .numParams = numParams,
+    pub fn ensureFuncSym(self: *VM, resolvedParentId: SymbolId, nameId: u32, numParams: u32) !SymbolId {
+        const key = KeyU96{
+            .rtFuncSymKey = .{
+                .resolvedParentSymId = resolvedParentId,
+                .nameId = nameId,
+                .numParams = numParams,
+            },
         };
         const res = try self.funcSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.funcSyms.len);
             try self.funcSyms.append(self.alloc, .{
-                .entryT = .none,
+                .entryT = @enumToInt(FuncSymbolEntryType.none),
                 .inner = undefined,
             });
             res.value_ptr.* = id;
@@ -1710,10 +1734,12 @@ pub const VM = struct {
     }
 
     pub fn ensureMethodSymKey(self: *VM, name: []const u8, numParams: u32) !SymbolId {
+        const nameId = try sema.ensureNameSym(&self.compiler, name);
         const key = RelFuncSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
-            .numParams = numParams,
+            .relFuncSigKey = .{
+                .nameId = nameId,
+                .numParams = numParams,
+            },
         };
         const res = try self.methodSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
@@ -2281,7 +2307,7 @@ pub const VM = struct {
     /// startLocal points to the first arg in the current stack frame.
     fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
         const sym = self.funcSyms.buf[symId];
-        switch (sym.entryT) {
+        switch (@intToEnum(FuncSymbolEntryType, sym.entryT)) {
             .nativeFunc1 => {
                 const newFramePtr = framePtr + startLocal;
 
@@ -2341,7 +2367,7 @@ pub const VM = struct {
 
                 // Copy over captured vars to new call stack locals.
                 const src = sym.inner.closure.getCapturedValuesPtr()[0..sym.inner.closure.numCaptured];
-                std.mem.copy(Value, newFramePtr[numArgs + 4..numArgs + 4 + sym.inner.closure.numCaptured], src);
+                std.mem.copy(Value, newFramePtr[numArgs + 4 + 1..numArgs + 4 + 1 + sym.inner.closure.numCaptured], src);
 
                 return PcFramePtr{
                     .pc = toPc(sym.inner.closure.funcPc),
@@ -3501,6 +3527,7 @@ const NativeFunc1 = extern struct {
     structId: StructId,
     rc: u32,
     func: *const fn (*UserVM, [*]Value, u8) Value,
+    numParams: u32,
     tccState: Value,
     hasTccState: bool,
 };
@@ -3852,9 +3879,15 @@ test "Internals." {
     try t.eq(@alignOf(HeapObject), 8);
     try t.eq(@sizeOf(HeapPage), 40 * 102);
     try t.eq(@alignOf(HeapPage), 8);
+
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
+    var funcSymEntry: FuncSymbolEntry = undefined;
+    try t.eq(@ptrToInt(&funcSymEntry.entryT), @ptrToInt(&funcSymEntry));
+    try t.eq(@ptrToInt(&funcSymEntry.innerExtra), @ptrToInt(&funcSymEntry) + 4);
+    try t.eq(@ptrToInt(&funcSymEntry.inner), @ptrToInt(&funcSymEntry) + 8);
+
     try t.eq(@sizeOf(AbsFuncSigKey), 16);
-    try t.eq(@sizeOf(RelFuncSigKey), 16);
+    try t.eq(@sizeOf(RelFuncSigKey), 8);
 
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 24);
@@ -3947,6 +3980,8 @@ test "Internals." {
     try t.eq(@ptrToInt(&rslice.buf), @ptrToInt(&rslice) + 8);
     try t.eq(@ptrToInt(&rslice.len), @ptrToInt(&rslice) + 16);
     try t.eq(@ptrToInt(&rslice.parent), @ptrToInt(&rslice) + 24);
+
+    try t.eq(@sizeOf(KeyU64), 8);
 }
 
 const MethodSymType = enum {
@@ -4035,38 +4070,48 @@ pub const FuncSymDetail = struct {
 };
 
 /// TODO: Rename to FuncSymbol.
-pub const FuncSymbolEntry = struct {
-    entryT: FuncSymbolEntryType,
-    inner: packed union {
+pub const FuncSymbolEntry = extern struct {
+    entryT: u32,
+    innerExtra: extern union {
+        nativeFunc1: extern struct {
+            /// Used to wrap a native func as a function value.
+            numParams: u32,
+        },
+    } = undefined,
+    inner: extern union {
         nativeFunc1: *const fn (*UserVM, [*]const Value, u8) Value,
         func: packed struct {
-            // pc: packed union {
-            //     ptr: [*]const cy.OpData,
-            //     offset: usize,
-            // },
             pc: u32,
             /// Includes locals, and return info slot. Does not include params.
-            numLocals: u32,
+            numLocals: u16,
+            /// Num params used to wrap as function value.
+            numParams: u16,
         },
         closure: *Closure,
     },
 
-    pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value, numParams: u32) FuncSymbolEntry {
         return .{
-            .entryT = .nativeFunc1,
+            .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
+            .innerExtra = .{
+                .nativeFunc1 = .{
+                    .numParams = numParams,
+                }
+            },
             .inner = .{
                 .nativeFunc1 = func,
             },
         };
     }
 
-    pub fn initFuncOffset(pc: usize, numLocals: u32) FuncSymbolEntry {
+    pub fn initFunc(pc: usize, numLocals: u16, numParams: u16) FuncSymbolEntry {
         return .{
-            .entryT = .func,
+            .entryT = @enumToInt(FuncSymbolEntryType.func),
             .inner = .{
                 .func = .{
                     .pc = @intCast(u32, pc),
                     .numLocals = numLocals,
+                    .numParams = numParams,
                 },
             },
         };
@@ -4074,7 +4119,7 @@ pub const FuncSymbolEntry = struct {
 
     pub fn initClosure(closure: *Closure) FuncSymbolEntry {
         return .{
-            .entryT = .closure,
+            .entryT = @enumToInt(FuncSymbolEntryType.closure),
             .inner = .{
                 .closure = closure,
             },
@@ -4390,14 +4435,15 @@ pub const UserVM = struct {
         const saveFramePtrOffset = framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
         vm.framePtr = vm.stack.ptr + framePtr;
 
-        vm.retain(func);
+        self.retain(func);
+        defer self.release(func);
         vm.framePtr[4 + args.len] = func;
         for (args) |arg, i| {
-            vm.retain(arg);
+            self.retain(arg);
             vm.framePtr[4 + i] = arg;
         }
         const retInfo = buildReturnInfo(1, false);
-        try callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len + 1), retInfo);
+        try callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len), retInfo);
         try @call(.never_inline, evalLoopGrowStack, .{vm});
 
         const res = vm.framePtr[0];
@@ -4808,11 +4854,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numArgs = pc[2].arg;
                 pc += 3;
 
-                const callee = framePtr[startLocal + numArgs + 4 - 1];
+                const callee = framePtr[startLocal + numArgs + 4];
                 const retInfo = buildReturnInfo(0, true);
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 0, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
-                try @call(.always_inline, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
+                try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
             .call1 => {
@@ -4820,11 +4866,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numArgs = pc[2].arg;
                 pc += 3;
 
-                const callee = framePtr[startLocal + numArgs + 4 - 1];
+                const callee = framePtr[startLocal + numArgs + 4];
                 const retInfo = buildReturnInfo(1, true);
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 1, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
-                try @call(.always_inline, call, .{&pc, &framePtr, callee, startLocal, numArgs, retInfo});
+                try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
             .callObjFuncIC => {
@@ -5174,16 +5220,22 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[dst] = try @call(.never_inline, vm.allocClosure, .{framePtr, funcPc, numParams, numLocals, capturedVals});
                 continue;
             },
-            .static => {
+            .staticVar => {
                 const symId = pc[1].arg;
                 const sym = vm.varSyms.buf[symId];
                 framePtr[pc[2].arg] = sym.value;
                 pc += 3;
                 continue;
             },
-            .setStatic => {
+            .setStaticVar => {
                 const symId = pc[1].arg;
                 vm.varSyms.buf[symId].value = framePtr[pc[2].arg];
+                pc += 3;
+                continue;
+            },
+            .staticFunc => {
+                const symId = pc[1].arg;
+                framePtr[pc[2].arg] = try vm.allocFuncFromSym(symId);
                 pc += 3;
                 continue;
             },
@@ -5650,19 +5702,24 @@ const ObjectSymKey = struct {
     symId: SymbolId,
 };
 
-/// Stack layout for lambda: arg0, arg1, ..., callee
-/// Stack layout for closure: arg0, arg1, ..., callee, capturedVar0, capturedVar1, ...
-/// numArgs includes the callee.
-pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+/// See `reserveFuncParams` for stack layout.
+/// numArgs does not include the callee.
+pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, callee.asPointer().?);
         switch (obj.common.structId) {
             ClosureS => {
-                if (numArgs - 1 != obj.closure.numParams) {
-                    stdx.panic("params/args mismatch");
+                if (numArgs != obj.closure.numParams) {
+                    log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                    // Release func and args.
+                    for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
+                        release(vm, val);
+                    }
+                    framePtr.*[startLocal] = Value.initErrorTagLit(@enumToInt(bindings.TagLit.InvalidSignature));
+                    return;
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.closure.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr.* + startLocal + obj.closure.numLocals) >= @ptrToInt(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -5675,15 +5732,20 @@ pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLo
 
                 // Copy over captured vars to new call stack locals.
                 const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-                std.mem.copy(Value, framePtr.*[numArgs + 4..numArgs + 4 + obj.closure.numCaptured], src);
+                std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
             },
             LambdaS => {
-                if (numArgs - 1 != obj.lambda.numParams) {
+                if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
-                    stdx.fatal();
+                    // Release func and args.
+                    for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
+                        release(vm, val);
+                    }
+                    framePtr.*[startLocal] = Value.initErrorTagLit(@enumToInt(bindings.TagLit.InvalidSignature));
+                    return;
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.lambda.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr.* + startLocal + obj.lambda.numLocals) >= @ptrToInt(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -5693,6 +5755,22 @@ pub fn call(pc: *[*]const cy.OpData, framePtr: *[*]Value, callee: Value, startLo
                 framePtr.*[2] = Value{ .retPcPtr = pc.* };
                 framePtr.*[3] = retFramePtr;
                 pc.* = toPc(obj.lambda.funcPc);
+            },
+            NativeFunc1S => {
+                if (numArgs != obj.nativeFunc1.numParams) {
+                    log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
+                    for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
+                        release(vm, val);
+                    }
+                    framePtr.*[startLocal] = Value.initErrorTagLit(@enumToInt(bindings.TagLit.InvalidSignature));
+                    return;
+                }
+
+                vm.pc = pc.*;
+                const newFramePtr = framePtr.* + startLocal;
+                vm.framePtr = newFramePtr;
+                const res = obj.nativeFunc1.func(@ptrCast(*UserVM, vm), newFramePtr + 4, numArgs);
+                newFramePtr[0] = res;
             },
             else => {},
         }
@@ -5706,7 +5784,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
         const obj = stdx.ptrAlignCast(*HeapObject, callee.asPointer().?);
         switch (obj.common.structId) {
             ClosureS => {
-                if (numArgs - 1 != obj.closure.numParams) {
+                if (numArgs != obj.closure.numParams) {
                     stdx.panic("params/args mismatch");
                 }
 
@@ -5719,15 +5797,11 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
                 framePtr.*[1] = retInfo;
 
                 // Copy over captured vars to new call stack locals.
-                if (obj.closure.numCaptured <= 3) {
-                    const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-                    std.mem.copy(Value, framePtr.*[numArgs + 2..numArgs + 2 + obj.closure.numCaptured], src);
-                } else {
-                    stdx.panic("unsupported closure > 3 captured args.");
-                }
+                const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
+                std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
             },
             LambdaS => {
-                if (numArgs - 1 != obj.lambda.numParams) {
+                if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     stdx.fatal();
                 }
@@ -5761,13 +5835,16 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
 
 fn getObjectFunctionFallback(vm: *VM, obj: *const HeapObject, typeId: u32, symId: SymbolId) !Value {
     @setCold(true);
-    if (typeId == MapS) {
-        const name = vm.methodSymExtras.buf[symId];
-        const heapMap = stdx.ptrAlignCast(*const MapInner, &obj.map.inner);
-        if (heapMap.getByString(vm, name)) |val| {
-            return val;
-        }
-    }
+    _ = obj;
+    // Map fallback is no longer supported since cleanup of recv is not auto generated by the compiler.
+    // In the future, this may invoke the exact method signature or call a custom overloaded function.
+    // if (typeId == MapS) {
+    //     const name = vm.methodSymExtras.buf[symId];
+    //     const heapMap = stdx.ptrAlignCast(*const MapInner, &obj.map.inner);
+    //     if (heapMap.getByString(vm, name)) |val| {
+    //         return val;
+    //     }
+    // }
 
     return vm.panicFmt("Missing method symbol `{}` from receiver of type `{}`.", &.{
         v(vm.methodSymExtras.buf[symId]), v(vm.structs.buf[typeId].name),
@@ -5789,7 +5866,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapO
     const retInfo = buildReturnInfo2(reqNumRetVals, true);
     var newPc = pc;
     var newFramePtr = framePtr;
-    try @call(.always_inline, callNoInline, .{vm, &newPc, &newFramePtr, func, startLocal, numArgs, retInfo});
+    try @call(.always_inline, callNoInline, .{vm, &newPc, &newFramePtr, func, startLocal, numArgs-1, retInfo});
     return PcFramePtr{
         .pc = newPc,
         .framePtr = newFramePtr,
@@ -6308,69 +6385,76 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(StdSection) Value {
     }
 }
 
-/// Relative func symbol signature key.
-pub const RelFuncSigKey = struct {
-    namePtr: [*]const u8,
-    nameLen: u32,
-    numParams: u32,
+const RelFuncSigKey = KeyU64;
+
+pub const KeyU96 = extern union {
+    val: extern struct {
+        a: u64,
+        b: u32,
+    },
+    absLocalSymKey: extern struct {
+        localParentSymId: u32,
+        nameId: u32,
+        numParams: u32,
+    },
+    rtFuncSymKey: extern struct {
+        // TODO: Is it enough to just use the final resolved func sym id?
+        resolvedParentSymId: u32,
+        nameId: u32,
+        numParams: u32,
+    },
 };
 
-pub const RelFuncSigKeyContext = struct {
-    pub fn hash(self: @This(), key: RelFuncSigKey) u64 {
-        _ = self;
+pub const KeyU96Context = struct {
+    pub fn hash(_: @This(), key: KeyU96) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        @call(.always_inline, hasher.update, .{key.namePtr[0..key.nameLen]});
-        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.numParams)});
+        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.val.a)});
+        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.val.b)});
         return hasher.final();
     }
-    pub fn eql(self: @This(), a: RelFuncSigKey, b: RelFuncSigKey) bool {
-        _ = self;
-        if (a.nameLen != b.nameLen) {
-            return false;
-        }
-        if (a.numParams != b.numParams) {
-            return false;
-        }
-        return std.mem.eql(u8, a.namePtr[0..a.nameLen], b.namePtr[0..a.nameLen]);
+    pub fn eql(_: @This(), a: KeyU96, b: KeyU96) bool {
+        return a.val.a == b.val.a and a.val.b == b.val.b;
+    }
+};
+
+pub const KeyU64 = extern union {
+    val: u64,
+    absResolvedSymKey: extern struct {
+        resolvedParentSymId: u32,
+        nameId: u32,
+    },
+    absResolvedFuncSymKey: extern struct {
+        resolvedSymId: sema.ResolvedSymId,
+        numParams: u32,
+    },
+    relModuleSymKey: extern struct {
+        nameId: u32,
+        numParams: u32,
+    },
+    rtVarSymKey: extern struct {
+        resolvedParentSymId: u32,
+        nameId: u32,
+    },
+    relFuncSigKey: extern struct {
+        nameId: u32,
+        numParams: u32,
+    },
+};
+
+pub const KeyU64Context = struct {
+    pub fn hash(_: @This(), key: KeyU64) u64 {
+        return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
+    }
+    pub fn eql(_: @This(), a: KeyU64, b: KeyU64) bool {
+        return a.val == b.val;
     }
 };
 
 /// Absolute func symbol signature key.
-pub const AbsFuncSigKey = struct {
-    namePtr: [*]const u8,
-    /// Refers to a parent sema resolved sym id.
-    parentId: u32,
-    nameLen: u16,
-    numParams: u16,
-};
+pub const AbsFuncSigKey = KeyU96;
 
-pub const AbsFuncSigKeyContext = struct {
-    pub fn hash(self: @This(), key: AbsFuncSigKey) u64 {
-        _ = self;
-        var hasher = std.hash.Wyhash.init(0);
-        @call(.always_inline, hasher.update, .{key.namePtr[0..key.nameLen]});
-        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.numParams)});
-        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.parentId)});
-        return hasher.final();
-    }
-    pub fn eql(self: @This(), a: AbsFuncSigKey, b: AbsFuncSigKey) bool {
-        _ = self;
-        if (a.parentId != b.parentId) {
-            return false;
-        }
-        if (a.nameLen != b.nameLen) {
-            return false;
-        }
-        if (a.numParams != b.numParams) {
-            return false;
-        }
-        return std.mem.eql(u8, a.namePtr[0..a.nameLen], b.namePtr[0..a.nameLen]);
-    }
-};
-
-/// Absolute var signature key. RelFuncSigKey is repurposed by using `numParams` as the parent sema resolved sym id.
-const AbsVarSigKey = RelFuncSigKey;
-const AbsVarSigKeyContext = RelFuncSigKeyContext;
+/// Absolute var signature key.
+const AbsVarSigKey = KeyU64;
 
 const StringConcat = struct {
     left: []const u8,

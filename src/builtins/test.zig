@@ -9,14 +9,14 @@ const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const v = fmt.v;
 
-pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) linksection(cy.InitSection) !cy.Module {
+pub fn initModule(c: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .prefix = spec,
     };
-    try mod.setNativeFunc(alloc, "eq", 2, eq);
-    try mod.setNativeFunc(alloc, "eqList", 2, eqList);
-    try mod.setNativeFunc(alloc, "eqNear", 2, eqNear);
+    try mod.setNativeFunc(c, "eq", 2, eq);
+    try mod.setNativeFunc(c, "eqList", 2, eqList);
+    try mod.setNativeFunc(c, "eqNear", 2, eqNear);
     return mod;
 }
 

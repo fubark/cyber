@@ -1512,8 +1512,12 @@ pub fn resolveSym(self: *cy.VMcompiler, symId: SymId) !void {
                 } else {
                     // Unique function sym. Update key to func signature.
                     const funcSym = self.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                    if (funcSym.numParams == sym.key.absLocalSymKey.numParams) {
-                        // Only if signatures match.
+                    if (sym.key.absLocalSymKey.numParams != NullId) {
+                        if (funcSym.numParams == sym.key.absLocalSymKey.numParams) {
+                            // Only if signatures match.
+                            sym.resolvedSymId = rsymId;
+                        }
+                    } else {
                         sym.resolvedSymId = rsymId;
                     }
                 }

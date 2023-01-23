@@ -1614,6 +1614,7 @@ pub const VMcompiler = struct {
         defer self.setFirstFreeTempLocal(startTempLocal);
 
         var callStartLocal = self.advanceNextTempLocalPastArcTemps();
+        var considerUsingDst = true;
         if (self.blocks.items.len == 1) {
             // Main block.
             // Ensure call start register is at least 1 so the runtime can easily check
@@ -1621,10 +1622,13 @@ pub const VMcompiler = struct {
             if (callStartLocal == 0) {
                 callStartLocal = 1;
             }
+            if (callStartLocal == 1) {
+                considerUsingDst = false;
+            }
         }
 
         // Reserve registers for return value and return info.
-        if (dst + 1 == self.curBlock.firstFreeTempLocal) {
+        if (considerUsingDst and dst + 1 == callStartLocal) {
             callStartLocal -= 1;
         } else {
             _ = try self.nextFreeTempLocal();

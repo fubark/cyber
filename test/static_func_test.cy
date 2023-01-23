@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 -- Function with no params.
@@ -47,3 +49,7 @@ func less(a, b):
 list = [3, 2, 1]
 list.sort(less)
 try t.eqList(list, [1, 2, 3])
+
+-- Single line block.
+func foo5(): return 2 + 2
+try t.eq(foo5(), 4)

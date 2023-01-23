@@ -633,6 +633,24 @@ test "Statements." {
         \\  a = 10
         \\try t.eq(a, 10)
     );
+
+    // Invalid single line block.
+    var val = run.evalSilent(
+        \\if true: foo = 123 foo = 234
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Unsupported shorthand caller number");
+    val = run.evalSilent(
+        \\if true: foo = 123: foo = 234
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Expected end of line or file, got colon");
+    val = run.evalSilent(
+        \\if true: foo = 123
+        \\  foo = 234
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Unexpected indentation.");
 }
 
 test "Indentation." {
@@ -1217,40 +1235,10 @@ test "Return statement." {
     try t.eq(val.asF64toI32(), 123);
 }
 
-test "if statement" {
+test "If statement." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    // If/else.
-    var val = try run.eval(
-        \\if true:
-        \\  foo = 123
-        \\else:
-        \\  foo = 456
-        \\foo
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    val = try run.eval(
-        \\if false:
-        \\  foo = 123
-        \\else:
-        \\  foo = 456
-        \\foo
-    );
-    try t.eq(val.asF64toI32(), 456);
-
-    // else if condition.
-    val = try run.eval(
-        \\if false:
-        \\  foo = 456
-        \\else true:
-        \\  foo = 123
-        \\else:
-        \\  foo = 456
-        \\foo
-    );
-    try t.eq(val.asF64toI32(), 123);
+    _ = try run.eval(@embedFile("if_test.cy"));
 }
 
 test "Infinite while loop." {
@@ -1555,34 +1543,7 @@ test "Static functions." {
 test "Lambdas." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- No params.
-        \\foo = () => 2 + 2
-        \\try t.eq(foo(), 4)
-        \\
-        \\-- One param.
-        \\foo = a => a + 1
-        \\try t.eq(foo(10), 11)
-        \\
-        \\-- Multiple params.
-        \\foo = (bar, inc) => bar + inc
-        \\try t.eq(foo(20, 10), 30)
-        \\
-        \\-- Pass lambda as arg.
-        \\func call(f):
-        \\  return f(14)
-        \\try t.eq(call(a => a + 1), 15)
-        \\
-        \\-- Using parentheses.
-        \\m = { a: () => 4 }
-        \\try t.eq((m.a)(), 4)
-        \\
-        // // \\-- Invoking lambda temp.
-        // // \\try t.eq((a => a + 1)(14), 15)
-    );
+    _ = try run.eval(@embedFile("lambda_test.cy"));
 //     // Lambda assign declaration.
 //     val = try run.eval(
 //         \\foo = {}

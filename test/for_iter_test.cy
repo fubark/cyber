@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 -- Basic.
@@ -31,3 +33,9 @@ for list each it:
       continue
    sum += it
 try t.eq(sum, 5)
+
+-- Single line block.
+list = [1, 2, 3]
+sum = 0
+for list each it: sum += it
+try t.eq(sum, 6)

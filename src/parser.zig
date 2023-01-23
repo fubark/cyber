@@ -160,7 +160,7 @@ pub const Parser = struct {
         };
         Tokenizer(.{ .user = false }).tokenize(self, tokenizeOpts) catch |err| {
             log.debug("tokenize error: {}", .{err});
-            if (dumpParseErrorStackTrace) {
+            if (dumpParseErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
             return ResultView{
@@ -181,7 +181,7 @@ pub const Parser = struct {
             log.debug("parse error: {} {s}", .{err, self.last_err});
             // self.dumpTokensToCurrent();
             logSrcPos(self.src.items, self.last_err_pos, 20);
-            if (dumpParseErrorStackTrace) {
+            if (dumpParseErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
             return ResultView{
@@ -263,6 +263,19 @@ pub const Parser = struct {
     fn popBlock(self: *Parser) void {
         self.block_stack.items[self.block_stack.items.len-1].deinit(self.alloc);
         _ = self.block_stack.pop();
+    }
+
+    fn parseSingleOrIndentedBodyStmts(self: *Parser) !NodeId {
+        var token = self.peekToken();
+        if (token.tag() != .new_line) {
+            // Parse single statement only.
+            return (try self.parseStatement()) orelse {
+                return self.reportParseErrorAt("Expected one statement after the block.", &.{}, token);
+            };
+        } else {
+            self.advanceToken();
+            return self.parseIndentedBodyStatements();
+        }
     }
 
     /// Indent is determined by the first body statement.
@@ -390,7 +403,7 @@ pub const Parser = struct {
         decl.return_type = try self.parseFunctionReturn();
 
         try self.pushBlock();
-        const first_stmt = try self.parseIndentedBodyStatements();
+        const firstChild = try self.parseSingleOrIndentedBodyStmts();
         self.popBlock();
             
         const decl_id = @intCast(u32, self.func_decls.items.len);
@@ -400,7 +413,7 @@ pub const Parser = struct {
         self.nodes.items[id].head = .{
             .func = .{
                 .decl_id = decl_id,
-                .body_head = first_stmt,
+                .body_head = firstChild,
             },
         };
         return id;
@@ -817,7 +830,7 @@ pub const Parser = struct {
             try block.vars.put(self.alloc, name, {});
 
             try self.pushBlock();
-            const first_stmt = try self.parseIndentedBodyStatements();
+            const firstChild = try self.parseSingleOrIndentedBodyStmts();
             self.popBlock();
             
             const decl_id = @intCast(u32, self.func_decls.items.len);
@@ -827,7 +840,7 @@ pub const Parser = struct {
             self.nodes.items[id].head = .{
                 .func = .{
                     .decl_id = decl_id,
-                    .body_head = first_stmt,
+                    .body_head = firstChild,
                 },
             };
             return id;
@@ -836,7 +849,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseIfStmtElseClause(self: *Parser) anyerror!NodeId {
+    fn parseElseStmt(self: *Parser) anyerror!NodeId {
         const save = self.next_pos;
         const indent = self.consumeIndentBeforeStmt();
         if (indent != self.cur_indent) {
@@ -854,20 +867,12 @@ pub const Parser = struct {
                 // else block.
                 self.advanceToken();
 
-                // TODO: Parse statements on the same line.
-
-                token = self.peekToken();
-                if (token.tag() != .new_line) {
-                    return self.reportParseErrorAt("Expected new line.", &.{}, token);
-                }
-                self.advanceToken();
-
                 try self.pushBlock();
                 defer self.popBlock();
-                const first_stmt = try self.parseIndentedBodyStatements();
+                const firstChild = try self.parseSingleOrIndentedBodyStmts();
                 self.nodes.items[else_clause].head = .{
                     .else_clause = .{
-                        .body_head = first_stmt,
+                        .body_head = firstChild,
                         .cond = NullId,
                         .else_clause = NullId,
                     },
@@ -881,24 +886,19 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() == .colon) {
                     self.advanceToken();
-                    token = self.peekToken();
-                    if (token.tag() != .new_line) {
-                        return self.reportParseErrorAt("Expected new line.", &.{}, token);
-                    }
-                    self.advanceToken();
 
                     try self.pushBlock();
-                    const first_stmt = try self.parseIndentedBodyStatements();
+                    const firstChild = try self.parseSingleOrIndentedBodyStmts();
                     self.popBlock();
                     self.nodes.items[else_clause].head = .{
                         .else_clause = .{
-                            .body_head = first_stmt,
+                            .body_head = firstChild,
                             .cond = cond,
                             .else_clause = NullId,
                         },
                     };
 
-                    const nested_else = try self.parseIfStmtElseClause();
+                    const nested_else = try self.parseElseStmt();
                     if (nested_else != NullId) {
                         self.nodes.items[else_clause].head.else_clause.else_clause = nested_else;
                         return else_clause;
@@ -939,25 +939,17 @@ pub const Parser = struct {
 
         const if_stmt = try self.pushNode(.if_stmt, start);
 
-        // TODO: Parse statements on the same line.
-
-        token = self.peekToken();
-        if (token.tag() != .new_line) {
-            return self.reportParseErrorAt("Expected new line.", &.{}, token);
-        }
-        self.advanceToken();
-
         try self.pushBlock();
-        var first_stmt = try self.parseIndentedBodyStatements();
+        var firstChild = try self.parseSingleOrIndentedBodyStmts();
         self.popBlock();
         self.nodes.items[if_stmt].head = .{
             .left_right = .{
                 .left = if_cond,
-                .right = first_stmt,
+                .right = firstChild,
             },
         };
 
-        const else_clause = try self.parseIfStmtElseClause();
+        const else_clause = try self.parseElseStmt();
         if (else_clause != NullId) {
             self.nodes.items[if_stmt].head.left_right.extra = else_clause;
             return if_stmt;
@@ -1009,12 +1001,12 @@ pub const Parser = struct {
 
             // Infinite loop.
             try self.pushBlock();
-            const first_stmt = try self.parseIndentedBodyStatements();
+            const firstChild = try self.parseSingleOrIndentedBodyStmts();
             self.popBlock();
 
             const whileStmt = try self.pushNode(.whileInfStmt, start);
             self.nodes.items[whileStmt].head = .{
-                .child_head = first_stmt,
+                .child_head = firstChild,
             };
             return whileStmt;
         } else {
@@ -1027,14 +1019,14 @@ pub const Parser = struct {
             if (token.tag() == .colon) {
                 self.advanceToken();
                 try self.pushBlock();
-                const first_stmt = try self.parseIndentedBodyStatements();
+                const firstChild = try self.parseSingleOrIndentedBodyStmts();
                 self.popBlock();
 
                 const whileStmt = try self.pushNode(.whileCondStmt, start);
                 self.nodes.items[whileStmt].head = .{
                     .whileCondStmt = .{
                         .cond = expr_id,
-                        .bodyHead = first_stmt,
+                        .bodyHead = firstChild,
                     },
                 };
                 return whileStmt;
@@ -1060,14 +1052,14 @@ pub const Parser = struct {
         if (token.tag() == .colon) {
             self.advanceToken();
             try self.pushBlock();
-            const first_stmt = try self.parseIndentedBodyStatements();
+            const firstChild = try self.parseSingleOrIndentedBodyStmts();
             self.popBlock();
 
             const forStmt = try self.pushNode(.forOptStmt, start);
             self.nodes.items[forStmt].head = .{
                 .forOptStmt = .{
                     .opt = expr_id,
-                    .bodyHead = first_stmt,
+                    .bodyHead = firstChild,
                     .as = NullId,
                 },
             };
@@ -1083,14 +1075,14 @@ pub const Parser = struct {
                 if (token.tag() == .colon) {
                     self.advanceToken();
                     try self.pushBlock();
-                    const bodyHead = try self.parseIndentedBodyStatements();
+                    const firstChild = try self.parseSingleOrIndentedBodyStmts();
                     self.popBlock();
 
                     const forStmt = try self.pushNode(.forOptStmt, start);
                     self.nodes.items[forStmt].head = .{
                         .forOptStmt = .{
                             .opt = expr_id,
-                            .bodyHead = bodyHead,
+                            .bodyHead = firstChild,
                             .as = ident,
                         },
                     };
@@ -1119,14 +1111,14 @@ pub const Parser = struct {
                 self.advanceToken();
 
                 try self.pushBlock();
-                const first_stmt = try self.parseIndentedBodyStatements();
+                const firstChild = try self.parseSingleOrIndentedBodyStmts();
                 self.popBlock();
 
                 const for_stmt = try self.pushNode(.for_range_stmt, start);
                 self.nodes.items[for_stmt].head = .{
                     .for_range_stmt = .{
                         .range_clause = range_clause,
-                        .body_head = first_stmt,
+                        .body_head = firstChild,
                         .eachClause = NullId,
                     },
                 };
@@ -1144,7 +1136,7 @@ pub const Parser = struct {
                         self.advanceToken();
 
                         try self.pushBlock();
-                        const first_stmt = try self.parseIndentedBodyStatements();
+                        const firstChild = try self.parseSingleOrIndentedBodyStmts();
                         self.popBlock();
 
                         const eachClause = try self.pushNode(.eachClause, start);
@@ -1159,7 +1151,7 @@ pub const Parser = struct {
                         self.nodes.items[for_stmt].head = .{
                             .for_range_stmt = .{
                                 .range_clause = range_clause,
-                                .body_head = first_stmt,
+                                .body_head = firstChild,
                                 .eachClause = eachClause,
                             },
                         };
@@ -1184,7 +1176,7 @@ pub const Parser = struct {
                 if (token.tag() == .colon) {
                     self.advanceToken();
                     try self.pushBlock();
-                    const body_head = try self.parseIndentedBodyStatements();
+                    const firstChild = try self.parseSingleOrIndentedBodyStmts();
                     self.popBlock();
 
                     const each = try self.pushNode(.eachClause, start);
@@ -1199,7 +1191,7 @@ pub const Parser = struct {
                     self.nodes.items[for_stmt].head = .{
                         .for_iter_stmt = .{
                             .iterable = expr_id,
-                            .body_head = body_head,
+                            .body_head = firstChild,
                             .eachClause = each,
                         },
                     };
@@ -1214,7 +1206,7 @@ pub const Parser = struct {
                         if (token.tag() == .colon) {
                             self.advanceToken();
                             try self.pushBlock();
-                            const body_head = try self.parseIndentedBodyStatements();
+                            const firstChild = try self.parseSingleOrIndentedBodyStmts();
                             self.popBlock();
 
                             const each = try self.pushNode(.eachClause, start);
@@ -1229,7 +1221,7 @@ pub const Parser = struct {
                             self.nodes.items[for_stmt].head = .{
                                 .for_iter_stmt = .{
                                     .iterable = expr_id,
-                                    .body_head = body_head,
+                                    .body_head = firstChild,
                                     .eachClause = each,
                                 },
                             };

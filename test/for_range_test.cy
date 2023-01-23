@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 -- Basic.
@@ -60,3 +62,8 @@ for 0..10 each i:
        continue
    iters += 1
 try t.eq(iters, 9)
+
+-- Single line block.
+iters = 0
+for 0..10 each i: iters += 1
+try t.eq(iters, 10)

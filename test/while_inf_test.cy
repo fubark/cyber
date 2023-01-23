@@ -26,3 +26,11 @@ while:
   if i == 10:
     break
 try t.eq(count, 9)
+
+-- Single line block.
+i = 0
+func inc(): 
+  i += 1
+  return i
+while: if inc() == 10: break
+try t.eq(i, 10)

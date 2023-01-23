@@ -4239,6 +4239,10 @@ pub const UserVM = struct {
         return @ptrCast(*const VM, self).getStackTrace();
     }
 
+    pub fn getParserErrorMsg(self: *const UserVM) []const u8 {
+        return @ptrCast(*const VM, self).parser.last_err;
+    }
+
     pub fn getCompileErrorMsg(self: *const UserVM) []const u8 {
         return @ptrCast(*const VM, self).compiler.lastErr;
     }

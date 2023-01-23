@@ -1,3 +1,5 @@
+-- Copyright (c) 2023 Cyber (See LICENSE)
+
 import t 'test'
 
 -- Basic.
@@ -22,3 +24,8 @@ while i != 10:
     continue
   count += 1
 try t.eq(count, 9)
+
+-- Single line block.
+i = 0
+while i != 10: i += 1
+try t.eq(i, 10)

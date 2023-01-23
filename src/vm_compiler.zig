@@ -1008,8 +1008,9 @@ pub const VMcompiler = struct {
             .structDecl => {
                 const nameN = self.nodes[node.head.structDecl.name];
                 const name = self.getNodeTokenString(nameN);
+                const nameId = try sema.ensureNameSym(self, name);
 
-                const sid = try self.vm.ensureStruct(name);
+                const sid = try self.vm.ensureStruct(nameId, 0);
 
                 var i: u32 = 0;
                 var fieldId = node.head.structDecl.fieldsHead;
@@ -2257,7 +2258,8 @@ pub const VMcompiler = struct {
             .structInit => {
                 const stype = self.nodes[node.head.structInit.name];
                 const sname = self.getNodeTokenString(stype);
-                const sid = self.vm.getStruct(sname) orelse {
+                const snameId = try sema.ensureNameSym(self, sname);
+                const sid = self.vm.getStruct(snameId, 0) orelse {
                     return self.reportErrorAt("Missing object type: `{}`", &.{v(sname)}, nodeId);
                 };
 

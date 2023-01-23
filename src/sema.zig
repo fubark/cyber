@@ -633,7 +633,7 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
             const name = c.getNodeTokenString(nameN);
             const nameId = try ensureNameSym(c, name);
 
-            if (c.vm.getStruct(name) != null) {
+            if (c.vm.getStruct(nameId, 0) != null) {
                 return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
             }
 
@@ -1616,7 +1616,7 @@ fn getSym(self: *const cy.VMcompiler, parentId: ?u32, nameId: NameSymId, numPara
 }
 
 pub fn ensureNameSym(c: *cy.VMcompiler, name: []const u8) !NameSymId {
-    const res = try c.semaNameSymMap.getOrPut(c.alloc, name);
+    const res = try @call(.never_inline, c.semaNameSymMap.getOrPut, .{c.alloc, name});
     if (res.found_existing) {
         return res.value_ptr.*;
     } else {

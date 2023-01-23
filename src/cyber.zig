@@ -17,7 +17,7 @@ pub const Tokenizer = parser.Tokenizer;
 pub const TokenizeState = parser.TokenizeState;
 pub const TokenType = parser.TokenType;
 
-const sema = @import("sema.zig");
+pub const sema = @import("sema.zig");
 pub const Module = sema.Module;
 
 const vm_compiler = @import("vm_compiler.zig");

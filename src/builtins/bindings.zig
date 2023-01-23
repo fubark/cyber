@@ -400,7 +400,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
     }
 
-    const sid = try self.ensureStruct("CFunc");
+    const sid = try self.addStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
     id = try self.ensureFieldSym("sym");
     try self.addFieldSym(sid, id, 0);

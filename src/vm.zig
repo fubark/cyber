@@ -113,7 +113,7 @@ pub const VM = struct {
 
     /// Structs.
     structs: cy.List(Struct),
-    structSignatures: std.StringHashMapUnmanaged(StructId),
+    structSignatures: std.HashMapUnmanaged(StructKey, StructId, KeyU64Context, 80),
     iteratorObjSym: SymbolId,
     pairIteratorObjSym: SymbolId,
     nextObjSym: SymbolId,
@@ -1569,10 +1569,15 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureStruct(self: *VM, name: []const u8) !StructId {
-        const res = try self.structSignatures.getOrPut(self.alloc, name);
+    pub fn ensureStruct(self: *VM, nameId: sema.NameSymId, uniqId: u32) !StructId {
+        const res = try @call(.never_inline, self.structSignatures.getOrPut, .{self.alloc, .{
+            .structKey = .{
+                .nameId = nameId,
+                .uniqId = uniqId,
+            },
+        }});
         if (!res.found_existing) {
-            return self.addStruct(name);
+            return self.addStructExt(nameId, uniqId);
         } else {
             return res.value_ptr.*;
         }
@@ -1603,11 +1608,17 @@ pub const VM = struct {
         return id;
     }
 
-    pub inline fn getStruct(self: *const VM, name: []const u8) ?StructId {
-        return self.structSignatures.get(name);
+    pub inline fn getStruct(self: *const VM, nameId: sema.NameSymId, uniqId: u32) ?StructId {
+        return self.structSignatures.get(.{
+            .structKey = .{
+                .nameId = nameId,
+                .uniqId = uniqId,
+            },
+        });
     }
 
-    pub fn addStruct(self: *VM, name: []const u8) !StructId {
+    pub fn addStructExt(self: *VM, nameId: sema.NameSymId, uniqId: u32) !StructId {
+        const name = sema.getName(&self.compiler, nameId);
         const s = Struct{
             .name = name,
             .numFields = 0,
@@ -1615,8 +1626,18 @@ pub const VM = struct {
         const vm = self.getVM();
         const id = @intCast(u32, vm.structs.len);
         try vm.structs.append(vm.alloc, s);
-        try vm.structSignatures.put(vm.alloc, name, id);
+        try vm.structSignatures.put(vm.alloc, .{
+            .structKey = .{
+                .nameId = nameId,
+                .uniqId = uniqId,
+            },
+        }, id);
         return id;
+    }
+
+    pub fn addStruct(self: *VM, name: []const u8) !StructId {
+        const nameId = try sema.ensureNameSym(&self.compiler, name);
+        return self.addStructExt(nameId, 0);
     }
 
     inline fn getVM(self: *VM) *VM {
@@ -1741,7 +1762,7 @@ pub const VM = struct {
                 .numParams = numParams,
             },
         };
-        const res = try self.methodSymSigs.getOrPut(self.alloc, key);
+        const res = try @call(.never_inline, self.methodSymSigs.getOrPut, .{self.alloc, key});
         if (!res.found_existing) {
             const id = @intCast(u32, self.methodSyms.len);
             try self.methodSyms.append(self.alloc, .{
@@ -2271,6 +2292,20 @@ pub const VM = struct {
                 lastValue.* = val;
             } else {
                 return self.getFieldMissingSymbolError();
+            }
+        } else {
+            return self.getFieldMissingSymbolError();
+        }
+    }
+
+    pub fn getField2(self: *VM, recv: Value, symId: SymbolId) linksection(cy.Section) !Value {
+        if (recv.isPointer()) {
+            const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
+            const offset = self.getFieldOffset(obj, symId);
+            if (offset != NullByteId) {
+                return obj.object.getValue(offset);
+            } else {
+                return self.getFieldFallback(obj, self.fieldSyms.buf[symId].name);
             }
         } else {
             return self.getFieldMissingSymbolError();
@@ -4132,6 +4167,8 @@ const TagType = struct {
     name: []const u8,
     numMembers: u32,
 };
+
+const StructKey = KeyU64;
 
 pub const StructId = u32;
 
@@ -6439,13 +6476,17 @@ pub const KeyU64 = extern union {
         nameId: u32,
         numParams: u32,
     },
+    structKey: extern struct {
+        nameId: u32,
+        uniqId: u32,
+    },
 };
 
 pub const KeyU64Context = struct {
-    pub fn hash(_: @This(), key: KeyU64) u64 {
+    pub fn hash(_: @This(), key: KeyU64) linksection(cy.Section) u64 {
         return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
     }
-    pub fn eql(_: @This(), a: KeyU64, b: KeyU64) bool {
+    pub fn eql(_: @This(), a: KeyU64, b: KeyU64) linksection(cy.Section) bool {
         return a.val == b.val;
     }
 };

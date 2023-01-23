@@ -271,7 +271,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
         }
         w.print(");\n", .{}) catch stdx.fatal();
 
-        w.print("uint64_t cy{s}(void* vm, uint64_t* args, char numArgs) {{\n", .{sym}) catch stdx.fatal();
+        w.print("uint64_t cy{s}(void* vm, void* obj, uint64_t* args, char numArgs) {{\n", .{sym}) catch stdx.fatal();
         // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
         for (cargs) |carg, i| {
             const argTag = carg.asTagLiteralId();
@@ -381,6 +381,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
                 else => {},
             }
         }
+        // Release obj.
+        w.print("  icyRelease(((uint64_t)obj) | 0xFFFC000000000000);\n", .{}) catch stdx.fatal();
 
         // Gen return.
         switch (@intToEnum(TagLit, retTag)) {
@@ -451,29 +453,36 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
         stdx.panic("Failed to relocate compiled code.");
     }
 
-    // Create vm function pointers and put in map.
-    const map = vm.allocEmptyMap() catch stdx.fatal();
-    const cyState = gvm.allocTccState(state.?, lib) catch stdx.fatal();
-    gvm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
+    // Create vm function pointers and put in anonymous struct.
+    const ivm = @ptrCast(*cy.VM, vm);
+    const nameId = cy.sema.ensureNameSym(&ivm.compiler, "BindLib") catch stdx.fatal();
+    const sid = ivm.ensureStruct(nameId, @intCast(u32, ivm.structs.len)) catch stdx.fatal();
+    const tccField = ivm.ensureFieldSym("tcc") catch stdx.fatal();
+    ivm.structs.buf[sid].numFields = 1;
+    ivm.addFieldSym(sid, tccField, 0) catch stdx.fatal();
+
+    const cyState = ivm.allocTccState(state.?, lib) catch stdx.fatal();
+    // ivm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
     for (cfuncs.items()) |cfunc| {
-        const sym = vm.valueToTempString(gvm.getField(cfunc, symf) catch stdx.fatal());
+        const sym = vm.valueToTempString(ivm.getField2(cfunc, symf) catch stdx.fatal());
         const cySym = std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0}) catch stdx.fatal();
         defer alloc.free(cySym);
         const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
             stdx.panic("Failed to get symbol.");
         };
 
-        const cargsv = gvm.getField(cfunc, argsf) catch stdx.fatal();
+        const cargsv = ivm.getField2(cfunc, argsf) catch stdx.fatal();
         const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
 
-        const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]Value, u8) Value, funcPtr);
-        const key = vm.allocStringInfer(sym) catch stdx.fatal();
-        const val = gvm.allocNativeFunc1(func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
-        gvm.setIndex(map, key, val) catch stdx.fatal();
+        const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, *anyopaque, [*]const Value, u8) Value, funcPtr);
+
+        const methodSym = ivm.ensureMethodSymKey(sym, @intCast(u32, cargs.len)) catch stdx.fatal();
+        // const val = ivm.allocNativeFunc1(func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
+        @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) }) catch stdx.fatal();
     }
 
     success = true;
-    return map;
+    return vm.allocObjectSmall(sid, &.{cyState}) catch stdx.fatal();
 }
 
 pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

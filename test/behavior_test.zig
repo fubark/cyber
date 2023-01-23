@@ -1888,6 +1888,16 @@ test "Function overloading." {
 test "Static functions." {
     const run = VMrunner.create();
     defer run.destroy();
+
+    // Call with wrong number of arugments.
+    var res = run.evalSilent(
+        \\func foo():
+        \\  return 1
+        \\foo(1)
+    );
+    try t.expectError(res, error.Panic);
+    try run.assertPanicMsg("Symbol is not defined.");
+
     _ = try run.eval(@embedFile("static_func_test.cy"));
 }
 

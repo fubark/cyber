@@ -10,6 +10,7 @@ const core_mod = @import("builtins/core.zig");
 const math_mod = @import("builtins/math.zig");
 const os_mod = @import("builtins/os.zig");
 const test_mod = @import("builtins/test.zig");
+const vm_ = @import("vm.zig");
 
 const log = stdx.log.scoped(.sema);
 
@@ -286,6 +287,8 @@ pub const Block = struct {
     }
 };
 
+pub const NameSymId = u32;
+
 pub const SymId = u32;
 const SymType = enum {
     func,
@@ -294,17 +297,20 @@ const SymType = enum {
     undefined,
 };
 
+const AbsLocalSymKey = vm_.KeyU96;
+
 /// Represents a sema symbol in the current module. It can be an intermediate sym in a sym path or a sym leaf.
 /// Since module namespaces use the same accessor operator as local variables, a symbol doesn't always get resolved post sema.
 pub const Sym = struct {
     /// key.parentId points to the parent sym in the current module.
     /// If key.parentId == NullId, then this sym is at the root of the module.
-    key: AbsSymSigKey,
+    key: AbsLocalSymKey,
 
-    /// After the sema pass, all semaSyms are resolved.
+    /// After the sema pass, the resolvedSymId will be updated.
+    /// If `resolvedSymId` is NullId at codegen pass, this sym is undefined.
     resolvedSymId: ResolvedSymId = NullId,
 
-    symT: SymType,
+    // symT: SymType,
 
     /// Whether this sym is used in the script.
     /// TODO: This might not be necessary once resolving syms ends up using the parent path symbol.
@@ -314,9 +320,45 @@ pub const Sym = struct {
     /// in a DFS traversal of its dependencies.
     visited: bool,
 
-    pub fn getName(self: *const Sym) []const u8 {
-        return self.key.namePtr[0..self.key.nameLen];
+    inline fn isFuncSym(self: *const Sym) bool {
+        return self.key.absLocalSymKey.numParams != NullId;
     }
+};
+
+pub fn getName(c: *const cy.VMcompiler, nameId: NameSymId) []const u8 {
+    return c.semaNameSyms.items[nameId];
+}
+
+pub fn getSymName(c: *const cy.VMcompiler, sym: *const Sym) []const u8 {
+    return c.semaNameSyms.items[sym.key.absLocalSymKey.nameId];
+}
+
+pub fn isResolvedUserVarSym(c: *const cy.VMcompiler, sym: *const Sym) bool {
+    if (sym.resolvedSymId != NullId) {
+        if (c.semaResolvedSyms.items[sym.resolvedSymId].symT == .variable) {
+            return c.semaResolvedSyms.items[sym.resolvedSymId].inner.variable.declId != NullId;
+        }
+    }
+    return false;
+}
+
+pub fn isResolvedVarSym(c: *const cy.VMcompiler, sym: *const Sym) bool {
+    if (sym.resolvedSymId != NullId) {
+        return c.semaResolvedSyms.items[sym.resolvedSymId].symT == .variable;
+    }
+    return false;
+}
+
+pub const ResolvedFuncSymId = u32;
+pub const ResolvedFuncSym = struct {
+    /// DeclId can be the NullId for native functions.
+    declId: u32,
+
+    /// Can be used to update a local sym to point to this func sym.
+    numParams: u8,
+
+    /// Return type.
+    retType: Type,
 };
 
 const ResolvedSymType = enum {
@@ -329,20 +371,21 @@ const ResolvedSymType = enum {
 pub const ResolvedSymId = u32;
 pub const ResolvedSym = struct {
     symT: ResolvedSymType,
-    inner: union {
-        func: struct {
-            // DeclId can be the NullId for native functions.
-            declId: u32,
-            // Return type.
-            retType: Type,
+    inner: extern union {
+        func: extern struct {
+            /// Refers to exactly one resolved func sym.
+            /// resolvedFuncSymId == NullId indicates this sym is overloaded;
+            /// more than one func shares the same symbol. To disambiguate,
+            /// `resolvedFuncSymMap` must be queried with a absResolvedFuncSymKey.
+            resolvedFuncSymId: ResolvedFuncSymId,
         },
-        variable: struct {
+        variable: extern struct {
             declId: cy.NodeId,
         },
-        object: struct {
+        object: extern struct {
             declId: cy.NodeId,
         },
-        module: struct {
+        module: extern struct {
             id: ModuleId,
         },
     },
@@ -351,6 +394,7 @@ pub const ResolvedSym = struct {
 const SymRefType = enum {
     module,
     moduleMember,
+    moduleFuncMember,
     initDeps,
 };
 
@@ -361,6 +405,11 @@ pub const SymRef = struct {
         moduleMember: struct {
             modId: ModuleId,
         },
+        /// Points to a module with a specific function signature.
+        moduleFuncMember: struct {
+            modId: ModuleId,
+            numParams: u32,
+        },
         /// For variable symbols, this points to a list of sema sym ids in `bufU32` that it depends on for initialization.
         initDeps: struct {
             start: u32 = 0,
@@ -369,18 +418,22 @@ pub const SymRef = struct {
     },
 };
 
+const RelModuleSymKey = vm_.KeyU64;
+
 pub const ModuleId = u32;
 pub const Module = struct {
-    syms: std.HashMapUnmanaged(RelSymSigKey, ModuleSym, RelSymSigKeyContext, 80),
+    syms: std.HashMapUnmanaged(RelModuleSymKey, ModuleSym, vm_.KeyU64Context, 80),
     prefix: []const u8,
 
-    pub fn setNativeFunc(self: *Module, alloc: std.mem.Allocator, name: []const u8, numParams: u32, func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value) !void {
-        const key = RelSymSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
-            .numParams = numParams,
+    pub fn setNativeFunc(self: *Module, c: *cy.VMcompiler, name: []const u8, numParams: u32, func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value) !void {
+        const nameId = try ensureNameSym(c, name);
+        const key = RelModuleSymKey{
+            .relModuleSymKey = .{
+                .nameId = nameId,
+                .numParams = numParams,
+            },
         };
-        try self.syms.put(alloc, key, .{
+        try self.syms.put(c.alloc, key, .{
             .symT = .nativeFunc1,
             .inner = .{
                 .nativeFunc1 = .{
@@ -390,24 +443,28 @@ pub const Module = struct {
         });
     }
 
-    pub fn getVarVal(self: *const Module, name: []const u8) ?cy.Value {
-        const key = RelSymSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
-            .numParams = NullId,
+    pub fn getVarVal(self: *const Module, c: *cy.VMcompiler, name: []const u8) !?cy.Value {
+        const nameId = try ensureNameSym(c, name);
+        const key = RelModuleSymKey{
+            .relModuleSymKey = .{
+                .nameId = nameId,
+                .numParams = NullId,
+            },
         };
         if (self.syms.get(key)) |sym| {
             return sym.inner.variable.val;
         } else return null;
     }
 
-    pub fn setVar(self: *Module, alloc: std.mem.Allocator, name: []const u8, val: cy.Value) !void {
-        const key = RelSymSigKey{
-            .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
-            .numParams = NullId,
+    pub fn setVar(self: *Module, c: *cy.VMcompiler, name: []const u8, val: cy.Value) !void {
+        const nameId = try ensureNameSym(c, name);
+        const key = RelModuleSymKey{
+            .relModuleSymKey = .{
+                .nameId = nameId,
+                .numParams = NullId,
+            },
         };
-        try self.syms.put(alloc, key, .{
+        try self.syms.put(c.alloc, key, .{
             .symT = .variable,
             .inner = .{
                 .variable = .{
@@ -444,7 +501,8 @@ const RelSymSigKey = cy.RelFuncSigKey;
 const RelSymSigKeyContext = cy.RelFuncSigKeyContext;
 
 /// Absolute symbol signature key. AbsFuncSigKey is repurposed for variable syms when `numParams` == NullId.
-pub const AbsSymSigKey = cy.AbsFuncSigKey;
+pub const AbsSymSigKey = vm_.KeyU64;
+pub const AbsResolvedSymKey = vm_.KeyU64;
 pub const AbsSymSigKeyContext = cy.AbsFuncSigKeyContext;
 
 pub fn semaStmts(self: *cy.VMcompiler, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
@@ -573,12 +631,13 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
         .structDecl => {
             const nameN = c.nodes[node.head.structDecl.name];
             const name = c.getNodeTokenString(nameN);
+            const nameId = try ensureNameSym(c, name);
 
             if (c.vm.getStruct(name) != null) {
                 return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
             }
 
-            if (getSym(c, null, name, null) != null) {
+            if (getSym(c, null, nameId, null) != null) {
                 return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
             }
             const objSymId = try resolveLocalObjectSym(c, null, name, nodeId);
@@ -605,10 +664,10 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
 
                 // Struct function.
                 const funcName = c.src[decl.name.start..decl.name.end];
+                const funcNameId = try ensureNameSym(c, funcName);
                 const numParams = @intCast(u16, decl.params.end - decl.params.start);
-                if (getSym(c, objSymId, funcName, numParams) == null) {
-                    const symId = try ensureSym(c, objSymId, funcName, numParams);
-                    c.semaSyms.items[symId].symT = .func;
+                if (getSym(c, objSymId, funcNameId, numParams) == null) {
+                    _ = try ensureSym(c, objSymId, funcNameId, numParams);
                 } else {
                     return c.reportErrorAt("Symbol `{}` is already declared.", &.{v(funcName)}, nodeId);
                 }
@@ -620,8 +679,12 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
                 const retType = curBlock(c).getReturnType();
                 try endBlock(c);
 
-                const symId = try resolveLocalFuncSym(c, objSymId, func.head.func.decl_id, retType);
+                const symId = try ensureSym(c, objSymId, funcNameId, numParams);
+                const resolvedParentSymId = c.semaSyms.items[objSymId].resolvedSymId;
+                const res = try resolveLocalFuncSym(c, resolvedParentSymId, funcNameId, func.head.func.decl_id, retType);
                 c.funcDecls[func.head.func.decl_id].semaSymId = symId;
+                c.funcDecls[func.head.func.decl_id].semaResolvedFuncSymId = res.resolvedFuncSymId;
+                c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
 
                 funcId = func.next;
             }
@@ -647,13 +710,17 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
                 retType = sblock.getReturnType();
             }
             const name = c.src[func.name.start..func.name.end];
+            const nameId = try ensureNameSym(c, name);
             const numParams = @intCast(u16, func.params.end - func.params.start);
 
-            const rtSymId = try c.vm.ensureFuncSym(NullId, name, numParams);
+            const rtSymId = try c.vm.ensureFuncSym(NullId, nameId, numParams);
             try endFuncSymBlock(c, rtSymId, numParams);
 
-            const symId = try resolveLocalFuncSym(c, null, node.head.func.decl_id, retType.?);
+            const symId = try ensureSym(c, NullId, nameId, numParams);
+            const res = try resolveLocalFuncSym(c, null, nameId, node.head.func.decl_id, retType.?);
             c.funcDecls[node.head.func.decl_id].semaSymId = symId;
+            c.funcDecls[node.head.func.decl_id].semaResolvedFuncSymId = res.resolvedFuncSymId;
+            c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
         },
         .whileCondStmt => {
             try pushIterSubBlock(c);
@@ -738,7 +805,8 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
         .importStmt => {
             const ident = c.nodes[node.head.left_right.left];
             const name = c.getNodeTokenString(ident);
-            const symId = try ensureSym(c, null, name, null);
+            const nameId = try ensureNameSym(c, name);
+            const symId = try ensureSym(c, null, nameId, null);
 
             const spec = c.nodes[node.head.left_right.right];
             const specPath = c.getNodeTokenString(spec);
@@ -948,6 +1016,9 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
                 // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
             }
         },
+        .group => {
+            return semaExpr(c, node.head.child_head, discardTopExprReg);
+        },
         .binExpr => {
             const left = node.head.binExpr.left;
             const right = node.head.binExpr.right;
@@ -1102,7 +1173,8 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
                         // Ensure func sym.
                         const right = c.nodes[callee.head.accessExpr.right];
                         const name = c.getNodeTokenString(right);
-                        const symId = try ensureSym(c, leftSymId, name, @intCast(u16, numArgs));
+                        const nameId = try ensureNameSym(c, name);
+                        const symId = try ensureSym(c, leftSymId, nameId, @intCast(u16, numArgs));
                         c.semaSyms.items[symId].used = true;
                         c.nodes[node.head.func_call.callee].head.accessExpr.semaSymId = symId;
                     }
@@ -1133,13 +1205,26 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
 
                         // Ensure func sym.
                         const name = c.getNodeTokenString(callee);
-                        const symId = try ensureSym(c, null, name, @intCast(u16, numArgs));
+                        const nameId = try ensureNameSym(c, name);
+                        const symId = try ensureSym(c, null, nameId, @intCast(u16, numArgs));
                         c.semaSyms.items[symId].used = true;
                         c.nodes[node.head.func_call.callee].head.ident.semaSymId = symId;
 
                         return AnyType;
                     }
-                } else return c.reportErrorAt("Unsupported callee", &.{}, nodeId);
+                } else {
+                    // All other callees are treated as function value calls.
+                    var numArgs: u32 = 0;
+                    var arg_id = node.head.func_call.arg_head;
+                    while (arg_id != NullId) : (numArgs += 1) {
+                        const arg = c.nodes[arg_id];
+                        _ = try semaExpr(c, arg_id, false);
+                        arg_id = arg.next;
+                    }
+
+                    _ = try semaExpr(c, node.head.func_call.callee, false);
+                    return AnyType;
+                }
             } else return c.reportErrorAt("Unsupported named args", &.{}, nodeId);
         },
         .lambda_multi => {
@@ -1148,7 +1233,7 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
 
                 // Generate function body.
                 const func = c.funcDecls[node.head.func.decl_id];
-                try pushLambdaParamVars(c, func);
+                try pushFuncParamVars(c, func);
                 try semaStmts(c, node.head.func.body_head, false);
 
                 const numParams = func.params.len();
@@ -1162,7 +1247,7 @@ fn semaExpr(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bo
 
                 // Generate function body.
                 const func = c.funcDecls[node.head.func.decl_id];
-                try pushLambdaParamVars(c, func);
+                try pushFuncParamVars(c, func);
                 _ = try semaExpr(c, node.head.func.body_head, false);
 
                 const numParams = func.params.len();
@@ -1187,23 +1272,6 @@ fn pushSubBlock(self: *cy.VMcompiler) !void {
     const prev = self.curSemaSubBlockId;
     self.curSemaSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
     try self.semaSubBlocks.append(self.alloc, SubBlock.init(prev, self.assignedVarStack.items.len));
-}
-
-fn pushLambdaParamVars(c: *cy.VMcompiler, func: cy.FuncDecl) !void {
-    const sblock = curBlock(c);
-
-    if (func.params.end > func.params.start) {
-        for (c.funcParams[func.params.start..func.params.end]) |param| {
-            const paramName = c.src[param.name.start..param.name.end];
-            const paramT = AnyType;
-            const id = try pushLocalVar(c, paramName, paramT);
-            try sblock.params.append(c.alloc, id);
-        }
-    }
-
-    // Add lambda receiver param.
-    var id = try pushLocalVar(c, "[callee]", AnyType);
-    try sblock.params.append(c.alloc, id);
 }
 
 fn pushMethodParamVars(c: *cy.VMcompiler, func: cy.FuncDecl) !void {
@@ -1307,9 +1375,10 @@ fn ensureLocalBodyVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type) !Loca
 fn setIdentAsVarSym(self: *cy.VMcompiler, ident: cy.NodeId) !void {
     const node = self.nodes[ident];
     const name = self.getNodeTokenString(node);
+    const nameId = try ensureNameSym(self, name);
 
     // Assume reference to global sym.
-    const symId = try ensureSym(self, null, name, null);
+    const symId = try ensureSym(self, null, nameId, null);
     self.semaSyms.items[symId].used = true;
 
     if (self.curSemaSymVar != NullId) {
@@ -1367,24 +1436,45 @@ fn identLocalVarOrNull(self: *cy.VMcompiler, ident: cy.NodeId, searchParentScope
     }
 }
 
-pub fn resolveSym(self: *cy.VMcompiler, symId: LocalVarId) !void {
+pub fn resolveSym(self: *cy.VMcompiler, symId: SymId) !void {
     const sym = &self.semaSyms.items[symId];
-    log.debug("resolving {} {s}", .{symId, sym.getName()});
-    if (sym.key.parentId == NullId) {
+    log.debug("resolving {} {s} {}", .{symId, getSymName(self, sym), sym.key.absLocalSymKey.numParams});
+    // defer {
+    //     if (sym.resolvedSymId != NullId) {
+    //         log.debug("resolved", .{});
+    //     }
+    // }
+    if (sym.key.absLocalSymKey.localParentSymId == NullId) {
         // Direct alias lookup.
         if (self.semaSymToRef.get(symId)) |ref| {
             if (ref.refT == .moduleMember) {
                 const modId = ref.inner.moduleMember.modId;
-                if (try getOrTryResolveSym(self, sym.key, modId, NullId)) |resolvedId| {
+                const key = vm_.KeyU64{
+                    .absResolvedSymKey = .{
+                        .resolvedParentSymId = NullId,
+                        .nameId = sym.key.absLocalSymKey.nameId,
+                    },
+                };
+                if (try getOrTryResolveSym(self, key, sym.key.absLocalSymKey.numParams, modId, NullId)) |resolvedId| {
                     sym.resolvedSymId = resolvedId;
-                    // log.debug("resolved", .{});
+                }
+            } else if (ref.refT == .moduleFuncMember) {
+                const modId = ref.inner.moduleFuncMember.modId;
+                const key = vm_.KeyU64{
+                    .absResolvedSymKey = .{
+                        .resolvedParentSymId = NullId,
+                        .nameId = sym.key.absLocalSymKey.nameId,
+                    },
+                };
+                if (try getOrTryResolveSym(self, key, ref.inner.moduleFuncMember.numParams, modId, NullId)) |resolvedId| {
+                    sym.resolvedSymId = resolvedId;
                 }
             } else if (ref.refT == .module) {
-                const key = AbsSymSigKey{
-                    .namePtr = sym.key.namePtr,
-                    .nameLen = sym.key.nameLen,
-                    .parentId = NullId,
-                    .numParams = NullIdU16,
+                const key = AbsResolvedSymKey{
+                    .absResolvedSymKey = .{
+                        .resolvedParentSymId = NullId,
+                        .nameId = sym.key.absLocalSymKey.nameId,
+                    },
                 };
                 if (self.semaResolvedSymMap.get(key)) |id| {
                     sym.resolvedSymId = id;
@@ -1406,10 +1496,33 @@ pub fn resolveSym(self: *cy.VMcompiler, symId: LocalVarId) !void {
                 return self.reportError("Unsupported {}", &.{fmt.v(ref.refT)});
             }
         }
+
+        // Fallback logic, look for resolved sym.
+        const key = vm_.KeyU64{
+            .absResolvedSymKey = .{
+                .resolvedParentSymId = NullId,
+                .nameId = sym.key.absLocalSymKey.nameId,
+            },
+        };
+        if (self.semaResolvedSymMap.get(key)) |rsymId| {
+            const rsym = self.semaResolvedSyms.items[rsymId];
+            if (rsym.symT == .func) {
+                if (rsym.inner.func.resolvedFuncSymId == NullId) {
+                    return self.reportError("Can not disambiguate the symbol `{}`.", &.{v(getName(self, sym.key.absLocalSymKey.nameId))});
+                } else {
+                    // Unique function sym. Update key to func signature.
+                    const funcSym = self.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
+                    sym.key.absLocalSymKey.numParams = funcSym.numParams;
+                    sym.resolvedSymId = rsymId;
+                }
+            } else {
+                sym.resolvedSymId = rsymId;
+            }
+        }
     } else {
         // Has parent symbol.
         
-        const psym = self.semaSyms.items[sym.key.parentId];
+        const psym = self.semaSyms.items[sym.key.absLocalSymKey.localParentSymId];
         if (psym.resolvedSymId == NullId) {
             // If the parent isn't resolved, this sym won't be resolved either.
             return;
@@ -1418,7 +1531,13 @@ pub fn resolveSym(self: *cy.VMcompiler, symId: LocalVarId) !void {
         const rpsym = self.semaResolvedSyms.items[psym.resolvedSymId];
         if (rpsym.symT == .module) {
             const modId = rpsym.inner.module.id;
-            if (try getOrTryResolveSym(self, sym.key, modId, NullId)) |resolvedId| {
+            const key = vm_.KeyU64{
+                .absResolvedSymKey = .{
+                    .resolvedParentSymId = psym.resolvedSymId,
+                    .nameId = sym.key.absLocalSymKey.nameId,
+                },
+            };
+            if (try getOrTryResolveSym(self, key, sym.key.absLocalSymKey.numParams, modId, NullId)) |resolvedId| {
                 sym.resolvedSymId = resolvedId;
                 // log.debug("resolve {s} {} {}", .{sym.getName(), sym.key.parentId, modId});
             }
@@ -1426,70 +1545,95 @@ pub fn resolveSym(self: *cy.VMcompiler, symId: LocalVarId) !void {
     }
 }
 
-fn getOrTryResolveSym(self: *cy.VMcompiler, key: AbsSymSigKey, modId: ModuleId, nodeId: cy.NodeId) !?ResolvedSymId {
-    if (self.semaResolvedSymMap.get(key)) |id| {
-        return id;
-    } else {
-        const relKey = RelSymSigKey{
-            .namePtr = key.namePtr,
-            .nameLen = key.nameLen,
-            .numParams = if (key.numParams == NullIdU16) NullId else key.numParams,
-        };
-        if (self.modules.items[modId].syms.get(relKey)) |modSym| {
-            const id = @intCast(u32, self.semaResolvedSyms.items.len);
-            if (modSym.symT == .nativeFunc1) {
-                const resolvedParentId = if (key.parentId == NullId) NullId else self.semaSyms.items[key.parentId].resolvedSymId;
-                const rtSymId = try self.vm.ensureFuncSym(resolvedParentId, key.namePtr[0..key.nameLen], key.numParams);
-                const rtSym = cy.FuncSymbolEntry.initNativeFunc1(modSym.inner.nativeFunc1.func);
-                self.vm.setFuncSym(rtSymId, rtSym);
-                try self.semaResolvedSyms.append(self.alloc, .{
-                    .symT = .func,
-                    .inner = .{
-                        .func = .{
-                            .declId = NullId,
-                            .retType = AnyType,
-                        },
-                    },
-                });
-                try self.semaResolvedSymMap.put(self.alloc, key, id);
-            } else if (modSym.symT == .variable) {
-                const resolvedParentId = if (key.parentId == NullId) NullId else self.semaSyms.items[key.parentId].resolvedSymId;
-                const rtSymId = try self.vm.ensureVarSym(resolvedParentId, key.namePtr[0..key.nameLen]);
-                const rtSym = cy.VarSym.init(modSym.inner.variable.val);
-                self.vm.retain(rtSym.value);
-                self.vm.setVarSym(rtSymId, rtSym);
-                try self.semaResolvedSyms.append(self.alloc, .{
-                    .symT = .variable,
-                    .inner = .{
-                        .variable = undefined,
-                    },
-                });
-                try self.semaResolvedSymMap.put(self.alloc, key, id);
-            } else {
-                return self.reportErrorAt("Unsupported module sym {}", &.{fmt.v(modSym.symT)}, nodeId);
-            }
+fn getOrTryResolveSym(self: *cy.VMcompiler, key: AbsResolvedSymKey, numParams: u32, modId: ModuleId, nodeId: cy.NodeId) !?ResolvedSymId {
+    if (numParams == NullId) {
+        // Not a function. Check sym map.
+        if (self.semaResolvedSymMap.get(key)) |id| {
             return id;
         }
-        return null;
+    } else {
+        if (self.semaResolvedSymMap.get(key)) |id| {
+            const funcKey = vm_.KeyU64{
+                .absResolvedFuncSymKey = .{
+                    .resolvedSymId = id,
+                    .numParams = numParams,
+                },
+            };
+            if (self.semaResolvedFuncSymMap.get(funcKey)) |_| {
+                return id;
+            }
+        }
     }
+
+    const relKey = vm_.KeyU64{
+        .relModuleSymKey = .{
+            .nameId = key.absResolvedSymKey.nameId,
+            .numParams = numParams,
+        },
+    };
+    if (self.modules.items[modId].syms.get(relKey)) |modSym| {
+        if (modSym.symT == .nativeFunc1) {
+            const resolvedParentId = key.absResolvedSymKey.resolvedParentSymId;
+            const rtSymId = try self.vm.ensureFuncSym(resolvedParentId, key.absResolvedSymKey.nameId, numParams);
+            const rtSym = cy.FuncSymbolEntry.initNativeFunc1(modSym.inner.nativeFunc1.func, numParams);
+            self.vm.setFuncSym(rtSymId, rtSym);
+
+            const res = try resolveSymAsFunc(self, key, numParams, NullId, AnyType);
+            return res.resolvedSymId;
+        } else if (modSym.symT == .variable) {
+            const id = @intCast(u32, self.semaResolvedSyms.items.len);
+            const resolvedParentId = key.absResolvedSymKey.resolvedParentSymId;
+            const rtSymId = try self.vm.ensureVarSym(resolvedParentId, key.absResolvedSymKey.nameId);
+            const rtSym = cy.VarSym.init(modSym.inner.variable.val);
+            self.vm.retain(rtSym.value);
+            self.vm.setVarSym(rtSymId, rtSym);
+            try self.semaResolvedSyms.append(self.alloc, .{
+                .symT = .variable,
+                .inner = .{
+                    .variable = .{
+                        .declId = NullId,
+                    },
+                },
+            });
+            try self.semaResolvedSymMap.put(self.alloc, key, id);
+            return id;
+        } else {
+            return self.reportErrorAt("Unsupported module sym {}", &.{fmt.v(modSym.symT)}, nodeId);
+        }
+    }
+    return null;
 }
 
-fn getSym(self: *const cy.VMcompiler, parentId: ?u32, name: []const u8, numParams: ?u16) ?SymId {
-    const key = AbsSymSigKey{
-        .namePtr = name.ptr,
-        .parentId = parentId orelse NullId,
-        .nameLen = @intCast(u16, name.len),
-        .numParams = numParams orelse NullIdU16,
+fn getSym(self: *const cy.VMcompiler, parentId: ?u32, nameId: NameSymId, numParams: ?u16) ?SymId {
+    const key = vm_.KeyU96{
+        .absLocalSymKey = .{
+            .localParentSymId = parentId orelse NullId,
+            .nameId = nameId,
+            .numParams = numParams orelse NullId,
+        },
     };
     return self.semaSymMap.get(key);
 }
 
-pub fn ensureSym(c: *cy.VMcompiler, parentId: ?SymId, name: []const u8, numParams: ?u16) !SymId {
-    const key = AbsSymSigKey{
-        .namePtr = name.ptr,
-        .parentId = parentId orelse NullId,
-        .nameLen = @intCast(u16, name.len),
-        .numParams = numParams orelse NullIdU16,
+pub fn ensureNameSym(c: *cy.VMcompiler, name: []const u8) !NameSymId {
+    const res = try c.semaNameSymMap.getOrPut(c.alloc, name);
+    if (res.found_existing) {
+        return res.value_ptr.*;
+    } else {
+        const id = @intCast(u32, c.semaNameSyms.items.len);
+        try c.semaNameSyms.append(c.alloc, name);
+        res.value_ptr.* = id;
+        return id;
+    }
+}
+
+pub fn ensureSym(c: *cy.VMcompiler, parentId: ?SymId, nameId: NameSymId, numParams: ?u32) !SymId {
+    const key = vm_.KeyU96{
+        .absLocalSymKey = .{
+            .localParentSymId = parentId orelse NullId,
+            .nameId = nameId,
+            .numParams = numParams orelse NullId,
+        },
     };
     const res = try c.semaSymMap.getOrPut(c.alloc, key);
     if (res.found_existing) {
@@ -1497,7 +1641,6 @@ pub fn ensureSym(c: *cy.VMcompiler, parentId: ?SymId, name: []const u8, numParam
     } else {
         const id = @intCast(u32, c.semaSyms.items.len);
         try c.semaSyms.append(c.alloc, .{
-            .symT = .undefined,
             .key = key,
             .used = false,
             .visited = false,
@@ -1544,7 +1687,8 @@ fn semaAccessExpr(self: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopEx
             left = self.nodes[node.head.accessExpr.left];
             if (left.head.ident.semaSymId != NullId) {
                 const rightName = self.getNodeTokenString(right);
-                const symId = try ensureSym(self, left.head.ident.semaSymId, rightName, null);
+                const rightNameId = try ensureNameSym(self, rightName);
+                const symId = try ensureSym(self, left.head.ident.semaSymId, rightNameId, null);
                 self.semaSyms.items[symId].used = true;
                 self.nodes[nodeId].head.accessExpr.semaSymId = symId;
             }
@@ -1554,7 +1698,8 @@ fn semaAccessExpr(self: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopEx
             left = self.nodes[node.head.accessExpr.left];
             if (left.head.accessExpr.semaSymId != NullId) {
                 const rightName = self.getNodeTokenString(right);
-                const symId = try ensureSym(self, left.head.accessExpr.semaSymId, rightName, null);
+                const rightNameId = try ensureNameSym(self, rightName);
+                const symId = try ensureSym(self, left.head.accessExpr.semaSymId, rightNameId, null);
                 self.semaSyms.items[symId].used = true;
                 self.nodes[nodeId].head.accessExpr.semaSymId = symId;
             }
@@ -1653,16 +1798,14 @@ fn assignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type, isLocalDecl: b
 
         self.nodes[ident].head.ident.semaVarId = varId;
     } else {
-        try setIdentAsVarSym(self, ident);
-        if (getSym(self, null, name, null)) |symId| {
-            const sym = self.semaSyms.items[symId];
-            if (sym.symT == .variable) {
-                // Assignment to static var.
-                self.semaSyms.items[symId].used = true;
-                self.nodes[ident].head.ident.semaSymId = symId;
-                return;
-            }
+        // If the ident already points to a sym, then skip creating a new local.
+        const nameId = try ensureNameSym(self, name);
+        if (getSym(self, null, nameId, null)) |symId| {
+            self.semaSyms.items[symId].used = true;
+            self.nodes[ident].head.ident.semaSymId = symId;
+            return;
         }
+
         // Create a new local.
         const id = try pushLocalBodyVar(self, name, vtype);
         const sblock = curBlock(self);
@@ -1677,9 +1820,6 @@ fn assignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type, isLocalDecl: b
 
 fn opAssignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type) !void {
     // log.debug("set var {s}", .{name});
-    const node = self.nodes[ident];
-    const name = self.getNodeTokenString(node);
-
     if (try identLocalVarOrNull(self, ident, true)) |varId| {
         const svar = &self.vars.items[varId];
 
@@ -1708,15 +1848,6 @@ fn opAssignVar(self: *cy.VMcompiler, ident: cy.NodeId, vtype: Type) !void {
         self.nodes[ident].head.ident.semaVarId = varId;
     } else {
         try setIdentAsVarSym(self, ident);
-        if (getSym(self, null, name, null)) |symId| {
-            const sym = self.semaSyms.items[symId];
-            if (sym.symT == .variable) {
-                self.semaSyms.items[symId].used = true;
-                self.nodes[ident].head.ident.semaSymId = symId;
-                return;
-            }
-        }
-        return self.reportErrorAt("Can't perform operator assignment to undefined variable `{}`.", &.{v(name)}, ident);
     }
 }
 
@@ -1787,9 +1918,9 @@ pub fn importAllFromModule(self: *cy.VMcompiler, modId: ModuleId) !void {
     const mod = self.modules.items[modId];
     var iter = mod.syms.iterator();
     while (iter.next()) |entry| {
-        const key = entry.key_ptr.*;
-        const name = key.namePtr[0..key.nameLen];
-        const symId = try ensureSym(self, null, name, if (key.numParams == NullId) null else @intCast(u16, key.numParams));
+        const key = entry.key_ptr.*.relModuleSymKey;
+        
+        const symId = try ensureSym(self, null, key.nameId, if (key.numParams == NullId) null else key.numParams);
         try self.semaSymToRef.put(self.alloc, symId, .{
             .refT = .moduleMember,
             .inner = .{
@@ -1798,6 +1929,23 @@ pub fn importAllFromModule(self: *cy.VMcompiler, modId: ModuleId) !void {
                 }
             }
         });
+
+        // For functions, also create a sym mapping if it doesn't exist already (no function overloading),
+        // so any local sym with the same name can match it.
+        if (key.numParams != NullId) {
+            const nameSymId = try ensureSym(self, null, key.nameId, NullId);
+            if (!self.semaSymToRef.contains(nameSymId)) {
+                try self.semaSymToRef.put(self.alloc, nameSymId, .{
+                    .refT = .moduleFuncMember,
+                    .inner = .{
+                        .moduleFuncMember = .{
+                            .modId = modId,
+                            .numParams = key.numParams,
+                        },
+                    },
+                });
+            }
+        }
     }
 }
 
@@ -1818,13 +1966,13 @@ pub fn getOrLoadModule(self: *cy.VMcompiler, spec: []const u8, nodeId: cy.NodeId
 fn loadModule(self: *cy.VMcompiler, spec: []const u8, nodeId: cy.NodeId) !Module {
     // Builtin modules.
     if (std.mem.eql(u8, "test", spec)) {
-        return test_mod.initModule(self.alloc, spec);
+        return test_mod.initModule(self, spec);
     } else if (std.mem.eql(u8, "math", spec)) {
-        return math_mod.initModule(self.alloc, spec);
+        return math_mod.initModule(self, spec);
     } else if (std.mem.eql(u8, "core", spec)) {
-        return core_mod.initModule(self.alloc, spec);
+        return core_mod.initModule(self, spec);
     } else if (std.mem.eql(u8, "os", spec)) {
-        return os_mod.initModule(self, self.alloc, spec);
+        return os_mod.initModule(self, spec);
     } else {
         return self.reportErrorAt("Unsupported import. {}", &.{fmt.v(spec)}, nodeId);
     }
@@ -1833,10 +1981,18 @@ fn loadModule(self: *cy.VMcompiler, spec: []const u8, nodeId: cy.NodeId) !Module
 /// Given the local sym path, add a resolved object sym entry.
 /// Assumes parent is resolved.
 fn resolveLocalObjectSym(self: *cy.VMcompiler, parentId: ?u32, name: []const u8, declId: cy.NodeId) !u32 {
-    // Resolve the symbol.
-    const symId = try ensureSym(self, parentId, name, null);
-    self.semaSyms.items[symId].symT = .object;
+    const nameId = try ensureNameSym(self, name);
+    const key = vm_.KeyU64{
+        .absResolvedSymKey = .{
+            .resolvedParentSymId = if (parentId == null) NullId else self.semaSyms.items[parentId.?].resolvedSymId,
+            .nameId = nameId,
+        },
+    };
+    if (self.semaResolvedSymMap.contains(key)) {
+        return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(name)}, declId);
+    }
 
+    // Resolve the symbol.
     const resolvedId = @intCast(u32, self.semaResolvedSyms.items.len);
     try self.semaResolvedSyms.append(self.alloc, .{
         .symT = .object,
@@ -1846,23 +2002,28 @@ fn resolveLocalObjectSym(self: *cy.VMcompiler, parentId: ?u32, name: []const u8,
             },
         },
     });
-    const key = AbsSymSigKey{
-        .namePtr = name.ptr,
-        .nameLen = @intCast(u16, name.len),
-        .parentId = if (parentId == null) NullId else self.semaSyms.items[parentId.?].resolvedSymId,
-        .numParams = NullIdU16,
-    };
     try @call(.never_inline, self.semaResolvedSymMap.put, .{self.alloc, key, resolvedId});
+
+    const symId = try ensureSym(self, parentId, nameId, null);
     self.semaSyms.items[symId].resolvedSymId = resolvedId;
     return symId;
 }
 
 /// Given the local sym path, add a resolved var sym entry.
+/// Fail if there is already a symbol in this path.with the same name.
 fn resolveLocalVarSym(self: *cy.VMcompiler, parentId: ?u32, name: []const u8, declId: cy.NodeId) !u32 {
-    // Resolve the symbol.
-    const symId = try ensureSym(self, parentId, name, null);
-    self.semaSyms.items[symId].symT = .variable;
+    const nameId = try ensureNameSym(self, name);
+    const key = vm_.KeyU64{
+        .absResolvedSymKey = .{
+            .resolvedParentSymId = if (parentId == null) NullId else self.semaSyms.items[parentId.?].resolvedSymId,
+            .nameId = nameId,
+        },
+    };
+    if (self.semaResolvedSymMap.contains(key)) {
+        return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(name)}, declId);
+    }
 
+    // Resolve the symbol.
     const resolvedId = @intCast(u32, self.semaResolvedSyms.items.len);
     try self.semaResolvedSyms.append(self.alloc, .{
         .symT = .variable,
@@ -1872,46 +2033,89 @@ fn resolveLocalVarSym(self: *cy.VMcompiler, parentId: ?u32, name: []const u8, de
             },
         },
     });
-    const key = AbsSymSigKey{
-        .namePtr = name.ptr,
-        .nameLen = @intCast(u16, name.len),
-        .parentId = if (parentId == null) NullId else self.semaSyms.items[parentId.?].resolvedSymId,
-        .numParams = NullIdU16,
-    };
     try @call(.never_inline, self.semaResolvedSymMap.put, .{self.alloc, key, resolvedId});
+
+    // Link to local symbol.
+    const symId = try ensureSym(self, parentId, nameId, null);
     self.semaSyms.items[symId].resolvedSymId = resolvedId;
     return symId;
 }
 
+const ResolveFuncSymResult = struct {
+    resolvedSymId: ResolvedSymId,
+    resolvedFuncSymId: ResolvedFuncSymId,
+};
+
+fn resolveSymAsFunc(c: *cy.VMcompiler, key: AbsResolvedSymKey, numParams: u32, declId: u32, retType: Type) !ResolveFuncSymResult {
+    var rsymId: ResolvedSymId = undefined;
+    var createdSym = false;
+    if (c.semaResolvedSymMap.get(key)) |id| {
+        const rsym = c.semaResolvedSyms.items[id];
+        if (rsym.symT != .func) {
+            // Only fail if the symbol already exists and isn't a function.
+            return c.reportError("The symbol `{}` was already declared.", &.{v(getName(c, key.absResolvedSymKey.nameId))});
+        }
+        rsymId = id;
+    } else {
+        rsymId = @intCast(u32, c.semaResolvedSyms.items.len);
+        try c.semaResolvedSyms.append(c.alloc, .{
+            .symT = .func,
+            .inner = .{
+                .func = .{
+                    .resolvedFuncSymId = undefined,
+                },
+            },
+        });
+        try @call(.never_inline, c.semaResolvedSymMap.put, .{c.alloc, key, rsymId});
+        createdSym = true;
+    }
+
+    // Now check resolved function syms.
+    const funcKey = vm_.KeyU64{
+        .absResolvedFuncSymKey = .{
+            .resolvedSymId = rsymId,
+            .numParams = numParams,
+        },
+    };
+    if (c.semaResolvedFuncSymMap.contains(funcKey)) {
+        return c.reportError("The function symbol `{}` with the same signature was already declared.", &.{v(key.absResolvedSymKey.nameId)});
+    }
+
+    // Resolve the func symbol.
+    const rfsymId = @intCast(u32, c.semaResolvedFuncSyms.items.len);
+    try c.semaResolvedFuncSyms.append(c.alloc, .{
+        .declId = declId,
+        .numParams = @intCast(u8, numParams),
+        .retType = retType,
+    });
+    try @call(.never_inline, c.semaResolvedFuncSymMap.put, .{c.alloc, funcKey, rfsymId});
+
+    if (createdSym) {
+        c.semaResolvedSyms.items[rsymId].inner.func.resolvedFuncSymId = rfsymId;
+    } else {
+        // Mark sym as overloaded.
+        c.semaResolvedSyms.items[rsymId].inner.func.resolvedFuncSymId = NullId;
+    }
+
+    return ResolveFuncSymResult{
+        .resolvedSymId = rsymId,
+        .resolvedFuncSymId = rfsymId,
+    };
+}
+
 /// Given the local sym path, add a resolved func sym entry.
 /// Assumes parent local sym is resolved.
-fn resolveLocalFuncSym(self: *cy.VMcompiler, parentId: ?u32, declId: u32, retType: Type) !u32 {
-    // Resolve the symbol.
+fn resolveLocalFuncSym(self: *cy.VMcompiler, resolvedParentSymId: ?ResolvedSymId, nameId: NameSymId, declId: u32, retType: Type) !ResolveFuncSymResult {
     const func = self.funcDecls[declId];
-    const name = self.src[func.name.start..func.name.end];
-    const numParams = @intCast(u16, func.params.end - func.params.start);
-    const symId = try ensureSym(self, parentId, name, numParams);
-    self.semaSyms.items[symId].symT = .func;
+    const numParams = func.params.len();
 
-    const resolvedId = @intCast(u32, self.semaResolvedSyms.items.len);
-    try self.semaResolvedSyms.append(self.alloc, .{
-        .symT = .func,
-        .inner = .{
-            .func = .{
-                .declId = declId,
-                .retType = retType,
-            },
+    const key = vm_.KeyU64{
+        .absResolvedSymKey = .{
+            .resolvedParentSymId = resolvedParentSymId orelse NullId,
+            .nameId = nameId,
         },
-    });
-    const key = AbsSymSigKey{
-        .namePtr = name.ptr,
-        .nameLen = @intCast(u16, name.len),
-        .parentId = if (parentId == null) NullId else self.semaSyms.items[parentId.?].resolvedSymId,
-        .numParams = numParams,
     };
-    try @call(.never_inline, self.semaResolvedSymMap.put, .{self.alloc, key, resolvedId});
-    self.semaSyms.items[symId].resolvedSymId = resolvedId;
-    return symId;
+    return try resolveSymAsFunc(self, key, numParams, declId, retType);
 }
 
 fn endFuncBlock(self: *cy.VMcompiler, numParams: u32) !void {
@@ -1974,5 +2178,7 @@ fn endFuncSymBlock(self: *cy.VMcompiler, symId: u32, numParams: u32) !void {
 test "Internals." {
     try t.eq(@sizeOf(LocalVar), 32);
     try t.eq(@sizeOf(Sym), 24);
+    try t.eq(@sizeOf(ResolvedFuncSym), 8);
+    try t.eq(@sizeOf(ResolvedSym), 8);
     try t.eq(@sizeOf(Type), 3);
 }

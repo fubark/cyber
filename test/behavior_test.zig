@@ -1367,6 +1367,7 @@ test "Local variable declaration." {
 
     _ = try run.eval(
         \\import t 'test'
+        \\
         \\-- Declare local and read it.
         \\let a = 1
         \\try t.eq(a, 1)
@@ -1375,6 +1376,7 @@ test "Local variable declaration." {
         \\  try t.eq(a, 1)
         \\  a = 2
         \\try foo()
+        \\
         \\-- Changed `a` from main block.
         \\try t.eq(a, 2)
         \\func bar():
@@ -1384,6 +1386,7 @@ test "Local variable declaration." {
         \\  let a = 3
         \\  try t.eq(a, 3)
         \\try bar()
+        \\
         \\-- `a` from main remains the same.
         \\try t.eq(a, 2)
     );
@@ -1872,43 +1875,10 @@ test "Function overloading." {
     );
 }
 
-test "Function declarations." {
+test "Static functions." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    var val = try run.eval(
-        \\func foo():
-        \\    return 2 + 2
-        \\sum = 0
-        \\for 0..10 each i:
-        \\   sum += foo()
-        \\sum
-    );
-    try t.eq(val.asF64toI32(), 40);
-
-    // Function with no params.
-    val = try run.eval(
-        \\func foo():
-        \\    return 2 + 2
-        \\foo()
-    );
-    try t.eq(val.asF64toI32(), 4);
-
-    // Function with one param.
-    val = try run.eval(
-        \\func foo(bar):
-        \\    return bar + 2
-        \\foo(1)
-    );
-    try t.eq(val.asF64toI32(), 3);
-
-    // Function with multiple param.
-    val = try run.eval(
-        \\func foo(bar, inc):
-        \\    return bar + inc
-        \\foo(20, 10)
-    );
-    try t.eq(val.asF64toI32(), 30);
+    _ = try run.eval(@embedFile("static_func_test.cy"));
 }
 
 test "Lambdas." {
@@ -1935,8 +1905,12 @@ test "Lambdas." {
         \\  return f(14)
         \\try t.eq(call(a => a + 1), 15)
         \\
-        // \\-- Invoking lambda temp.
-        // \\try t.eq((a => a + 1)(14), 15)
+        \\-- Using parentheses.
+        \\m = { a: () => 4 }
+        \\try t.eq((m.a)(), 4)
+        \\
+        // // \\-- Invoking lambda temp.
+        // // \\try t.eq((a => a + 1)(14), 15)
     );
 //     // Lambda assign declaration.
 //     val = try run.eval(
@@ -1987,15 +1961,15 @@ test "access expression" {
 
     // One level of access from parent.
     var val = try run.eval(
-        \\map = { a: () => 5 }
-        \\map.a()
+        \\map = { a: 5 }
+        \\map.a
     );
     try t.eq(val.asF64toI32(), 5);
 
     // Multiple levels of access from parent.
     val = try run.eval(
-        \\map = { a: { b: () => 5 } }
-        \\map.a.b()
+        \\map = { a: { b: 5 } }
+        \\map.a.b
     );
     try t.eq(val.asF64toI32(), 5);
 }

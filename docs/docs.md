@@ -890,7 +890,8 @@ In Cyber, there are first-class functions (or function values) as well as static
 [To Top.](#table-of-contents)
 
 ### Static Functions.
-Static functions are not initally values themselves, although they can be lifted to become a value.
+Static functions are not initally values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value. A nice feature of Cyber's static functions is they can be used just like a function value.
+
 Static functions are declared with the `func` keyword and must have a name.
 ```text
 import m 'math'
@@ -898,7 +899,19 @@ import m 'math'
 func dist(x0, y0, x1, y1):
     dx = x0-x1
     dy = y0-y1
-    return m.sqrt dx*dx+dy*dy
+    return m.sqrt(dx^2 + dy^2)
+```
+Calling static functions is straightforward. You can also reassign or pass them around as values.
+```text
+print dist(0, 0, 10, 20)
+
+-- Assigning to a local variable.
+let bar = dist
+
+-- Passing `dist` as an argument.
+func squareDist(dist, size):
+    return dist(0, 0, size, size)
+print squareDist(dist, 30)
 ```
 
 Functions can return multiple values.

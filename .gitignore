@@ -7,5 +7,6 @@
 /temp.cy
 /test.txt
 /test/assets/write.txt
+/exts/vscode/cyber-0.0.1.vsix
 /examples/libfoo.so
 *.class

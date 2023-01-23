@@ -2202,7 +2202,17 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() == .right_paren) {
                     _ = self.consumeToken();
-                    break :b expr_id;
+
+                    token = self.peekToken();
+                    if (self.nodes.items[expr_id].node_t == .ident and token.tag() == .equal_greater) {
+                        return self.parseLambdaFuncWithParam(expr_id);
+                    }
+
+                    const group = try self.pushNode(.group, start);
+                    self.nodes.items[group].head = .{
+                        .child_head = expr_id,
+                    };
+                    break :b group;
                 } else if (token.tag() == .comma) {
                     self.next_pos = start;
                     return self.parseLambdaFunction();
@@ -2398,12 +2408,8 @@ pub const Parser = struct {
                     }
                 },
                 .left_paren => {
-                    // If left is an accessor expression or identifier, parse as call expression.
-                    const left_t = self.nodes.items[left_id].node_t;
-                    if (left_t == .ident or left_t == .accessExpr or left_t == .at_ident) {
-                        const call_id = try self.parseCallExpression(left_id);
-                        left_id = call_id;
-                    } else return self.reportParseErrorAt("Expected variable to left of call expression.", &.{}, next);
+                    const call_id = try self.parseCallExpression(left_id);
+                    left_id = call_id;
                 },
                 .left_brace => {
                     if (self.nodes.items[left_id].node_t == .ident) {
@@ -3029,6 +3035,7 @@ pub const NodeType = enum {
     importStmt,
     tryExpr,
     comptExpr,
+    group,
 };
 
 pub const BinaryExprOp = enum {
@@ -3315,6 +3322,7 @@ pub const FuncDecl = struct {
     params: IndexSlice,
     return_type: ?IndexSlice,
     semaSymId: u32 = NullId,
+    semaResolvedFuncSymId: u32 = NullId,
 };
 
 pub const FunctionParam = struct {

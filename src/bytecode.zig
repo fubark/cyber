@@ -362,8 +362,9 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .boxValueRetain,
         .tagLiteral,
         .tryValue,
-        .static,
-        .setStatic,
+        .staticFunc,
+        .staticVar,
+        .setStaticVar,
         .constOp => {
             return 3;
         },
@@ -514,10 +515,15 @@ pub const OpCode = enum(u8) {
     callNativeFuncIC,
     ret1,
     ret0,
+
     /// Calls a lambda and ensures 0 return values.
+    /// [calleeLocal] [numArgs]
     call0,
+
     /// Calls a lambda and ensures 1 return value.
+    /// [calleeLocal] [numArgs]
     call1,
+
     field,
     fieldIC,
     fieldRetain,
@@ -586,18 +592,24 @@ pub const OpCode = enum(u8) {
     forRange,
     forRangeReverse,
 
+    /// Wraps a static function in a function value.
+    /// [symId] [dstLocal]
+    staticFunc,
+
     /// Copies a static variable to a destination register.
-    static,
+    /// [symId] [dstLocal]
+    staticVar,
 
     /// Copies a local register to a static variable.
-    setStatic,
+    /// [symId] [local]
+    setStaticVar,
 
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 91);
+    try t.eq(std.enums.values(OpCode).len, 92);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

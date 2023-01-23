@@ -2,81 +2,81 @@ const std = @import("std");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 
-pub fn initModule(alloc: std.mem.Allocator, spec: []const u8) !cy.Module {
+pub fn initModule(c: *cy.VMcompiler, spec: []const u8) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .prefix = spec,
     };
 
     // Euler's number and the base of natural logarithms; approximately 2.718.
-    try mod.setVar(alloc, "e", Value.initF64(std.math.e));
+    try mod.setVar(c, "e", Value.initF64(std.math.e));
 
     // Infinity.
-    try mod.setVar(alloc, "inf", Value.initF64(std.math.inf_f64));
+    try mod.setVar(c, "inf", Value.initF64(std.math.inf_f64));
 
     // Base-10 logarithm of E; approximately 0.434.
-    try mod.setVar(alloc, "log10e", Value.initF64(std.math.log10e));
+    try mod.setVar(c, "log10e", Value.initF64(std.math.log10e));
 
     // Base-2 logarithm of E; approximately 1.443.
-    try mod.setVar(alloc, "log2e", Value.initF64(std.math.log2e));
+    try mod.setVar(c, "log2e", Value.initF64(std.math.log2e));
 
     // Natural logarithm of 10; approximately 2.303.
-    try mod.setVar(alloc, "ln10", Value.initF64(std.math.ln10));
+    try mod.setVar(c, "ln10", Value.initF64(std.math.ln10));
 
     // Natural logarithm of 2; approximately 0.693.
-    try mod.setVar(alloc, "ln2", Value.initF64(std.math.ln2));
+    try mod.setVar(c, "ln2", Value.initF64(std.math.ln2));
 
     // Not a number.
-    try mod.setVar(alloc, "nan", Value.initF64(-std.math.nan_f64));
+    try mod.setVar(c, "nan", Value.initF64(-std.math.nan_f64));
 
     // Neg infinity.
-    try mod.setVar(alloc, "neginf", Value.initF64(-std.math.inf_f64));
+    try mod.setVar(c, "neginf", Value.initF64(-std.math.inf_f64));
 
     // Ratio of a circle's circumference to its diameter; approximately 3.14159.
-    try mod.setVar(alloc, "pi", Value.initF64(std.math.pi));
+    try mod.setVar(c, "pi", Value.initF64(std.math.pi));
 
     // Square root of ½; approximately 0.707.
-    try mod.setVar(alloc, "sqrt1_2", Value.initF64(std.math.sqrt1_2));
+    try mod.setVar(c, "sqrt1_2", Value.initF64(std.math.sqrt1_2));
 
     // Square root of 2; approximately 1.414.
-    try mod.setVar(alloc, "sqrt2", Value.initF64(std.math.sqrt2));
+    try mod.setVar(c, "sqrt2", Value.initF64(std.math.sqrt2));
 
-    try mod.setNativeFunc(alloc, "abs", 1, abs);
-    try mod.setNativeFunc(alloc, "acos", 1, acos);
-    try mod.setNativeFunc(alloc, "acosh", 1, acosh);
-    try mod.setNativeFunc(alloc, "asin", 1, asin);
-    try mod.setNativeFunc(alloc, "asinh", 1, asinh);
-    try mod.setNativeFunc(alloc, "atan", 1, atan);
-    try mod.setNativeFunc(alloc, "atan2", 2, atan2);
-    try mod.setNativeFunc(alloc, "atanh", 1, atanh);
-    try mod.setNativeFunc(alloc, "cbrt", 1, cbrt);
-    try mod.setNativeFunc(alloc, "ceil", 1, ceil);
-    try mod.setNativeFunc(alloc, "clz32", 1, clz32);
-    try mod.setNativeFunc(alloc, "cos", 1, cos);
-    try mod.setNativeFunc(alloc, "cosh", 1, cosh);
-    try mod.setNativeFunc(alloc, "exp", 1, exp);
-    try mod.setNativeFunc(alloc, "expm1", 1, expm1);
-    try mod.setNativeFunc(alloc, "floor", 1, floor);
-    try mod.setNativeFunc(alloc, "hypot", 2, hypot);
-    try mod.setNativeFunc(alloc, "isNaN", 1, isNaN);
-    try mod.setNativeFunc(alloc, "ln", 1, ln);
-    try mod.setNativeFunc(alloc, "log", 2, log);
-    try mod.setNativeFunc(alloc, "log10", 1, log10);
-    try mod.setNativeFunc(alloc, "log1p", 1, log1p);
-    try mod.setNativeFunc(alloc, "log2", 1, log2);
-    try mod.setNativeFunc(alloc, "max", 2, max);
-    try mod.setNativeFunc(alloc, "min", 2, min);
-    try mod.setNativeFunc(alloc, "mul32", 2, mul32);
-    try mod.setNativeFunc(alloc, "pow", 2, pow);
-    try mod.setNativeFunc(alloc, "random", 0, random);
-    try mod.setNativeFunc(alloc, "round", 1, round);
-    try mod.setNativeFunc(alloc, "sign", 1, sign);
-    try mod.setNativeFunc(alloc, "sin", 1, sin);
-    try mod.setNativeFunc(alloc, "sinh", 1, sinh);
-    try mod.setNativeFunc(alloc, "sqrt", 1, sqrt);
-    try mod.setNativeFunc(alloc, "tan", 1, tan);
-    try mod.setNativeFunc(alloc, "tanh", 1, tanh);
-    try mod.setNativeFunc(alloc, "trunc", 1, trunc);
+    try mod.setNativeFunc(c, "abs", 1, abs);
+    try mod.setNativeFunc(c, "acos", 1, acos);
+    try mod.setNativeFunc(c, "acosh", 1, acosh);
+    try mod.setNativeFunc(c, "asin", 1, asin);
+    try mod.setNativeFunc(c, "asinh", 1, asinh);
+    try mod.setNativeFunc(c, "atan", 1, atan);
+    try mod.setNativeFunc(c, "atan2", 2, atan2);
+    try mod.setNativeFunc(c, "atanh", 1, atanh);
+    try mod.setNativeFunc(c, "cbrt", 1, cbrt);
+    try mod.setNativeFunc(c, "ceil", 1, ceil);
+    try mod.setNativeFunc(c, "clz32", 1, clz32);
+    try mod.setNativeFunc(c, "cos", 1, cos);
+    try mod.setNativeFunc(c, "cosh", 1, cosh);
+    try mod.setNativeFunc(c, "exp", 1, exp);
+    try mod.setNativeFunc(c, "expm1", 1, expm1);
+    try mod.setNativeFunc(c, "floor", 1, floor);
+    try mod.setNativeFunc(c, "hypot", 2, hypot);
+    try mod.setNativeFunc(c, "isNaN", 1, isNaN);
+    try mod.setNativeFunc(c, "ln", 1, ln);
+    try mod.setNativeFunc(c, "log", 2, log);
+    try mod.setNativeFunc(c, "log10", 1, log10);
+    try mod.setNativeFunc(c, "log1p", 1, log1p);
+    try mod.setNativeFunc(c, "log2", 1, log2);
+    try mod.setNativeFunc(c, "max", 2, max);
+    try mod.setNativeFunc(c, "min", 2, min);
+    try mod.setNativeFunc(c, "mul32", 2, mul32);
+    try mod.setNativeFunc(c, "pow", 2, pow);
+    try mod.setNativeFunc(c, "random", 0, random);
+    try mod.setNativeFunc(c, "round", 1, round);
+    try mod.setNativeFunc(c, "sign", 1, sign);
+    try mod.setNativeFunc(c, "sin", 1, sin);
+    try mod.setNativeFunc(c, "sinh", 1, sinh);
+    try mod.setNativeFunc(c, "sqrt", 1, sqrt);
+    try mod.setNativeFunc(c, "tan", 1, tan);
+    try mod.setNativeFunc(c, "tanh", 1, tanh);
+    try mod.setNativeFunc(c, "trunc", 1, trunc);
     return mod;
 }
 

@@ -48,6 +48,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "true", .true_k },
     .{ "try", .try_k },
     .{ "var", .var_k },
+    .{ "match", .match_k },
 });
 
 const BlockState = struct {
@@ -915,6 +916,58 @@ pub const Parser = struct {
         }
     }
 
+    fn parseMatchStatement(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is the `match` keyword.
+        self.advanceToken();
+
+        const expr = (try self.parseExpr(.{})) orelse {
+            return self.reportParseError("Expected match expression.", &.{});
+        };
+        var token = self.peekToken();
+        if (token.tag() != .colon) {
+            return self.reportParseError("Expected colon after if condition.", &.{});
+        }
+        self.advanceToken();
+
+        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+
+        // Like `parseBodyStatements` but only parses case blocks.
+        {
+            const prevIndent = self.cur_indent;
+            self.cur_indent = reqIndent;
+            defer self.cur_indent = prevIndent;
+
+            var firstCase = try self.parseCaseBlock();
+            var lastCase = firstCase;
+
+            // Parse body statements until indentation goes back to at least the previous indent.
+            while (true) {
+                const save = self.next_pos;
+                const indent = self.consumeIndentBeforeStmt();
+                if (indent == reqIndent) {
+                    const case = try self.parseCaseBlock();
+                    self.nodes.items[lastCase].next = case;
+                    lastCase = case;
+                } else if (indent <= prevIndent) {
+                    self.next_pos = save;
+                    break;
+                } else {
+                    return self.reportParseError("Unexpected indentation.", &.{});
+                }
+            }
+
+            const match = try self.pushNode(.matchBlock, start);
+            self.nodes.items[match].head = .{
+                .matchBlock = .{
+                    .expr = expr,
+                    .firstCase = firstCase,
+                },
+            };
+            return match;
+        }
+    }
+
     fn parseIfStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `if` keyword.
@@ -1266,6 +1319,55 @@ pub const Parser = struct {
         return id;
     }
 
+    fn parseCaseBlock(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        var token = self.peekToken();
+        var firstCond: NodeId = undefined;
+        if (token.token_t == .else_k) {
+            self.advanceToken();
+            firstCond = try self.pushNode(.elseCase, start);
+        } else {
+            firstCond = (try self.parseExpr(.{})) orelse {
+                return self.reportParseError("Expected case condition.", &.{});
+            };
+        }
+        var lastCond = firstCond;
+        while (true) {
+            token = self.peekToken();
+            if (token.tag() == .colon) {
+                self.advanceToken();
+                break;
+            } else if (token.tag() == .comma) {
+                self.advanceToken();
+                var cond: NodeId = undefined;
+                if (token.token_t == .else_k) {
+                    self.advanceToken();
+                    cond = try self.pushNode(.elseCase, start);
+                } else {
+                    cond = (try self.parseExpr(.{})) orelse {
+                        return self.reportParseError("Expected case condition.", &.{});
+                    };
+                }
+                self.nodes.items[lastCond].next = cond;
+                lastCond = cond;
+            } else {
+                return self.reportParseError("Expected comma or colon.", &.{});
+            }
+        }
+
+        // Parse body.
+        const firstChild = try self.parseSingleOrIndentedBodyStmts();
+
+        const case = try self.pushNode(.caseBlock, start);
+        self.nodes.items[case].head = .{
+            .caseBlock = .{
+                .firstCond = firstCond,
+                .firstChild = firstChild,
+            },
+        };
+        return case;
+    }
+
     fn parseStatement(self: *Parser) anyerror!?NodeId {
         var token = self.peekToken();
         if (token.tag() == .none) {
@@ -1371,6 +1473,9 @@ pub const Parser = struct {
             },
             .if_k => {
                 return try self.parseIfStatement();
+            },
+            .match_k => {
+                return try self.parseMatchStatement();
             },
             .for_k => {
                 return try self.parseForStatement();
@@ -2954,6 +3059,7 @@ pub const TokenType = enum(u6) {
     compt_k,
     let_k,
     var_k,
+    match_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -3041,6 +3147,9 @@ pub const NodeType = enum {
     tryExpr,
     comptExpr,
     group,
+    caseBlock,
+    matchBlock,
+    elseCase,
 };
 
 pub const BinaryExprOp = enum {
@@ -3092,6 +3201,14 @@ pub const Node = struct {
         mapEntry: struct {
             left: NodeId,
             right: NodeId,
+        },
+        caseBlock: struct {
+            firstCond: NodeId,
+            firstChild: NodeId,
+        },
+        matchBlock: struct {
+            expr: NodeId,
+            firstCase: NodeId,
         },
         left_right: struct {
             left: NodeId,
@@ -4214,6 +4331,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 58);
-    try t.eq(keywords.kvs.len, 32);
+    try t.eq(std.enums.values(TokenType).len, 59);
+    try t.eq(keywords.kvs.len, 33);
 }

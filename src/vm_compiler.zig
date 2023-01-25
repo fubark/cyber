@@ -520,13 +520,13 @@ pub const VMcompiler = struct {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
     }
 
-    /// Patches jumps related to this `if` block.
+    /// Patches sub block breaks. For `if` and `match` blocks.
     /// All other jumps are propagated up the stack by copying to the front.
     /// Returns the adjusted jumpStackStart for this block.
-    fn patchIfBlockJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize) usize {
+    fn patchSubBlockBreakJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize) usize {
         var propagateIdx = jumpStackStart;
         for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
-            if (jump.jumpT == .ifBreak) {
+            if (jump.jumpT == .subBlockBreak) {
                 self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
             } else {
                 self.subBlockJumpStack.items[propagateIdx] = jump;
@@ -539,7 +539,7 @@ pub const VMcompiler = struct {
     fn patchForBlockJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize, contPc: usize) void {
         for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
-                .ifBreak => {
+                .subBlockBreak => {
                     stdx.panicFmt("Unexpected jump.", .{});
                 },
                 .brk => {
@@ -1293,6 +1293,88 @@ pub const VMcompiler = struct {
 
                 self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, forRangeOp);
             },
+            .matchBlock => {
+                const expr = try self.genExpr(node.head.matchBlock.expr, false);
+
+                const operandStart = self.operandStack.items.len;
+
+                var jumpsStart = self.subBlockJumpStack.items.len;
+                defer self.subBlockJumpStack.items.len = jumpsStart;
+
+                var hasElse = false;
+                var numConds: u32 = 0;
+                var curCase = node.head.matchBlock.firstCase;
+                while (curCase != NullId) {
+                    const case = self.nodes[curCase];
+                    var curCond = case.head.caseBlock.firstCond;
+                    while (curCond != NullId) {
+                        const cond = self.nodes[curCond];
+                        if (cond.node_t == .elseCase) {
+                            // Skip else cond.
+                            curCond = cond.next;
+                            hasElse = true;
+                            continue;
+                        }
+                        const condv = try self.genExpr(curCond, false);
+                        try self.pushTempOperand(condv.local);
+                        // Reserve another two for jump.
+                        try self.pushTempOperand(0);
+                        try self.pushTempOperand(0);
+                        curCond = cond.next;
+                        numConds += 1;
+                    }
+                    curCase = case.next;
+                }
+                const condJumpStart = self.buf.ops.items.len + 4;
+                const matchPc = self.buf.ops.items.len;
+                try self.buf.pushOp2(.match, expr.local, @intCast(u8, numConds));
+                try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+                // Reserve last jump for `else` case.
+                try self.buf.pushOperand(0);
+                try self.buf.pushOperand(0);
+                self.operandStack.items.len = operandStart;
+
+                // Generate case blocks.
+                curCase = node.head.matchBlock.firstCase;
+                var condOffset: u32 = 0;
+                while (curCase != NullId) {
+                    const case = self.nodes[curCase];
+                    self.nextSemaSubBlock();
+                    defer self.prevSemaSubBlock();
+
+                    const blockPc = self.buf.ops.items.len;
+                    try self.genStatements(case.head.caseBlock.firstChild, false);
+
+                    if (case.next != NullId) {
+                        // Not the last block.
+                        // Reserve jump to end.
+                        const pc = try self.pushEmptyJump();
+                        try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
+                    }
+
+                    // For each cond for this case, patch the jump offset.
+                    var curCond = case.head.caseBlock.firstCond;
+                    while (curCond != NullId) {
+                        const cond = self.nodes[curCond];
+                        // Patch jump.
+                        if (cond.node_t == .elseCase) {
+                            self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, blockPc - matchPc));
+                        } else {
+                            self.buf.setOpArgU16(condJumpStart + condOffset * 3, @intCast(u16, blockPc - matchPc));
+                        }
+                        condOffset += 1;
+                        curCond = cond.next;
+                    }
+
+                    curCase = case.next;
+                }
+                if (!hasElse) {
+                    self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, self.buf.ops.items.len - matchPc));
+                }
+
+                // Patch all block end jumps.
+                jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
+            },
             .if_stmt => {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
 
@@ -1312,7 +1394,7 @@ pub const VMcompiler = struct {
                     var endsWithElse = false;
                     while (elseClauseId != NullId) {
                         const pc = try self.pushEmptyJump();
-                        try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .ifBreak, .pc = pc });
+                        try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
 
                         self.patchJumpToCurrent(lastCondJump);
 
@@ -1340,7 +1422,7 @@ pub const VMcompiler = struct {
                     if (!endsWithElse) {
                         self.patchJumpToCurrent(lastCondJump);
                     }
-                    jumpsStart = self.patchIfBlockJumps(jumpsStart, self.buf.ops.items.len);
+                    jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
                 } else {
                     self.patchJumpToCurrent(lastCondJump);
                 }
@@ -3042,7 +3124,8 @@ const BlockJump = struct {
 
 const SubBlockJumpType = enum {
     /// Each if/else body contains a break at the end to jump out of the if block.
-    ifBreak,
+    /// Each match case block jumps to the end of the match block.
+    subBlockBreak,
     /// Breaks out of a for loop.
     brk,
     /// Continues a for loop.

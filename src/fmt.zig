@@ -269,7 +269,7 @@ pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
 }
 
 pub fn printDeprecated(name: []const u8, sinceVersion: []const u8, fmt: []const u8, vals: []const FmtValue) void {
-    printStderr("{} is deprecated since {}: ", &.{v(sinceVersion), v(name)});
+    printStderr("{} is deprecated since {}: ", &.{v(name), v(sinceVersion)});
     printStderr(fmt, vals);
     printStderr("\n", &.{});
 }

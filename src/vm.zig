@@ -4590,7 +4590,7 @@ const AarchAddSubtractImmOp = packed struct {
 };
 
 /// Generate assembly labels to find sections easier.
-const GenLabels = builtin.mode != .Debug and true;
+const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and true;
 const EnableAarch64ComputedGoto = aarch64 and builtin.mode != .Debug;
 
 fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {

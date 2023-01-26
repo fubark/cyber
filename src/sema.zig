@@ -777,6 +777,32 @@ pub fn semaStmt(c: *cy.VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg
             try semaStmts(c, node.head.for_range_stmt.body_head, false);
             try endIterSubBlock(c);
         },
+        .matchBlock => {
+            _ = try semaExpr(c, node.head.matchBlock.expr, false);
+
+            var curCase = node.head.matchBlock.firstCase;
+            while (curCase != NullId) {
+                const case = c.nodes[curCase];
+                var curCond = case.head.caseBlock.firstCond;
+                while (curCond != NullId) {
+                    const cond = c.nodes[curCond];
+                    if (cond.node_t != .elseCase) {
+                        _ = try semaExpr(c, curCond, false);
+                    }
+                    curCond = cond.next;
+                }
+                curCase = case.next;
+            }
+
+            curCase = node.head.matchBlock.firstCase;
+            while (curCase != NullId) {
+                const case = c.nodes[curCase];
+                try pushSubBlock(c);
+                try semaStmts(c, case.head.caseBlock.firstChild, false);
+                try endSubBlock(c);
+                curCase = case.next;
+            }
+        },
         .if_stmt => {
             _ = try semaExpr(c, node.head.left_right.left, false);
 

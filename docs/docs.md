@@ -227,9 +227,9 @@ The final resulting value that is set to the static variable is provided by a `b
 [To Top.](#table-of-contents)
 
 ### Keywords.
-There are currently `32` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `33` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow](#control-flow): `if` `then` `else` `while` `for` `each` `break` `continue` `pass`
+- [Control Flow](#control-flow): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
 - [Variables](#variables): `var` `let` `as`
 - [Functions](#functions): `func` `return`
@@ -870,7 +870,7 @@ for 0..10 each i:
 [To Top.](#table-of-contents)
 
 ### Matching
-Matching is similar to a switch statement.
+Matching is similar to a switch statement. The expression to the right of `match` is evaluated and execution jumps to the declared case with the matching value. Multiple cases can be grouped together using a comma separator. An optional `else` fallback case is executed when no other cases were matched.
 ```text
 val = 1000
 match val:
@@ -878,6 +878,8 @@ match val:
     100: print 'val is 100'
     200:
         print 'val is 200'
+    300, 400:
+        print 'combined case'
     else:
         print 'val is {val}'
 ```

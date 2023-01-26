@@ -1235,6 +1235,12 @@ test "Return statement." {
     try t.eq(val.asF64toI32(), 123);
 }
 
+test "Match statement." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("match_test.cy"));
+}
+
 test "If statement." {
     const run = VMrunner.create();
     defer run.destroy();

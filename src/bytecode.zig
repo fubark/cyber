@@ -418,6 +418,10 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .lambda => {
             return 5;
         },
+        .match => {
+            const numConds = pc[2].arg;
+            return 5 + numConds * 3;
+        },
         .coinit => {
             return 6;
         },
@@ -596,6 +600,11 @@ pub const OpCode = enum(u8) {
     forRange,
     forRangeReverse,
 
+    /// Performs an eq comparison with a sequence of locals.
+    /// The pc then jumps with the offset of the matching local, otherwise the offset from the end is used.
+    /// [exprLocal] [numCases] [case1Local] [case1Jump] ... [elseJump]
+    match,
+
     /// Wraps a static function in a function value.
     /// [symId] [dstLocal]
     staticFunc,
@@ -613,7 +622,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 92);
+    try t.eq(std.enums.values(OpCode).len, 93);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

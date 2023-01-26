@@ -3289,6 +3289,17 @@ fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy
     return Value.True;
 }
 
+fn evalCompareBool(vm: *const VM, left: Value, right: Value) linksection(cy.HotSection) bool {
+    if (getComparableStringType(left)) |lstrT| {
+        if (getComparableStringType(right)) |rstrT| {
+            const lstr = vm.valueAsStringType(left, lstrT);
+            const rstr = vm.valueAsStringType(right, rstrT);
+            return std.mem.eql(u8, lstr, rstr);
+        }
+    }
+    return false;
+}
+
 fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSection) Value {
     if (getComparableStringType(left)) |lstrT| {
         if (getComparableStringType(right)) |rstrT| {
@@ -5562,6 +5573,27 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const res = try @call(.never_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
                 pc = res.pc;
                 framePtr = res.framePtr;
+                continue;
+            },
+            .match => {
+                const expr = framePtr[pc[1].arg];
+                const numCases = pc[2].arg;
+                var i: u32 = 0;
+                while (i < numCases) : (i += 1) {
+                    const right = framePtr[pc[3 + i * 3].arg];
+                    // Can immediately match numbers, objects, primitives.
+                    const cond = if (expr.val == right.val) true else 
+                        @call(.never_inline, evalCompareBool, .{vm, expr, right});
+                    if (cond) {
+                        // Jump.
+                        pc += @ptrCast(*align (1) u16, pc + 4 + i * 3).*;
+                        break;
+                    }
+                }
+                // else case
+                if (i == numCases) {
+                    pc += @ptrCast(*align (1) u16, pc + 4 + i * 3 - 1).*;
+                }
                 continue;
             },
             .end => {

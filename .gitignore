@@ -9,4 +9,8 @@
 /test/assets/write.txt
 /exts/vscode/cyber-0.0.1.vsix
 /examples/libfoo.so
+/cyber.s
+/scratch.zig
+/scratch
+/scratch.o
 *.class

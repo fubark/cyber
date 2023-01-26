@@ -32,6 +32,7 @@ pub fn build(b: *std.build.Builder) !void {
         exe.rdynamic = true;
 
         addBuildOptions(b, exe, false);
+        // exe.emit_asm = .emit;
 
         // exe.linkLibC();
         exe.addPackage(stdxPkg);

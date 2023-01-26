@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const aarch64 = builtin.cpu.arch == .aarch64;
 const stdx = @import("stdx");
 const t = stdx.testing;
 const tcc = @import("tcc");
@@ -4538,13 +4539,94 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
     }
 }
 
+inline fn gotoNext(pc: *[*]cy.OpData, jumpTablePtr: u64) void {
+    if (EnableAarch64ComputedGoto) {
+        const asmPc = asm (
+            \\ldrb w8, [%[pc]]
+            \\ldrsw  x10, [x28, x8, lsl #2]
+            \\adr x9, LOpBase
+            // TODO: Remove extra offset addition somehow.
+            \\add x9, x9, #4
+            \\add x9, x9, x10
+            : [ret] "={x9}" (-> [*]const u32)
+            : [pc] "r" (pc.*),
+              [jt] "{x28}" (jumpTablePtr),
+            : "x10", "x8"
+        );
+        // Splitting into two inline assembly prevents
+        // it from using a temporary register for `pc`, which would be a problem
+        // since the switch case would generate the mov back to the dedicated pc register
+        // after the inlined br inst.
+        _ = asm volatile (
+            \\br %[asmPc]
+            :
+            : [asmPc] "r" (asmPc),
+            : 
+        );
+    }
+}
+
+const AarchPcRelativeAddressOp = packed struct {
+    rd: u5,
+    immhi: u19,
+    fixed: u5 = 0b10000,
+    immlo: u2,
+    op: u1,
+
+    fn getImm21(self: AarchPcRelativeAddressOp) u21 {
+        return (self.immhi << 2) | self.immlo;
+    }
+};
+
+const AarchAddSubtractImmOp = packed struct {
+    rd: u5,
+    rn: u5,
+    imm12: u12,
+    sh: u1,
+    fixed: u6 = 0b100010,
+    s: u1,
+    op: u1,
+    sf: u1,
+};
+
+/// Generate assembly labels to find sections easier.
+const GenLabels = builtin.mode != .Debug and true;
+const EnableAarch64ComputedGoto = aarch64 and builtin.mode != .Debug;
+
 fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
+    if (GenLabels) {
+        _ = asm volatile ("LEvalLoop:"::);
+    }
+
+    var jumpTablePtr: u64 = undefined;
+    if (EnableAarch64ComputedGoto) {
+        // For aarch64, this is a hack to get computed gotos.
+        // Zig already generates the jump table for us, but it doesn't inline the jumps for each switch case.
+        // This looks up the jump table address at runtime by looking at a relative adrp instruction.
+        // Then LOpBase is placed before the switch. It doesn't end up exactly where the generated base address is,
+        // so an offset is applied.
+        // Finally, `gotoNext` is added to each switch case which performs an inline jump.
+
+        // Get the jump table ptr from decoding two arm64 insts.
+        const asmPc = asm (
+            \\adr x28, .
+            : [ret] "={x28}" (-> [*]const u32)
+            : 
+            :
+        );
+        const AdrpOffset = 5;
+        const adrpInst = @bitCast(AarchPcRelativeAddressOp, (asmPc - AdrpOffset)[0]);
+        const addOffsetInst = @bitCast(AarchAddSubtractImmOp, (asmPc - AdrpOffset + 1)[0]);
+        jumpTablePtr = (@ptrToInt(asmPc - AdrpOffset) + (adrpInst.getImm21() << 12)) & ~((@as(u64, 1) << 12) - 1);
+        jumpTablePtr += addOffsetInst.imm12;
+    }
+
     var pc = vm.pc;
     var framePtr = vm.framePtr;
     defer {
         vm.pc = pc;
         vm.framePtr = framePtr;
-    }
+    } 
 
     while (true) {
         if (TraceEnabled) {
@@ -4555,41 +4637,72 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
         if (builtin.mode == .Debug) {
             dumpEvalOp(vm, pc);
         }
+        if (EnableAarch64ComputedGoto) {
+            // Base address to jump from.
+            _ = asm volatile ("LOpBase:"::);
+        }
         switch (pc[0].code) {
             .none => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpNone:"::);
+                }
                 framePtr[pc[1].arg] = Value.None;
                 pc += 2;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .constOp => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpConstOp:"::);
+                }
                 framePtr[pc[2].arg] = Value.initRaw(vm.consts[pc[1].arg].val);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .constI8 => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpConstI8:"::);
+                }
                 framePtr[pc[2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, pc[1].arg)));
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .constI8Int => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpConstI8Int:"::);
+                }
                 framePtr[pc[2].arg] = Value.initI32(@intCast(i32, @bitCast(i8, pc[1].arg)));
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .release => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpRelease:"::);
+                }
                 release(vm, framePtr[pc[1].arg]);
                 pc += 2;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .releaseN => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpReleaseN:"::);
+                }
                 const numLocals = pc[1].arg;
                 for (pc[2..2+numLocals]) |local| {
                     release(vm, framePtr[local.arg]);
                 }
                 pc += 2 + numLocals;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .fieldIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpFieldIC:"::);
+                }
                 const recv = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
                 if (recv.isPointer()) {
@@ -4597,6 +4710,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
                         framePtr[dst] = obj.object.getValue(pc[6].arg);
                         pc += 7;
+                        gotoNext(&pc, jumpTablePtr);
                         continue;
                     }
                 } else {
@@ -4607,16 +4721,24 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
                 pc += 7;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .copyRetainSrc => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCopyRetainSrc:"::);
+                }
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = val;
                 vm.retain(val);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .jumpNotCond => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpJumpNotCond:"::);
+                }
                 const jump = @ptrCast(*const align(1) u16, pc + 1).*;
                 const cond = framePtr[pc[3].arg];
                 const condVal = if (cond.isBool()) b: {
@@ -4629,9 +4751,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 4;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .neg => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpNeg:"::);
+                }
                 const val = framePtr[pc[1].arg];
                 // gvm.stack[gvm.framePtr + pc[2].arg] = if (val.isNumber())
                 //     Value.initF64(-val.asF64())
@@ -4639,24 +4765,33 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     // @call(.never_inline, evalNegFallback, .{val});
                 framePtr[pc[2].arg] = evalNeg(val);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .compare => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCompare:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 // Can immediately match numbers, objects, primitives.
                 framePtr[pc[3].arg] = if (left.val == right.val) Value.True else 
                     @call(.never_inline, evalCompare, .{vm, left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .compareNot => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCompareNot:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 // Can immediately match numbers, objects, primitives.
                 framePtr[pc[3].arg] = if (left.val == right.val) Value.False else 
                     @call(.never_inline, evalCompareNot, .{vm, left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             // .lessNumber => {
@@ -4669,6 +4804,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             //     continue;
             // },
             .add => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpAdd:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
@@ -4677,32 +4815,48 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ left, right });
                 }
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .addInt => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpAddInt:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = Value.initI32(left.asI32() + right.asI32());
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .minus => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMinus:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initF64(left.asF64() - right.asF64())
                 else @call(.never_inline, evalMinusFallback, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .minusInt => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMinusInt:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = Value.initI32(left.asI32() - right.asI32());
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .less => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpLess:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
@@ -4710,56 +4864,88 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 else
                     @call(.never_inline, evalLessFallback, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .lessInt => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpLessInt:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = Value.initBool(left.asI32() < right.asI32());
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .greater => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpGreater:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalGreater(srcLeft, srcRight);
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .lessEqual => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpLessEqual:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalLessOrEqual(srcLeft, srcRight);
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .greaterEqual => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpGreaterEqual:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .true => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpTrue:"::);
+                }
                 framePtr[pc[1].arg] = Value.True;
                 pc += 2;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .false => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpFalse:"::);
+                }
                 framePtr[pc[1].arg] = Value.False;
                 pc += 2;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .not => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpNot:"::);
+                }
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = evalNot(val);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .stringTemplate => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpStringTemplate:"::);
+                }
                 const startLocal = pc[1].arg;
                 const exprCount = pc[2].arg;
                 const dst = pc[3].arg;
@@ -4769,9 +4955,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const vals = framePtr[startLocal .. startLocal + exprCount];
                 const res = try @call(.never_inline, vm.allocStringTemplate, .{strs, vals});
                 framePtr[dst] = res;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .list => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpList:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numElems = pc[2].arg;
                 const dst = pc[3].arg;
@@ -4779,15 +4969,23 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const elems = framePtr[startLocal..startLocal + numElems];
                 const list = try vm.allocList(elems);
                 framePtr[dst] = list;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .mapEmpty => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMapEmpty:"::);
+                }
                 const dst = pc[1].arg;
                 pc += 2;
                 framePtr[dst] = try vm.allocEmptyMap();
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .objectSmall => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpObjectSmall:"::);
+                }
                 const sid = pc[1].arg;
                 const startLocal = pc[2].arg;
                 const numFields = pc[3].arg;
@@ -4797,18 +4995,26 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     vm.objectTraceMap.put(vm.alloc, framePtr[pc[4].arg].asHeapObject(*HeapObject), pcOffset(pc)) catch stdx.fatal();
                 }
                 pc += 5;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .object => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpObject:"::);
+                }
                 const sid = pc[1].arg;
                 const startLocal = pc[2].arg;
                 const numFields = pc[3].arg;
                 const fields = framePtr[startLocal .. startLocal + numFields];
                 framePtr[pc[4].arg] = try vm.allocObject(sid, fields);
                 pc += 5;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .map => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMap:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numEntries = pc[2].arg;
                 const dst = pc[3].arg;
@@ -4816,87 +5022,135 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 4 + numEntries;
                 const vals = framePtr[startLocal .. startLocal + numEntries];
                 framePtr[dst] = try vm.allocMap(keyIdxes, vals);
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .slice => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSlice:"::);
+                }
                 const slice = &framePtr[pc[1].arg];
                 const start = framePtr[pc[2].arg];
                 const end = framePtr[pc[3].arg];
                 framePtr[pc[4].arg] = try @call(.never_inline, vm.sliceOp, .{slice, start, end});
                 pc += 5;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setInitN => {
+                if (GenLabels) {
+                    _ = asm volatile ("LSetInitN:"::);
+                }
                 const numLocals = pc[1].arg;
                 const locals = pc[2..2+numLocals];
                 pc += 2 + numLocals;
                 for (locals) |local| {
                     framePtr[local.arg] = Value.None;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setIndex => {
+                if (GenLabels) {
+                    _ = asm volatile ("LSetIndex:"::);
+                }
                 const leftv = framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
                 const rightv = framePtr[pc[3].arg];
                 try @call(.never_inline, vm.setIndex, .{leftv, indexv, rightv});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setIndexRelease => {
+                if (GenLabels) {
+                    _ = asm volatile ("LSetIndexRelease:"::);
+                }
                 const leftv = framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
                 const rightv = framePtr[pc[3].arg];
                 try @call(.never_inline, vm.setIndexRelease, .{leftv, indexv, rightv});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .copy => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCopy:"::);
+                }
                 framePtr[pc[2].arg] = framePtr[pc[1].arg];
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .copyRetainRelease => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCopyRetainRelease:"::);
+                }
                 const src = pc[1].arg;
                 const dst = pc[2].arg;
                 pc += 3;
                 vm.retain(framePtr[src]);
                 release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[src];
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .copyReleaseDst => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCopyReleaseDst:"::);
+                }
                 const dst = pc[2].arg;
                 release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[pc[1].arg];
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .retain => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpRetain:"::);
+                }
                 vm.retain(framePtr[pc[1].arg]);
                 pc += 2;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .index => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpIndex:"::);
+                }
                 const recv = &framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = try @call(.never_inline, vm.getIndex, .{recv, indexv});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .reverseIndex => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpReverseIndex:"::);
+                }
                 const recv = &framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = try @call(.never_inline, vm.getReverseIndex, .{recv, indexv});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .jump => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpJump:"::);
+                }
                 @setRuntimeSafety(false);
                 pc += @intCast(usize, @ptrCast(*const align(1) i16, &pc[1]).*);
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .jumpCond => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpJumpCond:"::);
+                }
                 const jump = @ptrCast(*const align(1) i16, pc + 1).*;
                 const cond = framePtr[pc[3].arg];
                 const condVal = if (cond.isBool()) b: {
@@ -4910,9 +5164,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 4;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .call0 => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCall0:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 pc += 3;
@@ -4922,9 +5180,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 0, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .call1 => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCall1:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 pc += 3;
@@ -4934,9 +5196,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 1, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .callObjFuncIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallObjFuncIC:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
@@ -4957,14 +5223,19 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[2] = Value{ .retPcPtr = pc + 14 };
                     framePtr[3] = retFramePtr;
                     pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
+                    gotoNext(&pc, jumpTablePtr);
                     continue;
                 }
 
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .callObjSym };
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .callObjNativeFuncIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallObjNativeFuncIC:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const recv = &framePtr[startLocal + numArgs + 4 - 1];
@@ -5005,14 +5276,19 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     // In the future, we might allow native functions to change the pc and framePtr.
                     // pc = vm.pc;
                     // framePtr = vm.framePtr;
+                    gotoNext(&pc, jumpTablePtr);
                     continue;
                 }
 
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .callObjSym };
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .callFuncIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallFuncIC:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numLocals = pc[4].arg;
                 if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(vm.stackEndPtr)) {
@@ -5027,9 +5303,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[3] = retFramePtr;
 
                 pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 5).*));
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .callNativeFuncIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallNativeFuncIC:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
 
@@ -5053,23 +5333,35 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     }
                 }
                 pc += 11;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .ret1 => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpRet1:"::);
+                }
                 if (@call(.always_inline, popStackFrameLocal1, .{vm, &pc, &framePtr})) {
+                    gotoNext(&pc, jumpTablePtr);
                     continue;
                 } else {
                     return;
                 }
             },
             .ret0 => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpRet0:"::);
+                }
                 if (@call(.always_inline, popStackFrameLocal0, .{&pc, &framePtr})) {
+                    gotoNext(&pc, jumpTablePtr);
                     continue;
                 } else {
                     return;
                 }
             },
             .setFieldReleaseIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetFieldReleaseIC:"::);
+                }
                 const recv = framePtr[pc[1].arg];
                 if (recv.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
@@ -5078,6 +5370,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         release(vm, lastValue.*);
                         lastValue.* = framePtr[pc[2].arg];
                         pc += 7;
+                        gotoNext(&pc, jumpTablePtr);
                         continue;
                     }
                 } else {
@@ -5088,9 +5381,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
                 pc += 7;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .fieldRetainIC => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpFieldRetainIC:"::);
+                }
                 const recv = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
                 if (recv.isPointer()) {
@@ -5099,6 +5396,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(pc[6].arg);
                         vm.retain(framePtr[dst]);
                         pc += 7;
+                        gotoNext(&pc, jumpTablePtr);
                         continue;
                     }
                 } else {
@@ -5110,9 +5408,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
                 vm.retain(framePtr[dst]);
                 pc += 7;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .forRangeInit => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpForRangeInit:"::);
+                }
                 const start = framePtr[pc[1].arg].toF64();
                 const end = framePtr[pc[2].arg].toF64();
                 framePtr[pc[2].arg] = Value.initF64(end);
@@ -5133,8 +5435,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         cy.OpData{ .code = .forRangeReverse };
                     pc += 8;
                 }
+                gotoNext(&pc, jumpTablePtr);
+                continue;
             },
             .forRange => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpForRange:"::);
+                }
                 const counter = framePtr[pc[1].arg].asF64() + framePtr[pc[2].arg].asF64();
                 if (counter < framePtr[pc[3].arg].asF64()) {
                     framePtr[pc[1].arg] = Value.initF64(counter);
@@ -5143,8 +5450,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 7;
                 }
+                gotoNext(&pc, jumpTablePtr);
+                continue;
             },
             .forRangeReverse => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpForRangeReverse:"::);
+                }
                 const counter = framePtr[pc[1].arg].asF64() - framePtr[pc[2].arg].asF64();
                 if (counter > framePtr[pc[3].arg].asF64()) {
                     framePtr[pc[1].arg] = Value.initF64(counter);
@@ -5153,8 +5465,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 7;
                 }
+                gotoNext(&pc, jumpTablePtr);
+                continue;
             },
             .jumpNotNone => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpJumpNotNone:"::);
+                }
                 const offset = @ptrCast(*const align(1) i16, &pc[1]).*;
                 if (!framePtr[pc[3].arg].isNone()) {
                     @setRuntimeSafety(false);
@@ -5162,9 +5479,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 4;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setField => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetField:"::);
+                }
                 const fieldId = pc[1].arg;
                 const left = pc[2].arg;
                 const right = pc[3].arg;
@@ -5174,9 +5495,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = framePtr[right];
                 try gvm.setField(recv, fieldId, val);
                 // try @call(.never_inline, gvm.setField, .{recv, fieldId, val});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .fieldRelease => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpFieldRelease:"::);
+                }
                 const fieldId = pc[1].arg;
                 const left = pc[2].arg;
                 const dst = pc[3].arg;
@@ -5184,9 +5509,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[left];
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{recv, fieldId});
                 release(vm, recv);
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .field => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpField:"::);
+                }
                 const left = pc[1].arg;
                 const dst = pc[2].arg;
                 const symId = pc[3].arg;
@@ -5204,13 +5533,17 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     } else {
                         framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
+                    pc += 7;
+                    gotoNext(&pc, jumpTablePtr);
+                    continue;
                 } else {
                     return vm.getFieldMissingSymbolError();
                 }
-                pc += 7;
-                continue;
             },
             .fieldRetain => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpFieldRetain:"::);
+                }
                 const recv = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
                 const symId = pc[3].arg;
@@ -5228,13 +5561,17 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
                     vm.retain(framePtr[dst]);
+                    pc += 7;
+                    gotoNext(&pc, jumpTablePtr);
+                    continue;
                 } else {
                     return vm.getFieldMissingSymbolError();
                 }
-                pc += 7;
-                continue;
             },
             .setFieldRelease => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetFieldRelease:"::);
+                }
                 const recv = framePtr[pc[1].arg];
                 const val = framePtr[pc[2].arg];
                 const symId = pc[3].arg;
@@ -5252,6 +5589,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData { .arg = offset };
                         pc += 7;
+                        gotoNext(&pc, jumpTablePtr);
                         continue;
                     } else {
                         return vm.getFieldMissingSymbolError();
@@ -5260,18 +5598,26 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     return vm.setFieldNotObjectError();
                 }
                 pc += 7;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .lambda => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpLambda:"::);
+                }
                 const funcPc = pcOffset(pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numLocals = pc[3].arg;
                 const dst = pc[4].arg;
                 pc += 5;
                 framePtr[dst] = try @call(.never_inline, vm.allocLambda, .{funcPc, numParams, numLocals});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .closure => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpClosure:"::);
+                }
                 const funcPc = pcOffset(pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numCaptured = pc[3].arg;
@@ -5281,37 +5627,57 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 6 + numCaptured;
 
                 framePtr[dst] = try @call(.never_inline, vm.allocClosure, .{framePtr, funcPc, numParams, numLocals, capturedVals});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .staticVar => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpStaticVar:"::);
+                }
                 const symId = pc[1].arg;
                 const sym = vm.varSyms.buf[symId];
                 framePtr[pc[2].arg] = sym.value;
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setStaticVar => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetStaticVar:"::);
+                }
                 const symId = pc[1].arg;
                 vm.varSyms.buf[symId].value = framePtr[pc[2].arg];
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .staticFunc => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpStaticFunc:"::);
+                }
                 const symId = pc[1].arg;
                 framePtr[pc[2].arg] = try vm.allocFuncFromSym(symId);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .coreturn => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCoreturn:"::);
+                }
                 pc += 1;
                 if (vm.curFiber != &vm.mainFiber) {
                     const res = popFiber(vm, NullId, framePtr, framePtr[1]);
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .coresume => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCoresume:"::);
+                }
                 const fiber = framePtr[pc[1].arg];
                 if (fiber.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, fiber.asPointer().?);
@@ -5322,6 +5688,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                                 const res = pushFiber(vm, pcOffset(pc + 3), framePtr, &obj.fiber, pc[2].arg);
                                 pc = res.pc;
                                 framePtr = res.framePtr;
+                                gotoNext(&pc, jumpTablePtr);
                                 continue;
                             }
                         }
@@ -5329,9 +5696,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     releaseObject(vm, obj);
                 }
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .coyield => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCoyield:"::);
+                }
                 if (vm.curFiber != &vm.mainFiber) {
                     // Only yield on user fiber.
                     const res = popFiber(vm, pcOffset(pc), framePtr, Value.None);
@@ -5340,9 +5711,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 3;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .coinit => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCoinit:"::);
+                }
                 const startArgsLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const jump = pc[3].arg;
@@ -5353,48 +5728,72 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const fiber = try @call(.never_inline, allocFiber, .{pcOffset(pc + 6), args, initialStackSize});
                 framePtr[dst] = fiber;
                 pc += jump;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .mul => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMul:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalMultiply, .{srcLeft, srcRight});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .div => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpDiv:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalDivide, .{srcLeft, srcRight});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .mod => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMod:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalMod, .{srcLeft, srcRight});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .pow => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpPow:"::);
+                }
                 const srcLeft = framePtr[pc[1].arg];
                 const srcRight = framePtr[pc[2].arg];
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalPower, .{srcLeft, srcRight});
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .box => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBox:"::);
+                }
                 const value = framePtr[pc[1].arg];
                 vm.retain(value);
                 framePtr[pc[2].arg] = try allocBox(vm, value);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setBoxValue => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetBoxValue:"::);
+                }
                 const box = framePtr[pc[1].arg];
                 const rval = framePtr[pc[2].arg];
                 pc += 3;
@@ -5406,9 +5805,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     std.debug.assert(obj.common.structId == BoxS);
                 }
                 obj.box.val = rval;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setBoxValueRelease => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBoxValueRelease:"::);
+                }
                 const box = framePtr[pc[1].arg];
                 const rval = framePtr[pc[2].arg];
                 pc += 3;
@@ -5421,9 +5824,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .boxValue => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBoxValue:"::);
+                }
                 const box = framePtr[pc[1].arg];
                 if (box.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
@@ -5438,9 +5845,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[pc[2].arg] = Value.None;
                 }
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .boxValueRetain => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBoxValueRetain:"::);
+                }
                 const box = framePtr[pc[1].arg];
                 // if (builtin.mode == .Debug) {
                 //     std.debug.assert(box.isPointer());
@@ -5455,31 +5866,46 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // pc += 3;
                 framePtr[pc[2].arg] = @call(.never_inline, boxValueRetain, .{box});
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .tag => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpTag:"::);
+                }
                 const tagId = pc[1].arg;
                 const val = pc[2].arg;
                 framePtr[pc[3].arg] = Value.initTag(tagId, val);
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .tagLiteral => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpTagLiteral:"::);
+                }
                 const symId = pc[1].arg;
                 framePtr[pc[2].arg] = Value.initTagLiteral(symId);
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .tryValue => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpTryValue:"::);
+                }
                 const val = framePtr[pc[1].arg];
                 if (!val.isError()) {
                     framePtr[pc[2].arg] = val;
                     pc += 5;
+                    gotoNext(&pc, jumpTablePtr);
                     continue;
                 } else {
                     if (framePtr != vm.stack.ptr) {
                         framePtr[0] = val;
                         pc += @ptrCast(*const align(1) u16, pc + 3).*;
+                        gotoNext(&pc, jumpTablePtr);
+                        continue;
                     } else {
                         // Panic on root block.
                         vm.panicType = .err;
@@ -5489,55 +5915,86 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
             },
             .bitwiseAnd => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBitwiseAnd:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseAnd, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .bitwiseOr => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBitwiseOr:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseOr, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .bitwiseXor => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBitwiseXor:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseXor, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .bitwiseNot => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBitwiseNot:"::);
+                }
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = @call(.never_inline, evalBitwiseNot, .{val});
                 pc += 3;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .bitwiseLeftShift => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBitwiseLeftShift:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseLeftShift, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .bitwiseRightShift => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpBitwiseRightShift:"::);
+                }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseRightShift, .{left, right});
                 pc += 4;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .setCapValToFuncSyms => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetCapValToFuncSyms:"::);
+                }
                 const capVal = framePtr[pc[1].arg];
                 const numSyms = pc[2].arg;
                 const syms = pc[3..3+numSyms*2];
                 @call(.never_inline, setCapValToFuncSyms, .{ vm, capVal, numSyms, syms });
                 pc += 3 + numSyms*2;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .callObjSym => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallObjSym:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const numRet = pc[3].arg;
@@ -5563,9 +6020,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .callSym => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallSym:"::);
+                }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const numRet = pc[3].arg;
@@ -5573,9 +6034,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const res = try @call(.never_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
                 pc = res.pc;
                 framePtr = res.framePtr;
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .match => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpMatch:"::);
+                }
                 const expr = framePtr[pc[1].arg];
                 const numCases = pc[2].arg;
                 var i: u32 = 0;
@@ -5594,9 +6059,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (i == numCases) {
                     pc += @ptrCast(*align (1) u16, pc + 4 + i * 3 - 1).*;
                 }
+                gotoNext(&pc, jumpTablePtr);
                 continue;
             },
             .end => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpEnd:"::);
+                }
                 vm.endLocal = pc[1].arg;
                 pc += 2;
                 vm.curFiber.pc = @intCast(u32, pcOffset(pc));

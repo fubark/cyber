@@ -133,11 +133,12 @@ pub const DecodeMapIR = cdata.DecodeMapIR;
 pub const DecodeListIR = cdata.DecodeListIR;
 pub const DecodeValueIR = cdata.DecodeValueIR;
 
-pub const HotSection = if (builtin.os.tag == .macos) "DATA,.eval" else ".eval";
-pub const Section = if (builtin.os.tag == .macos) "DATA,.eval2" else ".eval2";
-pub const StdSection = if (builtin.os.tag == .macos) "DATA,.eval.std" else ".eval.std";
-pub const CompilerSection = if (builtin.os.tag == .macos) "DATA,.compiler" else ".compiler";
-pub const InitSection = if (builtin.os.tag == .macos) "DATA,.cyInit" else ".cyInit";
+/// Sections don't work on macOS arm64 builds but they are needed for the build.
+pub const HotSection = if (builtin.os.tag == .macos) "__TEXT,.eval" else ".eval";
+pub const Section = if (builtin.os.tag == .macos) "__TEXT,.eval2" else ".eval2";
+pub const StdSection = if (builtin.os.tag == .macos) "__TEXT,.eval.std" else ".eval.std";
+pub const CompilerSection = if (builtin.os.tag == .macos) "__TEXT,.compiler" else ".compiler";
+pub const InitSection = if (builtin.os.tag == .macos) "__TEXT,.cyInit" else ".cyInit";
 
 pub export fn initSection() linksection(InitSection) callconv(.C) void {}
 pub export fn compilerSection() linksection(CompilerSection) callconv(.C) void {}

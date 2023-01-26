@@ -508,7 +508,6 @@ pub const OpCode = enum(u8) {
     /// Jumps the pc by an 16-bit integer offset.
     jump,
 
-    // releaseMany,
     release,
     releaseN,
     callObjSym,

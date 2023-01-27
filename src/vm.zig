@@ -3491,9 +3491,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     return vm.setFieldNotObjectError();
                 }
-                pc += 7;
-                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
-                continue;
             },
             .lambda => {
                 if (GenLabels) {
@@ -3935,24 +3932,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpMatch:"::);
                 }
-                const expr = framePtr[pc[1].arg];
-                const numCases = pc[2].arg;
-                var i: u32 = 0;
-                while (i < numCases) : (i += 1) {
-                    const right = framePtr[pc[3 + i * 3].arg];
-                    // Can immediately match numbers, objects, primitives.
-                    const cond = if (expr.val == right.val) true else 
-                        @call(.never_inline, evalCompareBool, .{vm, expr, right});
-                    if (cond) {
-                        // Jump.
-                        pc += @ptrCast(*align (1) u16, pc + 4 + i * 3).*;
-                        break;
-                    }
-                }
-                // else case
-                if (i == numCases) {
-                    pc += @ptrCast(*align (1) u16, pc + 4 + i * 3 - 1).*;
-                }
+                pc += @call(.never_inline, opMatch, .{vm, pc, framePtr});
                 if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
@@ -4669,3 +4649,21 @@ pub const EvalConfig = struct {
     /// In that scenario, the compiler can skip generating the final release ops for the main block.
     singleRun: bool = false,
 };
+
+fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 {
+    const expr = framePtr[pc[1].arg];
+    const numCases = pc[2].arg;
+    var i: u32 = 0;
+    while (i < numCases) : (i += 1) {
+        const right = framePtr[pc[3 + i * 3].arg];
+        // Can immediately match numbers, objects, primitives.
+        const cond = if (expr.val == right.val) true else 
+            @call(.never_inline, evalCompareBool, .{vm, expr, right});
+        if (cond) {
+            // Jump.
+            return @ptrCast(*const align (1) u16, pc + 4 + i * 3).*;
+        }
+    }
+    // else case
+    return @ptrCast(*const align (1) u16, pc + 4 + i * 3 - 1).*;
+}

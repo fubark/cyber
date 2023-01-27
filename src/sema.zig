@@ -1617,7 +1617,7 @@ fn getOrTryResolveSym(self: *cy.VMcompiler, key: AbsResolvedSymKey, numParams: u
             const resolvedParentId = key.absResolvedSymKey.resolvedParentSymId;
             const rtSymId = try self.vm.ensureVarSym(resolvedParentId, key.absResolvedSymKey.nameId);
             const rtSym = cy.VarSym.init(modSym.inner.variable.val);
-            self.vm.retain(rtSym.value);
+            cy.arc.retain(self.vm, rtSym.value);
             self.vm.setVarSym(rtSymId, rtSym);
             try self.semaResolvedSyms.append(self.alloc, .{
                 .symT = .variable,

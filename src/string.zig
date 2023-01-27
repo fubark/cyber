@@ -1,8 +1,11 @@
 // Copyright (c) 2023 Cyber (See LICENSE)
 
+/// Strings and string operations.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
+const t = stdx.testing;
 const cy = @import("cyber.zig");
 
 /// Like `ArrayList` except the buffer is allocated as a `Astring` or `Ustring`.
@@ -134,7 +137,7 @@ pub const HeapRawStringBuilder = struct {
     vm: *cy.VM,
 
     pub fn init(vm: *cy.VM) !HeapRawStringBuilder {
-        const obj = try vm.allocPoolObject();
+        const obj = try cy.heap.allocPoolObject(vm);
         obj.rawstring = .{
             .structId = cy.RawStringT,
             .rc = 1,
@@ -157,7 +160,7 @@ pub const HeapRawStringBuilder = struct {
         if (self.hasObject) {
             const obj = self.getHeapObject();
             obj.rawstring.len = self.len;
-            self.vm.freeObject(obj);
+            cy.heap.freeObject(self.vm, obj);
             self.hasObject = false;
         }
     }
@@ -222,7 +225,7 @@ pub const HeapRawStringBuilder = struct {
 
             // Free pool object.
             oldObj.rawstring.len = self.len;
-            self.vm.freeObject(oldObj);
+            cy.heap.freeObject(self.vm, oldObj);
         }
     }
 
@@ -849,4 +852,69 @@ pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
 pub fn utf8CharSliceAtNoCheck(str: []const u8, idx: usize) []const u8 {
     const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
     return str[idx..idx+len];
+}
+
+pub const StringConcat = struct {
+    left: []const u8,
+    right: []const u8,
+};
+
+pub const StringConcatContext = struct {
+    pub fn hash(_: StringConcatContext, concat: StringConcat) u64 {
+        return @call(.always_inline, computeStringConcatHash, .{concat.left, concat.right});
+    }
+
+    pub fn eql(_: StringConcatContext, a: StringConcat, b: []const u8) bool {
+        if (a.left.len + a.right.len != b.len) {
+            return false;
+        }
+        return std.mem.eql(u8, a.left, b[0..a.left.len]) and 
+            std.mem.eql(u8, a.right, b[a.left.len..]);
+    }
+};
+
+pub const StringConcat3 = struct {
+    str1: []const u8,
+    str2: []const u8,
+    str3: []const u8,
+};
+
+pub const StringConcat3Context = struct {
+    pub fn hash(_: StringConcat3Context, concat: StringConcat3) u64 {
+        return @call(.always_inline, computeStringConcat3Hash, .{concat.str1, concat.str2, concat.str3});
+    }
+
+    pub fn eql(_: StringConcat3Context, a: StringConcat3, b: []const u8) bool {
+        if (a.str1.len + a.str2.len + a.str3.len != b.len) {
+            return false;
+        }
+        return std.mem.eql(u8, a.str1, b[0..a.str1.len]) and 
+            std.mem.eql(u8, a.str2, b[a.str1.len..a.str1.len+a.str2.len]) and
+            std.mem.eql(u8, a.str3, b[a.str1.len+a.str2.len..]);
+    }
+};
+
+fn computeStringConcat3Hash(str1: []const u8, str2: []const u8, str3: []const u8) u64 {
+    var c = std.hash.Wyhash.init(0);
+    @call(.always_inline, c.update, .{str1});
+    @call(.always_inline, c.update, .{str2});
+    @call(.always_inline, c.update, .{str3});
+    return @call(.always_inline, c.final, .{});
+}
+
+fn computeStringConcatHash(left: []const u8, right: []const u8) u64 {
+    var c = std.hash.Wyhash.init(0);
+    @call(.always_inline, c.update, .{left});
+    @call(.always_inline, c.update, .{right});
+    return @call(.always_inline, c.final, .{});
+}
+
+test "computeStringConcatHash() matches the concated string hash." {
+    const exp = std.hash.Wyhash.hash(0, "foobar");
+    try t.eq(computeStringConcatHash("foo", "bar"), exp);
+    try t.eq(computeStringConcat3Hash("fo", "ob", "ar"), exp);
+}
+
+pub fn getStaticUstringHeader(vm: *cy.VM, start: usize) *align(1) cy.StaticUstringHeader {
+    return @ptrCast(*align (1) cy.StaticUstringHeader, vm.strBuf.ptr + start - 12);
 }

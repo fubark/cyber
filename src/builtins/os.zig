@@ -23,7 +23,7 @@ pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSec
         try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.big)));
     }
     if (cy.hasStdFiles) {
-        const stdin = try self.vm.allocFile(std.os.STDIN_FILENO);
+        const stdin = try cy.heap.allocFile(self.vm, std.os.STDIN_FILENO);
         try mod.setVar(self, "stdin", stdin);
     } else {
         try mod.setVar(self, "stdin", Value.None);
@@ -87,7 +87,7 @@ pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) !void {
         // Mark as closed to avoid closing.
         const stdin = (try mod.getVarVal(c, "stdin")).?;
         stdin.asHeapObject(*cy.HeapObject).file.closed = true;
-        vm_.release(c.vm, stdin);
+        cy.arc.release(c.vm, stdin);
     }
 }
 

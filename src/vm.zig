@@ -13,34 +13,17 @@ const bindings = @import("builtins/bindings.zig");
 const Value = cy.Value;
 const debug = @import("debug.zig");
 const TraceEnabled = @import("build_options").trace;
+const HeapObject = cy.HeapObject;
+const release = cy.arc.release;
+const retain = cy.arc.retain;
+const retainObject = cy.arc.retainObject;
+const UserVM = cy.UserVM;
 
 const log = stdx.log.scoped(.vm);
 
 const UseGlobalVM = true;
 pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 const StdSection = cy.StdSection;
-
-/// Reserved object types known at comptime.
-/// Starts at 9 since primitive types go up to 8.
-pub const ListS: StructId = 9;
-pub const ListIteratorT: StructId = 10;
-pub const MapS: StructId = 11;
-pub const MapIteratorT: StructId = 12;
-pub const ClosureS: StructId = 13;
-pub const LambdaS: StructId = 14;
-pub const AstringT: StructId = 15;
-pub const UstringT: StructId = 16;
-pub const StringSliceT: StructId = 17;
-pub const RawStringT: StructId = 18;
-pub const RawStringSliceT: StructId = 19;
-pub const FiberS: StructId = 20;
-pub const BoxS: StructId = 21;
-pub const NativeFunc1S: StructId = 22;
-pub const TccStateS: StructId = 23;
-pub const OpaquePtrS: StructId = 24;
-pub const FileT: StructId = 25;
-pub const DirT: StructId = 26;
-pub const DirIteratorT: StructId = 27;
 
 /// Temp buf for toString conversions when the len is known to be small.
 var tempU8Buf: [256]u8 = undefined;
@@ -54,8 +37,6 @@ pub var gvm: VM = undefined;
 pub fn getUserVM() *UserVM {
     return @ptrCast(*UserVM, &gvm);
 }
-
-const DefaultStringInternMaxByteLen = 64;
 
 pub const VM = struct {
     alloc: std.mem.Allocator,
@@ -85,7 +66,7 @@ pub const VM = struct {
     strInterns: std.StringHashMapUnmanaged(*HeapObject),
 
     /// Object heap pages.
-    heapPages: cy.List(*HeapPage),
+    heapPages: cy.List(*cy.heap.HeapPage),
     heapFreeHead: ?*HeapObject,
 
     refCounts: if (TrackGlobalRC) usize else void,
@@ -114,7 +95,7 @@ pub const VM = struct {
 
     /// Structs.
     structs: cy.List(Struct),
-    structSignatures: std.HashMapUnmanaged(StructKey, StructId, KeyU64Context, 80),
+    structSignatures: std.HashMapUnmanaged(StructKey, TypeId, KeyU64Context, 80),
     iteratorObjSym: SymbolId,
     pairIteratorObjSym: SymbolId,
     nextObjSym: SymbolId,
@@ -136,8 +117,8 @@ pub const VM = struct {
     methodSymExtras: cy.List([]const u8),
     debugTable: []const cy.OpDebug,
 
-    curFiber: *Fiber,
-    mainFiber: Fiber,
+    curFiber: *cy.Fiber,
+    mainFiber: cy.Fiber,
 
     /// Local to be returned back to eval caller.
     /// 255 indicates no return value.
@@ -227,7 +208,7 @@ pub const VM = struct {
         try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
 
         // Initialize heap.
-        self.heapFreeHead = try self.growHeapPages(1);
+        self.heapFreeHead = try cy.heap.growHeapPages(self, 1);
 
         // Force linksection order. Using `try` makes this work.
         try @call(.never_inline, cy.forceSectionDeps, .{});
@@ -247,7 +228,7 @@ pub const VM = struct {
         // compiled/debug resources.
         for (self.funcSyms.items()) |sym| {
             if (sym.entryT == @enumToInt(FuncSymbolEntryType.closure)) {
-                releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
+                cy.arc.releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
             }
         }
         self.funcSyms.deinit(self.alloc);
@@ -306,51 +287,6 @@ pub const VM = struct {
         self.deinited = true;
     }
 
-    /// Initializes the page with freed object slots and returns the pointer to the first slot.
-    fn initHeapPage(page: *HeapPage) *HeapObject {
-        // First HeapObject at index 0 is reserved so that freeObject can get the previous slot without a bounds check.
-        page.objects[0].common = .{
-            .structId = 0, // Non-NullId so freeObject doesn't think it's a free span.
-        };
-        const first = &page.objects[1];
-        first.freeSpan = .{
-            .structId = NullId,
-            .len = page.objects.len - 1,
-            .start = first,
-            .next = null,
-        };
-        // The rest initialize as free spans so checkMemory doesn't think they are retained objects.
-        std.mem.set(HeapObject, page.objects[2..], .{
-            .common = .{
-                .structId = NullId,
-            }
-        });
-        page.objects[page.objects.len-1].freeSpan.start = first;
-        return first;
-    }
-
-    /// Returns the first free HeapObject.
-    fn growHeapPages(self: *VM, numPages: usize) !*HeapObject {
-        var idx = self.heapPages.len;
-        try self.heapPages.resize(self.alloc, self.heapPages.len + numPages);
-
-        // Allocate first page.
-        var page = try self.alloc.create(HeapPage);
-        self.heapPages.buf[idx] = page;
-
-        const first = initHeapPage(page);
-        var last = first;
-        idx += 1;
-        while (idx < self.heapPages.len) : (idx += 1) {
-            page = try self.alloc.create(HeapPage);
-            self.heapPages.buf[idx] = page;
-            const first_ = initHeapPage(page);
-            last.freeSpan.next = first_;
-            last = first_;
-        }
-        return first;
-    }
-
     pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
         var tt = stdx.debug.trace();
         const astRes = try self.parser.parse(src);
@@ -370,12 +306,12 @@ pub const VM = struct {
             .genMainScopeReleaseOps = true,
         });
         if (res.hasError) {
-            if (self.compiler.lastErrNode != NullId) {
+            if (self.compiler.lastErrNode != cy.NullId) {
                 const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
                 const pos = self.parser.tokens.items[token].pos();
                 try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
             } else {
-                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
+                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, cy.NullId, false);
             }
             return error.CompileError;
         }
@@ -403,12 +339,12 @@ pub const VM = struct {
             .genMainScopeReleaseOps = !config.singleRun,
         });
         if (res.hasError) {
-            if (self.compiler.lastErrNode != NullId) {
+            if (self.compiler.lastErrNode != cy.NullId) {
                 const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
                 const pos = self.parser.tokens.items[token].pos();
                 try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
             } else {
-                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, NullId, false);
+                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, cy.NullId, false);
             }
             return error.CompileError;
         }
@@ -487,7 +423,7 @@ pub const VM = struct {
             while (iter.next()) |it| {
                 const key = it.key_ptr.*;
                 const name = sema.getName(&self.compiler, key.rtFuncSymKey.nameId);
-                if (key.rtFuncSymKey.numParams == NullId) {
+                if (key.rtFuncSymKey.numParams == cy.NullId) {
                     fmt.printStderr("\t{}: {}\n", &.{v(name), v(it.value_ptr.*)});
                 } else {
                     fmt.printStderr("\t{}({}): {}\n", &.{v(name), v(key.rtFuncSymKey.numParams), v(it.value_ptr.*)});
@@ -573,7 +509,7 @@ pub const VM = struct {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             switch (obj.retainedCommon.structId) {
-                ListS => {
+                cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     var start = @floatToInt(i32, startV.toF64());
                     if (start < 0) {
@@ -589,25 +525,25 @@ pub const VM = struct {
                     if (end < start or end > list.len) {
                         return self.panic("Index out of bounds");
                     }
-                    return self.allocList(list.buf[@intCast(u32, start)..@intCast(u32, end)]);
+                    return cy.heap.allocList(self, list.buf[@intCast(u32, start)..@intCast(u32, end)]);
                 },
-                AstringT => {
+                cy.AstringT => {
                     retainObject(self, obj);
                     return bindings.stringSlice(.astring)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
                 },
-                UstringT => {
+                cy.UstringT => {
                     retainObject(self, obj);
                     return bindings.stringSlice(.ustring)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
                 },
-                StringSliceT => {
+                cy.StringSliceT => {
                     retainObject(self, obj);
                     return bindings.stringSlice(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
                 },
-                RawStringT => {
+                cy.RawStringT => {
                     retainObject(self, obj);
                     return bindings.stringSlice(.rawstring)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
                 },
-                RawStringSliceT => {
+                cy.RawStringSliceT => {
                     retainObject(self, obj);
                     return bindings.stringSlice(.rawSlice)(@ptrCast(*UserVM, self), obj, &[_]Value{startV, endV}, 2);
                 },
@@ -630,940 +566,6 @@ pub const VM = struct {
         }
     }
 
-    pub fn allocEmptyList(self: *VM) linksection(cy.Section) !Value {
-        const obj = try self.allocPoolObject();
-        obj.list = .{
-            .structId = ListS,
-            .rc = 1,
-            .list = .{
-                .ptr = undefined,
-                .len = 0,
-                .cap = 0,
-            },
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocEmptyMap(self: *VM) !Value {
-        const obj = try self.allocPoolObject();
-        obj.map = .{
-            .structId = MapS,
-            .rc = 1,
-            .inner = .{
-                .metadata = null,
-                .entries = null,
-                .size = 0,
-                .cap = 0,
-                .available = 0,
-            },
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    /// Allocates an object outside of the object pool.
-    fn allocObject(self: *VM, sid: StructId, fields: []const Value) !Value {
-        // First slot holds the structId and rc.
-        const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 1 + fields.len);
-        const obj = @ptrCast(*Object, objSlice.ptr);
-        obj.* = .{
-            .structId = sid,
-            .rc = 1,
-            .firstValue = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-
-        const dst = obj.getValuesPtr();
-        std.mem.copy(Value, dst[0..fields.len], fields);
-
-        const res = Value.initPtr(obj);
-        return res;
-    }
-
-    fn allocObjectSmall(self: *VM, sid: StructId, fields: []const Value) !Value {
-        const obj = try self.allocPoolObject();
-        obj.object = .{
-            .structId = sid,
-            .rc = 1,
-            .firstValue = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-
-        const dst = obj.object.getValuesPtr();
-        std.mem.copy(Value, dst[0..fields.len], fields);
-
-        const res = Value.initPtr(obj);
-        return res;
-    }
-
-    fn allocMap(self: *VM, keyIdxs: []const cy.OpData, vals: []const Value) !Value {
-        const obj = try self.allocPoolObject();
-        obj.map = .{
-            .structId = MapS,
-            .rc = 1,
-            .inner = .{
-                .metadata = null,
-                .entries = null,
-                .size = 0,
-                .cap = 0,
-                .available = 0,
-            },
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-
-        const inner = @ptrCast(*MapInner, &obj.map.inner);
-        for (keyIdxs) |idx, i| {
-            const val = vals[i];
-
-            const keyVal = Value{ .val = self.consts[idx.arg].val };
-            const res = try inner.getOrPut(self.alloc, self, keyVal);
-            if (res.foundExisting) {
-                // TODO: Handle reference count.
-                res.valuePtr.* = val;
-            } else {
-                res.valuePtr.* = val;
-            }
-        }
-
-        const res = Value.initPtr(obj);
-        return res;
-    }
-
-    pub fn freeObject(self: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
-        const prev = &(@ptrCast([*]HeapObject, obj) - 1)[0];
-        if (prev.common.structId == NullId) {
-            // Left is a free span. Extend length.
-            prev.freeSpan.start.freeSpan.len += 1;
-            obj.freeSpan.start = prev.freeSpan.start;
-        } else {
-            // Add single slot free span.
-            obj.freeSpan = .{
-                .structId = NullId,
-                .len = 1,
-                .start = obj,
-                .next = self.heapFreeHead,
-            };
-            self.heapFreeHead = obj;
-        }
-    }
-
-    pub fn allocPoolObject(self: *VM) linksection(cy.HotSection) !*HeapObject {
-        if (self.heapFreeHead == null) {
-            self.heapFreeHead = try self.growHeapPages(std.math.max(1, (self.heapPages.len * 15) / 10));
-        }
-        const ptr = self.heapFreeHead.?;
-        if (ptr.freeSpan.len == 1) {
-            // This is the only free slot, move to the next free span.
-            self.heapFreeHead = ptr.freeSpan.next;
-            return ptr;
-        } else {
-            const next = &@ptrCast([*]HeapObject, ptr)[1];
-            next.freeSpan = .{
-                .structId = NullId,
-                .len = ptr.freeSpan.len - 1,
-                .start = next,
-                .next = ptr.freeSpan.next,
-            };
-            const last = &@ptrCast([*]HeapObject, ptr)[ptr.freeSpan.len-1];
-            last.freeSpan.start = next;
-            self.heapFreeHead = next;
-            return ptr;
-        }
-    }
-
-    fn allocFuncFromSym(self: *VM, symId: SymbolId) !Value {
-        const sym = self.funcSyms.buf[symId];
-        switch (@intToEnum(FuncSymbolEntryType, sym.entryT)) {
-            .nativeFunc1 => {
-                return self.allocNativeFunc1(sym.inner.nativeFunc1, sym.innerExtra.nativeFunc1.numParams, null);
-            },
-            .func => {
-                return self.allocLambda(sym.inner.func.pc, @intCast(u8, sym.inner.func.numParams), @intCast(u8, sym.inner.func.numLocals));
-            },
-            .closure => {
-                self.retainObject(@ptrCast(*HeapObject, sym.inner.closure));
-                return Value.initPtr(sym.inner.closure);
-            },
-            .none => return Value.None,
-        }
-    }
-
-    fn allocLambda(self: *VM, funcPc: usize, numParams: u8, numLocals: u8) !Value {
-        const obj = try self.allocPoolObject();
-        obj.lambda = .{
-            .structId = LambdaS,
-            .rc = 1,
-            .funcPc = @intCast(u32, funcPc),
-            .numParams = numParams,
-            .numLocals = numLocals,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocEmptyClosure(self: *VM, funcPc: usize, numParams: u8, numLocals: u8, numCaptured: u8) !Value {
-        var obj: *HeapObject = undefined;
-        if (numCaptured <= 3) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 2 + numCaptured);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.closure = .{
-            .structId = ClosureS,
-            .rc = 1,
-            .funcPc = @intCast(u32, funcPc),
-            .numParams = numParams,
-            .numLocals = numLocals,
-            .numCaptured = numCaptured,
-            .padding = undefined,
-            .firstCapturedVal = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        const dst = obj.closure.getCapturedValuesPtr()[0..numCaptured];
-        std.mem.set(Value, dst, Value.None);
-        return Value.initPtr(obj);
-    }
-
-    fn allocClosure(self: *VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const cy.OpData) !Value {
-        var obj: *HeapObject = undefined;
-        if (capturedVals.len <= 3) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 2 + capturedVals.len);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.closure = .{
-            .structId = ClosureS,
-            .rc = 1,
-            .funcPc = @intCast(u32, funcPc),
-            .numParams = numParams,
-            .numLocals = numLocals,
-            .numCaptured = @intCast(u8, capturedVals.len),
-            .padding = undefined,
-            .firstCapturedVal = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        const dst = obj.closure.getCapturedValuesPtr();
-        for (capturedVals) |local, i| {
-            dst[i] = framePtr[local.arg];
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocOpaquePtr(self: *VM, ptr: ?*anyopaque) !Value {
-        const obj = try self.allocPoolObject();
-        obj.opaquePtr = .{
-            .structId = OpaquePtrS,
-            .rc = 1,
-            .ptr = ptr,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            gvm.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocDir(self: *VM, fd: std.os.fd_t, iterable: bool) linksection(StdSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.dir = .{
-            .structId = DirT,
-            .rc = 1,
-            .fd = fd,
-            .iterable = iterable,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocFile(self: *VM, fd: std.os.fd_t) linksection(StdSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.file = .{
-            .structId = FileT,
-            .rc = 1,
-            .fd = fd,
-            .curPos = 0,
-            .iterLines = false,
-            .hasReadBuf = false,
-            .readBuf = undefined,
-            .readBufCap = 0,
-            .readBufEnd = 0,
-            .closed = false,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocDirIterator(self: *VM, dir: *Dir, recursive: bool) linksection(StdSection) !Value {
-        const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), @sizeOf(DirIterator));
-        const obj = @ptrCast(*DirIterator, objSlice.ptr);
-        obj.* = .{
-            .structId = DirIteratorT,
-            .rc = 1,
-            .dir = dir,
-            .inner = undefined,
-            .recursive = recursive,
-        };
-        if (recursive) {
-            const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &obj.inner.walker);
-            walker.* = try dir.getStdIterableDir().walk(self.alloc);
-        } else {
-            const iter = stdx.ptrAlignCast(*std.fs.IterableDir.Iterator, &obj.inner.iter);
-            iter.* = dir.getStdIterableDir().iterate();
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocTccState(self: *VM, state: *tcc.TCCState, lib: *std.DynLib) linksection(StdSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.tccState = .{
-            .structId = TccStateS,
-            .rc = 1,
-            .state = state,
-            .lib = lib,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocNativeFunc1(self: *VM, func: *const fn (*UserVM, [*]Value, u8) Value, numParams: u32, tccState: ?Value) !Value {
-        const obj = try self.allocPoolObject();
-        obj.nativeFunc1 = .{
-            .structId = NativeFunc1S,
-            .rc = 1,
-            .func = func,
-            .numParams = numParams,
-            .tccState = undefined,
-            .hasTccState = false,
-        };
-        if (tccState) |state| {
-            obj.nativeFunc1.tccState = state;
-            obj.nativeFunc1.hasTccState = true;
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocStringTemplate(self: *VM, strs: []const cy.OpData, vals: []const Value) !Value {
-        const firstStr = self.valueAsStaticString(Value.initRaw(self.consts[strs[0].arg].val));
-        try self.u8Buf.resize(self.alloc, firstStr.len);
-        std.mem.copy(u8, self.u8Buf.items(), firstStr);
-
-        const writer = self.u8Buf.writer(self.alloc);
-        for (vals) |val, i| {
-            self.writeValueToString(writer, val);
-            release(self, val);
-            try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].arg].val)));
-        }
-
-        // TODO: As string is built, accumulate charLen and detect rawstring to avoid doing validation.
-        return self.getOrAllocStringInfer(self.u8Buf.items());
-    }
-
-    pub fn getOrAllocOwnedAstring(self: *VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
-        return self.getOrAllocOwnedString(obj, obj.astring.getConstSlice());
-    }
-
-    pub fn getOrAllocOwnedUstring(self: *VM, obj: *HeapObject) linksection(cy.HotSection) !Value {
-        return self.getOrAllocOwnedString(obj, obj.ustring.getConstSlice());
-    }
-
-    // If no such string intern exists, `obj` is added as a string intern.
-    // Otherwise, `obj` is released and the existing string intern is retained and returned.
-    pub fn getOrAllocOwnedString(self: *VM, obj: *HeapObject, str: []const u8) linksection(cy.HotSection) !Value {
-        if (str.len <= DefaultStringInternMaxByteLen) {
-            const res = try self.strInterns.getOrPut(self.alloc, str);
-            if (res.found_existing) {
-                releaseObject(self, obj);
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                res.key_ptr.* = str;
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            return Value.initPtr(obj);
-        }
-    }
-
-    pub fn allocRawStringSlice(self: *VM, slice: []const u8, parent: *HeapObject) !Value {
-        const obj = try self.allocPoolObject();
-        obj.rawstringSlice = .{
-            .structId = RawStringSliceT,
-            .rc = 1,
-            .buf = slice.ptr,
-            .len = @intCast(u32, slice.len),
-            .parent = @ptrCast(*RawString, parent),
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocUstringSlice(self: *VM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
-        const obj = try self.allocPoolObject();
-        obj.stringSlice = .{
-            .structId = StringSliceT,
-            .rc = 1,
-            .buf = slice.ptr,
-            .len = @intCast(u32, slice.len),
-            .uCharLen = charLen,
-            .uMruIdx = 0,
-            .uMruCharIdx = 0,
-            .extra = @intCast(u63, @ptrToInt(parent)),
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocAstringSlice(self: *VM, slice: []const u8, parent: *HeapObject) !Value {
-        const obj = try self.allocPoolObject();
-        obj.stringSlice = .{
-            .structId = StringSliceT,
-            .rc = 1,
-            .buf = slice.ptr,
-            .len = @intCast(u32, slice.len),
-            .uCharLen = undefined,
-            .uMruIdx = undefined,
-            .uMruCharIdx = undefined,
-            .extra = @as(u64, @ptrToInt(parent)) | (1 << 63),
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocUstring(self: *VM, str: []const u8, charLen: u32) linksection(cy.Section) !Value {
-        const obj = try self.allocUstringObject(str, charLen);
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocAstring(self: *VM, str: []const u8) linksection(cy.Section) !Value {
-        const obj = try self.allocUnsetAstringObject(str.len);
-        const dst = obj.astring.getSlice();
-        std.mem.copy(u8, dst, str);
-        return Value.initPtr(obj);
-    }
-
-    pub fn allocUstringObject(self: *VM, str: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetUstringObject(str.len, charLen);
-        const dst = obj.ustring.getSlice();
-        std.mem.copy(u8, dst, str);
-        return obj;
-    }
-
-    pub fn allocUnsetUstringObject(self: *VM, len: usize, charLen: u32) linksection(cy.Section) !*HeapObject {
-        var obj: *HeapObject = undefined;
-        if (len <= MaxPoolObjectUstringByteLen) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Ustring.BufOffset);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.ustring = .{
-            .structId = UstringT,
-            .rc = 1,
-            .len = @intCast(u32, len),
-            .charLen = charLen,
-            .mruIdx = 0,
-            .mruCharIdx = 0,
-            .bufStart = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return obj;
-    }
-
-    pub fn allocUnsetAstringObject(self: *VM, len: usize) linksection(cy.Section) !*HeapObject {
-        var obj: *HeapObject = undefined;
-        if (len <= MaxPoolObjectAstringByteLen) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Astring.BufOffset);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.astring = .{
-            .structId = AstringT,
-            .rc = 1,
-            .len = @intCast(u32, len),
-            .bufStart = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return obj;
-    }
-
-    pub fn allocUnsetRawStringObject(self: *VM, len: usize) linksection(cy.Section) !*HeapObject {
-        var obj: *HeapObject = undefined;
-        if (len <= MaxPoolObjectRawStringByteLen) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + RawString.BufOffset);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.rawstring = .{
-            .structId = RawStringT,
-            .rc = 1,
-            .len = @intCast(u32, len),
-            .bufStart = undefined,
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return obj;
-    }
-
-    pub fn allocRawString(self: *VM, str: []const u8) linksection(cy.Section) !Value {
-        const obj = try self.allocUnsetRawStringObject(str.len);
-        const dst = @ptrCast([*]u8, &obj.rawstring.bufStart)[0..str.len];
-        std.mem.copy(u8, dst, str);
-        return Value.initPtr(obj);
-    }
-
-    fn getOrAllocStringInfer(self: *VM, str: []const u8) linksection(cy.Section) !Value {
-        if (cy.validateUtf8(str)) |charLen| {
-            if (str.len == charLen) {
-                return try self.getOrAllocAstring(str);
-            } else {
-                return try self.getOrAllocUstring(str, @intCast(u32, charLen));
-            }
-        } else {
-            return self.allocRawString(str);
-        }
-    }
-
-    pub fn getOrAllocUstring(self: *VM, str: []const u8, charLen: u32) linksection(cy.Section) !Value {
-        if (str.len <= DefaultStringInternMaxByteLen) {
-            const res = try self.strInterns.getOrPut(self.alloc, str);
-            if (res.found_existing) {
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                const obj = try self.allocUstringObject(str, charLen);
-                res.key_ptr.* = obj.ustring.getConstSlice();
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            const obj = try self.allocUstringObject(str, charLen);
-            return Value.initPtr(obj);
-        }
-    }
-
-    pub fn getOrAllocAstring(self: *VM, str: []const u8) linksection(cy.Section) !Value {
-        if (str.len <= DefaultStringInternMaxByteLen) {
-            const res = try self.strInterns.getOrPut(self.alloc, str);
-            if (res.found_existing) {
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                const obj = try self.allocAstringObject(str);
-                res.key_ptr.* = obj.astring.getConstSlice();
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            const obj = try self.allocAstringObject(str);
-            return Value.initPtr(obj);
-        }
-    }
-
-    fn allocRawStringConcat(self: *VM, str: []const u8, str2: []const u8) linksection(cy.Section) !Value {
-        const len = @intCast(u32, str.len + str2.len);
-        var obj: *HeapObject = undefined;
-        if (len <= MaxPoolObjectRawStringByteLen) {
-            obj = try self.allocPoolObject();
-        } else {
-            const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + 12);
-            obj = @ptrCast(*HeapObject, objSlice.ptr);
-        }
-        obj.rawstring = .{
-            .structId = RawStringT,
-            .rc = 1,
-            .len = len,
-            .bufStart = undefined,
-        };
-        const dst = @ptrCast([*]u8, &obj.rawstring.bufStart)[0..len];
-        std.mem.copy(u8, dst[0..str.len], str);
-        std.mem.copy(u8, dst[str.len..], str2);
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    fn allocUstringConcat3Object(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetUstringObject(str1.len + str2.len + str3.len, charLen);
-        const dst = obj.ustring.getSlice();
-        std.mem.copy(u8, dst[0..str1.len], str1);
-        std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
-        std.mem.copy(u8, dst[str1.len+str2.len..], str3);
-        return obj;
-    }
-
-    fn allocUstringConcatObject(self: *VM, str1: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetUstringObject(str1.len + str2.len, charLen);
-        const dst = obj.ustring.getSlice();
-        std.mem.copy(u8, dst[0..str1.len], str1);
-        std.mem.copy(u8, dst[str1.len..], str2);
-        return obj;
-    }
-    
-    fn allocAstringObject(self: *VM, str: []const u8) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetAstringObject(str.len);
-        const dst = obj.astring.getSlice();
-        std.mem.copy(u8, dst, str);
-        return obj;
-    }
-
-    fn allocAstringConcat3Object(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetAstringObject(str1.len + str2.len + str3.len);
-        const dst = obj.astring.getSlice();
-        std.mem.copy(u8, dst[0..str1.len], str1);
-        std.mem.copy(u8, dst[str1.len..str1.len+str2.len], str2);
-        std.mem.copy(u8, dst[str1.len+str2.len..], str3);
-        return obj;
-    }
-
-    fn allocAstringConcatObject(self: *VM, str1: []const u8, str2: []const u8) linksection(cy.Section) !*HeapObject {
-        const obj = try self.allocUnsetAstringObject(str1.len + str2.len);
-        const dst = obj.astring.getSlice();
-        std.mem.copy(u8, dst[0..str1.len], str1);
-        std.mem.copy(u8, dst[str1.len..], str2);
-        return obj;
-    }
-
-    fn getOrAllocAstringConcat(self: *VM, str: []const u8, str2: []const u8) linksection(cy.Section) !Value {
-        if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
-            const ctx = StringConcatContext{};
-            const concat = StringConcat{
-                .left = str,
-                .right = str2,
-            };
-            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
-            if (res.found_existing) {
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                const obj = try self.allocAstringConcatObject(str, str2);
-                res.key_ptr.* = obj.astring.getConstSlice();
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            const obj = try self.allocAstringConcatObject(str, str2);
-            return Value.initPtr(obj);
-        }
-    }
-
-    fn getOrAllocAstringConcat3(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8) linksection(cy.Section) !Value {
-        if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
-            const ctx = StringConcat3Context{};
-            const concat = StringConcat3{
-                .str1 = str1,
-                .str2 = str2,
-                .str3 = str3,
-            };
-            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
-            if (res.found_existing) {
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                const obj = try self.allocAstringConcat3Object(str1, str2, str3);
-                res.key_ptr.* = obj.astring.getConstSlice();
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            const obj = try self.allocAstringConcat3Object(str1, str2, str3);
-            return Value.initPtr(obj);
-        }
-    }
-
-    fn getOrAllocUstringConcat3(self: *VM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) linksection(cy.Section) !Value {
-        if (str1.len + str2.len + str3.len <= DefaultStringInternMaxByteLen) {
-            const ctx = StringConcat3Context{};
-            const concat = StringConcat3{
-                .str1 = str1,
-                .str2 = str2,
-                .str3 = str3,
-            };
-            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
-            if (res.found_existing) {
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                const obj = try self.allocUstringConcat3Object(str1, str2, str3, charLen);
-                res.key_ptr.* = obj.ustring.getConstSlice();
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            const obj = try self.allocUstringConcat3Object(str1, str2, str3, charLen);
-            return Value.initPtr(obj);
-        }
-    }
-
-    fn getOrAllocUstringConcat(self: *VM, str: []const u8, str2: []const u8, charLen: u32) linksection(cy.Section) !Value {
-        if (str.len + str2.len <= DefaultStringInternMaxByteLen) {
-            const ctx = StringConcatContext{};
-            const concat = StringConcat{
-                .left = str,
-                .right = str2,
-            };
-            const res = try self.strInterns.getOrPutAdapted(self.alloc, concat, ctx);
-            if (res.found_existing) {
-                self.retainObject(res.value_ptr.*);
-                return Value.initPtr(res.value_ptr.*);
-            } else {
-                const obj = try self.allocUstringConcatObject(str, str2, charLen);
-                res.key_ptr.* = obj.ustring.getConstSlice();
-                res.value_ptr.* = obj;
-                return Value.initPtr(obj);
-            }
-        } else {
-            const obj = try self.allocUstringConcatObject(str, str2, charLen);
-            return Value.initPtr(obj);
-        }
-    }
-
-    pub fn allocOwnedList(self: *VM, elems: []Value) !Value {
-        const obj = try self.allocPoolObject();
-        obj.list = .{
-            .structId = ListS,
-            .rc = 1,
-            .list = .{
-                .ptr = elems.ptr,
-                .len = elems.len,
-                .cap = elems.len,
-            },
-        };
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        if (TrackGlobalRC) {
-            gvm.refCounts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    fn allocListFill(self: *VM, val: Value, n: u32) linksection(StdSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.list = .{
-            .structId = ListS,
-            .rc = 1,
-            .list = .{
-                .ptr = undefined,
-                .len = 0,
-                .cap = 0,
-            },
-        };
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-        // Initializes capacity to exact size.
-        try list.ensureTotalCapacityPrecise(self.alloc, n);
-        list.len = n;
-        if (!val.isPointer()) {
-            std.mem.set(Value, list.items(), val);
-        } else {
-            var i: u32 = 0;
-            while (i < n) : (i += 1) {
-                list.buf[i] = shallowCopy(self, val);
-            }
-        }
-        return Value.initPtr(obj);
-    }
-
-    fn allocList(self: *VM, elems: []const Value) linksection(cy.HotSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.list = .{
-            .structId = ListS,
-            .rc = 1,
-            .list = .{
-                .ptr = undefined,
-                .len = 0,
-                .cap = 0,
-            },
-        };
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-        // Initializes capacity to exact size.
-        try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
-        list.len = elems.len;
-        std.mem.copy(Value, list.items(), elems);
-        return Value.initPtr(obj);
-    }
-
-    /// Assumes list is already retained for the iterator.
-    fn allocListIterator(self: *VM, list: *List) linksection(cy.HotSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.listIter = .{
-            .structId = ListIteratorT,
-            .rc = 1,
-            .list = list,
-            .nextIdx = 0,
-        };
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
-    /// Assumes map is already retained for the iterator.
-    fn allocMapIterator(self: *VM, map: *Map) linksection(cy.HotSection) !Value {
-        const obj = try self.allocPoolObject();
-        obj.mapIter = .{
-            .structId = MapIteratorT,
-            .rc = 1,
-            .map = map,
-            .nextIdx = 0,
-        };
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-        return Value.initPtr(obj);
-    }
-
     pub fn ensureTagType(self: *VM, name: []const u8) !TagTypeId {
         const res = try self.tagTypeSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
@@ -1573,7 +575,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureStruct(self: *VM, nameId: sema.NameSymId, uniqId: u32) !StructId {
+    pub fn ensureStruct(self: *VM, nameId: sema.NameSymId, uniqId: u32) !TypeId {
         const res = try @call(.never_inline, self.structSignatures.getOrPut, .{self.alloc, .{
             .structKey = .{
                 .nameId = nameId,
@@ -1587,15 +589,15 @@ pub const VM = struct {
         }
     }
 
-    pub fn getStructFieldIdx(self: *const VM, sid: StructId, propName: []const u8) ?u32 {
+    pub fn getStructFieldIdx(self: *const VM, sid: TypeId, propName: []const u8) ?u32 {
         const fieldId = self.fieldSymSignatures.get(propName) orelse return null;
         const entry = &self.fieldSyms.buf[fieldId];
 
-        if (entry.mruStructId == sid) {
+        if (entry.mruTypeId == sid) {
             return entry.mruOffset;
         } else {
             const offset = self.fieldTable.get(.{ .structId = sid, .symId = fieldId }) orelse return null;
-            entry.mruStructId = sid;
+            entry.mruTypeId = sid;
             entry.mruOffset = offset;
             return offset;
         }
@@ -1612,7 +614,7 @@ pub const VM = struct {
         return id;
     }
 
-    pub inline fn getStruct(self: *const VM, nameId: sema.NameSymId, uniqId: u32) ?StructId {
+    pub inline fn getStruct(self: *const VM, nameId: sema.NameSymId, uniqId: u32) ?TypeId {
         return self.structSignatures.get(.{
             .structKey = .{
                 .nameId = nameId,
@@ -1621,7 +623,7 @@ pub const VM = struct {
         });
     }
 
-    pub fn addStructExt(self: *VM, nameId: sema.NameSymId, uniqId: u32) !StructId {
+    pub fn addStructExt(self: *VM, nameId: sema.NameSymId, uniqId: u32) !TypeId {
         const name = sema.getName(&self.compiler, nameId);
         const s = Struct{
             .name = name,
@@ -1639,7 +641,7 @@ pub const VM = struct {
         return id;
     }
 
-    pub fn addStruct(self: *VM, name: []const u8) !StructId {
+    pub fn addStruct(self: *VM, name: []const u8) !TypeId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
         return self.addStructExt(nameId, 0);
     }
@@ -1739,7 +741,7 @@ pub const VM = struct {
         if (!res.found_existing) {
             const id = @intCast(u32, self.fieldSyms.len);
             try self.fieldSyms.append(self.alloc, .{
-                .mruStructId = NullId,
+                .mruTypeId = cy.NullId,
                 .mruOffset = undefined,
                 .name = name,
             });
@@ -1750,7 +752,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn hasMethodSym(self: *const VM, sid: StructId, methodId: SymbolId) bool {
+    pub fn hasMethodSym(self: *const VM, sid: TypeId, methodId: SymbolId) bool {
         const map = self.methodSyms.buf[methodId];
         if (map.mapT == .one) {
             return map.inner.one.id == sid;
@@ -1771,7 +773,7 @@ pub const VM = struct {
             const id = @intCast(u32, self.methodSyms.len);
             try self.methodSyms.append(self.alloc, .{
                 .entryT = undefined,
-                .mruStructId = NullId,
+                .mruStructId = cy.NullId,
                 .inner = undefined,
             });
             try self.methodSymExtras.append(self.alloc, name);
@@ -1782,12 +784,12 @@ pub const VM = struct {
         }
     }
 
-    pub fn addFieldSym(self: *VM, sid: StructId, symId: SymbolId, offset: u16) !void {
+    pub fn addFieldSym(self: *VM, sid: TypeId, symId: SymbolId, offset: u16) !void {
         const sym = &self.fieldSyms.buf[symId];
-        if (sym.mruStructId != NullId) {
+        if (sym.mruTypeId != cy.NullId) {
             // Add prev mru if it doesn't exist in hashmap.
             const prev = ObjectSymKey{
-                .structId = sym.mruStructId,
+                .structId = sym.mruTypeId,
                 .symId = symId,
             };
             if (!self.fieldTable.contains(prev)) {
@@ -1798,10 +800,10 @@ pub const VM = struct {
                 .symId = symId,
             };
             try self.fieldTable.putNoClobber(self.alloc, key, offset);
-            sym.mruStructId = sid;
+            sym.mruTypeId = sid;
             sym.mruOffset = offset;
         } else {
-            sym.mruStructId = sid;
+            sym.mruTypeId = sid;
             sym.mruOffset = offset;
         }
     }
@@ -1824,9 +826,9 @@ pub const VM = struct {
         self.funcSyms.buf[symId] = sym;
     }
 
-    pub fn addMethodSym(self: *VM, id: StructId, symId: SymbolId, entry: MethodSym) !void {
+    pub fn addMethodSym(self: *VM, id: TypeId, symId: SymbolId, entry: MethodSym) !void {
         const sym = &self.methodSyms.buf[symId];
-        if (sym.mruStructId != NullId) {
+        if (sym.mruStructId != cy.NullId) {
             const prev = ObjectSymKey{
                 .structId = sym.mruStructId,
                 .symId = symId,
@@ -1857,7 +859,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
-                ListS => {
+                cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -1873,8 +875,8 @@ pub const VM = struct {
                         return self.panic("Index out of bounds.");
                     }
                 },
-                MapS => {
-                    const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+                cy.MapS => {
+                    const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     const res = try map.getOrPut(self.alloc, self, index);
                     if (res.foundExisting) {
                         release(self, res.valuePtr.*);
@@ -1894,7 +896,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
-                ListS => {
+                cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -1909,8 +911,8 @@ pub const VM = struct {
                         return self.panic("Index out of bounds.");
                     }
                 },
-                MapS => {
-                    const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+                cy.MapS => {
+                    const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     try map.put(self.alloc, self, index, right);
                 },
                 else => {
@@ -1928,7 +930,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
-                ListS => {
+                cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
                     if (idx < list.len) {
@@ -1939,25 +941,25 @@ pub const VM = struct {
                         return error.OutOfBounds;
                     }
                 },
-                MapS => {
-                    const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+                cy.MapS => {
+                    const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     const key = Value.initF64(index.toF64());
                     if (map.get(self, key)) |val| {
                         retain(self, val);
                         return val;
                     } else return Value.None;
                 },
-                AstringT => {
+                cy.AstringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.astring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     return bindings.stringCharAt(.astring)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
                 },
-                UstringT => {
+                cy.UstringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.ustring.charLen) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     return bindings.stringCharAt(.ustring)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
                 },
-                StringSliceT => {
+                cy.StringSliceT => {
                     if (obj.stringSlice.isAstring()) {
                         const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.len) + @floatToInt(i32, index.toF64()));
                         retainObject(self, obj);
@@ -1968,12 +970,12 @@ pub const VM = struct {
                         return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
                     }
                 },
-                RawStringT => {
+                cy.RawStringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     return bindings.stringCharAt(.rawstring)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
                 },
-                RawStringSliceT => {
+                cy.RawStringSliceT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstringSlice.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     return bindings.stringCharAt(.rawSlice)(@ptrCast(*UserVM, self), obj, &[_]Value{Value.initF64(idx)}, 1);
@@ -1993,7 +995,7 @@ pub const VM = struct {
                     },
                     cy.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
-                        const idx = @intToFloat(f64, @intCast(i32, getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
+                        const idx = @intToFloat(f64, @intCast(i32, cy.string.getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
                         return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), left, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     else => {
@@ -2008,7 +1010,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {
-                ListS => {
+                cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -2018,30 +1020,30 @@ pub const VM = struct {
                         return error.OutOfBounds;
                     }
                 },
-                MapS => {
-                    const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+                cy.MapS => {
+                    const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     if (@call(.never_inline, map.get, .{self, index})) |val| {
                         retain(self, val);
                         return val;
                     } else return Value.None;
                 },
-                AstringT => {
+                cy.AstringT => {
                     retainObject(self, obj);
                     return bindings.stringCharAt(.astring)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
-                UstringT => {
+                cy.UstringT => {
                     retainObject(self, obj);
                     return bindings.stringCharAt(.ustring)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
-                StringSliceT => {
+                cy.StringSliceT => {
                     retainObject(self, obj);
                     return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
-                RawStringT => {
+                cy.RawStringT => {
                     retainObject(self, obj);
                     return bindings.stringCharAt(.rawstring)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
-                RawStringSliceT => {
+                cy.RawStringSliceT => {
                     retainObject(self, obj);
                     return bindings.stringCharAt(.rawSlice)(@ptrCast(*UserVM, self), obj, &[_]Value{index}, 1);
                 },
@@ -2088,166 +1090,17 @@ pub const VM = struct {
         return error.Panic;
     }
 
-    pub fn getGlobalRC(self: *const VM) usize {
-        if (TrackGlobalRC) {
-            return self.refCounts;
-        } else {
-            stdx.panic("Enable TrackGlobalRC.");
-        }
-    }
-
-    /// Performs an iteration over the heap pages to check whether there are retain cycles.
-    pub fn checkMemory(self: *VM) !bool {
-        var nodes: std.AutoHashMapUnmanaged(*HeapObject, RcNode) = .{};
-        defer nodes.deinit(self.alloc);
-
-        var cycleRoots: std.ArrayListUnmanaged(*HeapObject) = .{};
-        defer cycleRoots.deinit(self.alloc);
-
-        // No concept of root vars yet. Just report any existing retained objects.
-        // First construct the graph.
-        for (self.heapPages.items()) |page| {
-            for (page.objects[1..]) |*obj| {
-                if (obj.common.structId != NullId) {
-                    try nodes.put(self.alloc, obj, .{
-                        .visited = false,
-                        .entered = false,
-                    });
-                }
-            }
-        }
-        const S = struct {
-            fn visit(alloc: std.mem.Allocator, graph: *std.AutoHashMapUnmanaged(*HeapObject, RcNode), cycleRoots_: *std.ArrayListUnmanaged(*HeapObject), obj: *HeapObject, node: *RcNode) bool {
-                if (node.visited) {
-                    return false;
-                }
-                if (node.entered) {
-                    return true;
-                }
-                node.entered = true;
-
-                switch (obj.retainedCommon.structId) {
-                    ListS => {
-                        const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                        for (list.items()) |it| {
-                            if (it.isPointer()) {
-                                const ptr = stdx.ptrAlignCast(*HeapObject, it.asPointer().?);
-                                if (visit(alloc, graph, cycleRoots_, ptr, graph.getPtr(ptr).?)) {
-                                    cycleRoots_.append(alloc, obj) catch stdx.fatal();
-                                    return true;
-                                }
-                            }
-                        }
-                    },
-                    else => {
-                    },
-                }
-                node.entered = false;
-                node.visited = true;
-                return false;
-            }
-        };
-        var iter = nodes.iterator();
-        while (iter.next()) |*entry| {
-            if (S.visit(self.alloc, &nodes, &cycleRoots, entry.key_ptr.*, entry.value_ptr)) {
-                if (TraceEnabled) {
-                    self.trace.numRetainCycles = 1;
-                    self.trace.numRetainCycleRoots = @intCast(u32, cycleRoots.items.len);
-                }
-                for (cycleRoots.items) |root| {
-                    // Force release.
-                    self.forceRelease(root);
-                }
-                return false;
-            }
-        }
-        return true;
-    }
-
-    pub inline fn retainObject(self: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
-        obj.retainedCommon.rc += 1;
-        log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
-        if (TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-    }
-
-    pub inline fn retain(self: *VM, val: Value) linksection(cy.HotSection) void {
-        if (TraceEnabled) {
-            self.trace.numRetainAttempts += 1;
-        }
-        if (val.isPointer()) {
-            const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer());
-            obj.retainedCommon.rc += 1;
-            log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
-            if (TrackGlobalRC) {
-                self.refCounts += 1;
-            }
-            if (TraceEnabled) {
-                self.trace.numRetains += 1;
-            }
-        }
-    }
-
-    pub inline fn retainInc(self: *const VM, val: Value, inc: u32) linksection(cy.HotSection) void {
-        if (TraceEnabled) {
-            self.trace.numRetainAttempts += inc;
-        }
-        if (val.isPointer()) {
-            const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer());
-            obj.retainedCommon.rc += inc;
-            log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
-            if (TrackGlobalRC) {
-                gvm.refCounts += inc;
-            }
-            if (TraceEnabled) {
-                self.trace.numRetains += inc;
-            }
-        }
-    }
-
-    pub fn forceRelease(self: *VM, obj: *HeapObject) void {
-        if (TraceEnabled) {
-            self.trace.numForceReleases += 1;
-        }
-        switch (obj.retainedCommon.structId) {
-            ListS => {
-                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                list.deinit(self.alloc);
-                self.freeObject(obj);
-                if (TrackGlobalRC) {
-                    gvm.refCounts -= obj.retainedCommon.rc;
-                }
-            },
-            MapS => {
-                const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
-                map.deinit(self.alloc);
-                self.freeObject(obj);
-                if (TrackGlobalRC) {
-                    gvm.refCounts -= obj.retainedCommon.rc;
-                }
-            },
-            else => {
-                return stdx.panic("unsupported struct type");
-            },
-        }
-    }
-
     fn setField(self: *VM, recv: Value, fieldId: SymbolId, val: Value) linksection(cy.HotSection) !void {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
             const symMap = &self.fieldSyms.buf[fieldId];
 
-            if (obj.common.structId == symMap.mruStructId) {
+            if (obj.common.structId == symMap.mruTypeId) {
                 obj.object.getValuePtr(symMap.mruOffset).* = val;
             } else {
                 const offset = self.getFieldOffset(obj, fieldId);
-                if (offset != NullByteId) {
-                    symMap.mruStructId = obj.common.structId;
+                if (offset != cy.NullU8) {
+                    symMap.mruTypeId = obj.common.structId;
                     symMap.mruOffset = offset;
                     obj.object.getValuePtr(offset).* = val;
                 } else {
@@ -2269,20 +1122,20 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    fn getFieldOffsetFromTable(self: *VM, sid: StructId, symId: SymbolId) u8 {
+    fn getFieldOffsetFromTable(self: *VM, sid: TypeId, symId: SymbolId) u8 {
         if (self.fieldTable.get(.{ .structId = sid, .symId = symId })) |offset| {
             const sym = &self.fieldSyms.buf[symId];
-            sym.mruStructId = sid;
+            sym.mruTypeId = sid;
             sym.mruOffset = offset;
             return @intCast(u8, offset);
         } else {
-            return NullByteId;
+            return cy.NullU8;
         }
     }
 
     pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
         const symMap = self.fieldSyms.buf[symId];
-        if (obj.common.structId == symMap.mruStructId) {
+        if (obj.common.structId == symMap.mruTypeId) {
             return @intCast(u8, symMap.mruOffset);
         } else {
             return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
@@ -2294,7 +1147,7 @@ pub const VM = struct {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const offset = self.getFieldOffset(obj, symId);
-            if (offset != NullByteId) {
+            if (offset != cy.NullU8) {
                 const lastValue = obj.object.getValuePtr(offset);
                 release(self, lastValue.*);
                 lastValue.* = val;
@@ -2310,7 +1163,7 @@ pub const VM = struct {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const offset = self.getFieldOffset(obj, symId);
-            if (offset != NullByteId) {
+            if (offset != cy.NullU8) {
                 return obj.object.getValue(offset);
             } else {
                 return self.getFieldFallback(obj, self.fieldSyms.buf[symId].name);
@@ -2324,7 +1177,7 @@ pub const VM = struct {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const offset = self.getFieldOffset(obj, symId);
-            if (offset != NullByteId) {
+            if (offset != cy.NullU8) {
                 return obj.object.getValue(offset);
             } else {
                 return self.getFieldFallback(obj, self.fieldSyms.buf[symId].name);
@@ -2336,8 +1189,8 @@ pub const VM = struct {
 
     fn getFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(cy.HotSection) Value {
         @setCold(true);
-        if (obj.common.structId == MapS) {
-            const map = stdx.ptrAlignCast(*const MapInner, &obj.map.inner);
+        if (obj.common.structId == cy.MapS) {
+            const map = stdx.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
             if (map.getByString(self, name)) |val| {
                 return val;
             } else return Value.None;
@@ -2387,14 +1240,14 @@ pub const VM = struct {
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callFuncIC };
                 pc[4] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
-                @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(toPc(sym.inner.func.pc)));
+                @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(self.toPc(sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + startLocal;
                 newFramePtr[1] = buildReturnInfo(reqNumRetVals, true);
                 newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return PcFramePtr{
-                    .pc = toPc(sym.inner.func.pc),
+                    .pc = self.toPc(sym.inner.func.pc),
                     .framePtr = newFramePtr,
                 };
             },
@@ -2413,7 +1266,7 @@ pub const VM = struct {
                 std.mem.copy(Value, newFramePtr[numArgs + 4 + 1..numArgs + 4 + 1 + sym.inner.closure.numCaptured], src);
 
                 return PcFramePtr{
-                    .pc = toPc(sym.inner.closure.funcPc),
+                    .pc = self.toPc(sym.inner.closure.funcPc),
                     .framePtr = newFramePtr,
                 };
             },
@@ -2436,7 +1289,7 @@ pub const VM = struct {
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callObjFuncIC };
                 pc[5] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
-                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(toPc(sym.inner.func.pc)));
+                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(self.toPc(sym.inner.func.pc)));
                 @ptrCast(*align(1) u16, pc + 12).* = @intCast(u16, typeId);
                 
                 const newFramePtr = framePtr + startLocal;
@@ -2444,7 +1297,7 @@ pub const VM = struct {
                 newFramePtr[2] = Value{ .retPcPtr = pc + 14 };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return PcFramePtr{
-                    .pc = toPc(sym.inner.func.pc),
+                    .pc = self.toPc(sym.inner.func.pc),
                     .framePtr = newFramePtr,
                 };
             },
@@ -2513,7 +1366,7 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSymFromTable(self: *VM, sid: StructId, symId: SymbolId) ?MethodSym {
+    fn getCallObjSymFromTable(self: *VM, sid: TypeId, symId: SymbolId) ?MethodSym {
         if (self.methodTable.get(.{ .structId = sid, .symId = symId })) |entry| {
             const sym = &self.methodSyms.buf[symId];
             sym.* = .{
@@ -2550,7 +1403,7 @@ pub const VM = struct {
                     } else return self.panic("Symbol does not exist for receiver.");
                 },
                 .many => {
-                    if (map.inner.many.mruStructId == obj.retainedCommon.structId) {
+                    if (map.inner.many.mruTypeId == obj.retainedCommon.structId) {
                         return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, map.inner.many.mruSym, obj, startLocal, numArgs, reqNumRetVals});
                     } else {
                         const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse {
@@ -2558,7 +1411,7 @@ pub const VM = struct {
                             stdx.fatal();
                         };
                         self.methodSyms.buf[symId].inner.many = .{
-                            .mruStructId = obj.retainedCommon.structId,
+                            .mruTypeId = obj.retainedCommon.structId,
                             .mruSym = sym,
                         };
                         return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, sym, obj, startLocal, numArgs, reqNumRetVals});
@@ -2589,7 +1442,7 @@ pub const VM = struct {
         var frames: std.ArrayListUnmanaged(StackFrame) = .{};
 
         var framePtr = framePtrOffset(self.framePtr);
-        var pc = pcOffset(self.pc);
+        var pc = pcOffset(self, self.pc);
         var isTopFrame = true;
         while (true) {
             const idx = b: {
@@ -2604,7 +1457,7 @@ pub const VM = struct {
             };
             const sym = self.debugTable[idx];
 
-            if (sym.frameLoc == NullId) {
+            if (sym.frameLoc == cy.NullId) {
                 const node = self.compiler.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
@@ -2637,7 +1490,7 @@ pub const VM = struct {
                     .col = col,
                     .lineStartPos = lineStart,
                 });
-                pc = pcOffset(self.stack[framePtr + 2].retPcPtr);
+                pc = pcOffset(self, self.stack[framePtr + 2].retPcPtr);
                 framePtr = framePtrOffset(self.stack[framePtr + 3].retFramePtr);
             }
         }
@@ -2645,7 +1498,7 @@ pub const VM = struct {
         self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
     }
 
-    fn valueAsStaticString(self: *const VM, val: Value) linksection(cy.HotSection) []const u8 {
+    pub fn valueAsStaticString(self: *const VM, val: Value) linksection(cy.HotSection) []const u8 {
         const slice = val.asStaticStringSlice();
         return self.strBuf[slice.start..slice.end];
     }
@@ -2745,7 +1598,7 @@ pub const VM = struct {
     }
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
-    fn getOrWriteValueString(self: *const VM, writer: anytype, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
+    pub fn getOrWriteValueString(self: *const VM, writer: anytype, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
         if (val.isNumber()) {
             const f = val.asF64();
             const start = writer.pos();
@@ -2766,18 +1619,18 @@ pub const VM = struct {
         } else {
             if (val.isPointer()) {
                 const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
-                if (obj.common.structId == AstringT) {
+                if (obj.common.structId == cy.AstringT) {
                     const res = obj.astring.getConstSlice();
                     if (getCharLen) {
                         outCharLen.* = @intCast(u32, res.len);
                     }
                     return res;
-                } else if (obj.common.structId == UstringT) {
+                } else if (obj.common.structId == cy.UstringT) {
                     if (getCharLen) {
                         outCharLen.* = obj.ustring.charLen;
                     }
                     return obj.ustring.getConstSlice();
-                } else if (obj.common.structId == RawStringT) {
+                } else if (obj.common.structId == cy.RawStringT) {
                     const start = writer.pos();
                     std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
                     const slice = writer.sliceFrom(start);
@@ -2785,7 +1638,7 @@ pub const VM = struct {
                         outCharLen.* = @intCast(u32, slice.len);
                     }
                     return slice;
-                } else if (obj.common.structId == ListS) {
+                } else if (obj.common.structId == cy.ListS) {
                     const start = writer.pos();
                     std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
                     const slice = writer.sliceFrom(start);
@@ -2793,7 +1646,7 @@ pub const VM = struct {
                         outCharLen.* = @intCast(u32, slice.len);
                     }
                     return slice;
-                } else if (obj.common.structId == MapS) {
+                } else if (obj.common.structId == cy.MapS) {
                     const start = writer.pos();
                     std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
                     const slice = writer.sliceFrom(start);
@@ -2882,7 +1735,7 @@ pub const VM = struct {
         }
     }
 
-    fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
+    pub fn writeValueToString(self: *const VM, writer: anytype, val: Value) void {
         const str = self.valueToTempString(val);
         _ = writer.write(str) catch stdx.fatal();
     }
@@ -2931,229 +1784,63 @@ pub const VM = struct {
             self.stackEndPtr = self.stack.ptr + newCap;
         }
     }
+
+    pub inline fn toPc(self: *const VM, offset: usize) [*]cy.OpData {
+        return @ptrCast([*]cy.OpData, self.ops.ptr + offset);
+    }
+
+    // Performs stackGrowTotalCapacityPrecise in addition to patching the frame pointers.
+    fn growStackAuto(vm: *VM) !void {
+        @setCold(true);
+        // Grow by 50% with minimum of 16.
+        var growSize = vm.stack.len / 2;
+        if (growSize < 16) {
+            growSize = 16;
+        }
+        try growStackPrecise(vm, vm.stack.len + growSize);
+    }
+
+    pub fn ensureTotalStackCapacity(vm: *VM, newCap: usize) !void {
+        if (newCap > vm.stack.len) {
+            var betterCap = vm.stack.len;
+            while (true) {
+                betterCap +|= betterCap / 2 + 8;
+                if (betterCap >= newCap) {
+                    break;
+                }
+            }
+            try growStackPrecise(vm, betterCap);
+        }
+    }
+
+    fn growStackPrecise(vm: *VM, newCap: usize) !void {
+        if (vm.alloc.resize(vm.stack, newCap)) {
+            vm.stack.len = newCap;
+            vm.stackEndPtr = vm.stack.ptr + newCap;
+        } else {
+            const newStack = try vm.alloc.alloc(Value, newCap);
+
+            // Copy to new stack.
+            std.mem.copy(Value, newStack[0..vm.stack.len], vm.stack);
+
+            // Patch frame ptrs. 
+            var curFpOffset = framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
+            while (curFpOffset != 0) {
+                const prevFpOffset = framePtrOffsetFrom(vm.stack.ptr, newStack[curFpOffset + 3].retFramePtr);
+                newStack[curFpOffset + 3].retFramePtr = newStack.ptr + prevFpOffset;
+                curFpOffset = prevFpOffset;
+            }
+
+            // Free old stack.
+            vm.alloc.free(vm.stack);
+
+            // Update to new frame ptr.
+            vm.framePtr = newStack.ptr + framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
+            vm.stack = newStack;
+            vm.stackEndPtr = vm.stack.ptr + newCap;
+        }
+    }
 };
-
-pub fn releaseObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    if (builtin.mode == .Debug or builtin.is_test) {
-        if (obj.retainedCommon.structId == NullId) {
-            stdx.panic("object already freed.");
-        }
-    }
-    obj.retainedCommon.rc -= 1;
-    log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
-    if (TrackGlobalRC) {
-        vm.refCounts -= 1;
-    }
-    if (TraceEnabled) {
-        vm.trace.numReleases += 1;
-        vm.trace.numReleaseAttempts += 1;
-    }
-    if (obj.retainedCommon.rc == 0) {
-        @call(.never_inline, freeObject, .{vm, obj});
-    }
-}
-
-fn freeObject(vm: *VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    log.debug("free {}", .{obj.getUserTag()});
-    switch (obj.retainedCommon.structId) {
-        ListS => {
-            const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-            for (list.items()) |it| {
-                release(vm, it);
-            }
-            list.deinit(vm.alloc);
-            vm.freeObject(obj);
-        },
-        ListIteratorT => {
-            releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.listIter.list));
-            vm.freeObject(obj);
-        },
-        MapS => {
-            const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
-            var iter = map.iterator();
-            while (iter.next()) |entry| {
-                release(vm, entry.key);
-                release(vm, entry.value);
-            }
-            map.deinit(vm.alloc);
-            vm.freeObject(obj);
-        },
-        MapIteratorT => {
-            releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.mapIter.map));
-            vm.freeObject(obj);
-        },
-        ClosureS => {
-            const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-            for (src) |capturedVal| {
-                release(vm, capturedVal);
-            }
-            if (obj.closure.numCaptured <= 3) {
-                vm.freeObject(obj);
-            } else {
-                const slice = @ptrCast([*]u8, obj)[0..2 + obj.closure.numCaptured];
-                vm.alloc.free(slice);
-            }
-        },
-        LambdaS => {
-            vm.freeObject(obj);
-        },
-        AstringT => {
-            if (obj.astring.len <= DefaultStringInternMaxByteLen) {
-                // Check both the key and value to make sure this object is the intern entry.
-                const key = obj.astring.getConstSlice();
-                if (vm.strInterns.get(key)) |val| {
-                    if (val == obj) {
-                        _ = vm.strInterns.remove(key);
-                    }
-                }
-            }
-            if (obj.astring.len <= MaxPoolObjectAstringByteLen) {
-                vm.freeObject(obj);
-            } else {
-                const slice = @ptrCast([*]u8, obj)[0..Astring.BufOffset + obj.astring.len];
-                vm.alloc.free(slice);
-            }
-        },
-        UstringT => {
-            if (obj.ustring.len <= DefaultStringInternMaxByteLen) {
-                const key = obj.ustring.getConstSlice();
-                if (vm.strInterns.get(key)) |val| {
-                    if (val == obj) {
-                        _ = vm.strInterns.remove(key);
-                    }
-                }
-            }
-            if (obj.ustring.len <= MaxPoolObjectUstringByteLen) {
-                vm.freeObject(obj);
-            } else {
-                const slice = @ptrCast([*]u8, obj)[0..Ustring.BufOffset + obj.ustring.len];
-                vm.alloc.free(slice);
-            }
-        },
-        StringSliceT => {
-            if (obj.stringSlice.getParentPtr()) |parent| {
-                releaseObject(vm, parent);
-            }
-            vm.freeObject(obj);
-        },
-        RawStringT => {
-            if (obj.rawstring.len <= MaxPoolObjectRawStringByteLen) {
-                vm.freeObject(obj);
-            } else {
-                const slice = @ptrCast([*]u8, obj)[0..RawString.BufOffset + obj.rawstring.len];
-                vm.alloc.free(slice);
-            }
-        },
-        RawStringSliceT => {
-            const parent = @ptrCast(*cy.HeapObject, obj.rawstringSlice.parent);
-            releaseObject(vm, parent);
-            vm.freeObject(obj);
-        },
-        FiberS => {
-            releaseFiberStack(vm, &obj.fiber);
-            vm.freeObject(obj);
-        },
-        BoxS => {
-            release(vm, obj.box.val);
-            vm.freeObject(obj);
-        },
-        NativeFunc1S => {
-            if (obj.nativeFunc1.hasTccState) {
-                releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.nativeFunc1.tccState.asPointer().?));
-            }
-            vm.freeObject(obj);
-        },
-        TccStateS => {
-            if (cy.hasJit) {
-                tcc.tcc_delete(obj.tccState.state);
-                obj.tccState.lib.close();
-                vm.alloc.destroy(obj.tccState.lib);
-                vm.freeObject(obj);
-            } else {
-                unreachable;
-            }
-        },
-        OpaquePtrS => {
-            vm.freeObject(obj);
-        },
-        FileT => {
-            if (cy.hasStdFiles) {
-                if (obj.file.hasReadBuf) {
-                    vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
-                }
-                obj.file.close();
-            }
-            vm.freeObject(obj);
-        },
-        DirT => {
-            if (cy.hasStdFiles) {
-                var dir = obj.dir.getStdDir();
-                dir.close();   
-            }
-            vm.freeObject(obj);
-        },
-        DirIteratorT => {
-            if (cy.hasStdFiles) {
-                var dir = @ptrCast(*DirIterator, obj);
-                if (dir.recursive) {
-                    const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
-                    walker.deinit();   
-                }
-                releaseObject(vm, @ptrCast(*HeapObject, dir.dir));
-            }
-            const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
-            vm.alloc.free(slice);
-        },
-        else => {
-            log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});
-            // Struct deinit.
-            if (builtin.mode == .Debug) {
-                // Check range.
-                if (obj.retainedCommon.structId >= vm.structs.len) {
-                    log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});
-                    stdx.fatal();
-                }
-            }
-            const numFields = vm.structs.buf[obj.retainedCommon.structId].numFields;
-            for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                release(vm, child);
-            }
-            if (numFields <= 4) {
-                vm.freeObject(obj);
-            } else {
-                const slice = @ptrCast([*]Value, obj)[0..1 + numFields];
-                vm.alloc.free(slice);
-            }
-        },
-    }
-}
-
-pub fn release(vm: *VM, val: Value) linksection(cy.HotSection) void {
-    if (TraceEnabled) {
-        vm.trace.numReleaseAttempts += 1;
-    }
-    if (val.isPointer()) {
-        const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
-        if (builtin.mode == .Debug or builtin.is_test) {
-            if (obj.retainedCommon.structId == NullId) {
-                log.debug("object already freed. {*}", .{obj});
-                debug.dumpObjectTrace(vm, obj);
-                stdx.fatal();
-            }
-        }
-        obj.retainedCommon.rc -= 1;
-        log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
-        if (TrackGlobalRC) {
-            vm.refCounts -= 1;
-        }
-        if (TraceEnabled) {
-            vm.trace.numReleases += 1;
-        }
-        if (obj.retainedCommon.rc == 0) {
-            @call(.never_inline, freeObject, .{vm, obj});
-        }
-    }
-}
 
 fn evalBitwiseOr(left: Value, right: Value) linksection(cy.HotSection) Value {
     @setCold(true);
@@ -3251,15 +1938,15 @@ pub const StringType = enum {
 fn getComparableStringType(val: Value) ?StringType {
     if (val.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, val.asPointer().?);
-        if (obj.common.structId == AstringT) {
+        if (obj.common.structId == cy.AstringT) {
             return .astring;
-        } else if (obj.common.structId == UstringT) {
+        } else if (obj.common.structId == cy.UstringT) {
             return .ustring;
-        } else if (obj.common.structId == StringSliceT) {
+        } else if (obj.common.structId == cy.StringSliceT) {
             return .slice;
-        } else if (obj.common.structId == RawStringT) {
+        } else if (obj.common.structId == cy.RawStringT) {
             return .rawstring;
-        } else if (obj.common.structId == RawStringSliceT) {
+        } else if (obj.common.structId == cy.RawStringSliceT) {
             return .rawSlice;
         }
         return null;
@@ -3498,408 +2185,6 @@ fn evalNot(val: cy.Value) cy.Value {
     }
 }
 
-const NullByteId = std.math.maxInt(u8);
-const NullIdU16 = std.math.maxInt(u16);
-const NullId = std.math.maxInt(u32);
-
-pub const OpaquePtr = extern struct {
-    structId: StructId,
-    rc: u32,
-    ptr: ?*anyopaque,
-};
-
-pub const DirIterator = extern struct {
-    structId: StructId,
-    rc: u32,
-    dir: *Dir,
-    inner: extern union {
-        iter: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Iterator)]u8 else void,
-        walker: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Walker)]u8 else void,
-    },
-    /// If `recursive` is true, `walker` is used.
-    recursive: bool,
-};
-
-pub const Dir = extern struct {
-    structId: StructId align(8),
-    rc: u32,
-    fd: if (cy.hasStdFiles) std.os.fd_t else u32,
-    iterable: bool,
-
-    pub fn getStdDir(self: *const Dir) std.fs.Dir {
-        return std.fs.Dir{
-            .fd = self.fd,
-        };
-    }
-
-    pub fn getStdIterableDir(self: *const Dir) std.fs.IterableDir {
-        return std.fs.IterableDir{
-            .dir = std.fs.Dir{
-                .fd = self.fd,
-            },
-        };
-    }
-};
-
-const File = extern struct {
-    structId: StructId,
-    rc: u32,
-    fd: std.os.fd_t,
-    curPos: u32,
-    readBuf: [*]u8,
-    readBufCap: u32,
-    readBufEnd: u32,
-    iterLines: bool,
-    hasReadBuf: bool,
-    closed: bool,
-
-    pub fn getStdFile(self: *const File) std.fs.File {
-        return std.fs.File{
-            .handle = @bitCast(i32, self.fd),
-            .capable_io_mode = .blocking,
-            .intended_io_mode = .blocking,
-        };
-    }
-
-    pub fn close(self: *File) void {
-        if (!self.closed) {
-            const file = self.getStdFile();
-            file.close();
-            self.closed = true;
-        }
-    }
-};
-
-const TccState = extern struct {
-    structId: StructId,
-    rc: u32,
-    state: *tcc.TCCState,
-    lib: *std.DynLib,
-};
-
-const NativeFunc1 = extern struct {
-    structId: StructId,
-    rc: u32,
-    func: *const fn (*UserVM, [*]Value, u8) Value,
-    numParams: u32,
-    tccState: Value,
-    hasTccState: bool,
-};
-
-const Lambda = extern struct {
-    structId: StructId,
-    rc: u32,
-    funcPc: u32, 
-    numParams: u8,
-    /// Includes locals and return info. Does not include params.
-    numLocals: u8,
-};
-
-pub const Closure = extern struct {
-    structId: StructId,
-    rc: u32,
-    funcPc: u32, 
-    numParams: u8,
-    numCaptured: u8,
-    /// Includes locals, captured vars, and return info. Does not include params.
-    numLocals: u8,
-    padding: u8,
-    firstCapturedVal: Value,
-
-    inline fn getCapturedValuesPtr(self: *Closure) [*]Value {
-        return @ptrCast([*]Value, &self.firstCapturedVal);
-    }
-};
-
-pub const MapIterator = extern struct {
-    structId: StructId,
-    rc: u32,
-    map: *Map,
-    nextIdx: u32,
-};
-
-pub const MapInner = cy.ValueMap;
-const Map = extern struct {
-    structId: StructId,
-    rc: u32,
-    inner: extern struct {
-        metadata: ?[*]u64,
-        entries: ?[*]cy.ValueMapEntry,
-        size: u32,
-        cap: u32,
-        available: u32,
-        /// This prevents `inner` from having offset=0 in Map.
-        /// Although @offsetOf(Map, "inner") returns 8 in that case &map.inner returns the same address as &map.
-        padding: u32 = 0,
-    },
-};
-
-const Box = extern struct {
-    structId: StructId,
-    rc: u32,
-    val: Value,
-};
-
-pub const Fiber = extern struct {
-    structId: StructId,
-    rc: u32,
-    prevFiber: ?*Fiber,
-    stackPtr: [*]Value,
-    stackLen: u32,
-    /// If pc == NullId, the fiber is done.
-    pc: u32,
-
-    /// Contains framePtr in the lower 48 bits and adjacent 8 bit parentDstLocal.
-    /// parentDstLocal:
-    ///   Where coyield and coreturn should copy the return value to.
-    ///   If this is the NullByteId, no value is copied and instead released.
-    extra: u64,
-
-    inline fn setFramePtr(self: *Fiber, ptr: [*]Value) void {
-        self.extra = (self.extra & 0xff000000000000) | @ptrToInt(ptr);
-    }
-
-    inline fn getFramePtr(self: *const Fiber) [*]Value {
-        return @intToPtr([*]Value, @intCast(usize, self.extra & 0xffffffffffff));
-    }
-
-    inline fn setParentDstLocal(self: *Fiber, parentDstLocal: u8) void {
-        self.extra = (self.extra & 0xffffffffffff) | (@as(u64, parentDstLocal) << 48);
-    }
-
-    inline fn getParentDstLocal(self: *const Fiber) u8 {
-        return @intCast(u8, (self.extra & 0xff000000000000) >> 48);
-    }
-};
-
-const RawStringSlice = extern struct {
-    structId: StructId,
-    rc: u32,
-    buf: [*]const u8,
-    len: u32,
-    padding: u32 = 0,
-    parent: *RawString,
-
-    pub inline fn getConstSlice(self: *const RawStringSlice) []const u8 {
-        return self.buf[0..self.len];
-    }
-};
-
-const StringSlice = extern struct {
-    structId: StructId,
-    rc: u32,
-    buf: [*]const u8,
-    len: u32,
-
-    uCharLen: u32,
-    uMruIdx: u32,
-    uMruCharIdx: u32,
-
-    /// A Ustring slice may have a null or 0 parentPtr if it's sliced from StaticUstring.
-    /// The lower 63 bits contains the parentPtr.
-    /// The last bit contains an isAscii flag.
-    extra: u64,
-
-    pub inline fn getParentPtr(self: *const StringSlice) ?*cy.HeapObject {
-        return @intToPtr(?*cy.HeapObject, @intCast(usize, self.extra & 0x7fffffffffffffff));
-    }
-
-    pub inline fn isAstring(self: *const StringSlice) bool {
-        return self.extra & (1 << 63) > 0;
-    }
-
-    pub inline fn getConstSlice(self: *const StringSlice) []const u8 {
-        return self.buf[0..self.len];
-    }
-};
-
-/// 28 byte length can fit inside a Heap pool object.
-pub const MaxPoolObjectAstringByteLen = 28;
-
-pub const Astring = extern struct {
-    structId: StructId,
-    rc: u32,
-    len: u32,
-    bufStart: u8,
-
-    const BufOffset = @offsetOf(Astring, "bufStart");
-
-    pub inline fn getSlice(self: *Astring) []u8 {
-        return @ptrCast([*]u8, &self.bufStart)[0..self.len];
-    }
-
-    pub inline fn getConstSlice(self: *const Astring) []const u8 {
-        return @ptrCast([*]const u8, &self.bufStart)[0..self.len];
-    }
-};
-
-/// 16 byte length can fit inside a Heap pool object.
-pub const MaxPoolObjectUstringByteLen = 16;
-
-const Ustring = extern struct {
-    structId: StructId,
-    rc: u32,
-    len: u32,
-    charLen: u32,
-    mruIdx: u32,
-    mruCharIdx: u32,
-    bufStart: u8,
-
-    const BufOffset = @offsetOf(Ustring, "bufStart");
-
-    pub inline fn getSlice(self: *Ustring) []u8 {
-        return @ptrCast([*]u8, &self.bufStart)[0..self.len];
-    }
-
-    pub inline fn getConstSlice(self: *const Ustring) []const u8 {
-        return @ptrCast([*]const u8, &self.bufStart)[0..self.len];
-    }
-};
-
-pub const MaxPoolObjectRawStringByteLen = 28;
-
-pub const RawString = extern struct {
-    structId: if (cy.isWasm) StructId else StructId align(8),
-    rc: u32,
-    len: u32,
-    bufStart: u8,
-
-    pub const BufOffset = @offsetOf(RawString, "bufStart");
-
-    pub inline fn getSlice(self: *RawString) []u8 {
-        return @ptrCast([*]u8, &self.bufStart)[0..self.len];
-    }
-
-    pub inline fn getConstSlice(self: *const RawString) []const u8 {
-        return @ptrCast([*]const u8, &self.bufStart)[0..self.len];
-    }
-};
-
-pub const ListIterator = extern struct {
-    structId: StructId,
-    rc: u32,
-    list: *List,
-    nextIdx: u32,
-};
-
-pub const List = extern struct {
-    structId: StructId,
-    rc: u32,
-    list: extern struct {
-        ptr: [*]Value,
-        cap: usize,
-        len: usize,
-    },
-
-    pub inline fn items(self: *const List) []Value {
-        return self.list.ptr[0..self.list.len];
-    }
-
-    /// Assumes `val` is retained.
-    pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) linksection(cy.Section) void {
-        const list = stdx.ptrAlignCast(*cy.List(Value), &self.list);
-        if (list.len == list.buf.len) {
-            // After reaching a certain size, use power of two ceil.
-            // This reduces allocations for big lists while not over allocating for smaller lists.
-            if (list.len > 512) {
-                const newCap = std.math.ceilPowerOfTwo(u32, @intCast(u32, list.len) + 1) catch stdx.fatal();
-                list.growTotalCapacityPrecise(alloc, newCap) catch stdx.fatal();
-            } else {
-                list.growTotalCapacity(alloc, list.len + 1) catch stdx.fatal();
-            }
-        }
-        list.appendAssumeCapacity(val);
-    }
-};
-
-const Object = extern struct {
-    structId: StructId,
-    rc: u32,
-    firstValue: Value,
-
-    pub inline fn getValuesConstPtr(self: *const Object) [*]const Value {
-        return @ptrCast([*]const Value, &self.firstValue);
-    }
-
-    pub inline fn getValuesPtr(self: *Object) [*]Value {
-        return @ptrCast([*]Value, &self.firstValue);
-    }
-
-    pub inline fn getValuePtr(self: *Object, idx: u32) *Value {
-        return @ptrCast(*Value, @ptrCast([*]Value, &self.firstValue) + idx);
-    }
-
-    pub inline fn getValue(self: *const Object, idx: u32) Value {
-        return @ptrCast([*]const Value, &self.firstValue)[idx];
-    }
-};
-
-// Keep it just under 4kb page.
-const HeapPage = struct {
-    objects: [102]HeapObject,
-};
-
-const HeapObjectId = u32;
-
-/// Total of 40 bytes per object. If objects are bigger, they are allocated on the gpa.
-pub const HeapObject = extern union {
-    common: extern struct {
-        structId: StructId,
-    },
-    freeSpan: extern struct {
-        structId: StructId,
-        len: u32,
-        start: *HeapObject,
-        next: ?*HeapObject,
-    },
-    retainedCommon: extern struct {
-        structId: StructId,
-        rc: u32,
-    },
-    list: List,
-    listIter: ListIterator,
-    fiber: Fiber,
-    map: Map,
-    mapIter: MapIterator,
-    closure: Closure,
-    lambda: Lambda,
-    astring: Astring,
-    ustring: Ustring,
-    stringSlice: StringSlice,
-    rawstring: RawString,
-    rawstringSlice: RawStringSlice,
-    object: Object,
-    box: Box,
-    nativeFunc1: NativeFunc1,
-    tccState: if (cy.hasJit) TccState else void,
-    file: if (cy.hasStdFiles) File else void,
-    dir: if (cy.hasStdFiles) Dir else void,
-    opaquePtr: OpaquePtr,
-
-    pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
-        switch (self.common.structId) {
-            cy.ListS => return .list,
-            cy.MapS => return .map,
-            cy.AstringT => return .string,
-            cy.UstringT => return .string,
-            cy.RawStringT => return .rawstring,
-            cy.ClosureS => return .closure,
-            cy.LambdaS => return .lambda,
-            cy.FiberS => return .fiber,
-            cy.NativeFunc1S => return .nativeFunc,
-            cy.TccStateS => return .tccState,
-            cy.OpaquePtrS => return .opaquePtr,
-            cy.FileT => return .file,
-            cy.DirT => return .dir,
-            cy.DirIteratorT => return .dirIter,
-            cy.BoxS => return .box,
-            else => {
-                return .object;
-            },
-        }
-    }
-};
-
 const SymbolMapType = enum {
     one,
     many,
@@ -3918,21 +2203,15 @@ const TagLitSym = struct {
 };
 
 const FieldSymbolMap = struct {
-    mruStructId: StructId,
+    mruTypeId: TypeId,
     mruOffset: u16,
     name: []const u8,
 };
 
 test "Internals." {
-    try t.eq(@alignOf(UserVM), UserVMAlign);
     try t.eq(@alignOf(VM), 8);
     try t.eq(@alignOf(MethodSym), 8);
     try t.eq(@sizeOf(MethodSym), 16);
-    try t.eq(@sizeOf(MapInner), 32);
-    try t.eq(@sizeOf(HeapObject), 40);
-    try t.eq(@alignOf(HeapObject), 8);
-    try t.eq(@sizeOf(HeapPage), 40 * 102);
-    try t.eq(@alignOf(HeapPage), 8);
 
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
     var funcSymEntry: FuncSymbolEntry = undefined;
@@ -3946,94 +2225,6 @@ test "Internals." {
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 24);
 
-    try t.eq(@alignOf(List), 8);
-    var list: List = undefined;
-    try t.eq(@ptrToInt(&list.list.ptr), @ptrToInt(&list) + 8);
-    try t.eq(@alignOf(ListIterator), 8);
-
-    try t.eq(@alignOf(Dir), 8);
-    var dir: Dir = undefined;
-    try t.eq(@ptrToInt(&dir.structId), @ptrToInt(&dir));
-    try t.eq(@ptrToInt(&dir.rc), @ptrToInt(&dir) + 4);
-
-    try t.eq(@alignOf(DirIterator), 8);
-    var dirIter: DirIterator = undefined;
-    try t.eq(@ptrToInt(&dirIter.structId), @ptrToInt(&dirIter));
-    try t.eq(@ptrToInt(&dirIter.rc), @ptrToInt(&dirIter) + 4);
-
-    const rstr = RawString{
-        .structId = RawStringT,
-        .rc = 1,
-        .len = 1,
-        .bufStart = undefined,
-    };
-    try t.eq(@ptrToInt(&rstr.structId), @ptrToInt(&rstr));
-    try t.eq(@ptrToInt(&rstr.rc), @ptrToInt(&rstr) + 4);
-    try t.eq(@ptrToInt(&rstr.len), @ptrToInt(&rstr) + 8);
-    try t.eq(RawString.BufOffset, 12);
-    try t.eq(@ptrToInt(&rstr.bufStart), @ptrToInt(&rstr) + RawString.BufOffset);
-
-    const astr = Astring{
-        .structId = AstringT,
-        .rc = 1,
-        .len = 1,
-        .bufStart = undefined,
-    };
-    try t.eq(@ptrToInt(&astr.structId), @ptrToInt(&astr));
-    try t.eq(@ptrToInt(&astr.rc), @ptrToInt(&astr) + 4);
-    try t.eq(@ptrToInt(&astr.len), @ptrToInt(&astr) + 8);
-    try t.eq(Astring.BufOffset, 12);
-    try t.eq(@ptrToInt(&astr.bufStart), @ptrToInt(&astr) + Astring.BufOffset);
-
-    const ustr = Ustring{
-        .structId = UstringT,
-        .rc = 1,
-        .len = 1,
-        .charLen = 1,
-        .mruIdx = 0,
-        .mruCharIdx = 0,
-        .bufStart = undefined,
-    };
-    try t.eq(@ptrToInt(&ustr.structId), @ptrToInt(&ustr));
-    try t.eq(@ptrToInt(&ustr.rc), @ptrToInt(&ustr) + 4);
-    try t.eq(@ptrToInt(&ustr.len), @ptrToInt(&ustr) + 8);
-    try t.eq(@ptrToInt(&ustr.charLen), @ptrToInt(&ustr) + 12);
-    try t.eq(@ptrToInt(&ustr.mruIdx), @ptrToInt(&ustr) + 16);
-    try t.eq(@ptrToInt(&ustr.mruCharIdx), @ptrToInt(&ustr) + 20);
-    try t.eq(Ustring.BufOffset, 24);
-    try t.eq(@ptrToInt(&ustr.bufStart), @ptrToInt(&ustr) + Ustring.BufOffset);
-
-    const slice = StringSlice{
-        .structId = StringSliceT,
-        .rc = 1,
-        .buf = undefined,
-        .len = 1,
-        .uCharLen = undefined,
-        .uMruIdx = undefined,
-        .uMruCharIdx = undefined,
-        .extra = undefined,
-    };
-    try t.eq(@ptrToInt(&slice.structId), @ptrToInt(&slice));
-    try t.eq(@ptrToInt(&slice.rc), @ptrToInt(&slice) + 4);
-    try t.eq(@ptrToInt(&slice.buf), @ptrToInt(&slice) + 8);
-    try t.eq(@ptrToInt(&slice.len), @ptrToInt(&slice) + 16);
-    try t.eq(@ptrToInt(&slice.uCharLen), @ptrToInt(&slice) + 20);
-    try t.eq(@ptrToInt(&slice.uMruIdx), @ptrToInt(&slice) + 24);
-    try t.eq(@ptrToInt(&slice.uMruCharIdx), @ptrToInt(&slice) + 28);
-    try t.eq(@ptrToInt(&slice.extra), @ptrToInt(&slice) + 32);
-
-    const rslice = RawStringSlice{
-        .structId = RawStringSliceT,
-        .rc = 1,
-        .buf = undefined,
-        .len = 1,
-        .parent = undefined,
-    };
-    try t.eq(@ptrToInt(&rslice.structId), @ptrToInt(&rslice));
-    try t.eq(@ptrToInt(&rslice.rc), @ptrToInt(&rslice) + 4);
-    try t.eq(@ptrToInt(&rslice.buf), @ptrToInt(&rslice) + 8);
-    try t.eq(@ptrToInt(&rslice.len), @ptrToInt(&rslice) + 16);
-    try t.eq(@ptrToInt(&rslice.parent), @ptrToInt(&rslice) + 24);
 
     try t.eq(@sizeOf(KeyU64), 8);
 }
@@ -4053,7 +2244,7 @@ const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const MethodSym = struct {
     entryT: MethodSymType,
     /// Most recent sym used is cached avoid hashmap lookup. 
-    mruStructId: StructId,
+    mruStructId: TypeId,
     inner: packed union {
         nativeFunc1: NativeObjFuncPtr,
         nativeFunc2: *const fn (*UserVM, *anyopaque, [*]const Value, u8) cy.ValuePair,
@@ -4112,7 +2303,7 @@ pub const VarSym = struct {
     }
 };
 
-const FuncSymbolEntryType = enum {
+pub const FuncSymbolEntryType = enum {
     nativeFunc1,
     func,
     closure,
@@ -4141,7 +2332,7 @@ pub const FuncSymbolEntry = extern struct {
             /// Num params used to wrap as function value.
             numParams: u16,
         },
-        closure: *Closure,
+        closure: *cy.Closure,
     },
 
     pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value, numParams: u32) FuncSymbolEntry {
@@ -4171,7 +2362,7 @@ pub const FuncSymbolEntry = extern struct {
         };
     }
 
-    pub fn initClosure(closure: *Closure) FuncSymbolEntry {
+    pub fn initClosure(closure: *cy.Closure) FuncSymbolEntry {
         return .{
             .entryT = @enumToInt(FuncSymbolEntryType.closure),
             .inner = .{
@@ -4189,7 +2380,7 @@ const TagType = struct {
 
 const StructKey = KeyU64;
 
-pub const StructId = u32;
+pub const TypeId = u32;
 
 const Struct = struct {
     name: []const u8,
@@ -4200,7 +2391,7 @@ const Struct = struct {
 //     name: []const u8,
 // };
 
-const SymbolId = u32;
+pub const SymbolId = u32;
 
 pub const TraceInfo = struct {
     opCounts: []OpCount = &.{},
@@ -4219,305 +2410,7 @@ pub const OpCount = struct {
     count: u32,
 };
 
-const RcNode = struct {
-    visited: bool,
-    entered: bool,
-};
-
 const Root = @This();
-
-const UserVMAlign = 8;
-
-/// A simplified VM handle.
-pub const UserVM = struct {
-    dummy: u64 align(UserVMAlign) = undefined,
-
-    pub fn init(self: *UserVM, alloc: std.mem.Allocator) !void {
-        try @ptrCast(*VM, self).init(alloc);
-    }
-
-    pub fn deinit(self: *UserVM) void {
-        @ptrCast(*VM, self).deinit();
-    }
-
-    pub fn setTrace(self: *UserVM, trace: *TraceInfo) void {
-        if (!TraceEnabled) {
-            return;
-        }
-        @ptrCast(*VM, self).trace = trace;
-    }
-
-    pub fn getStackTrace(self: *UserVM) *const StackTrace {
-        return @ptrCast(*const VM, self).getStackTrace();
-    }
-
-    pub fn getParserErrorMsg(self: *const UserVM) []const u8 {
-        return @ptrCast(*const VM, self).parser.last_err;
-    }
-
-    pub fn getCompileErrorMsg(self: *const UserVM) []const u8 {
-        return @ptrCast(*const VM, self).compiler.lastErr;
-    }
-
-    pub fn allocPanicMsg(self: *const UserVM) ![]const u8 {
-        return debug.allocPanicMsg(@ptrCast(*const VM, self));
-    }
-
-    pub fn dumpPanicStackTrace(self: *UserVM) !void {
-        @setCold(true);
-        const vm = @ptrCast(*VM, self);
-        const msg = try self.allocPanicMsg();
-        defer vm.alloc.free(msg);
-        fmt.printStderr("panic: {}\n\n", &.{v(msg)});
-        const trace = vm.getStackTrace();
-        try trace.dump(vm);
-    }
-
-    pub fn dumpInfo(self: *UserVM) void {
-        @ptrCast(*VM, self).dumpInfo();
-    }
-
-    pub fn dumpStats(self: *UserVM) void {
-        @ptrCast(*VM, self).dumpStats();
-    }
-
-    pub fn fillUndefinedStackSpace(_: UserVM, val: Value) void {
-        std.mem.set(Value, gvm.stack, val);
-    }
-
-    pub inline fn releaseObject(self: *UserVM, obj: *HeapObject) void {
-        Root.releaseObject(@ptrCast(*VM, self), obj);
-    }
-
-    pub inline fn release(self: *UserVM, val: Value) void {
-        Root.release(@ptrCast(*VM, self), val);
-    }
-
-    pub inline fn retain(self: *UserVM, val: Value) void {
-        @ptrCast(*VM, self).retain(val);
-    }
-
-    pub inline fn retainObject(self: *UserVM, obj: *HeapObject) void {
-        @ptrCast(*VM, self).retainObject(obj);
-    }
-
-    pub inline fn getGlobalRC(self: *const UserVM) usize {
-        return @ptrCast(*const VM, self).getGlobalRC();
-    }
-
-    pub inline fn checkMemory(self: *UserVM) !bool {
-        return @ptrCast(*VM, self).checkMemory();
-    }
-
-    pub inline fn compile(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
-        return @ptrCast(*VM, self).compile(srcUri, src);
-    }
-
-    pub inline fn eval(self: *UserVM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
-        return @ptrCast(*VM, self).eval(srcUri, src, config);
-    }
-
-    pub inline fn allocator(self: *const UserVM) std.mem.Allocator {
-        return @ptrCast(*const VM, self).alloc;
-    }
-
-    pub inline fn allocEmptyList(self: *UserVM) !Value {
-        return @ptrCast(*VM, self).allocEmptyList();
-    }
-
-    pub inline fn allocEmptyMap(self: *UserVM) !Value {
-        return @ptrCast(*VM, self).allocEmptyMap();
-    }
-
-    pub inline fn allocList(self: *UserVM, elems: []const Value) !Value {
-        return @ptrCast(*VM, self).allocList(elems);
-    }
-
-    pub inline fn allocListFill(self: *UserVM, val: Value, n: u32) !Value {
-        return @ptrCast(*VM, self).allocListFill(val, n);
-    }
-
-    pub inline fn allocUnsetUstringObject(self: *UserVM, len: usize, charLen: u32) !*HeapObject {
-        return @ptrCast(*VM, self).allocUnsetUstringObject(len, charLen);
-    }
-
-    pub inline fn allocUnsetAstringObject(self: *UserVM, len: usize) !*HeapObject {
-        return @ptrCast(*VM, self).allocUnsetAstringObject(len);
-    }
-
-    pub inline fn allocUnsetRawStringObject(self: *UserVM, len: usize) !*HeapObject {
-        return @ptrCast(*VM, self).allocUnsetRawStringObject(len);
-    }
-
-    pub inline fn allocRawString(self: *UserVM, str: []const u8) !Value {
-        return @ptrCast(*VM, self).allocRawString(str);
-    }
-
-    pub inline fn allocAstring(self: *UserVM, str: []const u8) !Value {
-        return @ptrCast(*VM, self).getOrAllocAstring(str);
-    }
-
-    pub inline fn allocUstring(self: *UserVM, str: []const u8, charLen: u32) !Value {
-        return @ptrCast(*VM, self).getOrAllocUstring(str, charLen);
-    }
-
-    pub inline fn allocStringNoIntern(self: *UserVM, str: []const u8, utf8: bool) !Value {
-        return @ptrCast(*VM, self).allocString(str, utf8);
-    }
-
-    pub inline fn allocStringInfer(self: *UserVM, str: []const u8) !Value {
-        return @ptrCast(*VM, self).getOrAllocStringInfer(str);
-    }
-
-    pub inline fn allocRawStringSlice(self: *UserVM, slice: []const u8, parent: *HeapObject) !Value {
-        return @ptrCast(*VM, self).allocRawStringSlice(slice, parent);
-    }
-
-    pub inline fn allocAstringSlice(self: *UserVM, slice: []const u8, parent: *HeapObject) !Value {
-        return @ptrCast(*VM, self).allocAstringSlice(slice, parent);
-    }
-
-    pub inline fn allocUstringSlice(self: *UserVM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
-        return @ptrCast(*VM, self).allocUstringSlice(slice, charLen, parent);
-    }
-
-    pub inline fn allocOwnedAstring(self: *UserVM, str: *HeapObject) !Value {
-        return @ptrCast(*VM, self).getOrAllocOwnedAstring(str);
-    }
-
-    pub inline fn allocOwnedUstring(self: *UserVM, str: *HeapObject) !Value {
-        return @ptrCast(*VM, self).getOrAllocOwnedUstring(str);
-    }
-
-    pub inline fn allocRawStringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
-        return @ptrCast(*VM, self).allocRawStringConcat(left, right);
-    }
-
-    pub inline fn allocAstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8) !Value {
-        return @ptrCast(*VM, self).getOrAllocAstringConcat3(str1, str2, str3);
-    }
-
-    pub inline fn allocUstringConcat3(self: *UserVM, str1: []const u8, str2: []const u8, str3: []const u8, charLen: u32) !Value {
-        return @ptrCast(*VM, self).getOrAllocUstringConcat3(str1, str2, str3, charLen);
-    }
-
-    pub inline fn allocAstringConcat(self: *UserVM, left: []const u8, right: []const u8) !Value {
-        return @ptrCast(*VM, self).getOrAllocAstringConcat(left, right);
-    }
-
-    pub inline fn allocUstringConcat(self: *UserVM, left: []const u8, right: []const u8, charLen: u32) !Value {
-        return @ptrCast(*VM, self).getOrAllocUstringConcat(left, right, charLen);
-    }
-
-    pub inline fn allocObjectSmall(self: *UserVM, sid: StructId, fields: []const Value) !Value {
-        return @ptrCast(*VM, self).allocObjectSmall(sid, fields);
-    }
-
-    pub inline fn allocObject(self: *UserVM, sid: StructId, fields: []const Value) !Value {
-        return @ptrCast(*VM, self).allocObject(sid, fields);
-    }
-
-    pub inline fn allocListIterator(self: *UserVM, list: *List) !Value {
-        return @ptrCast(*VM, self).allocListIterator(list);
-    }
-
-    pub inline fn allocMapIterator(self: *UserVM, map: *Map) !Value {
-        return @ptrCast(*VM, self).allocMapIterator(map);
-    }
-
-    pub inline fn allocDir(self: *UserVM, fd: std.os.fd_t, iterable: bool) !Value {
-        return @ptrCast(*VM, self).allocDir(fd, iterable);
-    }
-
-    pub inline fn allocDirIterator(self: *UserVM, dir: *Dir, recursive: bool) !Value {
-        return @ptrCast(*VM, self).allocDirIterator(dir, recursive);
-    }
-
-    pub inline fn allocFile(self: *UserVM, fd: std.os.fd_t) !Value {
-        return @ptrCast(*VM, self).allocFile(fd);
-    }
-
-    pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {
-        return @ptrCast(*const VM, self).valueAsString(val);
-    }
-
-    pub inline fn getOrWriteValueString(self: *UserVM, writer: anytype, val: Value, charLen: *u32) []const u8 {
-        return @ptrCast(*const VM, self).getOrWriteValueString(writer, val, charLen, true);
-    }
-
-    pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
-        return @ptrCast(*const VM, self).valueToTempString(val);
-    }
-
-    pub inline fn valueToTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
-        return @ptrCast(*const VM, self).valueToTempString2(val, outCharLen);
-    }
-
-    pub inline fn valueToNextTempString(self: *UserVM, val: Value) []const u8 {
-        return @ptrCast(*const VM, self).valueToNextTempString(val);
-    }
-
-    pub inline fn valueToNextTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
-        return @ptrCast(*const VM, self).valueToNextTempString2(val, outCharLen);
-    }
-
-    pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {
-        return @ptrCast(*const VM, self).valueToString(val);
-    }
-
-    /// Used to return a panic from a native function body.
-    pub fn returnPanic(self: *UserVM, msg: []const u8) Value {
-        @setCold(true);
-        const vm = @ptrCast(*VM, self);
-        const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
-        vm.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (@as(u64, dupe.len) << 48);
-        vm.panicType = .msg;
-        return Value.Panic;
-    }
-
-    pub inline fn getStaticUstringHeader(self: *UserVM, start: u32) *align (1) cy.StaticUstringHeader {
-        return Root.getStaticUstringHeader(@ptrCast(*VM, self), start);
-    }
-
-    pub inline fn getStaticString(self: *UserVM, start: u32, end: u32) []const u8 {
-        return @ptrCast(*VM, self).strBuf[start..end];
-    }
-
-    pub inline fn getStaticStringChar(self: *UserVM, idx: u32) u8 {
-        return @ptrCast(*VM, self).strBuf[idx];
-    }
-
-    pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value) u32 {
-        const vm = @ptrCast(*const VM, self);
-        return @intCast(u32, framePtrOffsetFrom(vm.stack.ptr, args));
-    }
-
-    pub fn callFunc(self: *UserVM, framePtr: u32, func: Value, args: []const Value) !Value {
-        const vm = @ptrCast(*VM, self);
-
-        try ensureTotalStackCapacity(vm, framePtr + args.len + 1 + 4);
-        const saveFramePtrOffset = framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
-        vm.framePtr = vm.stack.ptr + framePtr;
-
-        self.retain(func);
-        defer self.release(func);
-        vm.framePtr[4 + args.len] = func;
-        for (args) |arg, i| {
-            self.retain(arg);
-            vm.framePtr[4 + i] = arg;
-        }
-        const retInfo = buildReturnInfo(1, false);
-        try callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len), retInfo);
-        try @call(.never_inline, evalLoopGrowStack, .{vm});
-
-        const res = vm.framePtr[0];
-
-        // Restore framePtr.
-        vm.framePtr = vm.stack.ptr + saveFramePtrOffset;
-
-        return res;
-    }
-};
 
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
@@ -4526,7 +2419,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
         @call(.always_inline, evalLoop, .{vm}) catch |err| {
             if (err == error.StackOverflow) {
                 log.debug("grow stack", .{});
-                try @call(.never_inline, growStackAuto, .{ vm });
+                try @call(.never_inline, vm.growStackAuto, .{});
                 continue;
             } else if (err == error.End) {
                 return;
@@ -4730,7 +2623,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = val;
-                vm.retain(val);
+                retain(vm, val);
                 pc += 3;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -4953,7 +2846,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const strs = pc[4 .. 4 + strCount];
                 pc += 4 + strCount;
                 const vals = framePtr[startLocal .. startLocal + exprCount];
-                const res = try @call(.never_inline, vm.allocStringTemplate, .{strs, vals});
+                const res = try @call(.never_inline, cy.heap.allocStringTemplate, .{vm, strs, vals});
                 framePtr[dst] = res;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -4967,7 +2860,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[3].arg;
                 pc += 4;
                 const elems = framePtr[startLocal..startLocal + numElems];
-                const list = try vm.allocList(elems);
+                const list = try cy.heap.allocList(vm, elems);
                 framePtr[dst] = list;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -4978,7 +2871,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const dst = pc[1].arg;
                 pc += 2;
-                framePtr[dst] = try vm.allocEmptyMap();
+                framePtr[dst] = try cy.heap.allocEmptyMap(vm);
                 gotoNext(&pc, jumpTablePtr);
                 continue;
             },
@@ -4990,9 +2883,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[2].arg;
                 const numFields = pc[3].arg;
                 const fields = framePtr[startLocal .. startLocal + numFields];
-                framePtr[pc[4].arg] = try vm.allocObjectSmall(sid, fields);
+                framePtr[pc[4].arg] = try cy.heap.allocObjectSmall(vm, sid, fields);
                 if (builtin.mode == .Debug) {
-                    vm.objectTraceMap.put(vm.alloc, framePtr[pc[4].arg].asHeapObject(*HeapObject), pcOffset(pc)) catch stdx.fatal();
+                    vm.objectTraceMap.put(vm.alloc, framePtr[pc[4].arg].asHeapObject(*HeapObject), pcOffset(vm, pc)) catch stdx.fatal();
                 }
                 pc += 5;
                 gotoNext(&pc, jumpTablePtr);
@@ -5006,7 +2899,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[2].arg;
                 const numFields = pc[3].arg;
                 const fields = framePtr[startLocal .. startLocal + numFields];
-                framePtr[pc[4].arg] = try vm.allocObject(sid, fields);
+                framePtr[pc[4].arg] = try cy.heap.allocObject(vm, sid, fields);
                 pc += 5;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -5021,7 +2914,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const keyIdxes = pc[4..4+numEntries];
                 pc += 4 + numEntries;
                 const vals = framePtr[startLocal .. startLocal + numEntries];
-                framePtr[dst] = try vm.allocMap(keyIdxes, vals);
+                framePtr[dst] = try cy.heap.allocMap(vm, keyIdxes, vals);
                 gotoNext(&pc, jumpTablePtr);
                 continue;
             },
@@ -5090,7 +2983,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const src = pc[1].arg;
                 const dst = pc[2].arg;
                 pc += 3;
-                vm.retain(framePtr[src]);
+                retain(vm, framePtr[src]);
                 release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[src];
                 gotoNext(&pc, jumpTablePtr);
@@ -5111,7 +3004,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpRetain:"::);
                 }
-                vm.retain(framePtr[pc[1].arg]);
+                retain(vm, framePtr[pc[1].arg]);
                 pc += 2;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -5394,7 +3287,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
                     if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
                         framePtr[dst] = obj.object.getValue(pc[6].arg);
-                        vm.retain(framePtr[dst]);
+                        retain(vm, framePtr[dst]);
                         pc += 7;
                         gotoNext(&pc, jumpTablePtr);
                         continue;
@@ -5406,7 +3299,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc[0] = cy.OpData{ .code = .fieldRetain };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
-                vm.retain(framePtr[dst]);
+                retain(vm, framePtr[dst]);
                 pc += 7;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -5524,7 +3417,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = gvm.getFieldOffset(obj, symId);
-                    if (offset != NullByteId) {
+                    if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.OpData{ .code = .fieldIC };
@@ -5551,7 +3444,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = gvm.getFieldOffset(obj, symId);
-                    if (offset != NullByteId) {
+                    if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.OpData{ .code = .fieldRetainIC };
@@ -5560,7 +3453,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     } else {
                         framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
-                    vm.retain(framePtr[dst]);
+                    retain(vm, framePtr[dst]);
                     pc += 7;
                     gotoNext(&pc, jumpTablePtr);
                     continue;
@@ -5579,7 +3472,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer());
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = gvm.getFieldOffset(obj, symId);
-                    if (offset != NullByteId) {
+                    if (offset != cy.NullU8) {
                         const lastValue = obj.object.getValuePtr(offset);
                         release(vm, lastValue.*);
                         lastValue.* = val;
@@ -5605,12 +3498,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpLambda:"::);
                 }
-                const funcPc = pcOffset(pc) - pc[1].arg;
+                const funcPc = pcOffset(vm, pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numLocals = pc[3].arg;
                 const dst = pc[4].arg;
                 pc += 5;
-                framePtr[dst] = try @call(.never_inline, vm.allocLambda, .{funcPc, numParams, numLocals});
+                framePtr[dst] = try @call(.never_inline, cy.heap.allocLambda, .{vm, funcPc, numParams, numLocals});
                 gotoNext(&pc, jumpTablePtr);
                 continue;
             },
@@ -5618,7 +3511,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpClosure:"::);
                 }
-                const funcPc = pcOffset(pc) - pc[1].arg;
+                const funcPc = pcOffset(vm, pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numCaptured = pc[3].arg;
                 const numLocals = pc[4].arg;
@@ -5626,7 +3519,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const capturedVals = pc[6..6+numCaptured];
                 pc += 6 + numCaptured;
 
-                framePtr[dst] = try @call(.never_inline, vm.allocClosure, .{framePtr, funcPc, numParams, numLocals, capturedVals});
+                framePtr[dst] = try @call(.never_inline, cy.heap.allocClosure, .{vm, framePtr, funcPc, numParams, numLocals, capturedVals});
                 gotoNext(&pc, jumpTablePtr);
                 continue;
             },
@@ -5656,7 +3549,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpStaticFunc:"::);
                 }
                 const symId = pc[1].arg;
-                framePtr[pc[2].arg] = try vm.allocFuncFromSym(symId);
+                framePtr[pc[2].arg] = try cy.heap.allocFuncFromSym(vm, symId);
                 pc += 3;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -5667,7 +3560,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 pc += 1;
                 if (vm.curFiber != &vm.mainFiber) {
-                    const res = popFiber(vm, NullId, framePtr, framePtr[1]);
+                    const res = cy.fiber.popFiber(vm, cy.NullId, framePtr, framePtr[1]);
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
@@ -5681,11 +3574,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const fiber = framePtr[pc[1].arg];
                 if (fiber.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, fiber.asPointer().?);
-                    if (obj.common.structId == FiberS) {
+                    if (obj.common.structId == cy.FiberS) {
                         if (&obj.fiber != vm.curFiber) {
                             // Only resume fiber if it's not done.
-                            if (obj.fiber.pc != NullId) {
-                                const res = pushFiber(vm, pcOffset(pc + 3), framePtr, &obj.fiber, pc[2].arg);
+                            if (obj.fiber.pc != cy.NullId) {
+                                const res = cy.fiber.pushFiber(vm, pcOffset(vm, pc + 3), framePtr, &obj.fiber, pc[2].arg);
                                 pc = res.pc;
                                 framePtr = res.framePtr;
                                 gotoNext(&pc, jumpTablePtr);
@@ -5693,7 +3586,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                             }
                         }
                     }
-                    releaseObject(vm, obj);
+                    cy.arc.releaseObject(vm, obj);
                 }
                 pc += 3;
                 gotoNext(&pc, jumpTablePtr);
@@ -5705,7 +3598,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 if (vm.curFiber != &vm.mainFiber) {
                     // Only yield on user fiber.
-                    const res = popFiber(vm, pcOffset(pc), framePtr, Value.None);
+                    const res = cy.fiber.popFiber(vm, pcOffset(vm, pc), framePtr, Value.None);
                     pc = res.pc;
                     framePtr = res.framePtr;
                 } else {
@@ -5725,7 +3618,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[5].arg;
 
                 const args = framePtr[startArgsLocal..startArgsLocal + numArgs];
-                const fiber = try @call(.never_inline, allocFiber, .{pcOffset(pc + 6), args, initialStackSize});
+                const fiber = try @call(.never_inline, cy.fiber.allocFiber, .{vm, pcOffset(vm, pc + 6), args, initialStackSize});
                 framePtr[dst] = fiber;
                 pc += jump;
                 gotoNext(&pc, jumpTablePtr);
@@ -5784,8 +3677,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpBox:"::);
                 }
                 const value = framePtr[pc[1].arg];
-                vm.retain(value);
-                framePtr[pc[2].arg] = try allocBox(vm, value);
+                retain(vm, value);
+                framePtr[pc[2].arg] = try cy.heap.allocBox(vm, value);
                 pc += 3;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -5802,7 +3695,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.common.structId == BoxS);
+                    std.debug.assert(obj.common.structId == cy.BoxS);
                 }
                 obj.box.val = rval;
                 gotoNext(&pc, jumpTablePtr);
@@ -5820,7 +3713,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.common.structId == BoxS);
+                    std.debug.assert(obj.common.structId == cy.BoxS);
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
@@ -5835,7 +3728,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (box.isPointer()) {
                     const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
                     if (builtin.mode == .Debug) {
-                        std.debug.assert(obj.common.structId == BoxS);
+                        std.debug.assert(obj.common.structId == cy.BoxS);
                     }
                     framePtr[pc[2].arg] = obj.box.val;
                 } else {
@@ -5862,9 +3755,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 //     std.debug.assert(obj.common.structId == BoxS);
                 // }
                 // gvm.stack[gvm.framePtr + pc[2].arg] = obj.box.val;
-                // vm.retain(obj.box.val);
+                // retain(vm, obj.box.val);
                 // pc += 3;
-                framePtr[pc[2].arg] = @call(.never_inline, boxValueRetain, .{box});
+                framePtr[pc[2].arg] = @call(.never_inline, boxValueRetain, .{vm, box});
                 pc += 3;
                 gotoNext(&pc, jumpTablePtr);
                 continue;
@@ -6068,7 +3961,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 vm.endLocal = pc[1].arg;
                 pc += 2;
-                vm.curFiber.pc = @intCast(u32, pcOffset(pc));
+                vm.curFiber.pc = @intCast(u32, pcOffset(vm, pc));
                 return error.End;
             },
         }
@@ -6138,7 +4031,7 @@ fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) li
 }
 
 fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) void {
-    const offset = pcOffset(pc);
+    const offset = pcOffset(vm, pc);
     switch (pc[0].code) {
         .callObjSym => {
             log.debug("{} op: {s} {any}", .{offset, @tagName(pc[0].code), std.mem.sliceAsBytes(pc[1..14])});
@@ -6259,7 +4152,7 @@ pub const StackFrame = struct {
 };
 
 const ObjectSymKey = struct {
-    structId: StructId,
+    structId: TypeId,
     symId: SymbolId,
 };
 
@@ -6269,7 +4162,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
     if (callee.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, callee.asPointer().?);
         switch (obj.common.structId) {
-            ClosureS => {
+            cy.ClosureS => {
                 if (numArgs != obj.closure.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     // Release func and args.
@@ -6289,13 +4182,13 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                 framePtr.*[1] = retInfo;
                 framePtr.*[2] = Value{ .retPcPtr = pc.* };
                 framePtr.*[3] = retFramePtr;
-                pc.* = toPc(obj.closure.funcPc);
+                pc.* = vm.toPc(obj.closure.funcPc);
 
                 // Copy over captured vars to new call stack locals.
                 const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                 std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
             },
-            LambdaS => {
+            cy.LambdaS => {
                 if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     // Release func and args.
@@ -6315,9 +4208,9 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                 framePtr.*[1] = retInfo;
                 framePtr.*[2] = Value{ .retPcPtr = pc.* };
                 framePtr.*[3] = retFramePtr;
-                pc.* = toPc(obj.lambda.funcPc);
+                pc.* = vm.toPc(obj.lambda.funcPc);
             },
-            NativeFunc1S => {
+            cy.NativeFunc1S => {
                 if (numArgs != obj.nativeFunc1.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
@@ -6342,9 +4235,9 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
 
 pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
-        const obj = stdx.ptrAlignCast(*HeapObject, callee.asPointer().?);
+        const obj = stdx.ptrAlignCast(*cy.HeapObject, callee.asPointer().?);
         switch (obj.common.structId) {
-            ClosureS => {
+            cy.ClosureS => {
                 if (numArgs != obj.closure.numParams) {
                     stdx.panic("params/args mismatch");
                 }
@@ -6353,7 +4246,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
                     return error.StackOverflow;
                 }
 
-                pc.* = toPc(obj.closure.funcPc);
+                pc.* = vm.toPc(obj.closure.funcPc);
                 framePtr.* += startLocal;
                 framePtr.*[1] = retInfo;
 
@@ -6361,7 +4254,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
                 const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                 std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
             },
-            LambdaS => {
+            cy.LambdaS => {
                 if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     stdx.fatal();
@@ -6376,15 +4269,15 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
                 framePtr.*[1] = retInfo;
                 framePtr.*[2] = Value{ .retPcPtr = pc.* + 14 };
                 framePtr.*[3] = retFramePtr;
-                pc.* = toPc(obj.lambda.funcPc);
+                pc.* = vm.toPc(obj.lambda.funcPc);
             },
-            NativeFunc1S => {
+            cy.NativeFunc1S => {
                 vm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
                 vm.framePtr = newFramePtr;
                 const res = obj.nativeFunc1.func(@ptrCast(*UserVM, vm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
-                releaseObject(vm, obj);
+                cy.arc.releaseObject(vm, obj);
                 pc.* += 14;
             },
             else => {},
@@ -6418,8 +4311,8 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapO
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const func = try getObjectFunctionFallback(vm, obj, typeId, symId);
 
-    vm.retain(func);
-    releaseObject(vm, obj);
+    retain(vm, func);
+    cy.arc.releaseObject(vm, obj);
 
     // Replace receiver with function.
     framePtr[startLocal + 4 + numArgs - 1] = func;
@@ -6434,7 +4327,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, obj: *HeapO
     };
 }
 
-fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
+fn callSymEntryNoInline(vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
     switch (sym.entryT) {
         .func => {
             if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * gvm.stack.len) {
@@ -6446,7 +4339,7 @@ fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodS
             const newFramePtr = framePtr + startLocal;
             newFramePtr[1] = retInfo;
             return PcFramePtr{
-                .pc = toPc(sym.inner.func.pc),
+                .pc = vm.toPc(sym.inner.func.pc),
                 .framePtr = newFramePtr,
             };
         },
@@ -6508,162 +4401,18 @@ fn callSymEntryNoInline(pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodS
     return pc;
 }
 
-fn popFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, retValue: Value) PcFramePtr {
-    vm.curFiber.stackPtr = vm.stack.ptr;
-    vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
-    vm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    vm.curFiber.setFramePtr(curFramePtr);
-    const dstLocal = vm.curFiber.getParentDstLocal();
-
-    // Release current fiber.
-    const nextFiber = vm.curFiber.prevFiber.?;
-    releaseObject(vm, @ptrCast(*HeapObject, vm.curFiber));
-
-    // Set to next fiber.
-    vm.curFiber = nextFiber;
-
-    // Copy return value to parent local.
-    if (dstLocal != NullByteId) {
-        vm.curFiber.getFramePtr()[dstLocal] = retValue;
-    } else {
-        release(vm, retValue);
-    }
-
-    vm.stack = vm.curFiber.stackPtr[0..vm.curFiber.stackLen];
-    vm.stackEndPtr = vm.stack.ptr + vm.curFiber.stackLen;
-    log.debug("fiber set to {} {*}", .{vm.curFiber.pc, vm.framePtr});
-    return PcFramePtr{
-        .pc = toPc(vm.curFiber.pc),
-        .framePtr = vm.curFiber.getFramePtr(),
-    };
-}
-
-/// Since this is called from a coresume expression, the fiber should already be retained.
-fn pushFiber(vm: *VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *Fiber, parentDstLocal: u8) PcFramePtr {
-    // Save current fiber.
-    vm.curFiber.stackPtr = vm.stack.ptr;
-    vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
-    vm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    vm.curFiber.setFramePtr(curFramePtr);
-
-    // Push new fiber.
-    fiber.prevFiber = vm.curFiber;
-    fiber.setParentDstLocal(parentDstLocal);
-    vm.curFiber = fiber;
-    vm.stack = fiber.stackPtr[0..fiber.stackLen];
-    vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
-    // Check if fiber was previously yielded.
-    if (vm.ops[fiber.pc].code == .coyield) {
-        log.debug("fiber set to {} {*}", .{fiber.pc + 3, vm.framePtr});
-        return .{
-            .pc = toPc(fiber.pc + 3),
-            .framePtr = fiber.getFramePtr(),
-        };
-    } else {
-        log.debug("fiber set to {} {*}", .{fiber.pc, vm.framePtr});
-        return .{
-            .pc = toPc(fiber.pc),
-            .framePtr = fiber.getFramePtr(),
-        };
-    }
-}
-
-fn allocFiber(pc: usize, args: []const Value, initialStackSize: u32) linksection(cy.HotSection) !Value {
-    // Args are copied over to the new stack.
-    var stack = try gvm.alloc.alloc(Value, initialStackSize);
-    // Assumes initial stack size generated by compiler is enough to hold captured args.
-    // Assumes call start local is at 1.
-    std.mem.copy(Value, stack[5..5+args.len], args);
-
-    const obj = try gvm.allocPoolObject();
-    const parentDstLocal = NullByteId;
-    obj.fiber = .{
-        .structId = FiberS,
-        .rc = 1,
-        .stackPtr = stack.ptr,
-        .stackLen = @intCast(u32, stack.len),
-        .pc = @intCast(u32, pc),
-        .extra = @as(u64, @ptrToInt(stack.ptr)) | (parentDstLocal << 48),
-        .prevFiber = undefined,
-    };
-    if (TraceEnabled) {
-        gvm.trace.numRetainAttempts += 1;
-        gvm.trace.numRetains += 1;
-    }
-    if (TrackGlobalRC) {
-        gvm.refCounts += 1;
-    }
-
-    return Value.initPtr(obj);
-}
-
-fn runReleaseOps(vm: *VM, stack: []const Value, framePtr: usize, startPc: usize) void {
-    var pc = startPc;
-    while (vm.ops[pc].code == .release) {
-        const local = vm.ops[pc+1].arg;
-        // stack[framePtr + local].dump();
-        release(vm, stack[framePtr + local]);
-        pc += 2;
-    }
-}
-
-/// Unwinds the stack and releases the locals.
-/// This also releases the initial captured vars since it's on the stack.
-fn releaseFiberStack(vm: *VM, fiber: *Fiber) void {
-    log.debug("release fiber stack", .{});
-    var stack = fiber.stackPtr[0..fiber.stackLen];
-    var framePtr = (@ptrToInt(fiber.getFramePtr()) - @ptrToInt(stack.ptr)) >> 3;
-    var pc = fiber.pc;
-
-    if (pc != NullId) {
-
-        // Check if fiber is still in init state.
-        switch (vm.ops[pc].code) {
-            .callFuncIC,
-            .callSym => {
-                if (vm.ops[pc + 11].code == .coreturn) {
-                    const numArgs = vm.ops[pc - 4].arg;
-                    for (fiber.getFramePtr()[5..5 + numArgs]) |arg| {
-                        release(vm, arg);
-                    }
-                }
-            },
-            else => {},
-        }
-
-        // Check if fiber was previously on a yield op.
-        if (vm.ops[pc].code == .coyield) {
-            const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
-            log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
-            // The yield statement already contains the end locals pc.
-            runReleaseOps(vm, stack, framePtr, pc + jump);
-        }
-        // Unwind stack and release all locals.
-        while (framePtr > 0) {
-            pc = pcOffset(stack[framePtr + 2].retPcPtr);
-            framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
-            const endLocalsPc = pcToEndLocalsPc(vm, pc);
-            log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
-            if (endLocalsPc != NullId) {
-                runReleaseOps(vm, stack, framePtr, endLocalsPc);
-            }
-        }
-    }
-    // Finally free stack.
-    vm.alloc.free(stack);
-}
 
 /// Given pc position, return the end locals pc in the same frame.
 /// TODO: Memoize this function.
-fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
+pub fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
     const idx = debug.indexOfDebugSym(vm, pc) orelse {
         stdx.panic("Missing debug symbol.");
     };
     const sym = vm.debugTable[idx];
-    if (sym.frameLoc != NullId) {
+    if (sym.frameLoc != cy.NullId) {
         const node = vm.compiler.nodes[sym.frameLoc];
         return node.head.func.genEndLocalsPc;
-    } else return NullId;
+    } else return cy.NullId;
 }
 
 pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(cy.HotSection) Value {
@@ -6686,15 +4435,11 @@ pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) link
     };
 }
 
-pub inline fn pcOffset(pc: [*]const cy.OpData) u32 {
-    return @intCast(u32, @ptrToInt(pc) - @ptrToInt(gvm.ops.ptr));
+pub inline fn pcOffset(vm: *const VM, pc: [*]const cy.OpData) u32 {
+    return @intCast(u32, @ptrToInt(pc) - @ptrToInt(vm.ops.ptr));
 }
 
-pub inline fn toPc(offset: usize) [*]cy.OpData {
-    return @ptrCast([*]cy.OpData, &gvm.ops.ptr[offset]);
-}
-
-inline fn framePtrOffsetFrom(stackPtr: [*]const Value, framePtr: [*]const Value) usize {
+pub inline fn framePtrOffsetFrom(stackPtr: [*]const Value, framePtr: [*]const Value) usize {
     // Divide by eight.
     return (@ptrToInt(framePtr) - @ptrToInt(stackPtr)) >> 3;
 }
@@ -6708,19 +4453,19 @@ pub inline fn toFramePtr(offset: usize) [*]Value {
     return @ptrCast([*]Value, &gvm.stack[offset]);
 }
 
-const PcFramePtr = struct {
+pub const PcFramePtr = struct {
     pc: [*]cy.OpData,
     framePtr: [*]Value,
 };
 
-fn boxValueRetain(box: Value) linksection(cy.HotSection) Value {
+fn boxValueRetain(vm: *VM, box: Value) linksection(cy.HotSection) Value {
     @setCold(true);
     if (box.isPointer()) {
         const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
         if (builtin.mode == .Debug) {
-            std.debug.assert(obj.common.structId == BoxS);
+            std.debug.assert(obj.common.structId == cy.BoxS);
         }
-        gvm.retain(obj.box.val);
+        retain(vm, obj.box.val);
         return obj.box.val;
     } else {
         // Box can be none if used before captured var was initialized.
@@ -6729,23 +4474,6 @@ fn boxValueRetain(box: Value) linksection(cy.HotSection) Value {
         }
         return Value.None;
     }
-}
-
-fn allocBox(vm: *VM, val: Value) !Value {
-    const obj = try vm.allocPoolObject();
-    obj.box = .{
-        .structId = BoxS,
-        .rc = 1,
-        .val = val,
-    };
-    if (TraceEnabled) {
-        vm.trace.numRetainAttempts += 1;
-        vm.trace.numRetains += 1;
-    }
-    if (TrackGlobalRC) {
-        vm.refCounts += 1;
-    }
-    return Value.initPtr(obj);
 }
 
 fn setCapValToFuncSyms(vm: *VM, capVal: Value, numSyms: u8, syms: []const cy.OpData) void {
@@ -6757,59 +4485,7 @@ fn setCapValToFuncSyms(vm: *VM, capVal: Value, numSyms: u8, syms: []const cy.OpD
         const ptr = sym.inner.closure.getCapturedValuesPtr();
         ptr[capVarIdx] = capVal;
     }
-    vm.retainInc(capVal, numSyms);
-}
-
-// Performs stackGrowTotalCapacityPrecise in addition to patching the frame pointers.
-fn growStackAuto(vm: *VM) !void {
-    @setCold(true);
-    // Grow by 50% with minimum of 16.
-    var growSize = vm.stack.len / 2;
-    if (growSize < 16) {
-        growSize = 16;
-    }
-    try growStackPrecise(vm, vm.stack.len + growSize);
-}
-
-fn ensureTotalStackCapacity(vm: *VM, newCap: usize) !void {
-    if (newCap > vm.stack.len) {
-        var betterCap = vm.stack.len;
-        while (true) {
-            betterCap +|= betterCap / 2 + 8;
-            if (betterCap >= newCap) {
-                break;
-            }
-        }
-        try growStackPrecise(vm, betterCap);
-    }
-}
-
-fn growStackPrecise(vm: *VM, newCap: usize) !void {
-    if (vm.alloc.resize(vm.stack, newCap)) {
-        vm.stack.len = newCap;
-        vm.stackEndPtr = vm.stack.ptr + newCap;
-    } else {
-        const newStack = try vm.alloc.alloc(Value, newCap);
-
-        // Copy to new stack.
-        std.mem.copy(Value, newStack[0..vm.stack.len], vm.stack);
-
-        // Patch frame ptrs. 
-        var curFpOffset = framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
-        while (curFpOffset != 0) {
-            const prevFpOffset = framePtrOffsetFrom(vm.stack.ptr, newStack[curFpOffset + 3].retFramePtr);
-            newStack[curFpOffset + 3].retFramePtr = newStack.ptr + prevFpOffset;
-            curFpOffset = prevFpOffset;
-        }
-
-        // Free old stack.
-        vm.alloc.free(vm.stack);
-
-        // Update to new frame ptr.
-        vm.framePtr = newStack.ptr + framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
-        vm.stack = newStack;
-        vm.stackEndPtr = vm.stack.ptr + newCap;
-    }
+    cy.arc.retainInc(vm, capVal, numSyms);
 }
 
 /// Like Value.dump but shows heap values.
@@ -6865,84 +4541,6 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 },
             }
         }
-    }
-}
-
-pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(StdSection) Value {
-    if (val.isPointer()) {
-        const obj = val.asHeapObject(*cy.HeapObject);
-        switch (obj.common.structId) {
-            cy.ListS => {
-                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                const new = vm.allocList(list.items()) catch stdx.fatal();
-                for (list.items()) |item| {
-                    vm.retain(item);
-                }
-                return new;
-            },
-            cy.MapS => {
-                const new = vm.allocEmptyMap() catch stdx.fatal();
-                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject(*cy.HeapObject)).map.inner);
-
-                const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                var iter = map.iterator();
-                while (iter.next()) |entry| {
-                    vm.retain(entry.key);
-                    vm.retain(entry.value);
-                    newMap.put(vm.alloc, @ptrCast(*const cy.VM, vm), entry.key, entry.value) catch stdx.fatal();
-                }
-                return new;
-            },
-            cy.ClosureS => {
-                fmt.panic("Unsupported copy closure.", &.{});
-            },
-            cy.LambdaS => {
-                fmt.panic("Unsupported copy closure.", &.{});
-            },
-            cy.AstringT => {
-                vm.retainObject(obj);
-                return val;
-            },
-            cy.UstringT => {
-                vm.retainObject(obj);
-                return val;
-            },
-            cy.RawStringT => {
-                vm.retainObject(obj);
-                return val;
-            },
-            cy.FiberS => {
-                fmt.panic("Unsupported copy fiber.", &.{});
-            },
-            cy.BoxS => {
-                fmt.panic("Unsupported copy box.", &.{});
-            },
-            cy.NativeFunc1S => {
-                fmt.panic("Unsupported copy native func.", &.{});
-            },
-            cy.TccStateS => {
-                fmt.panic("Unsupported copy tcc state.", &.{});
-            },
-            cy.OpaquePtrS => {
-                fmt.panic("Unsupported copy opaque ptr.", &.{});
-            },
-            else => {
-                const numFields = @ptrCast(*const cy.VM, vm).structs.buf[obj.common.structId].numFields;
-                const fields = obj.object.getValuesConstPtr()[0..numFields];
-                var new: Value = undefined;
-                if (numFields <= 4) {
-                    new = vm.allocObjectSmall(obj.common.structId, fields) catch stdx.fatal();
-                } else {
-                    new = vm.allocObject(obj.common.structId, fields) catch stdx.fatal();
-                }
-                for (fields) |field| {
-                    vm.retain(field);
-                }
-                return new;
-            },
-        }
-    } else {
-        return val;
     }
 }
 
@@ -7021,71 +4619,6 @@ pub const AbsFuncSigKey = KeyU96;
 /// Absolute var signature key.
 const AbsVarSigKey = KeyU64;
 
-const StringConcat = struct {
-    left: []const u8,
-    right: []const u8,
-};
-
-pub const StringConcatContext = struct {
-    pub fn hash(_: StringConcatContext, concat: StringConcat) u64 {
-        return @call(.always_inline, computeStringConcatHash, .{concat.left, concat.right});
-    }
-
-    pub fn eql(_: StringConcatContext, a: StringConcat, b: []const u8) bool {
-        if (a.left.len + a.right.len != b.len) {
-            return false;
-        }
-        return std.mem.eql(u8, a.left, b[0..a.left.len]) and 
-            std.mem.eql(u8, a.right, b[a.left.len..]);
-    }
-};
-
-const StringConcat3 = struct {
-    str1: []const u8,
-    str2: []const u8,
-    str3: []const u8,
-};
-
-pub const StringConcat3Context = struct {
-    pub fn hash(_: StringConcat3Context, concat: StringConcat3) u64 {
-        return @call(.always_inline, computeStringConcat3Hash, .{concat.str1, concat.str2, concat.str3});
-    }
-
-    pub fn eql(_: StringConcat3Context, a: StringConcat3, b: []const u8) bool {
-        if (a.str1.len + a.str2.len + a.str3.len != b.len) {
-            return false;
-        }
-        return std.mem.eql(u8, a.str1, b[0..a.str1.len]) and 
-            std.mem.eql(u8, a.str2, b[a.str1.len..a.str1.len+a.str2.len]) and
-            std.mem.eql(u8, a.str3, b[a.str1.len+a.str2.len..]);
-    }
-};
-
-fn computeStringConcat3Hash(str1: []const u8, str2: []const u8, str3: []const u8) u64 {
-    var c = std.hash.Wyhash.init(0);
-    @call(.always_inline, c.update, .{str1});
-    @call(.always_inline, c.update, .{str2});
-    @call(.always_inline, c.update, .{str3});
-    return @call(.always_inline, c.final, .{});
-}
-
-fn computeStringConcatHash(left: []const u8, right: []const u8) u64 {
-    var c = std.hash.Wyhash.init(0);
-    @call(.always_inline, c.update, .{left});
-    @call(.always_inline, c.update, .{right});
-    return @call(.always_inline, c.final, .{});
-}
-
-test "computeStringConcatHash() matches the concated string hash." {
-    const exp = std.hash.Wyhash.hash(0, "foobar");
-    try t.eq(computeStringConcatHash("foo", "bar"), exp);
-    try t.eq(computeStringConcat3Hash("fo", "ob", "ar"), exp);
-}
-
-fn getStaticUstringHeader(vm: *const VM, start: usize) *align(1) cy.StaticUstringHeader {
-    return @ptrCast(*align (1) cy.StaticUstringHeader, vm.strBuf.ptr + start - 12);
-}
-
 const SliceWriter = struct {
     buf: []u8,
     idx: *u32,
@@ -7130,7 +4663,7 @@ const SliceWriter = struct {
     }
 };
 
-const EvalConfig = struct {
+pub const EvalConfig = struct {
     /// Whether this process intends to perform eval once and exit.
     /// In that scenario, the compiler can skip generating the final release ops for the main block.
     singleRun: bool = false,

@@ -1519,7 +1519,7 @@ pub const VMcompiler = struct {
         return val;
     }
 
-    fn genMethodDecl(self: *VMcompiler, structId: cy.StructId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
+    fn genMethodDecl(self: *VMcompiler, structId: cy.TypeId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
         // log.debug("gen method {s}", .{name});
         const numParams = func.params.end - func.params.start;
         const methodId = try self.vm.ensureMethodSymKey(name, numParams - 1);
@@ -1606,7 +1606,7 @@ pub const VMcompiler = struct {
                 }
             }
 
-            const closure = try self.vm.allocEmptyClosure(opStart, numParams, @intCast(u8, numLocals), numCaptured);
+            const closure = try cy.heap.allocEmptyClosure(self.vm, opStart, numParams, @intCast(u8, numLocals), numCaptured);
             const rtSym = cy.FuncSymbolEntry.initClosure(closure.asHeapObject(*cy.Closure));
             self.vm.setFuncSym(symId, rtSym);
         } else {

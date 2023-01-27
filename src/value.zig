@@ -6,6 +6,7 @@ const t = stdx.testing;
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
 const cy = @import("cyber.zig");
+const fmt = @import("fmt.zig");
 
 /// Most significant bit.
 const SignMask: u64 = 1 << 63;
@@ -485,6 +486,84 @@ pub const ValueUserTag = enum {
     dirIter,
     none,
 };
+
+pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
+    if (val.isPointer()) {
+        const obj = val.asHeapObject(*cy.HeapObject);
+        switch (obj.common.structId) {
+            cy.ListS => {
+                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+                const new = cy.heap.allocList(vm, list.items()) catch stdx.fatal();
+                for (list.items()) |item| {
+                    cy.arc.retain(vm, item);
+                }
+                return new;
+            },
+            cy.MapS => {
+                const new = cy.heap.allocEmptyMap(vm) catch stdx.fatal();
+                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject(*cy.HeapObject)).map.inner);
+
+                const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+                var iter = map.iterator();
+                while (iter.next()) |entry| {
+                    cy.arc.retain(vm, entry.key);
+                    cy.arc.retain(vm, entry.value);
+                    newMap.put(vm.alloc, @ptrCast(*const cy.VM, vm), entry.key, entry.value) catch stdx.fatal();
+                }
+                return new;
+            },
+            cy.ClosureS => {
+                fmt.panic("Unsupported copy closure.", &.{});
+            },
+            cy.LambdaS => {
+                fmt.panic("Unsupported copy closure.", &.{});
+            },
+            cy.AstringT => {
+                cy.arc.retainObject(vm, obj);
+                return val;
+            },
+            cy.UstringT => {
+                cy.arc.retainObject(vm, obj);
+                return val;
+            },
+            cy.RawStringT => {
+                cy.arc.retainObject(vm, obj);
+                return val;
+            },
+            cy.FiberS => {
+                fmt.panic("Unsupported copy fiber.", &.{});
+            },
+            cy.BoxS => {
+                fmt.panic("Unsupported copy box.", &.{});
+            },
+            cy.NativeFunc1S => {
+                fmt.panic("Unsupported copy native func.", &.{});
+            },
+            cy.TccStateS => {
+                fmt.panic("Unsupported copy tcc state.", &.{});
+            },
+            cy.OpaquePtrS => {
+                fmt.panic("Unsupported copy opaque ptr.", &.{});
+            },
+            else => {
+                const numFields = @ptrCast(*const cy.VM, vm).structs.buf[obj.common.structId].numFields;
+                const fields = obj.object.getValuesConstPtr()[0..numFields];
+                var new: Value = undefined;
+                if (numFields <= 4) {
+                    new = cy.heap.allocObjectSmall(vm, obj.common.structId, fields) catch stdx.fatal();
+                } else {
+                    new = cy.heap.allocObject(vm, obj.common.structId, fields) catch stdx.fatal();
+                }
+                for (fields) |field| {
+                    cy.arc.retain(vm, field);
+                }
+                return new;
+            },
+        }
+    } else {
+        return val;
+    }
+}
 
 test "floatCanBeInteger" {
     var f: f64 = -100000000000;

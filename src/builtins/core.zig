@@ -461,7 +461,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.S
     ivm.structs.buf[sid].numFields = 1;
     ivm.addFieldSym(sid, tccField, 0) catch stdx.fatal();
 
-    const cyState = ivm.allocTccState(state.?, lib) catch stdx.fatal();
+    const cyState = cy.heap.allocTccState(ivm, state.?, lib) catch stdx.fatal();
     // ivm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
     for (cfuncs.items()) |cfunc| {
         const sym = vm.valueToTempString(ivm.getField2(cfunc, symf) catch stdx.fatal());
@@ -498,7 +498,7 @@ pub fn char(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
 pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = args[0];
     defer vm.release(val);
-    return vm_.shallowCopy(@ptrCast(*cy.VM, vm), val);
+    return cy.value.shallowCopy(@ptrCast(*cy.VM, vm), val);
 }
 
 pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -650,11 +650,10 @@ pub fn number(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 }
 
 pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = vm;
     _ = nargs;
     const val = args[0];
     if (val.isNumber()) {
-        return gvm.allocOpaquePtr(@intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch stdx.fatal();
+        return cy.heap.allocOpaquePtr(@ptrCast(*cy.VM, vm), @intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch stdx.fatal();
     } else {
         stdx.panicFmt("Unsupported conversion", .{});
     }
@@ -686,14 +685,14 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             for (elems) |*elem, i| {
                 elem.* = try fromCyonValue(self, dlist.getIndex(i));
             }
-            return try gvm.allocOwnedList(elems);
+            return try cy.heap.allocOwnedList(gvm, elems);
         },
         .map => {
             var dmap = val.asMap() catch stdx.fatal();
             defer dmap.deinit();
             var iter = dmap.iterator();
 
-            const mapVal = try gvm.allocEmptyMap();
+            const mapVal = try cy.heap.allocEmptyMap(gvm);
             const map = stdx.ptrAlignCast(*cy.HeapObject, mapVal.asPointer().?);
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
@@ -818,7 +817,7 @@ pub fn rawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 export fn fromCStr(ptr: [*:0]const u8) Value {
     const slice = std.mem.span(ptr);
-    return gvm.allocRawString(slice) catch stdx.fatal();
+    return cy.heap.allocRawString(gvm, slice) catch stdx.fatal();
 }
 
 export fn toCStr(val: Value, len: *u32) [*:0]const u8 {
@@ -846,7 +845,7 @@ export fn freeCStr(ptr: [*:0]const u8, len: u32) void {
 }
 
 export fn cRelease(val: Value) void {
-    vm_.release(gvm, val);
+    cy.arc.release(gvm, val);
 }
 
 export fn cGetPtr(val: Value) ?*anyopaque {
@@ -854,7 +853,7 @@ export fn cGetPtr(val: Value) ?*anyopaque {
 }
 
 export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {
-    return gvm.allocOpaquePtr(ptr) catch stdx.fatal();
+    return cy.heap.allocOpaquePtr(gvm, ptr) catch stdx.fatal();
 }
 
 // export fn printInt(n: i32) void {

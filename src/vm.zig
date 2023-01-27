@@ -4592,6 +4592,7 @@ const AarchAddSubtractImmOp = packed struct {
 /// Generate assembly labels to find sections easier.
 const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and true;
 const EnableAarch64ComputedGoto = aarch64 and builtin.mode != .Debug;
+const useGoto = EnableAarch64ComputedGoto;
 
 fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     if (GenLabels) {
@@ -4648,7 +4649,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[1].arg] = Value.None;
                 pc += 2;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .constOp => {
@@ -4657,7 +4658,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[2].arg] = Value.initRaw(vm.consts[pc[1].arg].val);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .constI8 => {
@@ -4666,7 +4667,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, pc[1].arg)));
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .constI8Int => {
@@ -4675,7 +4676,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[2].arg] = Value.initI32(@intCast(i32, @bitCast(i8, pc[1].arg)));
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .release => {
@@ -4684,7 +4685,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 release(vm, framePtr[pc[1].arg]);
                 pc += 2;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .releaseN => {
@@ -4696,7 +4697,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     release(vm, framePtr[local.arg]);
                 }
                 pc += 2 + numLocals;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .fieldIC => {
@@ -4710,7 +4711,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
                         framePtr[dst] = obj.object.getValue(pc[6].arg);
                         pc += 7;
-                        gotoNext(&pc, jumpTablePtr);
+                        if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                         continue;
                     }
                 } else {
@@ -4721,7 +4722,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
                 pc += 7;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .copyRetainSrc => {
@@ -4732,7 +4733,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[pc[2].arg] = val;
                 vm.retain(val);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .jumpNotCond => {
@@ -4751,7 +4752,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 4;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .neg => {
@@ -4765,7 +4766,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     // @call(.never_inline, evalNegFallback, .{val});
                 framePtr[pc[2].arg] = evalNeg(val);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .compare => {
@@ -4778,7 +4779,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[pc[3].arg] = if (left.val == right.val) Value.True else 
                     @call(.never_inline, evalCompare, .{vm, left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .compareNot => {
@@ -4791,7 +4792,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[pc[3].arg] = if (left.val == right.val) Value.False else 
                     @call(.never_inline, evalCompareNot, .{vm, left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             // .lessNumber => {
@@ -4815,7 +4816,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ left, right });
                 }
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .addInt => {
@@ -4826,7 +4827,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = Value.initI32(left.asI32() + right.asI32());
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .minus => {
@@ -4839,7 +4840,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     Value.initF64(left.asF64() - right.asF64())
                 else @call(.never_inline, evalMinusFallback, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .minusInt => {
@@ -4850,7 +4851,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = Value.initI32(left.asI32() - right.asI32());
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .less => {
@@ -4864,7 +4865,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 else
                     @call(.never_inline, evalLessFallback, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .lessInt => {
@@ -4875,7 +4876,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = Value.initBool(left.asI32() < right.asI32());
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .greater => {
@@ -4887,7 +4888,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalGreater(srcLeft, srcRight);
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .lessEqual => {
@@ -4899,7 +4900,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalLessOrEqual(srcLeft, srcRight);
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .greaterEqual => {
@@ -4911,7 +4912,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .true => {
@@ -4920,7 +4921,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[1].arg] = Value.True;
                 pc += 2;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .false => {
@@ -4929,7 +4930,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[1].arg] = Value.False;
                 pc += 2;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .not => {
@@ -4939,7 +4940,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = evalNot(val);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .stringTemplate => {
@@ -4955,7 +4956,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const vals = framePtr[startLocal .. startLocal + exprCount];
                 const res = try @call(.never_inline, vm.allocStringTemplate, .{strs, vals});
                 framePtr[dst] = res;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .list => {
@@ -4969,7 +4970,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const elems = framePtr[startLocal..startLocal + numElems];
                 const list = try vm.allocList(elems);
                 framePtr[dst] = list;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .mapEmpty => {
@@ -4979,7 +4980,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[1].arg;
                 pc += 2;
                 framePtr[dst] = try vm.allocEmptyMap();
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .objectSmall => {
@@ -4995,7 +4996,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     vm.objectTraceMap.put(vm.alloc, framePtr[pc[4].arg].asHeapObject(*HeapObject), pcOffset(pc)) catch stdx.fatal();
                 }
                 pc += 5;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .object => {
@@ -5008,7 +5009,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const fields = framePtr[startLocal .. startLocal + numFields];
                 framePtr[pc[4].arg] = try vm.allocObject(sid, fields);
                 pc += 5;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .map => {
@@ -5022,7 +5023,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 4 + numEntries;
                 const vals = framePtr[startLocal .. startLocal + numEntries];
                 framePtr[dst] = try vm.allocMap(keyIdxes, vals);
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .slice => {
@@ -5034,7 +5035,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const end = framePtr[pc[3].arg];
                 framePtr[pc[4].arg] = try @call(.never_inline, vm.sliceOp, .{slice, start, end});
                 pc += 5;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setInitN => {
@@ -5047,7 +5048,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 for (locals) |local| {
                     framePtr[local.arg] = Value.None;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setIndex => {
@@ -5059,7 +5060,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const rightv = framePtr[pc[3].arg];
                 try @call(.never_inline, vm.setIndex, .{leftv, indexv, rightv});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setIndexRelease => {
@@ -5071,7 +5072,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const rightv = framePtr[pc[3].arg];
                 try @call(.never_inline, vm.setIndexRelease, .{leftv, indexv, rightv});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .copy => {
@@ -5080,7 +5081,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[2].arg] = framePtr[pc[1].arg];
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .copyRetainRelease => {
@@ -5093,7 +5094,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 vm.retain(framePtr[src]);
                 release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[src];
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .copyReleaseDst => {
@@ -5104,7 +5105,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 release(vm, framePtr[dst]);
                 framePtr[dst] = framePtr[pc[1].arg];
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .retain => {
@@ -5113,7 +5114,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 vm.retain(framePtr[pc[1].arg]);
                 pc += 2;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .index => {
@@ -5124,7 +5125,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const indexv = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = try @call(.never_inline, vm.getIndex, .{recv, indexv});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .reverseIndex => {
@@ -5135,7 +5136,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const indexv = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = try @call(.never_inline, vm.getReverseIndex, .{recv, indexv});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .jump => {
@@ -5144,7 +5145,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 @setRuntimeSafety(false);
                 pc += @intCast(usize, @ptrCast(*const align(1) i16, &pc[1]).*);
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .jumpCond => {
@@ -5164,7 +5165,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 4;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .call0 => {
@@ -5180,7 +5181,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 0, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .call1 => {
@@ -5196,7 +5197,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // const retInfo = buildReturnInfo(pcOffset(pc), framePtrOffset(framePtr), 1, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .callObjFuncIC => {
@@ -5223,13 +5224,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[2] = Value{ .retPcPtr = pc + 14 };
                     framePtr[3] = retFramePtr;
                     pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 }
 
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .callObjSym };
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .callObjNativeFuncIC => {
@@ -5276,13 +5277,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     // In the future, we might allow native functions to change the pc and framePtr.
                     // pc = vm.pc;
                     // framePtr = vm.framePtr;
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 }
 
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .callObjSym };
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .callFuncIC => {
@@ -5303,7 +5304,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[3] = retFramePtr;
 
                 pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 5).*));
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .callNativeFuncIC => {
@@ -5333,7 +5334,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     }
                 }
                 pc += 11;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .ret1 => {
@@ -5341,7 +5342,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpRet1:"::);
                 }
                 if (@call(.always_inline, popStackFrameLocal1, .{vm, &pc, &framePtr})) {
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 } else {
                     return;
@@ -5352,7 +5353,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpRet0:"::);
                 }
                 if (@call(.always_inline, popStackFrameLocal0, .{&pc, &framePtr})) {
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 } else {
                     return;
@@ -5370,7 +5371,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         release(vm, lastValue.*);
                         lastValue.* = framePtr[pc[2].arg];
                         pc += 7;
-                        gotoNext(&pc, jumpTablePtr);
+                        if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                         continue;
                     }
                 } else {
@@ -5381,7 +5382,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
                 pc += 7;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .fieldRetainIC => {
@@ -5396,7 +5397,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(pc[6].arg);
                         vm.retain(framePtr[dst]);
                         pc += 7;
-                        gotoNext(&pc, jumpTablePtr);
+                        if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                         continue;
                     }
                 } else {
@@ -5408,7 +5409,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
                 vm.retain(framePtr[dst]);
                 pc += 7;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .forRangeInit => {
@@ -5435,7 +5436,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         cy.OpData{ .code = .forRangeReverse };
                     pc += 8;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .forRange => {
@@ -5450,7 +5451,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 7;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .forRangeReverse => {
@@ -5465,7 +5466,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 7;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .jumpNotNone => {
@@ -5479,7 +5480,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 4;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setField => {
@@ -5495,7 +5496,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = framePtr[right];
                 try gvm.setField(recv, fieldId, val);
                 // try @call(.never_inline, gvm.setField, .{recv, fieldId, val});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .fieldRelease => {
@@ -5509,7 +5510,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[left];
                 framePtr[dst] = try @call(.never_inline, gvm.getField, .{recv, fieldId});
                 release(vm, recv);
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .field => {
@@ -5534,7 +5535,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
                     pc += 7;
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 } else {
                     return vm.getFieldMissingSymbolError();
@@ -5562,7 +5563,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     }
                     vm.retain(framePtr[dst]);
                     pc += 7;
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 } else {
                     return vm.getFieldMissingSymbolError();
@@ -5589,7 +5590,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData { .arg = offset };
                         pc += 7;
-                        gotoNext(&pc, jumpTablePtr);
+                        if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                         continue;
                     } else {
                         return vm.getFieldMissingSymbolError();
@@ -5598,7 +5599,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     return vm.setFieldNotObjectError();
                 }
                 pc += 7;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .lambda => {
@@ -5611,7 +5612,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[4].arg;
                 pc += 5;
                 framePtr[dst] = try @call(.never_inline, vm.allocLambda, .{funcPc, numParams, numLocals});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .closure => {
@@ -5627,7 +5628,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 6 + numCaptured;
 
                 framePtr[dst] = try @call(.never_inline, vm.allocClosure, .{framePtr, funcPc, numParams, numLocals, capturedVals});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .staticVar => {
@@ -5638,7 +5639,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const sym = vm.varSyms.buf[symId];
                 framePtr[pc[2].arg] = sym.value;
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setStaticVar => {
@@ -5648,7 +5649,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const symId = pc[1].arg;
                 vm.varSyms.buf[symId].value = framePtr[pc[2].arg];
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .staticFunc => {
@@ -5658,7 +5659,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const symId = pc[1].arg;
                 framePtr[pc[2].arg] = try vm.allocFuncFromSym(symId);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .coreturn => {
@@ -5671,7 +5672,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .coresume => {
@@ -5688,7 +5689,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                                 const res = pushFiber(vm, pcOffset(pc + 3), framePtr, &obj.fiber, pc[2].arg);
                                 pc = res.pc;
                                 framePtr = res.framePtr;
-                                gotoNext(&pc, jumpTablePtr);
+                                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                                 continue;
                             }
                         }
@@ -5696,7 +5697,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     releaseObject(vm, obj);
                 }
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .coyield => {
@@ -5711,7 +5712,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 } else {
                     pc += 3;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .coinit => {
@@ -5728,7 +5729,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const fiber = try @call(.never_inline, allocFiber, .{pcOffset(pc + 6), args, initialStackSize});
                 framePtr[dst] = fiber;
                 pc += jump;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .mul => {
@@ -5740,7 +5741,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalMultiply, .{srcLeft, srcRight});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .div => {
@@ -5752,7 +5753,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalDivide, .{srcLeft, srcRight});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .mod => {
@@ -5764,7 +5765,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalMod, .{srcLeft, srcRight});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .pow => {
@@ -5776,7 +5777,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dstLocal = pc[3].arg;
                 pc += 4;
                 framePtr[dstLocal] = @call(.never_inline, evalPower, .{srcLeft, srcRight});
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .box => {
@@ -5787,7 +5788,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 vm.retain(value);
                 framePtr[pc[2].arg] = try allocBox(vm, value);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setBoxValue => {
@@ -5805,7 +5806,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     std.debug.assert(obj.common.structId == BoxS);
                 }
                 obj.box.val = rval;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setBoxValueRelease => {
@@ -5824,7 +5825,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .boxValue => {
@@ -5845,7 +5846,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[pc[2].arg] = Value.None;
                 }
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .boxValueRetain => {
@@ -5866,7 +5867,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // pc += 3;
                 framePtr[pc[2].arg] = @call(.never_inline, boxValueRetain, .{box});
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .tag => {
@@ -5877,7 +5878,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = pc[2].arg;
                 framePtr[pc[3].arg] = Value.initTag(tagId, val);
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .tagLiteral => {
@@ -5887,7 +5888,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const symId = pc[1].arg;
                 framePtr[pc[2].arg] = Value.initTagLiteral(symId);
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .tryValue => {
@@ -5898,13 +5899,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (!val.isError()) {
                     framePtr[pc[2].arg] = val;
                     pc += 5;
-                    gotoNext(&pc, jumpTablePtr);
+                    if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                     continue;
                 } else {
                     if (framePtr != vm.stack.ptr) {
                         framePtr[0] = val;
                         pc += @ptrCast(*const align(1) u16, pc + 3).*;
-                        gotoNext(&pc, jumpTablePtr);
+                        if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                         continue;
                     } else {
                         // Panic on root block.
@@ -5922,7 +5923,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseAnd, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .bitwiseOr => {
@@ -5933,7 +5934,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseOr, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .bitwiseXor => {
@@ -5944,7 +5945,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseXor, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .bitwiseNot => {
@@ -5954,7 +5955,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = framePtr[pc[1].arg];
                 framePtr[pc[2].arg] = @call(.never_inline, evalBitwiseNot, .{val});
                 pc += 3;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .bitwiseLeftShift => {
@@ -5965,7 +5966,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseLeftShift, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .bitwiseRightShift => {
@@ -5976,7 +5977,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseRightShift, .{left, right});
                 pc += 4;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .setCapValToFuncSyms => {
@@ -5988,7 +5989,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const syms = pc[3..3+numSyms*2];
                 @call(.never_inline, setCapValToFuncSyms, .{ vm, capVal, numSyms, syms });
                 pc += 3 + numSyms*2;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .callObjSym => {
@@ -6020,7 +6021,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .callSym => {
@@ -6034,7 +6035,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const res = try @call(.never_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
                 pc = res.pc;
                 framePtr = res.framePtr;
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .match => {
@@ -6059,7 +6060,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (i == numCases) {
                     pc += @ptrCast(*align (1) u16, pc + 4 + i * 3 - 1).*;
                 }
-                gotoNext(&pc, jumpTablePtr);
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
             .end => {

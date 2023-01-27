@@ -3960,6 +3960,17 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             p.tokens.clearRetainingCapacity();
             p.next_pos = 0;
 
+            if (p.src.items.len > 2 and p.src.items[0] == '#' and p.src.items[1] == '!') {
+                // Ignore shebang line.
+                while (!isAtEndChar(p)) {
+                    if (peekChar(p) == '\n') {
+                        advanceChar(p);
+                        break;
+                    }
+                    advanceChar(p);
+                }
+            }
+
             var state = TokenizeState{
                 .stateT = .start,
             };

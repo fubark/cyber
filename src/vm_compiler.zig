@@ -2088,7 +2088,13 @@ pub const VMcompiler = struct {
     }
 
     fn canUseLocalAsTemp(self: *const VMcompiler, local: LocalId) bool {
-        return local == 0 or local >= self.curBlock.numLocals;
+        if (self.blocks.items.len > 1) {
+            // Temp or return slot.
+            return local == 0 or local >= self.curBlock.numLocals;
+        } else {
+            // For main block, it can only use local as a temporary if it's in fact a temp.
+            return local >= self.curBlock.numLocals;
+        }
     }
 
     fn isTempLocal(self: *const VMcompiler, local: LocalId) bool {

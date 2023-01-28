@@ -1674,10 +1674,19 @@ test "Binary Expressions" {
     );
     try t.eq(val.asF64toI32(), 32);
 
-    // Modulus
     _ = try run.eval(
         \\import t 'test'
+        \\
+        \\-- Modulus
         \\try t.eq(3 % 2, 1)
+        \\
+        \\-- Assign to same var.
+        \\a = 0
+        \\a = a + 1
+        \\try t.eq(a, 1)
+        \\a = 0
+        \\a = 1 + a
+        \\try t.eq(a, 1)
     );
 
     // Right function call.

@@ -44,6 +44,12 @@ try t.eq(newS == s, false)
 try t.eq(newS.foo, 123)
 try t.eq(newS.bar, rcList)
 
+-- string()
+str = 'abcd'
+try t.eq(string(str[0..2]), 'ab')
+rstr = rawstring('abcd')
+try t.eq(string(rstr[0..2]), 'ab')
+
 -- writeFile() rawstring
 if os.system != 'wasm':
   s = rawstring('').insertByte(0, 255)

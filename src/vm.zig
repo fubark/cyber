@@ -1630,6 +1630,15 @@ pub const VM = struct {
                         outCharLen.* = obj.ustring.charLen;
                     }
                     return obj.ustring.getConstSlice();
+                } else if (obj.common.structId == cy.StringSliceT) {
+                    if (getCharLen) {
+                        if (obj.stringSlice.isAstring()) {
+                            outCharLen.* = obj.stringSlice.len;
+                        } else {
+                            outCharLen.* = obj.stringSlice.uCharLen;
+                        }
+                    }
+                    return obj.stringSlice.getConstSlice();
                 } else if (obj.common.structId == cy.RawStringT) {
                     const start = writer.pos();
                     std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
@@ -1638,6 +1647,11 @@ pub const VM = struct {
                         outCharLen.* = @intCast(u32, slice.len);
                     }
                     return slice;
+                } else if (obj.common.structId == cy.RawStringSliceT) {
+                    if (getCharLen) {
+                        outCharLen.* = obj.rawstringSlice.len;
+                    }
+                    return obj.rawstringSlice.getConstSlice();
                 } else if (obj.common.structId == cy.ListS) {
                     const start = writer.pos();
                     std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();

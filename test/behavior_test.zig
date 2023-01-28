@@ -1642,60 +1642,7 @@ test "Bitwise operators." {
 test "Binary Expressions" {
     const run = VMrunner.create();
     defer run.destroy();
-
-    var val = try run.eval(
-        \\1 + 2
-    );
-    try t.eq(val.asF64toI32(), 3);
-
-    val = try run.eval(
-        \\1 + 2 + 3
-    );
-    try t.eq(val.asF64toI32(), 6);
-
-    val = try run.eval(
-        \\3 - 1
-    );
-    try t.eq(val.asF64toI32(), 2);
-
-    val = try run.eval(
-        \\3 * 4
-    );
-    try t.eq(val.asF64toI32(), 12);
-
-    val = try run.eval(
-        \\20 / 5
-    );
-    try t.eq(val.asF64toI32(), 4);
-
-    // Power
-    val = try run.eval(
-        \\2 ^ 5
-    );
-    try t.eq(val.asF64toI32(), 32);
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- Modulus
-        \\try t.eq(3 % 2, 1)
-        \\
-        \\-- Assign to same var.
-        \\a = 0
-        \\a = a + 1
-        \\try t.eq(a, 1)
-        \\a = 0
-        \\a = 1 + a
-        \\try t.eq(a, 1)
-    );
-
-    // Right function call.
-    val = try run.eval(
-        \\func foo():
-        \\  return 123
-        \\1 + foo()
-    );
-    try t.eq(val.asF64toI32(), 124);
+    _ = try run.eval(@embedFile("binexpr_test.cy"));
 }
 
 const VMrunner = struct {

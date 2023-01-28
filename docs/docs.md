@@ -1070,11 +1070,11 @@ print foo.myVar
 A Cyber script that is imported also runs it's main block after all child imports have loaded and executed their main blocks. The main block is only executed once even if the module was imported more than once. The following prints 'c', 'b', and 'a' in order.
 ```text
 -- main.cy
-import foo.cy
+import 'foo.cy'
 print 'a'
 
 -- foo.cy
-import bar.cy
+import 'bar.cy'
 print 'b'
 
 -- bar.cy

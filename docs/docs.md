@@ -262,7 +262,7 @@ A comparison expression always evaluates to a [Boolean](#booleans) value.
 The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.
 ```text
 1 == 1      -- Evaluates to `true`
-1 == 2      -- Evaluates to `true`
+1 == 2      -- Evaluates to `false`
 1 == true   -- Evaluates to `false`
 
 a = []
@@ -1070,11 +1070,11 @@ print foo.myVar
 A Cyber script that is imported also runs it's main block after all child imports have loaded and executed their main blocks. The main block is only executed once even if the module was imported more than once. The following prints 'c', 'b', and 'a' in order.
 ```text
 -- main.cy
-import t
+import 'foo.cy'
 print 'a'
 
 -- foo.cy
-import bar.cy
+import 'bar.cy'
 print 'b'
 
 -- bar.cy

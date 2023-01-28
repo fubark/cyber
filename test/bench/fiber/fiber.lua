@@ -1,20 +1,23 @@
+local cocreate = coroutine.create
+local coresume = coroutine.resume
+local coyield = coroutine.yield
 local count = 0
 
-function inc()
+local function inc()
     count = count + 1
-    coroutine.yield()
+    coyield()
     count = count + 1
 end
 
 local list = {}
-for i = 0, 100000-1 do
-    f = coroutine.create(inc)
-    coroutine.resume(f)
+for i = 1, 100000 do
+    local f = cocreate(inc)
+    coresume(f)
     list[i] = f
 end
 
-for k, f in pairs(list) do
-    coroutine.resume(f)
+for _, f in ipairs(list) do
+    coresume(f)
 end
 
-io.write(count .. "\n")
+io.write(count, "\n")

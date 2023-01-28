@@ -9,6 +9,9 @@ on:
         default: ''
         required: false
   pull_request:
+    paths-ignore:
+      - '.github/**'
+      - '**.md'
 concurrency:
   group: pr-${{ github.ref }}
   cancel-in-progress: true

@@ -16,3 +16,12 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 - WASM Web
 - WASM WASI (soon)
 - Windows x64 (soon)
+
+### Install
+- Install using the command prompt.
+```sh
+curl -fsSL https://cyberscript.dev/install.sh | bash
+# Alternative url.
+curl -fsSL https://raw.githubusercontent.com/fubark/cyber/master/install.sh | bash
+```
+- Install from [Downloads](https://github.com/fubark/cyber/releases).

@@ -219,11 +219,21 @@ jobs:
           mv zig-out/lib/cyber.wasm ${{ env.BIN_ZIP }}
 
       - name: Save artifact.
+        if: env.BUILD_CMD == 'cli'
         uses: actions/upload-artifact@v2
         with:
           name: bin
           path: |
             ${{ env.BIN_ZIP }}
+
+      - name: Save artifact.
+        if: env.BUILD_CMD == 'lib'
+        uses: actions/upload-artifact@v2
+        with:
+          name: bin
+          path: |
+            cyber.dll
+            cyber.wasm
 
     outputs:
       short_version: ${{ env.SHORT_VERSION }}

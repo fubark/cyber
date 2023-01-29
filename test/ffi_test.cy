@@ -10,6 +10,8 @@ try t.eq(lib, error(#FileNotFound))
 if os.system == 'macos':
   -- rdynamic doesn't work atm for MacOS.
   libPath = 'test/macos_lib.dylib'
+else os.system == 'windows':
+  libPath = 'test/win_lib.dll'
 else:
   libPath = none
 

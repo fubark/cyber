@@ -51,6 +51,10 @@ pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
         c_flags.append("-DMI_STAT=0") catch @panic("error");
     }
 
+    if (step.target.getOsTag() == .windows) {
+        step.linkSystemLibrary("bcrypt");
+    }
+
     var sources = std.ArrayList([]const u8).init(b.allocator);
     sources.appendSlice(&.{
         "/vendor/src/alloc.c",

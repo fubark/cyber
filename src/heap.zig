@@ -336,9 +336,10 @@ const TccState = extern struct {
 const File = extern struct {
     structId: cy.TypeId,
     rc: u32,
+    readBuf: [*]u8,
+    /// Can be up to 8 bytes on windows, otherwise 4 bytes.
     fd: std.os.fd_t,
     curPos: u32,
-    readBuf: [*]u8,
     readBufCap: u32,
     readBufEnd: u32,
     iterLines: bool,
@@ -347,7 +348,7 @@ const File = extern struct {
 
     pub fn getStdFile(self: *const File) std.fs.File {
         return std.fs.File{
-            .handle = @bitCast(i32, self.fd),
+            .handle = self.fd,
             .capable_io_mode = .blocking,
             .intended_io_mode = .blocking,
         };
@@ -377,6 +378,8 @@ pub const DirIterator = extern struct {
 pub const Dir = extern struct {
     structId: cy.TypeId align(8),
     rc: u32,
+    /// Padding to make Dir.fd match the offset of File.fd.
+    padding: usize = 0,
     fd: if (cy.hasStdFiles) std.os.fd_t else u32,
     iterable: bool,
 

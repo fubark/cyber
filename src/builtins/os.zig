@@ -23,8 +23,13 @@ pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSec
         try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.big)));
     }
     if (cy.hasStdFiles) {
-        const stdin = try cy.heap.allocFile(self.vm, std.os.STDIN_FILENO);
-        try mod.setVar(self, "stdin", stdin);
+        if (builtin.os.tag != .windows) {
+            const stdin = try cy.heap.allocFile(self.vm, std.os.STDIN_FILENO);
+            try mod.setVar(self, "stdin", stdin);
+        } else {
+            // TODO: Use std.os.windows.STD_INPUT_HANDLE
+            try mod.setVar(self, "stdin", Value.None);
+        }
     } else {
         try mod.setVar(self, "stdin", Value.None);
     }
@@ -52,8 +57,13 @@ pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSec
         try mod.setNativeFunc(self, "createFile", 2, createFile);
         try mod.setNativeFunc(self, "cwd", 0, cwd);
         try mod.setNativeFunc(self, "exePath", 0, exePath);
-        try mod.setNativeFunc(self, "getEnv", 1, getEnv);
-        try mod.setNativeFunc(self, "getEnvAll", 0, getEnvAll);
+        if (builtin.os.tag == .windows) {
+            try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
+            try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
+        } else {
+            try mod.setNativeFunc(self, "getEnv", 1, getEnv);
+            try mod.setNativeFunc(self, "getEnvAll", 0, getEnvAll);
+        }
     }
     try mod.setNativeFunc(self, "milliTime", 0, milliTime);
     if (cy.isWasm) {
@@ -71,10 +81,18 @@ pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSec
         try mod.setNativeFunc(self, "removeDir", 1, removeDir);
         try mod.setNativeFunc(self, "removeFile", 1, removeFile);
         try mod.setNativeFunc(self, "realPath", 1, realPath);
-        try mod.setNativeFunc(self, "setEnv", 2, setEnv);
+        if (builtin.os.tag == .windows) {
+            try mod.setNativeFunc(self, "setEnv", 2, bindings.nop2);
+        } else {
+            try mod.setNativeFunc(self, "setEnv", 2, setEnv);
+        }
     }
-    try mod.setNativeFunc(self, "sleep", 1, sleep);
-    if (cy.isWasm) {
+    if (builtin.os.tag == .windows) {
+        try mod.setNativeFunc(self, "sleep", 1, bindings.nop1);
+    } else {
+        try mod.setNativeFunc(self, "sleep", 1, sleep);
+    }
+    if (cy.isWasm or builtin.os.tag == .windows) {
         try mod.setNativeFunc(self, "unsetEnv", 1, bindings.nop1);
     } else {
         try mod.setNativeFunc(self, "unsetEnv", 1, unsetEnv);
@@ -84,10 +102,12 @@ pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSec
 
 pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) !void {
     if (cy.hasStdFiles) {
-        // Mark as closed to avoid closing.
-        const stdin = (try mod.getVarVal(c, "stdin")).?;
-        stdin.asHeapObject(*cy.HeapObject).file.closed = true;
-        cy.arc.release(c.vm, stdin);
+        if (builtin.os.tag != .windows) {
+            // Mark as closed to avoid closing.
+            const stdin = (try mod.getVarVal(c, "stdin")).?;
+            stdin.asHeapObject(*cy.HeapObject).file.closed = true;
+            cy.arc.release(c.vm, stdin);
+        }
     }
 }
 

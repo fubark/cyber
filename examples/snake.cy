@@ -6,7 +6,8 @@
 import os 'os'
 
 -- raylibPath = '/home/fubar/Downloads/raylib-4.2.0_linux_amd64/lib/libraylib.so'
-raylibPath = '/Users/fubar/Downloads/raylib-4.2.0_macos/lib/libraylib.dylib'
+-- raylibPath = '/Users/fubar/Downloads/raylib-4.2.0_macos/lib/libraylib.dylib'
+raylibPath = 'C:/Users/fubar/Downloads/raylib-4.2.0_win64_msvc16/lib/raylib.dll'
 
 ray = bindLib(raylibPath, [
     CFunc{ sym: 'InitWindow', args: [#int, #int, #charPtrZ], ret: #void }

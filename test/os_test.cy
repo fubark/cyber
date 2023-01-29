@@ -1,10 +1,11 @@
 import os 'os'
 import t 'test'
 
-os.setEnv('testfoo', 'testbar')
-try t.eq(os.getEnv('testfoo'), 'testbar')
-os.unsetEnv('testfoo')
-try t.eq(os.getEnv('testfoo'), none)
+if os.system != 'windows':
+    os.setEnv('testfoo', 'testbar')
+    try t.eq(os.getEnv('testfoo'), 'testbar')
+    os.unsetEnv('testfoo')
+    try t.eq(os.getEnv('testfoo'), none)
 
 -- createDir()
 os.removeDir('test/assets/tempdir')
@@ -104,6 +105,9 @@ for iter.next() as n:
 try t.eq(entries.len(), 4)
 entries.sort((a, b) => a.path.less(b.path))
 try t.eq(entries[0].path, rawstring('dir2'))
-try t.eq(entries[1].path, rawstring('dir2/file.txt'))
+if os.system == 'windows':
+    try t.eq(entries[1].path, rawstring('dir2\\file.txt'))
+else:
+    try t.eq(entries[1].path, rawstring('dir2/file.txt'))
 try t.eq(entries[2].path, rawstring('file.txt'))
 try t.eq(entries[3].path, rawstring('file2.txt'))

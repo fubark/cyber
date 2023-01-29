@@ -27,3 +27,4 @@
 /arm-link.c
 /arm-asm.c
 /arm-tok.h
+/tccpe.c

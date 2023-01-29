@@ -31,7 +31,7 @@ pub fn build(b: *std.build.Builder) !void {
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
 
-        addBuildOptions(b, exe, false);
+        try addBuildOptions(b, exe, false);
         // exe.emit_asm = .emit;
 
         // exe.linkLibC();
@@ -61,7 +61,7 @@ pub fn build(b: *std.build.Builder) !void {
         // Also needed to export symbols in wasm lib.
         lib.rdynamic = true;
 
-        addBuildOptions(b, lib, false);
+        try addBuildOptions(b, lib, false);
 
         // lib.linkLibC();
         lib.addPackage(stdxPkg);
@@ -102,7 +102,7 @@ pub fn build(b: *std.build.Builder) !void {
         // Also needed to export symbols in wasm lib.
         lib.rdynamic = true;
 
-        addBuildOptions(b, lib, false);
+        try addBuildOptions(b, lib, false);
 
         // lib.linkLibC();
         lib.addPackage(stdxPkg);
@@ -131,7 +131,7 @@ pub fn build(b: *std.build.Builder) !void {
         step.setTarget(target);
         step.setMainPkgPath(".");
 
-        addBuildOptions(b, step, false);
+        try addBuildOptions(b, step, false);
         step.addPackage(stdxPkg);
         step.rdynamic = true;
 
@@ -140,7 +140,7 @@ pub fn build(b: *std.build.Builder) !void {
             .selinux = selinux,
         });
 
-        const traceTest = addTraceTest(b, mode, target, .{
+        const traceTest = try addTraceTest(b, mode, target, .{
             .selinux = selinux,
         });
         traceTest.step.dependOn(&step.step);
@@ -149,7 +149,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     {
         // Just trace test.
-        const traceTest = addTraceTest(b, mode, target, .{
+        const traceTest = try addTraceTest(b, mode, target, .{
             .selinux = selinux,
         });
         b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
@@ -164,9 +164,21 @@ const Config = struct {
     selinux: bool = false,
 };
 
-fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace: bool) void {
-    const buildTag = std.os.getenv("BUILD") orelse "local";
-    const commitTag = std.os.getenv("COMMIT") orelse "local";
+fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace: bool) !void {
+    const buildTag = std.process.getEnvVarOwned(b.allocator, "BUILD") catch |err| b: {
+        if (err == error.EnvironmentVariableNotFound) {
+            break :b "local";
+        } else {
+            return err;
+        }
+    };
+    const commitTag = std.process.getEnvVarOwned(b.allocator, "COMMIT") catch |err| b: {
+        if (err == error.EnvironmentVariableNotFound) {
+            break :b "local";
+        } else {
+            return err;
+        }
+    };
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "version", Version);
     build_options.addOption([]const u8, "build", buildTag);
@@ -177,12 +189,12 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     step.addPackage(build_options.getPackage("build_options"));
 }
 
-fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, config: Config) *std.build.LibExeObjStep {
+fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, config: Config) !*std.build.LibExeObjStep {
     const step = b.addTest("./test/trace_test.zig");
     step.setBuildMode(mode);
     step.setTarget(target);
     step.setMainPkgPath(".");
-    addBuildOptions(b, step, true);
+    try addBuildOptions(b, step, true);
     step.addPackage(stdxPkg);
 
     tcc.addPackage(step);

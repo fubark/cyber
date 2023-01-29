@@ -18,7 +18,7 @@ const BuildOptions = struct {
 
 pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
     const b = step.builder;
-    const lib = b.addStaticLibrary("mimalloc", null);
+    const lib = b.addStaticLibrary("tcc", null);
     lib.setTarget(step.target);
     lib.setBuildMode(step.build_mode);
     lib.addIncludePath(srcPath() ++ "/vendor");

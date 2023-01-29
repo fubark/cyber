@@ -203,7 +203,7 @@ jobs:
         if: env.BUILD_HOST == 'windows-2022' && env.BUILD_TARGET != 'wasm32-freestanding'
         shell: bash
         run: |
-          (cd zig-out/cyber && zip - cyber${{env.BIN_EXT}}) > ${{ env.BIN_ZIP }}
+          cd zig-out/cyber && 7z a ../../${{env.BIN_ZIP}} cyber.exe
 
       - name: Move. (wasm)
         if: env.BUILD_TARGET == 'wasm32-freestanding'

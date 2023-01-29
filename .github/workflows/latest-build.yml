@@ -43,9 +43,9 @@ jobs:
           - host: ubuntu-22.04
             target: wasm32-freestanding
             mode: release
-          #- host: windows-2019
-          #  target: x86_64-windows-gnu
-          #  mode: release
+          - host: windows-2022
+            target: x86_64-windows-gnu
+            mode: release
           # - host: windows-2019
           #  target: x86_64-windows-msvc
           #  mode: release
@@ -82,12 +82,6 @@ jobs:
           sudo apt-get update -y -qq
           sudo apt-get install xz-utils
 
-      - name: Setup WSL (windows)
-        if: env.BUILD_TARGET == 'x86_64-windows-gnu'
-        uses: Vampire/setup-wsl@v1
-        with:
-          additional-packages: wget tar xz-utils zip
-
       - name: Clone repo.
         uses: actions/checkout@v2
         with:
@@ -112,6 +106,14 @@ jobs:
           wget -c https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.1465+d64dd75e3.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
           xcode-select --print-path
 
+      - name: Install zig.
+        if: env.BUILD_HOST == 'windows-2022'
+        run: |
+          Invoke-WebRequest -Uri 'https://ziglang.org/builds/zig-windows-x86_64-0.11.0-dev.1465+d64dd75e3.zip' -OutFile 'C:\zig.zip'
+          cd C:\
+          7z x zig.zip
+          Add-Content $env:GITHUB_PATH 'C:\zig-windows-x86_64-0.11.0-dev.1465+d64dd75e3\'
+
       - name: Setup script.
         uses: actions/github-script@v5
         with:
@@ -127,7 +129,8 @@ jobs:
           echo "BUILD=$(git rev-list --count $version-init..master)" >> $GITHUB_ENV
 
       - name: Get version. (windows)
-        if: env.BUILD_HOST == 'windows-2019'
+        if: env.BUILD_HOST == 'windows-2022'
+        shell: bash
         run: |
           version=$(zig build version)
           echo "SHORT_VERSION=$version" >> $env:GITHUB_ENV
@@ -135,8 +138,7 @@ jobs:
           echo "BUILD=$(git rev-list --count $version-init..master)" >> $env:GITHUB_ENV
 
       - name: Cache.
-        # Don't cache for windows, since there are issues with subsequent builds. Check to re-enable this later.
-        if: env.BUILD_TARGET != 'x86_64-windows-gnu'
+        #if: env.BUILD_TARGET != 'x86_64-windows-gnu'
         uses: actions/cache@v2
         with:
           path: |-
@@ -198,8 +200,8 @@ jobs:
            tar -C zig-out/cyber -czvf ${{ env.BIN_ZIP }} cyber
 
       - name: Zip. (windows)
-        if: env.BUILD_HOST == 'windows-2019' && env.BUILD_TARGET != 'wasm32-freestanding'
-        shell: wsl-bash {0}
+        if: env.BUILD_HOST == 'windows-2022' && env.BUILD_TARGET != 'wasm32-freestanding'
+        shell: bash
         run: |
           (cd zig-out/cyber && zip - cyber${{env.BIN_EXT}}) > ${{ env.BIN_ZIP }}
 
@@ -240,4 +242,5 @@ jobs:
             cyber-selinux-x64.tar.gz
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
+            cyber-windows-x64.zip
             cyber.wasm

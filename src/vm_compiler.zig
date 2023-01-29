@@ -1487,10 +1487,10 @@ pub const VMcompiler = struct {
         const node = self.nodes[nodeId];
         if (isArcTempNode(node.node_t) or usedDst.*) {
             const finalDst = try self.userLocalOrNextTempLocal(nodeId);
-            return self.genExprTo2(nodeId, finalDst, requestedType, false, discardTopExprReg);
+            return self.genExprTo2(nodeId, finalDst, requestedType, false, !discardTopExprReg);
         } else {
             const finalDst = self.userLocalOrDst(nodeId, dst, usedDst);
-            return self.genExprTo2(nodeId, finalDst, requestedType, false, discardTopExprReg);
+            return self.genExprTo2(nodeId, finalDst, requestedType, false, !discardTopExprReg);
         }
     }
 
@@ -1513,7 +1513,7 @@ pub const VMcompiler = struct {
         // so the next free temp is guaranteed to be after dst.
         defer self.setFirstFreeTempLocal(dst + 1);
 
-        const val = try self.genExprTo2(nodeId, dst, requiredType, true, discardTopExprReg);
+        const val = try self.genExprTo2(nodeId, dst, requiredType, true, !discardTopExprReg);
         try self.genEnsureRequiredType(val, requiredType);
         try self.endArcExpr(arcLocalStart);
         return val;
@@ -2082,7 +2082,7 @@ pub const VMcompiler = struct {
     /// Otherwise, the expression is allocated a temp local on the stack.
     fn genExpr2(self: *VMcompiler, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!GenValue {
         const dst = try self.userLocalOrNextTempLocal(nodeId);
-        const res = try self.genExprTo2(nodeId, dst, requiredType, false, discardTopExprReg);
+        const res = try self.genExprTo2(nodeId, dst, requiredType, false, !discardTopExprReg);
         try self.genEnsureRequiredType(res, requiredType);
         return res;
     }
@@ -2139,7 +2139,7 @@ pub const VMcompiler = struct {
     }
 
     fn genExprTo(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
-        return self.genExprTo2(nodeId, dst, sema.AnyType, retainEscapeTop, discardTopExprReg);
+        return self.genExprTo2(nodeId, dst, sema.AnyType, retainEscapeTop, !discardTopExprReg);
     }
 
     fn dumpLocals(self: *VMcompiler) !void {
@@ -2167,82 +2167,36 @@ pub const VMcompiler = struct {
     /// This does not care about what is already at `dst`, so assign statements need to consider that (for ARC correctness).
     /// Most common usage is to copy to a temp or reserved temp `dst`.
     /// Since assignments is a special case, dealing with the type of `dst` won't be included here.
+    ///
     /// `dst` indicates the local of the resulting value.
-    /// `retainEscapeTop` indicates that the resulting val should be retained. (eg. call args)
-    /// TODO: rename `retainEscapeTop` to `ensureRetained`.
-    /// If `retainEscapeTop` is false, the dst is a temp local, and the expr requires a retain (eg. call expr), it is added as an arcTempLocal.
-    fn genExprTo2(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: sema.Type, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
+    /// `retain` indicates the resulting val should be retained by 1 refcount. (eg. call args)
+    ///    If the expr already does a +1 retain (eg. map literal) upon evaluation, nothing more needs to happen.
+    ///    If the expr does not retain itself (eg. access expr), the generated code depends on additional criteria.
+    ///    If `retain` is false, `dst` is a temp local, and the expr does a +1 retain (eg. call expr with any return);
+    ///        it is added as an arcTempLocal to be released at the end of the arcTemp segment.
+    /// `dstIsUsed` provides a hint that the parent caller of `genExprTo2` intends to use `dst`. (eg. `false` for an expr statement)
+    ///    If `dstIsUsed` is false and the current expr does not contain side-effects, it can omit generating its code.
+    fn genExprTo2(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: sema.Type, retain: bool, comptime dstIsUsed: bool) anyerror!GenValue {
         const node = self.nodes[nodeId];
         // log.debug("gen reg expr {}", .{node.node_t});
         switch (node.node_t) {
             .ident => {
-                if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
-                    if (dst == svar.local) {
-                        if (retainEscapeTop) {
-                            stdx.panic("Unexpected retainEscapeTop.");
-                        }
-                        return GenValue.initSemaVar(svar);
-                    } else {
-                        if (retainEscapeTop and svar.vtype.rcCandidate) {
-                            if (svar.isBoxed) {
-                                try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
-                            } else {
-                                try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
-                            }
-                        } else {
-                            if (svar.isBoxed) {
-                                try self.buf.pushOp2(.boxValue, svar.local, dst);
-                            } else {
-                                try self.buf.pushOp2(.copy, svar.local, dst);
-                            }
-                        }
-                        return self.initGenValue(dst, svar.vtype);
-                    }
-                } else {
-                    if (builtin.mode == .Debug and node.head.ident.semaSymId == NullId) {
-                        unexpectedFmt("Missing semaSymId.", &.{});
-                    }
-                    if (self.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
-                        if (rsym.symT == .func) {
-                            const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                            const localKey = sym.key.absLocalSymKey;
-                            const resolvedParentId = if (localKey.localParentSymId == NullId) NullId else self.semaSyms.items[localKey.localParentSymId].resolvedSymId;
-
-                            const rfsym = self.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                            const rtSymId = try self.vm.ensureFuncSym(resolvedParentId, localKey.nameId, rfsym.numParams);
-
-                            try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
-                            return self.initGenValue(dst, sema.AnyType);
-                        } else if (rsym.symT == .variable) {
-                            const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                            const localKey = sym.key.absLocalSymKey;
-                            const varId = try self.vm.ensureVarSym(NullId, localKey.nameId);
-                            try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
-                            return self.initGenValue(dst, sema.AnyType);
-                        } else {
-                            const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                            const name = sema.getSymName(self, &sym);
-                            return self.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(name)}, nodeId);
-                        }
-                    } else {
-                        return self.genNone(dst);
-                    }
-                }
+                return try genIdent(self, nodeId, dst, retain);
             },
             .true_literal => {
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     try self.buf.pushOp1(.true, dst);
                     return self.initGenValue(dst, sema.BoolType);
                 } else return GenValue.initNoValue();
             },
             .false_literal => {
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     try self.buf.pushOp1(.false, dst);
                     return self.initGenValue(dst, sema.BoolType);
                 } else return GenValue.initNoValue();
             },
             .number => {
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     const literal = self.getNodeTokenString(node);
                     const val = try std.fmt.parseFloat(f64, literal);
                     if (requestedType.typeT == .int) {
@@ -2255,7 +2209,7 @@ pub const VMcompiler = struct {
                 }
             },
             .nonDecInt => {
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     const literal = self.getNodeTokenString(node);
                     var val: u64 = undefined;
                     if (literal[1] == 'x') {
@@ -2282,7 +2236,7 @@ pub const VMcompiler = struct {
                 return self.initGenValue(dst, sema.TagLiteralType);
             },
             .string => {
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     const literal = self.getNodeTokenString(node);
                     const str = try self.unescapeString(literal);
                     return self.genString(str, dst);
@@ -2291,48 +2245,10 @@ pub const VMcompiler = struct {
                 }
             },
             .stringTemplate => {
-                const operandStart = self.operandStack.items.len;
-                defer self.operandStack.items.len = operandStart;
-
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startTempLocal);
-
-                const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-                var expStringPart = true;
-                var curId = node.head.stringTemplate.partsHead;
-                var numExprs: u32 = 0;
-                while (curId != NullId) {
-                    const cur = self.nodes[curId];
-                    if (expStringPart) {
-                        if (!discardTopExprReg) {
-                            const raw = self.getNodeTokenString(cur);
-                            const str = try self.unescapeString(raw);
-                            const idx = try self.buf.getOrPushStringConst(str);
-                            try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                        }
-                    } else {
-                        _ = try self.genRetainedTempExpr(curId, discardTopExprReg);
-                        numExprs += 1;
-                    }
-                    curId = cur.next;
-                    expStringPart = !expStringPart;
-                }
-
-                if (!discardTopExprReg) {
-                    try self.buf.pushOp3(.stringTemplate, argStartLocal, @intCast(u8, numExprs), dst);
-                    try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-
-                    if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.setReservedTempLocal(dst);
-                    }
-                    return self.initGenValue(dst, sema.StringType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genStringTemplate(self, nodeId, dst, retain, dstIsUsed);
             },
             .none => {
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     return self.genNone(dst);
                 } else return GenValue.initNoValue();
             },
@@ -2359,288 +2275,25 @@ pub const VMcompiler = struct {
                 return self.reportErrorAt("Tag `{}` does not have member `{}`", &.{v(tname), v(lname)}, nodeId); 
             },
             .structInit => {
-                const stype = self.nodes[node.head.structInit.name];
-                const sname = self.getNodeTokenString(stype);
-                const snameId = try sema.ensureNameSym(self, sname);
-                const sid = self.vm.getStruct(snameId, 0) orelse {
-                    return self.reportErrorAt("Missing object type: `{}`", &.{v(sname)}, nodeId);
-                };
-
-                const initializer = self.nodes[node.head.structInit.initializer];
-                
-                // TODO: Would it be faster/efficient to copy the fields into contiguous registers 
-                //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
-                //       The current implementation is the former.
-                // TODO: Have sema sort the fields so eval can handle default values easier.
-
-                // Push props onto stack.
-
-                const numFields = self.vm.structs.buf[sid].numFields;
-                // Repurpose stack for sorting fields.
-                const sortedFieldsStart = self.assignedVarStack.items.len;
-                try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
-                defer self.assignedVarStack.items.len = sortedFieldsStart;
-
-                // Initially set to NullId so leftovers are defaulted to `none`.
-                const initFields = self.assignedVarStack.items[sortedFieldsStart..];
-                std.mem.set(u32, initFields, NullId);
-
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startTempLocal);
-
-                const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-                var i: u32 = 0;
-                var entryId = initializer.head.child_head;
-                // First iteration to sort the initializer fields.
-                while (entryId != NullId) : (i += 1) {
-                    const entry = self.nodes[entryId];
-                    const prop = self.nodes[entry.head.mapEntry.left];
-                    const fieldName = self.getNodeTokenString(prop);
-                    const fieldIdx = self.vm.getStructFieldIdx(sid, fieldName) orelse {
-                        return self.reportErrorAt("Missing field {}", &.{fmt.v(fieldName)}, entry.head.mapEntry.left);
-                    };
-                    initFields[fieldIdx] = entryId;
-                    entryId = entry.next;
-                }
-
-                i = 0;
-                while (i < numFields) : (i += 1) {
-                    entryId = self.assignedVarStack.items[sortedFieldsStart + i];
-                    if (entryId == NullId) {
-                        if (!discardTopExprReg) {
-                            // Push none.
-                            const local = try self.nextFreeTempLocal();
-                            try self.buf.pushOp1(.none, local);
-                        }
-                    } else {
-                        const entry = self.nodes[entryId];
-                        _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, discardTopExprReg);
-                    }
-                }
-
-                if (!discardTopExprReg) {
-                    if (self.vm.structs.buf[sid].numFields <= 4) {
-                        try self.pushOptionalDebugSym(nodeId);
-                        try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
-                    } else {
-                        try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
-                    }
-                    if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.setReservedTempLocal(dst);
-                    }
-                    return GenValue.initTempValue(dst, sema.AnyType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genObjectInit(self, nodeId, dst, retain, dstIsUsed);
             },
             .if_expr => {
-                return self.genIfExpr(nodeId, dst, retainEscapeTop, discardTopExprReg);
+                return self.genIfExpr(nodeId, dst, retain, !dstIsUsed);
             },
             .map_literal => {
-                const operandStart = self.operandStack.items.len;
-                defer self.operandStack.items.len = operandStart;
-
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startTempLocal);
-
-                const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-                var i: u32 = 0;
-                var entry_id = node.head.child_head;
-                while (entry_id != NullId) : (i += 1) {
-                    var entry = self.nodes[entry_id];
-                    const key = self.nodes[entry.head.mapEntry.left];
-
-                    if (!discardTopExprReg) {
-                        switch (key.node_t) {
-                            .ident => {
-                                const name = self.getNodeTokenString(key);
-                                const idx = try self.buf.getOrPushStringConst(name);
-                                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                            },
-                            .string => {
-                                const name = self.getNodeTokenString(key);
-                                const idx = try self.buf.getOrPushStringConst(name);
-                                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                            },
-                            else => stdx.panicFmt("unsupported key {}", .{key.node_t}),
-                        }
-                    }
-
-                    _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, discardTopExprReg);
-                    entry_id = entry.next;
-                }
-
-                if (!discardTopExprReg) {
-                    if (i == 0) {
-                        try self.buf.pushOp1(.mapEmpty, dst);
-                    } else {
-                        try self.buf.pushOp3(.map, argStartLocal, @intCast(u8, i), dst);
-                        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-                    }
-
-                    if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.setReservedTempLocal(dst);
-                    }
-                    return self.initGenValue(dst, sema.MapType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genMapInit(self, nodeId, dst, retain, dstIsUsed);
             },
             .arr_literal => {
-                const startLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startLocal);
-
-                const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-                var exprId = node.head.child_head;
-                var i: u32 = 0;
-                while (exprId != NullId) : (i += 1) {
-                    const expr = self.nodes[exprId];
-                    _ = try self.genRetainedTempExpr(exprId, discardTopExprReg);
-                    exprId = expr.next;
-                }
-
-                if (!discardTopExprReg) {
-                    try self.buf.pushOp3(.list, argStartLocal, @intCast(u8, i), dst);
-                    if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.setReservedTempLocal(dst);
-                    }
-                    return self.initGenValue(dst, sema.ListType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genListInit(self, nodeId, dst, retain, dstIsUsed);
             },
             .arr_range_expr => {
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startTempLocal);
-
-                var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-
-                // Parent value.
-                const parentv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.arr, dst, &usedDstAsTemp, discardTopExprReg);
-
-                // Range left value.
-                var leftv: GenValue = undefined;
-                if (node.head.arr_range_expr.left == NullId) {
-                    if (!discardTopExprReg) {
-                        if (usedDstAsTemp) {
-                            const leftDst = try self.nextFreeTempLocal();
-                            leftv = try self.genConst(0, leftDst);
-                        } else {
-                            leftv = try self.genConst(0, dst);
-                            usedDstAsTemp = true;
-                        }
-                    }
-                } else {
-                    leftv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.left, dst, &usedDstAsTemp, discardTopExprReg);
-                }
-
-                // Range right value.
-                var rightv: GenValue = undefined;
-                if (node.head.arr_range_expr.right == NullId) {
-                    if (!discardTopExprReg) {
-                        if (usedDstAsTemp) {
-                            const rightDst = try self.nextFreeTempLocal();
-                            rightv = try self.genNone(rightDst);
-                        } else {
-                            rightv = try self.genNone(dst);
-                            usedDstAsTemp = true;
-                        }
-                    }
-                } else {
-                    rightv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.right, dst, &usedDstAsTemp, discardTopExprReg);
-                }
-
-                if (!discardTopExprReg) {
-                    try self.buf.pushOpSlice(.slice, &.{ parentv.local, leftv.local, rightv.local, dst });
-                    if (!retainEscapeTop and self.isTempLocal(dst)) {
-                        try self.setReservedTempLocal(dst);
-                    }
-                    return self.initGenValue(dst, sema.ListType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genRangeAccessExpr(self, nodeId, dst, retain, dstIsUsed);
             },
             .arr_access_expr => {
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startTempLocal);
-
-                var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-
-                // Gen left.
-                const leftv = try self.genExprToDestOrTempLocal(node.head.left_right.left, dst, &usedDstAsTemp, discardTopExprReg);
-
-                // Gen index.
-                const index = self.nodes[node.head.left_right.right];
-                const isReverseIndex = index.node_t == .unary_expr and index.head.unary.op == .minus;
-                const indexv = try self.genExprToDestOrTempLocal(node.head.left_right.right, dst, &usedDstAsTemp, discardTopExprReg);
-
-                if (!discardTopExprReg) {
-                    if (isReverseIndex) {
-                        try self.buf.pushOp3(.reverseIndex, leftv.local, indexv.local, dst);
-                        if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.setReservedTempLocal(dst);
-                        }
-                    } else {
-                        try self.buf.pushOp3(.index, leftv.local, indexv.local, dst);
-                        if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.setReservedTempLocal(dst);
-                        }
-                    }
-                    return self.initGenValue(dst, sema.AnyType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genIndexAccessExpr(self, nodeId, dst, retain, dstIsUsed);
             },
             .accessExpr => {
-                if (node.head.accessExpr.semaSymId != NullId) {
-                    const sym = self.semaSyms.items[node.head.accessExpr.semaSymId];
-                    if (self.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {
-                        const key = sym.key.absLocalSymKey;
-                        const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-                        if (rsym.symT == .variable) {
-                            if (self.vm.getVarSym(resolvedParentId, key.nameId)) |symId| {
-                                if (!discardTopExprReg) {
-                                    // Static variable.
-                                    try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
-                                    return self.initGenValue(dst, sema.AnyType);
-                                } else {
-                                    return GenValue.initNoValue();
-                                }
-                            }
-                        }
-                    }
-                    const name = sema.getSymName(self, &sym);
-                    return self.reportErrorAt("Unsupported sym: {}", &.{v(name)}, nodeId);
-                }
-
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-                defer self.computeNextTempLocalFrom(startTempLocal);
-
-                var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-
-                // Left side.
-                const leftv = try self.genExprToDestOrTempLocal(node.head.accessExpr.left, dst, &usedDstAsTemp, discardTopExprReg);
-
-                // Right should be an ident.
-                const right = self.nodes[node.head.accessExpr.right];
-
-                const name = self.getNodeTokenString(right);
-                const fieldId = try self.vm.ensureFieldSym(name);
-
-                if (!discardTopExprReg) {
-                    if (retainEscapeTop) {
-                        try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
-                    } else {
-                        try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
-                    }
-                    try self.pushDebugSym(nodeId);
-                    return self.initGenValue(dst, sema.AnyType);
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genAccessExpr(self, nodeId, dst, retain, dstIsUsed);
             },
             .comptExpr => {
                 const child = self.nodes[node.head.child_head];
@@ -2660,7 +2313,7 @@ pub const VMcompiler = struct {
             },
             .tryExpr => {
                 var child: GenValue = undefined;
-                if (retainEscapeTop) {
+                if (retain) {
                     child = try self.genRetainedTempExpr(node.head.child_head, false);
                 } else {
                     child = try self.genExpr(node.head.child_head, false);
@@ -2677,22 +2330,22 @@ pub const VMcompiler = struct {
                 const op = node.head.unary.op;
                 switch (op) {
                     .minus => {
-                        const child = try self.genExpr(node.head.unary.child, discardTopExprReg);
-                        if (!discardTopExprReg) {
+                        const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
+                        if (dstIsUsed) {
                             try self.buf.pushOp2(.neg, child.local, dst);
                             return self.initGenValue(dst, sema.NumberType);
                         } else return GenValue.initNoValue();
                     },
                     .not => {
-                        const child = try self.genExpr(node.head.unary.child, discardTopExprReg);
-                        if (!discardTopExprReg) {
+                        const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
+                        if (dstIsUsed) {
                             try self.buf.pushOp2(.not, child.local, dst);
                             return self.initGenValue(dst, sema.BoolType);
                         } else return GenValue.initNoValue();
                     },
                     .bitwiseNot => {
-                        const child = try self.genExpr(node.head.unary.child, discardTopExprReg);
-                        if (!discardTopExprReg) {
+                        const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
+                        if (dstIsUsed) {
                             try self.buf.pushOp2(.bitwiseNot, child.local, dst);
                             return self.initGenValue(dst, sema.NumberType);
                         } else return GenValue.initNoValue();
@@ -2701,295 +2354,30 @@ pub const VMcompiler = struct {
                 }
             },
             .group => {
-                return self.genExprTo2(node.head.child_head, dst, requestedType, retainEscapeTop, discardTopExprReg);
+                return self.genExprTo2(node.head.child_head, dst, requestedType, retain, dstIsUsed);
             },
             .binExpr => {
-                const left = node.head.binExpr.left;
-                const right = node.head.binExpr.right;
-
-                const op = node.head.binExpr.op;
-                switch (op) {
-                    .slash => {
-                        return self.genPushBinOp(.div, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .percent => {
-                        return self.genPushBinOp(.mod, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .caret => {
-                        return self.genPushBinOp(.pow, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .star => {
-                        return self.genPushBinOp(.mul, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .plus => {
-                        const startTempLocal = self.curBlock.firstFreeTempLocal;
-                        defer self.computeNextTempLocalFrom(startTempLocal);
-
-                        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-                        const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, discardTopExprReg);
-                        const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, discardTopExprReg);
-                        if (!discardTopExprReg) {
-                            if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
-                                try self.buf.pushOp3(.addInt, leftv.local, rightv.local, dst);
-                                return self.initGenValue(dst, sema.IntegerType);
-                            }
-                            try self.buf.pushOp3(.add, leftv.local, rightv.local, dst);
-                            try self.pushDebugSym(nodeId);
-                            return self.initGenValue(dst, sema.NumberType);
-                        } else {
-                            return GenValue.initNoValue();
-                        }
-                    },
-                    .minus => {
-                        const startTempLocal = self.curBlock.firstFreeTempLocal;
-                        defer self.computeNextTempLocalFrom(startTempLocal);
-
-                        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-                        const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, discardTopExprReg);
-                        const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, discardTopExprReg);
-                        if (!discardTopExprReg) {
-                            if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
-                                try self.buf.pushOp3(.minusInt, leftv.local, rightv.local, dst);
-                                return self.initGenValue(dst, sema.IntegerType);
-                            }
-                            try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
-                            return self.initGenValue(dst, sema.NumberType);
-                        } else return GenValue.initNoValue();
-                    },
-                    .equal_equal => {
-                        return self.genPushBinOp(.compare, left, right, sema.BoolType, dst, discardTopExprReg);
-                    },
-                    .bang_equal => {
-                        return self.genPushBinOp(.compareNot, left, right, sema.BoolType, dst, discardTopExprReg);
-                    },
-                    .less => {
-                        const startTempLocal = self.curBlock.firstFreeTempLocal;
-                        defer self.computeNextTempLocalFrom(startTempLocal);
-
-                        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-                        var leftv: GenValue = undefined;
-                        var rightv: GenValue = undefined;
-                        if (node.head.binExpr.semaCanRequestIntegerOperands) {
-                            leftv = try self.genExprToDestOrTempLocal2(sema.IntegerType, left, dst, &usedDstAsTemp, discardTopExprReg);
-                            rightv = try self.genExprToDestOrTempLocal2(sema.IntegerType, right, dst, &usedDstAsTemp, discardTopExprReg);
-                        } else {
-                            leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
-                            rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
-                        }
-                        if (!discardTopExprReg) {
-                            if (node.head.binExpr.semaCanRequestIntegerOperands) {
-                                try self.buf.pushOp3(.lessInt, leftv.local, rightv.local, dst);
-                                return self.initGenValue(dst, sema.BoolType);
-                            }
-                            try self.buf.pushOp3(.less, leftv.local, rightv.local, dst);
-                            return self.initGenValue(dst, sema.BoolType);
-                        } else return GenValue.initNoValue();
-                    },
-                    .less_equal => {
-                        return self.genPushBinOp(.lessEqual, left, right, sema.BoolType, dst, discardTopExprReg);
-                    },
-                    .greater => {
-                        return self.genPushBinOp(.greater, left, right, sema.BoolType, dst, discardTopExprReg);
-                    },
-                    .greater_equal => {
-                        return self.genPushBinOp(.greaterEqual, left, right, sema.BoolType, dst, discardTopExprReg);
-                    },
-                    .bitwiseAnd => {
-                        return self.genPushBinOp(.bitwiseAnd, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .bitwiseOr => {
-                        return self.genPushBinOp(.bitwiseOr, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .bitwiseXor => {
-                        return self.genPushBinOp(.bitwiseXor, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .bitwiseLeftShift => {
-                        return self.genPushBinOp(.bitwiseLeftShift, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .bitwiseRightShift => {
-                        return self.genPushBinOp(.bitwiseRightShift, left, right, sema.NumberType, dst, discardTopExprReg);
-                    },
-                    .and_op => {
-                        const startTempLocal = self.curBlock.firstFreeTempLocal;
-                        defer self.computeNextTempLocalFrom(startTempLocal);
-
-                        const leftv = try self.genExprTo(left, dst, false, discardTopExprReg);
-                        const jumpPc = try self.pushEmptyJumpNotCond(leftv.local);
-                        const rightv = try self.genExprTo(right, dst, false, discardTopExprReg);
-                        self.patchJumpToCurrent(jumpPc);
-
-                        if (leftv.vtype.typeT == rightv.vtype.typeT) {
-                            if (retainEscapeTop and leftv.vtype.rcCandidate) {
-                                try self.buf.pushOp1(.retain, dst);
-                            }
-                            return self.initGenValue(dst, leftv.vtype);
-                        } else {
-                            if (retainEscapeTop and (leftv.vtype.rcCandidate or rightv.vtype.rcCandidate)) {
-                                try self.buf.pushOp1(.retain, dst);
-                            }
-                            return self.initGenValue(dst, sema.AnyType);
-                        }
-                    },
-                    .or_op => {
-                        const startTempLocal = self.curBlock.firstFreeTempLocal;
-                        defer self.computeNextTempLocalFrom(startTempLocal);
-
-                        const leftv = try self.genExprTo(left, dst, retainEscapeTop, discardTopExprReg);
-                        const jumpPc = try self.pushEmptyJumpCond(leftv.local);
-                        const rightv = try self.genExprTo(right, dst, retainEscapeTop, discardTopExprReg);
-                        self.patchJumpToCurrent(jumpPc);
-
-                        if (leftv.vtype.typeT == rightv.vtype.typeT) {
-                            return self.initGenValue(dst, leftv.vtype);
-                        } else return self.initGenValue(dst, sema.AnyType);
-                    },
-                    else => return self.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
-                }
+                return genBinExpr(self, nodeId, dst, requestedType, retain, dstIsUsed);
             },
             .call_expr => {
-                const val = try self.genCallExpr(nodeId, dst, discardTopExprReg, false);
+                const val = try self.genCallExpr(nodeId, dst, !dstIsUsed, false);
                 if (dst != val.local) {
                     try self.buf.pushOp2(.copy, val.local, dst);
                 }
-                if (!discardTopExprReg and !retainEscapeTop and self.isTempLocal(dst)) {
+                if (dstIsUsed and !retain and self.isTempLocal(dst)) {
                     try self.setReservedTempLocal(dst);
                 }
                 return self.initGenValue(dst, val.vtype);
             },
             .lambda_multi => {
-                if (!discardTopExprReg) {
-                    const jumpPc = try self.pushEmptyJump();
-
-                    self.nextSemaBlock();
-                    try self.pushBlock();
-                    self.curBlock.frameLoc = nodeId;
-
-                    const jumpStackStart = self.blockJumpStack.items.len;
-                    const opStart = @intCast(u32, self.buf.ops.items.len);
-
-                    // Generate function body.
-                    const func = self.funcDecls[node.head.func.decl_id];
-                    try self.reserveFuncParams(func);
-                    try self.genInitLocals();
-                    const numParams = @intCast(u8, func.params.end - func.params.start);
-
-                    try self.genStatements(node.head.func.body_head, false);
-
-                    try self.genBlockEnding();
-                    self.patchJumpToCurrent(jumpPc);
-
-                    const sblock = sema.curBlock(self);
-                    const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
-                    const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-
-                    self.patchBlockJumps(jumpStackStart);
-                    self.blockJumpStack.items.len = jumpStackStart;
-
-                    self.popBlock();
-                    self.prevSemaBlock();
-
-                    if (numCaptured == 0) {
-                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-                        try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
-                        if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.setReservedTempLocal(dst);
-                        }
-                        return self.initGenValue(dst, sema.AnyType);
-                    } else {
-                        const operandStart = self.operandStack.items.len;
-                        defer self.operandStack.items.len = operandStart;
-
-                        // Retain captured vars.
-                        for (sblock.params.items) |varId| {
-                            const svar = self.vars.items[varId];
-                            if (svar.isCaptured) {
-                                const pId = self.capVarDescs.get(varId).?.user;
-                                const pvar = &self.vars.items[pId];
-
-                                if (svar.isBoxed) {
-                                    try self.buf.pushOp1(.retain, pvar.local);
-                                    try self.pushTempOperand(pvar.local);
-                                }
-                            }
-                        }
-
-                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-                        try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
-                        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-                        if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.setReservedTempLocal(dst);
-                        }
-                        return self.initGenValue(dst, sema.AnyType);
-                    }
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genLambdaMulti(self, nodeId, dst, retain, dstIsUsed);
             },
             .lambda_expr => {
-                if (!discardTopExprReg) {
-                    const jumpPc = try self.pushEmptyJump();
-
-                    self.nextSemaBlock();
-                    try self.pushBlock();
-                    const opStart = @intCast(u32, self.buf.ops.items.len);
-
-                    // Generate function body.
-                    const func = self.funcDecls[node.head.func.decl_id];
-                    try self.reserveFuncParams(func);
-                    try self.genInitLocals();
-                    const numParams = @intCast(u8, func.params.end - func.params.start);
-                    _ = try self.genRetainedExprTo(node.head.func.body_head, 0, false);
-                    try self.endLocals();
-                    try self.buf.pushOp(.ret1);
-                    self.patchJumpToCurrent(jumpPc);
-
-                    const sblock = sema.curBlock(self);
-                    const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
-                    const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-
-                    self.popBlock();
-                    self.prevSemaBlock();
-
-                    if (numCaptured == 0) {
-                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-                        try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
-                        if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.setReservedTempLocal(dst);
-                        }
-                        return self.initGenValue(dst, sema.AnyType);
-                    } else {
-                        const operandStart = self.operandStack.items.len;
-                        defer self.operandStack.items.len = operandStart;
-
-                        // Retain captured vars.
-                        for (sblock.params.items) |varId| {
-                            const svar = self.vars.items[varId];
-                            if (svar.isCaptured) {
-                                const pId = self.capVarDescs.get(varId).?.user;
-                                const pvar = &self.vars.items[pId];
-
-                                if (svar.isBoxed) {
-                                    try self.buf.pushOp1(.retain, pvar.local);
-                                    try self.pushTempOperand(pvar.local);
-                                }
-                            }
-                        }
-
-                        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-                        try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
-                        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-                        if (!retainEscapeTop and self.isTempLocal(dst)) {
-                            try self.setReservedTempLocal(dst);
-                        }
-                        return self.initGenValue(dst, sema.AnyType);
-                    }
-                } else {
-                    return GenValue.initNoValue();
-                }
+                return genLambdaExpr(self, nodeId, dst, retain, dstIsUsed);
             },
             .coresume => {
                 const fiber = try self.genRetainedTempExpr(node.head.child_head, false);
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     try self.buf.pushOp2(.coresume, fiber.local, dst);
                 } else {
                     try self.buf.pushOp2(.coresume, fiber.local, NullIdU8);
@@ -3002,14 +2390,14 @@ pub const VMcompiler = struct {
                 try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc), .pcOffset = 1 });
 
                 // TODO: return coyield expression.
-                if (!discardTopExprReg) {
+                if (dstIsUsed) {
                     return try self.genNone(dst);
                 } else {
                     return GenValue.initNoValue();
                 }
             },
             .coinit => {
-                _ = try self.genCallExpr(node.head.child_head, dst, discardTopExprReg, true);
+                _ = try self.genCallExpr(node.head.child_head, dst, !dstIsUsed, true);
                 return self.initGenValue(dst, sema.FiberType);
             },
             else => {
@@ -3278,3 +2666,675 @@ const DataNode = packed struct {
 const Config = struct {
     genMainScopeReleaseOps: bool = true,
 };
+
+fn genIdent(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
+        if (dst == svar.local) {
+            if (retain) {
+                stdx.panic("Unexpected retainEscapeTop.");
+            }
+            return GenValue.initSemaVar(svar);
+        } else {
+            if (retain and svar.vtype.rcCandidate) {
+                if (svar.isBoxed) {
+                    try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
+                } else {
+                    try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
+                }
+            } else {
+                if (svar.isBoxed) {
+                    try self.buf.pushOp2(.boxValue, svar.local, dst);
+                } else {
+                    try self.buf.pushOp2(.copy, svar.local, dst);
+                }
+            }
+            return self.initGenValue(dst, svar.vtype);
+        }
+    } else {
+        if (builtin.mode == .Debug and node.head.ident.semaSymId == NullId) {
+            unexpectedFmt("Missing semaSymId.", &.{});
+        }
+        if (self.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
+            if (rsym.symT == .func) {
+                const sym = self.semaSyms.items[node.head.ident.semaSymId];
+                const localKey = sym.key.absLocalSymKey;
+                const resolvedParentId = if (localKey.localParentSymId == NullId) NullId else self.semaSyms.items[localKey.localParentSymId].resolvedSymId;
+
+                const rfsym = self.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
+                const rtSymId = try self.vm.ensureFuncSym(resolvedParentId, localKey.nameId, rfsym.numParams);
+
+                try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
+                return self.initGenValue(dst, sema.AnyType);
+            } else if (rsym.symT == .variable) {
+                const sym = self.semaSyms.items[node.head.ident.semaSymId];
+                const localKey = sym.key.absLocalSymKey;
+                const varId = try self.vm.ensureVarSym(NullId, localKey.nameId);
+                try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
+                return self.initGenValue(dst, sema.AnyType);
+            } else {
+                const sym = self.semaSyms.items[node.head.ident.semaSymId];
+                const name = sema.getSymName(self, &sym);
+                return self.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(name)}, nodeId);
+            }
+        } else {
+            return self.genNone(dst);
+        }
+    }
+}
+
+fn genStringTemplate(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const operandStart = self.operandStack.items.len;
+    defer self.operandStack.items.len = operandStart;
+
+    const startTempLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startTempLocal);
+
+    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+
+    var expStringPart = true;
+    var curId = node.head.stringTemplate.partsHead;
+    var numExprs: u32 = 0;
+    while (curId != NullId) {
+        const cur = self.nodes[curId];
+        if (expStringPart) {
+            if (dstIsUsed) {
+                const raw = self.getNodeTokenString(cur);
+                const str = try self.unescapeString(raw);
+                const idx = try self.buf.getOrPushStringConst(str);
+                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
+            }
+        } else {
+            _ = try self.genRetainedTempExpr(curId, !dstIsUsed);
+            numExprs += 1;
+        }
+        curId = cur.next;
+        expStringPart = !expStringPart;
+    }
+
+    if (dstIsUsed) {
+        try self.buf.pushOp3(.stringTemplate, argStartLocal, @intCast(u8, numExprs), dst);
+        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+
+        if (!retain and self.isTempLocal(dst)) {
+            try self.setReservedTempLocal(dst);
+        }
+        return self.initGenValue(dst, sema.StringType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genObjectInit(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const stype = self.nodes[node.head.structInit.name];
+    const sname = self.getNodeTokenString(stype);
+    const snameId = try sema.ensureNameSym(self, sname);
+    const sid = self.vm.getStruct(snameId, 0) orelse {
+        return self.reportErrorAt("Missing object type: `{}`", &.{v(sname)}, nodeId);
+    };
+
+    const initializer = self.nodes[node.head.structInit.initializer];
+    
+    // TODO: Would it be faster/efficient to copy the fields into contiguous registers 
+    //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
+    //       The current implementation is the former.
+    // TODO: Have sema sort the fields so eval can handle default values easier.
+
+    // Push props onto stack.
+
+    const numFields = self.vm.structs.buf[sid].numFields;
+    // Repurpose stack for sorting fields.
+    const sortedFieldsStart = self.assignedVarStack.items.len;
+    try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
+    defer self.assignedVarStack.items.len = sortedFieldsStart;
+
+    // Initially set to NullId so leftovers are defaulted to `none`.
+    const initFields = self.assignedVarStack.items[sortedFieldsStart..];
+    std.mem.set(u32, initFields, NullId);
+
+    const startTempLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startTempLocal);
+
+    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+
+    var i: u32 = 0;
+    var entryId = initializer.head.child_head;
+    // First iteration to sort the initializer fields.
+    while (entryId != NullId) : (i += 1) {
+        const entry = self.nodes[entryId];
+        const prop = self.nodes[entry.head.mapEntry.left];
+        const fieldName = self.getNodeTokenString(prop);
+        const fieldIdx = self.vm.getStructFieldIdx(sid, fieldName) orelse {
+            return self.reportErrorAt("Missing field {}", &.{fmt.v(fieldName)}, entry.head.mapEntry.left);
+        };
+        initFields[fieldIdx] = entryId;
+        entryId = entry.next;
+    }
+
+    i = 0;
+    while (i < numFields) : (i += 1) {
+        entryId = self.assignedVarStack.items[sortedFieldsStart + i];
+        if (entryId == NullId) {
+            if (dstIsUsed) {
+                // Push none.
+                const local = try self.nextFreeTempLocal();
+                try self.buf.pushOp1(.none, local);
+            }
+        } else {
+            const entry = self.nodes[entryId];
+            _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, !dstIsUsed);
+        }
+    }
+
+    if (dstIsUsed) {
+        if (self.vm.structs.buf[sid].numFields <= 4) {
+            try self.pushOptionalDebugSym(nodeId);
+            try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
+        } else {
+            try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
+        }
+        if (!retain and self.isTempLocal(dst)) {
+            try self.setReservedTempLocal(dst);
+        }
+        return GenValue.initTempValue(dst, sema.AnyType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genMapInit(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const operandStart = self.operandStack.items.len;
+    defer self.operandStack.items.len = operandStart;
+
+    const startTempLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startTempLocal);
+
+    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+
+    var i: u32 = 0;
+    var entry_id = node.head.child_head;
+    while (entry_id != NullId) : (i += 1) {
+        var entry = self.nodes[entry_id];
+        const key = self.nodes[entry.head.mapEntry.left];
+
+        if (dstIsUsed) {
+            switch (key.node_t) {
+                .ident => {
+                    const name = self.getNodeTokenString(key);
+                    const idx = try self.buf.getOrPushStringConst(name);
+                    try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
+                },
+                .string => {
+                    const name = self.getNodeTokenString(key);
+                    const idx = try self.buf.getOrPushStringConst(name);
+                    try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
+                },
+                else => stdx.panicFmt("unsupported key {}", .{key.node_t}),
+            }
+        }
+
+        _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, !dstIsUsed);
+        entry_id = entry.next;
+    }
+
+    if (dstIsUsed) {
+        if (i == 0) {
+            try self.buf.pushOp1(.mapEmpty, dst);
+        } else {
+            try self.buf.pushOp3(.map, argStartLocal, @intCast(u8, i), dst);
+            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+        }
+
+        if (!retain and self.isTempLocal(dst)) {
+            try self.setReservedTempLocal(dst);
+        }
+        return self.initGenValue(dst, sema.MapType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genBinExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: sema.Type, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const left = node.head.binExpr.left;
+    const right = node.head.binExpr.right;
+
+    const op = node.head.binExpr.op;
+    switch (op) {
+        .slash => {
+            return self.genPushBinOp(.div, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .percent => {
+            return self.genPushBinOp(.mod, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .caret => {
+            return self.genPushBinOp(.pow, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .star => {
+            return self.genPushBinOp(.mul, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .plus => {
+            const startTempLocal = self.curBlock.firstFreeTempLocal;
+            defer self.computeNextTempLocalFrom(startTempLocal);
+
+            var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+            const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, !dstIsUsed);
+            const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, !dstIsUsed);
+            if (dstIsUsed) {
+                if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
+                    try self.buf.pushOp3(.addInt, leftv.local, rightv.local, dst);
+                    return self.initGenValue(dst, sema.IntegerType);
+                }
+                try self.buf.pushOp3(.add, leftv.local, rightv.local, dst);
+                try self.pushDebugSym(nodeId);
+                return self.initGenValue(dst, sema.NumberType);
+            } else {
+                return GenValue.initNoValue();
+            }
+        },
+        .minus => {
+            const startTempLocal = self.curBlock.firstFreeTempLocal;
+            defer self.computeNextTempLocalFrom(startTempLocal);
+
+            var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+            const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, !dstIsUsed);
+            const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, !dstIsUsed);
+            if (dstIsUsed) {
+                if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
+                    try self.buf.pushOp3(.minusInt, leftv.local, rightv.local, dst);
+                    return self.initGenValue(dst, sema.IntegerType);
+                }
+                try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
+                return self.initGenValue(dst, sema.NumberType);
+            } else return GenValue.initNoValue();
+        },
+        .equal_equal => {
+            return self.genPushBinOp(.compare, left, right, sema.BoolType, dst, !dstIsUsed);
+        },
+        .bang_equal => {
+            return self.genPushBinOp(.compareNot, left, right, sema.BoolType, dst, !dstIsUsed);
+        },
+        .less => {
+            const startTempLocal = self.curBlock.firstFreeTempLocal;
+            defer self.computeNextTempLocalFrom(startTempLocal);
+
+            var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+            var leftv: GenValue = undefined;
+            var rightv: GenValue = undefined;
+            if (node.head.binExpr.semaCanRequestIntegerOperands) {
+                leftv = try self.genExprToDestOrTempLocal2(sema.IntegerType, left, dst, &usedDstAsTemp, !dstIsUsed);
+                rightv = try self.genExprToDestOrTempLocal2(sema.IntegerType, right, dst, &usedDstAsTemp, !dstIsUsed);
+            } else {
+                leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, !dstIsUsed);
+                rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, !dstIsUsed);
+            }
+            if (dstIsUsed) {
+                if (node.head.binExpr.semaCanRequestIntegerOperands) {
+                    try self.buf.pushOp3(.lessInt, leftv.local, rightv.local, dst);
+                    return self.initGenValue(dst, sema.BoolType);
+                }
+                try self.buf.pushOp3(.less, leftv.local, rightv.local, dst);
+                return self.initGenValue(dst, sema.BoolType);
+            } else return GenValue.initNoValue();
+        },
+        .less_equal => {
+            return self.genPushBinOp(.lessEqual, left, right, sema.BoolType, dst, !dstIsUsed);
+        },
+        .greater => {
+            return self.genPushBinOp(.greater, left, right, sema.BoolType, dst, !dstIsUsed);
+        },
+        .greater_equal => {
+            return self.genPushBinOp(.greaterEqual, left, right, sema.BoolType, dst, !dstIsUsed);
+        },
+        .bitwiseAnd => {
+            return self.genPushBinOp(.bitwiseAnd, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .bitwiseOr => {
+            return self.genPushBinOp(.bitwiseOr, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .bitwiseXor => {
+            return self.genPushBinOp(.bitwiseXor, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .bitwiseLeftShift => {
+            return self.genPushBinOp(.bitwiseLeftShift, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .bitwiseRightShift => {
+            return self.genPushBinOp(.bitwiseRightShift, left, right, sema.NumberType, dst, !dstIsUsed);
+        },
+        .and_op => {
+            const startTempLocal = self.curBlock.firstFreeTempLocal;
+            defer self.computeNextTempLocalFrom(startTempLocal);
+
+            const leftv = try self.genExprTo(left, dst, false, !dstIsUsed);
+            const jumpPc = try self.pushEmptyJumpNotCond(leftv.local);
+            const rightv = try self.genExprTo(right, dst, false, !dstIsUsed);
+            self.patchJumpToCurrent(jumpPc);
+
+            if (leftv.vtype.typeT == rightv.vtype.typeT) {
+                if (retain and leftv.vtype.rcCandidate) {
+                    try self.buf.pushOp1(.retain, dst);
+                }
+                return self.initGenValue(dst, leftv.vtype);
+            } else {
+                if (retain and (leftv.vtype.rcCandidate or rightv.vtype.rcCandidate)) {
+                    try self.buf.pushOp1(.retain, dst);
+                }
+                return self.initGenValue(dst, sema.AnyType);
+            }
+        },
+        .or_op => {
+            const startTempLocal = self.curBlock.firstFreeTempLocal;
+            defer self.computeNextTempLocalFrom(startTempLocal);
+
+            const leftv = try self.genExprTo(left, dst, retain, !dstIsUsed);
+            const jumpPc = try self.pushEmptyJumpCond(leftv.local);
+            const rightv = try self.genExprTo(right, dst, retain, !dstIsUsed);
+            self.patchJumpToCurrent(jumpPc);
+
+            if (leftv.vtype.typeT == rightv.vtype.typeT) {
+                return self.initGenValue(dst, leftv.vtype);
+            } else return self.initGenValue(dst, sema.AnyType);
+        },
+        else => return self.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
+    }
+}
+
+fn genLambdaMulti(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId]; 
+    if (dstIsUsed) {
+        const jumpPc = try self.pushEmptyJump();
+
+        self.nextSemaBlock();
+        try self.pushBlock();
+        self.curBlock.frameLoc = nodeId;
+
+        const jumpStackStart = self.blockJumpStack.items.len;
+        const opStart = @intCast(u32, self.buf.ops.items.len);
+
+        // Generate function body.
+        const func = self.funcDecls[node.head.func.decl_id];
+        try self.reserveFuncParams(func);
+        try self.genInitLocals();
+        const numParams = @intCast(u8, func.params.end - func.params.start);
+
+        try self.genStatements(node.head.func.body_head, false);
+
+        try self.genBlockEnding();
+        self.patchJumpToCurrent(jumpPc);
+
+        const sblock = sema.curBlock(self);
+        const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
+        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
+
+        self.patchBlockJumps(jumpStackStart);
+        self.blockJumpStack.items.len = jumpStackStart;
+
+        self.popBlock();
+        self.prevSemaBlock();
+
+        if (numCaptured == 0) {
+            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+            return self.initGenValue(dst, sema.AnyType);
+        } else {
+            const operandStart = self.operandStack.items.len;
+            defer self.operandStack.items.len = operandStart;
+
+            // Retain captured vars.
+            for (sblock.params.items) |varId| {
+                const svar = self.vars.items[varId];
+                if (svar.isCaptured) {
+                    const pId = self.capVarDescs.get(varId).?.user;
+                    const pvar = &self.vars.items[pId];
+
+                    if (svar.isBoxed) {
+                        try self.buf.pushOp1(.retain, pvar.local);
+                        try self.pushTempOperand(pvar.local);
+                    }
+                }
+            }
+
+            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
+            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+            return self.initGenValue(dst, sema.AnyType);
+        }
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genLambdaExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    if (dstIsUsed) {
+        const jumpPc = try self.pushEmptyJump();
+
+        self.nextSemaBlock();
+        try self.pushBlock();
+        const opStart = @intCast(u32, self.buf.ops.items.len);
+
+        // Generate function body.
+        const func = self.funcDecls[node.head.func.decl_id];
+        try self.reserveFuncParams(func);
+        try self.genInitLocals();
+        const numParams = @intCast(u8, func.params.end - func.params.start);
+        _ = try self.genRetainedExprTo(node.head.func.body_head, 0, false);
+        try self.endLocals();
+        try self.buf.pushOp(.ret1);
+        self.patchJumpToCurrent(jumpPc);
+
+        const sblock = sema.curBlock(self);
+        const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
+        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
+
+        self.popBlock();
+        self.prevSemaBlock();
+
+        if (numCaptured == 0) {
+            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+            return self.initGenValue(dst, sema.AnyType);
+        } else {
+            const operandStart = self.operandStack.items.len;
+            defer self.operandStack.items.len = operandStart;
+
+            // Retain captured vars.
+            for (sblock.params.items) |varId| {
+                const svar = self.vars.items[varId];
+                if (svar.isCaptured) {
+                    const pId = self.capVarDescs.get(varId).?.user;
+                    const pvar = &self.vars.items[pId];
+
+                    if (svar.isBoxed) {
+                        try self.buf.pushOp1(.retain, pvar.local);
+                        try self.pushTempOperand(pvar.local);
+                    }
+                }
+            }
+
+            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
+            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+            return self.initGenValue(dst, sema.AnyType);
+        }
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genListInit(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const startLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startLocal);
+
+    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+
+    var exprId = node.head.child_head;
+    var i: u32 = 0;
+    while (exprId != NullId) : (i += 1) {
+        const expr = self.nodes[exprId];
+        _ = try self.genRetainedTempExpr(exprId, !dstIsUsed);
+        exprId = expr.next;
+    }
+
+    if (dstIsUsed) {
+        try self.buf.pushOp3(.list, argStartLocal, @intCast(u8, i), dst);
+        if (!retain and self.isTempLocal(dst)) {
+            try self.setReservedTempLocal(dst);
+        }
+        return self.initGenValue(dst, sema.ListType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genRangeAccessExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const startTempLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startTempLocal);
+
+    var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+
+    // Parent value.
+    const parentv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.arr, dst, &usedDstAsTemp, !dstIsUsed);
+
+    // Range left value.
+    var leftv: GenValue = undefined;
+    if (node.head.arr_range_expr.left == NullId) {
+        if (dstIsUsed) {
+            if (usedDstAsTemp) {
+                const leftDst = try self.nextFreeTempLocal();
+                leftv = try self.genConst(0, leftDst);
+            } else {
+                leftv = try self.genConst(0, dst);
+                usedDstAsTemp = true;
+            }
+        }
+    } else {
+        leftv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.left, dst, &usedDstAsTemp, !dstIsUsed);
+    }
+
+    // Range right value.
+    var rightv: GenValue = undefined;
+    if (node.head.arr_range_expr.right == NullId) {
+        if (dstIsUsed) {
+            if (usedDstAsTemp) {
+                const rightDst = try self.nextFreeTempLocal();
+                rightv = try self.genNone(rightDst);
+            } else {
+                rightv = try self.genNone(dst);
+                usedDstAsTemp = true;
+            }
+        }
+    } else {
+        rightv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.right, dst, &usedDstAsTemp, !dstIsUsed);
+    }
+
+    if (dstIsUsed) {
+        try self.buf.pushOpSlice(.slice, &.{ parentv.local, leftv.local, rightv.local, dst });
+        if (!retain and self.isTempLocal(dst)) {
+            try self.setReservedTempLocal(dst);
+        }
+        return self.initGenValue(dst, sema.ListType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genIndexAccessExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    const startTempLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startTempLocal);
+
+    var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+
+    // Gen left.
+    const leftv = try self.genExprToDestOrTempLocal(node.head.left_right.left, dst, &usedDstAsTemp, !dstIsUsed);
+
+    // Gen index.
+    const index = self.nodes[node.head.left_right.right];
+    const isReverseIndex = index.node_t == .unary_expr and index.head.unary.op == .minus;
+    const indexv = try self.genExprToDestOrTempLocal(node.head.left_right.right, dst, &usedDstAsTemp, !dstIsUsed);
+
+    if (dstIsUsed) {
+        if (isReverseIndex) {
+            try self.buf.pushOp3(.reverseIndex, leftv.local, indexv.local, dst);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+        } else {
+            try self.buf.pushOp3(.index, leftv.local, indexv.local, dst);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+        }
+        return self.initGenValue(dst, sema.AnyType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}
+
+fn genAccessExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    const node = self.nodes[nodeId];
+    if (node.head.accessExpr.semaSymId != NullId) {
+        const sym = self.semaSyms.items[node.head.accessExpr.semaSymId];
+        if (self.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {
+            const key = sym.key.absLocalSymKey;
+            const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
+            if (rsym.symT == .variable) {
+                if (self.vm.getVarSym(resolvedParentId, key.nameId)) |symId| {
+                    if (dstIsUsed) {
+                        // Static variable.
+                        try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
+                        return self.initGenValue(dst, sema.AnyType);
+                    } else {
+                        return GenValue.initNoValue();
+                    }
+                }
+            }
+        }
+        const name = sema.getSymName(self, &sym);
+        return self.reportErrorAt("Unsupported sym: {}", &.{v(name)}, nodeId);
+    }
+
+    const startTempLocal = self.curBlock.firstFreeTempLocal;
+    defer self.computeNextTempLocalFrom(startTempLocal);
+
+    var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
+
+    // Left side.
+    const leftv = try self.genExprToDestOrTempLocal(node.head.accessExpr.left, dst, &usedDstAsTemp, !dstIsUsed);
+
+    // Right should be an ident.
+    const right = self.nodes[node.head.accessExpr.right];
+
+    const name = self.getNodeTokenString(right);
+    const fieldId = try self.vm.ensureFieldSym(name);
+
+    if (dstIsUsed) {
+        if (retain) {
+            try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
+        } else {
+            try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
+        }
+        try self.pushDebugSym(nodeId);
+        return self.initGenValue(dst, sema.AnyType);
+    } else {
+        return GenValue.initNoValue();
+    }
+}

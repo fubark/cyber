@@ -38,12 +38,9 @@ jobs:
           - host: ubuntu-22.04
             target: wasm32-freestanding
             mode: release
-          # - host: windows-2019
-          #   target: x86_64-windows-gnu
-          #   mode: release
-          # - host: windows-2019
-          #  target: x86_64-windows-msvc
-          #  mode: release
+          - host: windows-2022
+            target: x86_64-windows-gnu
+            mode: release
     env:
       ZIG_TARGET_FLAG: >-
         ${{ fromJson('{
@@ -90,9 +87,15 @@ jobs:
           wget -c https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.1465+d64dd75e3.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
           xcode-select --print-path
 
+      - name: Install zig.
+        if: env.BUILD_HOST == 'windows-2022'
+        run: |
+          Invoke-WebRequest -Uri 'https://ziglang.org/builds/zig-windows-x86_64-0.11.0-dev.1465+d64dd75e3.zip' -OutFile 'C:\zig.zip'
+          cd C:\
+          7z x zig.zip
+          Add-Content $env:GITHUB_PATH 'C:\zig-windows-x86_64-0.11.0-dev.1465+d64dd75e3\'
+
       - name: Cache.
-        # Don't cache for windows, since there are issues with subsequent builds. Check to re-enable this later.
-        if: env.BUILD_TARGET != 'x86_64-windows-gnu'
         uses: actions/cache@v2
         with:
           path: |-

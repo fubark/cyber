@@ -31,24 +31,31 @@ jobs:
           - host: ubuntu-22.04
             target: x86_64-linux-gnu
             mode: release
+            cmd: cli
           - host: ubuntu-22.04
             target: x86_64-selinux-gnu
             mode: release
+            cmd: cli
           - host: macos-12
             target: x86_64-macos.12-none
             mode: release
+            cmd: cli
           - host: macos-12
             target: aarch64-macos.12-none
             mode: release
-          - host: ubuntu-22.04
-            target: wasm32-freestanding
-            mode: release
+            cmd: cli
           - host: windows-2022
             target: x86_64-windows-gnu
             mode: release
-          # - host: windows-2019
-          #  target: x86_64-windows-msvc
-          #  mode: release
+            cmd: cli
+          - host: ubuntu-22.04
+            target: wasm32-freestanding
+            mode: release
+            cmd: lib
+          - host: windows-2022
+            target: x86_64-windows-gnu
+            mode: release
+            cmd: lib
     env:
       BIN_ZIP: >-
         ${{ fromJson('{
@@ -71,6 +78,7 @@ jobs:
       BUILD_HOST: ${{ matrix.config.host }}
       BUILD_TARGET: ${{ matrix.config.target }}
       BUILD_MODE: ${{ matrix.config.mode }}
+      BUILD_CMD: ${{ matrix.config.cmd }}
       BIN_NAME: cyber
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Drelease-fast') || '' }}
@@ -162,12 +170,7 @@ jobs:
           wasm3/zig-out/bin/wasm3 zig-out/test/test.wasm
 
       - name: Build.
-        if: env.BUILD_TARGET != 'wasm32-freestanding'
-        run: zig build cli ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
-
-      - name: Build.
-        if: env.BUILD_TARGET == 'wasm32-freestanding'
-        run: zig build lib ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
+        run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
 
       # Remove when zig strip is fixed.
       - name: Strip (Linux)
@@ -200,10 +203,15 @@ jobs:
            tar -C zig-out/cyber -czvf ${{ env.BIN_ZIP }} cyber
 
       - name: Zip. (windows)
-        if: env.BUILD_HOST == 'windows-2022' && env.BUILD_TARGET != 'wasm32-freestanding'
+        if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'cli'
         shell: bash
         run: |
           cd zig-out/cyber && 7z a ../../${{env.BIN_ZIP}} cyber.exe
+
+      - name: Move. (windows lib)
+        if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'lib'
+        run: |
+          mv zig-out/lib/cyber.dll cyber.dll
 
       - name: Move. (wasm)
         if: env.BUILD_TARGET == 'wasm32-freestanding'
@@ -243,4 +251,5 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
+            cyber.dll
             cyber.wasm

@@ -20,7 +20,7 @@ try t.eq(foo2(20, 10), 30)
 -- Static function wrapped in value.
 func foo3():
     return 5
-let bar = foo3
+bar = foo3
 try t.eq(bar(), 5)
 
 -- Wrong number of arguments when invoking lambda.

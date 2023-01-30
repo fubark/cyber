@@ -35,7 +35,8 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "if", .if_k },
     .{ "import", .import_k },
     .{ "is", .is_k },
-    .{ "let", .let_k },
+    .{ "static", .static_k },
+    .{ "capture", .capture_k },
     .{ "none", .none_k },
     .{ "not", .not_k },
     .{ "object", .object_k },
@@ -1490,60 +1491,26 @@ pub const Parser = struct {
                 const id = try self.pushNode(.pass_stmt, self.next_pos);
                 self.advanceToken();
                 token = self.peekToken();
-                switch (token.tag()) {
-                    .none => return id,
-                    .new_line => {
-                        self.advanceToken();
-                        return id;
-                    },
-                    else => {
-                        return self.reportParseError("Expected end of statement.", &.{});
-                    },
-                }
+                try self.consumeNewLineOrEnd();
+                return id;
             },
             .continue_k => {
                 const id = try self.pushNode(.continueStmt, self.next_pos);
                 self.advanceToken();
-                token = self.peekToken();
-                switch (token.tag()) {
-                    .none => return id,
-                    .new_line => {
-                        self.advanceToken();
-                        return id;
-                    },
-                    else => {
-                        return self.reportParseError("Expected end of statement.", &.{});
-                    },
-                }
+                try self.consumeNewLineOrEnd();
+                return id;
             },
             .break_k => {
                 const id = try self.pushNode(.breakStmt, self.next_pos);
                 self.advanceToken();
-                token = self.peekToken();
-                switch (token.tag()) {
-                    .none => return id,
-                    .new_line => {
-                        self.advanceToken();
-                        return id;
-                    },
-                    else => {
-                        return self.reportParseError("Expected end of statement.", &.{});
-                    },
-                }
+                try self.consumeNewLineOrEnd();
+                return id;
             },
             .return_k => {
                 const id = try self.parseReturnStatement();
                 token = self.peekToken();
-                switch (token.tag()) {
-                    .none => return id,
-                    .new_line => {
-                        self.advanceToken();
-                        return id;
-                    },
-                    else => {
-                        return self.reportParseError("Expected end of statement.", &.{});
-                    },
-                }
+                try self.consumeNewLineOrEnd();
+                return id;
             },
             .var_k => {
                 const start = self.next_pos;
@@ -1582,7 +1549,7 @@ pub const Parser = struct {
                 try self.varDecls.append(self.alloc, decl);
                 return decl;
             },
-            .let_k => {
+            .capture_k => {
                 const start = self.next_pos;
                 self.advanceToken();
 
@@ -1592,11 +1559,19 @@ pub const Parser = struct {
                 if (token.tag() == .ident) {
                     name = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
-                } else return self.reportParseError("Expected local name identifier.", &.{});
+                } else return self.reportParseError("Expected local variable identifier.", &.{});
 
                 token = self.peekToken();
                 if (token.tag() != .equal) {
-                    return self.reportParseError("Expected `=` after local variable name.", &.{});
+                    try self.consumeNewLineOrEnd();
+                    const decl = try self.pushNode(.captureDecl, start);
+                    self.nodes.items[decl].head = .{
+                        .left_right = .{
+                            .left = name,
+                            .right = NullId,
+                        },
+                    };
+                    return decl;
                 }
                 self.advanceToken();
 
@@ -1609,7 +1584,53 @@ pub const Parser = struct {
                         return self.reportParseError("Expected right expression for assignment statement.", &.{});
                     };
                 }
-                const decl = try self.pushNode(.localDecl, start);
+                try self.consumeNewLineOrEnd();
+                const decl = try self.pushNode(.captureDecl, start);
+                self.nodes.items[decl].head = .{
+                    .left_right = .{
+                        .left = name,
+                        .right = right,
+                    },
+                };
+                return decl;
+            },
+            .static_k => {
+                const start = self.next_pos;
+                self.advanceToken();
+
+                // Local name.
+                token = self.peekToken();
+                var name: NodeId = undefined;
+                if (token.tag() == .ident) {
+                    name = try self.pushIdentNode(self.next_pos);
+                    self.advanceToken();
+                } else return self.reportParseError("Expected variable name identifier.", &.{});
+
+                token = self.peekToken();
+                if (token.tag() != .equal) {
+                    try self.consumeNewLineOrEnd();
+                    const decl = try self.pushNode(.captureDecl, start);
+                    self.nodes.items[decl].head = .{
+                        .left_right = .{
+                            .left = name,
+                            .right = NullId,
+                        },
+                    };
+                    return decl;
+                }
+                self.advanceToken();
+
+                var right: NodeId = undefined;
+                if (self.peekToken().tag() == .func_k) {
+                    // Multi-line lambda.
+                    right = try self.parseMultilineLambdaFunction();
+                } else {
+                    right = (try self.parseExpr(.{})) orelse {
+                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                    };
+                }
+                try self.consumeNewLineOrEnd();
+                const decl = try self.pushNode(.staticDecl, start);
                 self.nodes.items[decl].head = .{
                     .left_right = .{
                         .left = name,
@@ -3057,7 +3078,8 @@ pub const TokenType = enum(u6) {
     catch_k,
     recover_k,
     compt_k,
-    let_k,
+    static_k,
+    capture_k,
     var_k,
     match_k,
     // Error token, returned if ignoreErrors = true.
@@ -3090,7 +3112,8 @@ pub const NodeType = enum {
     expr_stmt,
     assign_stmt,
     opAssignStmt,
-    localDecl,
+    staticDecl,
+    captureDecl,
     varDecl,
     pass_stmt,
     breakStmt,
@@ -4342,6 +4365,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 59);
-    try t.eq(keywords.kvs.len, 33);
+    try t.eq(std.enums.values(TokenType).len, 60);
+    try t.eq(keywords.kvs.len, 34);
 }

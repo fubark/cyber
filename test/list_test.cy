@@ -122,8 +122,8 @@ try t.eq(a[1][0], 2)
 try t.eq(a[2][0], 3)
 
 -- Iteration.
-let a = [1, 2, 3, 4, 5]
-let sum = 0
+a = [1, 2, 3, 4, 5]
+sum = 0
 for a each it:
   sum += it
 try t.eq(sum, 15)
@@ -131,7 +131,7 @@ try t.eq(sum, 15)
 -- Pair iteration.
 a = [10, 20, 30]
 sum = 0
-let idxSum = 0
+idxSum = 0
 for a each idx, it:
   sum += it
   idxSum += idx

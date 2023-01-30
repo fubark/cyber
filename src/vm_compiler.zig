@@ -1013,9 +1013,21 @@ pub const VMcompiler = struct {
             .varDecl => {
                 // Nop. Static variables are hoisted and initialized at the start of the program.
             },
-            .localDecl => {
-                // Can assume left is .ident from sema.
-                try self.genSetVarToExpr(node.head.left_right.left, node.head.left_right.right, false);
+            .captureDecl => {
+                if (node.head.left_right.right != NullId) {
+                    // Can assume left is .ident from sema.
+                    try self.genSetVarToExpr(node.head.left_right.left, node.head.left_right.right, false);
+                }
+            },
+            .staticDecl => {
+                if (node.head.left_right.right != NullId) {
+                    const left = self.nodes[node.head.left_right.left];
+                    std.debug.assert(left.node_t == .ident);
+                    const sym = self.semaSyms.items[left.head.ident.semaSymId];
+                    const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
+                    const rtSymId = try self.vm.ensureVarSym(NullId, sym.key.absLocalSymKey.nameId);
+                    try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
+                }
             },
             .tagDecl => {
                 // Nop.

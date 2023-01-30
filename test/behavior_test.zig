@@ -917,7 +917,7 @@ test "Static variable declaration." {
 
     // Using a local variable in a static var initializer is not allowed.
     var res = run.evalSilent(
-        \\let b = 123
+        \\b = 123
         \\var a = b
     );
     try t.expectError(res, error.CompileError);
@@ -927,14 +927,14 @@ test "Static variable declaration." {
     _ = try run.eval(
         \\import t 'test'
         \\var a = 123
-        \\let b = a
+        \\b = a
         \\try t.eq(b, 123)
     );
 
     // Reading from a static variable before it is declared.
     _ = try run.eval(
         \\import t 'test'
-        \\let b = a
+        \\b = a
         \\try t.eq(b, 123)
         \\var a = 123
     );
@@ -977,147 +977,19 @@ test "Static variable declaration." {
 test "Static variable assignment." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    // Assignment to a static variable.
-    _ = try run.eval(
-        \\import t 'test'
-        \\var a = 123
-        \\func foo():
-        \\  a = 234
-        \\foo()
-        \\try t.eq(a, 234)
-    );
-
-    // Assignment to a static variable before it is declared.
-    _ = try run.eval(
-        \\import t 'test'
-        \\func foo():
-        \\  a = 234
-        \\foo()
-        \\try t.eq(a, 234)
-        \\var a = 123
-    );
-
-    // Operator assignment to a static variable.
-    _ = try run.eval(
-        \\import t 'test'
-        \\var a = 123
-        \\func foo():
-        \\  a += 321
-        \\foo()
-        \\try t.eq(a, 444)
-    );
+    _ = try run.eval(@embedFile("staticvar_assign_test.cy"));
 }
 
 test "Local variable declaration." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\
-        \\-- Declare local and read it.
-        \\let a = 1
-        \\try t.eq(a, 1)
-        \\func foo():
-        \\  -- Captured `a` from main block.
-        \\  try t.eq(a, 1)
-        \\  a = 2
-        \\try foo()
-        \\
-        \\-- Changed `a` from main block.
-        \\try t.eq(a, 2)
-        \\func bar():
-        \\  -- Captured `a` from main block.
-        \\  try t.eq(a, 2)
-        \\  -- New `a` in `bar`.
-        \\  let a = 3
-        \\  try t.eq(a, 3)
-        \\try bar()
-        \\
-        \\-- `a` from main remains the same.
-        \\try t.eq(a, 2)
-    );
+    _ = try run.eval(@embedFile("localvar_decl_test.cy"));
 }
 
 test "Local variable assignment." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    // Variable assignment.
-    var val = try run.eval(
-        \\a = 1
-        \\a
-    );
-    try t.eq(val.asF64toI32(), 1);
-
-    // Overwrite existing var.
-    val = try run.eval(
-        \\a = 1
-        \\a = 2
-        \\a
-    );
-    try t.eq(val.asF64toI32(), 2);
-
-    // Use existing var.
-    val = try run.eval(
-        \\a = 1
-        \\b = a + 2
-        \\b
-    );
-    try t.eq(val.asF64toI32(), 3);
-
-    // Using a variable that was conditionally assigned.
-    val = try run.eval(
-        \\if true:
-        \\  a = 1
-        \\a
-    );
-    try t.eq(val.asF64toI32(), 1);
-
-    // Using a variable that was conditionally not assigned.
-    val = try run.eval(
-        \\if false:
-        \\  a = 1
-        \\a
-    );
-    try t.eq(val.isNone(), true);
-
-    // Using a variable that was assigned in a loop.
-    val = try run.eval(
-        \\for 2..3 each i:
-        \\  a = i
-        \\a
-    );
-    try t.eq(val.asF64toI32(), 2);
-
-    // Using a variable that was not assigned in a loop.
-    val = try run.eval(
-        \\for 2..2 each i:
-        \\  a = i
-        \\a
-    );
-    try t.eq(val.isNone(), true);
-
-    // Using a variable that was conditionally assigned in a function.
-    val = try run.eval(
-        \\func foo():
-        \\  if true:
-        \\    a = 1
-        \\  return a
-        \\foo()
-    );
-    try t.eq(val.asF64toI32(), 1);
-
-    // Using a variable that was conditionally not assigned in a function.
-    val = try run.eval(
-        \\func foo():
-        \\  if false:
-        \\    a = 1
-        \\  return a
-        \\foo()
-    );
-    try t.eq(val.isNone(), true);
+    _ = try run.eval(@embedFile("localvar_assign_test.cy"));
 
     // Initializing an object in a branch will auto generate initializers at the start of
     // the function. This test sets freed object values along the undefined stack space.
@@ -1125,7 +997,7 @@ test "Local variable assignment." {
     // If not `a` would refer to a freed object value and fail the release op.
     try run.resetEnv();
     run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
-    val = try run.evalNoReset(
+    var val = try run.evalNoReset(
         \\object S:
         \\  value
         \\if false:
@@ -1298,7 +1170,7 @@ test "Static closures." {
     var val = try run.eval(
         \\a = 123
         \\func foo():
-        \\  a = 234
+        \\  capture a = 234
         \\foo()
         \\a
     );
@@ -1311,7 +1183,7 @@ test "Static closures." {
         \\func foo():
         \\  b = a
         \\  try t.eq(b, 123)
-        \\  a = 234
+        \\  capture a = 234
         \\try foo()
         \\try t.eq(a, 234)
     );
@@ -1320,6 +1192,7 @@ test "Static closures." {
     val = try run.eval(
         \\a = 123
         \\func foo():
+        \\  capture a
         \\  a += 1
         \\foo()
         \\a
@@ -1373,7 +1246,7 @@ test "Value closures." {
     val = try run.eval(
         \\a = 123
         \\foo = func():
-        \\  a = 234
+        \\  capture a = 234
         \\foo()
         \\a
     );

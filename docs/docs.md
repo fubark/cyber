@@ -120,78 +120,116 @@ if true: print 123
 [To Top.](#table-of-contents)
 
 ### Variables.
-In Cyber, there are local variables and static variables. When referencing variables for reading and writing, the lookup starts in the current block's variable scope and works its way upwards until it has found a declaration.
+In Cyber, there are local variables and static variables.
 
 [To Top.](#table-of-contents)
 
 ### Local Variables.
-Local variables are set with the assignment statement.
+Local variables exist until the end of their scope.
+They are set using the assignment statement.
 ```text
 a = 123
 ```
+
 Function blocks and the main block have their own local variable scope.
-Variable names are looked up from the current scope and upwards until the first declaration is found, so using the assignment statement alone doesn't always write to the current scope.
-```text
-a = 123
-func foo():
-    -- This assignment closes over the `a` from the main scope.
-    a = 234
-foo()
-print a     -- '234'
-```
-To declare a new local variable, use the `let` assignment.
+Variable assignments prefer to set the variable in the current block. If there is no such variable in the current block, it will create a new local variable.
 ```text
 a = 123
 func foo():
     -- A new local `a` inside `foo`.
-    let a = 234
-    -- Subsequent assignments now write to the new `a`.
+    a = 234
+foo()
+print a      -- '123'
+```
+
+If the assignment was intended for a parent local variable, the `capture` keyword is used.
+```text
+a = 123
+func foo():
+    capture a = 234
+foo()
+print a      -- '234'
+```
+
+Once declared with `capture`, any subsequent assignments will also set the parent local variable.
+```text
+a = 123
+func foo():
+    capture a = 234
     a = 345
 foo()
-print a     -- '123'
+print a      -- '345'
 ```
-Note that branching constructs such as `if` or `for` are considered sub-blocks and share the same variable scope as the block they are in.
+
+Control flow constructs such as `if` or `for` are considered sub-blocks and share the same variable scope as the block they are in.
 ```text
-let a = 123
+a = 123
 if true:
-    let a = 234   -- This would raise a compile error since `a` is already declared in the same scope.
+    a = 234
+print a      -- '234'
+```
+
+Referencing a variable that doesn't exist in the current block, will find the first variable above the current block.
+```text
+a = 123
+func foo():
+    print a
+foo()        -- '123'
 ```
 
 [To Top.](#table-of-contents)
 
 ### Static Variables.
-Unlike local variables, static variables continue to exist after their block finished execution.
+Unlike local variables, static variables are always available until the end of the script.
 When declared in the main block, they act as global variables and are visible from anywhere in the script without being captured by a closure. 
 You can declare static variables with the `var` keyword.
-
 ```text
 var a = 123
+func foo():
+    print a     -- '123'
 ```
+
 Cyber's static variable declaration can be a source of confusion if you're coming from a language that uses `var` as a local variable.
 As a rule of thumb, static declarations in Cyber always begin with a keyword that describes what it is: `var`, `func`, `object`, `module`, `import`.
-Local variable declarations use the `let` assignment instead.
+Local variables are declared by the first assignment statement in a block.
+
+Since assignment statements prefer to write to a variable in it's local block, the `static` keyword is used to select a static variable instead.
+```text
+var a = 123
+func foo():
+    static a = 234
+foo()
+print a         -- '234'
+```
 
 Static variables can also be exported from the current script. You can read more about exports and [Modules](#modules).
 ```text
 export var a = 123
 ```
+
 When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.
 ```text
 func add(a):
     var sum = 0
     sum += a
     return sum
-print add(5)     -- "5"
-print add(5)     -- "10"
+print add(5)     -- '5'
+print add(5)     -- '10'
 ```
-Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables. However, you can reassign any value to them with an assignment statement.
-```text
-let a = 123
-var b = a     -- Compile error, initializer can not reference a local variable.
 
+Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables.
+```text
+a = 123
+var b = a     -- Compile error, initializer can not reference a local variable.
+```
+
+However, you can reassign any value to them with an assignment statement.
+```text
+a = 123
 var b = 0
 b = a         -- Reassigning can reference a local variable.
 ```
+
 Static variable initializers have a natural order based on when it was encountered by the compiler.
 In the case of [imported](#importing) variables, the order of the import would affect this order.
 The following would print '123' before '234'
@@ -199,12 +237,14 @@ The following would print '123' before '234'
 var a = print(123)
 var b = print(234)
 ```
+
 When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes `b` before `a`.
 ```text
 var a = b + 321
 var b = 123
 print a        -- '444'
 ```
+
 Circular references in initializers are allowed.
 When initialization encounters a reference that creates this circular dependency, that reference evaluates to `none` at that moment.
 In the following, `a` attempts to initialize first because of its natural ordering. Since `b` is a dependency, it supersedes the natural ordering.
@@ -213,11 +253,12 @@ When `b` is found to reference an already visited `a` (causing the circular depe
 var a = b
 var b = a
 ```
+
 Sometimes, you may want to initialize a static variable by executing multiple statements in order.
 For this use case, you can use a declaration block.
 ```
 var myImage =:
-    let img = loadImage('me.png')
+    img = loadImage('me.png')
     img.resize(100, 100)
     img.filter(#blur, 5)
     break img
@@ -227,11 +268,11 @@ The final resulting value that is set to the static variable is provided by a `b
 [To Top.](#table-of-contents)
 
 ### Keywords.
-There are currently `33` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `34` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
 - [Control Flow](#control-flow): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
-- [Variables](#variables): `var` `let` `as`
+- [Variables](#variables): `var` `static` `capture` `as`
 - [Functions](#functions): `func` `return`
 - [Coroutines](#fibers): `coinit` `coyield`, `coresume`
 - [Data Types](#data-types): `object` `tagtype` `true` `false` `none`
@@ -908,7 +949,7 @@ Calling static functions is straightforward. You can also reassign or pass them 
 print dist(0, 0, 10, 20)
 
 -- Assigning to a local variable.
-let bar = dist
+bar = dist
 
 -- Passing `dist` as an argument.
 func squareDist(dist, size):
@@ -1244,7 +1285,7 @@ Sample usage:
 ```text
 import os 'os'
 
-let map = os.getEnvAll()
+map = os.getEnvAll()
 for map each k, v:
     print '{k} -> {v}'
 ```

@@ -30,6 +30,7 @@ try t.eq(count, 9)
 -- Single line block.
 i = 0
 func inc(): 
+  capture i
   i += 1
   return i
 while: if inc() == 10: break

@@ -456,7 +456,8 @@ pub const Value = packed union {
                     TagUserTag => return .tag,
                     TagUserTagLiteral => return .tagLiteral,
                     TagError => return .errorVal,
-                    else => unreachable,
+                    TagInteger => return .int,
+                    // else => unreachable,
                 }
             }
         }
@@ -465,6 +466,7 @@ pub const Value = packed union {
 
 pub const ValueUserTag = enum {
     number,
+    int,
     boolean,
     object,
     list,

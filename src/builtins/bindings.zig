@@ -57,6 +57,12 @@ pub const TagLit = enum {
     number,
     object,
     map,
+    list,
+    function,
+    fiber,
+    string,
+    rawstring,
+    none,
 
     // Open modes.
     read,
@@ -448,6 +454,12 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "number", .number);
     try ensureTagLitSym(self, "object", .object);
     try ensureTagLitSym(self, "map", .map);
+    try ensureTagLitSym(self, "list", .list);
+    try ensureTagLitSym(self, "function", .function);
+    try ensureTagLitSym(self, "fiber", .fiber);
+    try ensureTagLitSym(self, "string", .string);
+    try ensureTagLitSym(self, "rawstring", .rawstring);
+    try ensureTagLitSym(self, "none", .none);
 
     try ensureTagLitSym(self, "read", .read);
     try ensureTagLitSym(self, "write", .write);

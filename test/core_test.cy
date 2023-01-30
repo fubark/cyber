@@ -44,6 +44,20 @@ try t.eq(newS == s, false)
 try t.eq(newS.foo, 123)
 try t.eq(newS.bar, rcList)
 
+-- int()
+res = int(100)
+try t.eq(valtag(res), #int)
+try t.eq(number(res), 100)
+try t.eq(number(int(100.1)), 100)
+try t.eq(number(int('100')), 100)
+try t.eq(number(int('100.1')), 100)
+
+-- number()
+try t.eq(number(100), 100)
+try t.eq(number(100.1), 100.1)
+try t.eq(number('100'), 100)
+try t.eq(number('100.1'), 100.1)
+
 -- string()
 str = 'abcd'
 try t.eq(string(str[0..2]), 'ab')

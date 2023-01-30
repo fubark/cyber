@@ -29,6 +29,14 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
     const expType = getComparableTag(exp);
     if (actType == expType) {
         switch (actType) {
+            .int => {
+                if (act.asI32() == exp.asI32()) {
+                    return true;
+                } else {
+                    printStderr("actual: {} != {}\n", &.{v(act.asI32()), v(exp.asI32())});
+                    return false;
+                }
+            },
             .number => {
                 if (act.asF64() == exp.asF64()) {
                     return true;

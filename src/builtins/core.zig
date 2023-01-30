@@ -613,12 +613,25 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     return vm.allocRawString(input) catch stdx.fatal();
 }
 
-pub fn int(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn int(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    if (val.isNumber()) {
-        return Value.initI32(@floatToInt(i32, val.asF64()));
-    } else {
-        return Value.initI32(0);
+    switch (val.getUserTag()) {
+        .number => {
+            return Value.initI32(@floatToInt(i32, @trunc(val.asF64())));
+        },
+        .string => {
+            var str = vm.valueToTempString(val);
+            if (std.mem.indexOfScalar(u8, str, '.')) |idx| {
+                str = str[0..idx];
+            }
+            const res = std.fmt.parseInt(i32, str, 10) catch {
+                return Value.initI32(0);
+            };
+            return Value.initI32(res);
+        },
+        else => {
+            return Value.initI32(0);
+        }
     }
 }
 
@@ -630,22 +643,20 @@ pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
     }
 }
 
-pub fn number(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = vm;
-    _ = nargs;
+pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    if (val.isNumber()) {
-        return val;
-    } else {
-        if (val.isPointer()) {
-            return Value.initF64(1);
-        } else {
-            switch (val.getTag()) {
-                cy.UserTagT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-                cy.UserTagLiteralT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-                else => return Value.initF64(1),
-            }
-        }
+    switch (val.getUserTag()) {
+        .number => return val,
+        .string => {
+            const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
+                return Value.initI32(0);
+            };
+            return Value.initF64(res);
+        },
+        .tag => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+        .tagLiteral => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+        .int => return Value.initF64(@intToFloat(f64, val.asI32())),
+        else => return Value.initF64(0),
     }
 }
 
@@ -788,6 +799,15 @@ pub fn valtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .errorVal => return Value.initTagLiteral(@enumToInt(TagLit.err)),
         .boolean => return Value.initTagLiteral(@enumToInt(TagLit.bool)),
         .map => return Value.initTagLiteral(@enumToInt(TagLit.map)),
+        .int => return Value.initTagLiteral(@enumToInt(TagLit.int)),
+        .list => return Value.initTagLiteral(@enumToInt(TagLit.list)),
+        .string => return Value.initTagLiteral(@enumToInt(TagLit.string)),
+        .rawstring => return Value.initTagLiteral(@enumToInt(TagLit.rawstring)),
+        .fiber => return Value.initTagLiteral(@enumToInt(TagLit.fiber)),
+        .nativeFunc,
+        .closure,
+        .lambda => return Value.initTagLiteral(@enumToInt(TagLit.function)),
+        .none => return Value.initTagLiteral(@enumToInt(TagLit.none)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }

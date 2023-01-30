@@ -779,6 +779,14 @@ An `if` expression also needs the `then` keyword. Conditional `else` clauses are
 a = 10
 str = if a == 10 then 'red' else 'blue'
 ```
+Use `and` and `or` logical operators to combine conditions:
+```text
+a = 10
+if a > 5 and a < 15:
+    print 'a is between 5 and 15'
+if a == 20 or a == 10: 
+    print 'a is 10 or 20'
+```
 [To Top.](#table-of-contents)
 
 ### Iterations.

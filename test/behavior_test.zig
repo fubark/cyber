@@ -413,7 +413,7 @@ test "must()" {
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
-        .uri = "main",
+        .chunkId = 0,
         .line = 1,
         .col = 0,
         .lineStartPos = 17,
@@ -434,7 +434,7 @@ test "panic()" {
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
-        .uri = "main",
+        .chunkId = 0,
         .line = 1,
         .col = 4,
         .lineStartPos = 8,
@@ -454,7 +454,7 @@ test "Stack trace unwinding." {
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
-        .uri = "main",
+        .chunkId = 0,
         .line = 1,
         .col = 4,
         .lineStartPos = 8,
@@ -472,14 +472,14 @@ test "Stack trace unwinding." {
     try t.eq(trace.frames.len, 2);
     try eqStackFrame(trace.frames[0], .{
         .name = "foo",
-        .uri = "main",
+        .chunkId = 0,
         .line = 2,
         .col = 13,
         .lineStartPos = 22,
     });
     try eqStackFrame(trace.frames[1], .{
         .name = "main",
-        .uri = "main",
+        .chunkId = 0,
         .line = 3,
         .col = 0,
         .lineStartPos = 41,
@@ -488,7 +488,7 @@ test "Stack trace unwinding." {
 
 fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
     try t.eqStr(act.name, exp.name);
-    try t.eqStr(act.uri, exp.uri);
+    try t.eq(act.chunkId, exp.chunkId);
     try t.eq(act.line, exp.line);
     try t.eq(act.col, exp.col);
     try t.eq(act.lineStartPos, exp.lineStartPos);

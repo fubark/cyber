@@ -68,7 +68,7 @@ pub const ByteCodeBuffer = struct {
         return start;
     }
 
-    pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u16, loc: u32, frameLoc: u32) !void {
+    pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32) !void {
         try self.debugTable.append(self.alloc, .{
             .pc = @intCast(u32, pc),
             .loc = loc,
@@ -317,7 +317,9 @@ pub const OpDebug = struct {
     pc: u32,
     loc: u32,
     frameLoc: u32,
-    file: u16,
+
+    /// CompileChunkId.
+    file: u32,
 };
 
 pub fn getInstLenAt(pc: [*]const OpData) u8 {

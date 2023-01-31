@@ -66,7 +66,7 @@ pub const Parser = struct {
     alloc: std.mem.Allocator,
 
     /// Context vars.
-    src: std.ArrayListUnmanaged(u8),
+    src: []const u8,
     next_pos: u32,
     savePos: u32,
     tokens: std.ArrayListUnmanaged(Token),
@@ -104,7 +104,7 @@ pub const Parser = struct {
     pub fn init(alloc: std.mem.Allocator) Parser {
         return .{
             .alloc = alloc,
-            .src = .{},
+            .src = "",
             .next_pos = undefined,
             .savePos = undefined,
             .tokens = .{},
@@ -126,7 +126,6 @@ pub const Parser = struct {
     pub fn deinit(self: *Parser) void {
         self.tokens.deinit(self.alloc);
         self.nodes.deinit(self.alloc);
-        self.src.deinit(self.alloc);
         self.alloc.free(self.last_err);
         self.block_stack.deinit(self.alloc);
         self.func_params.deinit(self.alloc);
@@ -151,9 +150,7 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: *Parser, src: []const u8) !ResultView {
-        self.src.clearRetainingCapacity();
-        try self.src.ensureTotalCapacity(self.alloc, 1024);
-        try self.src.appendSlice(self.alloc, src);
+        self.src = src;
         self.name = "";
         self.deps.clearRetainingCapacity();
 
@@ -174,7 +171,7 @@ pub const Parser = struct {
                 .func_decls = &self.func_decls,
                 .func_params = self.func_params.items,
                 .tokens = &.{},
-                .src = self.src.items,
+                .src = self.src,
                 .name = self.name,
                 .deps = &self.deps,
             };
@@ -182,7 +179,7 @@ pub const Parser = struct {
         const root_id = self.parseRoot() catch |err| {
             log.debug("parse error: {} {s}", .{err, self.last_err});
             // self.dumpTokensToCurrent();
-            logSrcPos(self.src.items, self.last_err_pos, 20);
+            logSrcPos(self.src, self.last_err_pos, 20);
             if (dumpParseErrorStackTrace and !cy.silentError) {
                 std.debug.dumpStackTrace(@errorReturnTrace().?.*);
             }
@@ -195,7 +192,7 @@ pub const Parser = struct {
                 .func_decls = &self.func_decls,
                 .func_params = self.func_params.items,
                 .tokens = &.{},
-                .src = self.src.items,
+                .src = self.src,
                 .name = self.name,
                 .deps = &self.deps,
             };
@@ -207,7 +204,7 @@ pub const Parser = struct {
             .root_id = root_id,
             .nodes = &self.nodes,
             .tokens = self.tokens.items,
-            .src = self.src.items,
+            .src = self.src,
             .func_decls = &self.func_decls,
             .func_params = self.func_params.items,
             .name = self.name,
@@ -830,7 +827,7 @@ pub const Parser = struct {
             decl.params = try self.parseFunctionParams();
             decl.return_type = try self.parseFunctionReturn();
 
-            const name = self.src.items[decl.name.start..decl.name.end];
+            const name = self.src[decl.name.start..decl.name.end];
             const block = &self.block_stack.items[self.block_stack.items.len-1];
             try block.vars.put(self.alloc, name, {});
 
@@ -1408,7 +1405,7 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() == .ident) {
                     const name_token = self.tokens.items[self.next_pos];
-                    const name = self.src.items[name_token.pos() .. name_token.data.end_pos];
+                    const name = self.src[name_token.pos() .. name_token.data.end_pos];
                     var skip_compile = false;
 
                     const ident = try self.pushIdentNode(self.next_pos);
@@ -1432,7 +1429,7 @@ pub const Parser = struct {
                         if (std.mem.eql(u8, "name", name)) {
                             if (arg.node_t == .ident) {
                                 const arg_token = self.tokens.items[arg.start_token];
-                                self.name = self.src.items[arg_token.pos() .. arg_token.data.end_pos];
+                                self.name = self.src[arg_token.pos() .. arg_token.data.end_pos];
                                 skip_compile = true;
                             } else {
                                 return self.reportParseErrorAt("Expected ident arg for @name.", &.{}, callStart);
@@ -1671,7 +1668,7 @@ pub const Parser = struct {
         self.alloc.free(self.last_err);
         self.last_err = try fmt.allocFormat(self.alloc, format, args);
         if (tokenPos >= self.tokens.items.len) {
-            self.last_err_pos = @intCast(u32, self.src.items.len);
+            self.last_err_pos = @intCast(u32, self.src.len);
         } else {
             self.last_err_pos = self.tokens.items[tokenPos].pos();
         }
@@ -2234,7 +2231,7 @@ pub const Parser = struct {
                 const id = try self.pushIdentNode(start);
 
                 const name_token = self.tokens.items[start];
-                const name = self.src.items[name_token.pos()..name_token.data.end_pos];
+                const name = self.src[name_token.pos()..name_token.data.end_pos];
                 if (!self.isVarDeclaredFromScope(name)) {
                     try self.deps.put(self.alloc, name, id);
                 }
@@ -2812,7 +2809,7 @@ pub const Parser = struct {
             const left = self.nodes.items[expr_id];
             if (left.node_t == .ident) {
                 const name_token = self.tokens.items[left.start_token];
-                const name = self.src.items[name_token.pos()..name_token.data.end_pos];
+                const name = self.src[name_token.pos()..name_token.data.end_pos];
                 const block = &self.block_stack.items[self.block_stack.items.len-1];
                 if (self.deps.get(name)) |node_id| {
                     if (node_id == expr_id) {
@@ -3644,7 +3641,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             if (Config.user) {
                 return p.user.isAtEndChar(p.user.ctx);
             } else {
-                return p.src.items.len == p.next_pos;
+                return p.src.len == p.next_pos;
             }
         }
 
@@ -3681,7 +3678,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             if (Config.user) {
                 return p.user.peekChar(p.user.ctx);
             } else {
-                return p.src.items[p.next_pos];
+                return p.src[p.next_pos];
             }
         }
 
@@ -3689,7 +3686,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             if (Config.user) {
                 return p.user.getSubStrFromDelta(p.user.ctx, p.next_pos - start);
             } else {
-                return p.src.items[start..p.next_pos];
+                return p.src[start..p.next_pos];
             }
         }
 
@@ -3697,8 +3694,8 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             if (Config.user) {
                 return p.user.peekCharAhead(p.user.ctx, steps);
             } else {
-                if (p.next_pos < p.src.items.len - steps) {
-                    return p.src.items[p.next_pos + steps];
+                if (p.next_pos < p.src.len - steps) {
+                    return p.src[p.next_pos + steps];
                 } else return null;
             }
         }
@@ -4000,7 +3997,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             p.tokens.clearRetainingCapacity();
             p.next_pos = 0;
 
-            if (p.src.items.len > 2 and p.src.items[0] == '#' and p.src.items[1] == '!') {
+            if (p.src.len > 2 and p.src[0] == '#' and p.src[1] == '!') {
                 // Ignore shebang line.
                 while (!isAtEndChar(p)) {
                     if (peekChar(p) == '\n') {
@@ -4311,7 +4308,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 try p.pushNumberToken(start, p.next_pos);
                 return;
             } else {
-                if (p.src.items[p.next_pos-1] == '0') {
+                if (p.src[p.next_pos-1] == '0') {
                     if (ch == 'x') {
                         // Hex integer.
                         advanceChar(p);

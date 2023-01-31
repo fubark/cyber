@@ -6,7 +6,8 @@ const cy = @import("cyber.zig");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const vm_ = @import("vm.zig");
-const sema = @import("sema.zig");
+const sema = cy.sema;
+const gen = cy.codegen;
 const os_mod = @import("builtins/os.zig");
 
 const log = stdx.log.scoped(.vm_compiler);
@@ -27,67 +28,17 @@ pub const VMcompiler = struct {
     buf: cy.ByteCodeBuffer,
     lastErr: []const u8,
     lastErrNode: cy.NodeId,
+    lastErrChunk: CompileChunkId,
 
     /// Used to return additional info for an error.
     errorPayload: cy.NodeId,
 
     /// -- Context vars
 
-    /// Since nodes are currently processed recursively,
-    /// set the current node so that error reporting has a better
-    /// location context for helper methods that simply return no context errors.
-    curNodeId: cy.NodeId,
-    src: []const u8,
-    nodes: []cy.Node,
-    tokens: []const cy.Token,
-    funcDecls: []cy.FuncDecl,
-    funcParams: []const cy.FunctionParam,
-    semaBlocks: std.ArrayListUnmanaged(sema.Block),
-    semaSubBlocks: std.ArrayListUnmanaged(sema.SubBlock),
-    vars: std.ArrayListUnmanaged(sema.LocalVar),
-    capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
-    blocks: std.ArrayListUnmanaged(Block),
-    blockJumpStack: std.ArrayListUnmanaged(BlockJump),
-    subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
-
-    /// Tracks which temp locals are reserved. They are skipped for temp local allocations.
-    reservedTempLocalStack: std.ArrayListUnmanaged(ReservedTempLocal),
-
-    assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
-    operandStack: std.ArrayListUnmanaged(cy.OpData),
-    
-    /// Generic linked list buffer.
-    dataNodes: std.ArrayListUnmanaged(DataNode),
-
-    /// Which sema sym var is currently being analyzed for an assignment initializer.
-    curSemaSymVar: u32,
-
-    /// When looking at a var declaration, keep track of which symbols are already recorded as dependencies.
-    semaVarDeclDeps: std.AutoHashMapUnmanaged(u32, void),
-
-    curBlock: *Block,
-    curSemaBlockId: sema.BlockId,
-    semaBlockDepth: u32,
-    curSemaSubBlockId: sema.SubBlockId,
-
-    /// Used during codegen to advance to the next saved sema block.
-    nextSemaBlockId: u32,
-    nextSemaSubBlockId: u32,
-
-    /// Currently used to store lists of static var dependencies.
-    bufU32: std.ArrayListUnmanaged(u32),
-
-    /// Used for temp string building.
-    tempBufU8: std.ArrayListUnmanaged(u8),
-
     /// Unique name syms.
     semaNameSyms: std.ArrayListUnmanaged([]const u8),
     semaNameSymMap: std.StringHashMapUnmanaged(sema.NameSymId),
 
-    /// Local paths to syms.
-    semaSyms: std.ArrayListUnmanaged(sema.Sym),
-    semaSymMap: std.HashMapUnmanaged(vm_.KeyU96, sema.SymId, vm_.KeyU96Context, 80),
-    
     /// Absolute path to syms and shared among modules.
     /// This includes all sym types and is keyed by just the absolute path of the sym.
     semaResolvedSyms: std.ArrayListUnmanaged(sema.ResolvedSym),
@@ -98,14 +49,15 @@ pub const VMcompiler = struct {
     semaResolvedFuncSyms: std.ArrayListUnmanaged(sema.ResolvedFuncSym),
     semaResolvedFuncSymMap: std.HashMapUnmanaged(vm_.KeyU64, sema.ResolvedFuncSymId, vm_.KeyU64Context, 80),
 
-    semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.SymRef),
-
     /// Modules.
     modules: std.ArrayListUnmanaged(sema.Module),
     /// Specifier to module.
     moduleMap: std.StringHashMapUnmanaged(sema.ModuleId),
 
     typeNames: std.StringHashMapUnmanaged(sema.Type),
+
+    /// Compilation units indexed by their id.
+    chunks: std.ArrayListUnmanaged(CompileChunk),
 
     config: Config,
 
@@ -116,47 +68,19 @@ pub const VMcompiler = struct {
             .buf = try cy.ByteCodeBuffer.init(vm.alloc),
             .lastErr = "",
             .lastErrNode = undefined,
+            .lastErrChunk = undefined,
             .errorPayload = undefined,
-            .curSemaSymVar = NullId,
-            .curNodeId = NullId,
-            .nodes = undefined,
-            .tokens = undefined,
-            .funcDecls = undefined,
-            .funcParams = undefined,
-            .semaBlocks = .{},
-            .semaSubBlocks = .{},
-            .vars = .{},
-            .capVarDescs = .{},
-            .blocks = .{},
-            .blockJumpStack = .{},
-            .subBlockJumpStack = .{},
-            .reservedTempLocalStack = .{},
-            .assignedVarStack = .{},
-            .operandStack = .{},
-            .curBlock = undefined,
-            .curSemaBlockId = undefined,
-            .curSemaSubBlockId = undefined,
-            .nextSemaBlockId = undefined,
-            .nextSemaSubBlockId = undefined,
-            .semaBlockDepth = undefined,
-            .src = undefined,
-            .tempBufU8 = .{},
-            .bufU32 = .{},
             .semaNameSyms = .{},
             .semaNameSymMap = .{},
-            .semaSyms = .{},
-            .semaSymMap = .{},
             .semaResolvedSyms = .{},
             .semaResolvedSymMap = .{},
             .semaResolvedFuncSyms = .{},
             .semaResolvedFuncSymMap = .{},
             .modules = .{},
             .moduleMap = .{},
-            .semaSymToRef = .{},
             .typeNames = .{},
-            .dataNodes = .{},
-            .semaVarDeclDeps = .{},
             .config = .{},
+            .chunks = .{},
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
     }
@@ -164,30 +88,7 @@ pub const VMcompiler = struct {
     pub fn deinit(self: *VMcompiler) void {
         self.alloc.free(self.lastErr);
 
-        for (self.semaSubBlocks.items) |*block| {
-            block.deinit(self.alloc);
-        }
-        self.semaSubBlocks.deinit(self.alloc);
-
-        for (self.semaBlocks.items) |*sblock| {
-            sblock.deinit(self.alloc);
-        }
-        self.semaBlocks.deinit(self.alloc);
-
-        self.blocks.deinit(self.alloc);
         self.buf.deinit();
-        self.blockJumpStack.deinit(self.alloc);
-        self.subBlockJumpStack.deinit(self.alloc);
-        self.assignedVarStack.deinit(self.alloc);
-        self.operandStack.deinit(self.alloc);
-        self.tempBufU8.deinit(self.alloc);
-        self.bufU32.deinit(self.alloc);
-        self.reservedTempLocalStack.deinit(self.alloc);
-        self.vars.deinit(self.alloc);
-        self.capVarDescs.deinit(self.alloc);
-
-        self.semaSyms.deinit(self.alloc);
-        self.semaSymMap.deinit(self.alloc);
 
         self.semaResolvedSyms.deinit(self.alloc);
         self.semaResolvedSymMap.deinit(self.alloc);
@@ -203,153 +104,106 @@ pub const VMcompiler = struct {
         }
         self.modules.deinit(self.alloc);
         self.moduleMap.deinit(self.alloc);
-        self.semaSymToRef.deinit(self.alloc);
         self.typeNames.deinit(self.alloc);
-        self.dataNodes.deinit(self.alloc);
-        self.semaVarDeclDeps.deinit(self.alloc);
 
         self.semaNameSyms.deinit(self.alloc);
         self.semaNameSymMap.deinit(self.alloc);
-    }
 
-    fn nextSemaSubBlock(self: *VMcompiler) void {
-        self.curSemaSubBlockId = self.nextSemaSubBlockId;
-        self.nextSemaSubBlockId += 1;
-
-        const ssblock = sema.curSubBlock(self);
-        for (ssblock.iterVarBeginTypes.items) |varAndType| {
-            const svar = &self.vars.items[varAndType.id];
-            // log.debug("{s} iter var", .{self.getVarName(varAndType.id)});
-            svar.vtype = varAndType.vtype;
-            svar.genIsDefined = true;
+        for (self.chunks.items) |*chunk| {
+            chunk.deinit();
         }
+        self.chunks.deinit(self.alloc);
     }
 
-    fn prevSemaSubBlock(self: *VMcompiler) void {
-        self.curSemaSubBlockId = sema.curSubBlock(self).prevSubBlockId;
-    }
-
-    fn nextSemaBlock(self: *VMcompiler) void {
-        self.curSemaBlockId = self.nextSemaBlockId;
-        self.nextSemaBlockId += 1;
-        self.nextSemaSubBlock();
-    }
-
-    fn prevSemaBlock(self: *VMcompiler) void {
-        self.curSemaBlockId = sema.curBlock(self).prevBlockId;
-        self.prevSemaSubBlock();
-    }
-
-    /// Reserve locals upfront and gen var initializer if necessary.
-    fn genInitLocals(self: *VMcompiler) !void {
-        const sblock = sema.curBlock(self);
-
-        // Reserve the locals.
-        var numInitializers: u32 = 0;
-        for (sblock.locals.items) |varId| {
-            const svar = self.genGetVarPtr(varId).?;
-            _ = try self.reserveLocalVar(varId);
-            if (svar.genInitializer) {
-                numInitializers += 1;
-            }
-            // log.debug("reserve {} {s}", .{local, self.getVarName(varId)});
+    fn resetCompiler(self: *VMcompiler) void {
+        self.buf.clear();
+        for (self.chunks.items) |*chunk| {
+            chunk.deinit();
         }
+        self.chunks.clearRetainingCapacity();
+        self.lastErrNode = cy.NullId;
+        self.lastErrChunk = cy.NullId;
+    }
 
-        if (numInitializers > 0) {
-            try self.buf.pushOp1(.setInitN, @intCast(u8, numInitializers));
-            for (sblock.locals.items) |varId| {
-                const svar = self.genGetVar(varId).?;
-                if (svar.genInitializer) {
-                    // log.debug("init {} {s}", .{svar.local, self.getVarName(varId)});
-                    try self.buf.pushOperand(svar.local);
+    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: Config) !ResultView {
+        self.compileInner(srcUri, src, config) catch |err| {
+            if (err == error.TokenError) {
+                return ResultView{
+                    .buf = self.buf,
+                    .err = .tokenize,
+                };
+            } else if (err == error.ParseError) {
+                return ResultView{
+                    .buf = self.buf,
+                    .err = .parse,
+                };
+            } else {
+                if (dumpCompileErrorStackTrace and !cy.silentError) {
+                    std.debug.dumpStackTrace(@errorReturnTrace().?.*);
                 }
-            }
-        }
-
-        self.resetNextFreeTemp();
-    }
-
-    /// Generates var decl initializer.
-    /// If the declaration contains dependencies those are generated first in DFS order.
-    fn genVarDeclInitDFS(self: *VMcompiler, symId: u32) !void {
-        const sym = &self.semaSyms.items[symId];
-        sym.visited = true;
-
-        if (self.semaSymToRef.get(symId)) |ref| {
-            // Contains dependencies. Generate initializers for them first.
-            const deps = self.bufU32.items[ref.inner.initDeps.start..ref.inner.initDeps.end];
-            for (deps) |dep| {
-                if (!self.semaSyms.items[dep].visited) {
-                    try self.genVarDeclInitDFS(dep);
+                if (err != error.CompileError) {
+                    // Report other errors using the main chunk.
+                    const chunk = &self.chunks.items[0];
+                    try chunk.setErrorAt("Error: {}", &.{v(err)}, cy.NullId);
                 }
+                return ResultView{
+                    .buf = self.buf,
+                    .err = .compile,
+                };
             }
-        }
-
-        // log.debug("generate init var: {s}", .{sym.path});
-        const rsym = self.semaResolvedSyms.items[sym.resolvedSymId];
-        const declId = rsym.inner.variable.declId;
-        const decl = self.nodes[declId];
-        const exprv = try self.genRetainedTempExpr(decl.head.varDecl.right, false);
-        const rtSymId = try self.vm.ensureVarSym(NullId, sym.key.absLocalSymKey.nameId);
-        try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), exprv.local);
+        };
+        return ResultView{
+            .buf = self.buf,
+            .err = null,
+        };
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *VMcompiler, ast: cy.ParseResultView) !void {
-        // Import core module into local namespace.
-        const modId = try sema.getOrLoadModule(self, "core", NullId);
-        try sema.importAllFromModule(self, modId);
+    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: Config) !void {
+        self.resetCompiler();
+        self.config = config;
 
-        const root = self.nodes[ast.root_id];
+        // Main chunk.
+        const nextId = @intCast(u32, self.chunks.items.len);
+        try self.chunks.append(self.alloc, try CompileChunk.init(self, nextId, srcUri, src));
 
-        // Ensure static var syms.
-        // Regular assign statements need to know whether the left is a new local variable
-        // or an existing static variable.
-        for (self.vm.parser.varDecls.items) |declId| {
-            const decl = self.nodes[declId];
-            const ident = self.nodes[decl.head.varDecl.left];
-            const str = self.getNodeTokenString(ident);
-            const nameId = try sema.ensureNameSym(self, str);
-            _ = try sema.ensureSym(self, null, nameId, null);
+        // Perform sema on all chunks.
+        var id: u32 = 0;
+        while (id < self.chunks.items.len) : (id += 1) {
+            try self.performChunkSema(id);
         }
-
-        try sema.pushBlock(self);
-        sema.semaStmts(self, root.head.child_head, true) catch |err| {
-            try sema.endBlock(self);
-            return err;
-        };
-        try sema.endBlock(self);
-
+        
         // After sema pass, resolve used syms.
-        for (self.semaSyms.items) |sym, symId| {
-            // Only full symbol paths that are unresolved.
-            if (sym.used and sym.resolvedSymId == NullId) {
-                try sema.resolveSym(self, @intCast(u32, symId));
+        for (self.chunks.items) |*chunk| {
+            for (chunk.semaSyms.items) |sym, symId| {
+                // Only full symbol paths that are unresolved.
+                if (sym.used and sym.resolvedSymId == NullId) {
+                    try sema.resolveSym(chunk, @intCast(u32, symId));
+                }
             }
         }
-
-        self.nextSemaBlockId = 1;
-        self.nextSemaSubBlockId = 1;
-        _ = self.nextSemaBlock();
-        try self.pushBlock();
 
         // Once all symbols have been resolved, the static variables are initialized in DFS order.
         // Uses temp locals from the main block.
-        for (self.semaSyms.items) |sym, i| {
-            const symId = @intCast(u32, i);
-            if (sym.used and sema.isResolvedUserVarSym(self, &sym) and !sym.visited) {
-                try self.genVarDeclInitDFS(symId);
-            }
-        }
-        self.resetNextFreeTemp();
+        for (self.chunks.items) |*chunk| {
+            chunk.nextSemaBlockId = 1;
+            chunk.nextSemaSubBlockId = 1;
+            _ = chunk.nextSemaBlock();
+            try chunk.pushBlock();
+            chunk.buf = &self.buf;
 
-        try self.genInitLocals();
-        const jumpStackStart = self.blockJumpStack.items.len;
-        try self.genStatements(root.head.child_head, true);
-        self.patchBlockJumps(jumpStackStart);
-        self.blockJumpStack.items.len = jumpStackStart;
-        self.popBlock();
-        self.buf.mainStackSize = @intCast(u32, self.curBlock.getRequiredStackSize());
+            for (chunk.semaSyms.items) |sym, i| {
+                const symId = @intCast(u32, i);
+                if (sym.used and sema.isResolvedUserVarSym(self, &sym) and !sym.visited) {
+                    try gen.genVarDeclInitDFS(chunk, symId);
+                }
+            }
+            chunk.resetNextFreeTemp();
+        }
+
+        for (self.chunks.items) |*chunk| {
+            try self.performChunkCodegen(chunk.id);
+        }
 
         // Merge inst and const buffers.
         var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
@@ -389,2158 +243,93 @@ pub const VMcompiler = struct {
         // }
     }
 
-    pub fn compile(self: *VMcompiler, ast: cy.ParseResultView, config: Config) !ResultView {
-        self.buf.clear();
-        self.blocks.clearRetainingCapacity();
-
-        for (self.semaBlocks.items) |*block| {
-            block.deinit(self.alloc);
-        }
-        self.semaBlocks.clearRetainingCapacity();
-
-        for (self.semaSubBlocks.items) |*block| {
-            block.deinit(self.alloc);
-        }
-        self.semaSubBlocks.clearRetainingCapacity();
+    /// Performs the following:
+    /// - Tokenize.
+    /// - Parsing to AST.
+    /// - Sema pass. (Does not resolve local symbols).
+    fn performChunkSema(self: *VMcompiler, id: CompileChunkId) !void {
+        const ast = try self.performChunkParse(id);
+        const chunk = &self.chunks.items[id];
 
         // Dummy first element to avoid len > 0 check during pop.
-        try self.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
-        try self.semaBlocks.append(self.alloc, sema.Block.init(0));
+        try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
+        try chunk.semaBlocks.append(self.alloc, sema.Block.init(0));
 
-        self.nodes = ast.nodes.items;
-        self.funcDecls = ast.func_decls.items;
-        self.funcParams = ast.func_params;
-        self.src = ast.src;
-        self.tokens = ast.tokens;
-        self.semaBlockDepth = 0;
-        self.config = config;
+        chunk.semaBlockDepth = 0;
 
-        self.compileInner(ast) catch |err| {
-            if (dumpCompileErrorStackTrace and !cy.silentError) {
-                std.debug.dumpStackTrace(@errorReturnTrace().?.*);
-            }
-            if (err != error.CompileError) {
-                // Report other errors with curNodeId.
-                try self.setErrorAt("Error: {}", &.{v(err)}, self.curNodeId);
-            }
-            return ResultView{
-                .buf = self.buf,
-                .hasError = true,
-            };
+        // Import core module into local namespace.
+        const modId = try sema.getOrLoadModule(chunk, "core", NullId);
+        try sema.importAllFromModule(chunk, modId);
+
+        const root = chunk.nodes[ast.root_id];
+
+        // Ensure static var syms.
+        // Regular assign statements need to know whether the left is a new local variable
+        // or an existing static variable.
+        for (chunk.parser.varDecls.items) |declId| {
+            const decl = chunk.nodes[declId];
+            const ident = chunk.nodes[decl.head.varDecl.left];
+            const str = chunk.getNodeTokenString(ident);
+            const nameId = try sema.ensureNameSym(self, str);
+            _ = try sema.ensureSym(chunk, null, nameId, null);
+        }
+
+        try sema.pushBlock(chunk);
+        sema.semaStmts(chunk, root.head.child_head, true) catch |err| {
+            try sema.endBlock(chunk);
+            return err;
         };
-        return ResultView{
-            .buf = self.buf,
-            .hasError = false,
-        };
+        try sema.endBlock(chunk);
     }
 
-    fn genBlockEnding(self: *VMcompiler) !void {
-        self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
-        try self.endLocals();
-        if (self.curBlock.requiresEndingRet1) {
-            try self.buf.pushOp(.ret1);
-        } else {
-            try self.buf.pushOp(.ret0);
-        }
-    }
+    fn performChunkParse(self: *VMcompiler, id: CompileChunkId) !cy.ParseResultView {
+        const chunk = &self.chunks.items[id];
 
-    fn endLocals(self: *VMcompiler) !void {
-        const sblock = sema.curBlock(self);
-
-        const start = self.operandStack.items.len;
-        defer self.operandStack.items.len = start;
-
-        for (sblock.params.items) |varId| {
-            const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and !svar.isCaptured) {
-                try self.operandStack.append(self.alloc, cy.OpData.initArg(svar.local));
-            }
-        }
-        for (sblock.locals.items) |varId| {
-            const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and svar.genIsDefined) {
-                try self.operandStack.append(self.alloc, cy.OpData.initArg(svar.local));
-            }
-        }
-        
-        const locals = self.operandStack.items[start..];
-        if (locals.len > 0) {
-            if (locals.len == 1) {
-                try self.buf.pushOp1(.release, locals[0].arg);
+        var tt = stdx.debug.trace();
+        const ast = try chunk.parser.parse(chunk.src);
+        tt.endPrint("parse");
+        if (ast.has_error) {
+            self.lastErrChunk = id;
+            if (ast.isTokenError) {
+                return error.TokenError;
             } else {
-                try self.buf.pushOp1(.releaseN, @intCast(u8, locals.len));
-                try self.buf.pushOperands(locals);
+                return error.ParseError;
             }
         }
-    }
-
-    fn pushJumpBackNotNone(self: *VMcompiler, toPc: usize, condLocal: LocalId) !void {
-        const pc = self.buf.ops.items.len;
-        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
-        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
-    }
-
-    fn pushEmptyJumpNotNone(self: *VMcompiler, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
-        return start;
-    }
-
-    fn pushEmptyJumpNotCond(self: *VMcompiler, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNotCond, 0, 0, condLocal);
-        return start;
-    }
-
-    fn pushJumpBackCond(self: *VMcompiler, toPc: usize, condLocal: LocalId) !void {
-        const pc = self.buf.ops.items.len;
-        try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
-        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
-    }
-
-    fn pushJumpBackTo(self: *VMcompiler, toPc: usize) !void {
-        const pc = self.buf.ops.items.len;
-        try self.buf.pushOp2(.jump, 0, 0);
-        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
-    }
-
-    fn pushEmptyJump(self: *VMcompiler) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp2(.jump, 0, 0);
-        return start;
-    }
-
-    fn pushEmptyJumpCond(self: *VMcompiler, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
-        return start;
-    }
-
-    fn patchJumpToCurrent(self: *VMcompiler, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
-    }
-
-    /// Patches sub block breaks. For `if` and `match` blocks.
-    /// All other jumps are propagated up the stack by copying to the front.
-    /// Returns the adjusted jumpStackStart for this block.
-    fn patchSubBlockBreakJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize) usize {
-        var propagateIdx = jumpStackStart;
-        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
-            if (jump.jumpT == .subBlockBreak) {
-                self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
-            } else {
-                self.subBlockJumpStack.items[propagateIdx] = jump;
-                propagateIdx += 1;
-            }
-        }
-        return propagateIdx;
-    }
-
-    fn patchForBlockJumps(self: *VMcompiler, jumpStackStart: usize, breakPc: usize, contPc: usize) void {
-        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
-            switch (jump.jumpT) {
-                .subBlockBreak => {
-                    stdx.panicFmt("Unexpected jump.", .{});
-                },
-                .brk => {
-                    if (breakPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
-                    } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - breakPc)));
-                    }
-                },
-                .cont => {
-                    if (contPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, contPc - jump.pc));
-                    } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - contPc)));
-                    }
-                },
-            }
-        }
-    }
-
-    fn patchBlockJumps(self: *VMcompiler, jumpStackStart: usize) void {
-        for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
-            switch (jump.jumpT) {
-                .jumpToEndLocals => {
-                    self.buf.setOpArgU16(jump.pc + jump.pcOffset, @intCast(u16, self.curBlock.endLocalsPc - jump.pc));
-                }
-            }
-        }
-    }
-
-    fn pushBlock(self: *VMcompiler) !void {
-        try self.blocks.append(self.alloc, Block.init());
-        self.curBlock = &self.blocks.items[self.blocks.items.len-1];
-        self.curBlock.reservedTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
-    }
-
-    fn popBlock(self: *VMcompiler) void {
-        var last = self.blocks.pop();
-        self.reservedTempLocalStack.items.len = last.reservedTempLocalStart;
-        last.deinit(self.alloc);
-        if (self.blocks.items.len > 0) {
-            self.curBlock = &self.blocks.items[self.blocks.items.len-1];
-        }
-    }
-
-    fn blockNumLocals(self: *VMcompiler) usize {
-        return sema.curBlock(self).locals.items.len + sema.curBlock(self).params.items.len;
-    }
-
-    fn genStatements(self: *VMcompiler, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
-        var cur_id = head;
-        var node = self.nodes[cur_id];
-
-        while (node.next != NullId) {
-            try self.genStatement(cur_id, true);
-            cur_id = node.next;
-            node = self.nodes[cur_id];
-        }
-
-        // Check for last expression statement.
-        if (node.node_t == .expr_stmt) {
-            if (attachEnd) {
-                const local = try self.genExprStmt(cur_id, true, false);
-                if (self.config.genMainScopeReleaseOps) {
-                    self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
-                    try self.endLocals();
-                }
-                try self.buf.pushOp1(.end, local);
-            } else {
-                _ = try self.genStatement(cur_id, true);
-            }
-        } else {
-            if (attachEnd) {
-                try self.genStatement(cur_id, false);
-                if (self.config.genMainScopeReleaseOps) {
-                    self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
-                    try self.endLocals();
-                }
-                try self.buf.pushOp1(.end, 255);
-            } else {
-                try self.genStatement(cur_id, true);
-            }
-        }
-    }
-
-    fn genGetVarPtr(self: *const VMcompiler, id: sema.LocalVarId) ?*sema.LocalVar {
-        if (id != NullId) {
-            return &self.vars.items[id];
-        } else {
-            return null;
-        }
-    }
-
-    fn genGetVar(self: *const VMcompiler, id: sema.LocalVarId) ?sema.LocalVar {
-        if (id != NullId) {
-            return self.vars.items[id];
-        } else {
-            return null;
-        }
-    }
-
-    fn reserveLocalVar(self: *VMcompiler, varId: sema.LocalVarId) !LocalId {
-        const local = try self.reserveLocal(self.curBlock);
-        self.vars.items[varId].local = local;
-        return local;
-    }
-
-    fn genSetBoxedVarToExpr(self: *VMcompiler, svar: *sema.LocalVar, exprId: cy.NodeId) !void {
-        // Retain rval.
-        const exprv = try self.genRetainedTempExpr(exprId, false);
-        svar.vtype = exprv.vtype;
-        svar.genIsDefined = true;
-        if (!svar.vtype.rcCandidate) {
-            try self.buf.pushOp2(.setBoxValue, svar.local, exprv.local);
-        } else {
-            try self.buf.pushOp2(.setBoxValueRelease, svar.local, exprv.local);
-        }
-    }
-
-    fn genSetVarToExpr(self: *VMcompiler, leftId: cy.NodeId, exprId: cy.NodeId, comptime discardTopExprReg: bool) !void {
-        _ = discardTopExprReg;
-        const varId = self.nodes[leftId].head.ident.semaVarId;
-        const expr = self.nodes[exprId];
-        if (self.genGetVarPtr(varId)) |svar| {
-            if (svar.isBoxed) {
-                if (!svar.genIsDefined) {
-                    const exprv = try self.genExpr(exprId, false);
-                    try self.buf.pushOp2(.box, @intCast(u8, exprv.local), svar.local);
-                    svar.vtype = exprv.vtype;
-
-                    if (self.capVarDescs.get(varId)) |desc| {
-                        // Update dependent func syms.
-                        const start = self.operandStack.items.len;
-                        defer self.operandStack.items.len = start;
-                        var cur = desc.owner;
-                        var numFuncSyms: u8 = 0;
-                        while (cur != NullId) {
-                            const dep = self.dataNodes.items[cur];
-                            try self.pushTempOperand(@intCast(u8, dep.inner.funcSym.symId));
-                            try self.pushTempOperand(dep.inner.funcSym.capVarIdx);
-                            numFuncSyms += 1;
-                            cur = dep.next;
-                        }
-                        try self.buf.pushOp2(.setCapValToFuncSyms, svar.local, numFuncSyms);
-                        try self.buf.pushOperands(self.operandStack.items[start..]);
-                    }
-
-                    svar.genIsDefined = true;
-                    return;
-                } else {
-                    try self.genSetBoxedVarToExpr(svar, exprId);
-                    return;
-                }
-            }
-
-            if (expr.node_t == .ident) {
-                if (expr.head.ident.semaSymId != NullId) {
-                    // Copying a symbol.
-                    if (!svar.genIsDefined or !svar.vtype.rcCandidate) {
-                        const exprv = try self.genRetainedExprTo(exprId, svar.local, false);
-                        svar.vtype = exprv.vtype;
-                        svar.genIsDefined = true;
-                    } else {
-                        const exprv = try self.genRetainedTempExpr(exprId, false);
-                        svar.vtype = exprv.vtype;
-                        try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
-                    }
-                    return;
-                }
-
-                const exprv = try self.genExpr(exprId, false);
-
-                if (svar.genIsDefined) {
-                    if (svar.vtype.rcCandidate) {
-                        // log.debug("releaseSet {} {}", .{varId, svar.vtype.typeT});
-                        if (exprv.vtype.rcCandidate) {
-                            try self.buf.pushOp2(.copyRetainRelease, exprv.local, svar.local);
-                        } else {
-                            try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
-                        }
-                    } else {
-                        // log.debug("set {} {}", .{varId, svar.vtype.typeT});
-                        if (exprv.vtype.rcCandidate) {
-                            try self.buf.pushOp2(.copyRetainSrc, exprv.local, svar.local);
-                        } else {
-                            try self.buf.pushOp2(.copy, exprv.local, svar.local);
-                        }
-                    }
-                    if (svar.vtype.typeT != exprv.vtype.typeT) {
-                        svar.vtype = exprv.vtype;
-                    }
-                } else {
-                    if (exprv.vtype.rcCandidate) {
-                        if (exprv.vtype.typeT == .box) {
-                            // TODO: Becomes boxValue if child is known to not be an rcCandidate.
-                            try self.buf.pushOp2(.boxValueRetain, exprv.local, svar.local);
-                        } else {
-                            try self.buf.pushOp2(.copyRetainSrc, exprv.local, svar.local);
-                        }
-                    } else {
-                        try self.buf.pushOp2(.copy, exprv.local, svar.local);
-                    }
-                    svar.genIsDefined = true;
-                    svar.vtype = exprv.vtype;
-                }
-                return;
-            } else if (expr.node_t == .tagLiteral) {
-                if (svar.vtype.typeT == .tag) {
-                    const name = self.getNodeTokenString(expr);
-                    const symId = try self.vm.ensureTagLitSym(name);
-                    const sym = self.vm.tagLitSyms.buf[symId];
-                    if (sym.symT == .one and sym.inner.one.id == svar.vtype.inner.tag.tagId) {
-                        try self.buf.pushOp3(.tag, svar.vtype.inner.tag.tagId, @intCast(u8, sym.inner.one.val), svar.local);
-                        return;
-                    }
-                }
-            }
-
-            // Retain rval.
-            if (!svar.genIsDefined or !svar.vtype.rcCandidate) {
-                const exprv = try self.genRetainedExprTo(exprId, svar.local, false);
-                svar.vtype = exprv.vtype;
-                if (!svar.genIsDefined) {
-                    svar.genIsDefined = true;
-                }
-            } else {
-                const exprv = try self.genRetainedTempExpr(exprId, false);
-                try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
-                svar.vtype = exprv.vtype;
-            }
-        } else {
-            const left = self.nodes[leftId];
-            return self.reportErrorAt("Undefined var: `{}`", &.{v(self.getNodeTokenString(left))}, leftId);
-        }
-    }
-
-    fn reserveLocal(self: *VMcompiler, block: *Block) !u8 {
-        const idx = block.numLocals;
-        block.numLocals += 1;
-        if (idx <= std.math.maxInt(u8)) {
-            return @intCast(u8, idx);
-        } else {
-            return self.reportError("Exceeded max local count: {}", &.{v(@as(u8, std.math.maxInt(u8)))});
-        }
-    }
-
-    /// Reserve params and captured vars.
-    /// Call convention stack layout:
-    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params] [callee] [capturedParams] [locals]
-    fn reserveFuncParams(self: *VMcompiler, decl: cy.FuncDecl) !void {
-        // First local is reserved for a single return value.
-        _ = try self.reserveLocal(self.curBlock);
-
-        // Second local is reserved for the return info.
-        _ = try self.reserveLocal(self.curBlock);
-
-        // Third local is reserved for the return address.
-        _ = try self.reserveLocal(self.curBlock);
-
-        // Fourth local is reserved for the previous frame pointer.
-        _ = try self.reserveLocal(self.curBlock);
-
-        const sblock = sema.curBlock(self);
-
-        // Reserve func params.
-        const numParams = decl.params.len();
-        for (sblock.params.items[0..numParams]) |varId| {
-            _ = try self.reserveLocalVar(varId);
-
-            // Params are already defined.
-            self.vars.items[varId].genIsDefined = true;
-        }
-
-        // An extra callee slot is reserved so that function values
-        // can call static functions with the same call convention.
-        _ = try self.reserveLocal(self.curBlock);
-
-        if (sblock.params.items.len > numParams) {
-            for (sblock.params.items[numParams..]) |varId| {
-                _ = try self.reserveLocalVar(varId);
-
-                // Params are already defined.
-                self.vars.items[varId].genIsDefined = true;
-            }
-        }
-    }
-
-    /// ARC managed temps need to be released at the end of the current ARC expression.
-    fn beginArcExpr(self: *VMcompiler) u32 {
-        const cur = self.curBlock.arcTempLocalStart;
-        self.curBlock.arcTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
-        return cur;
-    }
-
-    fn endArcExpr(self: *VMcompiler, arcTempLocalStart: u32) !void {
-        // Gen release ops.
-        for (self.reservedTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |temp| {
-            try self.buf.pushOp1(.release, temp.local);
-        }
-        self.reservedTempLocalStack.items.len = self.curBlock.arcTempLocalStart;
-
-        // Restore current local start.
-        self.curBlock.arcTempLocalStart = arcTempLocalStart;
-    }
-
-    fn genExprStmt(self: *VMcompiler, stmtId: cy.NodeId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !LocalId {
-        const arcLocalStart = self.beginArcExpr();
-
-        const stmt = self.nodes[stmtId];
-        var val: GenValue = undefined;
-        if (retainEscapeTop) {
-            const node = self.nodes[stmt.head.child_head];
-            var retLocal = false;
-            if (node.node_t == .ident) {
-                if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
-                    if (!svar.isBoxed) {
-                        if (svar.vtype.rcCandidate) {
-                            try self.buf.pushOp1(.retain, svar.local);
-                        }
-                        val = GenValue.initLocalValue(svar.local, svar.vtype);
-                        retLocal = true;
-                    }
-                }
-            }
-            if (!retLocal) {
-                val = try self.genRetainedTempExpr(stmt.head.child_head, discardTopExprReg);
-            }
-        } else {
-            val = try self.genExpr(stmt.head.child_head, discardTopExprReg);
-        }
-
-        try self.endArcExpr(arcLocalStart);
-        return val.local;
-    }
-
-    fn genBinOpAssignToField(self: *VMcompiler, code: cy.OpCode, leftId: cy.NodeId, rightId: cy.NodeId) !void {
-        const left = self.nodes[leftId];
-
-        const startTempLocal = self.curBlock.firstFreeTempLocal;
-        defer self.computeNextTempLocalFrom(startTempLocal);
-
-        const accessRight = self.nodes[left.head.accessExpr.right];
-        if (accessRight.node_t != .ident) {
-            return self.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
-        }
-        const fieldName = self.getNodeTokenString(accessRight);
-        const fieldId = try self.vm.ensureFieldSym(fieldName);
-
-        const accessLeftv = try self.genExpr(left.head.accessExpr.left, false);
-        const accessLocal = try self.nextFreeTempLocal();
-        try self.buf.pushOpSlice(.field, &.{ accessLeftv.local, accessLocal, @intCast(u8, fieldId), 0, 0, 0 });
-
-        const rightv = try self.genExpr(rightId, false);
-        try self.buf.pushOp3(code, accessLocal, rightv.local, accessLocal);
-
-        try self.buf.pushOp3(.setField, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
-        try self.pushDebugSym(leftId);
-    }
-
-    /// discardTopExprReg is usually true since statements aren't expressions and evaluating child expressions
-    /// would just grow the register stack unnecessarily. However, the last main statement requires the
-    /// resulting expr to persist to return from `eval`.
-    fn genStatement(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
-        // log.debug("gen stmt {}", .{node.node_t});
-        self.curNodeId = nodeId;
-
-        self.resetNextFreeTemp();
-
-        const node = self.nodes[nodeId];
-        switch (node.node_t) {
-            .pass_stmt => {
-                return;
-            },
-            .expr_stmt => {
-                _ = try self.genExprStmt(nodeId, false, discardTopExprReg);
-            },
-            .breakStmt => {
-                const pc = try self.pushEmptyJump();
-                try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .brk, .pc = pc });
-            },
-            .continueStmt => {
-                const pc = try self.pushEmptyJump();
-                try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .cont, .pc = pc });
-            },
-            .opAssignStmt => {
-                const arcLocalStart = self.beginArcExpr();
-
-                const left = self.nodes[node.head.opAssignStmt.left];
-                const genOp: cy.OpCode = switch (node.head.opAssignStmt.op) {
-                    .plus => .add,
-                    .minus => .minus,
-                    .star => .mul,
-                    .slash => .div,
-                    else => fmt.panic("Unexpected operator assignment.", &.{}),
-                };
-                if (left.node_t == .ident) {
-                    if (left.head.ident.semaVarId != NullId) {
-                        const svar = self.genGetVarPtr(left.head.ident.semaVarId).?;
-                        const right = try self.genExpr(node.head.opAssignStmt.right, false);
-                        if (svar.isBoxed) {
-                            const tempLocal = try self.nextFreeTempLocal();
-                            try self.buf.pushOp2(.boxValue, svar.local, tempLocal);
-                            try self.buf.pushOp3(genOp, tempLocal, right.local, tempLocal);
-                            try self.buf.pushOp2(.setBoxValue, svar.local, tempLocal);
-                            return;
-                        } else {
-                            try self.buf.pushOp3(genOp, svar.local, right.local, svar.local);
-                        }
-                    } else {
-                        const sym = self.semaSyms.items[left.head.ident.semaSymId];
-                        const rightv = try self.genExpr(node.head.opAssignStmt.right, false);
-                        const rtSymId = try self.vm.ensureVarSym(NullId, sym.key.absLocalSymKey.nameId);
-
-                        const tempLocal = try self.nextFreeTempLocal();
-                        try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), tempLocal);
-                        try self.buf.pushOp3(genOp, tempLocal, rightv.local, tempLocal);
-                        try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), tempLocal);
-                    }
-                } else if (left.node_t == .accessExpr) {
-                    try self.genBinOpAssignToField(genOp, node.head.opAssignStmt.left, node.head.opAssignStmt.right);
-                } else {
-                    unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
-                }
-
-                try self.endArcExpr(arcLocalStart);
-            },
-            .assign_stmt => {
-                const arcLocalStart = self.beginArcExpr();
-
-                const left = self.nodes[node.head.left_right.left];
-                if (left.node_t == .ident) {
-                    if (left.head.ident.semaVarId != NullId) {
-                        try self.genSetVarToExpr(node.head.left_right.left, node.head.left_right.right, false);
-                    } else {
-                        const sym = self.semaSyms.items[left.head.ident.semaSymId];
-                        const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-                        const rtSymId = try self.vm.ensureVarSym(NullId, sym.key.absLocalSymKey.nameId);
-                        try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
-                    }
-                } else if (left.node_t == .arr_access_expr) {
-                    const startTempLocal = self.curBlock.firstFreeTempLocal;
-                    defer self.setFirstFreeTempLocal(startTempLocal);
-
-                    const leftv = try self.genExpr(left.head.left_right.left, false);
-                    const indexv = try self.genExpr(left.head.left_right.right, false);
-                    const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-                    try self.buf.pushOp3(.setIndexRelease, leftv.local, indexv.local, rightv.local);
-                } else if (left.node_t == .accessExpr) {
-                    const startTempLocal = self.curBlock.firstFreeTempLocal;
-                    defer self.setFirstFreeTempLocal(startTempLocal);
-
-                    const leftv = try self.genExpr(left.head.accessExpr.left, false);
-
-                    const accessRight = self.nodes[left.head.accessExpr.right];
-                    if (accessRight.node_t != .ident) {
-                        return self.reportErrorAt("Expected ident. Got {}.", &.{v(accessRight.node_t)}, left.head.accessExpr.right);
-                    }
-
-                    const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-
-                    const fieldName = self.getNodeTokenString(accessRight);
-                    const fieldId = try self.vm.ensureFieldSym(fieldName);
-                    try self.buf.pushOpSlice(.setFieldRelease, &.{leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
-                    try self.pushDebugSym(nodeId);
-                } else {
-                    unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
-                }
-                
-                try self.endArcExpr(arcLocalStart);
-            },
-            .varDecl => {
-                // Nop. Static variables are hoisted and initialized at the start of the program.
-            },
-            .captureDecl => {
-                if (node.head.left_right.right != NullId) {
-                    // Can assume left is .ident from sema.
-                    try self.genSetVarToExpr(node.head.left_right.left, node.head.left_right.right, false);
-                }
-            },
-            .staticDecl => {
-                if (node.head.left_right.right != NullId) {
-                    const left = self.nodes[node.head.left_right.left];
-                    std.debug.assert(left.node_t == .ident);
-                    const sym = self.semaSyms.items[left.head.ident.semaSymId];
-                    const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-                    const rtSymId = try self.vm.ensureVarSym(NullId, sym.key.absLocalSymKey.nameId);
-                    try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
-                }
-            },
-            .tagDecl => {
-                // Nop.
-            },
-            .structDecl => {
-                const nameN = self.nodes[node.head.structDecl.name];
-                const name = self.getNodeTokenString(nameN);
-                const nameId = try sema.ensureNameSym(self, name);
-
-                const sid = try self.vm.ensureStruct(nameId, 0);
-
-                var i: u32 = 0;
-                var fieldId = node.head.structDecl.fieldsHead;
-                while (fieldId != NullId) : (i += 1) {
-                    const field = self.nodes[fieldId];
-                    fieldId = field.next;
-                }
-                const numFields = i;
-
-                i = 0;
-                fieldId = node.head.structDecl.fieldsHead;
-                while (fieldId != NullId) : (i += 1) {
-                    const field = self.nodes[fieldId];
-                    const fieldName = self.getNodeTokenString(field);
-                    const fieldSymId = try self.vm.ensureFieldSym(fieldName);
-                    try self.vm.addFieldSym(sid, fieldSymId, @intCast(u16, i));
-                    fieldId = field.next;
-                }
-
-                self.vm.structs.buf[sid].numFields = numFields;
-
-                var funcId = node.head.structDecl.funcsHead;
-                var func: cy.Node = undefined;
-                while (funcId != NullId) : (funcId = func.next) {
-                    func = self.nodes[funcId];
-                    const decl = self.funcDecls[func.head.func.decl_id];
-
-                    const funcName = self.src[decl.name.start..decl.name.end];
-                    if (decl.params.end > decl.params.start) {
-                        const param = self.funcParams[decl.params.start];
-                        const paramName = self.src[param.name.start..param.name.end];
-                        if (std.mem.eql(u8, paramName, "self")) {
-                            // Struct method.
-                            try self.genMethodDecl(sid, func, decl, funcName);
-                            continue;
-                        }
-                    }
-
-                    const detail = cy.FuncSymDetail{
-                        .name = try self.alloc.dupe(u8, funcName),
-                    };
-                    try self.vm.funcSymDetails.append(self.alloc, detail);
-
-                    try self.genFuncDecl(funcId);
-                }
-            },
-            .func_decl => {
-                try self.genFuncDecl(nodeId);
-            },
-            .forOptStmt => {
-                self.nextSemaSubBlock();
-
-                const topPc = @intCast(u32, self.buf.ops.items.len);
-                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer self.subBlockJumpStack.items.len = jumpStackSave;
-
-                var optLocal: LocalId = undefined;
-                if (node.head.forOptStmt.as != NullId) {
-                    const as = self.nodes[node.head.forOptStmt.as];
-                    optLocal = self.genGetVar(as.head.ident.semaVarId).?.local;
-                    // Since this variable is used in the loop, it is considered defined before codegen.
-                    self.vars.items[as.head.ident.semaVarId].genIsDefined = true;
-                    try self.genSetVarToExpr(node.head.forOptStmt.as, node.head.forOptStmt.opt, false);
-                } else {
-                    const optv = try self.genExpr(node.head.forOptStmt.opt, false);
-                    optLocal = optv.local;
-                }
-
-                const skipSkipJump = try self.pushEmptyJumpNotNone(optLocal);
-                const skipBodyJump = try self.pushEmptyJump();
-                self.patchJumpToCurrent(skipSkipJump);
-
-                try self.genStatements(node.head.forOptStmt.bodyHead, false);
-                try self.pushJumpBackTo(topPc);
-
-                self.patchJumpToCurrent(skipBodyJump);
-
-                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
-                self.prevSemaSubBlock();
-            },
-            .whileCondStmt => {
-                self.nextSemaSubBlock();
-
-                const topPc = @intCast(u32, self.buf.ops.items.len);
-                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer self.subBlockJumpStack.items.len = jumpStackSave;
-
-                const condv = try self.genExpr(node.head.whileCondStmt.cond, false);
-                const condLocal = condv.local;
-
-                var jumpPc = try self.pushEmptyJumpNotCond(condLocal);
-
-                try self.genStatements(node.head.whileCondStmt.bodyHead, false);
-                try self.pushJumpBackTo(topPc);
-
-                self.patchJumpToCurrent(jumpPc);
-
-                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
-                self.prevSemaSubBlock();
-            },
-            .whileInfStmt => {
-                self.nextSemaSubBlock();
-
-                const pcSave = @intCast(u32, self.buf.ops.items.len);
-                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer self.subBlockJumpStack.items.len = jumpStackSave;
-
-                // TODO: generate gas meter checks.
-                // if (self.opts.gas_meter != .none) {
-                //     try self.indent();
-                //     if (self.opts.gas_meter == .error_interrupt) {
-                //         _ = try self.writer.write("__interrupt_count += 1; if (__interrupt_count > __interrupt_max) throw globalThis._internal.interruptSym;\n");
-                //     } else if (self.opts.gas_meter == .yield_interrupt) {
-                //         _ = try self.writer.write("__interrupt_count += 1; if (__interrupt_count > __interrupt_max) yield globalThis._internal.interruptSym;\n");
-                //     }
-                // }
-
-                try self.genStatements(node.head.child_head, false);
-                try self.pushJumpBackTo(pcSave);
-
-                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, pcSave);
-                self.prevSemaSubBlock();
-            },
-            .for_iter_stmt => {
-                self.nextSemaSubBlock();
-                defer self.prevSemaSubBlock();
-
-                const iterable = try self.genExpr(node.head.for_iter_stmt.iterable, false);
-
-                const eachClause = self.nodes[node.head.for_iter_stmt.eachClause];
-
-                var keyVar: sema.LocalVar = undefined;
-                var keyIdent: cy.Node = undefined;
-                var pairIter = false;
-                if (eachClause.head.eachClause.key != NullId) {
-                    keyIdent = self.nodes[eachClause.head.eachClause.key];
-                    keyVar = self.genGetVar(keyIdent.head.ident.semaVarId).?;
-                    pairIter = true;
-                }
-                const valIdent = self.nodes[eachClause.head.eachClause.value];
-                const valVar = self.genGetVar(valIdent.head.ident.semaVarId).?;
-
-                // At this point the temp var is loosely defined.
-                self.vars.items[valIdent.head.ident.semaVarId].genIsDefined = true;
-                if (pairIter) {
-                    self.vars.items[keyIdent.head.ident.semaVarId].genIsDefined = true;
-                }
-
-                // Loop needs to reserve temp locals.
-                const reservedStart = self.reservedTempLocalStack.items.len;
-                defer self.reservedTempLocalStack.items.len = reservedStart;
-
-                // Reserve temp local for iterator.
-                const iterLocal = try self.nextFreeTempLocal();
-                try self.setReservedTempLocal(iterLocal);
-                try self.buf.pushOp2(.copyRetainSrc, iterable.local, iterLocal + 4);
-                if (pairIter) {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.pairIteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                } else {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                }
-
-                try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
-                if (pairIter) {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
-                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
-                } else {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
-                }
-
-                const skipSkipJump = try self.pushEmptyJumpNotNone(if (pairIter) keyVar.local else valVar.local);
-                const skipBodyJump = try self.pushEmptyJump();
-                self.patchJumpToCurrent(skipSkipJump);
-
-                const bodyPc = self.buf.ops.items.len;
-                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer self.subBlockJumpStack.items.len = jumpStackSave;
-                try self.genStatements(node.head.for_iter_stmt.body_head, false);
-
-                const contPc = self.buf.ops.items.len;
-                try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
-                if (pairIter) {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
-                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
-                } else {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
-                }
-
-                try self.pushJumpBackNotNone(bodyPc, if (pairIter) keyVar.local else valVar.local);
-
-                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, contPc);
-
-                try self.buf.pushOp1(.release, iterLocal);
-                self.patchJumpToCurrent(skipBodyJump);
-            },
-            .for_range_stmt => {
-                self.nextSemaSubBlock();
-                defer self.prevSemaSubBlock();
-
-                var local: u8 = NullIdU8;
-                if (node.head.for_range_stmt.eachClause != NullId) {
-                    const eachClause = self.nodes[node.head.for_range_stmt.eachClause];
-                    const ident = self.nodes[eachClause.head.eachClause.value];
-                    local = self.genGetVar(ident.head.ident.semaVarId).?.local;
-
-                    // inc = as_clause.head.as_range_clause.inc;
-                    // if (as_clause.head.as_range_clause.step != NullId) {
-                    //     step = self.nodes[as_clause.head.as_range_clause.step];
-                    // }
-                }
-
-                // Loop needs to reserve temp locals.
-                const reservedStart = self.reservedTempLocalStack.items.len;
-                defer self.reservedTempLocalStack.items.len = reservedStart;
-
-                // Set range start/end.
-                const range_clause = self.nodes[node.head.for_range_stmt.range_clause];
-                const rangeStartN = self.nodes[range_clause.head.left_right.left];
-                const rangeEndN = self.nodes[range_clause.head.left_right.right];
-                var lessThanCond = true;
-                if (rangeStartN.node_t == .number and rangeEndN.node_t == .number) {
-                    const startLit = self.getNodeTokenString(rangeStartN);
-                    const endLit = self.getNodeTokenString(rangeEndN);
-                    const start = try std.fmt.parseFloat(f64, startLit);
-                    const end = try std.fmt.parseFloat(f64, endLit);
-                    if (start > end) {
-                        lessThanCond = false;
-                    }
-                }
-
-                // Keep counter hidden from user. (User can't change it's value.)
-                const counter = try self.nextFreeTempLocal();
-                try self.setReservedTempLocal(counter);
-
-                const rangeStart = try self.genExpr(range_clause.head.left_right.left, false);
-
-                const rangeEnd = try self.nextFreeTempLocal();
-                _ = try self.genExprTo(range_clause.head.left_right.right, rangeEnd, false, false);
-                try self.setReservedTempLocal(rangeEnd);
-
-                // Set custom step.
-                const rangeStep = try self.nextFreeTempLocal();
-                try self.setReservedTempLocal(rangeStep);
-                _ = try self.genConst(1, rangeStep);
-
-                const initPc = self.buf.ops.items.len;
-                try self.buf.pushOpSlice(.forRangeInit, &.{ rangeStart.local, rangeEnd, rangeStep, counter, local, 0, 0 });
-
-                const bodyPc = self.buf.ops.items.len;
-                const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
-                defer self.subBlockJumpStack.items.len = jumpStackSave;
-                try self.genStatements(node.head.for_range_stmt.body_head, false);
-
-                // Perform counter update and perform check against end range.
-                const jumpBackOffset = @intCast(u16, self.buf.ops.items.len - bodyPc);
-                const forRangeOp = self.buf.ops.items.len;
-                // The forRange op is patched by forRangeInit at runtime.
-                self.buf.setOpArgU16(initPc + 6, @intCast(u16, self.buf.ops.items.len - initPc));
-                try self.buf.pushOpSlice(.forRange, &.{ counter, rangeStep, rangeEnd, local, 0, 0 });
-                self.buf.setOpArgU16(forRangeOp + 5, jumpBackOffset);
-
-                self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, forRangeOp);
-            },
-            .matchBlock => {
-                const expr = try self.genExpr(node.head.matchBlock.expr, false);
-
-                const operandStart = self.operandStack.items.len;
-
-                var jumpsStart = self.subBlockJumpStack.items.len;
-                defer self.subBlockJumpStack.items.len = jumpsStart;
-
-                var hasElse = false;
-                var numConds: u32 = 0;
-                var curCase = node.head.matchBlock.firstCase;
-                while (curCase != NullId) {
-                    const case = self.nodes[curCase];
-                    var curCond = case.head.caseBlock.firstCond;
-                    while (curCond != NullId) {
-                        const cond = self.nodes[curCond];
-                        if (cond.node_t == .elseCase) {
-                            // Skip else cond.
-                            curCond = cond.next;
-                            hasElse = true;
-                            continue;
-                        }
-                        const condv = try self.genExpr(curCond, false);
-                        try self.pushTempOperand(condv.local);
-                        // Reserve another two for jump.
-                        try self.pushTempOperand(0);
-                        try self.pushTempOperand(0);
-                        curCond = cond.next;
-                        numConds += 1;
-                    }
-                    curCase = case.next;
-                }
-                const condJumpStart = self.buf.ops.items.len + 4;
-                const matchPc = self.buf.ops.items.len;
-                try self.buf.pushOp2(.match, expr.local, @intCast(u8, numConds));
-                try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-                // Reserve last jump for `else` case.
-                try self.buf.pushOperand(0);
-                try self.buf.pushOperand(0);
-                self.operandStack.items.len = operandStart;
-
-                // Generate case blocks.
-                curCase = node.head.matchBlock.firstCase;
-                var condOffset: u32 = 0;
-                while (curCase != NullId) {
-                    const case = self.nodes[curCase];
-                    self.nextSemaSubBlock();
-                    defer self.prevSemaSubBlock();
-
-                    const blockPc = self.buf.ops.items.len;
-                    try self.genStatements(case.head.caseBlock.firstChild, false);
-
-                    if (case.next != NullId) {
-                        // Not the last block.
-                        // Reserve jump to end.
-                        const pc = try self.pushEmptyJump();
-                        try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
-                    }
-
-                    // For each cond for this case, patch the jump offset.
-                    var curCond = case.head.caseBlock.firstCond;
-                    while (curCond != NullId) {
-                        const cond = self.nodes[curCond];
-                        // Patch jump.
-                        if (cond.node_t == .elseCase) {
-                            self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, blockPc - matchPc));
-                        } else {
-                            self.buf.setOpArgU16(condJumpStart + condOffset * 3, @intCast(u16, blockPc - matchPc));
-                        }
-                        condOffset += 1;
-                        curCond = cond.next;
-                    }
-
-                    curCase = case.next;
-                }
-                if (!hasElse) {
-                    self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, self.buf.ops.items.len - matchPc));
-                }
-
-                // Patch all block end jumps.
-                jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
-            },
-            .if_stmt => {
-                const startTempLocal = self.curBlock.firstFreeTempLocal;
-
-                const condv = try self.genExpr(node.head.left_right.left, false);
-                var lastCondJump = try self.pushEmptyJumpNotCond(condv.local);
-                self.setFirstFreeTempLocal(startTempLocal);
-
-                self.nextSemaSubBlock();
-                try self.genStatements(node.head.left_right.right, false);
-                self.prevSemaSubBlock();
-
-                var elseClauseId = node.head.left_right.extra;
-                if (elseClauseId != NullId) {
-                    var jumpsStart = self.subBlockJumpStack.items.len;
-                    defer self.subBlockJumpStack.items.len = jumpsStart;
-
-                    var endsWithElse = false;
-                    while (elseClauseId != NullId) {
-                        const pc = try self.pushEmptyJump();
-                        try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
-
-                        self.patchJumpToCurrent(lastCondJump);
-
-                        const elseClause = self.nodes[elseClauseId];
-                        if (elseClause.head.else_clause.cond == NullId) {
-                            self.nextSemaSubBlock();
-                            try self.genStatements(elseClause.head.else_clause.body_head, false);
-                            self.prevSemaSubBlock();
-                            endsWithElse = true;
-                            self.setFirstFreeTempLocal(startTempLocal);
-                            break;
-                        } else {
-                            const elifCondv = try self.genExpr(elseClause.head.else_clause.cond, false);
-                            lastCondJump = try self.pushEmptyJumpNotCond(elifCondv.local);
-
-                            self.nextSemaSubBlock();
-                            try self.genStatements(elseClause.head.else_clause.body_head, false);
-                            self.prevSemaSubBlock();
-                            elseClauseId = elseClause.head.else_clause.else_clause;
-
-                            self.setFirstFreeTempLocal(startTempLocal);
-                        }
-                    }
-
-                    if (!endsWithElse) {
-                        self.patchJumpToCurrent(lastCondJump);
-                    }
-                    jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
-                } else {
-                    self.patchJumpToCurrent(lastCondJump);
-                }
-            },
-            .importStmt => {
-                const ident = self.nodes[node.head.left_right.left];
-                const name = self.getNodeTokenString(ident);
-
-                const spec = self.nodes[node.head.left_right.right];
-                const specPath = self.getNodeTokenString(spec);
-
-                _ = name;
-                _ = specPath;
-
-                // const modId = try self.getOrLoadModule(specPath);
-                // const leadSym = try self.ensureSemaSym(name);
-                // try self.semaSymToMod.put(self.alloc, leadSym, modId);
-            },
-            .return_stmt => {
-                if (self.blocks.items.len == 1) {
-                    try self.endLocals();
-                    try self.buf.pushOp1(.end, 255);
-                } else {
-                    try self.endLocals();
-                    try self.buf.pushOp(.ret0);
-                }
-            },
-            .return_expr_stmt => {
-                const lastArcStart = self.beginArcExpr();
-
-                self.setFirstFreeTempLocal(@intCast(u8, self.curBlock.numLocals));
-
-                if (self.blocks.items.len == 1) {
-                    var val: GenValue = undefined;
-                    if (self.curBlock.resolvedFuncSymId != NullId) {
-                        const retType = self.semaResolvedFuncSyms.items[self.curBlock.resolvedFuncSymId].retType;
-                        val = try self.genRetainedTempExpr2(node.head.child_head, retType, false);
-                    } else {
-                        val = try self.genRetainedTempExpr(node.head.child_head, false);
-                    }
-                    try self.endArcExpr(lastArcStart);
-                    try self.endLocals();
-                    try self.buf.pushOp1(.end, @intCast(u8, val.local));
-                } else {
-                    _ = try self.genRetainedExprTo(node.head.child_head, 0, false);
-                    try self.endArcExpr(lastArcStart);
-                    try self.endLocals();
-                    try self.buf.pushOp(.ret1);
-                }
-            },
-            else => {
-                return self.reportErrorAt("Unsupported statement: {}", &.{v(node.node_t)}, nodeId);
-            }
-        }
-    }
-
-    fn genExprToDestOrTempLocal(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !GenValue {
-        return self.genExprToDestOrTempLocal2(sema.AnyType, nodeId, dst, usedDst, discardTopExprReg);
-    }
-
-    fn genExprToDestOrTempLocal2(self: *VMcompiler, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !GenValue {
-        const node = self.nodes[nodeId];
-        if (isArcTempNode(node.node_t) or usedDst.*) {
-            const finalDst = try self.userLocalOrNextTempLocal(nodeId);
-            return self.genExprTo2(nodeId, finalDst, requestedType, false, !discardTopExprReg);
-        } else {
-            const finalDst = self.userLocalOrDst(nodeId, dst, usedDst);
-            return self.genExprTo2(nodeId, finalDst, requestedType, false, !discardTopExprReg);
-        }
-    }
-
-    /// Generates an instruction to copy the root expression to a specific destination local.
-    /// Also ensures that the expression is retained.
-    fn genRetainedExprTo(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, comptime discardTopExprReg: bool) anyerror!GenValue {
-        return try self.genExprTo(nodeId, dst, true, discardTopExprReg);
-    }
-
-    fn genRetainedTempExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !GenValue {
-        return self.genRetainedTempExpr2(nodeId, sema.AnyType, discardTopExprReg);
-    }
-
-    /// Ensures that the expr value is retained and ends up in the next temp local.
-    fn genRetainedTempExpr2(self: *VMcompiler, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!GenValue {
-        const arcLocalStart = self.beginArcExpr();
-
-        const dst = try self.nextFreeTempLocal();
-        // ARC temps released at the end of this expr,
-        // so the next free temp is guaranteed to be after dst.
-        defer self.setFirstFreeTempLocal(dst + 1);
-
-        const val = try self.genExprTo2(nodeId, dst, requiredType, true, !discardTopExprReg);
-        try self.genEnsureRequiredType(val, requiredType);
-        try self.endArcExpr(arcLocalStart);
-        return val;
-    }
-
-    fn genMethodDecl(self: *VMcompiler, structId: cy.TypeId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {
-        // log.debug("gen method {s}", .{name});
-        const numParams = func.params.end - func.params.start;
-        const methodId = try self.vm.ensureMethodSymKey(name, numParams - 1);
-
-        const jumpPc = try self.pushEmptyJump();
-
-        try self.pushBlock();
-        self.nextSemaBlock();
-
-        const opStart = @intCast(u32, self.buf.ops.items.len);
-        try self.reserveFuncParams(func);
-        try self.genInitLocals();
-        try self.genStatements(node.head.func.body_head, false);
-        // TODO: Check last statement to skip adding ret.
-        try self.genBlockEnding();
-
-        // Reserve another local for the call return info.
-        const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
-
-        self.prevSemaBlock();
-        self.popBlock();
-
-        self.patchJumpToCurrent(jumpPc);
-
-        const sym = cy.MethodSym.initFuncOffset(opStart, numLocals);
-        try self.vm.addMethodSym(structId, methodId, sym);
-    }
-
-    fn genFuncDecl(self: *VMcompiler, nodeId: cy.NodeId) !void {
-        const node = self.nodes[nodeId];
-        const func = self.funcDecls[node.head.func.decl_id];
-        const sym = self.semaSyms.items[func.semaSymId];
-        const key = sym.key.absLocalSymKey;
-        const numParams = @intCast(u8, sym.key.absLocalSymKey.numParams);
-
-        const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-        const symId = try self.vm.ensureFuncSym(resolvedParentId, key.nameId, key.numParams);
-
-        const jumpPc = try self.pushEmptyJump();
-
-        try self.pushBlock();
-        self.nextSemaBlock();
-        self.curBlock.frameLoc = nodeId;
-        self.curBlock.resolvedFuncSymId = func.semaResolvedFuncSymId;
-
-        const jumpStackStart = self.blockJumpStack.items.len;
-
-        const opStart = @intCast(u32, self.buf.ops.items.len);
-        try self.reserveFuncParams(func);
-        try self.genInitLocals();
-        try self.genStatements(node.head.func.body_head, false);
-        // TODO: Check last statement to skip adding ret.
-        try self.genBlockEnding();
-        self.nodes[nodeId].head.func.genEndLocalsPc = self.curBlock.endLocalsPc;
-
-        // Reserve another local for the call return info.
-        const sblock = sema.curBlock(self);
-        const numLocals = @intCast(u32, self.curBlock.numLocals + self.curBlock.numTempLocals);
-        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-
-        self.patchJumpToCurrent(jumpPc);
-
-        self.patchBlockJumps(jumpStackStart);
-        self.blockJumpStack.items.len = jumpStackStart;
-
-        self.prevSemaBlock();
-        self.popBlock();
-
-        if (numCaptured > 0) {
-            const operandStart = self.operandStack.items.len;
-            defer self.operandStack.items.len = operandStart;
-
-            // Push register operands to op.
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                if (svar.isCaptured) {
-                    const pId = self.capVarDescs.get(varId).?.user;
-                    const pvar = &self.vars.items[pId];
-
-                    if (svar.isBoxed and !pvar.isBoxed) {
-                        pvar.isBoxed = true;
-                        pvar.lifetimeRcCandidate = true;
-                    }
-                }
-            }
-
-            const closure = try cy.heap.allocEmptyClosure(self.vm, opStart, numParams, @intCast(u8, numLocals), numCaptured);
-            const rtSym = cy.FuncSymbolEntry.initClosure(closure.asHeapObject(*cy.Closure));
-            self.vm.setFuncSym(symId, rtSym);
-        } else {
-            const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, numLocals), numParams);
-            self.vm.setFuncSym(symId, rtSym);
-        }
-    }
-
-    fn genCallArgs2(self: *VMcompiler, func: cy.FuncDecl, first: cy.NodeId) !u32 {
-        const params = self.funcParams[func.params.start .. func.params.end];
-        var numArgs: u32 = 0;
-        var argId = first;
-        while (argId != NullId) : (numArgs += 1) {
-            const arg = self.nodes[argId];
-            var reqType = sema.AnyType;
-            const param = params[numArgs];
-            if (param.typeName.len() > 0) {
-                const typeName = self.src[param.typeName.start..param.typeName.end];
-                if (self.typeNames.get(typeName)) |paramT| {
-                    reqType = paramT;
-                }
-            }
-            _ = try self.genRetainedTempExpr2(argId, reqType, false);
-            argId = arg.next;
-        }
-        return numArgs;
-    }
-
-    fn genCallArgs(self: *VMcompiler, first: cy.NodeId) !u32 {
-        var numArgs: u32 = 0;
-        var argId = first;
-        while (argId != NullId) : (numArgs += 1) {
-            const arg = self.nodes[argId];
-            _ = try self.genRetainedTempExpr(argId, false);
-            argId = arg.next;
-        }
-        return numArgs;
-    }
-
-    fn genEnsureRtFuncSym(self: *VMcompiler, symId: sema.SymId) !u32 {
-        const sym = self.semaSyms.items[symId];
-        const key = sym.key.absLocalSymKey;
-        if (sym.resolvedSymId != NullId) {
-            const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-            return self.vm.ensureFuncSym(resolvedParentId, key.nameId, key.numParams);
-        } else {
-            // Undefined namespace is NullId-1 so it doesn't conflict with the root.
-            return self.vm.ensureFuncSym(NullId-1, key.nameId, key.numParams);
-        }
-    }
-
-    fn genGetResolvedFuncSym(self: *const VMcompiler, resolvedSymId: sema.ResolvedSymId, numParams: u32) ?sema.ResolvedFuncSym {
-        const key = vm_.KeyU64{
-            .absResolvedFuncSymKey = .{
-                .resolvedSymId = resolvedSymId,
-                .numParams = numParams,
-            },
-        };
-        if (self.semaResolvedFuncSymMap.get(key)) |id| {
-            return self.semaResolvedFuncSyms.items[id];
-        } else {
-            return null;
-        }
-    }
-
-    fn genGetResolvedSymId(self: *const VMcompiler, semaSymId: sema.SymId) ?sema.ResolvedSymId {
-        const sym = self.semaSyms.items[semaSymId];
-        if (sym.resolvedSymId != NullId) {
-            return sym.resolvedSymId;
-        } else {
-            return null;
-        }
-    }
-
-    fn genGetResolvedSym(self: *const VMcompiler, semaSymId: sema.SymId) ?sema.ResolvedSym {
-        const sym = self.semaSyms.items[semaSymId];
-        if (sym.resolvedSymId != NullId) {
-            return self.semaResolvedSyms.items[sym.resolvedSymId];
-        } else {
-            return null;
-        }
-    }
-
-    fn genCallExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, comptime discardTopExprReg: bool, comptime startFiber: bool) !GenValue {
-        const startTempLocal = self.curBlock.firstFreeTempLocal;
-        // Can assume temps after startTempLocal are not arc temps.
-        defer self.setFirstFreeTempLocal(startTempLocal);
-
-        var callStartLocal = self.advanceNextTempLocalPastArcTemps();
-        var considerUsingDst = true;
-        if (self.blocks.items.len == 1) {
-            // Main block.
-            // Ensure call start register is at least 1 so the runtime can easily check
-            // if framePtr is at main or a function.
-            if (callStartLocal == 0) {
-                callStartLocal = 1;
-            }
-            if (callStartLocal == 1) {
-                considerUsingDst = false;
-            }
-        }
-
-        // Reserve registers for return value and return info.
-        if (considerUsingDst and dst + 1 == callStartLocal) {
-            callStartLocal -= 1;
-        } else {
-            _ = try self.nextFreeTempLocal();
-        }
-        _ = try self.nextFreeTempLocal();
-        _ = try self.nextFreeTempLocal();
-        _ = try self.nextFreeTempLocal();
-
-        const genCallStartLocal = if (startFiber) 1 else callStartLocal;
-
-        const node = self.nodes[nodeId];
-        const callee = self.nodes[node.head.func_call.callee];
-        if (!node.head.func_call.has_named_arg) {
-            if (callee.node_t == .accessExpr) {
-                if (callee.head.accessExpr.semaSymId != NullId) {
-                    if (self.genGetResolvedSymId(callee.head.accessExpr.semaSymId)) |rsymId| {
-                        const sym = self.semaSyms.items[callee.head.accessExpr.semaSymId];
-                        if (self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams)) |funcSym| {
-                            // Func sym.
-                            var numArgs: u32 = undefined;
-                            if (funcSym.declId != NullId) {
-                                const func = self.funcDecls[funcSym.declId];
-                                numArgs = try self.genCallArgs2(func, node.head.func_call.arg_head);
-                            } else {
-                                numArgs = try self.genCallArgs(node.head.func_call.arg_head);
-                            }
-
-                            // var isStdCall = false;
-                            const key = sym.key.absLocalSymKey;
-                            const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-                            const symId = self.vm.getFuncSym(resolvedParentId, key.nameId, key.numParams).?;
-                            if (discardTopExprReg) {
-                                try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
-                                try self.pushDebugSym(nodeId);
-                            } else {
-                                try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
-                                try self.pushDebugSym(nodeId);
-                            }
-                            return GenValue.initTempValue(callStartLocal, funcSym.retType);
-
-                            // if (try self.readScopedVar(leftName)) |info| {
-                            //     if (info.vtype.typeT == ListType.typeT) {
-                            //         if (self.vm.hasMethodSym(cy.ListS, methodId)) {
-                            //             isStdCall = true;
-                            //         } 
-                            //     }
-                            // }
-                            
-                            // if (isStdCall) {
-                            //     // Avoid retain/release for std call.
-                            //     _ = try self.genExpr(left, false);
-                            // } else {
-                            //     _ = try self.genMaybeRetainExpr(left, false);
-                            // }
-                        } else {
-                            return self.genFuncValueCallExpr(node, callStartLocal, discardTopExprReg);
-                        }
-                    } else {
-                        return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
-                    }
-                }
-
-                // accessExpr is not a symbol.
-
-                const right = self.nodes[callee.head.accessExpr.right];
-                if (right.node_t == .ident) {
-                    // One more arg for receiver.
-                    const numArgs = 1 + try self.genCallArgs(node.head.func_call.arg_head);
-
-                    const rightName = self.getNodeTokenString(right);
-                    const methodId = try self.vm.ensureMethodSymKey(rightName, numArgs - 1);
-
-                    _ = try self.genRetainedTempExpr(callee.head.accessExpr.left, false);
-
-                    if (discardTopExprReg) {
-                        try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                        try self.pushDebugSym(nodeId);
-                    } else {
-                        try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                        try self.pushDebugSym(nodeId);
-                    }
-                    return GenValue.initTempValue(callStartLocal, sema.AnyType);
-                } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
-            } else if (callee.node_t == .ident) {
-                if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
-                    return self.genFuncValueCallExpr(node, callStartLocal, discardTopExprReg);
-                } else {
-                    var genArgs = false;
-                    var numArgs: u32 = undefined;
-                    var optFuncSym: ?sema.ResolvedFuncSym = null;
-                    if (self.genGetResolvedSymId(callee.head.ident.semaSymId)) |rsymId| {
-                        const sym = self.semaSyms.items[callee.head.ident.semaSymId];
-                        if (self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams)) |funcSym| {
-                            if (funcSym.declId != NullId) {
-                                const func = self.funcDecls[funcSym.declId];
-                                numArgs = try self.genCallArgs2(func, node.head.func_call.arg_head);
-                                genArgs = true;
-                            }
-                            optFuncSym = funcSym;
-                        } else {
-                            return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
-                        }
-                    // } else {
-                    //     const symPath = self.semaSyms.items[callee.head.ident.semaSymId].path;
-                    //     log.debug("{} {s}", .{callee.head.ident.semaSymId, symPath});
-                    //     return self.reportErrorAt("Missing symbol: {s}", .{symPath}, node);
-                    // }
-                    }
-
-                    if (!genArgs) {
-                        numArgs = try self.genCallArgs(node.head.func_call.arg_head);
-                    }
-
-                    const coinitPc = self.buf.ops.items.len;
-                    if (startFiber) {
-                        // Precompute first arg local since coinit doesn't need the startLocal.
-                        // numArgs + 4 (ret slots) + 1 (min call start local for main block)
-                        var initialStackSize = numArgs + 4 + 1;
-                        if (initialStackSize < 16) {
-                            initialStackSize = 16;
-                        }
-                        try self.buf.pushOpSlice(.coinit, &.{ callStartLocal + 4, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), dst });
-                    }
-
-                    const rtSymId = try self.genEnsureRtFuncSym(callee.head.ident.semaSymId);
-                    if (discardTopExprReg) {
-                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, rtSymId), 0, 0, 0, 0, 0, 0 });
-                        try self.pushDebugSym(nodeId);
-                    } else {
-                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, rtSymId), 0, 0, 0, 0, 0, 0 });
-                        try self.pushDebugSym(nodeId);
-                    }
-
-                    if (startFiber) {
-                        try self.buf.pushOp(.coreturn);
-                        self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
-                    }
-
-                    if (optFuncSym) |funcSym| {
-                        return GenValue.initTempValue(callStartLocal, funcSym.retType);
-                    } else {
-                        return GenValue.initTempValue(callStartLocal, sema.AnyType);
-                    }
-                }
-            } else {
-                // All other callees are treated as function value calls.
-                return self.genFuncValueCallExpr(node, callStartLocal, discardTopExprReg);
-            }
-        } else return self.reportError("Unsupported named args", &.{});
-    }
-
-    fn genFuncValueCallExpr(self: *VMcompiler, node: cy.Node, callStartLocal: u8, comptime discardTopExprReg: bool) !GenValue {
-        var numArgs: u32 = 0;
-        var argId = node.head.func_call.arg_head;
-        while (argId != NullId) : (numArgs += 1) {
-            const arg = self.nodes[argId];
-            _ = try self.genRetainedTempExpr(argId, false);
-            argId = arg.next;
-        }
-
-        // TODO: Doesn't have to retain to a temp if it's a local (would just need retain op).
-        // If copied to temp, it should be after the last param so it can persist until the function returns.
-        const calleev  = try self.genRetainedTempExpr(node.head.func_call.callee, false);
-        // Mark as reserved so it get's released later.
-        try self.setReservedTempLocal(calleev.local);
-
-        if (discardTopExprReg) {
-            try self.buf.pushOp2(.call0, callStartLocal, @intCast(u8, numArgs));
-            return GenValue.initNoValue();
-        } else {
-            try self.buf.pushOp2(.call1, callStartLocal, @intCast(u8, numArgs));
-            return GenValue.initTempValue(callStartLocal, sema.AnyType);
-        }
-    }
-
-    fn genIfExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !GenValue {
-        const node = self.nodes[nodeId];
-        const startTempLocal = self.curBlock.firstFreeTempLocal;
-        defer self.computeNextTempLocalFrom(startTempLocal);
-
-        const condv = try self.genExpr(node.head.if_expr.cond, false);
-        var jumpNotPc = try self.pushEmptyJumpNotCond(condv.local);
-
-        self.computeNextTempLocalFrom(startTempLocal);
-    
-        var truev = try self.genExprTo(node.head.if_expr.body_expr, dst, retainEscapeTop, false);
-        const jumpPc = try self.pushEmptyJump();
-        self.patchJumpToCurrent(jumpNotPc);
-
-        self.computeNextTempLocalFrom(startTempLocal);
-
-        var falsev: GenValue = undefined;
-        if (node.head.if_expr.else_clause != NullId) {
-            const else_clause = self.nodes[node.head.if_expr.else_clause];
-            falsev = try self.genExprTo(else_clause.head.child_head, dst, retainEscapeTop, discardTopExprReg);
-        } else {
-            if (!discardTopExprReg) {
-                falsev = try self.genNone(dst);
-            }
-        }
-
-        self.patchJumpToCurrent(jumpPc);
-
-        if (truev.vtype.typeT != falsev.vtype.typeT) {
-            return self.initGenValue(dst, sema.AnyType);
-        } else {
-            return self.initGenValue(dst, truev.vtype);
-        }
-    }
-
-    fn genString(self: *VMcompiler, str: []const u8, dst: LocalId) !GenValue {
-        const idx = try self.buf.getOrPushStringConst(str);
-        try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-        return self.initGenValue(dst, sema.StaticStringType);
-    }
-
-    fn genConstInt(self: *VMcompiler, val: f64, dst: LocalId) !GenValue {
-        if (cy.Value.floatCanBeInteger(val)) {
-            const i = @floatToInt(i64, val);
-            if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
-                try self.buf.pushOp2(.constI8Int, @bitCast(u8, @intCast(i8, i)), dst);
-                return self.initGenValue(dst, sema.IntegerType);
-            }
-        } else {
-            return self.reportError("TODO: coerce", &.{});
-        }
-        const int = @floatToInt(i32, val);
-        const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initI32(int).val));
-        try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-        return self.initGenValue(dst, sema.IntegerType);
-    }
-
-    fn genConst(self: *VMcompiler, val: f64, dst: LocalId) !GenValue {
-        if (cy.Value.floatCanBeInteger(val)) {
-            const i = @floatToInt(i64, val);
-            if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
-                try self.buf.pushOp2(.constI8, @bitCast(u8, @intCast(i8, i)), dst);
-                return self.initGenValue(dst, sema.NumberType);
-            }
-        }
-        const idx = try self.buf.pushConst(cy.Const.init(@bitCast(u64, val)));
-        try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-        return self.initGenValue(dst, sema.NumberType);
-    }
-
-    fn genNone(self: *VMcompiler, dst: LocalId) !GenValue {
-        try self.buf.pushOp1(.none, dst);
-        return self.initGenValue(dst, sema.AnyType);
-    }
-
-    fn isReservedTempLocal(self: *const VMcompiler, local: LocalId) bool {
-        for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
-            if (temp.local == local) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    fn userLocalOrDst(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool) LocalId {
-        if (self.nodes[nodeId].node_t == .ident) {
-            if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                if (!svar.isBoxed) {
-                    // If boxed, the value needs to be copied outside of the box.
-                    return svar.local;
-                }
-            }
-        }
-        usedDst.* = true;
-        return dst;
-    }
-
-    fn userLocalOrNextTempLocal(self: *VMcompiler, nodeId: cy.NodeId) !LocalId {
-        const node = self.nodes[nodeId];
-        if (node.node_t == .ident) {
-            if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                if (!svar.isBoxed) {
-                    return svar.local;
-                }
-            }
-        } else if (node.node_t == .call_expr) {
-            // Since call expr args allocate arg locals past the arc temps,
-            // select the call dst to be past the arc temps to skip generating an extra copy op.
-            _ = self.advanceNextTempLocalPastArcTemps();
-            return self.nextFreeTempLocal();
-        }
-        return self.nextFreeTempLocal();
-    }
-
-    fn advanceNextTempLocalPastArcTemps(self: *VMcompiler) LocalId {
-        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
-            for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
-                if (self.curBlock.firstFreeTempLocal <= temp.local) {
-                    self.curBlock.firstFreeTempLocal = temp.local + 1;
-                }
-            }
-        }
-        return self.curBlock.firstFreeTempLocal;
-    }
-
-    /// TODO: Rename to reserveNextTempLocal.
-    fn nextFreeTempLocal(self: *VMcompiler) !LocalId {
-        if (self.curBlock.firstFreeTempLocal < 256) {
-            if (self.curBlock.firstFreeTempLocal == self.curBlock.numLocals + self.curBlock.numTempLocals) {
-                self.curBlock.numTempLocals += 1;
-            }
-            defer {
-                // Advance to the next free temp considering reserved arc temps.
-                self.computeNextTempLocalFrom(self.curBlock.firstFreeTempLocal + 1);
-            }
-            return @intCast(u8, self.curBlock.firstFreeTempLocal);
-        } else {
-            return self.reportError("Exceeded max locals.", &.{});
-        }
-    }
-
-    fn computeNextTempLocalFrom(self: *VMcompiler, local: LocalId) void {
-        self.curBlock.firstFreeTempLocal = local;
-        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
-            while (self.isReservedTempLocal(self.curBlock.firstFreeTempLocal)) {
-                self.curBlock.firstFreeTempLocal += 1;
-            }
-        }
-    }
-
-    /// Find first available temp starting from the beginning.
-    fn resetNextFreeTemp(self: *VMcompiler) void {
-        self.computeNextTempLocalFrom(@intCast(u8, self.curBlock.numLocals));
-    }
-
-    fn setFirstFreeTempLocal(self: *VMcompiler, local: LocalId) void {
-        self.curBlock.firstFreeTempLocal = local;
-    }
-
-    /// Given two local values, determine the next destination temp local.
-    /// The type of the dest value is left undefined to be set by caller.
-    fn nextTempDestValue(self: *VMcompiler, src1: GenValue, src2: GenValue) !GenValue {
-        if (src1.isTempLocal == src2.isTempLocal) {
-            if (src1.isTempLocal) {
-                const minTempLocal = std.math.min(src1.local, src2.local);
-                self.setFirstFreeTempLocal(minTempLocal + 1);
-                return GenValue.initTempValue(minTempLocal, undefined);
-            } else {
-                return GenValue.initTempValue(try self.nextFreeTempLocal(), undefined);
-            }
-        } else {
-            if (src1.isTempLocal) {
-                return GenValue.initTempValue(src1.local, undefined);
-            } else {
-                return GenValue.initTempValue(src2.local, undefined);
-            }
-        }
-    }
-
-    fn genEnsureRequiredType(self: *VMcompiler, genValue: GenValue, requiredType: sema.Type) !void {
-        if (requiredType.typeT != .any) {
-            if (genValue.vtype.typeT != requiredType.typeT) {
-                return self.reportError("Type {} can not be auto converted to required type {}", &.{fmt.v(genValue.vtype.typeT), fmt.v(requiredType.typeT)});
-            }
-        }
-    }
-
-    fn genExpr(self: *VMcompiler, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!GenValue {
-        self.curNodeId = nodeId;
-        return self.genExpr2(nodeId, sema.AnyType, discardTopExprReg);
-    }
-
-    /// If the expression is a user local, the local is returned.
-    /// Otherwise, the expression is allocated a temp local on the stack.
-    fn genExpr2(self: *VMcompiler, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!GenValue {
-        const dst = try self.userLocalOrNextTempLocal(nodeId);
-        const res = try self.genExprTo2(nodeId, dst, requiredType, false, !discardTopExprReg);
-        try self.genEnsureRequiredType(res, requiredType);
-        return res;
-    }
-
-    fn canUseLocalAsTemp(self: *const VMcompiler, local: LocalId) bool {
-        if (self.blocks.items.len > 1) {
-            // Temp or return slot.
-            return local == 0 or local >= self.curBlock.numLocals;
-        } else {
-            // For main block, it can only use local as a temporary if it's in fact a temp.
-            return local >= self.curBlock.numLocals;
-        }
-    }
-
-    fn isTempLocal(self: *const VMcompiler, local: LocalId) bool {
-        return local >= self.curBlock.numLocals;
-    }
-
-    fn initGenValue(self: *const VMcompiler, local: LocalId, vtype: sema.Type) GenValue {
-        if (local >= self.curBlock.numLocals) {
-            return GenValue.initTempValue(local, vtype);
-        } else {
-            return GenValue.initLocalValue(local, vtype);
-        }
-    }
-
-    fn genPushBinOp(self: *VMcompiler, code: cy.OpCode, left: cy.NodeId, right: cy.NodeId, vtype: sema.Type, dst: LocalId, comptime discardTopExprReg: bool) !GenValue {
-        const startTempLocal = self.curBlock.firstFreeTempLocal;
-        defer self.computeNextTempLocalFrom(startTempLocal);
-
-        var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-        const leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
-        const rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
-        if (!discardTopExprReg) {
-            try self.buf.pushOp3(code, leftv.local, rightv.local, dst);
-            return self.initGenValue(dst, vtype);
-        } else return GenValue.initNoValue();
-    }
-
-    fn pushTempOperand(self: *VMcompiler, operand: u8) !void {
-        try self.operandStack.append(self.alloc, cy.OpData.initArg(operand));
-    }
-
-    fn unescapeString(self: *VMcompiler, literal: []const u8) ![]const u8 {
-        try self.tempBufU8.resize(self.alloc, literal.len);
-        return Root.unescapeString(self.tempBufU8.items, literal);
-    }
-
-    fn setReservedTempLocal(self: *VMcompiler, local: LocalId) !void {
-        // log.debug("set reserved {}", .{self.reservedTempLocalStack.items.len});
-        try self.reservedTempLocalStack.append(self.alloc, .{
-            .local = local,
-        });
-    }
-
-    fn genExprTo(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!GenValue {
-        return self.genExprTo2(nodeId, dst, sema.AnyType, retainEscapeTop, !discardTopExprReg);
-    }
-
-    fn dumpLocals(self: *VMcompiler) !void {
-        if (builtin.mode == .Debug and !cy.silentInternal) {
-            const sblock = sema.curBlock(self);
-            fmt.printStderr("Compiler (dump locals):\n", &.{});
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
-                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
-                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
-                });
-            }
-            for (sblock.locals.items) |varId| {
-                const svar = self.vars.items[varId];
-                fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
-                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
-                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
-                });
-            }
-        }
-    }
-
-    /// Ensures that the resulting expression is copied to `dst`.
-    /// This does not care about what is already at `dst`, so assign statements need to consider that (for ARC correctness).
-    /// Most common usage is to copy to a temp or reserved temp `dst`.
-    /// Since assignments is a special case, dealing with the type of `dst` won't be included here.
-    ///
-    /// `dst` indicates the local of the resulting value.
-    /// `retain` indicates the resulting val should be retained by 1 refcount. (eg. call args)
-    ///    If the expr already does a +1 retain (eg. map literal) upon evaluation, nothing more needs to happen.
-    ///    If the expr does not retain itself (eg. access expr), the generated code depends on additional criteria.
-    ///    If `retain` is false, `dst` is a temp local, and the expr does a +1 retain (eg. call expr with any return);
-    ///        it is added as an arcTempLocal to be released at the end of the arcTemp segment.
-    /// `dstIsUsed` provides a hint that the parent caller of `genExprTo2` intends to use `dst`. (eg. `false` for an expr statement)
-    ///    If `dstIsUsed` is false and the current expr does not contain side-effects, it can omit generating its code.
-    fn genExprTo2(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: sema.Type, retain: bool, comptime dstIsUsed: bool) anyerror!GenValue {
-        const node = self.nodes[nodeId];
-        // log.debug("gen reg expr {}", .{node.node_t});
-        switch (node.node_t) {
-            .ident => {
-                return try genIdent(self, nodeId, dst, retain);
-            },
-            .true_literal => {
-                if (dstIsUsed) {
-                    try self.buf.pushOp1(.true, dst);
-                    return self.initGenValue(dst, sema.BoolType);
-                } else return GenValue.initNoValue();
-            },
-            .false_literal => {
-                if (dstIsUsed) {
-                    try self.buf.pushOp1(.false, dst);
-                    return self.initGenValue(dst, sema.BoolType);
-                } else return GenValue.initNoValue();
-            },
-            .number => {
-                if (dstIsUsed) {
-                    const literal = self.getNodeTokenString(node);
-                    const val = try std.fmt.parseFloat(f64, literal);
-                    if (requestedType.typeT == .int) {
-                        return try self.genConstInt(val, dst);
-                    } else {
-                        return try self.genConst(val, dst);
-                    }
-                } else {
-                    return GenValue.initNoValue();
-                }
-            },
-            .nonDecInt => {
-                if (dstIsUsed) {
-                    const literal = self.getNodeTokenString(node);
-                    var val: u64 = undefined;
-                    if (literal[1] == 'x') {
-                        val = try std.fmt.parseInt(u64, literal[2..], 16);
-                    } else if (literal[1] == 'o') {
-                        val = try std.fmt.parseInt(u64, literal[2..], 8);
-                    } else if (literal[1] == 'b') {
-                        val = try std.fmt.parseInt(u64, literal[2..], 2);
-                    }
-                    const fval = @intToFloat(f64, val);
-                    if (requestedType.typeT == .int) {
-                        return try self.genConstInt(fval, dst);
-                    } else {
-                        return try self.genConst(fval, dst);
-                    }
-                } else {
-                    return GenValue.initNoValue();
-                }
-            },
-            .tagLiteral => {
-                const name = self.getNodeTokenString(node);
-                const symId = try self.vm.ensureTagLitSym(name);
-                try self.buf.pushOp2(.tagLiteral, @intCast(u8, symId), dst);
-                return self.initGenValue(dst, sema.TagLiteralType);
-            },
-            .string => {
-                if (dstIsUsed) {
-                    const literal = self.getNodeTokenString(node);
-                    const str = try self.unescapeString(literal);
-                    return self.genString(str, dst);
-                } else {
-                    return GenValue.initNoValue();
-                }
-            },
-            .stringTemplate => {
-                return genStringTemplate(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .none => {
-                if (dstIsUsed) {
-                    return self.genNone(dst);
-                } else return GenValue.initNoValue();
-            },
-            .tagInit => {
-                const name = self.nodes[node.head.left_right.left];
-                const tname = self.getNodeTokenString(name);
-                const tid = self.vm.tagTypeSignatures.get(tname) orelse {
-                    return self.reportErrorAt("Missing tag type: `{}`", &.{v(tname)}, nodeId);
-                };
-
-                const tagLit = self.nodes[node.head.left_right.right];
-                const lname = self.getNodeTokenString(tagLit);
-                const symId = self.vm.tagLitSymSignatures.get(lname) orelse {
-                    return self.reportErrorAt("Missing tag literal: `{}`", &.{v(lname)}, nodeId);
-                };
-                const sym = self.vm.tagLitSyms.buf[symId];
-                if (sym.symT == .one) {
-                    if (sym.inner.one.id == tid) {
-                        try self.buf.pushOp3(.tag, @intCast(u8, tid), @intCast(u8, sym.inner.one.val), dst);
-                        const vtype = sema.initTagType(tid);
-                        return self.initGenValue(dst, vtype);
-                    }
-                }
-                return self.reportErrorAt("Tag `{}` does not have member `{}`", &.{v(tname), v(lname)}, nodeId); 
-            },
-            .structInit => {
-                return genObjectInit(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .if_expr => {
-                return self.genIfExpr(nodeId, dst, retain, !dstIsUsed);
-            },
-            .map_literal => {
-                return genMapInit(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .arr_literal => {
-                return genListInit(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .arr_range_expr => {
-                return genRangeAccessExpr(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .arr_access_expr => {
-                return genIndexAccessExpr(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .accessExpr => {
-                return genAccessExpr(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .comptExpr => {
-                const child = self.nodes[node.head.child_head];
-                if (child.node_t == .call_expr) {
-                    const callee = self.nodes[child.head.func_call.callee];
-                    const name = self.getNodeTokenString(callee);
-                    if (std.mem.eql(u8, name, "compilerDumpLocals")) {
-                        try self.dumpLocals();
-                    } else if (std.mem.eql(u8, name, "compilerDumpBytecode")) {
-                        self.buf.dump();
-                    }
-                    try self.buf.pushOp1(.none, dst);
-                    return self.initGenValue(dst, sema.AnyType);
-                } else {
-                    return self.reportError("Unsupported compt expr {}", &.{fmt.v(child.node_t)});
-                }
-            },
-            .tryExpr => {
-                var child: GenValue = undefined;
-                if (retain) {
-                    child = try self.genRetainedTempExpr(node.head.child_head, false);
-                } else {
-                    child = try self.genExpr(node.head.child_head, false);
-                }
-                const pc = self.buf.ops.items.len;
-                try self.buf.pushOpSlice(.tryValue, &.{child.local, dst, 0, 0});
-                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc), .pcOffset = 3 });
-                self.curBlock.requiresEndingRet1 = true;
-
-                try self.pushDebugSym(nodeId);
-                return self.initGenValue(dst, sema.AnyType);
-            },
-            .unary_expr => {
-                const op = node.head.unary.op;
-                switch (op) {
-                    .minus => {
-                        const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
-                        if (dstIsUsed) {
-                            try self.buf.pushOp2(.neg, child.local, dst);
-                            return self.initGenValue(dst, sema.NumberType);
-                        } else return GenValue.initNoValue();
-                    },
-                    .not => {
-                        const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
-                        if (dstIsUsed) {
-                            try self.buf.pushOp2(.not, child.local, dst);
-                            return self.initGenValue(dst, sema.BoolType);
-                        } else return GenValue.initNoValue();
-                    },
-                    .bitwiseNot => {
-                        const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
-                        if (dstIsUsed) {
-                            try self.buf.pushOp2(.bitwiseNot, child.local, dst);
-                            return self.initGenValue(dst, sema.NumberType);
-                        } else return GenValue.initNoValue();
-                    },
-                    // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
-                }
-            },
-            .group => {
-                return self.genExprTo2(node.head.child_head, dst, requestedType, retain, dstIsUsed);
-            },
-            .binExpr => {
-                return genBinExpr(self, nodeId, dst, requestedType, retain, dstIsUsed);
-            },
-            .call_expr => {
-                const val = try self.genCallExpr(nodeId, dst, !dstIsUsed, false);
-                if (dst != val.local) {
-                    try self.buf.pushOp2(.copy, val.local, dst);
-                }
-                if (dstIsUsed and !retain and self.isTempLocal(dst)) {
-                    try self.setReservedTempLocal(dst);
-                }
-                return self.initGenValue(dst, val.vtype);
-            },
-            .lambda_multi => {
-                return genLambdaMulti(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .lambda_expr => {
-                return genLambdaExpr(self, nodeId, dst, retain, dstIsUsed);
-            },
-            .coresume => {
-                const fiber = try self.genRetainedTempExpr(node.head.child_head, false);
-                if (dstIsUsed) {
-                    try self.buf.pushOp2(.coresume, fiber.local, dst);
-                } else {
-                    try self.buf.pushOp2(.coresume, fiber.local, NullIdU8);
-                }
-                return self.initGenValue(dst, sema.AnyType);
-            },
-            .coyield => {
-                const pc = self.buf.ops.items.len;
-                try self.buf.pushOp2(.coyield, 0, 0);
-                try self.blockJumpStack.append(self.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc), .pcOffset = 1 });
-
-                // TODO: return coyield expression.
-                if (dstIsUsed) {
-                    return try self.genNone(dst);
-                } else {
-                    return GenValue.initNoValue();
-                }
-            },
-            .coinit => {
-                _ = try self.genCallExpr(node.head.child_head, dst, !dstIsUsed, true);
-                return self.initGenValue(dst, sema.FiberType);
-            },
-            else => {
-                return self.reportError("Unsupported {}", &.{fmt.v(node.node_t)});
-            }
-        }
-    }
-
-    fn setErrorAt(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) !void {
-        self.alloc.free(self.lastErr);
-        self.lastErr = try fmt.allocFormat(self.alloc, format, args);
-        self.lastErrNode = nodeId;
-    }
-
-    pub fn reportError(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
-        return self.reportErrorAt(format, args, self.curNodeId);
-    }
-
-    pub fn reportErrorAt(self: *VMcompiler, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
-        try self.setErrorAt(format, args, nodeId);
-        return error.CompileError;
-    }
-
-    pub fn getNodeTokenString(self: *const VMcompiler, node: cy.Node) []const u8 {
-        const token = self.tokens[node.start_token];
-        return self.src[token.pos()..token.data.end_pos];
-    }
-
-    /// An optional debug sym is only included in Debug builds.
-    fn pushOptionalDebugSym(self: *VMcompiler, nodeId: cy.NodeId) !void {
-        if (builtin.mode == .Debug) {
-            try self.buf.pushDebugSym(self.buf.ops.items.len, 0, nodeId, self.curBlock.frameLoc);
-        }
-    }
-
-    fn pushDebugSym(self: *VMcompiler, nodeId: cy.NodeId) !void {
-        try self.buf.pushDebugSym(self.buf.ops.items.len, 0, nodeId, self.curBlock.frameLoc);
-    }
-
-    fn pushDebugSymAt(self: *VMcompiler, pc: usize, nodeId: cy.NodeId) !void {
-        try self.buf.pushDebugSym(pc, 0, nodeId, self.curBlock.frameLoc);
-    }
+        chunk.nodes = ast.nodes.items;
+        chunk.funcDecls = ast.func_decls.items;
+        chunk.funcParams = ast.func_params;
+        chunk.tokens = ast.tokens;
+        return ast;
+    }
+
+    fn performChunkCodegen(self: *VMcompiler, id: CompileChunkId) !void {
+        const chunk = &self.chunks.items[id];
+
+        try gen.genInitLocals(chunk);
+        const jumpStackStart = chunk.blockJumpStack.items.len;
+        const root = chunk.nodes[0];
+        try gen.genStatements(chunk, root.head.child_head, true);
+        chunk.patchBlockJumps(jumpStackStart);
+        chunk.blockJumpStack.items.len = jumpStackStart;
+        chunk.popBlock();
+        self.buf.mainStackSize = @intCast(u32, chunk.curBlock.getRequiredStackSize());
+    }
+};
+
+const CompileErrorType = enum {
+    tokenize,
+    parse,
+    compile,
 };
 
 pub const ResultView = struct {
     buf: cy.ByteCodeBuffer,
-    hasError: bool,
-};
-
-const LocalId = u8;
-
-// TODO: Rename to GenBlock
-const Block = struct {
-    /// This includes the return info, function params, captured params, and local vars.
-    /// Does not include temp locals.
-    numLocals: u32,
-    frameLoc: cy.NodeId = NullId,
-    resolvedFuncSymId: sema.ResolvedFuncSymId = NullId,
-    endLocalsPc: u32,
-
-    /// These are used for rvalues and function args.
-    /// At the end of the block, the total stack size needed for the function body is known.
-    numTempLocals: u8,
-
-    /// Starts at `numLocals`.
-    /// Temp locals are allocated from the end of the user locals towards the right.
-    firstFreeTempLocal: u8,
-
-    /// Start of the first reserved temp local.
-    reservedTempLocalStart: u32,
-
-    /// Start of the first retained temp local of the current ARC expr.
-    /// This must be kept updated as codegen walks the ast so that sub expressions
-    /// knows which ARC expr they belong to.
-    arcTempLocalStart: u32,
-
-    /// Whether codegen should create an ending that returns 1 arg.
-    /// Otherwise `ret0` is generated.
-    requiresEndingRet1: bool,
-
-    fn init() Block {
-        return .{
-            .numLocals = 0,
-            .endLocalsPc = 0,
-            .numTempLocals = 0,
-            .firstFreeTempLocal = 0,
-            .reservedTempLocalStart = 0,
-            .arcTempLocalStart = 0,
-            .requiresEndingRet1 = false,
-        };
-    }
-
-    fn deinit(self: *Block, alloc: std.mem.Allocator) void {
-        _ = self;
-        _ = alloc;
-    }
-
-    fn getRequiredStackSize(self: *const Block) u8 {
-        return @intCast(u8, self.numLocals + self.numTempLocals);
-    }
+    err: ?CompileErrorType,
 };
 
 const VarInfo = struct {
     hasStaticType: bool,
-};
-
-const BlockJumpType = enum {
-    jumpToEndLocals,
-};
-
-const BlockJump = struct {
-    jumpT: BlockJumpType,
-    pc: u32,
-
-    /// Offset from `pc` to where the jump value should be encoded.
-    pcOffset: u16,
-};
-
-const SubBlockJumpType = enum {
-    /// Each if/else body contains a break at the end to jump out of the if block.
-    /// Each match case block jumps to the end of the match block.
-    subBlockBreak,
-    /// Breaks out of a for loop.
-    brk,
-    /// Continues a for loop.
-    cont,
-};
-
-const SubBlockJump = struct {
-    jumpT: SubBlockJumpType,
-    pc: u32,
 };
 
 const Load = struct {
@@ -2584,44 +373,6 @@ fn isArcTempNode(nodeT: cy.NodeType) bool {
     }
 }
 
-const GenValue = struct {
-    vtype: sema.Type,
-    local: LocalId,
-    isTempLocal: bool,
-
-    fn initNoValue() GenValue {
-        return .{
-            .vtype = undefined,
-            .local = 0,
-            .isTempLocal = false,
-        };
-    }
-
-    fn initLocalValue(local: LocalId, vtype: sema.Type) GenValue {
-        return .{
-            .vtype = vtype,
-            .local = local,
-            .isTempLocal = false,
-        };
-    }
-
-    fn initTempValue(local: LocalId, vtype: sema.Type) GenValue {
-        return .{
-            .vtype = vtype,
-            .local = local,
-            .isTempLocal = true,
-        };
-    }
-
-    fn initSemaVar(svar: sema.LocalVar) GenValue {
-        return .{
-            .vtype = svar.vtype,
-            .local = svar.local,
-            .isTempLocal = false,
-        };
-    }
-};
-
 /// `buf` is assumed to be big enough.
 pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
     var newIdx: u32 = 0; 
@@ -2655,15 +406,7 @@ const ReservedTempLocal = struct {
     local: LocalId,
 };
 
-
 const unexpected = stdx.fatal;
-
-fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
-    if (builtin.mode == .Debug) {
-        fmt.printStderr(format, vals);
-    }
-    stdx.fatal();
-}
 
 const DataNode = packed struct {
     inner: packed union {
@@ -2679,674 +422,811 @@ const Config = struct {
     genMainScopeReleaseOps: bool = true,
 };
 
-fn genIdent(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
-        if (dst == svar.local) {
-            if (retain) {
-                stdx.panic("Unexpected retainEscapeTop.");
-            }
-            return GenValue.initSemaVar(svar);
-        } else {
-            if (retain and svar.vtype.rcCandidate) {
-                if (svar.isBoxed) {
-                    try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
-                } else {
-                    try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
-                }
-            } else {
-                if (svar.isBoxed) {
-                    try self.buf.pushOp2(.boxValue, svar.local, dst);
-                } else {
-                    try self.buf.pushOp2(.copy, svar.local, dst);
-                }
-            }
-            return self.initGenValue(dst, svar.vtype);
-        }
-    } else {
-        if (builtin.mode == .Debug and node.head.ident.semaSymId == NullId) {
-            unexpectedFmt("Missing semaSymId.", &.{});
-        }
-        if (self.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
-            if (rsym.symT == .func) {
-                const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                const localKey = sym.key.absLocalSymKey;
-                const resolvedParentId = if (localKey.localParentSymId == NullId) NullId else self.semaSyms.items[localKey.localParentSymId].resolvedSymId;
+const CompileChunkId = u32;
 
-                const rfsym = self.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                const rtSymId = try self.vm.ensureFuncSym(resolvedParentId, localKey.nameId, rfsym.numParams);
+/// A compilation unit.
+/// It contains data to compile from source into a module with exported symbols.
+pub const CompileChunk = struct {
+    id: CompileChunkId,
+    alloc: std.mem.Allocator,
+    compiler: *VMcompiler,
 
-                try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
-                return self.initGenValue(dst, sema.AnyType);
-            } else if (rsym.symT == .variable) {
-                const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                const localKey = sym.key.absLocalSymKey;
-                const varId = try self.vm.ensureVarSym(NullId, localKey.nameId);
-                try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
-                return self.initGenValue(dst, sema.AnyType);
-            } else {
-                const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                const name = sema.getSymName(self, &sym);
-                return self.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(name)}, nodeId);
-            }
-        } else {
-            return self.genNone(dst);
-        }
-    }
-}
+    /// Source code.
+    src: []const u8,
+    srcUri: []const u8,
 
-fn genStringTemplate(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const operandStart = self.operandStack.items.len;
-    defer self.operandStack.items.len = operandStart;
+    parser: cy.Parser,
 
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
+    /// Generic linked list buffer.
+    dataNodes: std.ArrayListUnmanaged(DataNode),
 
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+    /// Used for temp string building.
+    tempBufU8: std.ArrayListUnmanaged(u8),
 
-    var expStringPart = true;
-    var curId = node.head.stringTemplate.partsHead;
-    var numExprs: u32 = 0;
-    while (curId != NullId) {
-        const cur = self.nodes[curId];
-        if (expStringPart) {
-            if (dstIsUsed) {
-                const raw = self.getNodeTokenString(cur);
-                const str = try self.unescapeString(raw);
-                const idx = try self.buf.getOrPushStringConst(str);
-                try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-            }
-        } else {
-            _ = try self.genRetainedTempExpr(curId, !dstIsUsed);
-            numExprs += 1;
-        }
-        curId = cur.next;
-        expStringPart = !expStringPart;
-    }
+    /// Since nodes are currently processed recursively,
+    /// set the current node so that error reporting has a better
+    /// location context for helper methods that simply return no context errors.
+    curNodeId: cy.NodeId,
 
-    if (dstIsUsed) {
-        try self.buf.pushOp3(.stringTemplate, argStartLocal, @intCast(u8, numExprs), dst);
-        try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+    ///
+    /// Sema pass
+    ///
+    semaBlocks: std.ArrayListUnmanaged(sema.Block),
+    semaSubBlocks: std.ArrayListUnmanaged(sema.SubBlock),
+    vars: std.ArrayListUnmanaged(sema.LocalVar),
+    capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
+    /// Local paths to syms.
+    semaSyms: std.ArrayListUnmanaged(sema.Sym),
+    semaSymMap: std.HashMapUnmanaged(vm_.KeyU96, sema.SymId, vm_.KeyU96Context, 80),
+    semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.SymRef),
+    assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
+    semaBlockDepth: u32,
+    curSemaBlockId: sema.BlockId,
+    curSemaSubBlockId: sema.SubBlockId,
+    /// Which sema sym var is currently being analyzed for an assignment initializer.
+    curSemaSymVar: u32,
+    /// When looking at a var declaration, keep track of which symbols are already recorded as dependencies.
+    semaVarDeclDeps: std.AutoHashMapUnmanaged(u32, void),
+    /// Currently used to store lists of static var dependencies.
+    bufU32: std.ArrayListUnmanaged(u32),
 
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
-        return self.initGenValue(dst, sema.StringType);
-    } else {
-        return GenValue.initNoValue();
-    }
-}
+    ///
+    /// Codegen pass
+    ///
+    blocks: std.ArrayListUnmanaged(GenBlock),
+    blockJumpStack: std.ArrayListUnmanaged(BlockJump),
+    subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
+    /// Tracks which temp locals are reserved. They are skipped for temp local allocations.
+    reservedTempLocalStack: std.ArrayListUnmanaged(ReservedTempLocal),
+    operandStack: std.ArrayListUnmanaged(cy.OpData),
+    /// Used to advance to the next saved sema block.
+    nextSemaBlockId: u32,
+    nextSemaSubBlockId: u32,
+    curBlock: *GenBlock,
+    /// Shared code buffer.
+    buf: *cy.ByteCodeBuffer,
 
-fn genObjectInit(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const stype = self.nodes[node.head.structInit.name];
-    const sname = self.getNodeTokenString(stype);
-    const snameId = try sema.ensureNameSym(self, sname);
-    const sid = self.vm.getStruct(snameId, 0) orelse {
-        return self.reportErrorAt("Missing object type: `{}`", &.{v(sname)}, nodeId);
-    };
+    nodes: []cy.Node,
+    tokens: []const cy.Token,
+    funcDecls: []cy.FuncDecl,
+    funcParams: []const cy.FunctionParam,
 
-    const initializer = self.nodes[node.head.structInit.initializer];
-    
-    // TODO: Would it be faster/efficient to copy the fields into contiguous registers 
-    //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
-    //       The current implementation is the former.
-    // TODO: Have sema sort the fields so eval can handle default values easier.
-
-    // Push props onto stack.
-
-    const numFields = self.vm.structs.buf[sid].numFields;
-    // Repurpose stack for sorting fields.
-    const sortedFieldsStart = self.assignedVarStack.items.len;
-    try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
-    defer self.assignedVarStack.items.len = sortedFieldsStart;
-
-    // Initially set to NullId so leftovers are defaulted to `none`.
-    const initFields = self.assignedVarStack.items[sortedFieldsStart..];
-    std.mem.set(u32, initFields, NullId);
-
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
-
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-    var i: u32 = 0;
-    var entryId = initializer.head.child_head;
-    // First iteration to sort the initializer fields.
-    while (entryId != NullId) : (i += 1) {
-        const entry = self.nodes[entryId];
-        const prop = self.nodes[entry.head.mapEntry.left];
-        const fieldName = self.getNodeTokenString(prop);
-        const fieldIdx = self.vm.getStructFieldIdx(sid, fieldName) orelse {
-            return self.reportErrorAt("Missing field {}", &.{fmt.v(fieldName)}, entry.head.mapEntry.left);
+    fn init(c: *VMcompiler, id: CompileChunkId, srcUri: []const u8, src: []const u8) !CompileChunk {
+        var new = CompileChunk{
+            .id = id,
+            .alloc = c.alloc,
+            .compiler = c,
+            .src = src,
+            .srcUri = srcUri,
+            .parser = cy.Parser.init(c.alloc),
+            .nodes = undefined,
+            .tokens = undefined,
+            .funcDecls = undefined,
+            .funcParams = undefined,
+            .semaBlocks = .{},
+            .semaSubBlocks = .{},
+            .semaSyms = .{},
+            .semaSymMap = .{},
+            .semaSymToRef = .{},
+            .vars = .{},
+            .capVarDescs = .{},
+            .blocks = .{},
+            .blockJumpStack = .{},
+            .subBlockJumpStack = .{},
+            .reservedTempLocalStack = .{},
+            .assignedVarStack = .{},
+            .operandStack = .{},
+            .semaBlockDepth = undefined,
+            .curBlock = undefined,
+            .curSemaBlockId = undefined,
+            .curSemaSubBlockId = undefined,
+            .nextSemaBlockId = undefined,
+            .nextSemaSubBlockId = undefined,
+            .buf = undefined,
+            .curNodeId = NullId,
+            .curSemaSymVar = NullId,
+            .semaVarDeclDeps = .{},
+            .bufU32 = .{},
+            .dataNodes = .{},
+            .tempBufU8 = .{},
         };
-        initFields[fieldIdx] = entryId;
-        entryId = entry.next;
+        try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
+        try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
+        return new;
     }
 
-    i = 0;
-    while (i < numFields) : (i += 1) {
-        entryId = self.assignedVarStack.items[sortedFieldsStart + i];
-        if (entryId == NullId) {
-            if (dstIsUsed) {
-                // Push none.
-                const local = try self.nextFreeTempLocal();
-                try self.buf.pushOp1(.none, local);
+    fn deinit(self: *CompileChunk) void {
+        self.tempBufU8.deinit(self.alloc);
+
+        for (self.semaSubBlocks.items) |*block| {
+            block.deinit(self.alloc);
+        }
+        self.semaSubBlocks.deinit(self.alloc);
+
+        for (self.semaBlocks.items) |*sblock| {
+            sblock.deinit(self.alloc);
+        }
+        self.semaBlocks.deinit(self.alloc);
+
+        self.blocks.deinit(self.alloc);
+
+        self.bufU32.deinit(self.alloc);
+        self.semaVarDeclDeps.deinit(self.alloc);
+        self.dataNodes.deinit(self.alloc);
+
+        self.blockJumpStack.deinit(self.alloc);
+        self.subBlockJumpStack.deinit(self.alloc);
+        self.assignedVarStack.deinit(self.alloc);
+        self.operandStack.deinit(self.alloc);
+        self.reservedTempLocalStack.deinit(self.alloc);
+        self.vars.deinit(self.alloc);
+        self.capVarDescs.deinit(self.alloc);
+
+        self.semaSyms.deinit(self.alloc);
+        self.semaSymMap.deinit(self.alloc);
+        self.semaSymToRef.deinit(self.alloc);
+        self.parser.deinit();
+    }
+
+    pub fn nextSemaBlock(self: *CompileChunk) void {
+        self.curSemaBlockId = self.nextSemaBlockId;
+        self.nextSemaBlockId += 1;
+        self.nextSemaSubBlock();
+    }
+
+    pub fn prevSemaSubBlock(self: *CompileChunk) void {
+        self.curSemaSubBlockId = sema.curSubBlock(self).prevSubBlockId;
+    }
+
+    pub fn prevSemaBlock(self: *CompileChunk) void {
+        self.curSemaBlockId = sema.curBlock(self).prevBlockId;
+        self.prevSemaSubBlock();
+    }
+
+    pub fn setReservedTempLocal(self: *CompileChunk, local: LocalId) !void {
+        // log.debug("set reserved {}", .{self.reservedTempLocalStack.items.len});
+        try self.reservedTempLocalStack.append(self.alloc, .{
+            .local = local,
+        });
+    }
+
+    pub fn canUseLocalAsTemp(self: *const CompileChunk, local: LocalId) bool {
+        if (self.blocks.items.len > 1) {
+            // Temp or return slot.
+            return local == 0 or local >= self.curBlock.numLocals;
+        } else {
+            // For main block, it can only use local as a temporary if it's in fact a temp.
+            return local >= self.curBlock.numLocals;
+        }
+    }
+
+    pub fn isTempLocal(self: *const CompileChunk, local: LocalId) bool {
+        return local >= self.curBlock.numLocals;
+    }
+
+    pub fn initGenValue(self: *const CompileChunk, local: LocalId, vtype: sema.Type) gen.GenValue {
+        if (local >= self.curBlock.numLocals) {
+            return gen.GenValue.initTempValue(local, vtype);
+        } else {
+            return gen.GenValue.initLocalValue(local, vtype);
+        }
+    }
+
+    /// TODO: Rename to reserveNextTempLocal.
+    pub fn nextFreeTempLocal(self: *CompileChunk) !LocalId {
+        if (self.curBlock.firstFreeTempLocal < 256) {
+            if (self.curBlock.firstFreeTempLocal == self.curBlock.numLocals + self.curBlock.numTempLocals) {
+                self.curBlock.numTempLocals += 1;
+            }
+            defer {
+                // Advance to the next free temp considering reserved arc temps.
+                self.computeNextTempLocalFrom(self.curBlock.firstFreeTempLocal + 1);
+            }
+            return @intCast(u8, self.curBlock.firstFreeTempLocal);
+        } else {
+            return self.reportError("Exceeded max locals.", &.{});
+        }
+    }
+
+    pub fn computeNextTempLocalFrom(self: *CompileChunk, local: LocalId) void {
+        self.curBlock.firstFreeTempLocal = local;
+        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
+            while (self.isReservedTempLocal(self.curBlock.firstFreeTempLocal)) {
+                self.curBlock.firstFreeTempLocal += 1;
+            }
+        }
+    }
+
+    /// Find first available temp starting from the beginning.
+    pub fn resetNextFreeTemp(self: *CompileChunk) void {
+        self.computeNextTempLocalFrom(@intCast(u8, self.curBlock.numLocals));
+    }
+
+    pub fn setFirstFreeTempLocal(self: *CompileChunk, local: LocalId) void {
+        self.curBlock.firstFreeTempLocal = local;
+    }
+
+    /// Given two local values, determine the next destination temp local.
+    /// The type of the dest value is left undefined to be set by caller.
+    fn nextTempDestValue(self: *VMcompiler, src1: gen.GenValue, src2: gen.GenValue) !gen.GenValue {
+        if (src1.isTempLocal == src2.isTempLocal) {
+            if (src1.isTempLocal) {
+                const minTempLocal = std.math.min(src1.local, src2.local);
+                self.setFirstFreeTempLocal(minTempLocal + 1);
+                return gen.GenValue.initTempValue(minTempLocal, undefined);
+            } else {
+                return gen.GenValue.initTempValue(try self.nextFreeTempLocal(), undefined);
             }
         } else {
-            const entry = self.nodes[entryId];
-            _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, !dstIsUsed);
+            if (src1.isTempLocal) {
+                return gen.GenValue.initTempValue(src1.local, undefined);
+            } else {
+                return gen.GenValue.initTempValue(src2.local, undefined);
+            }
         }
     }
 
-    if (dstIsUsed) {
-        if (self.vm.structs.buf[sid].numFields <= 4) {
-            try self.pushOptionalDebugSym(nodeId);
-            try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
+    pub fn genExpr(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+        self.curNodeId = nodeId;
+        return self.genExpr2(nodeId, sema.AnyType, discardTopExprReg);
+    }
+
+    /// If the expression is a user local, the local is returned.
+    /// Otherwise, the expression is allocated a temp local on the stack.
+    fn genExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+        const dst = try self.userLocalOrNextTempLocal(nodeId);
+        const res = try gen.genExprTo2(self, nodeId, dst, requiredType, false, !discardTopExprReg);
+        try self.genEnsureRequiredType(res, requiredType);
+        return res;
+    }
+
+    pub fn genExprTo(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+        return gen.genExprTo2(self, nodeId, dst, sema.AnyType, retainEscapeTop, !discardTopExprReg);
+    }
+
+    fn genEnsureRequiredType(self: *CompileChunk, genValue: gen.GenValue, requiredType: sema.Type) !void {
+        if (requiredType.typeT != .any) {
+            if (genValue.vtype.typeT != requiredType.typeT) {
+                return self.reportError("Type {} can not be auto converted to required type {}", &.{fmt.v(genValue.vtype.typeT), fmt.v(requiredType.typeT)});
+            }
+        }
+    }
+
+    pub fn genExprToDestOrTempLocal(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
+        return self.genExprToDestOrTempLocal2(sema.AnyType, nodeId, dst, usedDst, discardTopExprReg);
+    }
+
+    pub fn genExprToDestOrTempLocal2(self: *CompileChunk, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
+        const node = self.nodes[nodeId];
+        if (isArcTempNode(node.node_t) or usedDst.*) {
+            const finalDst = try self.userLocalOrNextTempLocal(nodeId);
+            return gen.genExprTo2(self, nodeId, finalDst, requestedType, false, !discardTopExprReg);
         } else {
-            try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
+            const finalDst = self.userLocalOrDst(nodeId, dst, usedDst);
+            return gen.genExprTo2(self, nodeId, finalDst, requestedType, false, !discardTopExprReg);
         }
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
-        return GenValue.initTempValue(dst, sema.AnyType);
-    } else {
-        return GenValue.initNoValue();
     }
-}
 
-fn genMapInit(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const operandStart = self.operandStack.items.len;
-    defer self.operandStack.items.len = operandStart;
+    /// Generates an instruction to copy the root expression to a specific destination local.
+    /// Also ensures that the expression is retained.
+    pub fn genRetainedExprTo(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+        return try self.genExprTo(nodeId, dst, true, discardTopExprReg);
+    }
 
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
+    pub fn genRetainedTempExpr(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !gen.GenValue {
+        return self.genRetainedTempExpr2(nodeId, sema.AnyType, discardTopExprReg);
+    }
 
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+    /// Ensures that the expr value is retained and ends up in the next temp local.
+    pub fn genRetainedTempExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+        const arcLocalStart = self.beginArcExpr();
 
-    var i: u32 = 0;
-    var entry_id = node.head.child_head;
-    while (entry_id != NullId) : (i += 1) {
-        var entry = self.nodes[entry_id];
-        const key = self.nodes[entry.head.mapEntry.left];
+        const dst = try self.nextFreeTempLocal();
+        // ARC temps released at the end of this expr,
+        // so the next free temp is guaranteed to be after dst.
+        defer self.setFirstFreeTempLocal(dst + 1);
 
-        if (dstIsUsed) {
-            switch (key.node_t) {
-                .ident => {
-                    const name = self.getNodeTokenString(key);
-                    const idx = try self.buf.getOrPushStringConst(name);
-                    try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                },
-                .string => {
-                    const name = self.getNodeTokenString(key);
-                    const idx = try self.buf.getOrPushStringConst(name);
-                    try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
-                },
-                else => stdx.panicFmt("unsupported key {}", .{key.node_t}),
+        const val = try gen.genExprTo2(self, nodeId, dst, requiredType, true, !discardTopExprReg);
+        try self.genEnsureRequiredType(val, requiredType);
+        try self.endArcExpr(arcLocalStart);
+        return val;
+    }
+
+    fn isReservedTempLocal(self: *const CompileChunk, local: LocalId) bool {
+        for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
+            if (temp.local == local) {
+                return true;
             }
         }
-
-        _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, !dstIsUsed);
-        entry_id = entry.next;
+        return false;
     }
 
-    if (dstIsUsed) {
-        if (i == 0) {
-            try self.buf.pushOp1(.mapEmpty, dst);
+    fn userLocalOrDst(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool) LocalId {
+        if (self.nodes[nodeId].node_t == .ident) {
+            if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
+                if (!svar.isBoxed) {
+                    // If boxed, the value needs to be copied outside of the box.
+                    return svar.local;
+                }
+            }
+        }
+        usedDst.* = true;
+        return dst;
+    }
+
+    fn userLocalOrNextTempLocal(self: *CompileChunk, nodeId: cy.NodeId) !LocalId {
+        const node = self.nodes[nodeId];
+        if (node.node_t == .ident) {
+            if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
+                if (!svar.isBoxed) {
+                    return svar.local;
+                }
+            }
+        } else if (node.node_t == .call_expr) {
+            // Since call expr args allocate arg locals past the arc temps,
+            // select the call dst to be past the arc temps to skip generating an extra copy op.
+            _ = self.advanceNextTempLocalPastArcTemps();
+            return self.nextFreeTempLocal();
+        }
+        return self.nextFreeTempLocal();
+    }
+
+    pub fn advanceNextTempLocalPastArcTemps(self: *CompileChunk) LocalId {
+        if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
+            for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
+                if (self.curBlock.firstFreeTempLocal <= temp.local) {
+                    self.curBlock.firstFreeTempLocal = temp.local + 1;
+                }
+            }
+        }
+        return self.curBlock.firstFreeTempLocal;
+    }
+
+    pub fn pushTempOperand(self: *CompileChunk, operand: u8) !void {
+        try self.operandStack.append(self.alloc, cy.OpData.initArg(operand));
+    }
+
+    pub fn reserveLocal(self: *CompileChunk, block: *GenBlock) !u8 {
+        const idx = block.numLocals;
+        block.numLocals += 1;
+        if (idx <= std.math.maxInt(u8)) {
+            return @intCast(u8, idx);
         } else {
-            try self.buf.pushOp3(.map, argStartLocal, @intCast(u8, i), dst);
-            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+            return self.reportError("Exceeded max local count: {}", &.{v(@as(u8, std.math.maxInt(u8)))});
         }
-
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
-        return self.initGenValue(dst, sema.MapType);
-    } else {
-        return GenValue.initNoValue();
     }
-}
 
-fn genBinExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, requestedType: sema.Type, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const left = node.head.binExpr.left;
-    const right = node.head.binExpr.right;
+    /// Reserve params and captured vars.
+    /// Call convention stack layout:
+    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params] [callee] [capturedParams] [locals]
+    pub fn reserveFuncParams(self: *CompileChunk, decl: cy.FuncDecl) !void {
+        // First local is reserved for a single return value.
+        _ = try self.reserveLocal(self.curBlock);
 
-    const op = node.head.binExpr.op;
-    switch (op) {
-        .slash => {
-            return self.genPushBinOp(.div, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .percent => {
-            return self.genPushBinOp(.mod, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .caret => {
-            return self.genPushBinOp(.pow, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .star => {
-            return self.genPushBinOp(.mul, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .plus => {
-            const startTempLocal = self.curBlock.firstFreeTempLocal;
-            defer self.computeNextTempLocalFrom(startTempLocal);
+        // Second local is reserved for the return info.
+        _ = try self.reserveLocal(self.curBlock);
 
-            var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-            const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, !dstIsUsed);
-            const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, !dstIsUsed);
-            if (dstIsUsed) {
-                if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
-                    try self.buf.pushOp3(.addInt, leftv.local, rightv.local, dst);
-                    return self.initGenValue(dst, sema.IntegerType);
-                }
-                try self.buf.pushOp3(.add, leftv.local, rightv.local, dst);
-                try self.pushDebugSym(nodeId);
-                return self.initGenValue(dst, sema.NumberType);
-            } else {
-                return GenValue.initNoValue();
-            }
-        },
-        .minus => {
-            const startTempLocal = self.curBlock.firstFreeTempLocal;
-            defer self.computeNextTempLocalFrom(startTempLocal);
+        // Third local is reserved for the return address.
+        _ = try self.reserveLocal(self.curBlock);
 
-            var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-            const leftv = try self.genExprToDestOrTempLocal2(requestedType, left, dst, &usedDstAsTemp, !dstIsUsed);
-            const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, !dstIsUsed);
-            if (dstIsUsed) {
-                if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
-                    try self.buf.pushOp3(.minusInt, leftv.local, rightv.local, dst);
-                    return self.initGenValue(dst, sema.IntegerType);
-                }
-                try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
-                return self.initGenValue(dst, sema.NumberType);
-            } else return GenValue.initNoValue();
-        },
-        .equal_equal => {
-            return self.genPushBinOp(.compare, left, right, sema.BoolType, dst, !dstIsUsed);
-        },
-        .bang_equal => {
-            return self.genPushBinOp(.compareNot, left, right, sema.BoolType, dst, !dstIsUsed);
-        },
-        .less => {
-            const startTempLocal = self.curBlock.firstFreeTempLocal;
-            defer self.computeNextTempLocalFrom(startTempLocal);
-
-            var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-            var leftv: GenValue = undefined;
-            var rightv: GenValue = undefined;
-            if (node.head.binExpr.semaCanRequestIntegerOperands) {
-                leftv = try self.genExprToDestOrTempLocal2(sema.IntegerType, left, dst, &usedDstAsTemp, !dstIsUsed);
-                rightv = try self.genExprToDestOrTempLocal2(sema.IntegerType, right, dst, &usedDstAsTemp, !dstIsUsed);
-            } else {
-                leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, !dstIsUsed);
-                rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, !dstIsUsed);
-            }
-            if (dstIsUsed) {
-                if (node.head.binExpr.semaCanRequestIntegerOperands) {
-                    try self.buf.pushOp3(.lessInt, leftv.local, rightv.local, dst);
-                    return self.initGenValue(dst, sema.BoolType);
-                }
-                try self.buf.pushOp3(.less, leftv.local, rightv.local, dst);
-                return self.initGenValue(dst, sema.BoolType);
-            } else return GenValue.initNoValue();
-        },
-        .less_equal => {
-            return self.genPushBinOp(.lessEqual, left, right, sema.BoolType, dst, !dstIsUsed);
-        },
-        .greater => {
-            return self.genPushBinOp(.greater, left, right, sema.BoolType, dst, !dstIsUsed);
-        },
-        .greater_equal => {
-            return self.genPushBinOp(.greaterEqual, left, right, sema.BoolType, dst, !dstIsUsed);
-        },
-        .bitwiseAnd => {
-            return self.genPushBinOp(.bitwiseAnd, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .bitwiseOr => {
-            return self.genPushBinOp(.bitwiseOr, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .bitwiseXor => {
-            return self.genPushBinOp(.bitwiseXor, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .bitwiseLeftShift => {
-            return self.genPushBinOp(.bitwiseLeftShift, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .bitwiseRightShift => {
-            return self.genPushBinOp(.bitwiseRightShift, left, right, sema.NumberType, dst, !dstIsUsed);
-        },
-        .and_op => {
-            const startTempLocal = self.curBlock.firstFreeTempLocal;
-            defer self.computeNextTempLocalFrom(startTempLocal);
-
-            const leftv = try self.genExprTo(left, dst, false, !dstIsUsed);
-            const jumpPc = try self.pushEmptyJumpNotCond(leftv.local);
-            const rightv = try self.genExprTo(right, dst, false, !dstIsUsed);
-            self.patchJumpToCurrent(jumpPc);
-
-            if (leftv.vtype.typeT == rightv.vtype.typeT) {
-                if (retain and leftv.vtype.rcCandidate) {
-                    try self.buf.pushOp1(.retain, dst);
-                }
-                return self.initGenValue(dst, leftv.vtype);
-            } else {
-                if (retain and (leftv.vtype.rcCandidate or rightv.vtype.rcCandidate)) {
-                    try self.buf.pushOp1(.retain, dst);
-                }
-                return self.initGenValue(dst, sema.AnyType);
-            }
-        },
-        .or_op => {
-            const startTempLocal = self.curBlock.firstFreeTempLocal;
-            defer self.computeNextTempLocalFrom(startTempLocal);
-
-            const leftv = try self.genExprTo(left, dst, retain, !dstIsUsed);
-            const jumpPc = try self.pushEmptyJumpCond(leftv.local);
-            const rightv = try self.genExprTo(right, dst, retain, !dstIsUsed);
-            self.patchJumpToCurrent(jumpPc);
-
-            if (leftv.vtype.typeT == rightv.vtype.typeT) {
-                return self.initGenValue(dst, leftv.vtype);
-            } else return self.initGenValue(dst, sema.AnyType);
-        },
-        else => return self.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
-    }
-}
-
-fn genLambdaMulti(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId]; 
-    if (dstIsUsed) {
-        const jumpPc = try self.pushEmptyJump();
-
-        self.nextSemaBlock();
-        try self.pushBlock();
-        self.curBlock.frameLoc = nodeId;
-
-        const jumpStackStart = self.blockJumpStack.items.len;
-        const opStart = @intCast(u32, self.buf.ops.items.len);
-
-        // Generate function body.
-        const func = self.funcDecls[node.head.func.decl_id];
-        try self.reserveFuncParams(func);
-        try self.genInitLocals();
-        const numParams = @intCast(u8, func.params.end - func.params.start);
-
-        try self.genStatements(node.head.func.body_head, false);
-
-        try self.genBlockEnding();
-        self.patchJumpToCurrent(jumpPc);
+        // Fourth local is reserved for the previous frame pointer.
+        _ = try self.reserveLocal(self.curBlock);
 
         const sblock = sema.curBlock(self);
-        const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
-        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
 
-        self.patchBlockJumps(jumpStackStart);
-        self.blockJumpStack.items.len = jumpStackStart;
+        // Reserve func params.
+        const numParams = decl.params.len();
+        for (sblock.params.items[0..numParams]) |varId| {
+            _ = try self.reserveLocalVar(varId);
 
-        self.popBlock();
-        self.prevSemaBlock();
-
-        if (numCaptured == 0) {
-            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
-            if (!retain and self.isTempLocal(dst)) {
-                try self.setReservedTempLocal(dst);
-            }
-            return self.initGenValue(dst, sema.AnyType);
-        } else {
-            const operandStart = self.operandStack.items.len;
-            defer self.operandStack.items.len = operandStart;
-
-            // Retain captured vars.
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                if (svar.isCaptured) {
-                    const pId = self.capVarDescs.get(varId).?.user;
-                    const pvar = &self.vars.items[pId];
-
-                    if (svar.isBoxed) {
-                        try self.buf.pushOp1(.retain, pvar.local);
-                        try self.pushTempOperand(pvar.local);
-                    }
-                }
-            }
-
-            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
-            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-            if (!retain and self.isTempLocal(dst)) {
-                try self.setReservedTempLocal(dst);
-            }
-            return self.initGenValue(dst, sema.AnyType);
+            // Params are already defined.
+            self.vars.items[varId].genIsDefined = true;
         }
-    } else {
-        return GenValue.initNoValue();
-    }
-}
 
-fn genLambdaExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    if (dstIsUsed) {
-        const jumpPc = try self.pushEmptyJump();
+        // An extra callee slot is reserved so that function values
+        // can call static functions with the same call convention.
+        _ = try self.reserveLocal(self.curBlock);
 
-        self.nextSemaBlock();
-        try self.pushBlock();
-        const opStart = @intCast(u32, self.buf.ops.items.len);
+        if (sblock.params.items.len > numParams) {
+            for (sblock.params.items[numParams..]) |varId| {
+                _ = try self.reserveLocalVar(varId);
 
-        // Generate function body.
-        const func = self.funcDecls[node.head.func.decl_id];
-        try self.reserveFuncParams(func);
-        try self.genInitLocals();
-        const numParams = @intCast(u8, func.params.end - func.params.start);
-        _ = try self.genRetainedExprTo(node.head.func.body_head, 0, false);
-        try self.endLocals();
-        try self.buf.pushOp(.ret1);
-        self.patchJumpToCurrent(jumpPc);
-
-        const sblock = sema.curBlock(self);
-        const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
-        const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-
-        self.popBlock();
-        self.prevSemaBlock();
-
-        if (numCaptured == 0) {
-            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
-            if (!retain and self.isTempLocal(dst)) {
-                try self.setReservedTempLocal(dst);
-            }
-            return self.initGenValue(dst, sema.AnyType);
-        } else {
-            const operandStart = self.operandStack.items.len;
-            defer self.operandStack.items.len = operandStart;
-
-            // Retain captured vars.
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                if (svar.isCaptured) {
-                    const pId = self.capVarDescs.get(varId).?.user;
-                    const pvar = &self.vars.items[pId];
-
-                    if (svar.isBoxed) {
-                        try self.buf.pushOp1(.retain, pvar.local);
-                        try self.pushTempOperand(pvar.local);
-                    }
-                }
-            }
-
-            const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
-            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-            if (!retain and self.isTempLocal(dst)) {
-                try self.setReservedTempLocal(dst);
-            }
-            return self.initGenValue(dst, sema.AnyType);
-        }
-    } else {
-        return GenValue.initNoValue();
-    }
-}
-
-fn genListInit(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const startLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startLocal);
-
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
-
-    var exprId = node.head.child_head;
-    var i: u32 = 0;
-    while (exprId != NullId) : (i += 1) {
-        const expr = self.nodes[exprId];
-        _ = try self.genRetainedTempExpr(exprId, !dstIsUsed);
-        exprId = expr.next;
-    }
-
-    if (dstIsUsed) {
-        try self.buf.pushOp3(.list, argStartLocal, @intCast(u8, i), dst);
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
-        return self.initGenValue(dst, sema.ListType);
-    } else {
-        return GenValue.initNoValue();
-    }
-}
-
-fn genRangeAccessExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
-
-    var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-
-    // Parent value.
-    const parentv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.arr, dst, &usedDstAsTemp, !dstIsUsed);
-
-    // Range left value.
-    var leftv: GenValue = undefined;
-    if (node.head.arr_range_expr.left == NullId) {
-        if (dstIsUsed) {
-            if (usedDstAsTemp) {
-                const leftDst = try self.nextFreeTempLocal();
-                leftv = try self.genConst(0, leftDst);
-            } else {
-                leftv = try self.genConst(0, dst);
-                usedDstAsTemp = true;
+                // Params are already defined.
+                self.vars.items[varId].genIsDefined = true;
             }
         }
-    } else {
-        leftv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.left, dst, &usedDstAsTemp, !dstIsUsed);
     }
 
-    // Range right value.
-    var rightv: GenValue = undefined;
-    if (node.head.arr_range_expr.right == NullId) {
-        if (dstIsUsed) {
-            if (usedDstAsTemp) {
-                const rightDst = try self.nextFreeTempLocal();
-                rightv = try self.genNone(rightDst);
-            } else {
-                rightv = try self.genNone(dst);
-                usedDstAsTemp = true;
-            }
+    /// ARC managed temps need to be released at the end of the current ARC expression.
+    pub fn beginArcExpr(self: *CompileChunk) u32 {
+        const cur = self.curBlock.arcTempLocalStart;
+        self.curBlock.arcTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
+        return cur;
+    }
+
+    pub fn endArcExpr(self: *CompileChunk, arcTempLocalStart: u32) !void {
+        // Gen release ops.
+        for (self.reservedTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |temp| {
+            try self.buf.pushOp1(.release, temp.local);
         }
-    } else {
-        rightv = try self.genExprToDestOrTempLocal(node.head.arr_range_expr.right, dst, &usedDstAsTemp, !dstIsUsed);
+        self.reservedTempLocalStack.items.len = self.curBlock.arcTempLocalStart;
+
+        // Restore current local start.
+        self.curBlock.arcTempLocalStart = arcTempLocalStart;
     }
 
-    if (dstIsUsed) {
-        try self.buf.pushOpSlice(.slice, &.{ parentv.local, leftv.local, rightv.local, dst });
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
-        return self.initGenValue(dst, sema.ListType);
-    } else {
-        return GenValue.initNoValue();
-    }
-}
-
-fn genIndexAccessExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
-
-    var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-
-    // Gen left.
-    const leftv = try self.genExprToDestOrTempLocal(node.head.left_right.left, dst, &usedDstAsTemp, !dstIsUsed);
-
-    // Gen index.
-    const index = self.nodes[node.head.left_right.right];
-    const isReverseIndex = index.node_t == .unary_expr and index.head.unary.op == .minus;
-    const indexv = try self.genExprToDestOrTempLocal(node.head.left_right.right, dst, &usedDstAsTemp, !dstIsUsed);
-
-    if (dstIsUsed) {
-        if (isReverseIndex) {
-            try self.buf.pushOp3(.reverseIndex, leftv.local, indexv.local, dst);
-            if (!retain and self.isTempLocal(dst)) {
-                try self.setReservedTempLocal(dst);
-            }
-        } else {
-            try self.buf.pushOp3(.index, leftv.local, indexv.local, dst);
-            if (!retain and self.isTempLocal(dst)) {
-                try self.setReservedTempLocal(dst);
-            }
-        }
-        return self.initGenValue(dst, sema.AnyType);
-    } else {
-        return GenValue.initNoValue();
-    }
-}
-
-fn genAccessExpr(self: *VMcompiler, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
-    const node = self.nodes[nodeId];
-    if (node.head.accessExpr.semaSymId != NullId) {
-        const sym = self.semaSyms.items[node.head.accessExpr.semaSymId];
-        if (self.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {
-            const key = sym.key.absLocalSymKey;
+    pub fn genEnsureRtFuncSym(self: *CompileChunk, symId: sema.SymId) !u32 {
+        const sym = self.semaSyms.items[symId];
+        const key = sym.key.absLocalSymKey;
+        if (sym.resolvedSymId != NullId) {
             const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-            if (rsym.symT == .variable) {
-                if (self.vm.getVarSym(resolvedParentId, key.nameId)) |symId| {
-                    if (dstIsUsed) {
-                        // Static variable.
-                        try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
-                        return self.initGenValue(dst, sema.AnyType);
+            return self.compiler.vm.ensureFuncSym(resolvedParentId, key.nameId, key.numParams);
+        } else {
+            // Undefined namespace is NullId-1 so it doesn't conflict with the root.
+            return self.compiler.vm.ensureFuncSym(NullId-1, key.nameId, key.numParams);
+        }
+    }
+
+    pub fn genGetResolvedFuncSym(self: *const CompileChunk, resolvedSymId: sema.ResolvedSymId, numParams: u32) ?sema.ResolvedFuncSym {
+        const key = vm_.KeyU64{
+            .absResolvedFuncSymKey = .{
+                .resolvedSymId = resolvedSymId,
+                .numParams = numParams,
+            },
+        };
+        if (self.compiler.semaResolvedFuncSymMap.get(key)) |id| {
+            return self.compiler.semaResolvedFuncSyms.items[id];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn genGetResolvedSymId(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSymId {
+        const sym = self.semaSyms.items[semaSymId];
+        if (sym.resolvedSymId != NullId) {
+            return sym.resolvedSymId;
+        } else {
+            return null;
+        }
+    }
+
+    pub fn genGetResolvedSym(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSym {
+        const sym = self.semaSyms.items[semaSymId];
+        if (sym.resolvedSymId != NullId) {
+            return self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn genBlockEnding(self: *CompileChunk) !void {
+        self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+        try self.endLocals();
+        if (self.curBlock.requiresEndingRet1) {
+            try self.buf.pushOp(.ret1);
+        } else {
+            try self.buf.pushOp(.ret0);
+        }
+    }
+
+    pub fn endLocals(self: *CompileChunk) !void {
+        const sblock = sema.curBlock(self);
+
+        const start = self.operandStack.items.len;
+        defer self.operandStack.items.len = start;
+
+        for (sblock.params.items) |varId| {
+            const svar = self.vars.items[varId];
+            if (svar.lifetimeRcCandidate and !svar.isCaptured) {
+                try self.operandStack.append(self.alloc, cy.OpData.initArg(svar.local));
+            }
+        }
+        for (sblock.locals.items) |varId| {
+            const svar = self.vars.items[varId];
+            if (svar.lifetimeRcCandidate and svar.genIsDefined) {
+                try self.operandStack.append(self.alloc, cy.OpData.initArg(svar.local));
+            }
+        }
+        
+        const locals = self.operandStack.items[start..];
+        if (locals.len > 0) {
+            if (locals.len == 1) {
+                try self.buf.pushOp1(.release, locals[0].arg);
+            } else {
+                try self.buf.pushOp1(.releaseN, @intCast(u8, locals.len));
+                try self.buf.pushOperands(locals);
+            }
+        }
+    }
+
+    pub fn pushJumpBackNotNone(self: *CompileChunk, toPc: usize, condLocal: LocalId) !void {
+        const pc = self.buf.ops.items.len;
+        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
+        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+    }
+
+    pub fn pushEmptyJumpNotNone(self: *CompileChunk, condLocal: LocalId) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
+        return start;
+    }
+
+    pub fn pushEmptyJumpNotCond(self: *CompileChunk, condLocal: LocalId) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp3(.jumpNotCond, 0, 0, condLocal);
+        return start;
+    }
+
+    pub fn pushJumpBackCond(self: *CompileChunk, toPc: usize, condLocal: LocalId) !void {
+        const pc = self.buf.ops.items.len;
+        try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
+        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+    }
+
+    pub fn pushJumpBackTo(self: *CompileChunk, toPc: usize) !void {
+        const pc = self.buf.ops.items.len;
+        try self.buf.pushOp2(.jump, 0, 0);
+        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+    }
+
+    pub fn pushEmptyJump(self: *CompileChunk) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp2(.jump, 0, 0);
+        return start;
+    }
+
+    pub fn pushEmptyJumpCond(self: *CompileChunk, condLocal: LocalId) !u32 {
+        const start = @intCast(u32, self.buf.ops.items.len);
+        try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
+        return start;
+    }
+
+    pub fn patchJumpToCurrent(self: *CompileChunk, jumpPc: u32) void {
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+    }
+
+    /// Patches sub block breaks. For `if` and `match` blocks.
+    /// All other jumps are propagated up the stack by copying to the front.
+    /// Returns the adjusted jumpStackStart for this block.
+    pub fn patchSubBlockBreakJumps(self: *CompileChunk, jumpStackStart: usize, breakPc: usize) usize {
+        var propagateIdx = jumpStackStart;
+        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+            if (jump.jumpT == .subBlockBreak) {
+                self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
+            } else {
+                self.subBlockJumpStack.items[propagateIdx] = jump;
+                propagateIdx += 1;
+            }
+        }
+        return propagateIdx;
+    }
+
+    pub fn patchForBlockJumps(self: *CompileChunk, jumpStackStart: usize, breakPc: usize, contPc: usize) void {
+        for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
+            switch (jump.jumpT) {
+                .subBlockBreak => {
+                    stdx.panicFmt("Unexpected jump.", .{});
+                },
+                .brk => {
+                    if (breakPc > jump.pc) {
+                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
                     } else {
-                        return GenValue.initNoValue();
+                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - breakPc)));
                     }
+                },
+                .cont => {
+                    if (contPc > jump.pc) {
+                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, contPc - jump.pc));
+                    } else {
+                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - contPc)));
+                    }
+                },
+            }
+        }
+    }
+
+    pub fn patchBlockJumps(self: *CompileChunk, jumpStackStart: usize) void {
+        for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
+            switch (jump.jumpT) {
+                .jumpToEndLocals => {
+                    self.buf.setOpArgU16(jump.pc + jump.pcOffset, @intCast(u16, self.curBlock.endLocalsPc - jump.pc));
                 }
             }
         }
-        const name = sema.getSymName(self, &sym);
-        return self.reportErrorAt("Unsupported sym: {}", &.{v(name)}, nodeId);
     }
 
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
+    pub fn pushBlock(self: *CompileChunk) !void {
+        try self.blocks.append(self.alloc, GenBlock.init());
+        self.curBlock = &self.blocks.items[self.blocks.items.len-1];
+        self.curBlock.reservedTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
+    }
 
-    var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
-
-    // Left side.
-    const leftv = try self.genExprToDestOrTempLocal(node.head.accessExpr.left, dst, &usedDstAsTemp, !dstIsUsed);
-
-    // Right should be an ident.
-    const right = self.nodes[node.head.accessExpr.right];
-
-    const name = self.getNodeTokenString(right);
-    const fieldId = try self.vm.ensureFieldSym(name);
-
-    if (dstIsUsed) {
-        if (retain) {
-            try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
-        } else {
-            try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
+    pub fn popBlock(self: *CompileChunk) void {
+        var last = self.blocks.pop();
+        self.reservedTempLocalStack.items.len = last.reservedTempLocalStart;
+        last.deinit(self.alloc);
+        if (self.blocks.items.len > 0) {
+            self.curBlock = &self.blocks.items[self.blocks.items.len-1];
         }
-        try self.pushDebugSym(nodeId);
-        return self.initGenValue(dst, sema.AnyType);
-    } else {
-        return GenValue.initNoValue();
     }
-}
+
+    pub fn blockNumLocals(self: *CompileChunk) usize {
+        return sema.curBlock(self).locals.items.len + sema.curBlock(self).params.items.len;
+    }
+
+    pub fn genGetVarPtr(self: *const CompileChunk, id: sema.LocalVarId) ?*sema.LocalVar {
+        if (id != NullId) {
+            return &self.vars.items[id];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn genGetVar(self: *const CompileChunk, id: sema.LocalVarId) ?sema.LocalVar {
+        if (id != NullId) {
+            return self.vars.items[id];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn reserveLocalVar(self: *CompileChunk, varId: sema.LocalVarId) !LocalId {
+        const local = try self.reserveLocal(self.curBlock);
+        self.vars.items[varId].local = local;
+        return local;
+    }
+
+    pub fn nextSemaSubBlock(self: *CompileChunk) void {
+        self.curSemaSubBlockId = self.nextSemaSubBlockId;
+        self.nextSemaSubBlockId += 1;
+
+        const ssblock = sema.curSubBlock(self);
+        for (ssblock.iterVarBeginTypes.items) |varAndType| {
+            const svar = &self.vars.items[varAndType.id];
+            // log.debug("{s} iter var", .{self.getVarName(varAndType.id)});
+            svar.vtype = varAndType.vtype;
+            svar.genIsDefined = true;
+        }
+    }
+
+    pub fn unescapeString(self: *CompileChunk, literal: []const u8) ![]const u8 {
+        try self.tempBufU8.resize(self.alloc, literal.len);
+        return Root.unescapeString(self.tempBufU8.items, literal);
+    }
+
+    pub fn dumpLocals(self: *CompileChunk) !void {
+        if (builtin.mode == .Debug and !cy.silentInternal) {
+            const sblock = sema.curBlock(self);
+            fmt.printStderr("Compiler (dump locals):\n", &.{});
+            for (sblock.params.items) |varId| {
+                const svar = self.vars.items[varId];
+                fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
+                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
+                });
+            }
+            for (sblock.locals.items) |varId| {
+                const svar = self.vars.items[varId];
+                fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
+                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
+                });
+            }
+        }
+    }
+
+    fn setErrorAt(self: *CompileChunk, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) !void {
+        self.alloc.free(self.compiler.lastErr);
+        self.compiler.lastErr = try fmt.allocFormat(self.alloc, format, args);
+        self.compiler.lastErrNode = nodeId;
+        self.compiler.lastErrChunk = self.id;
+    }
+
+    pub fn reportError(self: *CompileChunk, format: []const u8, args: []const fmt.FmtValue) error{CompileError, OutOfMemory, FormatError} {
+        return self.reportErrorAt(format, args, self.curNodeId);
+    }
+
+    pub fn reportErrorAt(self: *CompileChunk, format: []const u8, args: []const fmt.FmtValue, nodeId: cy.NodeId) error{CompileError, OutOfMemory, FormatError} {
+        try self.setErrorAt(format, args, nodeId);
+        return error.CompileError;
+    }
+
+    pub fn getNodeTokenString(self: *const CompileChunk, node: cy.Node) []const u8 {
+        const token = self.tokens[node.start_token];
+        return self.src[token.pos()..token.data.end_pos];
+    }
+
+    /// An optional debug sym is only included in Debug builds.
+    pub fn pushOptionalDebugSym(self: *CompileChunk, nodeId: cy.NodeId) !void {
+        if (builtin.mode == .Debug) {
+            try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc);
+        }
+    }
+
+    pub fn pushDebugSym(self: *CompileChunk, nodeId: cy.NodeId) !void {
+        try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc);
+    }
+
+    fn pushDebugSymAt(self: *CompileChunk, pc: usize, nodeId: cy.NodeId) !void {
+        try self.buf.pushDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc);
+    }
+};
+
+const LocalId = u8;
+
+const GenBlock = struct {
+    /// This includes the return info, function params, captured params, and local vars.
+    /// Does not include temp locals.
+    numLocals: u32,
+    frameLoc: cy.NodeId = cy.NullId,
+    resolvedFuncSymId: sema.ResolvedFuncSymId = cy.NullId,
+    endLocalsPc: u32,
+
+    /// These are used for rvalues and function args.
+    /// At the end of the block, the total stack size needed for the function body is known.
+    numTempLocals: u8,
+
+    /// Starts at `numLocals`.
+    /// Temp locals are allocated from the end of the user locals towards the right.
+    firstFreeTempLocal: u8,
+
+    /// Start of the first reserved temp local.
+    reservedTempLocalStart: u32,
+
+    /// Start of the first retained temp local of the current ARC expr.
+    /// This must be kept updated as codegen walks the ast so that sub expressions
+    /// knows which ARC expr they belong to.
+    arcTempLocalStart: u32,
+
+    /// Whether codegen should create an ending that returns 1 arg.
+    /// Otherwise `ret0` is generated.
+    requiresEndingRet1: bool,
+
+    fn init() GenBlock {
+        return .{
+            .numLocals = 0,
+            .endLocalsPc = 0,
+            .numTempLocals = 0,
+            .firstFreeTempLocal = 0,
+            .reservedTempLocalStart = 0,
+            .arcTempLocalStart = 0,
+            .requiresEndingRet1 = false,
+        };
+    }
+
+    fn deinit(self: *GenBlock, alloc: std.mem.Allocator) void {
+        _ = self;
+        _ = alloc;
+    }
+
+    fn getRequiredStackSize(self: *const GenBlock) u8 {
+        return @intCast(u8, self.numLocals + self.numTempLocals);
+    }
+};
+
+const BlockJumpType = enum {
+    jumpToEndLocals,
+};
+
+const BlockJump = struct {
+    jumpT: BlockJumpType,
+    pc: u32,
+
+    /// Offset from `pc` to where the jump value should be encoded.
+    pcOffset: u16,
+};
+
+const SubBlockJumpType = enum {
+    /// Each if/else body contains a break at the end to jump out of the if block.
+    /// Each match case block jumps to the end of the match block.
+    subBlockBreak,
+    /// Breaks out of a for loop.
+    brk,
+    /// Continues a for loop.
+    cont,
+};
+
+const SubBlockJump = struct {
+    jumpT: SubBlockJumpType,
+    pc: u32,
+};

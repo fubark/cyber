@@ -22,7 +22,10 @@ pub const Module = sema.Module;
 
 const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
+pub const CompileChunk = vm_compiler.CompileChunk;
 pub const unescapeString = vm_compiler.unescapeString;
+
+pub const codegen = @import("codegen.zig");
 
 pub const value = @import("value.zig");
 pub const Value = value.Value;

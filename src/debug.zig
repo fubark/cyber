@@ -86,7 +86,7 @@ test "computeLinePosFromTokens" {
     var line: u32 = undefined;
     var col: u32 = undefined;
     var lineStart: u32 = undefined;
-    computeLinePosWithTokens(parser.tokens.items, parser.src.items, 4, &line, &col, &lineStart);
+    computeLinePosWithTokens(parser.tokens.items, parser.src, 4, &line, &col, &lineStart);
     try t.eq(line, 0);
     try t.eq(col, 4);
     try t.eq(lineStart, 0);
@@ -98,7 +98,7 @@ test "computeLinePosFromTokens" {
         \\123"
         \\a
     );
-    computeLinePosWithTokens(parser.tokens.items, parser.src.items, @intCast(u32, parser.src.items.len-1), &line, &col, &lineStart);
+    computeLinePosWithTokens(parser.tokens.items, parser.src, @intCast(u32, parser.src.len-1), &line, &col, &lineStart);
     try t.eq(line, 3);
     try t.eq(col, 0);
     try t.eq(lineStart, 18);
@@ -107,7 +107,7 @@ test "computeLinePosFromTokens" {
     _ = try parser.parse(
         \\a = 1
     );
-    computeLinePosWithTokens(parser.tokens.items, parser.src.items, @intCast(u32, parser.src.items.len), &line, &col, &lineStart);
+    computeLinePosWithTokens(parser.tokens.items, parser.src, @intCast(u32, parser.src.len), &line, &col, &lineStart);
     try t.eq(line, 0);
     try t.eq(col, 5);
     try t.eq(lineStart, 0);
@@ -126,12 +126,13 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) void {
     if (vm.objectTraceMap.get(obj)) |pc| {
         if (indexOfDebugSym(vm, pc)) |idx| {
             const sym = vm.debugTable[idx];
-            const node = vm.compiler.nodes[sym.loc];
+            const chunk = &vm.compiler.chunks.items[sym.file];
+            const node = chunk.nodes[sym.loc];
             var line: u32 = undefined;
             var col: u32 = undefined;
             var lineStart: u32 = undefined;
-            const pos = vm.compiler.tokens[node.start_token].pos();
-            computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
+            const pos = chunk.tokens[node.start_token].pos();
+            computeLinePosWithTokens(chunk.parser.tokens.items, chunk.src, pos, &line, &col, &lineStart);
             log.debug("{*} was allocated at {}:{}", .{obj, line + 1, col + 1});
             return;
         } 
@@ -143,20 +144,21 @@ pub inline fn atLeastTestDebugLevel() bool {
     return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
 }
 
-pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, srcUri: []const u8, pos: u32, isTokenError: bool) linksection(cy.Section) !void {
+pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, isTokenError: bool) linksection(cy.Section) !void {
     if (cy.silentError) {
         return;
     }
+    const chunk = vm.compiler.chunks.items[chunkId];
     if (pos != NullId) {
         var line: u32 = undefined;
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
         if (isTokenError) {
-            computeLinePos(vm.parser.src.items, pos, &line, &col, &lineStart);
+            computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
         } else {
-            computeLinePosWithTokens(vm.parser.tokens.items, vm.parser.src.items, pos, &line, &col, &lineStart);
+            computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
         }
-        const lineEnd = std.mem.indexOfScalarPos(u8, vm.parser.src.items, lineStart, '\n') orelse vm.parser.src.items.len;
+        const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, lineStart, '\n') orelse chunk.src.len;
         var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
         defer arrowBuf.deinit(vm.alloc);
         var w = arrowBuf.writer(vm.alloc);
@@ -170,8 +172,8 @@ pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, srcU
             \\{}
             \\
         , &.{
-            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
-            fmt.v(line+1), fmt.v(col+1), fmt.v(vm.parser.src.items[lineStart..lineEnd]),
+            fmt.v(title), fmt.v(msg), fmt.v(chunk.srcUri),
+            fmt.v(line+1), fmt.v(col+1), fmt.v(chunk.src[lineStart..lineEnd]),
             fmt.v(arrowBuf.items)
         });
     } else {
@@ -181,7 +183,7 @@ pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, srcU
             \\in {}
             \\
         , &.{
-            fmt.v(title), fmt.v(msg), fmt.v(srcUri),
+            fmt.v(title), fmt.v(msg), fmt.v(chunk.srcUri),
         });
     }
 }

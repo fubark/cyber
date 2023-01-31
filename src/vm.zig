@@ -40,7 +40,6 @@ pub fn getUserVM() *UserVM {
 
 pub const VM = struct {
     alloc: std.mem.Allocator,
-    parser: cy.Parser,
     compiler: cy.VMcompiler,
 
     /// [Eval context]
@@ -124,7 +123,6 @@ pub const VM = struct {
     /// 255 indicates no return value.
     endLocal: u8,
 
-    mainUri: []const u8,
     panicType: debug.PanicType,
     panicPayload: debug.PanicPayload,
 
@@ -139,7 +137,6 @@ pub const VM = struct {
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
-            .parser = cy.Parser.init(alloc),
             .compiler = undefined,
             .ops = undefined,
             .consts = undefined,
@@ -184,7 +181,6 @@ pub const VM = struct {
             .mainFiber = undefined,
             .curFiber = undefined,
             .endLocal = undefined,
-            .mainUri = "",
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
             .deinited = false,
         };
@@ -200,9 +196,6 @@ pub const VM = struct {
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
         try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 255);
-
-        try self.parser.tokens.ensureTotalCapacityPrecise(alloc, 511);
-        try self.parser.nodes.ensureTotalCapacityPrecise(alloc, 127);
 
         try self.structs.ensureTotalCapacityPrecise(alloc, 170);
         try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
@@ -239,7 +232,6 @@ pub const VM = struct {
 
         // Deinit compiler first since it depends on buffers from parser.
         self.compiler.deinit();
-        self.parser.deinit();
         self.alloc.free(self.stack);
         self.stack = &.{};
 
@@ -322,31 +314,31 @@ pub const VM = struct {
 
     pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
         var tt = stdx.debug.trace();
-        const astRes = try self.parser.parse(src);
-        if (astRes.has_error) {
-            if (astRes.isTokenError) {
-                try debug.printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
-                return error.TokenError;
-            } else {
-                try debug.printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
-                return error.ParseError;
-            }
-        }
-        tt.endPrint("parse");
-
-        tt = stdx.debug.trace();
-        const res = try self.compiler.compile(astRes, .{
+        const res = try self.compiler.compile(srcUri, src, .{
             .genMainScopeReleaseOps = !config.singleRun,
         });
-        if (res.hasError) {
-            if (self.compiler.lastErrNode != cy.NullId) {
-                const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
-                const pos = self.parser.tokens.items[token].pos();
-                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
-            } else {
-                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, cy.NullId, false);
+        if (res.err) |err| {
+            const chunk = self.compiler.chunks.items[self.compiler.lastErrChunk];
+            switch (err) {
+                .tokenize => {
+                    try debug.printUserError(self, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
+                    return error.TokenError;
+                },
+                .parse => {
+                    try debug.printUserError(self, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, false);
+                    return error.ParseError;
+                },
+                .compile => {
+                    if (self.compiler.lastErrNode != cy.NullId) {
+                        const token = chunk.nodes[self.compiler.lastErrNode].start_token;
+                        const pos = chunk.tokens[token].pos();
+                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, pos, false);
+                    } else {
+                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, cy.NullId, false);
+                    }
+                    return error.CompileError;
+                },
             }
-            return error.CompileError;
         }
         tt.endPrint("compile");
 
@@ -388,7 +380,6 @@ pub const VM = struct {
             }
         }
 
-        self.mainUri = srcUri;
         return self.evalByteCode(res.buf);
     }
 
@@ -1458,34 +1449,36 @@ pub const VM = struct {
             const sym = self.debugTable[idx];
 
             if (sym.frameLoc == cy.NullId) {
-                const node = self.compiler.nodes[sym.loc];
+                const chunk = self.compiler.chunks.items[sym.file];
+                const node = chunk.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
                 var lineStart: u32 = undefined;
-                const pos = self.compiler.tokens[node.start_token].pos();
-                debug.computeLinePosWithTokens(self.parser.tokens.items, self.parser.src.items, pos, &line, &col, &lineStart);
+                const pos = chunk.tokens[node.start_token].pos();
+                debug.computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = "main",
-                    .uri = self.mainUri,
+                    .chunkId = sym.file,
                     .line = line,
                     .col = col,
                     .lineStartPos = lineStart,
                 });
                 break;
             } else {
-                const frameNode = self.compiler.nodes[sym.frameLoc];
-                const func = self.compiler.funcDecls[frameNode.head.func.decl_id];
-                const name = self.compiler.src[func.name.start..func.name.end];
+                const chunk = self.compiler.chunks.items[sym.file];
+                const frameNode = chunk.nodes[sym.frameLoc];
+                const func = chunk.funcDecls[frameNode.head.func.decl_id];
+                const name = chunk.src[func.name.start..func.name.end];
 
-                const node = self.compiler.nodes[sym.loc];
+                const node = chunk.nodes[sym.loc];
                 var line: u32 = undefined;
                 var col: u32 = undefined;
                 var lineStart: u32 = undefined;
-                const pos = self.compiler.tokens[node.start_token].pos();
-                debug.computeLinePosWithTokens(self.parser.tokens.items, self.parser.src.items, pos, &line, &col, &lineStart);
+                const pos = chunk.tokens[node.start_token].pos();
+                debug.computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
                 try frames.append(self.alloc, .{
                     .name = name,
-                    .uri = self.mainUri,
+                    .chunkId = sym.file,
                     .line = line,
                     .col = col,
                     .lineStartPos = lineStart,
@@ -4119,7 +4112,8 @@ pub const StackTrace = struct {
         defer arrowBuf.deinit(vm.alloc);
 
         for (self.frames) |frame| {
-            const lineEnd = std.mem.indexOfScalarPos(u8, vm.compiler.src, frame.lineStartPos, '\n') orelse vm.compiler.src.len;
+            const chunk = vm.compiler.chunks.items[frame.chunkId];
+            const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, frame.lineStartPos, '\n') orelse chunk.src.len;
             arrowBuf.clearRetainingCapacity();
             try w.writeByteNTimes(' ', frame.col);
             try w.writeByte('^');
@@ -4129,8 +4123,8 @@ pub const StackTrace = struct {
                 \\{}
                 \\
             , &.{
-                fmt.v(frame.uri), fmt.v(frame.line+1), fmt.v(frame.col+1), fmt.v(frame.name),
-                fmt.v(vm.compiler.src[frame.lineStartPos..lineEnd]), fmt.v(arrowBuf.items),
+                fmt.v(chunk.srcUri), fmt.v(frame.line+1), fmt.v(frame.col+1), fmt.v(frame.name),
+                fmt.v(chunk.src[frame.lineStartPos..lineEnd]), fmt.v(arrowBuf.items),
             });
         }
     }
@@ -4139,14 +4133,13 @@ pub const StackTrace = struct {
 pub const StackFrame = struct {
     /// Name identifier (eg. function name)
     name: []const u8,
-    /// Source location.
-    uri: []const u8,
     /// Starts at 0.
     line: u32,
     /// Starts at 0.
     col: u32,
     /// Where the line starts in the source file.
     lineStartPos: u32,
+    chunkId: u32,
 };
 
 const ObjectSymKey = struct {
@@ -4408,7 +4401,8 @@ pub fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
     };
     const sym = vm.debugTable[idx];
     if (sym.frameLoc != cy.NullId) {
-        const node = vm.compiler.nodes[sym.frameLoc];
+        const chunk = vm.compiler.chunks.items[sym.file];
+        const node = chunk.nodes[sym.frameLoc];
         return node.head.func.genEndLocalsPc;
     } else return cy.NullId;
 }

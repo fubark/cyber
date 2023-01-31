@@ -36,6 +36,8 @@ zig build cli -Drelease-fast -Dtarget=aarch64-macos.12-none
 zig build cli
 ```
 
+If all goes well, the Cyber CLI executable will be located at `./zig-out/cyber/cyber`.
+
 ## Build as a Library.
 When using Cyber as a API library, you'll need to build a library instead.
 ```sh

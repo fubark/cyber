@@ -797,19 +797,6 @@ test "Heap RawString Slice." {
     _ = try run.eval(@embedFile("rawstring_slice_test.cy"));
 }
 
-test "toString." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\try t.eq(string(123.4), '123.4000000000')
-        \\try t.eq(string(int(123)), '123')
-        \\try t.eq(string(error(#foo)), 'error#foo')
-        \\try t.eq(string(#foo), '#foo')
-    );
-}
-
 test "String interpolation." {
     const run = VMrunner.create();
     defer run.destroy();

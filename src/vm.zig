@@ -1608,7 +1608,7 @@ pub const VM = struct {
                 if (Value.floatCanBeInteger(f)) {
                     std.fmt.format(writer, "{d:.0}", .{f}) catch stdx.fatal();
                 } else {
-                    std.fmt.format(writer, "{d:.10}", .{f}) catch stdx.fatal();
+                    std.fmt.format(writer, "{d}", .{f}) catch stdx.fatal();
                 }
             }
             const slice = writer.sliceFrom(start);
@@ -1648,10 +1648,13 @@ pub const VM = struct {
                     }
                     return slice;
                 } else if (obj.common.structId == cy.RawStringSliceT) {
+                    const start = writer.pos();
+                    std.fmt.format(writer, "rawstring ({})", .{obj.rawstringSlice.len}) catch stdx.fatal();
+                    const slice = writer.sliceFrom(start);
                     if (getCharLen) {
-                        outCharLen.* = obj.rawstringSlice.len;
+                        outCharLen.* = @intCast(u32, slice.len);
                     }
-                    return obj.rawstringSlice.getConstSlice();
+                    return slice;
                 } else if (obj.common.structId == cy.ListS) {
                     const start = writer.pos();
                     std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();

@@ -60,9 +60,18 @@ try t.eq(number('100.1'), 100.1)
 
 -- string()
 str = 'abcd'
+try t.eq(string(str), 'abcd')
 try t.eq(string(str[0..2]), 'ab')
 rstr = rawstring('abcd')
-try t.eq(string(rstr[0..2]), 'ab')
+try t.eq(string(rstr), 'rawstring (4)')
+try t.eq(string(rstr[0..2]), 'rawstring (2)')
+try t.eq(string(123), '123')
+try t.eq(string(123.4), '123.4')
+try t.eq(string(123.456), '123.456')
+try t.eq(string(123.00000123), '123.00000123')
+try t.eq(string(int(123)), '123')
+try t.eq(string(error(#foo)), 'error#foo')
+try t.eq(string(#foo), '#foo')
 
 -- writeFile() rawstring
 if os.system != 'wasm':

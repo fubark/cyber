@@ -601,8 +601,9 @@ print str[-1]    -- "d"
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `slice(start number, end number) rawstring` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
-| `toString() string` | Returns a valid UTF-8 string or returns `error(#InvalidChar)`. | 
+| `toString() string` | Deprecated: Use `utf8()`. | 
 | `upper() string` | Returns this string in uppercase. | 
+| `utf8() string` | Returns a valid UTF-8 string or returns `error(#InvalidChar)`. | 
 
 ### Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.

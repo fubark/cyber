@@ -123,6 +123,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
     const toString = try self.ensureMethodSymKey("toString", 0);
     const upper = try self.ensureMethodSymKey("upper", 0);
+    const utf8 = try self.ensureMethodSymKey("utf8", 0);
     const walk = try self.ensureMethodSymKey("walk", 0);
     const write = try self.ensureMethodSymKey("write", 1);
     
@@ -316,6 +317,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawstring)));
     try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
     try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, utf8, cy.MethodSym.initNativeFunc1(rawStringUtf8));
 
     id = try self.addStruct("rawstring");
     std.debug.assert(id == cy.RawStringSliceT);
@@ -341,6 +343,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, toString, cy.MethodSym.initNativeFunc1(rawStringSliceToString));
     try self.addMethodSym(cy.RawStringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, utf8, cy.MethodSym.initNativeFunc1(rawStringSliceUtf8));
 
     id = try self.addStruct("Fiber");
     std.debug.assert(id == cy.FiberS);
@@ -1572,7 +1575,12 @@ fn stringEndsWith(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn rawStringSliceToString(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn rawStringSliceToString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
+    return rawStringSliceUtf8(vm, ptr, args, nargs);
+}
+
+fn rawStringSliceUtf8(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     const str = obj.rawstringSlice.getConstSlice();
@@ -1587,7 +1595,12 @@ fn rawStringSliceToString(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _:
     }
 }
 
-fn rawStringToString(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn rawStringToString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
+    return rawStringUtf8(vm, ptr, args, nargs);
+}
+
+fn rawStringUtf8(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     defer vm.releaseObject(obj);
     const str = obj.rawstring.getConstSlice();

@@ -281,34 +281,33 @@ pub const VM = struct {
 
     pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
         var tt = stdx.debug.trace();
-        const astRes = try self.parser.parse(src);
-        if (astRes.has_error) {
-            if (astRes.isTokenError) {
-                try debug.printUserError(self, "TokenError", astRes.err_msg, srcUri, self.parser.last_err_pos, true);
-                return error.TokenError;
-            } else {
-                try debug.printUserError(self, "ParseError", astRes.err_msg, srcUri, self.parser.last_err_pos, false);
-                return error.ParseError;
-            }
-        }
-        tt.endPrint("parse");
-
-        tt = stdx.debug.trace();
-        const res = try self.compiler.compile(astRes, .{
+        const res = try self.compiler.compile(srcUri, src, .{
             .genMainScopeReleaseOps = true,
         });
-        if (res.hasError) {
-            if (self.compiler.lastErrNode != cy.NullId) {
-                const token = self.parser.nodes.items[self.compiler.lastErrNode].start_token;
-                const pos = self.parser.tokens.items[token].pos();
-                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, pos, false);
-            } else {
-                try debug.printUserError(self, "CompileError", self.compiler.lastErr, srcUri, cy.NullId, false);
+        if (res.err) |err| {
+            const chunk = self.compiler.chunks.items[self.compiler.lastErrChunk];
+            switch (err) {
+                .tokenize => {
+                    try debug.printUserError(self, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
+                    return error.TokenError;
+                },
+                .parse => {
+                    try debug.printUserError(self, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, false);
+                    return error.ParseError;
+                },
+                .compile => {
+                    if (self.compiler.lastErrNode != cy.NullId) {
+                        const token = chunk.nodes[self.compiler.lastErrNode].start_token;
+                        const pos = chunk.tokens[token].pos();
+                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, pos, false);
+                    } else {
+                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, cy.NullId, false);
+                    }
+                    return error.CompileError;
+                },
             }
-            return error.CompileError;
         }
         tt.endPrint("compile");
-
         return res.buf;
     }
 

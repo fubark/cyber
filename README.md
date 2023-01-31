@@ -26,4 +26,5 @@ curl -fsSL https://cyberscript.dev/install.sh | bash
 curl -fsSL https://raw.githubusercontent.com/fubark/cyber/master/install.sh | bash
 ```
 - Install from [Downloads](https://github.com/fubark/cyber/releases).
-- Arch Linux User Repository (AUR): [cyber](https://aur.archlinux.org/packages/cyber)
+- Packages
+  - Arch Linux User Repository (AUR): [cyber](https://aur.archlinux.org/packages/cyber), [cyber(alternative)](https://aur.archlinux.org/packages/cyberscript)

@@ -36,6 +36,8 @@ zig build cli -Drelease-fast -Dtarget=aarch64-macos.12-none
 zig build cli
 ```
 
+If all goes well, the Cyber CLI executable will be located in `./zig-out/cyber`.
+
 ## Build as a Library.
 When using Cyber as a API library, you'll need to build a library instead.
 ```sh
@@ -48,6 +50,8 @@ zig build lib -Drelease-fast -Dtarget=aarch64-macos.12-none
 # For Web/WASM.
 zig build lib -Drelease-fast -Dtarget=wasm32-freestanding
 ```
+
+You'll find the resulting shared library in `./zig-out/lib`.
 
 ## Troubleshooting.
 - If you have trouble building mimalloc on MacOS, consider changing the sdk path in `lib/mimalloc/lib.zig` to your installed version.

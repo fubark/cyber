@@ -239,7 +239,7 @@ pub const ByteCodeBuffer = struct {
                     fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, symId={}\n", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
                 },
                 .jumpNotCond => {
-                    const jump = @ptrCast(*const align(1) u16, &(pc + 1)).*;
+                    const jump = @ptrCast(*const align(1) u16, pc + 1).*;
                     fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
                 },
                 else => {

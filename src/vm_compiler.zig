@@ -583,6 +583,12 @@ pub const CompileChunk = struct {
         self.prevSemaSubBlock();
     }
 
+    pub fn reserveIfTempLocal(self: *CompileChunk, local: LocalId) !void {
+        if (self.isTempLocal(local)) {
+            try self.setReservedTempLocal(local);
+        }
+    }
+
     pub fn setReservedTempLocal(self: *CompileChunk, local: LocalId) !void {
         // log.debug("set reserved {}", .{self.reservedTempLocalStack.items.len});
         try self.reservedTempLocalStack.append(self.alloc, .{
@@ -613,6 +619,7 @@ pub const CompileChunk = struct {
     }
 
     /// TODO: Rename to reserveNextTempLocal.
+    /// Assumes that if `firstFreeTempLocal` is in bounds, it is free.
     pub fn nextFreeTempLocal(self: *CompileChunk) !LocalId {
         if (self.curBlock.firstFreeTempLocal < 256) {
             if (self.curBlock.firstFreeTempLocal == self.curBlock.numLocals + self.curBlock.numTempLocals) {

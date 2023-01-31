@@ -39,3 +39,14 @@ list = [1, 2, 3]
 sum = 0
 for list each it: sum += it
 try t.eq(sum, 6)
+
+-- Return expr inside loop body.
+list = [1, 2, 3]
+f = func (arr):
+   for arr each item:
+      if item == 4:
+         return 1
+      else item == 5:
+         return 1
+   return 0
+try t.eq(f(list), 0)

@@ -6,6 +6,7 @@ const sema = cy.sema;
 const CompileChunk = cy.CompileChunk;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
+const log = stdx.log.scoped(.codegen);
 
 const LocalId = u8;
 
@@ -1580,8 +1581,6 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 		},
 		.return_expr_stmt => {
 			const lastArcStart = self.beginArcExpr();
-
-			self.setFirstFreeTempLocal(@intCast(u8, self.curBlock.numLocals));
 
 			if (self.blocks.items.len == 1) {
 				var val: GenValue = undefined;

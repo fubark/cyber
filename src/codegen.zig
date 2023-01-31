@@ -1308,17 +1308,21 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 			try self.buf.pushOp2(.copyRetainSrc, iterable.local, iterLocal + 4);
 			if (pairIter) {
 				try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.compiler.vm.pairIteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+				try self.pushDebugSym(node.head.for_iter_stmt.iterable);
 			} else {
 				try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.compiler.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+				try self.pushDebugSym(node.head.for_iter_stmt.iterable);
 			}
 
 			try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
 			if (pairIter) {
 				try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+				try self.pushDebugSym(node.head.for_iter_stmt.iterable);
 				try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
 				try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
 			} else {
 				try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+				try self.pushDebugSym(node.head.for_iter_stmt.iterable);
 				try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
 			}
 

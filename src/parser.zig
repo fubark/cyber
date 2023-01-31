@@ -236,18 +236,21 @@ pub const Parser = struct {
 
     /// Returns number of spaces that precedes a statement.
     /// If current line is consumed if there is no statement.
-    fn consumeIndentBeforeStmt(self: *Parser) u32 {
+    fn consumeIndentBeforeStmt(self: *Parser) !u32 {
         while (true) {
             var res: u32 = 0;
             var token = self.peekToken();
-            while (token.tag() == .indent) {
-                res += token.data.indent;
+            if (token.tag() == .indent) {
+                res = token.data.indent;
                 self.advanceToken();
                 token = self.peekToken();
             }
             if (token.tag() == .new_line) {
                 self.advanceToken();
                 continue;
+            } else if (token.tag() == .indent) {
+                // If another indent token is encountered, it would be a different type.
+                return self.reportParseError("Can not mix tabs and spaces for indentation.", &.{});
             } else if (token.tag() == .none) {
                 return 0;
             } else {
@@ -298,7 +301,7 @@ pub const Parser = struct {
         // Parse body statements until indentation goes back to at least the previous indent.
         while (true) {
             const start = self.next_pos;
-            const indent = self.consumeIndentBeforeStmt();
+            const indent = try self.consumeIndentBeforeStmt();
             if (indent == reqIndent) {
                 const id = (try self.parseStatement()) orelse break;
                 self.nodes.items[last_stmt].next = id;
@@ -315,7 +318,7 @@ pub const Parser = struct {
 
     /// Parses the first child indent and returns the indent size.
     fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !u32 {
-        const indent = self.consumeIndentBeforeStmt();
+        const indent = try self.consumeIndentBeforeStmt();
         if (indent > fromIndent) {
             return indent;
         } else {
@@ -641,7 +644,7 @@ pub const Parser = struct {
 
         while (true) {
             const start2 = self.next_pos;
-            const indent = self.consumeIndentBeforeStmt();
+            const indent = try self.consumeIndentBeforeStmt();
             if (indent == reqIndent) {
                 const id = (try self.parseTagMember()) orelse break;
                 self.nodes.items[lastMember].next = id;
@@ -694,7 +697,7 @@ pub const Parser = struct {
 
             while (true) {
                 const start2 = self.next_pos;
-                const indent = self.consumeIndentBeforeStmt();
+                const indent = try self.consumeIndentBeforeStmt();
                 if (indent == reqIndent) {
                     const id = (try self.parseStructField()) orelse break;
                     self.nodes.items[lastField].next = id;
@@ -723,7 +726,7 @@ pub const Parser = struct {
 
             while (true) {
                 const start2 = self.next_pos;
-                const indent = self.consumeIndentBeforeStmt();
+                const indent = try self.consumeIndentBeforeStmt();
                 if (indent == reqIndent) {
                     token = self.peekToken();
                     if (token.tag() == .func_k) {
@@ -853,7 +856,7 @@ pub const Parser = struct {
 
     fn parseElseStmt(self: *Parser) anyerror!NodeId {
         const save = self.next_pos;
-        const indent = self.consumeIndentBeforeStmt();
+        const indent = try self.consumeIndentBeforeStmt();
         if (indent != self.cur_indent) {
             self.next_pos = save;
             return NullId;
@@ -945,7 +948,7 @@ pub const Parser = struct {
             // Parse body statements until indentation goes back to at least the previous indent.
             while (true) {
                 const save = self.next_pos;
-                const indent = self.consumeIndentBeforeStmt();
+                const indent = try self.consumeIndentBeforeStmt();
                 if (indent == reqIndent) {
                     const case = try self.parseCaseBlock();
                     self.nodes.items[lastCase].next = case;
@@ -2937,12 +2940,12 @@ pub const Parser = struct {
         });
     }
 
-    inline fn pushIndentToken(self: *Parser, num_spaces: u32, start_pos: u32) void {
+    inline fn pushIndentToken(self: *Parser, num_spaces: u32, start_pos: u32, spaces: bool) void {
         self.tokens.append(self.alloc, .{
             .token_t = .indent,
             .start_pos = @intCast(u26, start_pos),
             .data = .{
-                .indent = num_spaces,
+                .indent = if (spaces) num_spaces else num_spaces + 100,
             },
         }) catch fatal();
     }
@@ -3930,20 +3933,34 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             if (isAtEndChar(p)) {
                 return false;
             }
-            const ch = peekChar(p);
+            var ch = peekChar(p);
             switch (ch) {
                 ' ' => {
                     const start = p.next_pos;
                     advanceChar(p);
                     var count: u32 = 1;
                     while (true) {
-                        const ch_ = peekChar(p);
-                        if (ch_ == ' ') {
+                        ch = peekChar(p);
+                        if (ch == ' ') {
                             count += 1;
                             advanceChar(p);
                         } else break;
                     }
-                    p.pushIndentToken(count, start);
+                    p.pushIndentToken(count, start, true);
+                    return true;
+                },
+                '\t' => {
+                    const start = p.next_pos;
+                    advanceChar(p);
+                    var count: u32 = 1;
+                    while (true) {
+                        ch = peekChar(p);
+                        if (ch == '\t') {
+                            count += 1;
+                            advanceChar(p);
+                        } else break;
+                    }
+                    p.pushIndentToken(count, start, false);
                     return true;
                 },
                 '\n' => {

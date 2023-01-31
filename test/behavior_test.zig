@@ -656,30 +656,15 @@ test "Statements." {
 test "Indentation." {
     const run = VMrunner.create();
     defer run.destroy();
+    _ = try run.eval(@embedFile("indentation_test.cy"));
 
-    // Detect end of block.
-    var val = try run.eval(
-        \\func foo():
-        \\  return 123
-        \\foo()
+    // Mixing tabs and spaces is an error.
+    const res = run.evalSilent(
+         \\if true:
+         \\	 return 123
     );
-    try t.eq(val.asF64toI32(), 123);
-
-    // Comment before end of block.
-    val = try run.eval(
-        \\func foo():
-        \\  return 123
-        \\  -- Comment.
-        \\foo()
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // Indented comment at the end of the source.
-    _ = try run.eval(
-        \\func foo():
-        \\  return 123
-        \\     -- Comment.
-    );
+    try t.expectError(res, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Can not mix tabs and spaces for indentation.");
 
     // New block requires at least one statement.
     // const parse_res = try run.parse(
@@ -688,27 +673,6 @@ test "Indentation." {
     // );
     // try t.eq(parse_res.has_error, true);
     // try t.expect(std.mem.indexOf(u8, parse_res.err_msg, "Block requires at least one statement. Use the `pass` statement as a placeholder.") != null);
-
-    // Continue from parent indentation.
-    val = try run.eval(
-        \\func foo():
-        \\  if false:
-        \\    pass
-        \\  return 123 
-        \\foo()
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // Continue from grand parent indentation.
-    val = try run.eval(
-        \\func foo():
-        \\  if false:
-        \\    if false:
-        \\      pass
-        \\  return 123 
-        \\foo()
-    );
-    try t.eq(val.asF64toI32(), 123);
 }
 
 test "Integers." {

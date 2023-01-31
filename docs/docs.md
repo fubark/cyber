@@ -99,7 +99,7 @@ a = 123
 if true:
     a = 234
 ```
-The first statement in a block must be indented further than the block declaration. The rest of the statements in the block must follow the indentation. When the next statement recedes from this indentation the block ends.
+The first statement in a block must be indented further than the block declaration. Spaces or tabs can be used for indentation but not both. The rest of the statements in the block must follow the same indentation. When the next statement recedes from this indentation the block ends.
 ```text
 for items each it:
     if it == 20:

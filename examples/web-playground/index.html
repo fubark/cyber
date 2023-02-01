@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%;">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Playground Example</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.11/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+    <div class="editor-left">
+        <div class="examples">
+            <a href="#" onclick="load(examples['hello'])">Hello World</a> |&nbsp;
+            <a href="#" onclick="load(examples['fibers'])">Fibers</a> |&nbsp;
+            <a href="#" onclick="load(examples['slices'])">Slices</a> |&nbsp;
+            <a href="#" onclick="load(examples['objects'])">Objects</a> |&nbsp;
+            <a href="#" onclick="load(examples['js'])">JS Eval</a>
+        </div>
+        <textarea id="editor"></textarea>
+    </div>
+    <div class="editor-right">
+        <button class="button" onclick="run()">Run</button>
+        <div id="output"></div>
+    </div>
+    <div class="clear"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.11/codemirror.min.js" integrity="sha512-rdFIN28+neM8H8zNsjRClhJb1fIYby2YCNmoqwnqBDEvZgpcp7MJiX8Wd+Oi6KcJOMOuvGztjrsI59rly9BsVQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.11/addon/selection/active-line.min.js" integrity="sha512-0sDhEPgX5DsfNcL5ty4kP6tR8H2vPkn40GwA0RYTshkbksURAlsRVnG4ECPPBQh7ZYU6S3rGvp5uhlGQUNrcmA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="cyber-mode.js"></script>
+    <script>
+        var editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
+            theme: 'cyber',
+            mode: 'cyber',
+            lineNumbers: true,
+            indentUnit: 4,
+            styleActiveLine: true,
+        });
+        var examples = {
+            hello: `import m 'math'
+
+worlds = ['World', '世界', 'दुनिया', 'mundo']
+worlds.append(m.random())
+for worlds each w:
+    print 'Hello, {w}!'`,
+            fibers: `func fib(n int) int:
+    coyield
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+count = 0    -- Counts number of recursive calls to fib.
+fiber = coinit fib(28)
+while fiber.status() != #done:
+    res = coresume fiber
+    count += 1
+print '{res} {count}'`,
+            slices: `str = 'abc aabbcc acb aabb c'
+cur = 0
+for str[cur..].indexChar('c') as i:
+    print 'Found char at {cur + i}.'
+    cur += i + 1`,
+            objects: `object Node:
+    data any
+    next Node
+    func new(data):
+        return Node{ data: data, next: none }
+    func insert(self, node):
+        if self.next == none: self.next = node
+        else:
+            node.next = self.next
+            self.next = node
+list = Node.new(1)
+list.insert(Node.new(2))
+list.insert(Node.new(3))
+while list != none:
+    print list.data
+    list = list.next`,
+            js: `import math 'math'
+            
+func area(r):
+    return math.pi * r^2
+
+evalJS('alert("circle area: {area(10)}")')
+-- In the future, Cyber may get JavaScript interop.
+-- Objects would be converted to and from JS.`
+        };
+
+        function load(src) {
+            editor.setValue(src)
+            run()
+        }
+
+        const output = document.getElementById('output')
+        let cy = null
+        let wasm = null
+        const decoder = new TextDecoder()
+        function getString(ptr, len) {
+            const buf = new Uint8Array(wasm.instance.exports.memory.buffer, ptr, len)
+            return decoder.decode(buf)
+        }
+        function addErrorLine(line) {
+            const lineElem = document.createElement('div')
+            lineElem.className = 'error'
+            lineElem.appendChild(document.createTextNode(line))
+            output.appendChild(lineElem)
+        }
+        function addLine(line) {
+            const lineElem = document.createElement('div')
+            lineElem.className = 'out'
+            lineElem.appendChild(document.createTextNode(line))
+            output.appendChild(lineElem)
+            return lineElem
+        }
+        function addSuccessLine(line) {
+            const lineElem = document.createElement('div')
+            lineElem.className = 'success'
+            lineElem.appendChild(document.createTextNode(line))
+            output.appendChild(lineElem)
+        }
+        let lastOutLineElem = null
+        let stderrLine = ''
+        const importObj = {
+            env: {
+                hostFileWrite(fid, ptr, len) {
+                    let str = getString(ptr, len)
+                    if (fid == 1) {
+                        while (true) {
+                            const idx = str.indexOf('\n')
+                            if (idx != -1) {
+                                lastOutLineElem.innerHTML += str.slice(0, idx)
+                                str = str.substring(idx+1)
+                                lastOutLineElem = addLine('')
+                            } else {
+                                lastOutLineElem.innerHTML += str
+                                break
+                            }
+                        }
+                    } else if (fid == 2) {
+                        stderrLine += str
+                        const idx = stderrLine.indexOf('\n')
+                        if (idx != -1) {
+                            const line = stderrLine.slice(0, idx)
+                            addErrorLine(line)
+                            stderrLine = stderrLine.substring(idx+1)
+                        }
+                    }
+                },
+                hostEvalJS(ptr, len) {
+                    const str = getString(ptr, len)
+                    eval(str)
+                },
+                hostFetchUrl() {
+                    addErrorLine('TODO: WASM fetch')
+                },
+                hostMilliTime() {
+                    addErrorLine('TODO: WASM millitime')
+                },
+                hostSleep() {
+                    addErrorLine('TODO: WASM sleep')
+                },
+                exit() {
+                    addErrorLine('TODO: WASM exit')
+                },
+                jsLog(ptr, len) {
+                    console.log(getString(ptr, len))
+                },
+                jsErr(ptr, len) {
+                    console.error(getString(ptr, len))
+                },
+            },
+            stdx: {
+            },
+        };
+        let loadCy = WebAssembly.instantiateStreaming(fetch("cyber.wasm"), importObj).then(results => {
+            wasm = results;
+            cy = wasm.instance.exports;
+        });
+        function run() {
+            loadCy.then(() => {
+                const start = Date.now()
+                const src = editor.getValue();
+                const vm = cy.cyVmCreate();
+                const ptr = cy.cyVmAlloc(vm, src.length * 3);
+                const view = new Uint8Array(wasm.instance.exports.memory.buffer, ptr, src.length * 3);
+                const encoder = new TextEncoder();
+                const size = encoder.encodeInto(src, view).written;
+                output.innerHTML = ''
+                lastOutLineElem = addLine('')
+                const val = cy.cyVmEval(vm, ptr, size)
+                const end = Date.now() - start
+                if (!cy.cyValueIsPanic(val)) {
+                    addSuccessLine(`success: ${end}ms`)
+                }
+                cy.cyVmRelease(vm, val)
+                cy.cyVmFree(vm, ptr, src.length * 3)
+            })
+        }
+        load(examples['hello'])
+    </script>
+</body>
+</html>

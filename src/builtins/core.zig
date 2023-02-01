@@ -745,17 +745,16 @@ pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 
-pub fn prints(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    _ = nargs;
+pub fn prints(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const str = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
     if (cy.isWasm) {
-        return Value.None;
+        hostFileWrite(1, str.ptr, str.len);
     } else {
-        const str = vm.valueToTempString(args[0]);
         const w = std.io.getStdOut().writer();
         w.writeAll(str) catch stdx.fatal();
-        vm.release(args[0]);
-        return Value.None;
     }
+    return Value.None;
 }
 
 pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {

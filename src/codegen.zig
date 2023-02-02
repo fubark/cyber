@@ -90,7 +90,7 @@ fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) 
             } else if (rsym.symT == .variable) {
                 const sym = self.semaSyms.items[node.head.ident.semaSymId];
                 const localKey = sym.key.absLocalSymKey;
-                const varId = try self.compiler.vm.ensureVarSym(cy.NullId, localKey.nameId);
+                const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
                 try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
                 return self.initGenValue(dst, sema.AnyType);
             } else {
@@ -1123,6 +1123,9 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 			
 			try self.endArcExpr(arcLocalStart);
 		},
+		.exportStmt => {
+			// Nop. Static variables are hoisted and initialized at the start of the program.
+		},
 		.varDecl => {
 			// Nop. Static variables are hoisted and initialized at the start of the program.
 		},
@@ -1989,9 +1992,14 @@ pub fn genVarDeclInitDFS(self: *CompileChunk, symId: u32) !void {
 	// log.debug("generate init var: {s}", .{sym.path});
 	const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
 	const declId = rsym.inner.variable.declId;
-	const decl = self.nodes[declId];
-	const exprv = try self.genRetainedTempExpr(decl.head.varDecl.right, false);
-	const rtSymId = try self.compiler.vm.ensureVarSym(cy.NullId, sym.key.absLocalSymKey.nameId);
+	const chunk = &self.compiler.chunks.items[rsym.inner.variable.chunkId];
+	const decl = chunk.nodes[declId];
+
+	// Clear register state.
+	chunk.resetNextFreeTemp();
+	const exprv = try chunk.genRetainedTempExpr(decl.head.varDecl.right, false);
+
+	const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
 	try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), exprv.local);
 }
 

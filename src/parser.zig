@@ -18,7 +18,7 @@ const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
     .{ "as", .as_k },
-    .{ "await", .await_k },
+    // .{ "await", .await_k },
     .{ "break", .break_k },
     .{ "catch", .catch_k },
     .{ "coinit", .coinit_k },
@@ -50,6 +50,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "try", .try_k },
     .{ "var", .var_k },
     .{ "match", .match_k },
+    .{ "export", .export_k },
 });
 
 const BlockState = struct {
@@ -1512,6 +1513,26 @@ pub const Parser = struct {
                 try self.consumeNewLineOrEnd();
                 return id;
             },
+            .export_k => {
+                const start = self.next_pos;
+                self.advanceToken();
+                const stmtId = (try self.parseStatement()) orelse {
+                    return self.reportParseError("Expected declaration statement after `export`.", &.{});
+                };
+                const stmt = self.nodes.items[stmtId];
+                switch (stmt.node_t) {
+                    .varDecl => {
+                        const exportStmt = try self.pushNode(.exportStmt, start);
+                        self.nodes.items[exportStmt].head = .{
+                            .child_head = stmtId,
+                        };
+                        return exportStmt;
+                    },
+                    else => {
+                        return self.reportParseError("export modifier is not supported for {}", &.{v(stmt.node_t)});
+                    },
+                }
+            },
             .var_k => {
                 const start = self.next_pos;
                 self.advanceToken();
@@ -2139,16 +2160,16 @@ pub const Parser = struct {
         const start = self.next_pos;
         const token = self.peekToken();
         switch (token.tag()) {
-            .await_k => {
-                // Await expression.
-                const expr_id = try self.pushNode(.await_expr, start);
-                self.advanceToken();
-                const term_id = try self.parseTermExpr();
-                self.nodes.items[expr_id].head = .{
-                    .child_head = term_id,
-                };
-                return expr_id;
-            },
+            // .await_k => {
+            //     // Await expression.
+            //     const expr_id = try self.pushNode(.await_expr, start);
+            //     self.advanceToken();
+            //     const term_id = try self.parseTermExpr();
+            //     self.nodes.items[expr_id].head = .{
+            //         .child_head = term_id,
+            //     };
+            //     return expr_id;
+            // },
             .not_k => {
                 self.advanceToken();
                 const expr = try self.pushNode(.unary_expr, start);
@@ -3055,7 +3076,7 @@ pub const TokenType = enum(u6) {
     else_k,
     for_k,
     while_k,
-    await_k,
+    // await_k,
     true_k,
     each_k,
     false_k,
@@ -3082,6 +3103,7 @@ pub const TokenType = enum(u6) {
     capture_k,
     var_k,
     match_k,
+    export_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -3115,6 +3137,7 @@ pub const NodeType = enum {
     staticDecl,
     captureDecl,
     varDecl,
+    exportStmt,
     pass_stmt,
     breakStmt,
     continueStmt,

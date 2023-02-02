@@ -10,10 +10,10 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 
-pub fn initModule(self: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSection) !cy.Module {
+pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
-        .prefix = spec,
+        .chunkId = cy.NullId,
     };
 
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));

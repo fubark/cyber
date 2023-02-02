@@ -10,6 +10,12 @@ const cy = @import("../src/cyber.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Imports." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.evalWithUri(@embedFile("import_test.cy"), "./test/import_test.cy");
+}
+
 test "compile time" {
     const run = VMrunner.create();
     defer run.destroy();
@@ -1502,6 +1508,17 @@ const VMrunner = struct {
         defer cy.silentError = false;
         try self.resetEnv();
         return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
+            return err;
+        };
+    }
+
+    fn evalWithUri(self: *VMrunner, src: []const u8, uri: []const u8) !cy.Value {
+        // Eval with new env.
+        try self.resetEnv();
+        return self.vm.eval(uri, src, .{ .singleRun = false }) catch |err| {
+            if (err == error.Panic) {
+                try self.vm.dumpPanicStackTrace();
+            }
             return err;
         };
     }

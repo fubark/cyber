@@ -9,10 +9,10 @@ const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const v = fmt.v;
 
-pub fn initModule(c: *cy.VMcompiler, spec: []const u8) linksection(cy.InitSection) !cy.Module {
+pub fn initModule(c: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
-        .prefix = spec,
+        .chunkId = cy.NullId,
     };
     try mod.setNativeFunc(c, "eq", 2, eq);
     try mod.setNativeFunc(c, "eqList", 2, eqList);

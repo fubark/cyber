@@ -665,10 +665,10 @@ pub const VM = struct {
         return self.varSymSigs.get(key);
     }
 
-    pub fn ensureVarSym(self: *VM, parentId: SymbolId, nameId: u32) !SymbolId {
+    pub fn ensureVarSym(self: *VM, resolvedParentId: SymbolId, nameId: u32) !SymbolId {
         const key = KeyU64{
             .rtVarSymKey = .{
-                .resolvedParentSymId = parentId,
+                .resolvedParentSymId = resolvedParentId,
                 .nameId = nameId,
             },
         };

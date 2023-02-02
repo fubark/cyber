@@ -8,7 +8,10 @@ const v = fmt.v;
 const vm_ = @import("vm.zig");
 const sema = cy.sema;
 const gen = cy.codegen;
+const core_mod = @import("builtins/core.zig");
+const math_mod = @import("builtins/math.zig");
 const os_mod = @import("builtins/os.zig");
+const test_mod = @import("builtins/test.zig");
 
 const log = stdx.log.scoped(.vm_compiler);
 
@@ -51,13 +54,16 @@ pub const VMcompiler = struct {
 
     /// Modules.
     modules: std.ArrayListUnmanaged(sema.Module),
-    /// Specifier to module.
+    /// Absolute specifier path to module.
     moduleMap: std.StringHashMapUnmanaged(sema.ModuleId),
 
     typeNames: std.StringHashMapUnmanaged(sema.Type),
 
     /// Compilation units indexed by their id.
     chunks: std.ArrayListUnmanaged(CompileChunk),
+
+    /// Imports are queued.
+    importTasks: std.ArrayListUnmanaged(ImportTask),
 
     config: Config,
 
@@ -81,6 +87,7 @@ pub const VMcompiler = struct {
             .typeNames = .{},
             .config = .{},
             .chunks = .{},
+            .importTasks = .{},
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
     }
@@ -103,7 +110,13 @@ pub const VMcompiler = struct {
             mod.deinit(self.alloc);
         }
         self.modules.deinit(self.alloc);
+
+        var iter = self.moduleMap.keyIterator();
+        while (iter.next()) |absSpec| {
+            self.alloc.free(absSpec.*);
+        }
         self.moduleMap.deinit(self.alloc);
+
         self.typeNames.deinit(self.alloc);
 
         self.semaNameSyms.deinit(self.alloc);
@@ -113,6 +126,8 @@ pub const VMcompiler = struct {
             chunk.deinit();
         }
         self.chunks.deinit(self.alloc);
+
+        self.importTasks.deinit(self.alloc);
     }
 
     fn resetCompiler(self: *VMcompiler) void {
@@ -167,10 +182,27 @@ pub const VMcompiler = struct {
         const nextId = @intCast(u32, self.chunks.items.len);
         try self.chunks.append(self.alloc, try CompileChunk.init(self, nextId, srcUri, src));
 
+        // Load core module first since the members are imported into each user module.
+        const coreModSpec = try self.alloc.dupe(u8, "core");
+        const coreModId = @intCast(u32, self.modules.items.len);
+        try self.modules.append(self.alloc, try core_mod.initModule(self));
+        try self.moduleMap.put(self.alloc, coreModSpec, coreModId);
+
         // Perform sema on all chunks.
         var id: u32 = 0;
-        while (id < self.chunks.items.len) : (id += 1) {
-            try self.performChunkSema(id);
+        while (true) {
+            while (id < self.chunks.items.len) : (id += 1) {
+                try self.performChunkSema(id);
+            }
+            // Check for import tasks.
+            for (self.importTasks.items) |task| {
+                try self.performImportTask(task);
+            }
+            self.importTasks.clearRetainingCapacity();
+            if (id == self.chunks.items.len) {
+                // No more chunks were added from import tasks.
+                break;
+            }
         }
         
         // After sema pass, resolve used syms.
@@ -181,17 +213,19 @@ pub const VMcompiler = struct {
                     try sema.resolveSym(chunk, @intCast(u32, symId));
                 }
             }
-        }
 
-        // Once all symbols have been resolved, the static variables are initialized in DFS order.
-        // Uses temp locals from the main block.
-        for (self.chunks.items) |*chunk| {
+            // Set up for genVarDecls.
+            // All main blocks should be initialized since genVarDecls can alternate chunks.
             chunk.nextSemaBlockId = 1;
             chunk.nextSemaSubBlockId = 1;
             _ = chunk.nextSemaBlock();
             try chunk.pushBlock();
             chunk.buf = &self.buf;
+        }
 
+        // Once all symbols have been resolved, the static variables are initialized in DFS order.
+        // Uses temp locals from the main block.
+        for (self.chunks.items) |*chunk| {
             for (chunk.semaSyms.items) |sym, i| {
                 const symId = @intCast(u32, i);
                 if (sym.used and sema.isResolvedUserVarSym(self, &sym) and !sym.visited) {
@@ -274,6 +308,11 @@ pub const VMcompiler = struct {
             _ = try sema.ensureSym(chunk, null, nameId, null);
         }
 
+        if (chunk.isModule) {
+            // Resolve the module sym so local static declarations can branch from it.
+            chunk.semaResolvedSymId = try sema.resolveModuleSym(chunk, chunk.srcUri);
+        }
+
         try sema.pushBlock(chunk);
         sema.semaStmts(chunk, root.head.child_head, true) catch |err| {
             try sema.endBlock(chunk);
@@ -314,6 +353,35 @@ pub const VMcompiler = struct {
         chunk.blockJumpStack.items.len = jumpStackStart;
         chunk.popBlock();
         self.buf.mainStackSize = @intCast(u32, chunk.curBlock.getRequiredStackSize());
+    }
+
+    fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
+        if (task.builtin) {
+            var mod: sema.Module = undefined;
+            if (std.mem.eql(u8, "test", task.absSpec)) {
+                mod = try test_mod.initModule(self);
+            } else if (std.mem.eql(u8, "math", task.absSpec)) {
+                mod = try math_mod.initModule(self);
+            } else if (std.mem.eql(u8, "core", task.absSpec)) {
+                mod = try core_mod.initModule(self);
+            } else if (std.mem.eql(u8, "os", task.absSpec)) {
+                mod = try os_mod.initModule(self);
+            } else {
+                const chunk = &self.chunks.items[task.chunkId];
+                return chunk.reportErrorAt("Unsupported builtin. {}", &.{fmt.v(task.absSpec)}, task.nodeId);
+            }
+            self.modules.items[task.modId] = mod;
+        } else {
+            const src = try std.fs.cwd().readFileAlloc(self.alloc, task.absSpec, 1e10);
+
+            // Push another chunk.
+            const newChunkId = @intCast(u32, self.chunks.items.len);
+            var newChunk = try CompileChunk.init(self, newChunkId, task.absSpec, src);
+            newChunk.srcOwned = true;
+            newChunk.isModule = true;
+            try self.chunks.append(self.alloc, newChunk);
+            self.modules.items[task.modId].chunkId = newChunkId;
+        }
     }
 };
 
@@ -433,6 +501,8 @@ pub const CompileChunk = struct {
 
     /// Source code.
     src: []const u8,
+
+    /// Absolute path to source.
     srcUri: []const u8,
 
     parser: cy.Parser,
@@ -469,6 +539,8 @@ pub const CompileChunk = struct {
     semaVarDeclDeps: std.AutoHashMapUnmanaged(u32, void),
     /// Currently used to store lists of static var dependencies.
     bufU32: std.ArrayListUnmanaged(u32),
+    /// The resolved sym id of this chunk if `isModule` is true, otherwise this is `NullId`.
+    semaResolvedSymId: sema.ResolvedSymId,
 
     ///
     /// Codegen pass
@@ -490,6 +562,13 @@ pub const CompileChunk = struct {
     tokens: []const cy.Token,
     funcDecls: []cy.FuncDecl,
     funcParams: []const cy.FunctionParam,
+
+    /// Whether the src is owned by the chunk.
+    srcOwned: bool,
+
+    /// Whether this chunk is also a module.
+    /// Its exported members will be populated in this chunk's `Module`.
+    isModule: bool,
 
     fn init(c: *VMcompiler, id: CompileChunkId, srcUri: []const u8, src: []const u8) !CompileChunk {
         var new = CompileChunk{
@@ -529,6 +608,9 @@ pub const CompileChunk = struct {
             .bufU32 = .{},
             .dataNodes = .{},
             .tempBufU8 = .{},
+            .srcOwned = false,
+            .isModule = false,
+            .semaResolvedSymId = cy.NullId,
         };
         try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
         try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
@@ -566,6 +648,9 @@ pub const CompileChunk = struct {
         self.semaSymMap.deinit(self.alloc);
         self.semaSymToRef.deinit(self.alloc);
         self.parser.deinit();
+        if (self.srcOwned) {
+            self.alloc.free(self.src);
+        }
     }
 
     pub fn nextSemaBlock(self: *CompileChunk) void {
@@ -1236,4 +1321,12 @@ const SubBlockJumpType = enum {
 const SubBlockJump = struct {
     jumpT: SubBlockJumpType,
     pc: u32,
+};
+
+const ImportTask = struct {
+    chunkId: CompileChunkId,
+    nodeId: cy.NodeId,
+    absSpec: []const u8,
+    modId: sema.ModuleId,
+    builtin: bool,
 };

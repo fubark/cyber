@@ -2,10 +2,10 @@ const std = @import("std");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 
-pub fn initModule(c: *cy.VMcompiler, spec: []const u8) !cy.Module {
+pub fn initModule(c: *cy.VMcompiler) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
-        .prefix = spec,
+        .chunkId = cy.NullId,
     };
 
     // Euler's number and the base of natural logarithms; approximately 2.718.

@@ -12,10 +12,10 @@ const fmt = @import("../fmt.zig");
 
 const log = stdx.log.scoped(.core);
 
-pub fn initModule(self: *cy.VMcompiler, spec: []const u8) !cy.Module {
+pub fn initModule(self: *cy.VMcompiler) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
-        .prefix = spec,
+        .chunkId = cy.NullId,
     };
     try mod.syms.ensureTotalCapacity(self.alloc, 13);
     try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);

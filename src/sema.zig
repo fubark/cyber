@@ -2221,6 +2221,9 @@ fn resolveSpecTemp(self: *cy.CompileChunk, spec: []const u8, outBuiltin: *bool) 
         outBuiltin.* = true;
         return spec;
     }
+    if (cy.isWasm) {
+        return error.NotSupported;
+    }
 
     self.tempBufU8.clearRetainingCapacity();
 

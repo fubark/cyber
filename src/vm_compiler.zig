@@ -372,6 +372,9 @@ pub const VMcompiler = struct {
             }
             self.modules.items[task.modId] = mod;
         } else {
+            if (cy.isWasm) {
+                return error.Unsupported;
+            }
             const src = try std.fs.cwd().readFileAlloc(self.alloc, task.absSpec, 1e10);
 
             // Push another chunk.

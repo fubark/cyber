@@ -22,13 +22,21 @@ test "Imports." {
     try t.expectError(res, error.CompileError);
     try t.eqStr(run.vm.getCompileErrorMsg(), "Import path does not exist: `./test/test_mods/missing.cy`");
 
-    // Using unexported symbol.
+    // Using unexported func symbol.
     res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
         \\import a 'test_mods/a.cy'
         \\b = a.barNoExport
     );
     try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `barNoExport`");
+    try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `barNoExport`");
+
+    // Using unexported var symbol.
+    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+        \\import a 'test_mods/a.cy'
+        \\b = a.varNoExport
+    );
+    try t.expectError(res, error.CompileError);
+    try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
 
     // Using missing symbol.
     res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },

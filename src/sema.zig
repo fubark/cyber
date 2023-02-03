@@ -1849,6 +1849,9 @@ pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
             if (isResolvedSymVisibleFromMod(self.compiler, rsymId, self.modId)) {
                 sym.resolvedSymId = rsymId;
                 return;
+            } else {
+                const name = getName(self.compiler, nameId);
+                return self.reportErrorAt("Symbol is not exported: `{}`", &.{v(name)}, firstNodeId);
             }
         }
 

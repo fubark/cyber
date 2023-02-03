@@ -13,7 +13,32 @@ const log = stdx.log.scoped(.behavior_test);
 test "Imports." {
     const run = VMrunner.create();
     defer run.destroy();
-    _ = try run.evalWithUri(@embedFile("import_test.cy"), "./test/import_test.cy");
+
+    // Import missing file.
+    var res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+        \\import a 'test_mods/missing.cy'
+        \\b = a
+    );
+    try t.expectError(res, error.CompileError);
+    try t.eqStr(run.vm.getCompileErrorMsg(), "Import path does not exist: `./test/test_mods/missing.cy`");
+
+    // Using unexported symbol.
+    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+        \\import a 'test_mods/a.cy'
+        \\b = a.barNoExport
+    );
+    try t.expectError(res, error.CompileError);
+    try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `barNoExport`");
+
+    // Using missing symbol.
+    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+        \\import a 'test_mods/a.cy'
+        \\b = a.missing
+    );
+    try t.expectError(res, error.CompileError);
+    try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `missing`");
+
+    _ = try run.evalExt(.{ .uri = "./test/import_test.cy" }, @embedFile("import_test.cy"));
 }
 
 test "compile time" {
@@ -186,7 +211,7 @@ test "try value" {
     defer run.destroy();
 
     // Try failure at root block panics.
-    const res = run.evalSilent(
+    const res = run.evalExt(.{ .silent = true },
         \\try error(#boom)
     );
     try t.expectError(res, error.Panic);
@@ -310,7 +335,7 @@ test "test module" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    const res = run.evalSilent(
+    const res = run.evalExt(.{ .silent = true },
         \\import t 'test'
         \\try t.eq(123, 234)
     );
@@ -409,7 +434,7 @@ test "must()" {
         \\try t.eq(must(a), 123)
     );
 
-    var res = run.evalSilent(
+    var res = run.evalExt(.{ .silent = true },
         \\a = error(#boom)
         \\must(a)
     );
@@ -430,7 +455,7 @@ test "panic()" {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var res = run.evalSilent(
+    var res = run.evalExt(.{ .silent = true },
         \\a = 123
         \\1 + panic(#boom)
     );
@@ -451,7 +476,7 @@ test "Stack trace unwinding." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    var res = run.evalSilent(
+    var res = run.evalExt(.{ .silent = true },
         \\a = 123
         \\1 + a.foo
     );
@@ -467,7 +492,7 @@ test "Stack trace unwinding." {
     });
 
     // Function stack trace.
-    res = run.evalSilent(
+    res = run.evalExt(.{ .silent = true },
         \\func foo():
         \\  a = 123
         \\  return 1 + a.foo
@@ -641,17 +666,17 @@ test "Statements." {
     );
 
     // Invalid single line block.
-    var val = run.evalSilent(
+    var val = run.evalExt(.{ .silent = true },
         \\if true: foo = 123 foo = 234
     );
     try t.expectError(val, error.ParseError);
     try t.eqStr(run.vm.getParserErrorMsg(), "Unsupported shorthand caller number");
-    val = run.evalSilent(
+    val = run.evalExt(.{ .silent = true },
         \\if true: foo = 123: foo = 234
     );
     try t.expectError(val, error.ParseError);
     try t.eqStr(run.vm.getParserErrorMsg(), "Expected end of line or file, got colon");
-    val = run.evalSilent(
+    val = run.evalExt(.{ .silent = true },
         \\if true: foo = 123
         \\  foo = 234
     );
@@ -665,7 +690,7 @@ test "Indentation." {
     _ = try run.eval(@embedFile("indentation_test.cy"));
 
     // Mixing tabs and spaces is an error.
-    const res = run.evalSilent(
+    const res = run.evalExt(.{ .silent = true },
          \\if true:
          \\	 return 123
     );
@@ -862,7 +887,7 @@ test "Undefined variable references." {
     );
 
     // Using an undefined variable as a callee uses it as a sym so the runtime call panics.
-    const res = run.evalSilent(
+    const res = run.evalExt(.{ .silent = true },
         \\a()
     );
     try t.expectError(res, error.Panic);
@@ -873,7 +898,7 @@ test "Static variable declaration." {
     defer run.destroy();
 
     // Using a local variable in a static var initializer is not allowed.
-    var res = run.evalSilent(
+    var res = run.evalExt(.{ .silent = true },
         \\b = 123
         \\var a = b
     );
@@ -1334,7 +1359,7 @@ test "Static functions." {
     defer run.destroy();
 
     // Call with wrong number of arugments.
-    var res = run.evalSilent(
+    var res = run.evalExt(.{ .silent = true },
         \\func foo():
         \\  return 1
         \\foo(1)
@@ -1502,23 +1527,17 @@ const VMrunner = struct {
         return self.vm.allocPanicMsg();
     }
 
-    /// Don't print panic errors.
-    fn evalSilent(self: *VMrunner, src: []const u8) !cy.Value {
-        cy.silentError = true;
-        defer cy.silentError = false;
-        try self.resetEnv();
-        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
-            return err;
-        };
-    }
-
-    fn evalWithUri(self: *VMrunner, src: []const u8, uri: []const u8) !cy.Value {
-        // Eval with new env.
-        try self.resetEnv();
-        return self.vm.eval(uri, src, .{ .singleRun = false }) catch |err| {
-            if (err == error.Panic) {
-                try self.vm.dumpPanicStackTrace();
+    fn evalExt(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
+        if (config.silent) {
+            cy.silentError = true;
+        }
+        defer {
+            if (config.silent) {
+                cy.silentError = false;
             }
+        }
+        try self.resetEnv();
+        return self.vm.eval(config.uri, src, .{ .singleRun = false }) catch |err| {
             return err;
         };
     }
@@ -1552,13 +1571,6 @@ const VMrunner = struct {
             }
             return err;
         };
-    }
-
-    fn eval2(self: *VMrunner, src: []const u8, embed_interrupts: bool) !cy.Value {
-        _ = self;
-        _ = src;
-        _ = embed_interrupts;
-        return undefined;
     }
 
     pub fn valueIsF64(self: *VMrunner, act: cy.Value, exp: f64) !void {
@@ -1606,4 +1618,11 @@ const VMrunner = struct {
         _ = src;
         return undefined;
     }
+};
+
+const Config = struct {
+    uri: []const u8 = "main",
+
+    /// Don't print panic errors.
+    silent: bool = false,
 };

@@ -14,6 +14,7 @@ pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .chunkId = cy.NullId,
+        .resolvedRootSymId = cy.NullId,
     };
 
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));

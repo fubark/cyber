@@ -80,10 +80,9 @@ fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) 
             if (rsym.symT == .func) {
                 const sym = self.semaSyms.items[node.head.ident.semaSymId];
                 const localKey = sym.key.absLocalSymKey;
-                const resolvedParentId = if (localKey.localParentSymId == cy.NullId) cy.NullId else self.semaSyms.items[localKey.localParentSymId].resolvedSymId;
 
                 const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                const rtSymId = try self.compiler.vm.ensureFuncSym(resolvedParentId, localKey.nameId, rfsym.numParams);
+                const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
 
                 try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
                 return self.initGenValue(dst, sema.AnyType);
@@ -688,10 +687,9 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
     if (node.head.accessExpr.semaSymId != cy.NullId) {
         const sym = self.semaSyms.items[node.head.accessExpr.semaSymId];
         if (self.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {
-            const key = sym.key.absLocalSymKey;
-            const resolvedParentId = if (key.localParentSymId == cy.NullId) cy.NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
+            const key = rsym.key.absResolvedSymKey;
             if (rsym.symT == .variable) {
-                if (self.compiler.vm.getVarSym(resolvedParentId, key.nameId)) |symId| {
+                if (self.compiler.vm.getVarSym(key.resolvedParentSymId, key.nameId)) |symId| {
                     if (dstIsUsed) {
                         // Static variable.
                         try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
@@ -700,10 +698,16 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                         return GenValue.initNoValue();
                     }
                 }
+            } else if (rsym.symT == .func) {
+                const localKey = sym.key.absLocalSymKey;
+                const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
+                const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
+                try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
+                return self.initGenValue(dst, sema.AnyType);
             }
         }
         const name = sema.getSymName(self.compiler, &sym);
-        return self.reportErrorAt("Unsupported sym: {}", &.{v(name)}, nodeId);
+        return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, nodeId);
     }
 
     const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -1063,13 +1067,18 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 					}
 				} else {
 					const sym = self.semaSyms.items[left.head.ident.semaSymId];
-					const rightv = try self.genExpr(node.head.opAssignStmt.right, false);
-					const rtSymId = try self.compiler.vm.ensureVarSym(cy.NullId, sym.key.absLocalSymKey.nameId);
+					if (self.genGetResolvedSym(left.head.ident.semaSymId)) |rsym| {
+						const rightv = try self.genExpr(node.head.opAssignStmt.right, false);
+						const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
 
-					const tempLocal = try self.nextFreeTempLocal();
-					try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), tempLocal);
-					try self.buf.pushOp3(genOp, tempLocal, rightv.local, tempLocal);
-					try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), tempLocal);
+						const tempLocal = try self.nextFreeTempLocal();
+						try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), tempLocal);
+						try self.buf.pushOp3(genOp, tempLocal, rightv.local, tempLocal);
+						try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), tempLocal);
+					} else {
+						const name = sema.getName(self.compiler, sym.key.absLocalSymKey.nameId);
+						return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, nodeId);
+					}
 				}
 			} else if (left.node_t == .accessExpr) {
 				try genBinOpAssignToField(self, genOp, node.head.opAssignStmt.left, node.head.opAssignStmt.right);
@@ -1088,9 +1097,14 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 					try genSetVarToExpr(self, node.head.left_right.left, node.head.left_right.right, false);
 				} else {
 					const sym = self.semaSyms.items[left.head.ident.semaSymId];
-					const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-					const rtSymId = try self.compiler.vm.ensureVarSym(cy.NullId, sym.key.absLocalSymKey.nameId);
-					try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
+					if (self.genGetResolvedSym(left.head.ident.semaSymId)) |rsym| {
+						const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
+						const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+						try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
+					} else {
+						const name = sema.getName(self.compiler, sym.key.absLocalSymKey.nameId);
+						return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, nodeId);
+					}
 				}
 			} else if (left.node_t == .arr_access_expr) {
 				const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -1124,7 +1138,12 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 			try self.endArcExpr(arcLocalStart);
 		},
 		.exportStmt => {
-			// Nop. Static variables are hoisted and initialized at the start of the program.
+			const stmt = node.head.child_head;
+			if (self.nodes[stmt].node_t == .func_decl) {
+				try genStatement(self, stmt, discardTopExprReg);
+			} else {
+				// Nop. Static variables are hoisted and initialized at the start of the program.
+			}
 		},
 		.varDecl => {
 			// Nop. Static variables are hoisted and initialized at the start of the program.
@@ -1140,9 +1159,14 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 				const left = self.nodes[node.head.left_right.left];
 				std.debug.assert(left.node_t == .ident);
 				const sym = self.semaSyms.items[left.head.ident.semaSymId];
-				const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-				const rtSymId = try self.compiler.vm.ensureVarSym(cy.NullId, sym.key.absLocalSymKey.nameId);
-				try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
+				if (self.genGetResolvedSym(left.head.ident.semaSymId)) |rsym| {
+					const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
+					const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+					try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
+				} else {
+					const name = sema.getName(self.compiler, sym.key.absLocalSymKey.nameId);
+					return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, nodeId);
+				}
 			}
 		},
 		.tagDecl => {
@@ -1716,12 +1740,14 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
 		if (callee.node_t == .accessExpr) {
 			if (callee.head.accessExpr.semaSymId != cy.NullId) {
 				if (self.genGetResolvedSymId(callee.head.accessExpr.semaSymId)) |rsymId| {
+					const rsym = self.compiler.semaResolvedSyms.items[rsymId];
 					const sym = self.semaSyms.items[callee.head.accessExpr.semaSymId];
 					if (self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams)) |funcSym| {
 						// Func sym.
 						var numArgs: u32 = undefined;
 						if (funcSym.declId != cy.NullId) {
-							const func = self.funcDecls[funcSym.declId];
+							const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
+							const func = funcChunk.funcDecls[funcSym.declId];
 							numArgs = try genCallArgs2(self, func, node.head.func_call.arg_head);
 						} else {
 							numArgs = try genCallArgs(self, node.head.func_call.arg_head);
@@ -1729,8 +1755,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
 
 						// var isStdCall = false;
 						const key = sym.key.absLocalSymKey;
-						const resolvedParentId = if (key.localParentSymId == cy.NullId) cy.NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-						const symId = self.compiler.vm.getFuncSym(resolvedParentId, key.nameId, key.numParams).?;
+						const symId = self.compiler.vm.getFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, key.nameId, key.numParams).?;
 						if (discardTopExprReg) {
 							try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
 							try self.pushDebugSym(nodeId);
@@ -1878,12 +1903,11 @@ fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, 
 fn genFuncDecl(self: *CompileChunk, nodeId: cy.NodeId) !void {
 	const node = self.nodes[nodeId];
 	const func = self.funcDecls[node.head.func.decl_id];
-	const sym = self.semaSyms.items[func.semaSymId];
-	const key = sym.key.absLocalSymKey;
-	const numParams = @intCast(u8, sym.key.absLocalSymKey.numParams);
+	const rsym = self.compiler.semaResolvedSyms.items[func.semaResolvedSymId];
+	const key = rsym.key.absResolvedSymKey;
+	const numParams = @intCast(u8, func.params.end - func.params.start);
 
-	const resolvedParentId = if (key.localParentSymId == cy.NullId) cy.NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-	const symId = try self.compiler.vm.ensureFuncSym(resolvedParentId, key.nameId, key.numParams);
+	const symId = try self.compiler.vm.ensureFuncSym(key.resolvedParentSymId, key.nameId, numParams);
 
 	const jumpPc = try self.pushEmptyJump();
 

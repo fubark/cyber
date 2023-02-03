@@ -6,6 +6,7 @@ pub fn initModule(c: *cy.VMcompiler) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .chunkId = cy.NullId,
+        .resolvedRootSymId = cy.NullId,
     };
 
     // Euler's number and the base of natural logarithms; approximately 2.718.

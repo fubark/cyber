@@ -16,6 +16,7 @@ pub fn initModule(self: *cy.VMcompiler) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .chunkId = cy.NullId,
+        .resolvedRootSymId = cy.NullId,
     };
     try mod.syms.ensureTotalCapacity(self.alloc, 13);
     try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);

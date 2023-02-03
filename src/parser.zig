@@ -1521,6 +1521,7 @@ pub const Parser = struct {
                 };
                 const stmt = self.nodes.items[stmtId];
                 switch (stmt.node_t) {
+                    .func_decl,
                     .varDecl => {
                         const exportStmt = try self.pushNode(.exportStmt, start);
                         self.nodes.items[exportStmt].head = .{
@@ -3489,7 +3490,7 @@ pub const FuncDecl = struct {
     name: IndexSlice,
     params: IndexSlice,
     return_type: ?IndexSlice,
-    semaSymId: u32 = NullId,
+    semaResolvedSymId: u32 = NullId,
     semaResolvedFuncSymId: u32 = NullId,
 };
 

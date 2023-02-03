@@ -15,9 +15,6 @@ const test_mod = @import("builtins/test.zig");
 
 const log = stdx.log.scoped(.vm_compiler);
 
-const NullId = std.math.maxInt(u32);
-const NullIdU16 = std.math.maxInt(u16);
-const NullIdU8 = std.math.maxInt(u8);
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
 
@@ -36,16 +33,14 @@ pub const VMcompiler = struct {
     /// Used to return additional info for an error.
     errorPayload: cy.NodeId,
 
-    /// -- Context vars
-
     /// Unique name syms.
     semaNameSyms: std.ArrayListUnmanaged([]const u8),
     semaNameSymMap: std.StringHashMapUnmanaged(sema.NameSymId),
 
     /// Absolute path to syms and shared among modules.
-    /// This includes all sym types and is keyed by just the absolute path of the sym.
+    /// This includes all sym types and is keyed by the absolute path of the sym.
     semaResolvedSyms: std.ArrayListUnmanaged(sema.ResolvedSym),
-    semaResolvedSymMap: std.HashMapUnmanaged(vm_.KeyU64, sema.ResolvedSymId, vm_.KeyU64Context, 80),
+    semaResolvedSymMap: std.HashMapUnmanaged(sema.AbsResolvedSymKey, sema.ResolvedSymId, vm_.KeyU64Context, 80),
 
     /// Resolved syms for functions only.
     /// The sym path and a signature is used as a key, since functions can be overloaded.
@@ -180,7 +175,14 @@ pub const VMcompiler = struct {
 
         // Main chunk.
         const nextId = @intCast(u32, self.chunks.items.len);
-        try self.chunks.append(self.alloc, try CompileChunk.init(self, nextId, srcUri, src));
+        var mainChunk = try CompileChunk.init(self, nextId, srcUri, src);
+        mainChunk.modId = 0;
+        try self.modules.append(self.alloc, .{
+            .syms = .{},
+            .chunkId = nextId,
+            .resolvedRootSymId = cy.NullId,
+        });
+        try self.chunks.append(self.alloc, mainChunk);
 
         // Load core module first since the members are imported into each user module.
         const coreModSpec = try self.alloc.dupe(u8, "core");
@@ -206,10 +208,11 @@ pub const VMcompiler = struct {
         }
         
         // After sema pass, resolve used syms.
-        for (self.chunks.items) |*chunk| {
+        for (self.chunks.items) |*chunk, i| {
+            log.debug("resolving for chunk: {}", .{i});
             for (chunk.semaSyms.items) |sym, symId| {
                 // Only full symbol paths that are unresolved.
-                if (sym.used and sym.resolvedSymId == NullId) {
+                if (sym.used and sym.resolvedSymId == cy.NullId) {
                     try sema.resolveSym(chunk, @intCast(u32, symId));
                 }
             }
@@ -235,7 +238,8 @@ pub const VMcompiler = struct {
             chunk.resetNextFreeTemp();
         }
 
-        for (self.chunks.items) |*chunk| {
+        for (self.chunks.items) |*chunk, i| {
+            log.debug("perform codegen {}", .{i});
             try self.performChunkCodegen(chunk.id);
         }
 
@@ -291,8 +295,12 @@ pub const VMcompiler = struct {
 
         chunk.semaBlockDepth = 0;
 
+        // Resolve the module sym so local static declarations can branch from it.
+        chunk.semaResolvedRootSymId = try sema.resolveRootModuleSym(self, chunk.srcUri, chunk.modId);
+        self.modules.items[chunk.modId].resolvedRootSymId = chunk.semaResolvedRootSymId;
+
         // Import core module into local namespace.
-        const modId = try sema.getOrLoadModule(chunk, "core", NullId);
+        const modId = try sema.getOrLoadModule(chunk, "core", cy.NullId);
         try sema.importAllFromModule(chunk, modId);
 
         const root = chunk.nodes[ast.root_id];
@@ -306,11 +314,6 @@ pub const VMcompiler = struct {
             const str = chunk.getNodeTokenString(ident);
             const nameId = try sema.ensureNameSym(self, str);
             _ = try sema.ensureSym(chunk, null, nameId, null);
-        }
-
-        if (chunk.isModule) {
-            // Resolve the module sym so local static declarations can branch from it.
-            chunk.semaResolvedSymId = try sema.resolveModuleSym(chunk, chunk.srcUri);
         }
 
         try sema.pushBlock(chunk);
@@ -370,6 +373,7 @@ pub const VMcompiler = struct {
                 const chunk = &self.chunks.items[task.chunkId];
                 return chunk.reportErrorAt("Unsupported builtin. {}", &.{fmt.v(task.absSpec)}, task.nodeId);
             }
+            mod.resolvedRootSymId = try sema.resolveRootModuleSym(self, task.absSpec, task.modId);
             self.modules.items[task.modId] = mod;
         } else {
             if (cy.isWasm) {
@@ -381,7 +385,7 @@ pub const VMcompiler = struct {
             const newChunkId = @intCast(u32, self.chunks.items.len);
             var newChunk = try CompileChunk.init(self, newChunkId, task.absSpec, src);
             newChunk.srcOwned = true;
-            newChunk.isModule = true;
+            newChunk.modId = task.modId;
             try self.chunks.append(self.alloc, newChunk);
             self.modules.items[task.modId].chunkId = newChunkId;
         }
@@ -531,6 +535,8 @@ pub const CompileChunk = struct {
     /// Local paths to syms.
     semaSyms: std.ArrayListUnmanaged(sema.Sym),
     semaSymMap: std.HashMapUnmanaged(vm_.KeyU96, sema.SymId, vm_.KeyU96Context, 80),
+    /// Track first nodes that use the symbol for error reporting.
+    semaSymFirstNodes: std.ArrayListUnmanaged(cy.NodeId),
     semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.SymRef),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     semaBlockDepth: u32,
@@ -542,8 +548,8 @@ pub const CompileChunk = struct {
     semaVarDeclDeps: std.AutoHashMapUnmanaged(u32, void),
     /// Currently used to store lists of static var dependencies.
     bufU32: std.ArrayListUnmanaged(u32),
-    /// The resolved sym id of this chunk if `isModule` is true, otherwise this is `NullId`.
-    semaResolvedSymId: sema.ResolvedSymId,
+    /// The resolved sym id of this chunk.
+    semaResolvedRootSymId: sema.ResolvedSymId,
 
     ///
     /// Codegen pass
@@ -569,9 +575,9 @@ pub const CompileChunk = struct {
     /// Whether the src is owned by the chunk.
     srcOwned: bool,
 
-    /// Whether this chunk is also a module.
-    /// Its exported members will be populated in this chunk's `Module`.
-    isModule: bool,
+    /// Points to this chunk's `Module`.
+    /// Its exported members will be populated in the Module as sema encounters them.
+    modId: sema.ModuleId,
 
     fn init(c: *VMcompiler, id: CompileChunkId, srcUri: []const u8, src: []const u8) !CompileChunk {
         var new = CompileChunk{
@@ -589,6 +595,7 @@ pub const CompileChunk = struct {
             .semaSubBlocks = .{},
             .semaSyms = .{},
             .semaSymMap = .{},
+            .semaSymFirstNodes = .{},
             .semaSymToRef = .{},
             .vars = .{},
             .capVarDescs = .{},
@@ -605,15 +612,15 @@ pub const CompileChunk = struct {
             .nextSemaBlockId = undefined,
             .nextSemaSubBlockId = undefined,
             .buf = undefined,
-            .curNodeId = NullId,
-            .curSemaSymVar = NullId,
+            .curNodeId = cy.NullId,
+            .curSemaSymVar = cy.NullId,
             .semaVarDeclDeps = .{},
             .bufU32 = .{},
             .dataNodes = .{},
             .tempBufU8 = .{},
             .srcOwned = false,
-            .isModule = false,
-            .semaResolvedSymId = cy.NullId,
+            .modId = cy.NullId,
+            .semaResolvedRootSymId = cy.NullId,
         };
         try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
         try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
@@ -649,6 +656,7 @@ pub const CompileChunk = struct {
 
         self.semaSyms.deinit(self.alloc);
         self.semaSymMap.deinit(self.alloc);
+        self.semaSymFirstNodes.deinit(self.alloc);
         self.semaSymToRef.deinit(self.alloc);
         self.parser.deinit();
         if (self.srcOwned) {
@@ -953,12 +961,12 @@ pub const CompileChunk = struct {
     pub fn genEnsureRtFuncSym(self: *CompileChunk, symId: sema.SymId) !u32 {
         const sym = self.semaSyms.items[symId];
         const key = sym.key.absLocalSymKey;
-        if (sym.resolvedSymId != NullId) {
-            const resolvedParentId = if (key.localParentSymId == NullId) NullId else self.semaSyms.items[key.localParentSymId].resolvedSymId;
-            return self.compiler.vm.ensureFuncSym(resolvedParentId, key.nameId, key.numParams);
+        if (sym.resolvedSymId != cy.NullId) {
+            const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+            return self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, key.nameId, key.numParams);
         } else {
             // Undefined namespace is NullId-1 so it doesn't conflict with the root.
-            return self.compiler.vm.ensureFuncSym(NullId-1, key.nameId, key.numParams);
+            return self.compiler.vm.ensureFuncSym(cy.NullId-1, key.nameId, key.numParams);
         }
     }
 
@@ -978,7 +986,7 @@ pub const CompileChunk = struct {
 
     pub fn genGetResolvedSymId(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSymId {
         const sym = self.semaSyms.items[semaSymId];
-        if (sym.resolvedSymId != NullId) {
+        if (sym.resolvedSymId != cy.NullId) {
             return sym.resolvedSymId;
         } else {
             return null;
@@ -987,7 +995,7 @@ pub const CompileChunk = struct {
 
     pub fn genGetResolvedSym(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSym {
         const sym = self.semaSyms.items[semaSymId];
-        if (sym.resolvedSymId != NullId) {
+        if (sym.resolvedSymId != cy.NullId) {
             return self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
         } else {
             return null;
@@ -1150,7 +1158,7 @@ pub const CompileChunk = struct {
     }
 
     pub fn genGetVarPtr(self: *const CompileChunk, id: sema.LocalVarId) ?*sema.LocalVar {
-        if (id != NullId) {
+        if (id != cy.NullId) {
             return &self.vars.items[id];
         } else {
             return null;
@@ -1158,7 +1166,7 @@ pub const CompileChunk = struct {
     }
 
     pub fn genGetVar(self: *const CompileChunk, id: sema.LocalVarId) ?sema.LocalVar {
-        if (id != NullId) {
+        if (id != cy.NullId) {
             return self.vars.items[id];
         } else {
             return null;

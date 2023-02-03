@@ -13,6 +13,7 @@ pub fn initModule(c: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
     var mod = cy.Module{
         .syms = .{},
         .chunkId = cy.NullId,
+        .resolvedRootSymId = cy.NullId,
     };
     try mod.setNativeFunc(c, "eq", 2, eq);
     try mod.setNativeFunc(c, "eqList", 2, eqList);

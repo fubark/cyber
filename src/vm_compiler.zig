@@ -444,6 +444,17 @@ fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
         .arr_access_expr,
         .coinit,
         .structInit => return true,
+        .accessExpr => {
+            if (node.head.accessExpr.semaSymId != cy.NullId) {
+                if (c.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {
+                    if (rsym.symT == .variable) {
+                        // Since `staticVar` op is always retained atm.
+                        return true;
+                    }
+                }
+            }
+            return false;
+        },
         .ident => {
             if (node.head.ident.semaSymId != cy.NullId) {
                 if (c.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {

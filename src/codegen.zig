@@ -697,6 +697,9 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                     if (dstIsUsed) {
                         // Static variable.
                         try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
+                        if (!retain and self.isTempLocal(dst)) {
+                            try self.setReservedTempLocal(dst);
+                        }
                         return self.initGenValue(dst, sema.AnyType);
                     } else {
                         return GenValue.initNoValue();
@@ -709,22 +712,25 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                 try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
                 return self.initGenValue(dst, sema.AnyType);
             }
+        } else {
+            // Assume left is a valid reference from sema.
+            return genField(self, node.head.accessExpr.left, node.head.accessExpr.right, dst, retain, dstIsUsed, nodeId);
         }
-        const name = sema.getSymName(self.compiler, &sym);
-        return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, nodeId);
     }
+    return genField(self, node.head.accessExpr.left, node.head.accessExpr.right, dst, retain, dstIsUsed, nodeId);
+}
 
+fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool, debugNodeId: cy.NodeId) !GenValue {
     const startTempLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startTempLocal);
 
     var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
 
     // Left side.
-    const leftv = try self.genExprToDestOrTempLocal(node.head.accessExpr.left, dst, &usedDstAsTemp, !dstIsUsed);
+    const leftv = try self.genExprToDestOrTempLocal(leftId, dst, &usedDstAsTemp, !dstIsUsed);
 
     // Right should be an ident.
-    const right = self.nodes[node.head.accessExpr.right];
-
+    const right = self.nodes[rightId];
     const name = self.getNodeTokenString(right);
     const fieldId = try self.compiler.vm.ensureFieldSym(name);
 
@@ -734,7 +740,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
         } else {
             try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
         }
-        try self.pushDebugSym(nodeId);
+        try self.pushDebugSym(debugNodeId);
         return self.initGenValue(dst, sema.AnyType);
     } else {
         return GenValue.initNoValue();

@@ -1861,6 +1861,9 @@ pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
             if (try resolveSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
                 sym.resolvedSymId = resolvedId;
                 return;
+            } else {
+                const name = getName(self.compiler, nameId);
+                return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, firstNodeId);
             }
         }
     }

@@ -1591,7 +1591,10 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
         const svar = self.vars.items[varId];
         switch (strat) {
             .read => {
-                if (self.curSemaSymVar != NullId) {
+                // Can not reference local var in a static var decl unless it's in a nested block.
+                // eg. var a = func(b):
+                //         return b
+                if (self.curSemaSymVar != NullId and self.semaBlockDepth == 1) {
                     self.compiler.errorPayload = self.curNodeId;
                     return error.CanNotUseLocal;
                 }

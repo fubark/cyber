@@ -1787,30 +1787,18 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                         return genFuncValueCallExpr(self, node, callStartLocal, discardTopExprReg);
                     }
                 } else {
-                    return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
+                    // Assume left child is a valid reference from sema. Generate callObjSym.
+                    const right = self.nodes[callee.head.accessExpr.right];
+                    if (right.node_t == .ident) {
+                        return genCallObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.func_call.arg_head, discardTopExprReg, nodeId);
+                    } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                 }
             }
 
             // accessExpr is not a symbol.
-
             const right = self.nodes[callee.head.accessExpr.right];
             if (right.node_t == .ident) {
-                // One more arg for receiver.
-                const numArgs = 1 + try genCallArgs(self, node.head.func_call.arg_head);
-
-                const rightName = self.getNodeTokenString(right);
-                const methodId = try self.compiler.vm.ensureMethodSymKey(rightName, numArgs - 1);
-
-                _ = try self.genRetainedTempExpr(callee.head.accessExpr.left, false);
-
-                if (discardTopExprReg) {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                    try self.pushDebugSym(nodeId);
-                } else {
-                    try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
-                    try self.pushDebugSym(nodeId);
-                }
-                return GenValue.initTempValue(callStartLocal, sema.AnyType);
+                return genCallObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.func_call.arg_head, discardTopExprReg, nodeId);
             } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
         } else if (callee.node_t == .ident) {
             if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
@@ -1821,13 +1809,17 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                 var optFuncSym: ?sema.ResolvedFuncSym = null;
                 if (self.genGetResolvedSymId(callee.head.ident.semaSymId)) |rsymId| {
                     const sym = self.semaSyms.items[callee.head.ident.semaSymId];
-                    if (self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams)) |funcSym| {
+                    const rsym = self.compiler.semaResolvedSyms.items[rsymId];
+                    if (rsym.symT == .func) {
+                        const funcSym = self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams).?;
                         if (funcSym.declId != cy.NullId) {
                             const func = self.funcDecls[funcSym.declId];
                             numArgs = try genCallArgs2(self, func, node.head.func_call.arg_head);
                             genArgs = true;
                         }
                         optFuncSym = funcSym;
+                    } else if (rsym.symT == .variable) {
+                        return genFuncValueCallExpr(self, node, callStartLocal, discardTopExprReg);
                     } else {
                         return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                     }
@@ -1878,6 +1870,26 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
             return genFuncValueCallExpr(self, node, callStartLocal, discardTopExprReg);
         }
     } else return self.reportError("Unsupported named args", &.{});
+}
+
+fn genCallObjSym(self: *CompileChunk, callStartLocal: u8, leftId: cy.NodeId, identId: cy.NodeId, firstArgId: cy.NodeId, dstIsUsed: bool, debugNodeId: cy.NodeId) !GenValue {
+    // One more arg for receiver.
+    const numArgs = 1 + try genCallArgs(self, firstArgId);
+        
+    const ident = self.nodes[identId];
+    const name = self.getNodeTokenString(ident);
+    const methodId = try self.compiler.vm.ensureMethodSymKey(name, numArgs - 1);
+
+    _ = try self.genRetainedTempExpr(leftId, false);
+
+    if (dstIsUsed) {
+        try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        try self.pushDebugSym(debugNodeId);
+    } else {
+        try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        try self.pushDebugSym(debugNodeId);
+    }
+    return GenValue.initTempValue(callStartLocal, sema.AnyType);
 }
 
 fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, comptime discardTopExprReg: bool) !GenValue {

@@ -954,6 +954,29 @@ test "Static variable declaration." {
         \\try t.eq(b, 444) 
         \\try t.eq(c, 567) 
     );
+
+    // Invoke as function.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = func():
+        \\    return 123
+        \\var a1 = func(a):
+        \\    return a + 1
+        \\var a2 = func(a, b):
+        \\    return a + b
+        \\try t.eq(a(), 123)
+        \\try t.eq(a1(123), 124)
+        \\try t.eq(a2(123, 321), 444)
+    );
+
+    // Invoke method.
+    _ = try run.eval(
+        \\import t 'test'
+        \\var a = [1, 2, 3]
+        \\try t.eq(a.len(), 3)
+        \\a.append(4)
+        \\try t.eq(a.len(), 4)
+    );
 }
 
 test "Static variable assignment." {

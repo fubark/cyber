@@ -111,10 +111,10 @@ test "ARC for static variable declarations." {
         \\try t.eq(a[0], 123)
     );
     run.deinit();
-    try t.eq(trace.numRetainAttempts, 2);
-    try t.eq(trace.numReleaseAttempts, 4);
-    try t.eq(trace.numRetains, 1);
-    try t.eq(trace.numReleases, 1);
+    try t.eq(trace.numRetainAttempts, 3);
+    try t.eq(trace.numReleaseAttempts, 5);
+    try t.eq(trace.numRetains, 2);
+    try t.eq(trace.numReleases, 2);
 }
 
 test "ARC assignments." {

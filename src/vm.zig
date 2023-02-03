@@ -3536,6 +3536,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const symId = pc[1].arg;
                 const sym = vm.varSyms.buf[symId];
+                retain(vm, sym.value);
                 framePtr[pc[2].arg] = sym.value;
                 pc += 3;
                 if (useGoto) { gotoNext(&pc, jumpTablePtr); }

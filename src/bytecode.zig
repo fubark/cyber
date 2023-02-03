@@ -610,7 +610,7 @@ pub const OpCode = enum(u8) {
     /// [symId] [dstLocal]
     staticFunc,
 
-    /// Copies a static variable to a destination register.
+    /// Copies and retains a static variable to a destination register.
     /// [symId] [dstLocal]
     staticVar,
 

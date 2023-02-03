@@ -91,6 +91,9 @@ fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) 
                 const localKey = sym.key.absLocalSymKey;
                 const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
                 try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
+                if (!retain and self.isTempLocal(dst)) {
+                    try self.setReservedTempLocal(dst);
+                }
                 return self.initGenValue(dst, sema.AnyType);
             } else {
                 const sym = self.semaSyms.items[node.head.ident.semaSymId];

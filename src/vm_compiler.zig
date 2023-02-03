@@ -433,8 +433,10 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
     return replacements;
 }
 
-fn isArcTempNode(nodeT: cy.NodeType) bool {
-    switch (nodeT) {
+/// Some nodes will always retain in order to behave correctly under ARC.
+/// The temp register allocator needs to know this ahead of time to determine the dst register.
+fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
+    switch (node.node_t) {
         .call_expr,
         .arr_literal,
         .map_literal,
@@ -442,6 +444,17 @@ fn isArcTempNode(nodeT: cy.NodeType) bool {
         .arr_access_expr,
         .coinit,
         .structInit => return true,
+        .ident => {
+            if (node.head.ident.semaSymId != cy.NullId) {
+                if (c.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
+                    if (rsym.symT == .variable) {
+                        // Since `staticVar` op is always retained atm.
+                        return true;
+                    }
+                }
+            }
+            return false;
+        },
         else => return false,
     }
 }
@@ -807,7 +820,7 @@ pub const CompileChunk = struct {
 
     pub fn genExprToDestOrTempLocal2(self: *CompileChunk, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
         const node = self.nodes[nodeId];
-        if (isArcTempNode(node.node_t) or usedDst.*) {
+        if (genWillAlwaysRetainNode(self, node) or usedDst.*) {
             const finalDst = try self.userLocalOrNextTempLocal(nodeId);
             return gen.genExprTo2(self, nodeId, finalDst, requestedType, false, !discardTopExprReg);
         } else {

@@ -443,6 +443,7 @@ pub const Value = packed union {
                     cy.FileT => return .file,
                     cy.DirT => return .dir,
                     cy.DirIteratorT => return .dirIter,
+                    cy.SymbolT => return .symbol,
                     else => {
                         return .object;
                     },
@@ -486,6 +487,7 @@ pub const ValueUserTag = enum {
     file,
     dir,
     dirIter,
+    symbol,
     none,
 };
 

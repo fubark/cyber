@@ -1,4 +1,5 @@
 import t 'test'
+
 object Node:
   value
 
@@ -85,3 +86,8 @@ try t.eq(n2.a, 3)
 try t.eq(n2.b, 4)
 try t.eq(n3.a, 5)
 try t.eq(n3.b, 6)
+
+-- Using Object sym as a value.
+sym = Node
+try t.eq(valtag(sym), #symbol)
+try t.eq(string(sym), 'Object Symbol (Node)')

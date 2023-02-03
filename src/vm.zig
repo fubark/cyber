@@ -1663,6 +1663,21 @@ pub const VM = struct {
                         outCharLen.* = @intCast(u32, slice.len);
                     }
                     return slice;
+                } else if (obj.common.structId == cy.SymbolT) {
+                    const start = writer.pos();
+                    const symType = @intToEnum(cy.heap.SymbolType, obj.symbol.symId);
+                    var slice: []const u8 = undefined;
+                    if (symType == .object) {
+                        const name = self.structs.buf[obj.symbol.symId].name;
+                        std.fmt.format(writer, "Object Symbol ({s})", .{name}) catch stdx.fatal();
+                        slice = writer.sliceFrom(start);
+                    } else {
+                        slice = "Unknown Symbol";
+                    }
+                    if (getCharLen) {
+                        outCharLen.* = @intCast(u32, slice.len);
+                    }
+                    return slice;
                 } else {
                     const buf = self.structs.buf[obj.common.structId].name;
                     if (getCharLen) {
@@ -3943,6 +3958,17 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpMatch:"::);
                 }
                 pc += @call(.never_inline, opMatch, .{vm, pc, framePtr});
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
+                continue;
+            },
+            .sym => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSym:"::);
+                }
+                const symType = pc[1].arg;
+                const symId = @ptrCast(*const align(1) u32, pc + 2).*;
+                framePtr[pc[6].arg] = try cy.heap.allocSymbol(vm, symType, symId);
+                pc += 7;
                 if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },

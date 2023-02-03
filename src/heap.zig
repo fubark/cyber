@@ -34,6 +34,7 @@ pub const OpaquePtrS: cy.TypeId = 24;
 pub const FileT: cy.TypeId = 25;
 pub const DirT: cy.TypeId = 26;
 pub const DirIteratorT: cy.TypeId = 27;
+pub const SymbolT: cy.TypeId = 28;
 
 // Keep it just under 4kb page.
 pub const HeapPage = struct {
@@ -76,6 +77,7 @@ pub const HeapObject = extern union {
     file: if (cy.hasStdFiles) File else void,
     dir: if (cy.hasStdFiles) Dir else void,
     opaquePtr: OpaquePtr,
+    symbol: Symbol,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
@@ -99,6 +101,17 @@ pub const HeapObject = extern union {
             },
         }
     }
+};
+
+pub const SymbolType = enum {
+    object,
+};
+
+pub const Symbol = extern struct {
+    structId: cy.TypeId,
+    rc: u32,
+    symType: u32,
+    symId: u32,
 };
 
 pub const List = extern struct {
@@ -505,6 +518,17 @@ pub fn freePoolObject(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection)
         };
         self.heapFreeHead = obj;
     }
+}
+
+pub fn allocSymbol(self: *cy.VM, symType: u8, symId: u32) !Value {
+    const obj = try allocPoolObject(self);
+    obj.symbol = .{
+        .structId = SymbolT,
+        .rc = 1,
+        .symType = symType,
+        .symId = symId,
+    };
+    return Value.initPtr(obj);
 }
 
 pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
@@ -1432,6 +1456,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             }
             const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
             vm.alloc.free(slice);
+        },
+        SymbolT => {
+            freePoolObject(vm, obj);
         },
         else => {
             log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});

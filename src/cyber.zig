@@ -91,6 +91,7 @@ pub const DirT = heap.DirT;
 pub const DirIteratorT = heap.DirIteratorT;
 pub const Dir = heap.Dir;
 pub const DirIterator = heap.DirIterator;
+pub const SymbolT = heap.SymbolT;
 pub const CyList = heap.List;
 pub const Closure = heap.Closure;
 pub const OpaquePtr = heap.OpaquePtr;

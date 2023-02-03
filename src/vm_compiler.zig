@@ -461,6 +461,9 @@ fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
                     if (rsym.symT == .variable) {
                         // Since `staticVar` op is always retained atm.
                         return true;
+                    } else if (rsym.symT == .object) {
+                        // `sym` op is always retained.
+                        return true;
                     }
                 }
             }

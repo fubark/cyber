@@ -809,6 +809,7 @@ pub fn valtag(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .closure,
         .lambda => return Value.initTagLiteral(@enumToInt(TagLit.function)),
         .none => return Value.initTagLiteral(@enumToInt(TagLit.none)),
+        .symbol => return Value.initTagLiteral(@enumToInt(TagLit.symbol)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }

@@ -457,6 +457,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             const numCaptured = pc[3].arg;
             return 6 + numCaptured;
         },
+        .sym,
         .forRange,
         .forRangeReverse,
         .setFieldRelease,
@@ -636,7 +637,7 @@ pub const OpCode = enum(u8) {
     /// [symId] [dstLocal]
     staticFunc,
 
-    /// Copies and retains a static variable to a destination register.
+    /// Copies and retains a static variable to a destination local.
     /// [symId] [dstLocal]
     staticVar,
 
@@ -644,12 +645,16 @@ pub const OpCode = enum(u8) {
     /// [symId] [local]
     setStaticVar,
 
+    /// Allocates a symbol object to a destination local.
+    /// [symType] [symId] [dst]
+    sym,
+
     /// Indicates the end of the main script.
     end,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 93);
+    try t.eq(std.enums.values(OpCode).len, 94);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

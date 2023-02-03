@@ -95,6 +95,16 @@ fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) 
                     try self.setReservedTempLocal(dst);
                 }
                 return self.initGenValue(dst, sema.AnyType);
+            } else if (rsym.symT == .object) {
+                const nameId = rsym.key.absResolvedSymKey.nameId;
+                const rtObjId = try self.compiler.vm.ensureStruct(nameId, 0);
+                try self.buf.pushOp1(.sym, @enumToInt(cy.heap.SymbolType.object));
+                try self.buf.pushOperandsRaw(std.mem.asBytes(&rtObjId));
+                try self.buf.pushOperand(dst);
+                if (!retain and self.isTempLocal(dst)) {
+                    try self.setReservedTempLocal(dst);
+                }
+                return self.initGenValue(dst, sema.AnyType);
             } else {
                 const sym = self.semaSyms.items[node.head.ident.semaSymId];
                 const name = sema.getSymName(self.compiler, &sym);

@@ -231,12 +231,38 @@ pub const ByteCodeBuffer = struct {
                     const end = pc[3].arg;
                     fmt.printStderr("{} {} recv={}, start={}, end={}\n", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
                 },
+                .constI8 => {
+                    const val = pc[1].arg;
+                    const dst = pc[2].arg;
+                    fmt.printStderr("{} {} val={} dst={}\n", &.{v(pcOffset), v(code), v(val), v(dst)});
+                },
+                .tryValue => {
+                    const local = pc[1].arg;
+                    const dst = pc[2].arg;
+                    const jump = @ptrCast(*const align(1) u16, pc + 3).*;
+                    fmt.printStderr("{} {} local={} dst={} jump={}\n", &.{v(pcOffset), v(code), v(local), v(dst), v(jump)});
+                },
+                .staticVar => {
+                    const symId = pc[1].arg;
+                    const dst = pc[2].arg;
+                    fmt.printStderr("{} {} sym={} dst={}\n", &.{v(pcOffset), v(code), v(symId), v(dst)});
+                },
+                .release => {
+                    const local = pc[1].arg;
+                    fmt.printStderr("{} {} local={}\n", &.{v(pcOffset), v(code), v(local)});
+                },
+                .fieldRetain => {
+                    const recv = pc[1].arg;
+                    const dst = pc[2].arg;
+                    const symId = pc[3].arg;
+                    fmt.printStderr("{} {} recv={}, dst={}, sym={}\n", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
+                },
                 .callSym => {
                     const startLocal = pc[1].arg;
                     const numArgs = pc[2].arg;
                     const numRet = pc[3].arg;
                     const symId = pc[4].arg;
-                    fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, symId={}\n", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
+                    fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}\n", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
                 },
                 .jumpNotCond => {
                     const jump = @ptrCast(*const align(1) u16, pc + 1).*;

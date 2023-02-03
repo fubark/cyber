@@ -1758,7 +1758,8 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                         if (funcSym.declId != cy.NullId) {
                             const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
                             const func = funcChunk.funcDecls[funcSym.declId];
-                            numArgs = try genCallArgs2(self, func, node.head.func_call.arg_head);
+                            const params = funcChunk.funcParams[func.params.start..func.params.end];
+                            numArgs = try genCallArgs2(self, params, node.head.func_call.arg_head);
                         } else {
                             numArgs = try genCallArgs(self, node.head.func_call.arg_head);
                         }
@@ -1819,8 +1820,10 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                     if (rsym.symT == .func) {
                         const funcSym = self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams).?;
                         if (funcSym.declId != cy.NullId) {
-                            const func = self.funcDecls[funcSym.declId];
-                            numArgs = try genCallArgs2(self, func, node.head.func_call.arg_head);
+                            const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
+                            const func = funcChunk.funcDecls[funcSym.declId];
+                            const params = funcChunk.funcParams[func.params.start..func.params.end];
+                            numArgs = try genCallArgs2(self, params, node.head.func_call.arg_head);
                             genArgs = true;
                         }
                         optFuncSym = funcSym;
@@ -1988,8 +1991,7 @@ fn genFuncDecl(self: *CompileChunk, nodeId: cy.NodeId) !void {
     }
 }
 
-fn genCallArgs2(self: *CompileChunk, func: cy.FuncDecl, first: cy.NodeId) !u32 {
-    const params = self.funcParams[func.params.start..func.params.end];
+fn genCallArgs2(self: *CompileChunk, params: []const cy.FunctionParam, first: cy.NodeId) !u32 {
     var numArgs: u32 = 0;
     var argId = first;
     while (argId != cy.NullId) : (numArgs += 1) {

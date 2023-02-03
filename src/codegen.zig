@@ -626,9 +626,9 @@ fn genRangeAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, reta
         if (dstIsUsed) {
             if (usedDstAsTemp) {
                 const leftDst = try self.nextFreeTempLocal();
-                leftv = try genConst(self, 0, leftDst);
+                leftv = try genConstNumber(self, 0, leftDst);
             } else {
-                leftv = try genConst(self, 0, dst);
+                leftv = try genConstNumber(self, 0, dst);
                 usedDstAsTemp = true;
             }
         }
@@ -796,7 +796,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                 if (requestedType.typeT == .int) {
                     return try genConstInt(self, val, dst);
                 } else {
-                    return try genConst(self, val, dst);
+                    return try genConstNumber(self, val, dst);
                 }
             } else {
                 return GenValue.initNoValue();
@@ -817,7 +817,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                 if (requestedType.typeT == .int) {
                     return try genConstInt(self, fval, dst);
                 } else {
-                    return try genConst(self, fval, dst);
+                    return try genConstNumber(self, fval, dst);
                 }
             } else {
                 return GenValue.initNoValue();
@@ -1449,7 +1449,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             // Set custom step.
             const rangeStep = try self.nextFreeTempLocal();
             try self.setReservedTempLocal(rangeStep);
-            _ = try genConst(self, 1, rangeStep);
+            _ = try genConstNumber(self, 1, rangeStep);
 
             const initPc = self.buf.ops.items.len;
             try self.buf.pushOpSlice(.forRangeInit, &.{ rangeStart.local, rangeEnd, rangeStep, counter, local, 0, 0 });
@@ -1675,7 +1675,7 @@ fn genConstInt(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
     return self.initGenValue(dst, sema.IntegerType);
 }
 
-fn genConst(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
+fn genConstNumber(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
     if (cy.Value.floatCanBeInteger(val)) {
         const i = @floatToInt(i64, val);
         if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {

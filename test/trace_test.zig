@@ -146,9 +146,9 @@ test "ARC assignments." {
         \\try t.eq(valtag(a[0]), #map)
     );
     try t.eq(trace.numRetainAttempts, 4);
-    try t.eq(trace.numReleaseAttempts, 6);
+    try t.eq(trace.numReleaseAttempts, 7);
     try t.eq(trace.numRetains, 4);
-    try t.eq(trace.numReleases, 3);
+    try t.eq(trace.numReleases, 4);
 }
 
 test "ARC for passing call args." {

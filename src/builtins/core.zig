@@ -790,8 +790,9 @@ pub fn string(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     }
 }
 
-pub fn valtag(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn valtag(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
+    defer vm.release(val);
     switch (val.getUserTag()) {
         .number => return Value.initTagLiteral(@enumToInt(TagLit.number)),
         .object => return Value.initTagLiteral(@enumToInt(TagLit.object)),

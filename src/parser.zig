@@ -3490,6 +3490,10 @@ pub const FuncDecl = struct {
     name: IndexSlice,
     params: IndexSlice,
     return_type: ?IndexSlice,
+
+    /// Sema block is attached to func decl so it can be accessed from anywhere with the node id.
+    semaBlockId: u32 = NullId,
+
     semaResolvedSymId: u32 = NullId,
     semaResolvedFuncSymId: u32 = NullId,
 };

@@ -440,7 +440,9 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: 
     if (dstIsUsed) {
         const jumpPc = try self.pushEmptyJump();
 
-        self.nextSemaBlock();
+        const func = self.funcDecls[node.head.func.decl_id];
+
+        try self.pushSemaBlock(func.semaBlockId);
         try self.pushBlock();
         self.curBlock.frameLoc = nodeId;
 
@@ -448,7 +450,6 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: 
         const opStart = @intCast(u32, self.buf.ops.items.len);
 
         // Generate function body.
-        const func = self.funcDecls[node.head.func.decl_id];
         try self.reserveFuncParams(func);
         try genInitLocals(self);
         const numParams = @intCast(u8, func.params.end - func.params.start);
@@ -466,7 +467,7 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: 
         self.blockJumpStack.items.len = jumpStackStart;
 
         self.popBlock();
-        self.prevSemaBlock();
+        self.popSemaBlock();
 
         if (numCaptured == 0) {
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
@@ -511,12 +512,12 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
     if (dstIsUsed) {
         const jumpPc = try self.pushEmptyJump();
 
-        self.nextSemaBlock();
+        const func = self.funcDecls[node.head.func.decl_id];
+        try self.pushSemaBlock(func.semaBlockId);
         try self.pushBlock();
         const opStart = @intCast(u32, self.buf.ops.items.len);
 
         // Generate function body.
-        const func = self.funcDecls[node.head.func.decl_id];
         try self.reserveFuncParams(func);
         try genInitLocals(self);
         const numParams = @intCast(u8, func.params.end - func.params.start);
@@ -530,7 +531,7 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
         const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
 
         self.popBlock();
-        self.prevSemaBlock();
+        self.popSemaBlock();
 
         if (numCaptured == 0) {
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
@@ -1912,7 +1913,7 @@ fn genFuncDecl(self: *CompileChunk, nodeId: cy.NodeId) !void {
     const jumpPc = try self.pushEmptyJump();
 
     try self.pushBlock();
-    self.nextSemaBlock();
+    try self.pushSemaBlock(func.semaBlockId);
     self.curBlock.frameLoc = nodeId;
     self.curBlock.resolvedFuncSymId = func.semaResolvedFuncSymId;
 
@@ -1936,7 +1937,7 @@ fn genFuncDecl(self: *CompileChunk, nodeId: cy.NodeId) !void {
     self.patchBlockJumps(jumpStackStart);
     self.blockJumpStack.items.len = jumpStackStart;
 
-    self.prevSemaBlock();
+    self.popSemaBlock();
     self.popBlock();
 
     if (numCaptured > 0) {
@@ -2094,7 +2095,7 @@ fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: 
     const jumpPc = try self.pushEmptyJump();
 
     try self.pushBlock();
-    self.nextSemaBlock();
+    try self.pushSemaBlock(func.semaBlockId);
 
     const opStart = @intCast(u32, self.buf.ops.items.len);
     try self.reserveFuncParams(func);
@@ -2106,7 +2107,7 @@ fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: 
     // Reserve another local for the call return info.
     const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
 
-    self.prevSemaBlock();
+    self.popSemaBlock();
     self.popBlock();
 
     self.patchJumpToCurrent(jumpPc);

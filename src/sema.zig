@@ -258,12 +258,12 @@ pub const Block = struct {
     /// This can be deinited after ending the sema block.
     nameToVar: std.StringHashMapUnmanaged(LocalVarId),
 
+    /// First sub block id is recorded so the rest can be obtained by advancing
+    /// the id in the same order it was traversed in the sema pass.
+    firstSubBlockId: SubBlockId,
+
     /// Current sub block depth.
     subBlockDepth: u32,
-
-    /// Previous sema block.
-    /// When this block ends, the previous block id is set as the current.
-    prevBlockId: BlockId,
 
     /// If the return type is not provided, sema tries to infer it.
     /// It won't try to infer non-trivial cases.
@@ -272,15 +272,15 @@ pub const Block = struct {
     hasRetType: bool,
     inferRetType: bool,
 
-    pub fn init(prevBlockId: BlockId) Block {
+    pub fn init(firstSubBlockId: SubBlockId) Block {
         return .{
             .nameToVar = .{},
             .locals = .{},
             .params = .{},
             .subBlockDepth = 0,
-            .prevBlockId = prevBlockId,
             .hasRetType = false,
             .inferRetType = false,
+            .firstSubBlockId = firstSubBlockId,
             .retType = undefined,
         };
     }
@@ -724,7 +724,8 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     const paramName = c.src[param.name.start..param.name.end];
                     if (std.mem.eql(u8, paramName, "self")) {
                         // Struct method.
-                        try pushBlock(c);
+                        const blockId = try pushBlock(c);
+                        c.funcDecls[func.head.func.decl_id].semaBlockId = blockId;
                         errdefer endBlock(c) catch stdx.fatal();
                         try pushMethodParamVars(c, decl);
                         try semaStmts(c, func.head.func.body_head, false);
@@ -744,7 +745,8 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     return c.reportErrorAt("Symbol `{}` is already declared.", &.{v(funcName)}, nodeId);
                 }
 
-                try pushBlock(c);
+                const blockId = try pushBlock(c);
+                c.funcDecls[func.head.func.decl_id].semaBlockId = blockId;
                 errdefer endBlock(c) catch stdx.fatal();
                 try pushFuncParamVars(c, decl);
                 try semaStmts(c, func.head.func.body_head, false);
@@ -921,7 +923,7 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
         }
     }
 
-    try pushBlock(c);
+    const blockId = try pushBlock(c);
     if (retType == null) {
         curBlock(c).inferRetType = true;
     }
@@ -942,6 +944,7 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, node.head.func.decl_id, retType.?, exported);
     c.funcDecls[node.head.func.decl_id].semaResolvedSymId = res.resolvedSymId;
     c.funcDecls[node.head.func.decl_id].semaResolvedFuncSymId = res.resolvedFuncSymId;
+    c.funcDecls[node.head.func.decl_id].semaBlockId = blockId;
     c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
 }
 
@@ -1365,10 +1368,11 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
         },
         .lambda_multi => {
             if (!discardTopExprReg) {
-                try pushBlock(c);
+                const blockId = try pushBlock(c);
 
                 // Generate function body.
                 const func = c.funcDecls[node.head.func.decl_id];
+                c.funcDecls[node.head.func.decl_id].semaBlockId = blockId;
                 try pushFuncParamVars(c, func);
                 try semaStmts(c, node.head.func.body_head, false);
 
@@ -1379,10 +1383,11 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
         },
         .lambda_expr => {
             if (!discardTopExprReg) {
-                try pushBlock(c);
+                const blockId = try pushBlock(c);
 
                 // Generate function body.
                 const func = c.funcDecls[node.head.func.decl_id];
+                c.funcDecls[node.head.func.decl_id].semaBlockId = blockId;
                 try pushFuncParamVars(c, func);
                 _ = try semaExpr(c, node.head.func.body_head, false);
 
@@ -1395,12 +1400,14 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
     }
 }
 
-pub fn pushBlock(self: *cy.CompileChunk) !void {
-    const prevId = self.curSemaBlockId;
+pub fn pushBlock(self: *cy.CompileChunk) !BlockId {
     self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
-    try self.semaBlocks.append(self.alloc, Block.init(prevId));
+    const nextSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
+    try self.semaBlocks.append(self.alloc, Block.init(nextSubBlockId));
+    try self.semaBlockStack.append(self.alloc, self.curSemaBlockId);
     self.semaBlockDepth += 1;
     try pushSubBlock(self);
+    return self.curSemaBlockId;
 }
 
 fn pushSubBlock(self: *cy.CompileChunk) !void {
@@ -1730,10 +1737,10 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
 }
 
 fn lookupParentLocal(c: *cy.CompileChunk, name: []const u8) ?LocalVarId {
-    const sblock = curBlock(c);
     // Only check one block above.
     if (c.semaBlockDepth > 1) {
-        const prev = c.semaBlocks.items[sblock.prevBlockId];
+        const prevId = c.semaBlockStack.items[c.semaBlockStack.items.len-2];
+        const prev = c.semaBlocks.items[prevId];
         if (prev.nameToVar.get(name)) |varId| {
             if (!c.vars.items[varId].isStaticAlias) {
                 return varId;
@@ -2058,7 +2065,8 @@ pub fn endBlock(self: *cy.CompileChunk) !void {
     try endSubBlock(self);
     const sblock = curBlock(self);
     sblock.nameToVar.deinit(self.alloc);
-    self.curSemaBlockId = sblock.prevBlockId;
+    self.semaBlockStack.items.len -= 1;
+    self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
     self.semaBlockDepth -= 1;
 }
 
@@ -2116,7 +2124,8 @@ fn lookupVar(self: *cy.CompileChunk, name: []const u8, searchParentScope: bool) 
     if (searchParentScope) {
         // Only check one block above.
         if (self.semaBlockDepth > 1) {
-            const prev = self.semaBlocks.items[sblock.prevBlockId];
+            const prevId = self.semaBlockStack.items[self.semaBlockStack.items.len-2];
+            const prev = self.semaBlocks.items[prevId];
             if (prev.nameToVar.get(name)) |varId| {
                 return VarResult{
                     .id = varId,

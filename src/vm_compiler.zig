@@ -219,9 +219,7 @@ pub const VMcompiler = struct {
 
             // Set up for genVarDecls.
             // All main blocks should be initialized since genVarDecls can alternate chunks.
-            chunk.nextSemaBlockId = 1;
-            chunk.nextSemaSubBlockId = 1;
-            _ = chunk.nextSemaBlock();
+            try chunk.pushSemaBlock(chunk.mainSemaBlockId);
             try chunk.pushBlock();
             chunk.buf = &self.buf;
         }
@@ -291,7 +289,7 @@ pub const VMcompiler = struct {
 
         // Dummy first element to avoid len > 0 check during pop.
         try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
-        try chunk.semaBlocks.append(self.alloc, sema.Block.init(0));
+        try chunk.semaBlockStack.append(self.alloc, 0);
 
         chunk.semaBlockDepth = 0;
 
@@ -316,7 +314,7 @@ pub const VMcompiler = struct {
             _ = try sema.ensureSym(chunk, null, nameId, null);
         }
 
-        try sema.pushBlock(chunk);
+        chunk.mainSemaBlockId = try sema.pushBlock(chunk);
         sema.semaStmts(chunk, root.head.child_head, true) catch |err| {
             try sema.endBlock(chunk);
             return err;
@@ -539,7 +537,6 @@ pub const CompileChunk = struct {
     semaSymFirstNodes: std.ArrayListUnmanaged(cy.NodeId),
     semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.SymRef),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
-    semaBlockDepth: u32,
     curSemaBlockId: sema.BlockId,
     curSemaSubBlockId: sema.SubBlockId,
     /// Which sema sym var is currently being analyzed for an assignment initializer.
@@ -550,6 +547,12 @@ pub const CompileChunk = struct {
     bufU32: std.ArrayListUnmanaged(u32),
     /// The resolved sym id of this chunk.
     semaResolvedRootSymId: sema.ResolvedSymId,
+    /// Current block stack.
+    semaBlockStack: std.ArrayListUnmanaged(sema.BlockId),
+    /// Since `semaBlockStack` has a dummy head element, this will track `semaBlockStack.items.len-1`.
+    semaBlockDepth: u32,
+    /// Main sema block id.
+    mainSemaBlockId: sema.BlockId,
 
     ///
     /// Codegen pass
@@ -560,8 +563,7 @@ pub const CompileChunk = struct {
     /// Tracks which temp locals are reserved. They are skipped for temp local allocations.
     reservedTempLocalStack: std.ArrayListUnmanaged(ReservedTempLocal),
     operandStack: std.ArrayListUnmanaged(cy.OpData),
-    /// Used to advance to the next saved sema block.
-    nextSemaBlockId: u32,
+    /// Used to advance to the next saved sema sub block.
     nextSemaSubBlockId: u32,
     curBlock: *GenBlock,
     /// Shared code buffer.
@@ -609,7 +611,6 @@ pub const CompileChunk = struct {
             .curBlock = undefined,
             .curSemaBlockId = undefined,
             .curSemaSubBlockId = undefined,
-            .nextSemaBlockId = undefined,
             .nextSemaSubBlockId = undefined,
             .buf = undefined,
             .curNodeId = cy.NullId,
@@ -621,6 +622,8 @@ pub const CompileChunk = struct {
             .srcOwned = false,
             .modId = cy.NullId,
             .semaResolvedRootSymId = cy.NullId,
+            .semaBlockStack = .{},
+            .mainSemaBlockId = cy.NullId,
         };
         try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
         try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
@@ -639,6 +642,7 @@ pub const CompileChunk = struct {
             sblock.deinit(self.alloc);
         }
         self.semaBlocks.deinit(self.alloc);
+        self.semaBlockStack.deinit(self.alloc);
 
         self.blocks.deinit(self.alloc);
 
@@ -664,9 +668,10 @@ pub const CompileChunk = struct {
         }
     }
 
-    pub fn nextSemaBlock(self: *CompileChunk) void {
-        self.curSemaBlockId = self.nextSemaBlockId;
-        self.nextSemaBlockId += 1;
+    pub fn pushSemaBlock(self: *CompileChunk, id: sema.BlockId) !void {
+        try self.semaBlockStack.append(self.alloc, id);
+        self.curSemaBlockId = id;
+        self.nextSemaSubBlockId = self.semaBlocks.items[id].firstSubBlockId;
         self.nextSemaSubBlock();
     }
 
@@ -674,8 +679,9 @@ pub const CompileChunk = struct {
         self.curSemaSubBlockId = sema.curSubBlock(self).prevSubBlockId;
     }
 
-    pub fn prevSemaBlock(self: *CompileChunk) void {
-        self.curSemaBlockId = sema.curBlock(self).prevBlockId;
+    pub fn popSemaBlock(self: *CompileChunk) void {
+        self.semaBlockStack.items.len -= 1;
+        self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
         self.prevSemaSubBlock();
     }
 

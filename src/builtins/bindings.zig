@@ -410,6 +410,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
     }
 
+    id = try self.addStruct("Symbol");
+    std.debug.assert(id == cy.SymbolT);
+
     const sid = try self.addStruct("CFunc");
     self.structs.buf[sid].numFields = 3;
     id = try self.ensureFieldSym("sym");

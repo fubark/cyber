@@ -80,6 +80,9 @@ pub const TagLit = enum {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
+pub var CFuncT: cy.TypeId = undefined;
+pub var CStructT: cy.TypeId = undefined;
+
 pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
 
@@ -413,14 +416,21 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addStruct("Symbol");
     std.debug.assert(id == cy.SymbolT);
 
-    const sid = try self.addStruct("CFunc");
-    self.structs.buf[sid].numFields = 3;
+    CFuncT = try self.addStruct("CFunc");
+    self.structs.buf[CFuncT].numFields = 3;
     id = try self.ensureFieldSym("sym");
-    try self.addFieldSym(sid, id, 0);
+    try self.addFieldSym(CFuncT, id, 0);
     id = try self.ensureFieldSym("args");
-    try self.addFieldSym(sid, id, 1);
+    try self.addFieldSym(CFuncT, id, 1);
     id = try self.ensureFieldSym("ret");
-    try self.addFieldSym(sid, id, 2);
+    try self.addFieldSym(CFuncT, id, 2);
+
+    CStructT = try self.addStruct("CStruct");
+    self.structs.buf[CStructT].numFields = 2;
+    id = try self.ensureFieldSym("fields");
+    try self.addFieldSym(CStructT, id, 0);
+    id = try self.ensureFieldSym("type");
+    try self.addFieldSym(CStructT, id, 1);
 
     try ensureTagLitSym(self, "int", .int);
     try ensureTagLitSym(self, "bool", .bool);

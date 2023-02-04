@@ -245,6 +245,13 @@ pub const Value = packed union {
         return self.val & PointerMask == PointerMask;
     }
 
+    pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
+        if (isPointer(self)) {
+            return self.asHeapObject(*const cy.HeapObject).common.structId == typeId;
+        }
+        return false;
+    }
+
     pub inline fn asPointer(self: *const Value) linksection(cy.HotSection) ?*anyopaque {
         return @intToPtr(?*anyopaque, @intCast(usize, self.val & ~PointerMask));
     }
@@ -595,4 +602,5 @@ test "Internals." {
     try t.eq(StaticUstringMask, 0x7FFC000400000000);
     try t.eq(NoneMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
+    try t.eq(PointerMask, 0xFFFC000000000000);
 }

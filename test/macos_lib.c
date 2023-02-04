@@ -5,6 +5,7 @@
 // Build: clang -shared -o macos_lib.dylib macos_lib.c -arch arm64 -arch x86_64
 
 #include <string.h>
+#include <stdlib.h>
 
 #define bool _Bool
 #define uint64_t unsigned long long
@@ -44,6 +45,7 @@ double testF64(double n) {
 char buf[10];
 char* testCharPtrZ(char* ptr) {
     strcpy(buf, ptr);
+    free(ptr);
     return &buf[0];
 }
 void* testPtr(void* ptr) {
@@ -53,4 +55,21 @@ void testVoid() {
 }
 bool testBool(bool b) {
     return b;
+}
+
+typedef struct MyObject{
+    double a;
+    char* b;
+    bool c;
+} MyObject;
+
+MyObject testObject(MyObject o) {
+    strcpy(buf, o.b);
+    free(o.b);
+    MyObject new = {
+        .a = o.a,
+        .b = (char*)&buf,
+        .c = o.c,
+    };
+    return new;
 }

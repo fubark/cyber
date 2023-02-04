@@ -1414,6 +1414,22 @@ The `CFunc` object lets you declare the argument and return types as [tag litera
 | #charPtrZ | rawstring | char* (null terminated) |
 | #ptr | opaque | void* |
 
+When `#charPtrZ` is an argument, a Cyber string is duped to become null terminated and the c function is responsible for calling `free` on the `char*` pointer.
+
+You can also bind object types to C structs using the `CStruct` declaration.
+```text
+object MyObject
+    a number
+    b string
+    c bool
+
+lib = bindLib('mylib.so', [
+    CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
+    CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+])
+res = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
+```
+
 `bindLib` returns a map of the binded functions with the symbols as keys. These functions have a reference to an internal TCCState which owns the loaded JIT code.
 Once all the native functions have been released by ARC, the TCCState cleans up and removes the JIT code from memory.
 

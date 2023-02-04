@@ -302,7 +302,7 @@ const RawStringSlice = extern struct {
     }
 };
 
-const Object = extern struct {
+pub const Object = extern struct {
     structId: cy.TypeId,
     rc: u32,
     firstValue: Value,
@@ -1275,6 +1275,25 @@ pub fn allocObject(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
     return Value.initPtr(obj);
 }
 
+pub fn allocEmptyObject(self: *cy.VM, sid: cy.TypeId, numFields: u32) !Value {
+    // First slot holds the structId and rc.
+    const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 1 + numFields);
+    const obj = @ptrCast(*Object, objSlice.ptr);
+    obj.* = .{
+        .structId = sid,
+        .rc = 1,
+        .firstValue = undefined,
+    };
+    if (cy.TraceEnabled) {
+        self.trace.numRetains += 1;
+        self.trace.numRetainAttempts += 1;
+    }
+    if (cy.TrackGlobalRC) {
+        self.refCounts += 1;
+    }
+    return Value.initPtr(obj);
+}
+
 pub fn allocObjectSmall(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
@@ -1286,6 +1305,16 @@ pub fn allocObjectSmall(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Va
     const dst = obj.object.getValuesPtr();
     std.mem.copy(Value, dst[0..fields.len], fields);
 
+    return Value.initPtr(obj);
+}
+
+pub fn allocEmptyObjectSmall(self: *cy.VM, sid: cy.TypeId) !Value {
+    const obj = try allocPoolObject(self);
+    obj.object = .{
+        .structId = sid,
+        .rc = 1,
+        .firstValue = undefined,
+    };
     return Value.initPtr(obj);
 }
 

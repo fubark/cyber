@@ -271,14 +271,12 @@ test "FFI." {
         export fn testF64(n: f64) f64 {
             return n;
         }
-        export fn testCharPtrZ(ptr: [*:0]const u8) [*:0]const u8 {
-            const S = struct {
-                var buf: [10]u8 = undefined;
-            };
+        export fn testCharPtrZ(ptr: [*:0]u8) [*:0]const u8 {
             const slice = std.mem.span(ptr);
-            std.mem.copy(u8, &S.buf, slice);
-            S.buf[slice.len] = 0;
-            return @ptrCast([*:0]const u8, &S.buf);
+            std.mem.copy(u8, &buf, slice);
+            buf[slice.len] = 0;
+            std.c.free(ptr);
+            return @ptrCast([*:0]const u8, &buf);
         }
         export fn testPtr(ptr: *anyopaque) *anyopaque {
             return ptr;
@@ -288,6 +286,23 @@ test "FFI." {
         export fn testBool(b: bool) bool {
             return b;
         }
+        const MyObject = extern struct {
+            a: f64,
+            b: [*:0]u8,
+            c: bool,
+        };
+        export fn testObject(o: MyObject) MyObject {
+            const slice = std.mem.span(o.b);
+            std.mem.copy(u8, &buf, slice);
+            buf[slice.len] = 0;
+            std.c.free(o.b);
+            return MyObject{
+                .a = o.a,
+                .b = @ptrCast([*:0]u8, &buf),
+                .c = o.c,
+            };
+        }
+        var buf: [10]u8 = undefined;
     };
     _ = S;
 

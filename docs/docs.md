@@ -1409,6 +1409,9 @@ The `CFunc` object lets you declare the argument and return types as [tag litera
 | #u16 | number | uint16_t, unsigned short | 
 | #int, #i32 | number | int |
 | #u32 | number | uint32_t, unsigned int |
+| #i64 | number | int64_t, long long | 
+| #u64 | number | uint64_t, unsigned long long | 
+| #usize | number | size_t, uintptr_t | 
 | #f32 | number | float |
 | #f64 | number | double |
 | #charPtrZ | rawstring | char* (null terminated) |

@@ -32,6 +32,9 @@ lib = try bindLib(libPath, [
   CFunc{ sym: 'testU16', args: [#u16], ret: #u16 }
   CFunc{ sym: 'testI32', args: [#i32], ret: #i32 }
   CFunc{ sym: 'testU32', args: [#u32], ret: #u32 }
+  CFunc{ sym: 'testI64', args: [#i64], ret: #i64 }
+  CFunc{ sym: 'testU64', args: [#u64], ret: #u64 }
+  CFunc{ sym: 'testUSize', args: [#usize], ret: #usize }
   CFunc{ sym: 'testF32', args: [#f32], ret: #f32 }
   CFunc{ sym: 'testF64', args: [#f64], ret: #f64 }
   CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
@@ -48,6 +51,9 @@ try t.eq(lib.testI16(-32768), -32768)
 try t.eq(lib.testU16(65535), 65535)
 try t.eq(lib.testI32(-2147483648), -2147483648)
 try t.eq(lib.testU32(4294967295), 4294967295)
+try t.eq(lib.testI64(-123456789000), -123456789000)
+try t.eq(lib.testU64(123456789000), 123456789000)
+try t.eq(lib.testUSize(123456789000), 123456789000)
 try t.eqNear(lib.testF32(1.2345), 1.2345)
 try t.eq(lib.testF64(1.2345), 1.2345)
 

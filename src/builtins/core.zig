@@ -111,6 +111,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
                 .i16 => return "int16_t",
                 .u16 => return "uint16_t",
                 .u32 => return "uint32_t",
+                .i64 => return "int64_t",
+                .u64 => return "uint64_t",
+                .usize => return "size_t",
                 .float,
                 .f32 => return "float",
                 .double,
@@ -148,6 +151,15 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
                 .u32 => {
                     try w.print("(uint32_t)*(double*)&args[{}]", .{i});
                 },
+                .i64 => {
+                    try w.print("(int64_t)*(double*)&args[{}]", .{i});
+                },
+                .u64 => {
+                    try w.print("(uint64_t)*(double*)&args[{}]", .{i});
+                },
+                .usize => {
+                    try w.print("(size_t)*(double*)&args[{}]", .{i});
+                },
                 .float,
                 .f32 => {
                     try w.print("(float)*(double*)&args[{}]", .{i});
@@ -175,6 +187,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
                 .u16,
                 .i32,
                 .u32,
+                .i64,
+                .u64,
+                .usize,
                 .f32,
                 .float,
                 .f64,
@@ -292,9 +307,12 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
     defer csrc.deinit(alloc);
     const w = csrc.writer(alloc);
 
-    w.print(
+    try w.print(
         \\#define bool _Bool
+        \\#define int64_t long long
         \\#define uint64_t unsigned long long
+        // Check for 32bit addressing.
+        \\#define size_t uint64_t
         \\#define int8_t signed char
         \\#define uint8_t unsigned char
         \\#define int16_t short
@@ -309,7 +327,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
         \\extern uint64_t icyAllocObject(uint32_t);
         \\extern uint64_t icyAllocOpaquePtr(void*);
         \\
-    , .{}) catch stdx.fatal();
+    , .{});
 
     var iter = symToCStructFields.iterator();
     while (iter.next()) |e| {
@@ -414,6 +432,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
                 .u16,
                 .i32,
                 .u32,
+                .i64,
+                .u64,
+                .usize,
                 .f32,
                 .float,
                 .int => {

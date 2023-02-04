@@ -265,6 +265,15 @@ test "FFI." {
         export fn testU32(n: u32) u32 {
             return n;
         }
+        export fn testI64(n: i64) i64 {
+            return n;
+        }
+        export fn testU64(n: u64) u64 {
+            return n;
+        }
+        export fn testUSize(n: usize) usize {
+            return n;
+        }
         export fn testF32(n: f32) f32 {
             return n;
         }

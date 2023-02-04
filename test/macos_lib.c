@@ -8,6 +8,7 @@
 #include <stdlib.h>
 
 #define bool _Bool
+#define int64_t long long
 #define uint64_t unsigned long long
 #define int8_t signed char
 #define uint8_t unsigned char
@@ -34,6 +35,15 @@ int testI32(int n) {
     return n;
 }
 uint32_t testU32(uint32_t n) {
+    return n;
+}
+int64_t testI64(int64_t n) {
+    return n;
+}
+uint64_t testU64(uint64_t n) {
+    return n;
+}
+size_t testUSize(size_t n) {
     return n;
 }
 float testF32(float n) {

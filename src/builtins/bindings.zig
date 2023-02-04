@@ -26,6 +26,9 @@ pub const TagLit = enum {
     u16,
     i32,
     u32,
+    i64,
+    u64,
+    usize,
     f32,
     f64,
     float,
@@ -440,6 +443,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "u16", .u16);
     try ensureTagLitSym(self, "i32", .i32);
     try ensureTagLitSym(self, "u32", .u32);
+    try ensureTagLitSym(self, "i64", .i64);
+    try ensureTagLitSym(self, "u64", .u64);
+    try ensureTagLitSym(self, "usize", .usize);
     try ensureTagLitSym(self, "f32", .f32);
     try ensureTagLitSym(self, "f64", .f64);
     try ensureTagLitSym(self, "float", .float);

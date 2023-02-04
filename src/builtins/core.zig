@@ -524,6 +524,10 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
     }
 
     // const __floatundisf = @extern(*anyopaque, .{ .name = "__floatundisf", .linkage = .Strong });
+    if (builtin.cpu.arch != .aarch64) {
+        _ = tcc.tcc_add_symbol(state, "__fixunsdfdi", __fixunsdfdi);
+        _ = tcc.tcc_add_symbol(state, "__floatundidf", __floatundidf);
+    }
     // _ = tcc.tcc_add_symbol(state, "__floatundisf", __floatundisf);
     // _ = tcc.tcc_add_symbol(state, "printU64", printU64);
     // _ = tcc.tcc_add_symbol(state, "printF64", printF64);
@@ -582,6 +586,8 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
     return try vm.allocObjectSmall(sid, &.{cyState});
 }
 
+extern fn __floatundidf(u64) f64;
+extern fn __fixunsdfdi(f64) u64;
 extern fn memmove(dst: *anyopaque, src: *anyopaque, num: usize) *anyopaque;
 
 pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

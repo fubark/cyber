@@ -514,6 +514,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
     _ = tcc.tcc_add_symbol(state, "icyGetPtr", cGetPtr);
     _ = tcc.tcc_add_symbol(state, "icyAllocOpaquePtr", cAllocOpaquePtr);
     _ = tcc.tcc_add_symbol(state, "icyAllocObject", cAllocObject);
+    if (builtin.cpu.arch == .aarch64) {
+        _ = tcc.tcc_add_symbol(state, "memmove", memmove);
+    }
 
     // Add binded symbols.
     for (cfuncs.items) |cfunc| {

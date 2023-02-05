@@ -48,6 +48,8 @@
         - [os](#os-module)
         - [test](#test-module)
 - [FFI](#ffi)
+    - [CFunc](#cfunc)
+    - [CStruct](#cstruct)
 - [Error Handling](#error-handling)
 - [Concurrency](#concurrency)
     - [Fibers](#fibers)
@@ -1385,23 +1387,19 @@ try t.eq(a, 444)
 ### FFI.
 Cyber supports binding to an existing C ABI compatible library at runtime.
 This allows you to call into dynamic libraries created in C or other languages.
-Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bindLib` is part of the core library and accepts the path to the library as a string and a list of CFunc declarations.
+Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bindLib` is part of the core library and accepts the path to the library as a string and a list of [CFunc](#cfunc) or [CStruct](#cstruct) declarations.
+
 ```text
 lib = bindLib('mylib.so', [
     CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
 ```
-mylib.so would declare their function like this in C:
-```c
-int add(int a, int b) {
-    return a + b;
-}
-```
+
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own embedded Cyber app/runtime.
 
-The `CFunc` object lets you declare the argument and return types as [tag literals](#tags). `bindLib` then uses these declarations to generate functions that convert Cyber values to C and back. The following binding types and conversions are supported:
-
+When using `CFunc` or `CStruct` declarations, [tag literals](#tags) are used to map primitive types from Cyber to C and back.
+The following binding types and conversions are supported:
 | Binding Type | Cyber | C |
 | ------------- | ------------- | ----- |
 | #bool | bool | bool |
@@ -1419,9 +1417,35 @@ The `CFunc` object lets you declare the argument and return types as [tag litera
 | #charPtrZ | rawstring | char* (null terminated) |
 | #ptr | opaque | void* |
 
-When `#charPtrZ` is an argument, a Cyber string is duped to become null terminated and the c function is responsible for calling `free` on the `char*` pointer.
+When `#charPtrZ` is declared as a binding to C, a Cyber string is duped to become null terminated and the C-function is responsible for calling `free` on the `char*` pointer.
 
-You can also bind object types to C structs using the `CStruct` declaration.
+`bindLib` returns an object with the binded C-functions as methods.
+This object has a reference to an internal TCCState which owns the loaded JIT code.
+Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
+
+[To Top.](#table-of-contents)
+
+### CFunc.
+The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-function's symbol name in the dynamic library. The `args` field declares the type mapping from Cyber to C-function's arguments. Finally, the `ret` field declares the type mapping from the C-function's return type to a Cyber type.
+
+```text
+lib = bindLib('mylib.so', [
+    CFunc{ sym: 'add', args: [#int, #int], ret: #int }
+])
+lib.add(123, 321)
+```
+The example above maps to this C declaration in `mylib.so`:
+```c
+int add(int a, int b) {
+    return a + b;
+}
+```
+
+[To Top.](#table-of-contents)
+
+### CStruct.
+You can also bind object types to C-structs using the `CStruct` object. The `type` field accepts an object type symbol and `fields` indicates the mapping for each field in `type` to and from a C-struct.
+After adding a `CStruct` declaration, you can use the object type symbol in CFunc `args` and `ret` and also other CStruct `fields`.
 ```text
 object MyObject
     a number
@@ -1434,9 +1458,18 @@ lib = bindLib('mylib.so', [
 ])
 res = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
 ```
+The example above maps to these C declarations in `mylib.so`:
+```c
+typedef struct MyObject {
+    double a;
+    char* b;
+    bool c;
+} MyObject;
 
-`bindLib` returns a map of the binded functions with the symbols as keys. These functions have a reference to an internal TCCState which owns the loaded JIT code.
-Once all the native functions have been released by ARC, the TCCState cleans up and removes the JIT code from memory.
+MyObject foo(MyObject o) {
+    // Do something.
+}
+```
 
 [To Top.](#table-of-contents)
 

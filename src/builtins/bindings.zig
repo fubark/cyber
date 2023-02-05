@@ -2239,6 +2239,13 @@ pub fn nop2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return Value.None;
 }
 
+pub fn nop3(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    vm.release(args[0]);
+    vm.release(args[1]);
+    vm.release(args[2]);
+    return Value.None;
+}
+
 pub fn objNop0(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
     vm.releaseObject(obj);

@@ -77,3 +77,10 @@ try t.eq(lib.testVoid(), none)
 -- bool arg and bool return.
 try t.eq(lib.testBool(true), true)
 try t.eq(lib.testBool(false), false)
+
+-- bindLib that returns a map of functions.
+lib = try bindLib(libPath, [
+  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+], { genMap: true })
+testAdd = lib['testAdd']
+try t.eq(testAdd(123, 321), 444)

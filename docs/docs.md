@@ -1199,7 +1199,8 @@ print contents
 | `arrayFill(val any, n number) list` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | `asciiCode(val any) number` | Converts the first character of a string to an ASCII code number. | 
 | `bool(val any) bool` | Converts a value to either `true` or `false`. | 
-| `bindLib(fns []CFunc) map` | Creates an FFI binding to a dynamic library and it's symbols. | 
+| `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
+| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 
 | `char(val any) number` | Deprecated: Use `asciiCode` instead. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
@@ -1419,8 +1420,8 @@ The following binding types and conversions are supported:
 
 When `#charPtrZ` is declared as a binding to C, a Cyber string is duped to become null terminated and the C-function is responsible for calling `free` on the `char*` pointer.
 
-`bindLib` returns an object with the binded C-functions as methods.
-This object has a reference to an internal TCCState which owns the loaded JIT code.
+By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for using it like an object, but it's less optimal compared to binding as functions. If a config is passed into `bindLib` as the third argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
+The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
 Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.
 
 [To Top.](#table-of-contents)

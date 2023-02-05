@@ -996,7 +996,7 @@ pub const VM = struct {
         }
     }
 
-    fn getIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
+    pub fn getIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, left.asPointer().?);
             switch (obj.retainedCommon.structId) {

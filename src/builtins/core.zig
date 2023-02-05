@@ -23,8 +23,10 @@ pub fn initModule(self: *cy.VMcompiler) !cy.Module {
     try mod.setNativeFunc(self, "asciiCode", 1, asciiCode);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
+        try mod.setNativeFunc(self, "bindLib", 3, bindings.nop3);
     } else {
         try mod.setNativeFunc(self, "bindLib", 2, bindLib);
+        try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
     }
     try mod.setNativeFunc(self, "bool", 1, coreBool);
     try mod.setNativeFunc(self, "char", 1, char);
@@ -88,13 +90,38 @@ pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 }
 
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return doBindLib(vm, args) catch |err| {
+    return @call(.never_inline, doBindLib, .{vm, args, .{}}) catch |err| {
         log.debug("{}", .{err});
         stdx.fatal();
     };
 }
 
-fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
+pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    var configV = args[2];
+    const ivm = @ptrCast(*cy.VM, vm);
+    const genMapV = vm.allocAstring("genMap") catch stdx.fatal();
+    defer {
+        vm.release(args[2]);
+        vm.release(genMapV);
+    }
+    var config: BindLibConfig = .{};
+    const val = ivm.getIndex(&configV, genMapV) catch stdx.fatal();
+    if (val.isTrue()) {
+        config.genMap = true;
+    }
+    return @call(.never_inline, doBindLib, .{vm, args, config}) catch |err| {
+        log.debug("{}", .{err});
+        stdx.fatal();
+    };
+}
+
+const BindLibConfig = struct {
+    /// Whether bindLib generates the binding to an anonymous object type as methods
+    /// or a map with functions.
+    genMap: bool = false,
+};
+
+fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value {
     const CFuncData = struct {
         decl: Value,
         symPtr: *anyopaque,
@@ -311,7 +338,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
         \\#define bool _Bool
         \\#define int64_t long long
         \\#define uint64_t unsigned long long
-        // Check for 32bit addressing.
+        // TODO: Check for 32bit addressing.
         \\#define size_t uint64_t
         \\#define int8_t signed char
         \\#define uint8_t unsigned char
@@ -411,7 +438,11 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
         }
         try w.print(");\n", .{});
 
-        try w.print("uint64_t cy{s}(void* vm, void* obj, uint64_t* args, char numArgs) {{\n", .{sym});
+        if (config.genMap) {
+            try w.print("uint64_t cy{s}(void* vm, uint64_t* args, char numArgs) {{\n", .{sym});
+        } else {
+            try w.print("uint64_t cy{s}(void* vm, void* obj, uint64_t* args, char numArgs) {{\n", .{sym});
+        }
         // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
 
         // Gen call.
@@ -495,8 +526,11 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
                 }
             }
         }
-        // Release obj.
-        try w.print("  icyRelease(((uint64_t)obj) | 0xFFFC000000000000);\n", .{});
+
+        if (!config.genMap) {
+            // Release obj.
+            try w.print("  icyRelease(((uint64_t)obj) | 0xFFFC000000000000);\n", .{});
+        }
 
         // Gen return.
         try w.print("  return ", .{});
@@ -555,35 +589,58 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value) !Value {
         stdx.panic("Failed to relocate compiled code.");
     }
 
-    // Create vm function pointers and put in anonymous struct.
-    const nameId = try cy.sema.ensureNameSym(&ivm.compiler, "BindLib");
-    const sid = try ivm.ensureStruct(nameId, @intCast(u32, ivm.structs.len));
-    const tccField = try ivm.ensureFieldSym("tcc");
-    ivm.structs.buf[sid].numFields = 1;
-    try ivm.addFieldSym(sid, tccField, 0);
+    if (config.genMap) {
+        // Create map with binded C-functions as functions.
+        const map = vm.allocEmptyMap() catch stdx.fatal();
 
-    const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
-    // ivm.retainInc(cyState, @intCast(u32, cfuncs.items().len - 1));
-    for (cfuncs.items) |cfunc| {
-        const sym = vm.valueToTempString(try ivm.getField2(cfunc.decl, symF));
-        const cySym = try std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0});
-        defer alloc.free(cySym);
-        const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
-            stdx.panic("Failed to get symbol.");
-        };
+        const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
+        cy.arc.retainInc(ivm, cyState, @intCast(u32, cfuncs.items.len - 1));
 
-        const cargsv = try ivm.getField2(cfunc.decl, argsf);
-        const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+        for (cfuncs.items) |cfunc| {
+            const sym = vm.valueToTempString(try ivm.getField2(cfunc.decl, symF));
+            const symGen = try std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0});
+            defer alloc.free(symGen);
+            const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
+                stdx.panic("Failed to get symbol.");
+            };
 
-        const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, *anyopaque, [*]const Value, u8) Value, funcPtr);
+            const symKey = vm.allocAstring(sym) catch stdx.fatal();
+            const cargsv = try ivm.getField2(cfunc.decl, argsf);
+            const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+            const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
+            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
+            ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
+        }
+        success = true;
+        return map;
+    } else {
+        // Create anonymous struct with binded C-functions as methods.
+        const nameId = try cy.sema.ensureNameSym(&ivm.compiler, "BindLib");
+        const sid = try ivm.ensureStruct(nameId, @intCast(u32, ivm.structs.len));
+        const tccField = try ivm.ensureFieldSym("tcc");
+        ivm.structs.buf[sid].numFields = 1;
+        try ivm.addFieldSym(sid, tccField, 0);
 
-        const methodSym = try ivm.ensureMethodSymKey(sym, @intCast(u32, cargs.len));
-        // const val = ivm.allocNativeFunc1(func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
-        try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
+        const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
+        for (cfuncs.items) |cfunc| {
+            const sym = vm.valueToTempString(try ivm.getField2(cfunc.decl, symF));
+            const cySym = try std.fmt.allocPrint(alloc, "cy{s}{u}", .{sym, 0});
+            defer alloc.free(cySym);
+            const funcPtr = tcc.tcc_get_symbol(state, cySym.ptr) orelse {
+                stdx.panic("Failed to get symbol.");
+            };
+
+            const cargsv = try ivm.getField2(cfunc.decl, argsf);
+            const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+
+            const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, *anyopaque, [*]const Value, u8) Value, funcPtr);
+
+            const methodSym = try ivm.ensureMethodSymKey(sym, @intCast(u32, cargs.len));
+            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
+        }
+        success = true;
+        return try vm.allocObjectSmall(sid, &.{cyState});
     }
-
-    success = true;
-    return try vm.allocObjectSmall(sid, &.{cyState});
 }
 
 extern fn __floatundidf(u64) f64;

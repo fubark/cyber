@@ -1117,18 +1117,20 @@ import foo 'bar.cy'
 print foo.myFunc()
 print foo.myVar
 ```
-A Cyber script that is imported also runs it's main block after all child imports have loaded and executed their main blocks. The main block is only executed once even if the module was imported more than once. The following prints 'c', 'b', and 'a' in order.
+A Cyber script that is imported doesn't evaluate its main block. Only static declarations are effectively loaded. If there is code in the main block, it will skip evaluation. In the following, only the `print` statement in the `main.cy` is evaluated.
 ```text
 -- main.cy
-import 'foo.cy'
-print 'a'
+import a 'foo.cy'
+print a.foo
 
 -- foo.cy
 import 'bar.cy'
-print 'b'
+export var foo = 123
+print foo         -- Statement is ignored.
 
 -- bar.cy
-print 'c'
+export var bar = 321
+print bar         -- Statement is ignored.
 ```
 You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
 ```text

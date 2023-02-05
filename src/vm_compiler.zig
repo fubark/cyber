@@ -346,14 +346,22 @@ pub const VMcompiler = struct {
     fn performChunkCodegen(self: *VMcompiler, id: CompileChunkId) !void {
         const chunk = &self.chunks.items[id];
 
-        try gen.genInitLocals(chunk);
-        const jumpStackStart = chunk.blockJumpStack.items.len;
-        const root = chunk.nodes[0];
-        try gen.genStatements(chunk, root.head.child_head, true);
-        chunk.patchBlockJumps(jumpStackStart);
-        chunk.blockJumpStack.items.len = jumpStackStart;
-        chunk.popBlock();
-        self.buf.mainStackSize = @intCast(u32, chunk.curBlock.getRequiredStackSize());
+        if (id == 0) {
+            // Main script performs gen for decls and the main block.
+            try gen.genInitLocals(chunk);
+            const jumpStackStart = chunk.blockJumpStack.items.len;
+            const root = chunk.nodes[0];
+            try gen.genStatements(chunk, root.head.child_head, true);
+            chunk.patchBlockJumps(jumpStackStart);
+            chunk.blockJumpStack.items.len = jumpStackStart;
+            chunk.popBlock();
+            self.buf.mainStackSize = @intCast(u32, chunk.curBlock.getRequiredStackSize());
+        } else {
+            // Modules perform gen for only the top level declarations.
+            const root = chunk.nodes[0];
+            try gen.genTopDeclStatements(chunk, root.head.child_head);
+            chunk.popBlock();
+        }
     }
 
     fn performImportTask(self: *VMcompiler, task: ImportTask) !void {

@@ -19,3 +19,6 @@ export func fn2(a, b):
 
 func barNoExport():
     return 234
+
+-- Test that there is no main block execution for imported modules.
+panic(#ExecutedModuleMain)

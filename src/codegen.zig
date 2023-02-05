@@ -1000,6 +1000,23 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
     }
 }
 
+/// Only generates the top declaration statements.
+/// For imported modules only.
+pub fn genTopDeclStatements(self: *CompileChunk, head: cy.NodeId) !void {
+    var nodeId = head;
+    while (nodeId != cy.NullId) {
+        const node = self.nodes[nodeId];
+        switch (node.node_t) {
+            .exportStmt,
+            .func_decl => {
+                try genStatement(self, nodeId, true);
+            },
+            else => {},
+        }
+        nodeId = node.next;
+    }
+}
+
 pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
     var cur_id = head;
     var node = self.nodes[cur_id];

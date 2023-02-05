@@ -696,6 +696,11 @@ pub const VM = struct {
             const id = @intCast(u32, self.funcSyms.len);
             try self.funcSyms.append(self.alloc, .{
                 .entryT = @enumToInt(FuncSymbolEntryType.none),
+                .innerExtra = .{
+                    .none = .{
+                        .numParams = numParams,
+                    },
+                },
                 .inner = undefined,
             });
             res.value_ptr.* = id;
@@ -2346,6 +2351,9 @@ pub const FuncSymbolEntry = extern struct {
             /// Used to wrap a native func as a function value.
             numParams: u32,
         },
+        none: extern struct {
+            numParams: u32,
+        },
     } = undefined,
     inner: extern union {
         nativeFunc1: *const fn (*UserVM, [*]const Value, u8) Value,
@@ -3972,6 +3980,16 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
             },
+            .setStaticFunc => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetStaticFunc:"::);
+                }
+                const symId = pc[1].arg;
+                try @call(.never_inline, setStaticFunc, .{vm, symId, framePtr[pc[2].arg]});
+                pc += 3;
+                if (useGoto) { gotoNext(&pc, jumpTablePtr); }
+                continue;
+            },
             .end => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpEnd:"::);
@@ -4703,4 +4721,56 @@ fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 
     }
     // else case
     return @ptrCast(*const align (1) u16, pc + 4 + i * 3 - 1).*;
+}
+
+fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
+    errdefer {
+        // TODO: This should be taken care of by panic stack unwinding.
+        cy.arc.release(vm, val);
+    }
+    if (val.isPointer()) {
+        const obj = val.asHeapObject(*cy.HeapObject);
+        switch (obj.common.structId) {
+            cy.NativeFunc1S => {
+                const reqNumParams = getFuncSymSig(vm, symId);
+                if (reqNumParams != obj.nativeFunc1.numParams) {
+                    return vm.panic("Assigning to static function with a different function signature.");
+                }
+                vm.funcSyms.buf[symId] = .{
+                    .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
+                    .innerExtra = .{
+                        .nativeFunc1 = .{
+                            .numParams = reqNumParams,
+                        }
+                    },
+                    .inner = .{
+                        .nativeFunc1 = obj.nativeFunc1.func,
+                    },
+                };
+                cy.arc.release(vm, val);
+            },
+            else => {
+                return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.common.structId)});
+            }
+        }
+    } else {
+        return vm.panic("Assigning to static function with a non-function value.");
+    }
+}
+
+fn getFuncSymSig(vm: *const VM, symId: SymbolId) u32 {
+    switch (@intToEnum(FuncSymbolEntryType, vm.funcSyms.buf[symId].entryT)) {
+        .nativeFunc1 => {
+            return vm.funcSyms.buf[symId].innerExtra.nativeFunc1.numParams;
+        },
+        .func => {
+            return vm.funcSyms.buf[symId].inner.func.numParams;
+        },
+        .closure => {
+            return vm.funcSyms.buf[symId].inner.closure.numParams;
+        },
+        .none => {
+            return vm.funcSyms.buf[symId].innerExtra.none.numParams;
+        },
+    }
 }

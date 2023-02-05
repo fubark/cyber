@@ -224,13 +224,14 @@ pub const VMcompiler = struct {
             chunk.buf = &self.buf;
         }
 
-        // Once all symbols have been resolved, the static variables are initialized in DFS order.
+        // Once all symbols have been resolved, the static initializers are generated in DFS order.
         // Uses temp locals from the main block.
         for (self.chunks.items) |*chunk| {
             for (chunk.semaSyms.items) |sym, i| {
                 const symId = @intCast(u32, i);
-                if (sym.used and sema.isResolvedUserVarSym(self, &sym) and !sym.visited) {
-                    try gen.genVarDeclInitDFS(chunk, symId);
+                // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});
+                if (sym.used and sema.symHasStaticInitializer(self, &sym) and !sym.visited) {
+                    try gen.genStaticInitializerDFS(chunk, symId);
                 }
             }
             chunk.resetNextFreeTemp();
@@ -468,6 +469,9 @@ fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
                 if (c.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
                     if (rsym.symT == .variable) {
                         // Since `staticVar` op is always retained atm.
+                        return true;
+                    } else if (rsym.symT == .func) {
+                        // `staticFunc` op is always retained.
                         return true;
                     } else if (rsym.symT == .object) {
                         // `sym` op is always retained.

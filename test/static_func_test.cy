@@ -53,3 +53,7 @@ try t.eqList(list, [1, 2, 3])
 -- Single line block.
 func foo5(): return 2 + 2
 try t.eq(foo5(), 4)
+
+-- Assign to function declaration with static function value.
+func foo6(val) = number
+try t.eq(foo6('123'), 123)

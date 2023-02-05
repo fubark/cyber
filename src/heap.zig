@@ -333,7 +333,7 @@ const Box = extern struct {
 const NativeFunc1 = extern struct {
     structId: cy.TypeId,
     rc: u32,
-    func: *const fn (*cy.UserVM, [*]Value, u8) Value,
+    func: *const fn (*cy.UserVM, [*]const Value, u8) Value,
     numParams: u32,
     tccState: Value,
     hasTccState: bool,
@@ -1158,7 +1158,7 @@ pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]Value, u8) Value, numParams: u32, tccState: ?Value) !Value {
+pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
         .structId = NativeFunc1S,

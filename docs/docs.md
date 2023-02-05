@@ -968,6 +968,19 @@ func squareDist(dist, size):
 print squareDist(dist, 30)
 ```
 
+The function declaration can also be initialized to an expression that evaluates to a function. However, the expression can not contain any local variable references since it's a static declaration. The function signatures also have to match.
+```text
+func myAdd(a, b):
+    return a + b
+func add(a, b) = myAdd  -- Valid declaration.
+
+myInc = func(a):
+    return a + 1
+func inc(a) = myInc     -- CompileError, referencing local variable `myInc`.
+
+func inc(a) = myAdd     -- panic, #InvalidSignature
+```
+
 Functions can return multiple values.
 ```text
 import {cos, sin} 'math'

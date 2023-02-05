@@ -403,7 +403,13 @@ pub const Parser = struct {
         };
 
         decl.params = try self.parseFunctionParams();
-        decl.return_type = try self.parseFunctionReturn();
+        decl.return_type = self.parseFunctionReturn();
+
+        if (self.peekToken().tag() == .colon) {
+            self.advanceToken();
+        } else {
+            return self.reportParseError("Expected colon.", &.{});
+        }
 
         try self.pushBlock();
         const firstChild = try self.parseSingleOrIndentedBodyStmts();
@@ -525,22 +531,14 @@ pub const Parser = struct {
         return IndexSlice.init(param_start, @intCast(u32, self.func_params.items.len));
     }
 
-    fn parseFunctionReturn(self: *Parser) !?IndexSlice {
+    fn parseFunctionReturn(self: *Parser) ?IndexSlice {
         var token = self.peekToken();
-        if (token.tag() == .colon) {
-            self.advanceToken();
-            return null;
-        } else if (token.tag() == .ident) {
+        if (token.tag() == .ident) {
             const return_type = IndexSlice.init(token.pos(), token.data.end_pos);
-            self.advanceToken();
-            token = self.peekToken();
-            if (token.tag() != .colon) {
-                return self.reportParseError("Expected colon.", &.{});
-            }
             self.advanceToken();
             return return_type;
         } else {
-            return self.reportParseError("Expected colon or type.", &.{});
+            return null;
         }
     }
 
@@ -806,7 +804,14 @@ pub const Parser = struct {
             }
 
             decl.params = try self.parseFunctionParams();
-            decl.return_type = try self.parseFunctionReturn();
+            decl.return_type = self.parseFunctionReturn();
+
+            token = self.peekToken();
+            if (token.tag() == .colon) {
+                self.advanceToken();
+            } else {
+                return self.reportParseError("Expected colon.", &.{});
+            }
 
             try self.pushBlock();
             defer self.popBlock();
@@ -826,27 +831,52 @@ pub const Parser = struct {
             return id;
         } else if (token.tag() == .left_paren) {
             decl.params = try self.parseFunctionParams();
-            decl.return_type = try self.parseFunctionReturn();
+            decl.return_type = self.parseFunctionReturn();
 
             const name = self.src[decl.name.start..decl.name.end];
             const block = &self.block_stack.items[self.block_stack.items.len-1];
             try block.vars.put(self.alloc, name, {});
 
-            try self.pushBlock();
-            const firstChild = try self.parseSingleOrIndentedBodyStmts();
-            self.popBlock();
-            
-            const decl_id = @intCast(u32, self.func_decls.items.len);
-            try self.func_decls.append(self.alloc, decl);
+            token = self.peekToken();
+            if (token.tag() == .colon) {
+                self.advanceToken();
 
-            const id = try self.pushNode(.func_decl, start);
-            self.nodes.items[id].head = .{
-                .func = .{
-                    .decl_id = decl_id,
-                    .body_head = firstChild,
-                },
-            };
-            return id;
+                try self.pushBlock();
+                const firstChild = try self.parseSingleOrIndentedBodyStmts();
+                self.popBlock();
+                
+                const decl_id = @intCast(u32, self.func_decls.items.len);
+                try self.func_decls.append(self.alloc, decl);
+
+                const id = try self.pushNode(.funcDecl, start);
+                self.nodes.items[id].head = .{
+                    .func = .{
+                        .decl_id = decl_id,
+                        .body_head = firstChild,
+                    },
+                };
+                return id;
+            } else if (token.tag() == .equal) {
+                self.advanceToken();
+
+                const right = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                };
+
+                const declId = @intCast(u32, self.func_decls.items.len);
+                try self.func_decls.append(self.alloc, decl);
+
+                const id = try self.pushNode(.funcDeclAssign, start);
+                self.nodes.items[id].head = .{
+                    .funcDeclAssign = .{
+                        .declId = declId,
+                        .right = right,
+                    },
+                };
+                return id;
+            } else {
+                return self.reportParseError("Expected colon or an assignment equal operator.", &.{});
+            }
         } else {
             return self.reportParseError("Expected left paren.", &.{});
         }
@@ -1521,7 +1551,7 @@ pub const Parser = struct {
                 };
                 const stmt = self.nodes.items[stmtId];
                 switch (stmt.node_t) {
-                    .func_decl,
+                    .funcDecl,
                     .varDecl => {
                         const exportStmt = try self.pushNode(.exportStmt, start);
                         self.nodes.items[exportStmt].head = .{
@@ -3173,7 +3203,8 @@ pub const NodeType = enum {
     range_clause,
     eachClause,
     label_decl,
-    func_decl,
+    funcDecl,
+    funcDeclAssign,
     structDecl,
     structField,
     structInit,
@@ -3293,6 +3324,10 @@ pub const Node = struct {
             decl_id: FuncDeclId,
             body_head: NodeId,
             genEndLocalsPc: u32 = NullId,
+        },
+        funcDeclAssign: struct {
+            declId: FuncDeclId,
+            right: NodeId,
         },
         lambda_assign_decl: struct {
             decl_id: FuncDeclId,
@@ -3492,6 +3527,7 @@ pub const FuncDecl = struct {
     return_type: ?IndexSlice,
 
     /// Sema block is attached to func decl so it can be accessed from anywhere with the node id.
+    /// If the func decl has an initializer then this is repurposed to point to the decl's node id.
     semaBlockId: u32 = NullId,
 
     semaResolvedSymId: u32 = NullId,

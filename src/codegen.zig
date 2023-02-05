@@ -85,6 +85,9 @@ fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) 
                 const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
 
                 try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
+                if (!retain and self.isTempLocal(dst)) {
+                    try self.setReservedTempLocal(dst);
+                }
                 return self.initGenValue(dst, sema.AnyType);
             } else if (rsym.symT == .variable) {
                 const sym = self.semaSyms.items[node.head.ident.semaSymId];
@@ -1008,7 +1011,7 @@ pub fn genTopDeclStatements(self: *CompileChunk, head: cy.NodeId) !void {
         const node = self.nodes[nodeId];
         switch (node.node_t) {
             .exportStmt,
-            .func_decl => {
+            .funcDecl => {
                 try genStatement(self, nodeId, true);
             },
             else => {},
@@ -1176,7 +1179,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         },
         .exportStmt => {
             const stmt = node.head.child_head;
-            if (self.nodes[stmt].node_t == .func_decl) {
+            if (self.nodes[stmt].node_t == .funcDecl) {
                 try genStatement(self, stmt, discardTopExprReg);
             } else {
                 // Nop. Static variables are hoisted and initialized at the start of the program.
@@ -1261,7 +1264,10 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 try genFuncDecl(self, funcId);
             }
         },
-        .func_decl => {
+        .funcDeclAssign => {
+            // Nop. Static variables are hoisted and initialized at the start of the program.
+        },
+        .funcDecl => {
             try genFuncDecl(self, nodeId);
         },
         .forOptStmt => {
@@ -2050,7 +2056,7 @@ fn genCallArgs(self: *CompileChunk, first: cy.NodeId) !u32 {
 
 /// Generates var decl initializer.
 /// If the declaration contains dependencies those are generated first in DFS order.
-pub fn genVarDeclInitDFS(self: *CompileChunk, symId: u32) !void {
+pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) !void {
     const sym = &self.semaSyms.items[symId];
     sym.visited = true;
 
@@ -2058,24 +2064,50 @@ pub fn genVarDeclInitDFS(self: *CompileChunk, symId: u32) !void {
         // Contains dependencies. Generate initializers for them first.
         const deps = self.bufU32.items[ref.inner.initDeps.start..ref.inner.initDeps.end];
         for (deps) |dep| {
-            if (!self.semaSyms.items[dep].visited) {
-                try genVarDeclInitDFS(self, dep);
+            const depSym = self.semaSyms.items[dep];
+            // Only if it has a static initializer and hasn't been visited.
+            if (!self.semaSyms.items[dep].visited and sema.symHasStaticInitializer(self.compiler, &depSym)) {
+                try genStaticInitializerDFS(self, dep);
             }
         }
     }
 
     // log.debug("generate init var: {s}", .{sym.path});
     const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
-    const declId = rsym.inner.variable.declId;
-    const chunk = &self.compiler.chunks.items[rsym.inner.variable.chunkId];
-    const decl = chunk.nodes[declId];
+    if (rsym.symT == .variable) {
+        const declId = rsym.inner.variable.declId;
+        const chunk = &self.compiler.chunks.items[rsym.inner.variable.chunkId];
+        const decl = chunk.nodes[declId];
 
-    // Clear register state.
-    chunk.resetNextFreeTemp();
-    const exprv = try chunk.genRetainedTempExpr(decl.head.varDecl.right, false);
+        // Clear register state.
+        chunk.resetNextFreeTemp();
+        const exprv = try chunk.genRetainedTempExpr(decl.head.varDecl.right, false);
 
-    const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
-    try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), exprv.local);
+        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+        try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), exprv.local);
+    } else if (rsym.symT == .func) {
+        const key = sema.AbsResolvedFuncSymKey{
+            .absResolvedFuncSymKey = .{
+                .resolvedSymId = sym.resolvedSymId,
+                .numParams = sym.key.absLocalSymKey.numParams,
+            },
+        };
+        const fsymId = self.compiler.semaResolvedFuncSymMap.get(key).?;
+        const fsym = self.compiler.semaResolvedFuncSyms.items[fsymId];
+        const chunk = &self.compiler.chunks.items[fsym.chunkId];
+        const func = chunk.funcDecls[fsym.declId];
+        const node = chunk.nodes[func.semaBlockId];
+
+        // Clear register state.
+        chunk.resetNextFreeTemp();
+        const exprv = try chunk.genRetainedTempExpr(node.head.funcDeclAssign.right, false);
+
+        const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId, sym.key.absLocalSymKey.numParams);
+        try self.buf.pushOp2(.setStaticFunc, @intCast(u8, rtSymId), exprv.local);
+        try self.pushDebugSym(func.semaBlockId);
+    } else {
+        stdx.panicFmt("Unsupported sym {}", .{rsym.symT});
+    }
 }
 
 fn genNone(self: *CompileChunk, dst: LocalId) !GenValue {

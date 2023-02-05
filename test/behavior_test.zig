@@ -1422,6 +1422,21 @@ test "Static functions." {
     try t.expectError(res, error.Panic);
     try run.assertPanicMsg("Symbol is not defined.");
 
+    // Declaration initializer has a reference to a local.
+    res = run.evalExt(.{ .silent = true },
+        \\a = 123
+        \\func foo() = a
+    );
+    try t.expectError(res, error.CompileError);
+    try t.eqStr(run.vm.getCompileErrorMsg(), "The declaration initializer of static function `foo` can not reference the local variable `a`.");
+
+    // Declaration initializer has a function value with a different signature.
+    res = run.evalExt(.{ .silent = true },
+        \\func foo() = number
+    );
+    try t.expectError(res, error.Panic);
+    try run.assertPanicMsg("Assigning to static function with a different function signature.");
+
     _ = try run.eval(@embedFile("static_func_test.cy"));
 }
 

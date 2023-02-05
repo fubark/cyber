@@ -334,10 +334,22 @@ pub fn getSymName(c: *const cy.VMcompiler, sym: *const Sym) []const u8 {
     return c.semaNameSyms.items[sym.key.absLocalSymKey.nameId];
 }
 
-pub fn isResolvedUserVarSym(c: *const cy.VMcompiler, sym: *const Sym) bool {
-    if (sym.resolvedSymId != NullId) {
-        if (c.semaResolvedSyms.items[sym.resolvedSymId].symT == .variable) {
-            return c.semaResolvedSyms.items[sym.resolvedSymId].inner.variable.declId != NullId;
+pub fn symHasStaticInitializer(c: *const cy.VMcompiler, sym: *const Sym) bool {
+    if (sym.resolvedSymId != cy.NullId) {
+        const rsym = c.semaResolvedSyms.items[sym.resolvedSymId];
+        if (rsym.symT == .variable) {
+            return rsym.inner.variable.declId != cy.NullId;
+        } else if (rsym.symT == .func) {
+            if (sym.key.absLocalSymKey.numParams != cy.NullId) {
+                const key = AbsResolvedFuncSymKey{
+                    .absResolvedFuncSymKey = .{
+                        .resolvedSymId = sym.resolvedSymId,
+                        .numParams = sym.key.absLocalSymKey.numParams,
+                    },
+                };
+                const fsymId = c.semaResolvedFuncSymMap.get(key).?;
+                return c.semaResolvedFuncSyms.items[fsymId].hasStaticInitializer;
+            }
         }
     }
     return false;
@@ -361,6 +373,9 @@ pub const ResolvedFuncSym = struct {
 
     /// Return type.
     retType: Type,
+
+    /// Whether this func has a static initializer.
+    hasStaticInitializer: bool,
 };
 
 const ResolvedSymType = enum {
@@ -564,6 +579,7 @@ const RelSymSigKeyContext = cy.RelFuncSigKeyContext;
 /// Absolute symbol signature key. AbsFuncSigKey is repurposed for variable syms when `numParams` == cy.NullId.
 pub const AbsSymSigKey = vm_.KeyU64;
 pub const AbsResolvedSymKey = vm_.KeyU64;
+pub const AbsResolvedFuncSymKey = vm_.KeyU64;
 pub const AbsSymSigKeyContext = cy.AbsFuncSigKeyContext;
 
 pub fn semaStmts(self: *cy.CompileChunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
@@ -640,13 +656,15 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 const left = c.nodes[c.nodes[stmt].head.varDecl.left];
                 const name = c.getNodeTokenString(left);
                 try c.compiler.modules.items[c.modId].setUserVar(c.compiler, name, stmt);
-            } else if (c.nodes[stmt].node_t == .func_decl) {
+            } else if (c.nodes[stmt].node_t == .funcDecl) {
                 try semaFuncDecl(c, stmt, true);
                 const funcId = c.nodes[stmt].head.func.decl_id;
                 const func = c.funcDecls[funcId];
                 const name = c.src[func.name.start..func.name.end];
                 const numParams = @intCast(u16, func.params.end - func.params.start);
                 try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
+            } else {
+                return c.reportErrorAt("Unsupported export {}", &.{v(c.nodes[stmt].node_t)}, nodeId);
             }
         },
         .varDecl => {
@@ -760,7 +778,10 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 funcId = func.next;
             }
         },
-        .func_decl => {
+        .funcDeclAssign => {
+            try semaFuncDeclAssign(c, nodeId, false);
+        },
+        .funcDecl => {
             try semaFuncDecl(c, nodeId, false);
         },
         .whileCondStmt => {
@@ -909,9 +930,53 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
     }
 }
 
+fn semaFuncDeclAssign(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
+    const node = c.nodes[nodeId];
+    const declId = node.head.funcDeclAssign.declId;
+    const func = c.funcDecls[declId];
+    var retType: ?Type = null;
+    if (func.return_type) |slice| {
+        const retTypeName = c.src[slice.start..slice.end];
+        if (c.compiler.typeNames.get(retTypeName)) |vtype| {
+            retType = vtype;
+        }
+    }
+
+    const numParams = @intCast(u16, func.params.end - func.params.start);
+    const name = c.src[func.name.start..func.name.end];
+    const nameId = try ensureNameSym(c.compiler, name);
+    // Link to local symbol.
+    const symId = try ensureSym(c, null, nameId, numParams);
+    // Mark as used since there is an initializer that could alter state.
+    c.semaSyms.items[symId].used = true;
+
+    c.curSemaSymVar = symId;
+    c.semaVarDeclDeps.clearRetainingCapacity();
+    defer c.curSemaSymVar = cy.NullId;
+
+    _ = semaExpr(c, node.head.funcDeclAssign.right, false) catch |err| {
+        if (err == error.CanNotUseLocal) {
+            const local = c.nodes[c.compiler.errorPayload];
+            const localName = c.getNodeTokenString(local);
+            return c.reportErrorAt("The declaration initializer of static function `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
+        } else {
+            return err;
+        } 
+    };
+
+    const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, declId, retType orelse AnyType, exported);
+    c.compiler.semaResolvedFuncSyms.items[res.resolvedFuncSymId].hasStaticInitializer = true;
+    c.funcDecls[declId].semaResolvedSymId = res.resolvedSymId;
+    c.funcDecls[declId].semaResolvedFuncSymId = res.resolvedFuncSymId;
+    // `semaBlockId` is repurposed to save the nodeId.
+    c.funcDecls[declId].semaBlockId = nodeId;
+    c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
+}
+
 fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     const node = c.nodes[nodeId];
-    const func = c.funcDecls[node.head.func.decl_id];
+    const declId = node.head.func.decl_id;
+    const func = c.funcDecls[declId];
     var retType: ?Type = null;
     if (func.return_type) |slice| {
         const retTypeName = c.src[slice.start..slice.end];
@@ -938,10 +1003,10 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     try endFuncSymBlock(c, rtSymId, numParams);
 
     const symId = try ensureSym(c, null, nameId, numParams);
-    const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, node.head.func.decl_id, retType.?, exported);
-    c.funcDecls[node.head.func.decl_id].semaResolvedSymId = res.resolvedSymId;
-    c.funcDecls[node.head.func.decl_id].semaResolvedFuncSymId = res.resolvedFuncSymId;
-    c.funcDecls[node.head.func.decl_id].semaBlockId = blockId;
+    const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, declId, retType.?, exported);
+    c.funcDecls[declId].semaResolvedSymId = res.resolvedSymId;
+    c.funcDecls[declId].semaResolvedFuncSymId = res.resolvedFuncSymId;
+    c.funcDecls[declId].semaBlockId = blockId;
     c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
 }
 
@@ -2533,6 +2598,7 @@ fn resolveSymAsFunc(self: *cy.CompileChunk, key: AbsResolvedSymKey, numParams: u
         .declId = declId,
         .numParams = @intCast(u8, numParams),
         .retType = retType,
+        .hasStaticInitializer = false,
     });
     try @call(.never_inline, c.semaResolvedFuncSymMap.put, .{c.alloc, funcKey, rfsymId});
 
@@ -2626,7 +2692,7 @@ fn endFuncSymBlock(self: *cy.CompileChunk, symId: u32, numParams: u32) !void {
 test "Internals." {
     try t.eq(@sizeOf(LocalVar), 32);
     try t.eq(@sizeOf(Sym), 24);
-    try t.eq(@sizeOf(ResolvedFuncSym), 12);
+    try t.eq(@sizeOf(ResolvedFuncSym), 16);
     try t.eq(@sizeOf(ResolvedSym), 24);
     try t.eq(@sizeOf(Type), 3);
 }

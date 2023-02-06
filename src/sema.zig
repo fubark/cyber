@@ -735,6 +735,20 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
             }
             const objSymId = try resolveLocalObjectSym(c, null, name, nodeId);
+            // Object type should be constructed during sema so it's available for static initializer codegen.
+            const sid = try c.compiler.vm.ensureStruct(nameId, 0);
+
+            var i: u32 = 0;
+            var fieldId = node.head.structDecl.fieldsHead;
+            while (fieldId != cy.NullId) : (i += 1) {
+                const field = c.nodes[fieldId];
+                const fieldName = c.getNodeTokenString(field);
+                const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
+                try c.compiler.vm.addFieldSym(sid, fieldSymId, @intCast(u16, i));
+                fieldId = field.next;
+            }
+            const numFields = i;
+            c.compiler.vm.structs.buf[sid].numFields = numFields;
 
             var funcId = node.head.structDecl.funcsHead;
             while (funcId != cy.NullId) {

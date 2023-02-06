@@ -165,10 +165,10 @@ fn genStringTemplate(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retai
 fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
     const node = self.nodes[nodeId];
     const stype = self.nodes[node.head.structInit.name];
-    const sname = self.getNodeTokenString(stype);
-    const snameId = try sema.ensureNameSym(self.compiler, sname);
-    const sid = self.compiler.vm.getStruct(snameId, 0) orelse {
-        return self.reportErrorAt("Missing object type: `{}`", &.{v(sname)}, nodeId);
+    const oname = self.getNodeTokenString(stype);
+    const onameId = try sema.ensureNameSym(self.compiler, oname);
+    const sid = self.compiler.vm.getStruct(onameId, 0) orelse {
+        return self.reportErrorAt("Missing object type: `{}`", &.{v(oname)}, nodeId);
     };
 
     const initializer = self.nodes[node.head.structInit.initializer];
@@ -1218,26 +1218,6 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const nameId = try sema.ensureNameSym(self.compiler, name);
 
             const sid = try self.compiler.vm.ensureStruct(nameId, 0);
-
-            var i: u32 = 0;
-            var fieldId = node.head.structDecl.fieldsHead;
-            while (fieldId != cy.NullId) : (i += 1) {
-                const field = self.nodes[fieldId];
-                fieldId = field.next;
-            }
-            const numFields = i;
-
-            i = 0;
-            fieldId = node.head.structDecl.fieldsHead;
-            while (fieldId != cy.NullId) : (i += 1) {
-                const field = self.nodes[fieldId];
-                const fieldName = self.getNodeTokenString(field);
-                const fieldSymId = try self.compiler.vm.ensureFieldSym(fieldName);
-                try self.compiler.vm.addFieldSym(sid, fieldSymId, @intCast(u16, i));
-                fieldId = field.next;
-            }
-
-            self.compiler.vm.structs.buf[sid].numFields = numFields;
 
             var funcId = node.head.structDecl.funcsHead;
             var func: cy.Node = undefined;

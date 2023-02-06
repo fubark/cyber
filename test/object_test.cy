@@ -3,6 +3,8 @@ import t 'test'
 object Node:
   value
 
+var snode = Node{ value: 123 }
+
 -- Initialization.
 n = Node{ value: 123 }
 try t.eq(n.value, 123)
@@ -15,17 +17,26 @@ try t.eq(n.value, none)
 n = Node{ value: [123] }
 try t.eq(n.value[0], 123)
 
--- Get field from selected static var.
-var staticNode = Node{ value: 123 }
+-- Get field from declared static var.
+snode.value = 123
 f = func():
-  static staticNode
-  return staticNode.value
+  static snode
+  return snode.value
 try t.eq(f(), 123)
 
--- Set to struct field.
+-- Set object field.
 n = Node{ value: 123 }
 n.value = 234
 try t.eq(n.value, 234)
+
+-- Set object field after declared as a static var.
+snode.value = 123
+f = func():
+  static snode
+  snode.value = 234
+  try t.eq(snode.value, 234)
+try f()
+try t.eq(snode.value, 234)
 
 -- Set to field with heap value.
 n = Node{ value: [123] }

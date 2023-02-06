@@ -35,7 +35,7 @@ f = func():
 try f()
 try t.eq(a, 345)
 
--- Subsequent assignment to after declared first as a static var.
+-- Subsequent assignment to after declared as a static var.
 a = 123
 f = func ():
     static a

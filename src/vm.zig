@@ -2529,6 +2529,21 @@ const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and true
 const EnableAarch64ComputedGoto = aarch64 and builtin.mode != .Debug;
 const useGoto = EnableAarch64ComputedGoto;
 
+fn getJumpTablePtr(asmPc: [*]const u32) u64 {
+    // Find the first adrp op above asmPc since codegen can be slightly different.
+    var i: usize = 2;
+    while (i < 20) : (i += 1) {
+        const inst = @bitCast(AarchPcRelativeAddressOp, (asmPc - i)[0]);
+        if (inst.fixed == 0b10000 and inst.op == 1) {
+            const addOffsetInst = @bitCast(AarchAddSubtractImmOp, (asmPc - i + 1)[0]);
+            var jumpTablePtr = (@ptrToInt(asmPc - i) + (inst.getImm21() << 12)) & ~((@as(u64, 1) << 12) - 1);
+            jumpTablePtr += addOffsetInst.imm12;
+            return jumpTablePtr;
+        }
+    }
+    unreachable;
+}
+
 fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     if (GenLabels) {
         _ = asm volatile ("LEvalLoop:"::);
@@ -2550,11 +2565,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             : 
             :
         );
-        const AdrpOffset = 5;
-        const adrpInst = @bitCast(AarchPcRelativeAddressOp, (asmPc - AdrpOffset)[0]);
-        const addOffsetInst = @bitCast(AarchAddSubtractImmOp, (asmPc - AdrpOffset + 1)[0]);
-        jumpTablePtr = (@ptrToInt(asmPc - AdrpOffset) + (adrpInst.getImm21() << 12)) & ~((@as(u64, 1) << 12) - 1);
-        jumpTablePtr += addOffsetInst.imm12;
+
+        jumpTablePtr = @call(.never_inline, getJumpTablePtr, .{asmPc});
     }
 
     var pc = vm.pc;

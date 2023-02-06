@@ -468,8 +468,10 @@ fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
         .ident => {
             if (node.head.ident.semaVarId != cy.NullId) {
                 const svar = c.genGetVar(node.head.ident.semaVarId).?;
-                if (willAlwaysRetainSym(c, svar.inner.symId)) {
-                    return true;
+                if (svar.isStaticAlias) {
+                    if (willAlwaysRetainSym(c, svar.inner.symId)) {
+                        return true;
+                    }
                 }
             }
             if (node.head.ident.semaSymId != cy.NullId) {

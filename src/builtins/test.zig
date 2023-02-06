@@ -67,8 +67,8 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 }
             },
             .opaquePtr => {
-                const actPtr = stdx.ptrAlignCast(*cy.OpaquePtr, act.asPointer().?).ptr;
-                const expPtr = stdx.ptrAlignCast(*cy.OpaquePtr, exp.asPointer().?).ptr;
+                const actPtr = act.asPointer(*cy.OpaquePtr).ptr;
+                const expPtr = exp.asPointer(*cy.OpaquePtr).ptr;
                 if (actPtr == expPtr) {
                     return true;
                 } else {
@@ -112,8 +112,8 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
             .map,
             .list,
             .object => {
-                const actv = act.asPointer().?;
-                const expv = exp.asPointer().?;
+                const actv = act.asAnyOpaque();
+                const expv = exp.asAnyOpaque();
                 if (actv == expv) {
                     return true;
                 } else {
@@ -187,8 +187,8 @@ pub fn eqList(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const expType = exp.getUserTag();
     if (actType == expType) {
         if (actType == .list) {
-            const acto = act.asHeapObject(*cy.HeapObject);
-            const expo = exp.asHeapObject(*cy.HeapObject);
+            const acto = act.asHeapObject();
+            const expo = exp.asHeapObject();
             if (acto.list.list.len == expo.list.list.len) {
                 var i: u32 = 0;
                 const actItems = acto.list.items();

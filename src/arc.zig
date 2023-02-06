@@ -13,7 +13,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         vm.trace.numReleaseAttempts += 1;
     }
     if (val.isPointer()) {
-        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
+        const obj = val.asHeapObject();
         if (builtin.mode == .Debug) {
             if (obj.retainedCommon.structId == cy.NullId) {
                 log.debug("object already freed. {*}", .{obj});
@@ -72,7 +72,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
         self.trace.numRetainAttempts += 1;
     }
     if (val.isPointer()) {
-        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
+        const obj = val.asHeapObject();
         obj.retainedCommon.rc += 1;
         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (cy.TrackGlobalRC) {
@@ -89,7 +89,7 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
         self.trace.numRetainAttempts += inc;
     }
     if (val.isPointer()) {
-        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
+        const obj = val.asHeapObject();
         obj.retainedCommon.rc += inc;
         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         if (cy.TrackGlobalRC) {
@@ -171,7 +171,7 @@ pub fn checkMemory(self: *cy.VM) !bool {
                     const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
                     for (list.items()) |it| {
                         if (it.isPointer()) {
-                            const ptr = stdx.ptrAlignCast(*cy.HeapObject, it.asPointer().?);
+                            const ptr = it.asHeapObject();
                             if (visit(alloc, graph, cycleRoots_, ptr, graph.getPtr(ptr).?)) {
                                 cycleRoots_.append(alloc, obj) catch stdx.fatal();
                                 return true;

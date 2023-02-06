@@ -106,7 +106,7 @@ pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) !void {
         if (builtin.os.tag != .windows) {
             // Mark as closed to avoid closing.
             const stdin = (try mod.getVarVal(c, "stdin")).?;
-            stdin.asHeapObject(*cy.HeapObject).file.closed = true;
+            stdin.asHeapObject().file.closed = true;
             cy.arc.release(c.vm, stdin);
         }
     }
@@ -230,7 +230,7 @@ fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) V
     var iter = std.process.argsWithAllocator(alloc) catch stdx.fatal();
     defer iter.deinit();
     const listv = vm.allocEmptyList() catch stdx.fatal();
-    const listo = listv.asHeapObject(*cy.HeapObject);
+    const listo = listv.asHeapObject();
     while (iter.next()) |arg| {
         const argv = vm.allocRawString(arg) catch stdx.fatal();
         listo.list.append(vm.allocator(), argv);

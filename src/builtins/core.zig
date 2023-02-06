@@ -283,7 +283,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
     var symToCStructFields: std.AutoHashMapUnmanaged(u32, *cy.CyList) = .{};
     defer symToCStructFields.deinit(alloc);
 
-    const decls = stdx.ptrAlignCast(*cy.CyList, args[1].asPointer().?);
+    const decls = args[1].asPointer(*cy.CyList);
 
     // Check that symbols exist and build the model.
     const symF = try ivm.ensureFieldSym("sym");
@@ -306,11 +306,11 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         } else if (decl.isObjectType(bindings.CStructT)) {
             const val = try ivm.getField(decl, typeF);
             if (val.isObjectType(cy.SymbolT)) {
-                const objType = val.asHeapObject(*cy.heap.Symbol);
+                const objType = val.asPointer(*cy.heap.Symbol);
                 if (objType.symType == @enumToInt(cy.heap.SymbolType.object)) {
                     if (!symToCStructFields.contains(objType.symId)) {
                         const fields = try ivm.getField(decl, fieldsF);
-                        try symToCStructFields.put(alloc, objType.symId, fields.asHeapObject(*cy.CyList));
+                        try symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
                     } else {
                         log.debug("Object type already declared.", .{});
                         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
@@ -403,11 +403,11 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         const cargsv = try ivm.getField(cfunc.decl, argsf);
         const ret = try ivm.getField(cfunc.decl, retf);
 
-        const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+        const cargs = cargsv.asPointer(*cy.CyList).items();
 
         // Emit extern declaration.
         if (ret.isObjectType(cy.SymbolT)) {
-            const objType = ret.asHeapObject(*cy.heap.Symbol);
+            const objType = ret.asPointer(*cy.heap.Symbol);
             if (symToCStructFields.contains(objType.symId)) {
                 try w.print("extern Struct{} {s}(", .{objType.symId, sym});
             } else {
@@ -421,7 +421,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             const lastArg = cargs.len-1;
             for (cargs) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
-                    const objType = carg.asHeapObject(*cy.heap.Symbol);
+                    const objType = carg.asPointer(*cy.heap.Symbol);
                     if (symToCStructFields.contains(objType.symId)) {
                         try w.print("Struct{}", .{objType.symId});
                     } else {
@@ -447,7 +447,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
         // Gen call.
         if (ret.isObjectType(cy.SymbolT)) {
-            const objType = ret.asHeapObject(*cy.heap.Symbol);
+            const objType = ret.asPointer(*cy.heap.Symbol);
             if (symToCStructFields.contains(objType.symId)) {
                 try w.print("  Struct{} res = {s}(", .{objType.symId, sym});
             } else {
@@ -496,7 +496,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             const lastArg = cargs.len-1;
             for (cargs) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
-                    const objType = ret.asHeapObject(*cy.heap.Symbol);
+                    const objType = ret.asPointer(*cy.heap.Symbol);
                     try w.print("toStruct{}(args[{}])", .{objType.symId, i});
                 } else {
                     try S.printToCValueFromArg(ivm, w, carg, i);
@@ -535,7 +535,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         // Gen return.
         try w.print("  return ", .{});
         if (ret.isObjectType(cy.SymbolT)) {
-            const objType = ret.asHeapObject(*cy.heap.Symbol);
+            const objType = ret.asPointer(*cy.heap.Symbol);
             try w.print("fromStruct{}(res)", .{ objType.symId });
         } else {
             try S.printCyValue(ivm, w, ret, "res");
@@ -606,7 +606,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
             const symKey = vm.allocAstring(sym) catch stdx.fatal();
             const cargsv = try ivm.getField2(cfunc.decl, argsf);
-            const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+            const cargs = cargsv.asPointer(*cy.CyList).items();
             const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
             const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
@@ -631,9 +631,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             };
 
             const cargsv = try ivm.getField2(cfunc.decl, argsf);
-            const cargs = stdx.ptrAlignCast(*cy.CyList, cargsv.asPointer().?).items();
+            const cargs = cargsv.asPointer(*cy.CyList).items();
 
-            const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, *anyopaque, [*]const Value, u8) Value, funcPtr);
+            const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
 
             const methodSym = try ivm.ensureMethodSymKey(sym, @intCast(u32, cargs.len));
             try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
@@ -679,7 +679,7 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
 pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const alloc = vm.allocator();
 
-    const obj = args[0].asHeapObject(*cy.HeapObject);
+    const obj = args[0].asHeapObject();
     var buf: std.ArrayListUnmanaged([]const u8) = .{};
     defer {
         for (buf.items) |arg| {
@@ -866,7 +866,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             var iter = dmap.iterator();
 
             const mapVal = try cy.heap.allocEmptyMap(gvm);
-            const map = stdx.ptrAlignCast(*cy.HeapObject, mapVal.asPointer().?);
+            const map = mapVal.asHeapObject();
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
                 const key = try self.allocStringInfer(entry.key_ptr.*);
@@ -984,7 +984,7 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     defer vm.allocator().free(path);
     var content: []const u8 = undefined;
     if (args[1].isRawString()) {
-        content = args[1].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+        content = args[1].asHeapObject().rawstring.getConstSlice();
     } else {
         content = vm.valueToTempString(args[1]);
     }
@@ -1016,7 +1016,7 @@ export fn cRelease(val: Value) void {
 }
 
 export fn cGetPtr(val: Value) ?*anyopaque {
-    return stdx.ptrAlignCast(*cy.OpaquePtr, val.asPointer().?).ptr;
+    return val.asPointer(*cy.OpaquePtr).ptr;
 }
 
 export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {

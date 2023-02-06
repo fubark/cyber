@@ -500,8 +500,8 @@ fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
     std.debug.assert(id == @enumToInt(tag));
 }
 
-fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     const compare = args[0];
     defer {
         vm.releaseObject(obj);
@@ -529,9 +529,9 @@ fn listSort(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linkse
     return Value.None;
 }
 
-fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index = @floatToInt(i64, args[0].toF64());
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const list = recv.asHeapObject();
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
@@ -542,10 +542,10 @@ fn listRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     return Value.None;
 }
 
-fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index = @floatToInt(i64, args[0].toF64());
     const value = args[1];
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const list = recv.asHeapObject();
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
@@ -556,20 +556,20 @@ fn listInsert(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     return Value.None;
 }
 
-fn listAdd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
+fn listAdd(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
     fmt.printDeprecated("list.add()", "0.1", "Use list.append() instead.", &.{});
-    return listAppend(vm, ptr, args, nargs);
+    return listAppend(vm, recv, args, nargs);
 }
 
-fn listAppend(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listAppend(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = recv.asHeapObject();
     obj.list.append(vm.allocator(), args[0]);
     vm.releaseObject(obj);
     return Value.None;
 }
 
-fn listJoinString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     defer {
         vm.releaseObject(obj);
         vm.release(args[0]);
@@ -636,14 +636,14 @@ fn listJoinString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) 
     }
 }
 
-fn listConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listConcat(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     defer {
         vm.releaseObject(obj);
         vm.release(args[0]);
     }
     if (args[0].isList()) {
-        const list = args[0].asHeapObject(*cy.HeapObject);
+        const list = args[0].asHeapObject();
         for (list.list.items()) |it| {
             vm.retain(it);
             obj.list.append(vm.allocator(), it);
@@ -652,9 +652,9 @@ fn listConcat(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     return Value.None;
 }
 
-fn listIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
+fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
     _ = args;
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
@@ -671,9 +671,9 @@ fn listIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _
     };
 }
 
-fn listIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+fn listIteratorNext(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     _ = args;
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
@@ -684,14 +684,14 @@ fn listIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8
     } else return Value.None;
 }
 
-fn listIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = recv.asHeapObject();
     // Don't need to release recv since it's retained by the iterator.
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
-fn listResize(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const list = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     const size = @floatToInt(u32, args[0].toF64());
     if (inner.len < size) {
@@ -711,14 +711,14 @@ fn listResize(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) link
     return Value.None;
 }
 
-fn mapIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn mapIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) Value {
+    const obj = recv.asHeapObject();
     // Don't need to release recv since it's retained by the iterator.
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-fn mapIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
@@ -734,8 +734,8 @@ fn mapIteratorNextPair(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8
     };
 }
 
-fn mapIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn mapIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
@@ -744,23 +744,23 @@ fn mapIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) li
     } else return Value.None;
 }
 
-fn mapSize(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn mapSize(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     vm.releaseObject(obj);
     return Value.initF64(@intToFloat(f64, inner.size));
 }
 
-fn mapRemove(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn mapRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(@ptrCast(*cy.VM, vm), args[0]);
     vm.releaseObject(obj);
     return Value.None;
 }
 
-fn listLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const list = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn listLen(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const list = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     vm.releaseObject(list);
     return Value.initF64(@intToFloat(f64, inner.len));
@@ -770,8 +770,8 @@ fn listLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksectio
 // Although it works, it requires native func calls to perform additional copies of pc and framePtr back to the eval loop,
 // which is a bad tradeoff for every other function call that doesn't need to.
 // One solution is to add another bytecode to call nativeFunc1 with control over execution context.
-// fn fiberResume(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.HotSection) Value {
-//     const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+// fn fiberResume(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.HotSection) Value {
+//     const obj = recv.asHeapObject();
 //     if (&obj.fiber != @ptrCast(*cy.VM, vm).curFiber) {
 //         // Only resume fiber if it's not done.
 //         if (obj.fiber.pc != NullId) {
@@ -791,8 +791,8 @@ fn listLen(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksectio
 //     return Value.None;
 // }
 
-fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
     if (gvm.curFiber == @ptrCast(*cy.Fiber, obj)) {
@@ -807,10 +807,10 @@ fn fiberStatus(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) Value 
     }
 }
 
-pub fn stringUpper(comptime T: cy.StringType) NativeFunc {
+pub fn stringUpper(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
             }
@@ -836,10 +836,10 @@ pub fn stringUpper(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-pub fn stringLower(comptime T: cy.StringType) NativeFunc {
+pub fn stringLower(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
             }
@@ -865,10 +865,10 @@ pub fn stringLower(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-pub fn stringLess(comptime T: cy.StringType) NativeFunc {
+pub fn stringLess(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -877,7 +877,7 @@ pub fn stringLess(comptime T: cy.StringType) NativeFunc {
             if (isRawStringObject(T)) {
                 var right: []const u8 = undefined;
                 if (args[0].isRawString()) {
-                    right = args[0].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+                    right = args[0].asHeapObject().rawstring.getConstSlice();
                 } else {
                     right = vm.valueToTempString(args[0]);
                 }
@@ -891,10 +891,10 @@ pub fn stringLess(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-pub fn stringLen(comptime T: cy.StringType) NativeFunc {
+pub fn stringLen(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
             }
@@ -918,10 +918,10 @@ pub fn stringLen(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-pub fn stringCharAt(comptime T: cy.StringType) NativeFunc {
+pub fn stringCharAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -979,10 +979,10 @@ pub fn stringCharAt(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringCodeAt(comptime T: cy.StringType) NativeFunc {
+fn stringCodeAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1038,8 +1038,8 @@ fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val
     return Value.initPtr(new);
 }
 
-fn rawStringInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn rawStringInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = recv.asHeapObject();
     defer {
         vm.releaseObject(obj);
         vm.release(args[0]);
@@ -1049,8 +1049,8 @@ fn rawStringInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
 
-fn rawStringSliceInsertByte(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn rawStringSliceInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = recv.asHeapObject();
     defer {
         vm.releaseObject(obj);
         vm.release(args[0]);
@@ -1094,12 +1094,10 @@ inline fn isAstringObject(comptime T: cy.StringType, obj: StringObject(T)) bool 
     return T == .staticAstring or T == .astring or (T == .slice and obj.stringSlice.isAstring());
 }
 
-const NativeFunc = fn (vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) Value;
-
-fn stringRepeat(comptime T: cy.StringType) NativeFunc {
+fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 if (isHeapString(T)) {
                     vm.releaseObject(obj);
@@ -1150,7 +1148,7 @@ fn stringRepeat(comptime T: cy.StringType) NativeFunc {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return @intToPtr(*Value, @ptrToInt(ptr)).*;
+                        return recv;
                     }
                 }
             }
@@ -1181,14 +1179,13 @@ inline fn releaseStringObject(comptime T: cy.StringType, vm: *cy.UserVM, obj: St
     }
 }
 
-inline fn getStringObject(comptime T: cy.StringType, ptr: *anyopaque) StringObject(T) {
+inline fn getStringObject(comptime T: cy.StringType, recv: Value) StringObject(T) {
     switch (StringObject(T)) {
         *cy.HeapObject => {
-            return stdx.ptrAlignCast(*cy.HeapObject, ptr);
+            return recv.asHeapObject();
         },
         stdx.IndexSlice(u32) => {
-            const val = @intToPtr(*Value, @ptrToInt(ptr)).*;
-            return val.asStaticStringSlice();
+            return recv.asStaticStringSlice();
         },
         else => @compileError("Unexpected type: " ++ @typeName(StringObject(T))),
     }
@@ -1267,10 +1264,10 @@ inline fn getStringSlice(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringO
     }
 }
 
-fn stringReplace(comptime T: cy.StringType) NativeFunc {
+fn stringReplace(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1285,7 +1282,7 @@ fn stringReplace(comptime T: cy.StringType) NativeFunc {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return @intToPtr(*Value, @ptrToInt(ptr)).*;
+                        return recv;
                     }
                 }
             } else if (isUstringObject(T, obj)) {
@@ -1296,7 +1293,7 @@ fn stringReplace(comptime T: cy.StringType) NativeFunc {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return @intToPtr(*Value, @ptrToInt(ptr)).*;
+                        return recv;
                     }
                 }
             } else if (isRawStringObject(T)) {
@@ -1352,10 +1349,10 @@ fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     }
 }
 
-pub fn stringSlice(comptime T: cy.StringType) NativeFunc {
+pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1432,20 +1429,20 @@ pub fn stringSlice(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringAppend(comptime T: cy.StringType) NativeFunc {
+fn stringAppend(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-            return stringConcat(T)(vm, ptr, args, nargs);
+            return stringConcat(T)(vm, recv, args, nargs);
         }
     };
     return S.inner;
 }
 
-fn stringConcat(comptime T: cy.StringType) NativeFunc {
+fn stringConcat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1473,10 +1470,10 @@ fn stringConcat(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringInsert(comptime T: cy.StringType) NativeFunc {
+fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1527,10 +1524,10 @@ fn stringInsert(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringIndex(comptime T: cy.StringType) NativeFunc {
+fn stringIndex(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1564,10 +1561,10 @@ fn stringIndex(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringStartsWith(comptime T: cy.StringType) NativeFunc {
+fn stringStartsWith(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1580,10 +1577,10 @@ fn stringStartsWith(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringEndsWith(comptime T: cy.StringType) NativeFunc {
+fn stringEndsWith(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1596,13 +1593,13 @@ fn stringEndsWith(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn rawStringSliceToString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+fn rawStringSliceToString(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
-    return rawStringSliceUtf8(vm, ptr, args, nargs);
+    return rawStringSliceUtf8(vm, recv, args, nargs);
 }
 
-fn rawStringSliceUtf8(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const str = obj.rawstringSlice.getConstSlice();
     if (cy.validateUtf8(str)) |size| {
@@ -1616,13 +1613,13 @@ fn rawStringSliceUtf8(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8)
     }
 }
 
-fn rawStringToString(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+fn rawStringToString(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
-    return rawStringUtf8(vm, ptr, args, nargs);
+    return rawStringUtf8(vm, recv, args, nargs);
 }
 
-fn rawStringUtf8(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const str = obj.rawstring.getConstSlice();
     if (cy.validateUtf8(str)) |size| {
@@ -1636,8 +1633,8 @@ fn rawStringUtf8(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) link
     }
 }
 
-fn rawStringSliceByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const idx = @floatToInt(i32, args[0].toF64());
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
@@ -1648,8 +1645,8 @@ fn rawStringSliceByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _
     return Value.initF64(@intToFloat(f64, str[uidx]));
 }
 
-fn rawStringByteAt(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const idx = @floatToInt(i32, args[0].toF64());
     if (idx < 0 or idx >= obj.rawstring.len) {
@@ -1673,15 +1670,15 @@ fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
     }
 }
 
-fn stringIsAscii(comptime T: cy.StringType) NativeFunc {
+fn stringIsAscii(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             if (T == .staticAstring) {
                 return Value.True;
             } else if (T == .staticUstring) {
                 return Value.False;
             } else {
-                const obj = getStringObject(T, ptr);
+                const obj = getStringObject(T, recv);
                 defer {
                     releaseStringObject(T, vm, obj);
                 }
@@ -1698,10 +1695,10 @@ fn stringIsAscii(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringIndexCharSet(comptime T: cy.StringType) NativeFunc {
+fn stringIndexCharSet(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1793,10 +1790,10 @@ fn stringIndexCharSet(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringIndexCode(comptime T: cy.StringType) NativeFunc {
+fn stringIndexCode(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1847,10 +1844,10 @@ fn stringIndexCode(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-fn stringIndexChar(comptime T: cy.StringType) NativeFunc {
+fn stringIndexChar(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, ptr);
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
                 vm.release(args[0]);
@@ -1898,13 +1895,13 @@ fn stringIndexChar(comptime T: cy.StringType) NativeFunc {
     return S.inner;
 }
 
-pub fn fileStreamLines(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, nargs: u8) linksection(StdSection) Value {
-    return fileStreamLines1(vm, ptr, &[_]Value{ Value.initF64(@intToFloat(f64, 4096)) }, nargs);
+pub fn fileStreamLines(vm: *cy.UserVM, recv: Value, _: [*]const Value, nargs: u8) linksection(StdSection) Value {
+    return fileStreamLines1(vm, recv, &[_]Value{ Value.initF64(@intToFloat(f64, 4096)) }, nargs);
 }
 
-pub fn fileStreamLines1(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const obj = recv.asHeapObject();
     const bufSize = @floatToInt(u32, args[0].toF64());
     var createReadBuf = true;
     if (obj.file.hasReadBuf) {
@@ -1923,11 +1920,11 @@ pub fn fileStreamLines1(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _
         obj.file.readBufCap = @intCast(u32, readBuf.len);
         obj.file.hasReadBuf = true;
     }
-    return Value.initPtr(ptr);
+    return recv;
 }
 
-pub fn dirWalk(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     if (obj.dir.iterable) {
         vm.retainObject(obj);
@@ -1937,8 +1934,8 @@ pub fn dirWalk(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linkse
     }
 }
 
-pub fn dirIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     if (obj.dir.iterable) {
         vm.retainObject(obj);
@@ -1948,16 +1945,16 @@ pub fn dirIterator(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) li
     }
 }
 
-pub fn fileIterator(_: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn fileIterator(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+    const obj = recv.asHeapObject();
     obj.file.curPos = 0;
     obj.file.readBufEnd = 0;
-    return Value.initPtr(ptr);
+    return recv;
 }
 
-pub fn fileSeekFromEnd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
     const numBytes = @floatToInt(i32, args[0].toF64());
@@ -1973,8 +1970,8 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     return Value.None;
 }
 
-pub fn fileSeekFromCur(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
     const numBytes = @floatToInt(i32, args[0].toF64());
@@ -1987,8 +1984,8 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _:
     return Value.None;
 }
 
-pub fn fileSeek(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
     const numBytes = @floatToInt(i32, args[0].toF64());
@@ -2005,8 +2002,8 @@ pub fn fileSeek(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) li
     return Value.None;
 }
 
-pub fn fileWrite(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer {
         vm.releaseObject(obj);
         vm.release(args[0]);
@@ -2014,7 +2011,7 @@ pub fn fileWrite(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
 
     var buf: []const u8 = undefined;
     if (args[0].isRawString()) {
-        buf = args[0].asHeapObject(*cy.HeapObject).rawstring.getConstSlice();
+        buf = args[0].asHeapObject().rawstring.getConstSlice();
     } else {
         buf = vm.valueToTempString(args[0]);
     }
@@ -2028,8 +2025,8 @@ pub fn fileWrite(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) l
     return Value.initF64(@intToFloat(f64, numWritten));
 }
 
-pub fn fileRead(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
     const numBytes = @floatToInt(i32, args[0].toF64());
@@ -2053,8 +2050,8 @@ pub fn fileRead(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) li
     return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
 }
 
-pub fn fileReadToEnd(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const file = obj.file.getStdFile();
 
@@ -2084,8 +2081,8 @@ pub fn fileReadToEnd(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) 
     }
 }
 
-pub fn fileStat(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     const file = obj.file.getStdFile();
     const stat = file.stat() catch |err| {
@@ -2114,8 +2111,8 @@ pub fn fileStat(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) links
     return map;
 }
 
-pub fn dirIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
     const iter = @ptrCast(*cy.DirIterator, obj);
@@ -2166,8 +2163,8 @@ pub fn dirIteratorNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8
     }
 }
 
-pub fn fileNext(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
     if (obj.file.iterLines) {
         const alloc = vm.allocator();
@@ -2246,14 +2243,14 @@ pub fn nop3(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     return Value.None;
 }
 
-pub fn objNop0(vm: *cy.UserVM, ptr: *anyopaque, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn objNop0(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     vm.releaseObject(obj);
     return Value.None;
 }
 
-pub fn objNop1(vm: *cy.UserVM, ptr: *anyopaque, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = stdx.ptrAlignCast(*cy.HeapObject, ptr);
+pub fn objNop1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
     vm.releaseObject(obj);
     vm.release(args[0]);
     return Value.None;

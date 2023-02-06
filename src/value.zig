@@ -124,7 +124,7 @@ pub const Value = packed union {
 
     fn otherToF64(self: *const Value) linksection(cy.HotSection) f64 {
         if (self.isPointer()) {
-            const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
+            const obj = self.asHeapObject();
             if (obj.common.structId == cy.AstringT) {
                 const str = obj.astring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
@@ -148,7 +148,7 @@ pub const Value = packed union {
             return self.asF64() != 0;
         } else {
             if (self.isPointer()) {
-                const obj = self.asHeapObject(*cy.HeapObject);
+                const obj = self.asHeapObject();
                 if (obj.common.structId == cy.AstringT) {
                     return obj.astring.len > 0;
                 } else if (obj.common.structId == cy.UstringT) {
@@ -172,16 +172,16 @@ pub const Value = packed union {
     }
 
     pub inline fn isList(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject(*cy.HeapObject).common.structId == cy.ListS;
+        return self.isPointer() and self.asHeapObject().common.structId == cy.ListS;
     }
 
     pub inline fn isRawString(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject(*cy.HeapObject).common.structId == cy.RawStringT;
+        return self.isPointer() and self.asHeapObject().common.structId == cy.RawStringT;
     }
 
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
-            const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
+            const obj = self.asHeapObject();
             return obj.common.structId == cy.AstringT or obj.common.structId == cy.UstringT;
         } else {
             return self.assumeNotPtrIsStaticString();
@@ -247,17 +247,13 @@ pub const Value = packed union {
 
     pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
         if (isPointer(self)) {
-            return self.asHeapObject(*const cy.HeapObject).common.structId == typeId;
+            return self.asHeapObject().common.structId == typeId;
         }
         return false;
     }
 
-    pub inline fn asPointer(self: *const Value) linksection(cy.HotSection) ?*anyopaque {
-        return @intToPtr(?*anyopaque, @intCast(usize, self.val & ~PointerMask));
-    }
-
     pub inline fn asRawStringSlice(self: *const Value) []const u8 {
-        const obj = self.asHeapObject(*cy.HeapObject);
+        const obj = self.asHeapObject();
         if (obj.common.structId == cy.RawStringT) {
             return obj.rawstring.getConstSlice();
         } else if (obj.common.structId == cy.RawStringSliceT) {
@@ -265,8 +261,16 @@ pub const Value = packed union {
         } else unreachable;
     }
 
-    pub inline fn asHeapObject(self: *const Value, comptime Ptr: type) linksection(cy.HotSection) Ptr {
+    pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
+        return @intToPtr(*cy.HeapObject, @intCast(usize, self.val & ~PointerMask));
+    }
+
+    pub inline fn asPointer(self: *const Value, comptime Ptr: type) Ptr {
         return @intToPtr(Ptr, @intCast(usize, self.val & ~PointerMask));
+    }
+
+    pub inline fn asAnyOpaque(self: *const Value) ?*anyopaque {
+        return @intToPtr(?*anyopaque, @intCast(usize, self.val & ~PointerMask));
     }
 
     pub inline fn asBool(self: *const Value) linksection(cy.HotSection) bool {
@@ -431,7 +435,7 @@ pub const Value = packed union {
             return .number;
         } else {
             if (self.isPointer()) {
-                const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
+                const obj = self.asHeapObject();
                 switch (obj.common.structId) {
                     cy.ListS => return .list,
                     cy.MapS => return .map,
@@ -500,7 +504,7 @@ pub const ValueUserTag = enum {
 
 pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
     if (val.isPointer()) {
-        const obj = val.asHeapObject(*cy.HeapObject);
+        const obj = val.asHeapObject();
         switch (obj.common.structId) {
             cy.ListS => {
                 const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
@@ -512,7 +516,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
             },
             cy.MapS => {
                 const new = cy.heap.allocEmptyMap(vm) catch stdx.fatal();
-                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject(*cy.HeapObject)).map.inner);
+                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
 
                 const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                 var iter = map.iterator();

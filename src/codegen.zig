@@ -2004,7 +2004,7 @@ fn genFuncDecl(self: *CompileChunk, nodeId: cy.NodeId) !void {
         }
 
         const closure = try cy.heap.allocEmptyClosure(self.compiler.vm, opStart, numParams, @intCast(u8, numLocals), numCaptured);
-        const rtSym = cy.FuncSymbolEntry.initClosure(closure.asHeapObject(*cy.Closure));
+        const rtSym = cy.FuncSymbolEntry.initClosure(closure.asPointer(*cy.Closure));
         self.compiler.vm.setFuncSym(symId, rtSym);
     } else {
         const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, numLocals), numParams);

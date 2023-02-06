@@ -1441,7 +1441,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         },
         NativeFunc1S => {
             if (obj.nativeFunc1.hasTccState) {
-                cy.arc.releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.nativeFunc1.tccState.asPointer().?));
+                cy.arc.releaseObject(vm, obj.nativeFunc1.tccState.asHeapObject());
             }
             freePoolObject(vm, obj);
         },

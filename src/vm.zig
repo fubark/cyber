@@ -113,6 +113,8 @@ pub const VM = struct {
 
     stackTrace: StackTrace,
 
+    /// Since func syms can be reassigned, the ones that retain a tcc state will be tracked here.
+    funcSymTccStates: std.AutoHashMapUnmanaged(SymbolId, Value),
     methodSymExtras: cy.List([]const u8),
     debugTable: []const cy.OpDebug,
 
@@ -183,6 +185,7 @@ pub const VM = struct {
             .endLocal = undefined,
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
             .deinited = false,
+            .funcSymTccStates = .{},
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -245,6 +248,13 @@ pub const VM = struct {
             self.alloc.free(detail.name);
         }
         self.funcSymDetails.deinit(self.alloc);
+        {
+            var iter = self.funcSymTccStates.iterator();
+            while (iter.next()) |e| {
+                release(self, e.value_ptr.*);
+            }
+            self.funcSymTccStates.deinit(self.alloc);
+        }
 
         self.varSymSigs.deinit(self.alloc);
 
@@ -3570,7 +3580,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpSetStaticVar:"::);
                 }
                 const symId = pc[1].arg;
+                const prev = vm.varSyms.buf[symId].value;
                 vm.varSyms.buf[symId].value = framePtr[pc[2].arg];
+                release(vm, prev);
                 pc += 3;
                 if (useGoto) { gotoNext(&pc, jumpTablePtr); }
                 continue;
@@ -4736,6 +4748,12 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 if (reqNumParams != obj.nativeFunc1.numParams) {
                     return vm.panic("Assigning to static function with a different function signature.");
                 }
+                if (vm.funcSyms.buf[symId].entryT == @enumToInt(FuncSymbolEntryType.nativeFunc1)) {
+                    // Check to cleanup previous tcc state.
+                    if (vm.funcSymTccStates.get(symId)) |state| {
+                        release(vm, state);
+                    }
+                }
                 vm.funcSyms.buf[symId] = .{
                     .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
                     .innerExtra = .{
@@ -4747,6 +4765,10 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                         .nativeFunc1 = obj.nativeFunc1.func,
                     },
                 };
+                if (obj.nativeFunc1.hasTccState) {
+                    retain(vm, obj.nativeFunc1.tccState);
+                    vm.funcSymTccStates.put(vm.alloc, symId, obj.nativeFunc1.tccState) catch stdx.fatal();
+                }
                 cy.arc.release(vm, val);
             },
             else => {

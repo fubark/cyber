@@ -112,7 +112,7 @@ test "ARC for static variable declarations." {
     );
     run.deinit();
     try t.eq(trace.numRetainAttempts, 3);
-    try t.eq(trace.numReleaseAttempts, 5);
+    try t.eq(trace.numReleaseAttempts, 6);
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 }

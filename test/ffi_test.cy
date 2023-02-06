@@ -84,3 +84,15 @@ lib = try bindLib(libPath, [
 ], { genMap: true })
 testAdd = lib['testAdd']
 try t.eq(testAdd(123, 321), 444)
+
+-- Reassign a binded function to a static function.
+-- TODO: Use statements once initializer block is done.
+var staticLibPath = if os.system == 'macos' then 'test/macos_lib.dylib' else if os.system == 'windows' then 'test/win_lib.dll' else none
+var staticLib = bindLib(staticLibPath, [
+  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+], { genMap: true })
+func staticAdd(a, b) = staticLib.testAdd
+try t.eq(staticAdd(123, 321), 444)
+-- Freeing the lib reference should not affect `staticAdd`
+staticLib = none
+try t.eq(staticAdd(123, 321), 444)

@@ -466,24 +466,37 @@ fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
             return false;
         },
         .ident => {
+            if (node.head.ident.semaVarId != cy.NullId) {
+                const svar = c.genGetVar(node.head.ident.semaVarId).?;
+                if (willAlwaysRetainSym(c, svar.inner.symId)) {
+                    return true;
+                }
+            }
             if (node.head.ident.semaSymId != cy.NullId) {
-                if (c.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
-                    if (rsym.symT == .variable) {
-                        // Since `staticVar` op is always retained atm.
-                        return true;
-                    } else if (rsym.symT == .func) {
-                        // `staticFunc` op is always retained.
-                        return true;
-                    } else if (rsym.symT == .object) {
-                        // `sym` op is always retained.
-                        return true;
-                    }
+                if (willAlwaysRetainSym(c, node.head.ident.semaSymId)) {
+                    return true;
                 }
             }
             return false;
         },
         else => return false,
     }
+}
+
+fn willAlwaysRetainSym(c: *CompileChunk, symId: sema.SymId) bool {
+    if (c.genGetResolvedSym(symId)) |rsym| {
+        if (rsym.symT == .variable) {
+            // Since `staticVar` op is always retained atm.
+            return true;
+        } else if (rsym.symT == .func) {
+            // `staticFunc` op is always retained.
+            return true;
+        } else if (rsym.symT == .object) {
+            // `sym` op is always retained.
+            return true;
+        }
+    }
+    return false;
 }
 
 /// `buf` is assumed to be big enough.
@@ -890,11 +903,17 @@ pub const CompileChunk = struct {
         return false;
     }
 
+    fn canUseVarAsDst(svar: sema.LocalVar) bool {
+        // If boxed, the var needs to be copied out of the box.
+        // If static selected, the var needs to be copied to a local.
+        return !svar.isBoxed and !svar.isStaticAlias;
+    }
+
+    /// Checks to see if the ident references a local to avoid a copy to dst.
     fn userLocalOrDst(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool) LocalId {
         if (self.nodes[nodeId].node_t == .ident) {
             if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                if (!svar.isBoxed) {
-                    // If boxed, the value needs to be copied outside of the box.
+                if (canUseVarAsDst(svar)) {
                     return svar.local;
                 }
             }
@@ -907,7 +926,7 @@ pub const CompileChunk = struct {
         const node = self.nodes[nodeId];
         if (node.node_t == .ident) {
             if (self.genGetVar(self.nodes[nodeId].head.ident.semaVarId)) |svar| {
-                if (!svar.isBoxed) {
+                if (canUseVarAsDst(svar)) {
                     return svar.local;
                 }
             }
@@ -947,7 +966,7 @@ pub const CompileChunk = struct {
 
     /// Reserve params and captured vars.
     /// Call convention stack layout:
-    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params] [callee] [capturedParams] [locals]
+    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params...] [callee] [capturedParams...] [locals...]
     pub fn reserveFuncParams(self: *CompileChunk, decl: cy.FuncDecl) !void {
         // First local is reserved for a single return value.
         _ = try self.reserveLocal(self.curBlock);

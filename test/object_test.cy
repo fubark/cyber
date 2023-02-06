@@ -15,6 +15,13 @@ try t.eq(n.value, none)
 n = Node{ value: [123] }
 try t.eq(n.value[0], 123)
 
+-- Get field from selected static var.
+var staticNode = Node{ value: 123 }
+f = func():
+  static staticNode
+  return staticNode.value
+try t.eq(f(), 123)
+
 -- Set to struct field.
 n = Node{ value: 123 }
 n.value = 234
@@ -45,7 +52,7 @@ w = W{ a: 1, b: 2 }
 try t.eq(w.a, 1)
 try t.eq(w.b, 2)
 
--- Initialize fields with commans and newlines.
+-- Initialize fields with commas and newlines.
 w = W{
   a: 1,
   b: 2,

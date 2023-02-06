@@ -51,71 +51,79 @@ pub const GenValue = struct {
 fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) !GenValue {
     const node = self.nodes[nodeId];
     if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
-        if (dst == svar.local) {
-            if (retain) {
-                stdx.panic("Unexpected retainEscapeTop.");
-            }
-            return GenValue.initSemaVar(svar);
+        if (svar.isStaticAlias) {
+            return genSymbolTo(self, svar.inner.symId, dst, retain);
         } else {
-            if (retain and svar.vtype.rcCandidate) {
-                if (svar.isBoxed) {
-                    try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
-                } else {
-                    try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
+            if (dst == svar.local) {
+                if (retain) {
+                    stdx.panic("Unexpected retainEscapeTop.");
                 }
+                return GenValue.initSemaVar(svar);
             } else {
-                if (svar.isBoxed) {
-                    try self.buf.pushOp2(.boxValue, svar.local, dst);
+                if (retain and svar.vtype.rcCandidate) {
+                    if (svar.isBoxed) {
+                        try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
+                    } else {
+                        try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
+                    }
                 } else {
-                    try self.buf.pushOp2(.copy, svar.local, dst);
+                    if (svar.isBoxed) {
+                        try self.buf.pushOp2(.boxValue, svar.local, dst);
+                    } else {
+                        try self.buf.pushOp2(.copy, svar.local, dst);
+                    }
                 }
+                return self.initGenValue(dst, svar.vtype);
             }
-            return self.initGenValue(dst, svar.vtype);
         }
     } else {
         if (builtin.mode == .Debug and node.head.ident.semaSymId == cy.NullId) {
             unexpectedFmt("Missing semaSymId.", &.{});
         }
-        if (self.genGetResolvedSym(node.head.ident.semaSymId)) |rsym| {
-            if (rsym.symT == .func) {
-                const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                const localKey = sym.key.absLocalSymKey;
+        return genSymbolTo(self, node.head.ident.semaSymId, dst, retain);
+    }
+}
 
-                const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
+fn genSymbolTo(self: *CompileChunk, symId: sema.SymId, dst: LocalId, retain: bool) !GenValue {
+    if (self.genGetResolvedSym(symId)) |rsym| {
+        if (rsym.symT == .func) {
+            const sym = self.semaSyms.items[symId];
+            const localKey = sym.key.absLocalSymKey;
 
-                try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
-                if (!retain and self.isTempLocal(dst)) {
-                    try self.setReservedTempLocal(dst);
-                }
-                return self.initGenValue(dst, sema.AnyType);
-            } else if (rsym.symT == .variable) {
-                const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                const localKey = sym.key.absLocalSymKey;
-                const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
-                try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
-                if (!retain and self.isTempLocal(dst)) {
-                    try self.setReservedTempLocal(dst);
-                }
-                return self.initGenValue(dst, sema.AnyType);
-            } else if (rsym.symT == .object) {
-                const nameId = rsym.key.absResolvedSymKey.nameId;
-                const rtObjId = try self.compiler.vm.ensureStruct(nameId, 0);
-                try self.buf.pushOp1(.sym, @enumToInt(cy.heap.SymbolType.object));
-                try self.buf.pushOperandsRaw(std.mem.asBytes(&rtObjId));
-                try self.buf.pushOperand(dst);
-                if (!retain and self.isTempLocal(dst)) {
-                    try self.setReservedTempLocal(dst);
-                }
-                return self.initGenValue(dst, sema.AnyType);
-            } else {
-                const sym = self.semaSyms.items[node.head.ident.semaSymId];
-                const name = sema.getSymName(self.compiler, &sym);
-                return self.reportErrorAt("Can't use symbol `{}` as a value.", &.{v(name)}, nodeId);
+            const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
+            const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
+
+            try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
             }
+            return self.initGenValue(dst, sema.AnyType);
+        } else if (rsym.symT == .variable) {
+            const sym = self.semaSyms.items[symId];
+            const localKey = sym.key.absLocalSymKey;
+            const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
+            try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+            return self.initGenValue(dst, sema.AnyType);
+        } else if (rsym.symT == .object) {
+            const nameId = rsym.key.absResolvedSymKey.nameId;
+            const rtObjId = try self.compiler.vm.ensureStruct(nameId, 0);
+            try self.buf.pushOp1(.sym, @enumToInt(cy.heap.SymbolType.object));
+            try self.buf.pushOperandsRaw(std.mem.asBytes(&rtObjId));
+            try self.buf.pushOperand(dst);
+            if (!retain and self.isTempLocal(dst)) {
+                try self.setReservedTempLocal(dst);
+            }
+            return self.initGenValue(dst, sema.AnyType);
         } else {
-            return genNone(self, dst);
+            const sym = self.semaSyms.items[symId];
+            const name = sema.getSymName(self.compiler, &sym);
+            return self.reportError("Can't use symbol `{}` as a value.", &.{v(name)});
         }
+    } else {
+        return genNone(self, dst);
     }
 }
 

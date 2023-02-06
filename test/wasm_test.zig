@@ -60,7 +60,16 @@ export fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void {
     _ = strLen;
 }
 
+export fn jsLog(ptr: [*]const u8, len: usize) void {
+    _ = ptr;
+    _ = len;
+}
+
 export fn jsErr(ptr: [*]const u8, len: usize) void {
     _ = ptr;
     _ = len;
+}
+
+export fn jsPerformanceNow() f64 {
+    return 0;
 }

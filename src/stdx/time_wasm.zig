@@ -1,5 +1,5 @@
 // Returns milliseconds.
-pub extern "stdx" fn jsPerformanceNow() f64;
+pub extern fn jsPerformanceNow() f64;
 
 pub const Timer = struct {
     const Self = @This();

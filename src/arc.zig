@@ -14,7 +14,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
     if (val.isPointer()) {
         const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer().?);
-        if (builtin.mode == .Debug or builtin.is_test) {
+        if (builtin.mode == .Debug) {
             if (obj.retainedCommon.structId == cy.NullId) {
                 log.debug("object already freed. {*}", .{obj});
                 cy.debug.dumpObjectTrace(vm, obj);

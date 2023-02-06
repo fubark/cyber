@@ -1003,7 +1003,7 @@ export fn fromCStr(ptr: [*:0]const u8) Value {
     return cy.heap.allocRawString(gvm, slice) catch stdx.fatal();
 }
 
-export fn toCStr(val: Value) [*]const u8 {
+fn toCStr(val: Value) callconv(.C) [*]const u8 {
     const str = gvm.valueAsString(val);
     const dupe = @ptrCast([*]u8, std.c.malloc(str.len + 1));
     std.mem.copy(u8, dupe[0..str.len], str);

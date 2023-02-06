@@ -329,6 +329,11 @@ pub const VMcompiler = struct {
         var tt = stdx.debug.trace();
         const ast = try chunk.parser.parse(chunk.src);
         tt.endPrint("parse");
+        // Update buffer pointers so success/error paths can access them.
+        chunk.nodes = ast.nodes.items;
+        chunk.funcDecls = ast.func_decls.items;
+        chunk.funcParams = ast.func_params;
+        chunk.tokens = ast.tokens;
         if (ast.has_error) {
             self.lastErrChunk = id;
             if (ast.isTokenError) {
@@ -337,10 +342,6 @@ pub const VMcompiler = struct {
                 return error.ParseError;
             }
         }
-        chunk.nodes = ast.nodes.items;
-        chunk.funcDecls = ast.func_decls.items;
-        chunk.funcParams = ast.func_params;
-        chunk.tokens = ast.tokens;
         return ast;
     }
 

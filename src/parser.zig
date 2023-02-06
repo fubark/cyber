@@ -73,6 +73,7 @@ pub const Parser = struct {
     tokens: std.ArrayListUnmanaged(Token),
     nodes: std.ArrayListUnmanaged(Node),
     last_err: []const u8,
+    /// The last error's src char pos.
     last_err_pos: u32,
     block_stack: std.ArrayListUnmanaged(BlockState),
     cur_indent: u32,
@@ -565,7 +566,7 @@ pub const Parser = struct {
         } else return null;
     }
 
-    fn parseStructField(self: *Parser) !?NodeId {
+    fn parseObjectField(self: *Parser) !?NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
         if (token.tag() == .ident) {
@@ -662,7 +663,7 @@ pub const Parser = struct {
         unreachable;
     }
 
-    fn parseStructDecl(self: *Parser) !NodeId {
+    fn parseObjectDecl(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `type` keyword.
         self.advanceToken();
@@ -679,7 +680,7 @@ pub const Parser = struct {
         if (token.tag() == .colon) {
             self.advanceToken();
         } else {
-            return self.reportParseError("Expected colon.", &.{});
+            return self.reportParseError("Expected colon to start an object type block.", &.{});
         }
 
         const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
@@ -687,7 +688,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var firstField = (try self.parseStructField()) orelse NullId;
+        var firstField = (try self.parseObjectField()) orelse NullId;
         if (firstField != NullId) {
             var lastField = firstField;
 
@@ -695,7 +696,7 @@ pub const Parser = struct {
                 const start2 = self.next_pos;
                 const indent = try self.consumeIndentBeforeStmt();
                 if (indent == reqIndent) {
-                    const id = (try self.parseStructField()) orelse break;
+                    const id = (try self.parseObjectField()) orelse break;
                     self.nodes.items[lastField].next = id;
                     lastField = id;
                 } else if (indent <= prevIndent) {
@@ -1495,7 +1496,7 @@ pub const Parser = struct {
                 }
             },
             .object_k => {
-                return try self.parseStructDecl();
+                return try self.parseObjectDecl();
             },
             .tagtype_k => {
                 return try self.parseTagDecl();

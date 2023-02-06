@@ -384,6 +384,17 @@ test "test module" {
 test "Objects." {
     const run = VMrunner.create();
     defer run.destroy();
+
+    // Missing semicolon.
+    var val = run.evalExt(.{ .silent = true },
+        \\object Vec2
+        \\  x
+        \\  y
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Expected colon to start an object type block.");
+    try t.eq(run.vm.getParserErrorPos(), 11);
+
     _ = try run.eval(@embedFile("object_test.cy"));
 }
 

@@ -663,6 +663,13 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 const name = c.src[func.name.start..func.name.end];
                 const numParams = @intCast(u16, func.params.end - func.params.start);
                 try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
+            } else if (c.nodes[stmt].node_t == .funcDeclAssign) {
+                try semaFuncDeclAssign(c, stmt, true);
+                const funcId = c.nodes[stmt].head.funcDeclAssign.declId;
+                const func = c.funcDecls[funcId];
+                const name = c.src[func.name.start..func.name.end];
+                const numParams = @intCast(u16, func.params.end - func.params.start);
+                try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
             } else {
                 return c.reportErrorAt("Unsupported export {}", &.{v(c.nodes[stmt].node_t)}, nodeId);
             }

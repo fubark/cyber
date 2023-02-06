@@ -1265,7 +1265,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             }
         },
         .funcDeclAssign => {
-            // Nop. Static variables are hoisted and initialized at the start of the program.
+            // Nop. Func declaration assignment are hoisted and initialized at the start of the program.
         },
         .funcDecl => {
             try genFuncDecl(self, nodeId);

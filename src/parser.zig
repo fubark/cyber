@@ -1551,6 +1551,7 @@ pub const Parser = struct {
                 };
                 const stmt = self.nodes.items[stmtId];
                 switch (stmt.node_t) {
+                    .funcDeclAssign,
                     .funcDecl,
                     .varDecl => {
                         const exportStmt = try self.pushNode(.exportStmt, start);

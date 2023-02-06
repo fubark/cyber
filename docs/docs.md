@@ -972,13 +972,13 @@ The function declaration can also be initialized to an expression that evaluates
 ```text
 func myAdd(a, b):
     return a + b
-func add(a, b) = myAdd  -- Valid declaration.
+func add(a, b) = myAdd      -- Valid declaration.
 
 myInc = func(a):
     return a + 1
-func inc(a) = myInc     -- CompileError, referencing local variable `myInc`.
+func inc(a) = myInc         -- CompileError, referencing local variable `myInc`.
 
-func inc(a) = myAdd     -- panic, #InvalidSignature
+func foo(a, b, c) = myAdd   -- panic, signature mismatch.
 ```
 
 Functions can return multiple values.

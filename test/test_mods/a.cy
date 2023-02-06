@@ -22,3 +22,5 @@ func barNoExport():
 
 -- Test that there is no main block execution for imported modules.
 panic(#ExecutedModuleMain)
+
+export func declAssign(val) = number

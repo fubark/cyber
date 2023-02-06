@@ -9,7 +9,7 @@ import os 'os'
 -- raylibPath = '/Users/fubar/Downloads/raylib-4.2.0_macos/lib/libraylib.dylib'
 raylibPath = 'C:/Users/fubar/Downloads/raylib-4.2.0_win64_msvc16/lib/raylib.dll'
 
-ray = bindLib(raylibPath, [
+ray = try bindLib(raylibPath, [
     CFunc{ sym: 'InitWindow', args: [#int, #int, #charPtrZ], ret: #void }
     CFunc{ sym: 'CloseWindow', args: [], ret: #void }
     CFunc{ sym: 'SetTargetFPS', args: [#int], ret: #void }
@@ -33,21 +33,21 @@ func toColor(r, g, b, a):
     else:
         return a | b << 8 | g << 16 | r << 24
 
-RAYWHITE = toColor(245, 245, 245, 255)
-GRAY = toColor(130, 130, 130, 255)
-LIGHTGRAY = toColor(200, 200, 200, 255)
-BLUE = toColor(0, 121, 241, 255)
-DARKBLUE = toColor(0, 82, 172, 255)
-SKYBLUE = toColor(102, 191, 255, 255)
+var RAYWHITE = toColor(245, 245, 245, 255)
+var GRAY = toColor(130, 130, 130, 255)
+var LIGHTGRAY = toColor(200, 200, 200, 255)
+var BLUE = toColor(0, 121, 241, 255)
+var DARKBLUE = toColor(0, 82, 172, 255)
+var SKYBLUE = toColor(102, 191, 255, 255)
 
-KEY_RIGHT = 262
-KEY_LEFT = 263
-KEY_DOWN = 264
-KEY_UP = 265
-KEY_ENTER = 257
+var KEY_RIGHT = 262
+var KEY_LEFT = 263
+var KEY_DOWN = 264
+var KEY_UP = 265
+var KEY_ENTER = 257
 
-SNAKE_LENGTH = 256
-SQUARE_SIZE = 31
+var SNAKE_LENGTH = 256
+var SQUARE_SIZE = 31
 
 object Vec2:
     x number
@@ -65,19 +65,19 @@ object Food:
     active bool
     color Color
 
-screenWidth = 800
-screenHeight = 450
+var screenWidth = 800
+var screenHeight = 450
 
-framesCounter = 0
-gameOver = false
-pause = false
+var framesCounter = 0
+var gameOver = false
+var pause = false
 
-fruit = Food{}
-snake = arrayFill(Snake{}, SNAKE_LENGTH)
-snakePosition = arrayFill(Vec2{}, SNAKE_LENGTH)
-allowMove = false
-offset = Vec2{ x: 0, y: 0 }
-counterTail = 0
+var fruit = Food{}
+var snake = arrayFill(Snake{}, SNAKE_LENGTH)
+var snakePosition = arrayFill(Vec2{}, SNAKE_LENGTH)
+var allowMove = false
+var offset = Vec2{ x: 0, y: 0 }
+var counterTail = 0
 
 func main():
     ray.InitWindow(screenWidth, screenHeight, 'classic game: snake')
@@ -96,12 +96,12 @@ main()
 
 -- Initialize game variables
 func InitGame():
-    framesCounter = 0
-    gameOver = false
-    pause = false
+    static framesCounter = 0
+    static gameOver = false
+    static pause = false
 
-    counterTail = 1
-    allowMove = false
+    static counterTail = 1
+    static allowMove = false
 
     offset.x = screenWidth % SQUARE_SIZE
     offset.y = screenHeight % SQUARE_SIZE
@@ -124,6 +124,12 @@ func InitGame():
     fruit.active = false
 
 func UpdateGame():
+    static pause
+    static allowMove
+    static framesCounter
+    static gameOver
+    static counterTail
+
     if !gameOver:
         if ray.IsKeyPressed(asciiCode('P')):
             pause = !pause
@@ -207,7 +213,10 @@ func UpdateGame():
 
 func DrawGame():
     ray.BeginDrawing()
-    ray.ClearBackground(RAYWHITE)
+    if os.system == 'macos':
+        ray.DrawRectangle(0, 0, screenWidth, screenHeight, RAYWHITE)
+    else:
+        ray.ClearBackground(RAYWHITE)
 
     if !gameOver:
         -- Draw grid lines

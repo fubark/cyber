@@ -1662,7 +1662,7 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() != .equal) {
                     try self.consumeNewLineOrEnd();
-                    const decl = try self.pushNode(.captureDecl, start);
+                    const decl = try self.pushNode(.staticDecl, start);
                     self.nodes.items[decl].head = .{
                         .left_right = .{
                             .left = name,

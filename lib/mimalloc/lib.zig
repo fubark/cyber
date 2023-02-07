@@ -1,40 +1,39 @@
 const std = @import("std");
 
-pub const pkg = std.build.Pkg{
-    .name = "mimalloc",
-    .source = .{ .path = srcPath() ++ "/mimalloc.zig" },
-    .dependencies = &.{},
-};
 
-pub fn addPackage(step: *std.build.LibExeObjStep) void {
-    var new_pkg = pkg;
-    step.addPackage(new_pkg);
+pub fn addModule(step: *std.build.CompileStep) void {
+    const mod = step.builder.createModule(.{
+        .source_file = .{ .path = srcPath() ++ "/mimalloc.zig" },
+    });
+    step.addModule("mimalloc", mod);
     step.addIncludePath(srcPath() ++ "/vendor/include");
 }
 
 const BuildOptions = struct {
 };
 
-pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
+pub fn buildAndLink(step: *std.build.CompileStep, opts: BuildOptions) void {
     _ = opts;
     const b = step.builder;
-    const lib = b.addStaticLibrary("mimalloc", null);
-    lib.setTarget(step.target);
-    lib.setBuildMode(step.build_mode);
+    const lib = b.addStaticLibrary(.{
+        .name = "mimalloc",
+        .target = step.target,
+        .optimize = step.optimize,
+    });
     lib.addIncludePath(srcPath() ++ "/vendor/include");
     lib.linkLibC();
     // lib.disable_sanitize_c = true;
 
     var c_flags = std.ArrayList([]const u8).init(b.allocator);
     // c_flags.append("-D_GNU_SOURCE=1") catch @panic("error");
-    if (step.target.getOsTag() == .windows) {
-    } else if (step.target.getOsTag() == .macos) {
+    if (lib.target.getOsTag() == .windows) {
+    } else if (lib.target.getOsTag() == .macos) {
         // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
         lib.addSystemIncludePath("/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include");
         lib.addSystemIncludePath("/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include");
         lib.addSystemIncludePath("/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include");
     }
-    if (step.build_mode == .Debug) {
+    if (lib.optimize == .Debug) {
         // For debugging:
         // c_flags.append("-O0") catch @panic("error");
         // if (step.target.getCpuArch().isWasm()) {
@@ -51,7 +50,7 @@ pub fn buildAndLink(step: *std.build.LibExeObjStep, opts: BuildOptions) void {
         c_flags.append("-DMI_STAT=0") catch @panic("error");
     }
 
-    if (step.target.getOsTag() == .windows) {
+    if (lib.target.getOsTag() == .windows) {
         step.linkSystemLibrary("bcrypt");
     }
 

@@ -6,7 +6,7 @@ const cy = @cImport({
 });
 
 /// Run with:
-///   zig build wasm-test -Dtarget=wasm32-freestanding -Drelease-fast
+///   zig build wasm-test -Dtarget=wasm32-freestanding -Doptimize=ReleaseFast
 ///   wasm3 zig-out/test/test.wasm
 export fn _start() void {
     _ = lib;

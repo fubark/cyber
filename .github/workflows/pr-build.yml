@@ -55,7 +55,8 @@ jobs:
       BUILD_TARGET: ${{ matrix.config.target }}
       BUILD_MODE: ${{ matrix.config.mode }}
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
-      ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Drelease-safe') || '' }}
+      ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
+      ZIG_VERSION: 0.11.0-dev.1580+a5b34a61a
     steps:
       - name: Install Linux deps.
         if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'x86_64-linux-gnu'
@@ -73,7 +74,7 @@ jobs:
       - name: Install zig.
         if: env.BUILD_HOST == 'ubuntu-22.04'
         run: |
-          wget -c https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.1465+d64dd75e3.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/builds/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
 
       - name: Install wasm3.
         if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'wasm32-freestanding'
@@ -84,16 +85,16 @@ jobs:
       - name: Install zig.
         if: env.BUILD_HOST == 'macos-12'
         run: |
-          wget -c https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.1465+d64dd75e3.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
+          wget -c https://ziglang.org/builds/zig-macos-x86_64-${{ env.ZIG_VERSION }}.tar.xz -O - | tar -xJ --strip-components=1 -C /usr/local/bin
           xcode-select --print-path
 
       - name: Install zig.
         if: env.BUILD_HOST == 'windows-2022'
         run: |
-          Invoke-WebRequest -Uri 'https://ziglang.org/builds/zig-windows-x86_64-0.11.0-dev.1465+d64dd75e3.zip' -OutFile 'C:\zig.zip'
+          Invoke-WebRequest -Uri 'https://ziglang.org/builds/zig-windows-x86_64-${{ env.ZIG_VERSION }}.zip' -OutFile 'C:\zig.zip'
           cd C:\
           7z x zig.zip
-          Add-Content $env:GITHUB_PATH 'C:\zig-windows-x86_64-0.11.0-dev.1465+d64dd75e3\'
+          Add-Content $env:GITHUB_PATH 'C:\zig-windows-x86_64-${{ env.ZIG_VERSION }}\'
 
       - name: Cache.
         uses: actions/cache@v2

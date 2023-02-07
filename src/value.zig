@@ -380,7 +380,7 @@ pub const Value = packed union {
             log.info("Number {}", .{self.asF64()});
         } else {
             if (self.isPointer()) {
-                const obj = stdx.ptrAlignCast(*cy.HeapObject, self.asPointer().?);
+                const obj = self.asHeapObject();
                 switch (obj.common.structId) {
                     cy.ListS => log.info("List {*} len={}", .{obj, obj.list.list.len}),
                     cy.MapS => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),

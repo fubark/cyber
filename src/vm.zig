@@ -1248,7 +1248,7 @@ pub const VM = struct {
                 @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(self.toPc(sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + startLocal;
-                newFramePtr[1] = buildReturnInfo(reqNumRetVals, true);
+                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true);
                 newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return PcFramePtr{
@@ -1262,7 +1262,7 @@ pub const VM = struct {
                 }
 
                 const newFramePtr = framePtr + startLocal;
-                newFramePtr[1] = buildReturnInfo(reqNumRetVals, true);
+                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true);
                 newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
 

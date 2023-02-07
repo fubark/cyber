@@ -10,19 +10,28 @@ const Options = struct {
     linkMimalloc: bool = false,
 };
 
+var stdx: *std.build.Module = undefined;
+
 pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
 
     const selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
 
+    stdx = b.createModule(.{
+        .source_file = .{ .path = srcPath() ++ "/src/stdx/stdx.zig" },
+    });
+
     {
-        const exe = b.addExecutable("cyber", "src/main.zig");
-        exe.setBuildMode(mode);
-        if (mode != .Debug) {
+        const exe = b.addExecutable(.{
+            .name = "cyber",
+            .root_source_file = .{ .path = "src/main.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        if (exe.optimize != .Debug) {
             exe.strip = true;
         }
-        exe.setTarget(target);
         exe.setOutputDir("zig-out/cyber");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
@@ -35,10 +44,10 @@ pub fn build(b: *std.build.Builder) !void {
         // exe.emit_asm = .emit;
 
         // exe.linkLibC();
-        exe.addPackage(stdxPkg);
-        mimalloc.addPackage(exe);
+        exe.addModule("stdx", stdx);
+        mimalloc.addModule(exe);
         mimalloc.buildAndLink(exe, .{});
-        tcc.addPackage(exe);
+        tcc.addModule(exe);
         tcc.buildAndLink(exe, .{
             .selinux = selinux,
         });
@@ -46,12 +55,15 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
-        const lib = b.addSharedLibrary("cyber", "src/lib.zig", .unversioned);
-        lib.setBuildMode(mode);
-        if (mode != .Debug) {
+        const lib = b.addSharedLibrary(.{
+            .name = "cyber",
+            .root_source_file = .{ .path = "src/lib.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        if (lib.optimize != .Debug) {
             lib.strip = true;
         }
-        lib.setTarget(target);
         lib.setOutputDir("zig-out/lib");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
@@ -64,19 +76,18 @@ pub fn build(b: *std.build.Builder) !void {
         try addBuildOptions(b, lib, false);
 
         // lib.linkLibC();
-        lib.addPackage(stdxPkg);
-        mimalloc.addPackage(lib);
+        lib.addModule("stdx", stdx);
+        mimalloc.addModule(lib);
         mimalloc.buildAndLink(lib, .{});
 
         if (!target.getCpuArch().isWasm()) {
-            tcc.addPackage(lib);
+            tcc.addModule(lib);
             tcc.buildAndLink(lib, .{
                 .selinux = selinux,
             });
         } else {
-            lib.addPackage(.{
-                .name = "tcc",
-                .source = .{ .path = srcPath() ++ "/src/nopkg.zig" },
+            lib.addAnonymousModule("tcc", .{
+                .source_file = .{ .path = srcPath() ++ "/src/nopkg.zig" },
             });
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
             lib.stack_protector = false;
@@ -85,12 +96,15 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
-        const lib = b.addSharedLibrary("test", "test/wasm_test.zig", .unversioned);
-        lib.setBuildMode(mode);
-        if (mode != .Debug) {
+        const lib = b.addSharedLibrary(.{
+            .name = "test",
+            .root_source_file = .{ .path = "test/wasm_test.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        if (lib.optimize != .Debug) {
             lib.strip = true;
         }
-        lib.setTarget(target);
         lib.setOutputDir("zig-out/test");
         lib.setMainPkgPath(".");
         lib.addIncludePath(srcPath() ++ "/src");
@@ -105,19 +119,18 @@ pub fn build(b: *std.build.Builder) !void {
         try addBuildOptions(b, lib, false);
 
         // lib.linkLibC();
-        lib.addPackage(stdxPkg);
-        mimalloc.addPackage(lib);
+        lib.addModule("stdx", stdx);
+        mimalloc.addModule(lib);
         mimalloc.buildAndLink(lib, .{});
 
         if (!target.getCpuArch().isWasm()) {
-            tcc.addPackage(lib);
+            tcc.addModule(lib);
             tcc.buildAndLink(lib, .{
                 .selinux = selinux,
             });
         } else {
-            lib.addPackage(.{
-                .name = "tcc",
-                .source = .{ .path = srcPath() ++ "/src/nopkg.zig" },
+            lib.addAnonymousModule("tcc", .{
+                .source_file = .{ .path = srcPath() ++ "/src/nopkg.zig" },
             });
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
             lib.stack_protector = false;
@@ -126,21 +139,23 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
-        const step = b.addTest("./test/main_test.zig");
-        step.setBuildMode(mode);
-        step.setTarget(target);
+        const step = b.addTest(.{
+            .root_source_file = .{ .path = "./test/main_test.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
         step.setMainPkgPath(".");
 
         try addBuildOptions(b, step, false);
-        step.addPackage(stdxPkg);
+        step.addModule("stdx", stdx);
         step.rdynamic = true;
 
-        tcc.addPackage(step);
+        tcc.addModule(step);
         tcc.buildAndLink(step, .{
             .selinux = selinux,
         });
 
-        const traceTest = try addTraceTest(b, mode, target, .{
+        const traceTest = try addTraceTest(b, optimize, target, .{
             .selinux = selinux,
         });
         traceTest.step.dependOn(&step.step);
@@ -149,7 +164,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     {
         // Just trace test.
-        const traceTest = try addTraceTest(b, mode, target, .{
+        const traceTest = try addTraceTest(b, optimize, target, .{
             .selinux = selinux,
         });
         b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
@@ -186,18 +201,21 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     build_options.addOption(cy_config.Engine, "cyEngine", .vm);
     build_options.addOption(bool, "trace", trace);
     // build_options.addOption(bool, "trace", true);
-    step.addPackage(build_options.getPackage("build_options"));
+
+    step.addOptions("build_options", build_options);
 }
 
-fn addTraceTest(b: *std.build.Builder, mode: std.builtin.Mode, target: std.zig.CrossTarget, config: Config) !*std.build.LibExeObjStep {
-    const step = b.addTest("./test/trace_test.zig");
-    step.setBuildMode(mode);
-    step.setTarget(target);
+fn addTraceTest(b: *std.build.Builder, optimize: std.builtin.OptimizeMode, target: std.zig.CrossTarget, config: Config) !*std.build.LibExeObjStep {
+    const step = b.addTest(.{
+        .root_source_file = .{ .path = "./test/trace_test.zig" },
+        .optimize = optimize,
+        .target = target,
+    });
     step.setMainPkgPath(".");
     try addBuildOptions(b, step, true);
-    step.addPackage(stdxPkg);
+    step.addModule("stdx", stdx);
 
-    tcc.addPackage(step);
+    tcc.addModule(step);
     tcc.buildAndLink(step, .{
         .selinux = config.selinux,
     });

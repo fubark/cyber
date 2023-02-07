@@ -11,12 +11,14 @@ const Options = struct {
 };
 
 var stdx: *std.build.Module = undefined;
+var fastArm64: bool = undefined;
 
 pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
+    fastArm64 = b.option(bool, "fast-arm64", "Experimental: Computed gotos for arm64.") orelse false;
 
     stdx = b.createModule(.{
         .source_file = .{ .path = srcPath() ++ "/src/stdx/stdx.zig" },
@@ -200,6 +202,8 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     build_options.addOption([]const u8, "commit", commitTag);
     build_options.addOption(cy_config.Engine, "cyEngine", .vm);
     build_options.addOption(bool, "trace", trace);
+    build_options.addOption(bool, "fastArm64",
+        step.target.getCpuArch() == .aarch64 and step.optimize != .Debug and fastArm64);
     // build_options.addOption(bool, "trace", true);
 
     step.addOptions("build_options", build_options);

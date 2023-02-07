@@ -230,6 +230,14 @@ pub const Value = packed union {
         }
     }
 
+    pub inline fn getTypeId(self: *const Value) u32 {
+        if (self.isPointer()) {
+            return self.asHeapObject().common.structId;
+        } else {
+            return self.getPrimitiveTypeId();
+        }
+    }
+
     pub inline fn isNumberOrPointer(self: *const Value) linksection(cy.HotSection) bool {
         // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
         return self.isNumber() or self.isPointer();

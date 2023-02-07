@@ -107,7 +107,11 @@ jobs:
         if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
           git clone --depth=1 https://github.com/wasm3/wasm3.git
-          cd wasm3 && zig build
+          cd wasm3
+          mkdir build
+          cd build
+          cmake ..
+          make
 
       - name: Install zig.
         if: env.BUILD_HOST == 'macos-12'
@@ -168,7 +172,7 @@ jobs:
         if: env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
           zig build wasm-test ${{ env.ZIG_TARGET_FLAG }} ${{ env.ZIG_MODE_FLAG }} 
-          wasm3/zig-out/bin/wasm3 zig-out/test/test.wasm
+          wasm3/build/wasm3 zig-out/test/test.wasm
 
       - name: Build.
         run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}

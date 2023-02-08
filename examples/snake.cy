@@ -20,7 +20,7 @@ ray = try bindLib(raylibPath, [
     CFunc{ sym: 'EndDrawing', args: [], ret: #void }
     CFunc{ sym: 'GetScreenWidth', args: [], ret: #int }
     CFunc{ sym: 'GetScreenHeight', args: [], ret: #int }
-    CFunc{ sym: 'ClearBackground', args: [#u32], ret: #void }
+    CFunc{ sym: 'ClearBackground', args: [#uint], ret: #void }
     CFunc{ sym: 'DrawLine', args: [#int, #int, #int, #int, #int], ret: #void }
     CFunc{ sym: 'DrawRectangle', args: [#int, #int, #int, #int, #int], ret: #void }
     CFunc{ sym: 'MeasureText', args: [#charPtrZ, #int], ret: #int }

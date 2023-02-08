@@ -1011,7 +1011,6 @@ print foo(20, 5)    -- "100"
 
 [To Top.](#table-of-contents)
 
-
 ### Lambdas.
 Lambdas or function values can be assigned to variables or passed as arguments into other constructs.
 
@@ -1412,26 +1411,25 @@ lib.add(123, 321)
 
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own embedded Cyber app/runtime.
 
-When using `CFunc` or `CStruct` declarations, [tag literals](#tags) are used to map primitive types from Cyber to C and back.
-The following binding types and conversions are supported:
-| Binding Type | Cyber | C |
-| ------------- | ------------- | ----- |
+When using `CFunc` or `CStruct` declarations, [tag literals](#tags) are used to represent default type mappings from Cyber to C and back:
+| Binding | Cyber | C | Details |
+| -- | -- | -- | -- |
 | #bool | bool | bool |
-| #i8 | number | int8_t, signed char | 
-| #u8 | number | uint8_t, unsigned char | 
-| #i16 | number | int16_t, short | 
-| #u16 | number | uint16_t, unsigned short | 
-| #int, #i32 | number | int |
-| #u32 | number | uint32_t, unsigned int |
-| #i64 | number | int64_t, long long | 
-| #u64 | number | uint64_t, unsigned long long | 
+| #char | number | int8_t, signed char | 
+| #uchar | number | uint8_t, unsigned char | 
+| #short | number | int16_t, short | 
+| #ushort | number | uint16_t, unsigned short | 
+| #int | number | int32_t, int |
+| #uint | number | uint32_t, unsigned int |
+| #long | number | int64_t, long long | 
+| #ulong | number | uint64_t, unsigned long long | 
 | #usize | number | size_t, uintptr_t | 
-| #f32 | number | float |
-| #f64 | number | double |
-| #charPtrZ | rawstring | char* (null terminated) |
+| #float | number | float |
+| #double | number | double |
+| #charPtrZ | any | char* (null terminated) | C receives a null terminated string that lives until the end of the function call. |
+| #charPtrZ (return) | rawstring | char* (null terminated) |
+| #dupeCharPtrZ | any | char* (null terminated) | C receives and owns a null terminated string. |
 | #ptr | opaque | void* |
-
-When `#charPtrZ` is declared as a binding to C, a Cyber string is duped to become null terminated and the C-function is responsible for calling `free` on the `char*` pointer.
 
 By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for using it like an object, but it's less optimal compared to binding as functions. If a config is passed into `bindLib` as the third argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.

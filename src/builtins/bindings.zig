@@ -18,19 +18,16 @@ const log = stdx.log.scoped(.bindings);
 const NullId = std.math.maxInt(u32);
 
 pub const TagLit = enum {
-    int,
     bool,
-    i8,
-    u8,
-    i16,
-    u16,
-    i32,
-    u32,
-    i64,
-    u64,
+    char,
+    uchar,
+    short,
+    ushort,
+    int,
+    uint,
+    long,
+    ulong,
     usize,
-    f32,
-    f64,
     float,
     double,
     charPtrZ,
@@ -435,19 +432,16 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.ensureFieldSym("type");
     try self.addFieldSym(CStructT, id, 1);
 
-    try ensureTagLitSym(self, "int", .int);
     try ensureTagLitSym(self, "bool", .bool);
-    try ensureTagLitSym(self, "i8", .i8);
-    try ensureTagLitSym(self, "u8", .u8);
-    try ensureTagLitSym(self, "i16", .i16);
-    try ensureTagLitSym(self, "u16", .u16);
-    try ensureTagLitSym(self, "i32", .i32);
-    try ensureTagLitSym(self, "u32", .u32);
-    try ensureTagLitSym(self, "i64", .i64);
-    try ensureTagLitSym(self, "u64", .u64);
+    try ensureTagLitSym(self, "char", .char);
+    try ensureTagLitSym(self, "uchar", .uchar);
+    try ensureTagLitSym(self, "short", .short);
+    try ensureTagLitSym(self, "ushort", .ushort);
+    try ensureTagLitSym(self, "int", .int);
+    try ensureTagLitSym(self, "uint", .uint);
+    try ensureTagLitSym(self, "long", .long);
+    try ensureTagLitSym(self, "ulong", .ulong);
     try ensureTagLitSym(self, "usize", .usize);
-    try ensureTagLitSym(self, "f32", .f32);
-    try ensureTagLitSym(self, "f64", .f64);
     try ensureTagLitSym(self, "float", .float);
     try ensureTagLitSym(self, "double", .double);
     try ensureTagLitSym(self, "charPtrZ", .charPtrZ);

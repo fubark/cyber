@@ -26,23 +26,23 @@ object MyObject:
 
 lib = try bindLib(libPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
-  CFunc{ sym: 'testI8', args: [#i8], ret: #i8 }
-  CFunc{ sym: 'testU8', args: [#u8], ret: #u8 }
-  CFunc{ sym: 'testI16', args: [#i16], ret: #i16 }
-  CFunc{ sym: 'testU16', args: [#u16], ret: #u16 }
-  CFunc{ sym: 'testI32', args: [#i32], ret: #i32 }
-  CFunc{ sym: 'testU32', args: [#u32], ret: #u32 }
-  CFunc{ sym: 'testI64', args: [#i64], ret: #i64 }
-  CFunc{ sym: 'testU64', args: [#u64], ret: #u64 }
+  CFunc{ sym: 'testI8', args: [#char], ret: #char }
+  CFunc{ sym: 'testU8', args: [#uchar], ret: #uchar }
+  CFunc{ sym: 'testI16', args: [#short], ret: #short }
+  CFunc{ sym: 'testU16', args: [#ushort], ret: #ushort }
+  CFunc{ sym: 'testI32', args: [#int], ret: #int }
+  CFunc{ sym: 'testU32', args: [#uint], ret: #uint }
+  CFunc{ sym: 'testI64', args: [#long], ret: #long }
+  CFunc{ sym: 'testU64', args: [#ulong], ret: #ulong }
   CFunc{ sym: 'testUSize', args: [#usize], ret: #usize }
-  CFunc{ sym: 'testF32', args: [#f32], ret: #f32 }
-  CFunc{ sym: 'testF64', args: [#f64], ret: #f64 }
+  CFunc{ sym: 'testF32', args: [#float], ret: #float }
+  CFunc{ sym: 'testF64', args: [#double], ret: #double }
   CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
   CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
   CFunc{ sym: 'testVoid', args: [], ret: #void }
   CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
   CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
-  CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+  CStruct{ fields: [#double, #charPtrZ, #bool], type: MyObject }
 ])
 try t.eq(lib.testAdd(123, 321), 444)
 try t.eq(lib.testI8(-128), -128)

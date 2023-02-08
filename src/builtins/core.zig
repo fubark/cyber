@@ -129,21 +129,18 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         fn toCType(ivm: *cy.VM, val: Value) []const u8 {
             const tag = val.asTagLiteralId();
             switch (@intToEnum(TagLit, tag)) {
-                .i32,
-                .int => return "int",
                 .bool => return "bool",
-                .i8 => return "int8_t",
-                .u8 => return "uint8_t",
-                .i16 => return "int16_t",
-                .u16 => return "uint16_t",
-                .u32 => return "uint32_t",
-                .i64 => return "int64_t",
-                .u64 => return "uint64_t",
+                .char => return "int8_t",
+                .uchar => return "uint8_t",
+                .short => return "int16_t",
+                .ushort => return "uint16_t",
+                .int => return "int",
+                .uint => return "uint32_t",
+                .long => return "int64_t",
+                .ulong => return "uint64_t",
                 .usize => return "size_t",
-                .float,
-                .f32 => return "float",
-                .double,
-                .f64 => return "double",
+                .float => return "float",
+                .double => return "double",
                 .charPtrZ => return "char*",
                 .ptr => return "void*",
                 .void => return "void",
@@ -155,43 +152,40 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         fn printToCValueFromArg(ivm: *cy.VM, w: anytype, argType: Value, i: usize) !void {
             const tag = argType.asTagLiteralId();
             switch (@intToEnum(TagLit, tag)) {
-                .i32,
-                .int => {
-                    try w.print("(int)*(double*)&args[{}]", .{i});
-                },
                 .bool => {
                     try w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i});
                 },
-                .i8 => {
+                .char => {
                     try w.print("(int8_t)*(double*)&args[{}]", .{i});
                 },
-                .u8 => {
+                .uchar => {
                     try w.print("(uint8_t)*(double*)&args[{}]", .{i});
                 },
-                .i16 => {
+                .short => {
                     try w.print("(int16_t)*(double*)&args[{}]", .{i});
                 },
-                .u16 => {
+                .ushort => {
                     try w.print("(uint16_t)*(double*)&args[{}]", .{i});
                 },
-                .u32 => {
+                .int => {
+                    try w.print("(int)*(double*)&args[{}]", .{i});
+                },
+                .uint => {
                     try w.print("(uint32_t)*(double*)&args[{}]", .{i});
                 },
-                .i64 => {
+                .long => {
                     try w.print("(int64_t)*(double*)&args[{}]", .{i});
                 },
-                .u64 => {
+                .ulong => {
                     try w.print("(uint64_t)*(double*)&args[{}]", .{i});
                 },
                 .usize => {
                     try w.print("(size_t)*(double*)&args[{}]", .{i});
                 },
-                .float,
-                .f32 => {
+                .float => {
                     try w.print("(float)*(double*)&args[{}]", .{i});
                 },
-                .double,
-                .f64 => {
+                .double => {
                     try w.print("*(double*)&args[{}]", .{i});
                 },
                 .charPtrZ => {
@@ -207,20 +201,17 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         fn printCyValue(ivm: *cy.VM, w: anytype, argType: Value, cval: []const u8) !void {
             const tag = argType.asTagLiteralId();
             switch (@intToEnum(TagLit, tag)) {
-                .i8,
-                .u8,
-                .i16,
-                .u16,
-                .i32,
-                .u32,
-                .i64,
-                .u64,
+                .char,
+                .uchar,
+                .short,
+                .ushort,
+                .int,
+                .uint,
+                .long,
+                .ulong,
                 .usize,
-                .f32,
                 .float,
-                .f64,
-                .double,
-                .int => {
+                .double => {
                     try w.print("*(uint64_t*)&{s}", .{cval});
                 },
                 .charPtrZ => {
@@ -456,21 +447,18 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         } else {
             const retTag = ret.asTagLiteralId();
             switch (@intToEnum(TagLit, retTag)) {
-                .i8,
-                .u8,
-                .i16,
-                .u16,
-                .i32,
-                .u32,
-                .i64,
-                .u64,
+                .char,
+                .uchar,
+                .short,
+                .ushort,
+                .int,
+                .uint,
+                .long,
+                .ulong,
                 .usize,
-                .f32,
-                .float,
-                .int => {
+                .float => {
                     try w.print("  double res = (double){s}(", .{sym});
                 },
-                .f64,
                 .double => {
                     try w.print("  double res = {s}(", .{sym});
                 },

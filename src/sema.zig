@@ -414,6 +414,8 @@ pub const ResolvedSym = struct {
     },
     /// Whether the symbol is exported.
     exported: bool,
+    /// Whether the symbol has been or is in the process of generating it's static initializer.
+    genStaticInitVisited: bool = false,
 };
 
 const SymRefType = enum {
@@ -1042,6 +1044,8 @@ fn semaVarDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
         // Link to local symbol.
         const symId = try ensureSym(c, null, nameId, null);
         c.semaSyms.items[symId].resolvedSymId = rsymId;
+        // Mark as used since there is an initializer that could alter state.
+        c.semaSyms.items[symId].used = true;
 
         c.curSemaSymVar = symId;
         c.semaVarDeclDeps.clearRetainingCapacity();

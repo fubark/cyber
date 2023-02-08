@@ -24,3 +24,10 @@ func barNoExport():
 panic(#ExecutedModuleMain)
 
 export func declAssign(val) = number
+
+export var initOnce = incInitOnce()
+var initOnceCount = 0
+func incInitOnce():
+    static initOnceCount
+    initOnceCount += 1
+    return initOnceCount

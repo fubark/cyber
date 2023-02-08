@@ -15,3 +15,8 @@ try t.eq(a.fn(), 234)
 try t.eq(a.fn1(10), 11)
 try t.eq(a.fn2(10, 20), 30)
 try t.eq(a.declAssign('123'), 123)
+
+-- Static var from another module is only initialized once.
+-- This tests that ResolvedSym.genStaticInitVisited
+-- prevents 2 different local syms from generating the same initializer.
+try t.eq(a.initOnce, 1)

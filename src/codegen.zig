@@ -2048,6 +2048,13 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) !void {
     const sym = &self.semaSyms.items[symId];
     sym.visited = true;
 
+    // Check that the resolved sym hasn't already been visited for generation.
+    const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+    if (rsym.genStaticInitVisited) {
+        return;
+    }
+    self.compiler.semaResolvedSyms.items[sym.resolvedSymId].genStaticInitVisited = true;
+
     if (self.semaSymToRef.get(symId)) |ref| {
         // Contains dependencies. Generate initializers for them first.
         const deps = self.bufU32.items[ref.inner.initDeps.start..ref.inner.initDeps.end];
@@ -2060,9 +2067,8 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) !void {
         }
     }
 
-    // log.debug("generate init var: {s}", .{sym.path});
-    const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
     if (rsym.symT == .variable) {
+        log.debug("gen static var init: {s}", .{sema.getName(self.compiler, sym.key.absLocalSymKey.nameId)});
         const declId = rsym.inner.variable.declId;
         const chunk = &self.compiler.chunks.items[rsym.inner.variable.chunkId];
         const decl = chunk.nodes[declId];
@@ -2074,6 +2080,7 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) !void {
         const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
         try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), exprv.local);
     } else if (rsym.symT == .func) {
+        log.debug("gen static func init: {s}", .{sema.getName(self.compiler, sym.key.absLocalSymKey.nameId)});
         const key = sema.AbsResolvedFuncSymKey{
             .absResolvedFuncSymKey = .{
                 .resolvedSymId = sym.resolvedSymId,

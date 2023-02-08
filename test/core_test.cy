@@ -73,6 +73,11 @@ try t.eq(string(int(123)), '123')
 try t.eq(string(error(#foo)), 'error#foo')
 try t.eq(string(#foo), '#foo')
 
+-- valtag()
+try t.eq(valtag(123), #number)
+try t.eq(valtag('abc'), #string)
+try t.eq(valtag(opaque(0)), #pointer)
+
 -- writeFile() rawstring
 if os.system != 'wasm':
   s = rawstring('').insertByte(0, 255)

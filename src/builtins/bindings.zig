@@ -65,6 +65,7 @@ pub const TagLit = enum {
     rawstring,
     none,
     symbol,
+    pointer,
 
     // Open modes.
     read,
@@ -480,6 +481,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "rawstring", .rawstring);
     try ensureTagLitSym(self, "none", .none);
     try ensureTagLitSym(self, "symbol", .symbol);
+    try ensureTagLitSym(self, "pointer", .pointer);
 
     try ensureTagLitSym(self, "read", .read);
     try ensureTagLitSym(self, "write", .write);

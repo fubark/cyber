@@ -1430,6 +1430,7 @@ When using `CFunc` or `CStruct` declarations, [tag literals](#tags) are used to 
 | #charPtrZ (return) | rawstring | char* (null terminated) |
 | #dupeCharPtrZ | any | char* (null terminated) | C receives and owns a null terminated string. |
 | #ptr | opaque | void* |
+| sym symbol | object \<sym\> | Struct | The mapping from a Cyber object type `sym` and the C-struct can be declared with `CStruct`. |
 
 By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for using it like an object, but it's less optimal compared to binding as functions. If a config is passed into `bindLib` as the third argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
 The resulting object of `bindLib` holds a reference to an internal TCCState which owns the loaded JIT code.
@@ -1481,6 +1482,16 @@ typedef struct MyObject {
 MyObject foo(MyObject o) {
     // Do something.
 }
+```
+
+`CStruct` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
+```text
+lib = bindLib('mylib.so', [
+    CFunc{ sym: 'foo', args: [MyObject], ret: #ptr }
+    CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+])
+ptr = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
+res = lib.ptrToMyObject(ptr)
 ```
 
 [To Top.](#table-of-contents)

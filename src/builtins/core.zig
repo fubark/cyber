@@ -477,6 +477,21 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         }
         try w.print("  return obj;\n", .{});
         try w.print("}}\n", .{});
+
+        // Generate ptrTo[Object].
+        if (config.genMap) {
+            try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{ivm.structs.buf[objSymId].name});
+        } else {
+            try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t recv, uint64_t* args, char numArgs) {{\n", .{ivm.structs.buf[objSymId].name});
+        }
+        try w.print("  uint64_t ptr = *((uint64_t*)(args[0] & ~PointerMask) + 1);\n", .{});
+        try w.print("  uint64_t res = fromStruct{}(vm, *(Struct{}*)ptr);\n", .{objSymId, objSymId});
+        try w.print("  icyRelease(vm, args[0]);\n", .{});
+        if (!config.genMap) {
+            try w.print("  icyRelease(vm, recv);\n", .{});
+        }
+        try w.print("  return res;\n", .{});
+        try w.print("}}\n", .{});
     }
 
     // Begin func binding generation.
@@ -678,7 +693,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         const map = vm.allocEmptyMap() catch stdx.fatal();
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
-        cy.arc.retainInc(ivm, cyState, @intCast(u32, cfuncs.items.len - 1));
+        cy.arc.retainInc(ivm, cyState, @intCast(u32, cfuncs.items.len + ctx.symToCStructFields.size - 1));
 
         for (cfuncs.items) |cfunc| {
             const sym = vm.valueToTempString(try ivm.getField2(cfunc.decl, symF));
@@ -693,6 +708,21 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             const cargs = cargsv.asPointer(*cy.CyList).items();
             const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
             const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
+            ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
+        }
+        iter = ctx.symToCStructFields.iterator();
+        while (iter.next()) |e| {
+            const objSymId = e.key_ptr.*;
+            const typeName = ivm.structs.buf[objSymId].name;
+            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});
+            defer alloc.free(symGen);
+            const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
+                stdx.panic("Failed to get symbol.");
+            };
+
+            const symKey = vm.allocAstringConcat("ptrTo", typeName) catch stdx.fatal();
+            const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
+            const funcVal = cy.heap.allocNativeFunc1(ivm, func, 1, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
         }
         success = true;
@@ -720,6 +750,22 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
 
             const methodSym = try ivm.ensureMethodSymKey(sym, @intCast(u32, cargs.len));
+            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
+        }
+        iter = ctx.symToCStructFields.iterator();
+        while (iter.next()) |e| {
+            const objSymId = e.key_ptr.*;
+            const typeName = ivm.structs.buf[objSymId].name;
+            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});
+            defer alloc.free(symGen);
+            const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
+                stdx.panic("Failed to get symbol.");
+            };
+            const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
+
+            const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{typeName});
+            defer alloc.free(methodName);
+            const methodSym = try ivm.ensureMethodSymKey2(methodName, 1, true);
             try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
         }
         success = true;

@@ -44,6 +44,7 @@ lib = try bindLib(libPath, [
   CFunc{ sym: 'testVoid', args: [], ret: #void }
   CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
   CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
+  CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #ptr }
   CStruct{ fields: [#double, #int, #charPtrZ, #bool], type: MyObject }
 ])
 try t.eq(lib.testAdd(123, 321), 444)
@@ -61,6 +62,15 @@ try t.eq(lib.testF64(1.2345), 1.2345)
 
 -- object arg and return type.
 res = lib.testObject(MyObject{ a: 123, b: 10, c: 'foo', d: true})
+try t.eq(res.a, 123)
+try t.eq(res.b, 10)
+try t.eq(res.c, rawstring('foo'))
+try t.eq(res.d, true)
+
+-- Return struct ptr and convert to Cyber object.
+ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: 'foo', d: true})
+try t.eq(valtag(ptr), #pointer)
+res = lib.ptrToMyObject(ptr)
 try t.eq(res.a, 123)
 try t.eq(res.b, 10)
 try t.eq(res.c, rawstring('foo'))

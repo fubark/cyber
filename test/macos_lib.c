@@ -88,3 +88,13 @@ MyObject testObject(MyObject o) {
     };
     return new;
 }
+
+MyObject temp;
+MyObject* testRetObjectPtr(MyObject o) {
+    strcpy(buf, o.c);
+    temp.a = o.a;
+    temp.b = o.b;
+    temp.c = (char*)&buf;
+    temp.d = o.d;
+    return &temp;
+}

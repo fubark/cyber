@@ -318,6 +318,19 @@ test "FFI." {
                 .d = o.d,
             };
         }
+        export fn testRetObjectPtr(o: MyObject) *MyObject {
+            const slice = std.mem.span(o.c);
+            std.mem.copy(u8, &buf, slice);
+            buf[slice.len] = 0;
+            temp = .{
+                .a = o.a,
+                .b = o.b,
+                .c = @ptrCast([*:0]u8, &buf),
+                .d = o.d,
+            };
+            return &temp;
+        }
+        var temp: MyObject = undefined;
         var buf: [10]u8 = undefined;
     };
     _ = S;

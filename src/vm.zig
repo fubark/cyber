@@ -116,7 +116,7 @@ pub const VM = struct {
 
     /// Since func syms can be reassigned, the ones that retain a tcc state will be tracked here.
     funcSymTccStates: std.AutoHashMapUnmanaged(SymbolId, Value),
-    methodSymExtras: cy.List([]const u8),
+    methodSymExtras: cy.List(MethodSymExtra),
     debugTable: []const cy.OpDebug,
 
     curFiber: *cy.Fiber,
@@ -240,6 +240,11 @@ pub const VM = struct {
         self.stack = &.{};
 
         self.methodSyms.deinit(self.alloc);
+        for (self.methodSymExtras.items()) |extra| {
+            if (extra.nameIsOwned) {
+                self.alloc.free(extra.getName());
+            }
+        }
         self.methodSymExtras.deinit(self.alloc);
         self.methodSymSigs.deinit(self.alloc);
         self.methodTable.deinit(self.alloc);
@@ -767,6 +772,10 @@ pub const VM = struct {
     }
 
     pub fn ensureMethodSymKey(self: *VM, name: []const u8, numParams: u32) !SymbolId {
+        return self.ensureMethodSymKey2(name, numParams, false);
+    }
+
+    pub fn ensureMethodSymKey2(self: *VM, name: []const u8, numParams: u32, dupeName: bool) !SymbolId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
         const key = RelFuncSigKey{
             .relFuncSigKey = .{
@@ -777,12 +786,21 @@ pub const VM = struct {
         const res = try @call(.never_inline, self.methodSymSigs.getOrPut, .{self.alloc, key});
         if (!res.found_existing) {
             const id = @intCast(u32, self.methodSyms.len);
+
             try self.methodSyms.append(self.alloc, .{
                 .entryT = undefined,
                 .mruStructId = cy.NullId,
                 .inner = undefined,
             });
-            try self.methodSymExtras.append(self.alloc, name);
+            var newName = name;
+            if (dupeName) {
+                newName = try self.alloc.dupe(u8, name);
+            }
+            try self.methodSymExtras.append(self.alloc, .{
+                .namePtr = newName.ptr,
+                .nameLen = @intCast(u32, newName.len),
+                .nameIsOwned = dupeName,
+            });
             res.value_ptr.* = id;
             return id;
         } else {
@@ -4348,7 +4366,7 @@ fn getObjectFunctionFallback(vm: *VM, recv: Value, typeId: u32, symId: SymbolId)
     // }
 
     return vm.panicFmt("Missing method symbol `{}` from receiver of type `{}`.", &.{
-        v(vm.methodSymExtras.buf[symId]), v(vm.structs.buf[typeId].name),
+        v(vm.methodSymExtras.buf[symId].getName()), v(vm.structs.buf[typeId].name),
     });
 }
 
@@ -4796,3 +4814,13 @@ fn getFuncSymSig(vm: *const VM, symId: SymbolId) u32 {
         },
     }
 }
+
+const MethodSymExtra = struct {
+    namePtr: [*]const u8,
+    nameLen: u32,
+    nameIsOwned: bool,
+
+    pub fn getName(self: *const MethodSymExtra) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
+};

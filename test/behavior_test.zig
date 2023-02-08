@@ -303,17 +303,19 @@ test "FFI." {
         }
         const MyObject = extern struct {
             a: f64,
-            b: [*:0]u8,
-            c: bool,
+            b: i32,
+            c: [*:0]u8,
+            d: bool,
         };
         export fn testObject(o: MyObject) MyObject {
-            const slice = std.mem.span(o.b);
+            const slice = std.mem.span(o.c);
             std.mem.copy(u8, &buf, slice);
             buf[slice.len] = 0;
             return MyObject{
                 .a = o.a,
-                .b = @ptrCast([*:0]u8, &buf),
-                .c = o.c,
+                .b = o.b,
+                .c = @ptrCast([*:0]u8, &buf),
+                .d = o.d,
             };
         }
         var buf: [10]u8 = undefined;

@@ -73,16 +73,18 @@ bool testBool(bool b) {
 
 typedef struct MyObject{
     double a;
-    char* b;
-    bool c;
+    int b;
+    char* c;
+    bool d;
 } MyObject;
 
 MyObject testObject(MyObject o) {
     strcpy(buf, o.c);
     MyObject new = {
         .a = o.a,
-        .b = (char*)&buf,
-        .c = o.c,
+        .b = o.b,
+        .c = (char*)&buf,
+        .d = o.d,
     };
     return new;
 }

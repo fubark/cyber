@@ -262,6 +262,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .usize,
                 .float,
                 .double => {
+                    // Assumes cval is already converted to double.
                     try w.print("*(uint64_t*)&{s}", .{cval});
                 },
                 .charPtrZ => {
@@ -446,6 +447,29 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print("  uint64_t* args = (uint64_t*)(obj & ~PointerMask) + 1;\n", .{});
         var buf: [8]u8 = undefined;
         for (fields.items()) |field, i| {
+            if (!field.isObjectType(cy.SymbolT)) {
+                const fieldTag = field.asTagLiteralId();
+                switch (@intToEnum(TagLit, fieldTag)) {
+                    .char,
+                    .uchar,
+                    .short,
+                    .ushort,
+                    .int,
+                    .uint,
+                    .long,
+                    .ulong,
+                    .usize,
+                    .float => {
+                        try w.print("  double arg{} = (double)val.f{};\n", .{i, i});
+                        const argStr = try std.fmt.bufPrint(&buf, "arg{}", .{i});
+                        try w.print("  args[{}] = ", .{i});
+                        try S.printCyValue(ivm, w, field, argStr);
+                        try w.print(";\n", .{});
+                        continue;
+                    },
+                    else => {},
+                }
+            }
             const argStr = try std.fmt.bufPrint(&buf, "val.f{}", .{i});
             try w.print("  args[{}] = ", .{i});
             try S.printCyValue(ivm, w, field, argStr);
@@ -1099,7 +1123,7 @@ fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
     }
 }
 
-// export fn printInt(n: i32) void {
+// fn printInt(n: i32) callconv(.C) void {
 //     std.debug.print("print int: {}\n", .{n});
 // }
 

@@ -21,8 +21,9 @@ try t.eq(lib, error(#MissingSymbol))
 
 object MyObject:
   a number
-  b string
-  c bool
+  b number
+  c string
+  d bool
 
 lib = try bindLib(libPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
@@ -43,7 +44,7 @@ lib = try bindLib(libPath, [
   CFunc{ sym: 'testVoid', args: [], ret: #void }
   CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
   CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
-  CStruct{ fields: [#double, #charPtrZ, #bool], type: MyObject }
+  CStruct{ fields: [#double, #int, #charPtrZ, #bool], type: MyObject }
 ])
 try t.eq(lib.testAdd(123, 321), 444)
 try t.eq(lib.testI8(-128), -128)
@@ -59,10 +60,11 @@ try t.eqNear(lib.testF32(1.2345), 1.2345)
 try t.eq(lib.testF64(1.2345), 1.2345)
 
 -- object arg and return type.
-res = lib.testObject(MyObject{ a: 123, b: 'foo', c: true})
+res = lib.testObject(MyObject{ a: 123, b: 10, c: 'foo', d: true})
 try t.eq(res.a, 123)
-try t.eq(res.b, rawstring('foo'))
-try t.eq(res.c, true)
+try t.eq(res.b, 10)
+try t.eq(res.c, rawstring('foo'))
+try t.eq(res.d, true)
 
 -- pass in const string
 try t.eq(lib.testCharPtrZ('foo'), rawstring('foo'))

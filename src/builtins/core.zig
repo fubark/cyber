@@ -5,7 +5,6 @@ const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
-const gvm = &vm_.gvm;
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 const fmt = @import("../fmt.zig");
@@ -196,7 +195,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                     try w.print("*(double*)&args[{}]", .{i});
                 },
                 .charPtrZ => {
-                    try w.print("icyToCStr(args[{}])", .{i});
+                    try w.print("icyToCStr(vm, args[{}])", .{i});
                 },
                 .ptr => {
                     try w.print("icyGetPtr(args[{}])", .{i});
@@ -225,10 +224,10 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                     try w.print("*(uint64_t*)&{s}", .{cval});
                 },
                 .charPtrZ => {
-                    try w.print("icyFromCStr({s})", .{cval});
+                    try w.print("icyFromCStr(vm, {s})", .{cval});
                 },
                 .ptr => {
-                    try w.print("icyAllocOpaquePtr({s})", .{cval});
+                    try w.print("icyAllocOpaquePtr(vm, {s})", .{cval});
                 },
                 .void => {
                     try w.print("0x7FFC000000000000", .{});
@@ -346,13 +345,13 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         \\#define uint16_t unsigned short
         \\#define uint32_t unsigned int
         \\#define PointerMask 0xFFFC000000000000
-        // \\float printF32(float);
-        \\extern char* icyToCStr(uint64_t);
-        \\extern uint64_t icyFromCStr(char*);
-        \\extern void icyRelease(uint64_t);
+        \\typedef struct UserVM *UserVM;
+        \\extern char* icyToCStr(UserVM*, uint64_t);
+        \\extern uint64_t icyFromCStr(UserVM*, char*);
+        \\extern void icyRelease(UserVM*, uint64_t);
         \\extern void* icyGetPtr(uint64_t);
-        \\extern uint64_t icyAllocObject(uint32_t);
-        \\extern uint64_t icyAllocOpaquePtr(void*);
+        \\extern uint64_t icyAllocObject(UserVM*, uint32_t);
+        \\extern uint64_t icyAllocOpaquePtr(UserVM*, void*);
         \\
     , .{});
 
@@ -369,7 +368,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print("}} Struct{};\n", .{objSymId});
 
         // Generate to C struct conv.
-        try w.print("Struct{} toStruct{}(uint64_t val) {{\n", .{objSymId, objSymId});
+        try w.print("Struct{} toStruct{}(UserVM* vm, uint64_t val) {{\n", .{objSymId, objSymId});
         // Get pointer to first cyber object field.
         try w.print("  uint64_t* args = (uint64_t*)(val & ~PointerMask) + 1;\n", .{});
         try w.print("  Struct{} res;\n", .{objSymId, });
@@ -382,8 +381,8 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print("}}\n", .{});
 
         // Generate from C struct conv.
-        try w.print("uint64_t fromStruct{}(Struct{} val) {{\n", .{objSymId, objSymId});
-        try w.print("  uint64_t obj = icyAllocObject({});\n", .{objSymId});
+        try w.print("uint64_t fromStruct{}(UserVM* vm, Struct{} val) {{\n", .{objSymId, objSymId});
+        try w.print("  uint64_t obj = icyAllocObject(vm, {});\n", .{objSymId});
         try w.print("  uint64_t* args = (uint64_t*)(obj & ~PointerMask) + 1;\n", .{});
         var buf: [8]u8 = undefined;
         for (fields.items()) |field, i| {
@@ -439,9 +438,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print(");\n", .{});
 
         if (config.genMap) {
-            try w.print("uint64_t cy{s}(void* vm, uint64_t* args, char numArgs) {{\n", .{sym});
+            try w.print("uint64_t cy{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{sym});
         } else {
-            try w.print("uint64_t cy{s}(void* vm, void* obj, uint64_t* args, char numArgs) {{\n", .{sym});
+            try w.print("uint64_t cy{s}(UserVM* vm, uint64_t recv, uint64_t* args, char numArgs) {{\n", .{sym});
         }
         // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
 
@@ -497,7 +496,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             for (cargs) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
                     const objType = ret.asPointer(*cy.heap.Symbol);
-                    try w.print("toStruct{}(args[{}])", .{objType.symId, i});
+                    try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
                 } else {
                     try S.printToCValueFromArg(ivm, w, carg, i);
                 }
@@ -512,15 +511,15 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
         for (cargs) |carg, i| {
             if (carg.isObjectType(cy.SymbolT)) {
-                try w.print("  icyRelease(args[{}]);\n", .{i});
+                try w.print("  icyRelease(vm, args[{}]);\n", .{i});
             } else {
                 const argTag = carg.asTagLiteralId();
                 switch (@intToEnum(TagLit, argTag)) {
                     .charPtrZ => {
-                        try w.print("  icyRelease(args[{}]);\n", .{i});
+                        try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                     },
                     .ptr => {
-                        try w.print("  icyRelease(args[{}]);\n", .{i});
+                        try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                     },
                     else => {},
                 }
@@ -529,14 +528,14 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
         if (!config.genMap) {
             // Release obj.
-            try w.print("  icyRelease(((uint64_t)obj) | 0xFFFC000000000000);\n", .{});
+            try w.print("  icyRelease(vm, recv);\n", .{});
         }
 
         // Gen return.
         try w.print("  return ", .{});
         if (ret.isObjectType(cy.SymbolT)) {
             const objType = ret.asPointer(*cy.heap.Symbol);
-            try w.print("fromStruct{}(res)", .{ objType.symId });
+            try w.print("fromStruct{}(vm, res)", .{ objType.symId });
         } else {
             try S.printCyValue(ivm, w, ret, "res");
         }
@@ -678,6 +677,7 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
 
 pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const alloc = vm.allocator();
+    const ivm = vm.internal();
 
     const obj = args[0].asHeapObject();
     var buf: std.ArrayListUnmanaged([]const u8) = .{};
@@ -714,15 +714,15 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     // TODO: Use allocOwnedString
     defer alloc.free(res.stdout);
     const out = vm.allocStringInfer(res.stdout) catch stdx.fatal();
-    gvm.setIndex(map, outKey, out) catch stdx.fatal();
+    ivm.setIndex(map, outKey, out) catch stdx.fatal();
     const errKey = vm.allocAstring("err") catch stdx.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stderr);
     const err = vm.allocStringInfer(res.stderr) catch stdx.fatal();
-    gvm.setIndex(map, errKey, err) catch stdx.fatal();
+    ivm.setIndex(map, errKey, err) catch stdx.fatal();
     if (res.term == .Exited) {
         const exitedKey = vm.allocAstring("exited") catch stdx.fatal();
-        gvm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
+        ivm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
     }
     return map;
 }
@@ -850,22 +850,23 @@ pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy
 }
 
 fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
+    const ivm = self.internal();
     switch (val.getValueType()) {
         .list => {
             var dlist = val.asList() catch stdx.fatal();
             defer dlist.deinit();
-            const elems = try gvm.alloc.alloc(Value, dlist.arr.len);
+            const elems = try ivm.alloc.alloc(Value, dlist.arr.len);
             for (elems) |*elem, i| {
                 elem.* = try fromCyonValue(self, dlist.getIndex(i));
             }
-            return try cy.heap.allocOwnedList(gvm, elems);
+            return try cy.heap.allocOwnedList(ivm, elems);
         },
         .map => {
             var dmap = val.asMap() catch stdx.fatal();
             defer dmap.deinit();
             var iter = dmap.iterator();
 
-            const mapVal = try cy.heap.allocEmptyMap(gvm);
+            const mapVal = try self.allocEmptyMap();
             const map = mapVal.asHeapObject();
             while (iter.next()) |entry| {
                 const child = try fromCyonValue(self, dmap.getValue(entry.key_ptr.*));
@@ -886,9 +887,10 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
     }
 }
 
-fn stdMapPut(_: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
+fn stdMapPut(vm: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
+    const ivm = vm.internal();
     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner); 
-    map.put(gvm.alloc, gvm, key, value) catch stdx.fatal();
+    map.put(vm.allocator(), ivm, key, value) catch stdx.fatal();
 }
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -998,36 +1000,37 @@ pub fn rawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return vm.allocRawString(str) catch stdx.fatal();
 }
 
-export fn fromCStr(ptr: [*:0]const u8) Value {
+fn fromCStr(vm: *cy.UserVM, ptr: [*:0]const u8) callconv(.C) Value {
     const slice = std.mem.span(ptr);
-    return cy.heap.allocRawString(gvm, slice) catch stdx.fatal();
+    return vm.allocRawString(slice) catch stdx.fatal();
 }
 
-fn toCStr(val: Value) callconv(.C) [*]const u8 {
-    const str = gvm.valueAsString(val);
+fn toCStr(vm: *cy.UserVM, val: Value) callconv(.C) [*]const u8 {
+    const str = vm.valueAsString(val);
     const dupe = @ptrCast([*]u8, std.c.malloc(str.len + 1));
     std.mem.copy(u8, dupe[0..str.len], str);
     dupe[str.len] = 0;
     return dupe;
 }
 
-export fn cRelease(val: Value) void {
-    cy.arc.release(gvm, val);
+fn cRelease(vm: *cy.UserVM, val: Value) callconv(.C) void {
+    vm.release(val);
 }
 
-export fn cGetPtr(val: Value) ?*anyopaque {
+fn cGetPtr(val: Value) callconv(.C) ?*anyopaque {
     return val.asPointer(*cy.OpaquePtr).ptr;
 }
 
-export fn cAllocOpaquePtr(ptr: ?*anyopaque) Value {
-    return cy.heap.allocOpaquePtr(gvm, ptr) catch stdx.fatal();
+fn cAllocOpaquePtr(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
+    return cy.heap.allocOpaquePtr(vm.internal(), ptr) catch stdx.fatal();
 }
 
-export fn cAllocObject(id: u32) Value {
-    if (gvm.structs.buf[id].numFields <= 4) {
-        return cy.heap.allocEmptyObjectSmall(gvm, id) catch stdx.fatal();
+fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
+    const ivm = vm.internal();
+    if (ivm.structs.buf[id].numFields <= 4) {
+        return cy.heap.allocEmptyObjectSmall(ivm, id) catch stdx.fatal();
     } else {
-        return cy.heap.allocEmptyObject(gvm, id, gvm.structs.buf[id].numFields) catch stdx.fatal();
+        return cy.heap.allocEmptyObject(ivm, id, ivm.structs.buf[id].numFields) catch stdx.fatal();
     }
 }
 

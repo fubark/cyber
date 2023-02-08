@@ -38,6 +38,7 @@ lib = try bindLib(libPath, [
   CFunc{ sym: 'testF32', args: [#float], ret: #float }
   CFunc{ sym: 'testF64', args: [#double], ret: #double }
   CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
+  CFunc{ sym: 'testDupeCharPtrZ', args: [#dupeCharPtrZ], ret: #charPtrZ }
   CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
   CFunc{ sym: 'testVoid', args: [], ret: #void }
   CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
@@ -70,6 +71,9 @@ try t.eq(lib.testCharPtrZ('foo'), rawstring('foo'))
 str = 'foo{123}'
 try t.eq(lib.testCharPtrZ(str), rawstring('foo123'))
 try t.eq(lib.testPtr(opaque(123)), opaque(123))
+
+-- testDupeCharPtrZ
+try t.eq(lib.testDupeCharPtrZ('foo'), rawstring('foo'))
 
 -- void return and no args.
 try t.eq(lib.testVoid(), none)

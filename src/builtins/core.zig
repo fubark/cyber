@@ -121,6 +121,52 @@ const BindLibConfig = struct {
 };
 
 fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value {
+    const Context = struct {
+        ivm: *cy.VM,
+        alloc: std.mem.Allocator,
+        symToCStructFields: std.AutoHashMapUnmanaged(u32, *cy.CyList) = .{},
+
+        fn deinit(self: *@This()) void {
+            self.symToCStructFields.deinit(self.alloc);
+        }
+
+        fn genFuncReleaseOps(self: *@This(), w: anytype, cargs: []const Value) !void {
+            for (cargs) |carg, i| {
+                if (carg.isObjectType(cy.SymbolT)) {
+                    try w.print("  icyRelease(vm, args[{}]);\n", .{i});
+                    // Free any child temps.
+                    const objType = carg.asPointer(*cy.heap.Symbol);
+                    const fields = self.symToCStructFields.get(objType.symId).?.items();
+                    for (fields) |field, fidx| {
+                        if (!field.isObjectType(cy.SymbolT)) {
+                            const fieldType = field.asTagLiteralId();
+                            switch (@intToEnum(TagLit, fieldType)) {
+                                .charPtrZ => {
+                                    try w.print("  icyFree(s{}.f{});\n", .{i, fidx});
+                                },
+                                else => {},
+                            } 
+                        }
+                    }
+                } else {
+                    const argTag = carg.asTagLiteralId();
+                    switch (@intToEnum(TagLit, argTag)) {
+                        .charPtrZ => {
+                            try w.print("  icyRelease(vm, args[{}]);\n", .{i});
+                            try w.print("  icyFree(str{});\n", .{i});
+                        },
+                        .dupeCharPtrZ => {
+                            try w.print("  icyRelease(vm, args[{}]);\n", .{i});
+                        },
+                        .ptr => {
+                            try w.print("  icyRelease(vm, args[{}]);\n", .{i});
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
+    };
     const CFuncData = struct {
         decl: Value,
         symPtr: *anyopaque,
@@ -142,6 +188,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .float => return "float",
                 .double => return "double",
                 .charPtrZ => return "char*",
+                .dupeCharPtrZ => return "char*",
                 .ptr => return "void*",
                 .void => return "void",
                 else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getTagLitName(tag) }),
@@ -188,8 +235,11 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .double => {
                     try w.print("*(double*)&args[{}]", .{i});
                 },
-                .charPtrZ => {
+                .dupeCharPtrZ => {
                     try w.print("icyToCStr(vm, args[{}])", .{i});
+                },
+                .charPtrZ => {
+                    try w.print("str{}", .{i});
                 },
                 .ptr => {
                     try w.print("icyGetPtr(args[{}])", .{i});
@@ -267,11 +317,15 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         };
     }
 
+    var ctx = Context{
+        .ivm = ivm,
+        .alloc = alloc,
+        .symToCStructFields = .{},
+    };
+    defer ctx.deinit();
+
     var cfuncs: std.ArrayListUnmanaged(CFuncData) = .{};
     defer cfuncs.deinit(alloc);
-
-    var symToCStructFields: std.AutoHashMapUnmanaged(u32, *cy.CyList) = .{};
-    defer symToCStructFields.deinit(alloc);
 
     const decls = args[1].asPointer(*cy.CyList);
 
@@ -298,9 +352,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             if (val.isObjectType(cy.SymbolT)) {
                 const objType = val.asPointer(*cy.heap.Symbol);
                 if (objType.symType == @enumToInt(cy.heap.SymbolType.object)) {
-                    if (!symToCStructFields.contains(objType.symId)) {
+                    if (!ctx.symToCStructFields.contains(objType.symId)) {
                         const fields = try ivm.getField(decl, fieldsF);
-                        try symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
+                        try ctx.symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
                     } else {
                         log.debug("Object type already declared.", .{});
                         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
@@ -339,6 +393,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         \\typedef struct UserVM *UserVM;
         \\extern char* icyToCStr(UserVM*, uint64_t);
         \\extern uint64_t icyFromCStr(UserVM*, char*);
+        \\extern void icyFree(void*);
         \\extern void icyRelease(UserVM*, uint64_t);
         \\extern void* icyGetPtr(uint64_t);
         \\extern uint64_t icyAllocObject(UserVM*, uint32_t);
@@ -346,7 +401,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         \\
     , .{});
 
-    var iter = symToCStructFields.iterator();
+    var iter = ctx.symToCStructFields.iterator();
     while (iter.next()) |e| {
         const objSymId = e.key_ptr.*;
         const fields = e.value_ptr.*;
@@ -365,7 +420,21 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print("  Struct{} res;\n", .{objSymId, });
         for (fields.items()) |field, i| {
             try w.print("  res.f{} = ", .{i});
-            try S.printToCValueFromArg(ivm, w, field, i);
+            if (field.isObjectType(cy.SymbolT)) {
+                const objType = field.asPointer(*cy.heap.Symbol);
+                try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
+            } else {
+                const tag = field.asTagLiteralId();
+                switch (@intToEnum(TagLit, tag)) {
+                    .dupeCharPtrZ,
+                    .charPtrZ => {
+                        try w.print("icyToCStr(vm, args[{}])", .{i});
+                    },
+                    else => {
+                        try S.printToCValueFromArg(ivm, w, field, i);
+                    }
+                }
+            }
             try w.print(";\n", .{});
         }
         try w.print("  return res;\n", .{});
@@ -386,6 +455,8 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print("}}\n", .{});
     }
 
+    // Begin func binding generation.
+
     const argsf = try ivm.ensureFieldSym("args");
     const retf = try ivm.ensureFieldSym("ret");
     for (cfuncs.items) |cfunc| {
@@ -398,7 +469,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         // Emit extern declaration.
         if (ret.isObjectType(cy.SymbolT)) {
             const objType = ret.asPointer(*cy.heap.Symbol);
-            if (symToCStructFields.contains(objType.symId)) {
+            if (ctx.symToCStructFields.contains(objType.symId)) {
                 try w.print("extern Struct{} {s}(", .{objType.symId, sym});
             } else {
                 log.debug("CStruct not declared.", .{});
@@ -412,7 +483,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             for (cargs) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
                     const objType = carg.asPointer(*cy.heap.Symbol);
-                    if (symToCStructFields.contains(objType.symId)) {
+                    if (ctx.symToCStructFields.contains(objType.symId)) {
                         try w.print("Struct{}", .{objType.symId});
                     } else {
                         log.debug("CStruct not declared.", .{});
@@ -435,10 +506,28 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         }
         // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
 
+        // Gen temp args.
+        if (cargs.len > 0) {
+            for (cargs) |carg, i| {
+                if (carg.isObjectType(cy.SymbolT)) {
+                    const objType = carg.asPointer(*cy.heap.Symbol);
+                    try w.print("Struct{} s{} = toStruct{}(vm, args[{}]);\n", .{objType.symId, i, objType.symId, i});
+                } else {
+                    const tag = carg.asTagLiteralId();
+                    switch (@intToEnum(TagLit, tag)) {
+                        .charPtrZ => {
+                            try w.print("char* str{} = icyToCStr(vm, args[{}]);\n", .{i, i});
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
+
         // Gen call.
         if (ret.isObjectType(cy.SymbolT)) {
             const objType = ret.asPointer(*cy.heap.Symbol);
-            if (symToCStructFields.contains(objType.symId)) {
+            if (ctx.symToCStructFields.contains(objType.symId)) {
                 try w.print("  Struct{} res = {s}(", .{objType.symId, sym});
             } else {
                 log.debug("CStruct not declared.", .{});
@@ -483,8 +572,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             const lastArg = cargs.len-1;
             for (cargs) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
-                    const objType = ret.asPointer(*cy.heap.Symbol);
-                    try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
+                    try w.print("s{}", .{i});
                 } else {
                     try S.printToCValueFromArg(ivm, w, carg, i);
                 }
@@ -497,23 +585,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         // End of args.
         try w.print(");\n", .{});
 
-        for (cargs) |carg, i| {
-            if (carg.isObjectType(cy.SymbolT)) {
-                try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-            } else {
-                const argTag = carg.asTagLiteralId();
-                switch (@intToEnum(TagLit, argTag)) {
-                    .charPtrZ => {
-                        try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-                    },
-                    .ptr => {
-                        try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-                    },
-                    else => {},
-                }
-            }
-        }
-
+        try ctx.genFuncReleaseOps(w, cargs);
         if (!config.genMap) {
             // Release obj.
             try w.print("  icyRelease(vm, recv);\n", .{});
@@ -556,6 +628,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
     // _ = tcc.tcc_add_symbol(state, "printInt", printInt);
     _ = tcc.tcc_add_symbol(state, "icyFromCStr", fromCStr);
     _ = tcc.tcc_add_symbol(state, "icyToCStr", toCStr);
+    _ = tcc.tcc_add_symbol(state, "icyFree", free);
     _ = tcc.tcc_add_symbol(state, "icyRelease", cRelease);
     _ = tcc.tcc_add_symbol(state, "icyGetPtr", cGetPtr);
     _ = tcc.tcc_add_symbol(state, "icyAllocOpaquePtr", cAllocOpaquePtr);
@@ -999,6 +1072,10 @@ fn toCStr(vm: *cy.UserVM, val: Value) callconv(.C) [*]const u8 {
     std.mem.copy(u8, dupe[0..str.len], str);
     dupe[str.len] = 0;
     return dupe;
+}
+
+fn free(ptr: ?*anyopaque) callconv(.C) void {
+    std.c.free(ptr);
 }
 
 fn cRelease(vm: *cy.UserVM, val: Value) callconv(.C) void {

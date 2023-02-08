@@ -284,6 +284,12 @@ test "FFI." {
             const slice = std.mem.span(ptr);
             std.mem.copy(u8, &buf, slice);
             buf[slice.len] = 0;
+            return @ptrCast([*:0]const u8, &buf);
+        }
+        export fn testDupeCharPtrZ(ptr: [*:0]u8) [*:0]const u8 {
+            const slice = std.mem.span(ptr);
+            std.mem.copy(u8, &buf, slice);
+            buf[slice.len] = 0;
             std.c.free(ptr);
             return @ptrCast([*:0]const u8, &buf);
         }
@@ -304,7 +310,6 @@ test "FFI." {
             const slice = std.mem.span(o.b);
             std.mem.copy(u8, &buf, slice);
             buf[slice.len] = 0;
-            std.c.free(o.b);
             return MyObject{
                 .a = o.a,
                 .b = @ptrCast([*:0]u8, &buf),

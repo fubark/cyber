@@ -55,6 +55,10 @@ double testF64(double n) {
 char buf[10];
 char* testCharPtrZ(char* ptr) {
     strcpy(buf, ptr);
+    return &buf[0];
+}
+char* testDupeCharPtrZ(char* ptr) {
+    strcpy(buf, ptr);
     free(ptr);
     return &buf[0];
 }
@@ -74,8 +78,7 @@ typedef struct MyObject{
 } MyObject;
 
 MyObject testObject(MyObject o) {
-    strcpy(buf, o.b);
-    free(o.b);
+    strcpy(buf, o.c);
     MyObject new = {
         .a = o.a,
         .b = (char*)&buf,

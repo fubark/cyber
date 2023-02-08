@@ -31,6 +31,7 @@ pub const TagLit = enum {
     float,
     double,
     charPtrZ,
+    dupeCharPtrZ,
     ptr,
     void,
 
@@ -445,6 +446,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "float", .float);
     try ensureTagLitSym(self, "double", .double);
     try ensureTagLitSym(self, "charPtrZ", .charPtrZ);
+    try ensureTagLitSym(self, "dupeCharPtrZ", .dupeCharPtrZ);
     try ensureTagLitSym(self, "ptr", .ptr);
     try ensureTagLitSym(self, "void", .void);
 

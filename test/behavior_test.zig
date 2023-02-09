@@ -1105,6 +1105,15 @@ test "Return statement." {
         \\  return 456
     );
     try t.eq(val.asF64toI32(), 123);
+
+    // return multi-line lambda
+    _ = try run.eval(
+        \\import t 'test'
+        \\func foo():
+        \\  return func():
+        \\    return 123
+        \\try t.eq(foo()(), 123)
+    );
 }
 
 test "Match statement." {

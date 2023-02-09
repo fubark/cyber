@@ -8,8 +8,7 @@ const v = fmt.v;
 const cy = @import("cyber.zig");
 
 pub const NodeId = u32;
-const NullId = std.math.maxInt(u32);
-const NullIdU16 = std.math.maxInt(u16);
+const NullId = cy.NullId;
 const log = stdx.log.scoped(.parser);
 const IndexSlice = stdx.IndexSlice(u32);
 
@@ -1539,10 +1538,7 @@ pub const Parser = struct {
                 return id;
             },
             .return_k => {
-                const id = try self.parseReturnStatement();
-                token = self.peekToken();
-                try self.consumeNewLineOrEnd();
-                return id;
+                return try self.parseReturnStatement();
             },
             .export_k => {
                 const start = self.next_pos;
@@ -2778,25 +2774,39 @@ pub const Parser = struct {
     }
 
     /// Assumes next token is the return token.
-    fn parseReturnStatement(self: *Parser) !u32 {
+    fn parseReturnStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
         self.advanceToken();
         const token = self.peekToken();
-        if (token.tag() == .new_line or token.tag() == .none) {
-            return try self.pushNode(.return_stmt, start);
-        } else {
-            const expr = try self.parseExpr(.{}) orelse {
-                return self.reportParseError("Expected expression.", &.{});
-            };
-            const id = try self.pushNode(.return_expr_stmt, start);
-            self.nodes.items[id].head = .{
-                .child_head = expr,
-            };
-            return id;
+        switch (token.tag()) {
+            .new_line,
+            .none => {
+                return try self.pushNode(.return_stmt, start);
+            },
+            .func_k => {
+                const lambda = try self.parseMultilineLambdaFunction();
+                const id = try self.pushNode(.return_expr_stmt, start);
+                self.nodes.items[id].head = .{
+                    .child_head = lambda,
+                };
+                return id;
+            },
+            else => {
+                const expr = try self.parseExpr(.{}) orelse {
+                    return self.reportParseError("Expected expression.", &.{});
+                };
+                try self.consumeNewLineOrEnd();
+
+                const id = try self.pushNode(.return_expr_stmt, start);
+                self.nodes.items[id].head = .{
+                    .child_head = expr,
+                };
+                return id;
+            }
         }
     }
 
-    fn parseExprOrAssignStatement(self: *Parser) !?u32 {
+    fn parseExprOrAssignStatement(self: *Parser) !?NodeId {
         var is_assign_stmt = false;
         const expr_id = (try self.parseExpr(.{
             .returnLeftAssignExpr = true,
@@ -3298,7 +3308,7 @@ pub const Node = struct {
         accessExpr: struct {
             left: NodeId,
             right: NodeId,
-            /// Symbol id of a var or func. NullIdU16 if it does not point to a symbol.
+            /// Symbol id of a var or func. NullId if it does not point to a symbol.
             semaSymId: u32 = NullId,
         },
         func_call: struct {

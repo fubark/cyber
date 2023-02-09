@@ -1,0 +1,1 @@
+export func foo() = number

@@ -578,6 +578,40 @@ test "Stack trace unwinding." {
         .col = 0,
         .lineStartPos = 41,
     });
+
+    // panic from another module.
+    res = run.evalExt(.{ .silent = false, .uri = "./test/main.cy" },
+        \\import a 'test_mods/init_panic_error.cy'
+        \\import t 'test'
+        \\try t.eq(a.foo, 123)
+    );
+    try t.expectError(res, error.Panic);
+    trace = run.getStackTrace();
+    try t.eq(trace.frames.len, 1);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "main",
+        .chunkId = 1,
+        .line = 0,
+        .col = 17,
+        .lineStartPos = 0,
+    });
+
+    // `try` panic from another module.
+    res = run.evalExt(.{ .silent = false, .uri = "./test/main.cy" },
+        \\import a 'test_mods/init_try_error.cy'
+        \\import t 'test'
+        \\try t.eq(a.foo, 123)
+    );
+    try t.expectError(res, error.Panic);
+    trace = run.getStackTrace();
+    try t.eq(trace.frames.len, 1);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "main",
+        .chunkId = 1,
+        .line = 0,
+        .col = 17,
+        .lineStartPos = 0,
+    });
 }
 
 fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {

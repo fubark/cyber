@@ -2481,7 +2481,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
             } else if (err == error.End) {
                 return;
             } else if (err == error.Panic) {
-                try @call(.never_inline, gvm.buildStackTrace, .{true});
+                try @call(.never_inline, vm.buildStackTrace, .{true});
                 return error.Panic;
             } else return err;
         };
@@ -4205,7 +4205,7 @@ pub const StackTrace = struct {
 };
 
 pub const StackFrame = struct {
-    /// Name identifier (eg. function name)
+    /// Name identifier (eg. function name, or "main" for the main block)
     name: []const u8,
     /// Starts at 0.
     line: u32,

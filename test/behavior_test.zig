@@ -46,6 +46,23 @@ test "Imports." {
     try t.expectError(res, error.CompileError);
     try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `missing`");
 
+    // Failed to set func from another module
+    res = run.evalExt(.{ .silent = false, .uri = "./test/main.cy" },
+        \\import a 'test_mods/init_func_error.cy'
+        \\import t 'test'
+        \\try t.eq(valtag(a.foo), #function)
+    );
+    try t.expectError(res, error.Panic);
+    var trace = run.getStackTrace();
+    try t.eq(trace.frames.len, 1);
+    try eqStackFrame(trace.frames[0], .{
+        .name = "main",
+        .chunkId = 1,
+        .line = 0,
+        .col = 20,
+        .lineStartPos = 0,
+    });
+
     _ = try run.evalExt(.{ .uri = "./test/import_test.cy" }, @embedFile("import_test.cy"));
 }
 

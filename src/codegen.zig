@@ -2108,7 +2108,7 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) anyerror!void {
 
         const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId, sym.key.absLocalSymKey.numParams);
         try self.buf.pushOp2(.setStaticFunc, @intCast(u8, rtSymId), exprv.local);
-        try self.pushDebugSym(func.semaBlockId);
+        try chunk.pushDebugSym(node.head.funcDeclInit.right);
     } else {
         stdx.panicFmt("Unsupported sym {}", .{rsym.symT});
     }

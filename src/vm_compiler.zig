@@ -227,6 +227,7 @@ pub const VMcompiler = struct {
         // Once all symbols have been resolved, the static initializers are generated in DFS order.
         // Uses temp locals from the main block.
         for (self.chunks.items) |*chunk| {
+            log.debug("gen static initializer for block: {}", .{chunk.id});
             for (chunk.semaSyms.items) |sym, i| {
                 const symId = @intCast(u32, i);
                 // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});

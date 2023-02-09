@@ -916,8 +916,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .importStmt => {
             const ident = c.nodes[node.head.left_right.left];
             const name = c.getNodeTokenString(ident);
-            const nameId = try ensureNameSym(c.compiler, name);
-            const symId = try ensureSym(c, null, nameId, null);
+            const symId = try referenceSym(c, null, name, null, node.head.left_right.left, true);
 
             const spec = c.nodes[node.head.left_right.right];
             const specPath = c.getNodeTokenString(spec);
@@ -984,7 +983,7 @@ fn semaFuncDeclAssign(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !v
             return c.reportErrorAt("The declaration initializer of static function `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
         } else {
             return err;
-        } 
+        }
     };
 
     const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, declId, retType orelse AnyType, exported);
@@ -1026,6 +1025,7 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     try endFuncSymBlock(c, rtSymId, numParams);
 
     const symId = try ensureSym(c, null, nameId, numParams);
+    linkNodeToSym(c, nodeId, symId);
     const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, declId, retType.?, exported);
     c.funcDecls[declId].semaResolvedSymId = res.resolvedSymId;
     c.funcDecls[declId].semaResolvedFuncSymId = res.resolvedFuncSymId;
@@ -1168,10 +1168,11 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
             const name = c.getNodeTokenString(node);
             const res = try getOrLookupVar(c, name, .read);
             if (res.isLocal) {
-                c.nodes[nodeId].head.ident.semaVarId = res.id;
-                return c.vars.items[res.id].vtype;
+                c.nodes[nodeId].head.ident.semaVarId = res.varId;
+                return c.vars.items[res.varId].vtype;
             } else {
-                c.nodes[nodeId].head.ident.semaSymId = res.id;
+                const symId = try referenceSym(c, null, name, null, nodeId, true);
+                c.nodes[nodeId].head.ident.semaSymId = symId;
                 return AnyType;
             }
         },
@@ -1396,19 +1397,19 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
                     }
                     if (leftSymId != cy.NullId) {
                         // Left is a sym candidate.
-                        // Ensure func sym.
                         const right = c.nodes[callee.head.accessExpr.right];
                         const name = c.getNodeTokenString(right);
-                        const nameId = try ensureNameSym(c.compiler, name);
-                        const symId = try ensureSym(c, leftSymId, nameId, @intCast(u16, numArgs));
-                        c.semaSyms.items[symId].used = true;
+                        const symId = try referenceSym(c, leftSymId, name, numArgs, callee.head.accessExpr.right, true);
                         c.nodes[node.head.func_call.callee].head.accessExpr.semaSymId = symId;
                     }
 
                     return AnyType;
                 } else if (callee.node_t == .ident) {
-                    if (try identLocalVarOrNull(c, node.head.func_call.callee, true)) |varId| {
-                        _ = varId;
+                    const name = c.getNodeTokenString(callee);
+                    const res = try getOrLookupVar(c, name, .read);
+                    if (res.isLocal) {
+                        c.nodes[node.head.func_call.callee].head.ident.semaVarId = res.varId;
+
                         var numArgs: u32 = 1;
                         var arg_id = node.head.func_call.arg_head;
                         while (arg_id != cy.NullId) : (numArgs += 1) {
@@ -1430,10 +1431,7 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
                         }
 
                         // Ensure func sym.
-                        const name = c.getNodeTokenString(callee);
-                        const nameId = try ensureNameSym(c.compiler, name);
-                        const symId = try ensureSym(c, null, nameId, @intCast(u16, numArgs));
-                        c.semaSyms.items[symId].used = true;
+                        const symId = try referenceSym(c, null, name, numArgs, node.head.func_call.callee, true);
                         c.nodes[node.head.func_call.callee].head.ident.semaSymId = symId;
 
                         return AnyType;
@@ -1609,14 +1607,17 @@ fn ensureLocalBodyVar(self: *cy.CompileChunk, ident: cy.NodeId, vtype: Type) !Lo
     }
 }
 
-fn referenceVarSym(c: *cy.CompileChunk, name: []const u8, forRead: bool) !SymId {
+fn referenceSym(c: *cy.CompileChunk, parentId: ?SymId, name: []const u8, numParams: ?u32, nodeId: cy.NodeId, trackDep: bool) !SymId {
     const nameId = try ensureNameSym(c.compiler, name);
-
-    // Assume reference to root sym.
-    const symId = try ensureSym(c, null, nameId, null);
+    const symId = try ensureSym(c, parentId, nameId, numParams);
+    
+    // Mark as used so it is compiled.
     c.semaSyms.items[symId].used = true;
 
-    if (forRead) {
+    // Link a node to this sym for error reporting.
+    linkNodeToSym(c, nodeId, symId);
+
+    if (trackDep) {
         if (c.curSemaSymVar != cy.NullId) {
             // Record this symbol as a dependency.
             const res = try c.semaSymToRef.getOrPut(c.alloc, c.curSemaSymVar);
@@ -1646,13 +1647,6 @@ fn referenceVarSym(c: *cy.CompileChunk, name: []const u8, forRead: bool) !SymId 
     return symId;
 }
 
-fn setIdentAsVarSym(self: *cy.CompileChunk, ident: cy.NodeId) !void {
-    const node = self.nodes[ident];
-    const name = self.getNodeTokenString(node);
-    const symId = try referenceVarSym(self, name, true);
-    self.nodes[ident].head.ident.semaSymId = symId;
-}
-
 const VarLookupStrategy = enum {
     // Look upwards for a parent local. If no such local exists, assume a static var.
     read,
@@ -1665,8 +1659,8 @@ const VarLookupStrategy = enum {
 };
 
 const VarLookupResult = struct {
-    id: u32,
-    /// If `isLocal` is true then `id` refers to a LocalVarId, otherwise a SymId.
+    /// If `isLocal` is false, varId is cy.NullId.
+    varId: LocalVarId,
     isLocal: bool,
     /// Whether the local var was created.
     created: bool,
@@ -1687,13 +1681,13 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                 }
                 if (!svar.isStaticAlias) {
                     return VarLookupResult{
-                        .id = varId,
+                        .varId = varId,
                         .isLocal = true,
                         .created = false,
                     };
                 } else {
                     return VarLookupResult{
-                        .id = svar.inner.symId,
+                        .varId = cy.NullId,
                         .isLocal = false,
                         .created = false,
                     };
@@ -1702,13 +1696,13 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
             .assign => {
                 if (!svar.isStaticAlias) {
                     return VarLookupResult{
-                        .id = varId,
+                        .varId = varId,
                         .isLocal = true,
                         .created = false,
                     };
                 } else {
                     return VarLookupResult{
-                        .id = svar.inner.symId,
+                        .varId = cy.NullId,
                         .isLocal = false,
                         .created = false,
                     };
@@ -1720,7 +1714,7 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                     return self.reportError("TODO: update to captured variable", &.{});
                 } else {
                     return VarLookupResult{
-                        .id = varId,
+                        .varId = varId,
                         .isLocal = true,
                         .created = false,
                     };
@@ -1732,7 +1726,7 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                     return self.reportError("TODO: update to static alias", &.{});
                 } else {
                     return VarLookupResult{
-                        .id = svar.inner.symId,
+                        .varId = cy.NullId,
                         .isLocal = false,
                         .created = false,
                     };
@@ -1761,24 +1755,24 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                 const parentVar = self.vars.items[parentVarId];
                 const id = try pushCapturedVar(self, name, parentVarId, parentVar.vtype);
                 return VarLookupResult{
-                    .id = id,
+                    .varId = id,
                     .isLocal = true,
                     .created = true,
                 };
             } else {
-                const symId = try referenceVarSym(self, name, true);
                 return VarLookupResult{
-                    .id = symId,
+                    .varId = cy.NullId,
                     .isLocal = false,
                     .created = false,
                 };
             }
         },
         .staticAssign => {
-            const symId = try referenceVarSym(self, name, false);
+            const nameId = try ensureNameSym(self.compiler, name);
+            const symId = try ensureSym(self, null, nameId, null);
             _ = try pushStaticVarAlias(self, name, symId);
             return VarLookupResult{
-                .id = symId,
+                .varId = cy.NullId,
                 .isLocal = false,
                 .created = true,
             };
@@ -1792,7 +1786,7 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                 const parentVar = self.vars.items[parentVarId];
                 const id = try pushCapturedVar(self, name, parentVarId, parentVar.vtype);
                 return VarLookupResult{
-                    .id = id,
+                    .varId = id,
                     .isLocal = true,
                     .created = true,
                 };
@@ -1805,9 +1799,9 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
             // For now, only do this for main block.
             if (self.semaBlockDepth == 1) {
                 const nameId = try ensureNameSym(self.compiler, name);
-                if (getSym(self, null, nameId, null)) |symId| {
+                if (getSym(self, null, nameId, null) != null) {
                     return VarLookupResult{
-                        .id = symId,
+                        .varId = cy.NullId,
                         .isLocal = false,
                         .created = false,
                     };
@@ -1818,7 +1812,7 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                 self.vars.items[id].genInitializer = true;
             }
             return VarLookupResult{
-                .id = id,
+                .varId = id,
                 .isLocal = true,
                 .created = true,
             };
@@ -1840,38 +1834,9 @@ fn lookupParentLocal(c: *cy.CompileChunk, name: []const u8) ?LocalVarId {
     return null;
 }
 
-/// Retrieve the SemaVarId that is local to the current block.
-/// If the var comes from a parent block, a local captured var is created and returned.
-/// Sets the resulting id onto the node for codegen.
-/// TODO: Remove and use `getOrLookupVar`
-fn identLocalVarOrNull(self: *cy.CompileChunk, ident: cy.NodeId, searchParentScope: bool) !?LocalVarId {
-    const node = self.nodes[ident];
-    const name = self.getNodeTokenString(node);
-
-    if (lookupVar(self, name, searchParentScope)) |res| {
-        if (self.curSemaSymVar != cy.NullId) {
-            self.compiler.errorPayload = ident;
-            return error.CanNotUseLocal;
-        }
-        if (res.fromParentBlock) {
-            // Create a local captured variable.
-            const svar = self.vars.items[res.id];
-            const id = try pushCapturedVar(self, name, res.id, svar.vtype);
-            self.nodes[ident].head.ident.semaVarId = id;
-            return id;
-        } else {
-            self.nodes[ident].head.ident.semaVarId = res.id;
-            return res.id;
-        }
-    } else {
-        self.nodes[ident].head.ident.semaVarId = cy.NullId;
-        return null;
-    }
-}
-
 pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
     const sym = &self.semaSyms.items[symId];
-    log.debug("resolving {} {s} {}", .{symId, getSymName(self.compiler, sym), sym.key.absLocalSymKey.numParams});
+    log.debug("resolving {} {}.{s} {}", .{symId, sym.key.absLocalSymKey.localParentSymId, getSymName(self.compiler, sym), sym.key.absLocalSymKey.numParams});
     defer {
         if (sym.resolvedSymId != cy.NullId) {
             log.debug("resolved", .{});
@@ -1880,6 +1845,12 @@ pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
     const nameId = sym.key.absLocalSymKey.nameId;
     const numParams = sym.key.absLocalSymKey.numParams;
     const firstNodeId = self.semaSymFirstNodes.items[symId];
+    if (builtin.mode == .Debug) {
+        if (firstNodeId == cy.NullId) {
+            stdx.panicFmt("No source attribution for local sym {s} {}.", .{getSymName(self.compiler, sym), numParams});
+        }
+    }
+    self.curNodeId = firstNodeId;
 
     if (sym.key.absLocalSymKey.localParentSymId == cy.NullId) {
         log.debug("no parent", .{});
@@ -2112,7 +2083,7 @@ pub fn ensureNameSym(c: *cy.VMcompiler, name: []const u8) !NameSymId {
     }
 }
 
-pub fn linkNodeToSym(c: *cy.CompileChunk, symId: SymId, nodeId: cy.NodeId) void {
+pub fn linkNodeToSym(c: *cy.CompileChunk, nodeId: cy.NodeId, symId: SymId) void {
     if (c.semaSymFirstNodes.items[symId] == cy.NullId) {
         c.semaSymFirstNodes.items[symId] = nodeId;
     }
@@ -2173,17 +2144,17 @@ fn semaAccessExpr(self: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTop
     if (right.node_t == .ident) {
         var left = self.nodes[node.head.accessExpr.left];
         if (left.node_t == .ident) {
-            if ((try identLocalVarOrNull(self, node.head.accessExpr.left, true)) == null) {
-                try setIdentAsVarSym(self, node.head.accessExpr.left);
-            }
+            const name = self.getNodeTokenString(left);
+            const res = try getOrLookupVar(self, name, .read);
+            if (!res.isLocal) {
+                const symId = try referenceSym(self, null, name, null, node.head.accessExpr.left, true);
+                self.nodes[node.head.accessExpr.left].head.ident.semaSymId = symId;
 
-            left = self.nodes[node.head.accessExpr.left];
-            if (left.head.ident.semaSymId != cy.NullId) {
                 const rightName = self.getNodeTokenString(right);
-                const rightNameId = try ensureNameSym(self.compiler, rightName);
-                const symId = try ensureSym(self, left.head.ident.semaSymId, rightNameId, null);
-                self.semaSyms.items[symId].used = true;
-                self.nodes[nodeId].head.accessExpr.semaSymId = symId;
+                const rightSymId = try referenceSym(self, symId, rightName, null, node.head.accessExpr.right, true);
+                self.nodes[nodeId].head.accessExpr.semaSymId = rightSymId;
+            } else {
+                self.nodes[node.head.accessExpr.left].head.ident.semaVarId = res.varId;
             }
         } else if (left.node_t == .accessExpr) {
             _ = try semaAccessExpr(self, node.head.accessExpr.left, discardTopExprReg);
@@ -2191,9 +2162,7 @@ fn semaAccessExpr(self: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTop
             left = self.nodes[node.head.accessExpr.left];
             if (left.head.accessExpr.semaSymId != cy.NullId) {
                 const rightName = self.getNodeTokenString(right);
-                const rightNameId = try ensureNameSym(self.compiler, rightName);
-                const symId = try ensureSym(self, left.head.accessExpr.semaSymId, rightNameId, null);
-                self.semaSyms.items[symId].used = true;
+                const symId = try referenceSym(self, left.head.accessExpr.semaSymId, rightName, null, node.head.accessExpr.right, true);
                 self.nodes[nodeId].head.accessExpr.semaSymId = symId;
             }
         } else {
@@ -2207,34 +2176,6 @@ const VarResult = struct {
     id: LocalVarId,
     fromParentBlock: bool,
 };
-
-/// First checks current block and then the immediate parent block.
-fn lookupVar(self: *cy.CompileChunk, name: []const u8, searchParentScope: bool) ?VarResult {
-    const sblock = curBlock(self);
-    if (sblock.nameToVar.get(name)) |varId| {
-        return VarResult{
-            .id = varId,
-            .fromParentBlock = false,
-        };
-    }
-
-    if (searchParentScope) {
-        // Only check one block above.
-        if (self.semaBlockDepth > 1) {
-            const prevId = self.semaBlockStack.items[self.semaBlockStack.items.len-2];
-            const prev = self.semaBlocks.items[prevId];
-            if (prev.nameToVar.get(name)) |varId| {
-                return VarResult{
-                    .id = varId,
-                    .fromParentBlock = true,
-                };
-            }
-        }
-    }
-
-    // Undefined var.
-    return null;
-}
 
 /// To a local type before assigning to a local variable.
 fn toLocalType(vtype: Type) Type {
@@ -2252,7 +2193,7 @@ fn assignVar(self: *cy.CompileChunk, ident: cy.NodeId, vtype: Type, strat: VarLo
 
     const res = try getOrLookupVar(self, name, strat);
     if (res.isLocal) {
-        const svar = &self.vars.items[res.id];
+        const svar = &self.vars.items[res.varId];
         if (svar.isCaptured) {
             if (!svar.isBoxed) {
                 // Becomes boxed so codegen knows ahead of time.
@@ -2262,9 +2203,9 @@ fn assignVar(self: *cy.CompileChunk, ident: cy.NodeId, vtype: Type, strat: VarLo
 
         if (!res.created) {
             const ssblock = curSubBlock(self);
-            if (!ssblock.prevVarTypes.contains(res.id)) {
+            if (!ssblock.prevVarTypes.contains(res.varId)) {
                 // Same variable but branched to sub block.
-                try ssblock.prevVarTypes.put(self.alloc, res.id, svar.vtype);
+                try ssblock.prevVarTypes.put(self.alloc, res.varId, svar.vtype);
             }
         }
 
@@ -2276,11 +2217,11 @@ fn assignVar(self: *cy.CompileChunk, ident: cy.NodeId, vtype: Type, strat: VarLo
             }
         }
 
-        try self.assignedVarStack.append(self.alloc, res.id);
-        self.nodes[ident].head.ident.semaVarId = res.id;
+        try self.assignedVarStack.append(self.alloc, res.varId);
+        self.nodes[ident].head.ident.semaVarId = res.varId;
     } else {
-        self.semaSyms.items[res.id].used = true;
-        self.nodes[ident].head.ident.semaSymId = res.id;
+        const symId = try referenceSym(self, null, name, null, ident, true);
+        self.nodes[ident].head.ident.semaSymId = symId;
     }
 }
 

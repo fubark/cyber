@@ -866,9 +866,9 @@ pub const Parser = struct {
                 const declId = @intCast(u32, self.func_decls.items.len);
                 try self.func_decls.append(self.alloc, decl);
 
-                const id = try self.pushNode(.funcDeclAssign, start);
+                const id = try self.pushNode(.funcDeclInit, start);
                 self.nodes.items[id].head = .{
-                    .funcDeclAssign = .{
+                    .funcDeclInit = .{
                         .declId = declId,
                         .right = right,
                     },
@@ -1548,7 +1548,7 @@ pub const Parser = struct {
                 };
                 const stmt = self.nodes.items[stmtId];
                 switch (stmt.node_t) {
-                    .funcDeclAssign,
+                    .funcDeclInit,
                     .funcDecl,
                     .varDecl => {
                         const exportStmt = try self.pushNode(.exportStmt, start);
@@ -3216,7 +3216,7 @@ pub const NodeType = enum {
     eachClause,
     label_decl,
     funcDecl,
-    funcDeclAssign,
+    funcDeclInit,
     structDecl,
     structField,
     structInit,
@@ -3337,9 +3337,10 @@ pub const Node = struct {
             body_head: NodeId,
             genEndLocalsPc: u32 = NullId,
         },
-        funcDeclAssign: struct {
+        funcDeclInit: struct {
             declId: FuncDeclId,
             right: NodeId,
+            semaSymId: u32 = cy.NullId,
         },
         lambda_assign_decl: struct {
             decl_id: FuncDeclId,
@@ -3362,6 +3363,7 @@ pub const Node = struct {
         varDecl: struct {
             left: NodeId,
             right: NodeId,
+            semaSymId: u32 = cy.NullId,
         },
         tagMember: struct {
             name: NodeId,

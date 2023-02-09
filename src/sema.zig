@@ -665,9 +665,9 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 const name = c.src[func.name.start..func.name.end];
                 const numParams = @intCast(u16, func.params.end - func.params.start);
                 try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
-            } else if (c.nodes[stmt].node_t == .funcDeclAssign) {
+            } else if (c.nodes[stmt].node_t == .funcDeclInit) {
                 try semaFuncDeclAssign(c, stmt, true);
-                const funcId = c.nodes[stmt].head.funcDeclAssign.declId;
+                const funcId = c.nodes[stmt].head.funcDeclInit.declId;
                 const func = c.funcDecls[funcId];
                 const name = c.src[func.name.start..func.name.end];
                 const numParams = @intCast(u16, func.params.end - func.params.start);
@@ -801,7 +801,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 funcId = func.next;
             }
         },
-        .funcDeclAssign => {
+        .funcDeclInit => {
             try semaFuncDeclAssign(c, nodeId, false);
         },
         .funcDecl => {
@@ -954,7 +954,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
 fn semaFuncDeclAssign(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     const node = c.nodes[nodeId];
-    const declId = node.head.funcDeclAssign.declId;
+    const declId = node.head.funcDeclInit.declId;
     const func = c.funcDecls[declId];
     var retType: ?Type = null;
     if (func.return_type) |slice| {
@@ -971,12 +971,13 @@ fn semaFuncDeclAssign(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !v
     const symId = try ensureSym(c, null, nameId, numParams);
     // Mark as used since there is an initializer that could alter state.
     c.semaSyms.items[symId].used = true;
+    c.nodes[nodeId].head.funcDeclInit.semaSymId = symId;
 
     c.curSemaSymVar = symId;
     c.semaVarDeclDeps.clearRetainingCapacity();
     defer c.curSemaSymVar = cy.NullId;
 
-    _ = semaExpr(c, node.head.funcDeclAssign.right, false) catch |err| {
+    _ = semaExpr(c, node.head.funcDeclInit.right, false) catch |err| {
         if (err == error.CanNotUseLocal) {
             const local = c.nodes[c.compiler.errorPayload];
             const localName = c.getNodeTokenString(local);
@@ -1046,6 +1047,7 @@ fn semaVarDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
         c.semaSyms.items[symId].resolvedSymId = rsymId;
         // Mark as used since there is an initializer that could alter state.
         c.semaSyms.items[symId].used = true;
+        c.nodes[nodeId].head.varDecl.semaSymId = symId;
 
         c.curSemaSymVar = symId;
         c.semaVarDeclDeps.clearRetainingCapacity();

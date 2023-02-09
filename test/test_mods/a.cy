@@ -31,3 +31,10 @@ func incInitOnce():
     static initOnceCount
     initOnceCount += 1
     return initOnceCount
+
+-- Tests dependency generation, so set resulting symbol's natural order before the dependency.
+export var varDepRes = varDep
+var varDep = 123
+export func funcDepRes() = funcDep
+var funcDep = func ():
+    return 123

@@ -20,3 +20,7 @@ try t.eq(a.declAssign('123'), 123)
 -- This tests that ResolvedSym.genStaticInitVisited
 -- prevents 2 different local syms from generating the same initializer.
 try t.eq(a.initOnce, 1)
+
+-- Generates dependencies from symbol's source module and not this module.
+try t.eq(a.varDepRes, 123)
+try t.eq(a.funcDepRes(), 123)

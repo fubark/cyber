@@ -1746,14 +1746,15 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
     // Perform lookup based on the strategy. See `VarLookupStrategy`.
     switch (strat) {
         .read => {
-            if (lookupParentLocal(self, name)) |parentVarId| {
-                if (self.curSemaSymVar != cy.NullId) {
+            if (lookupParentLocal(self, name)) |res| {
+                // Can only capture a local that is under the var init block.
+                if (self.curSemaSymVar != cy.NullId and res.blockDepth < 2) {
                     self.compiler.errorPayload = self.curNodeId;
                     return error.CanNotUseLocal;
                 }
                 // Create a local captured variable.
-                const parentVar = self.vars.items[parentVarId];
-                const id = try pushCapturedVar(self, name, parentVarId, parentVar.vtype);
+                const parentVar = self.vars.items[res.varId];
+                const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
                 return VarLookupResult{
                     .varId = id,
                     .isLocal = true,
@@ -1778,13 +1779,13 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
             };
         },
         .captureAssign => {
-            if (lookupParentLocal(self, name)) |parentVarId| {
-                if (self.curSemaSymVar != cy.NullId) {
+            if (lookupParentLocal(self, name)) |res| {
+                if (self.curSemaSymVar != cy.NullId and res.blockDepth < 2) {
                     return self.reportError("Can not use local in static variable initializer.", &.{});
                 }
                 // Create a local captured variable.
-                const parentVar = self.vars.items[parentVarId];
-                const id = try pushCapturedVar(self, name, parentVarId, parentVar.vtype);
+                const parentVar = self.vars.items[res.varId];
+                const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
                 return VarLookupResult{
                     .varId = id,
                     .isLocal = true,
@@ -1820,14 +1821,22 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
     }
 }
 
-fn lookupParentLocal(c: *cy.CompileChunk, name: []const u8) ?LocalVarId {
+const LookupParentLocalResult = struct {
+    varId: LocalVarId,
+    blockDepth: u32,
+};
+
+fn lookupParentLocal(c: *cy.CompileChunk, name: []const u8) ?LookupParentLocalResult {
     // Only check one block above.
     if (c.semaBlockDepth > 1) {
         const prevId = c.semaBlockStack.items[c.semaBlockStack.items.len-2];
         const prev = c.semaBlocks.items[prevId];
         if (prev.nameToVar.get(name)) |varId| {
             if (!c.vars.items[varId].isStaticAlias) {
-                return varId;
+                return .{
+                    .varId = varId,
+                    .blockDepth = c.semaBlockDepth - 1,
+                };
             }
         }
     }

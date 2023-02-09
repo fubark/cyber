@@ -219,6 +219,25 @@ pub const ByteCodeBuffer = struct {
             const code = pc[0].code;
             const len = getInstLenAt(pc);
             switch (code) {
+                .closure => {
+                    const negFuncPcOffset = pc[1].arg;
+                    const numParams = pc[2].arg;
+                    const numCaptured = pc[3].arg;
+                    const numLocals = pc[4].arg;
+                    const dst = pc[5].arg;
+                    fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(dst)});
+                    printStderr(" {any}\n", .{std.mem.sliceAsBytes(pc[6..6+numCaptured])});
+                },
+                .box => {
+                    const local = pc[1].arg;
+                    const dst = pc[2].arg;
+                    fmt.printStderr("{} {} local={}, dst={}\n", &.{v(pcOffset), v(code), v(local), v(dst)});
+                },
+                .boxValue => {
+                    const local = pc[1].arg;
+                    const dst = pc[2].arg;
+                    fmt.printStderr("{} {} local={}, dst={}\n", &.{v(pcOffset), v(code), v(local), v(dst)});
+                },
                 .stringTemplate => {
                     const startLocal = pc[1].arg;
                     const exprCount = pc[2].arg;

@@ -114,8 +114,8 @@ pub const VM = struct {
 
     stackTrace: StackTrace,
 
-    /// Since func syms can be reassigned, the ones that retain a tcc state will be tracked here.
-    funcSymTccStates: std.AutoHashMapUnmanaged(SymbolId, Value),
+    /// Since func syms can be reassigned, track any RC dependencies.
+    funcSymDeps: std.AutoHashMapUnmanaged(SymbolId, Value),
     methodSymExtras: cy.List(MethodSymExtra),
     debugTable: []const cy.OpDebug,
 
@@ -186,7 +186,7 @@ pub const VM = struct {
             .endLocal = undefined,
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
             .deinited = false,
-            .funcSymTccStates = .{},
+            .funcSymDeps = .{},
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -255,11 +255,11 @@ pub const VM = struct {
         }
         self.funcSymDetails.deinit(self.alloc);
         {
-            var iter = self.funcSymTccStates.iterator();
+            var iter = self.funcSymDeps.iterator();
             while (iter.next()) |e| {
                 release(self, e.value_ptr.*);
             }
-            self.funcSymTccStates.deinit(self.alloc);
+            self.funcSymDeps.deinit(self.alloc);
         }
 
         self.varSymSigs.deinit(self.alloc);
@@ -4753,6 +4753,22 @@ fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 
     return @ptrCast(*const align (1) u16, pc + 4 + i * 3 - 1).*;
 }
 
+fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
+    const entry = vm.funcSyms.buf[symId];
+    switch (@intToEnum(FuncSymbolEntryType, entry.entryT)) {
+        .closure => {
+            cy.arc.releaseObject(vm, @ptrCast(*cy.HeapObject, entry.inner.closure));
+        },
+        else => {
+            // Check to cleanup previous dep.
+            if (vm.funcSymDeps.get(symId)) |dep| {
+                release(vm, dep);
+                _ = vm.funcSymDeps.remove(symId);
+            }
+        },
+    }
+}
+
 fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
     errdefer {
         // TODO: This should be taken care of by panic stack unwinding.
@@ -4766,12 +4782,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 if (reqNumParams != obj.nativeFunc1.numParams) {
                     return vm.panic("Assigning to static function with a different function signature.");
                 }
-                if (vm.funcSyms.buf[symId].entryT == @enumToInt(FuncSymbolEntryType.nativeFunc1)) {
-                    // Check to cleanup previous tcc state.
-                    if (vm.funcSymTccStates.get(symId)) |state| {
-                        release(vm, state);
-                    }
-                }
+                releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
                     .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
                     .innerExtra = .{
@@ -4783,11 +4794,39 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                         .nativeFunc1 = obj.nativeFunc1.func,
                     },
                 };
-                if (obj.nativeFunc1.hasTccState) {
-                    retain(vm, obj.nativeFunc1.tccState);
-                    vm.funcSymTccStates.put(vm.alloc, symId, obj.nativeFunc1.tccState) catch stdx.fatal();
+                vm.funcSymDeps.put(vm.alloc, symId, val) catch stdx.fatal();
+            },
+            cy.LambdaS => {
+                const reqNumParams = getFuncSymSig(vm, symId);
+                if (reqNumParams != obj.lambda.numParams) {
+                    return vm.panic("Assigning to static function with a different function signature.");
                 }
-                cy.arc.release(vm, val);
+                releaseFuncSymDep(vm, symId);
+                vm.funcSyms.buf[symId] = .{
+                    .entryT = @enumToInt(FuncSymbolEntryType.func),
+                    .inner = .{
+                        .func = .{
+                            .pc = obj.lambda.funcPc,
+                            .numLocals = obj.lambda.numLocals,
+                            .numParams = obj.lambda.numParams,
+                        },
+                    },
+                };
+                vm.funcSymDeps.put(vm.alloc, symId, val) catch stdx.fatal();
+            },
+            cy.ClosureS => {
+                const reqNumParams = getFuncSymSig(vm, symId);
+                if (reqNumParams != obj.closure.numParams) {
+                    return vm.panic("Assigning to static function with a different function signature.");
+                }
+                releaseFuncSymDep(vm, symId);
+                vm.funcSyms.buf[symId] = .{
+                    .entryT = @enumToInt(FuncSymbolEntryType.closure),
+                    .inner = .{
+                        .closure = val.asPointer(*cy.heap.Closure),
+                    },
+                };
+                // Don't set func sym dep since the closure is assigned into the func sym entry.
             },
             else => {
                 return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.common.structId)});

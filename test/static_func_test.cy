@@ -54,6 +54,20 @@ try t.eqList(list, [1, 2, 3])
 func foo5(): return 2 + 2
 try t.eq(foo5(), 4)
 
--- Assign to function declaration with static function value.
+-- Static func initializer assigns static function value.
 func foo6(val) = number
 try t.eq(foo6('123'), 123)
+
+-- Static func initializer assigns function value.
+func foo7() = foo7dep
+var foo7dep = func ():
+    return 123
+try t.eq(foo7(), 123)
+
+-- Static func initializer assigns closure value.
+func foo8() = foo8dep()
+var foo8dep = func ():
+    local = 123
+    return func():
+        return local
+try t.eq(foo8(), 123)

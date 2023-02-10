@@ -174,7 +174,7 @@ pub const VMcompiler = struct {
         self.resetCompiler();
 
         var finalSrcUri: []const u8 = undefined;
-        if (self.vm.config.enableFileModules) {
+        if (!cy.isWasm and self.vm.config.enableFileModules) {
             // Ensure that `srcUri` is resolved.
             finalSrcUri = std.fs.cwd().realpathAlloc(self.alloc, srcUri) catch |err| {
                 log.debug("Could not resolve main src uri: {s}", .{srcUri});

@@ -1028,6 +1028,10 @@ pub fn genTopDeclStatements(self: *CompileChunk, head: cy.NodeId) !void {
     }
 }
 
+fn shouldGenMainScopeReleaseOps(self: *cy.VMcompiler) bool {
+    return !self.vm.config.singleRun;
+}
+
 pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
     var cur_id = head;
     var node = self.nodes[cur_id];
@@ -1042,7 +1046,7 @@ pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: b
     if (node.node_t == .expr_stmt) {
         if (attachEnd) {
             const local = try genExprStmt(self, cur_id, true, false);
-            if (self.compiler.config.genMainScopeReleaseOps) {
+            if (shouldGenMainScopeReleaseOps(self.compiler)) {
                 self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
                 try self.endLocals();
             }
@@ -1053,7 +1057,7 @@ pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: b
     } else {
         if (attachEnd) {
             try genStatement(self, cur_id, false);
-            if (self.compiler.config.genMainScopeReleaseOps) {
+            if (shouldGenMainScopeReleaseOps(self.compiler)) {
                 self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
                 try self.endLocals();
             }

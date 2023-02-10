@@ -145,6 +145,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
     vm.setTrace(&trace);
     _ = vm.eval(path, src, .{
         .singleRun = builtin.mode == .ReleaseFast,
+        .enableFileModules = true,
     }) catch |err| {
         switch (err) {
             error.Panic => {

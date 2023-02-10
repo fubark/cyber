@@ -15,15 +15,17 @@ test "Imports." {
     defer run.destroy();
 
     // Import missing file.
-    var res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+    var res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
         \\import a 'test_mods/missing.cy'
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "Import path does not exist: `./test/test_mods/missing.cy`");
+    const errMsg = run.vm.getCompileErrorMsg();
+    try t.expect(std.mem.startsWith(u8, errMsg, "Import path does not exist:"));
+    try t.expect(std.mem.indexOf(u8, errMsg, "test/test_mods/missing.cy") != null);
 
     // Using unexported func symbol.
-    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\b = a.barNoExport
     );
@@ -31,7 +33,7 @@ test "Imports." {
     try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `barNoExport`");
 
     // Using unexported var symbol.
-    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\b = a.varNoExport
     );
@@ -39,7 +41,7 @@ test "Imports." {
     try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
 
     // Using missing symbol.
-    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\b = a.missing
     );
@@ -47,7 +49,7 @@ test "Imports." {
     try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `missing`");
 
     // Failed to set func from another module
-    res = run.evalExt(.{ .silent = false, .uri = "./test/main.cy" },
+    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
         \\import a 'test_mods/init_func_error.cy'
         \\import t 'test'
         \\try t.eq(valtag(a.foo), #function)
@@ -63,7 +65,24 @@ test "Imports." {
         .lineStartPos = 0,
     });
 
-    _ = try run.evalExt(.{ .uri = "./test/import_test.cy" }, @embedFile("import_test.cy"));
+    // Import when running main script in the cwd.
+    try std.os.chdir("./test");
+    _ = try run.evalExt(Config.withFileModules("./import_test.cy"),
+        \\import a 'test_mods/a.cy'
+        \\import t 'test'
+        \\try t.eq(a.varNum, 123)
+    );
+
+    // Import when running main script in a child directory.
+    try std.os.chdir("./test_mods");
+    _ = try run.evalExt(Config.withFileModules("../import_test.cy"),
+        \\import a 'test_mods/a.cy'
+        \\import t 'test'
+        \\try t.eq(a.varNum, 123)
+    );
+
+    try std.os.chdir("../..");
+    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
 }
 
 test "compile time" {
@@ -1661,7 +1680,7 @@ const VMrunner = struct {
             }
         }
         try self.resetEnv();
-        return self.vm.eval(config.uri, src, .{ .singleRun = false }) catch |err| {
+        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
             return err;
         };
     }
@@ -1749,4 +1768,21 @@ const Config = struct {
 
     /// Don't print panic errors.
     silent: bool = false,
+
+    enableFileModules: bool = false,
+
+    fn silentWithFileModules(uri: []const u8) Config {
+        return .{
+            .silent = true,
+            .enableFileModules = true,
+            .uri = uri,
+        };
+    }
+
+    fn withFileModules(uri: []const u8) Config {
+        return .{
+            .enableFileModules = true,
+            .uri = uri,
+        };
+    }
 };

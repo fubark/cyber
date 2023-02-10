@@ -49,7 +49,7 @@ pub const VMcompiler = struct {
 
     /// Modules.
     modules: std.ArrayListUnmanaged(sema.Module),
-    /// Absolute specifier path to module.
+    /// Owned absolute specifier path to module.
     moduleMap: std.StringHashMapUnmanaged(sema.ModuleId),
 
     typeNames: std.StringHashMapUnmanaged(sema.Type),
@@ -59,8 +59,6 @@ pub const VMcompiler = struct {
 
     /// Imports are queued.
     importTasks: std.ArrayListUnmanaged(ImportTask),
-
-    config: Config,
 
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
@@ -80,7 +78,6 @@ pub const VMcompiler = struct {
             .modules = .{},
             .moduleMap = .{},
             .typeNames = .{},
-            .config = .{},
             .chunks = .{},
             .importTasks = .{},
         };
@@ -135,8 +132,8 @@ pub const VMcompiler = struct {
         self.lastErrChunk = cy.NullId;
     }
 
-    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: Config) !ResultView {
-        self.compileInner(srcUri, src, config) catch |err| {
+    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8) !ResultView {
+        self.compileInner(srcUri, src) catch |err| {
             if (err == error.TokenError) {
                 return ResultView{
                     .buf = self.buf,
@@ -152,9 +149,13 @@ pub const VMcompiler = struct {
                     std.debug.dumpStackTrace(@errorReturnTrace().?.*);
                 }
                 if (err != error.CompileError) {
-                    // Report other errors using the main chunk.
-                    const chunk = &self.chunks.items[0];
-                    try chunk.setErrorAt("Error: {}", &.{v(err)}, cy.NullId);
+                    if (self.chunks.items.len > 0) {
+                        // Report other errors using the main chunk.
+                        const chunk = &self.chunks.items[0];
+                        try chunk.setErrorAt("Error: {}", &.{v(err)}, cy.NullId);
+                    } else {
+                        return err;
+                    }
                 }
                 return ResultView{
                     .buf = self.buf,
@@ -169,13 +170,23 @@ pub const VMcompiler = struct {
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: Config) !void {
+    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8) !void {
         self.resetCompiler();
-        self.config = config;
+
+        var finalSrcUri: []const u8 = undefined;
+        if (self.vm.config.enableFileModules) {
+            // Ensure that `srcUri` is resolved.
+            finalSrcUri = std.fs.cwd().realpathAlloc(self.alloc, srcUri) catch |err| {
+                log.debug("Could not resolve main src uri: {s}", .{srcUri});
+                return err;
+            };
+        } else {
+            finalSrcUri = try self.alloc.dupe(u8, srcUri);
+        }
 
         // Main chunk.
         const nextId = @intCast(u32, self.chunks.items.len);
-        var mainChunk = try CompileChunk.init(self, nextId, srcUri, src);
+        var mainChunk = try CompileChunk.init(self, nextId, finalSrcUri, src);
         mainChunk.modId = 0;
         try self.modules.append(self.alloc, .{
             .syms = .{},
@@ -183,6 +194,7 @@ pub const VMcompiler = struct {
             .resolvedRootSymId = cy.NullId,
         });
         try self.chunks.append(self.alloc, mainChunk);
+        try @call(.never_inline, self.moduleMap.put, .{self.alloc, finalSrcUri, 0});
 
         // Load core module first since the members are imported into each user module.
         const coreModSpec = try self.alloc.dupe(u8, "core");
@@ -545,10 +557,6 @@ const DataNode = packed struct {
         },
     },
     next: u32,
-};
-
-const Config = struct {
-    genMainScopeReleaseOps: bool = true,
 };
 
 const CompileChunkId = u32;

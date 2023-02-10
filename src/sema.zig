@@ -2350,7 +2350,8 @@ fn resolveSpecTemp(self: *cy.CompileChunk, spec: []const u8, outBuiltin: *bool) 
     self.tempBufU8.clearRetainingCapacity();
 
     // Create path from the current script.
-    const dir = std.fs.path.dirname(self.srcUri) orelse "";
+    // There should always be a parent directory since `srcUri` should be absolute when dealing with file modules.
+    const dir = std.fs.path.dirname(self.srcUri) orelse return error.NoParentDir;
     try self.tempBufU8.ensureTotalCapacity(self.alloc, dir.len + 1 + spec.len + std.fs.MAX_PATH_BYTES);
     try self.tempBufU8.appendSlice(self.alloc, dir);
     try self.tempBufU8.append(self.alloc, '/');

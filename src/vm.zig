@@ -134,6 +134,8 @@ pub const VM = struct {
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, u32) else void,
 
+    config: EvalConfig,
+
     /// Whether this VM is already deinited. Used to skip the next deinit to avoid using undefined memory.
     deinited: bool,
 
@@ -187,6 +189,7 @@ pub const VM = struct {
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
             .deinited = false,
             .funcSymDeps = .{},
+            .config = undefined,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -296,10 +299,12 @@ pub const VM = struct {
     }
 
     pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
+        self.config = .{
+            .singleRun = false,
+            .enableFileModules = true,
+        };
         var tt = stdx.debug.trace();
-        const res = try self.compiler.compile(srcUri, src, .{
-            .genMainScopeReleaseOps = true,
-        });
+        const res = try self.compiler.compile(srcUri, src);
         if (res.err) |err| {
             const chunk = self.compiler.chunks.items[self.compiler.lastErrChunk];
             switch (err) {
@@ -328,10 +333,9 @@ pub const VM = struct {
     }
 
     pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
+        self.config = config;
         var tt = stdx.debug.trace();
-        const res = try self.compiler.compile(srcUri, src, .{
-            .genMainScopeReleaseOps = !config.singleRun,
-        });
+        const res = try self.compiler.compile(srcUri, src);
         if (res.err) |err| {
             const chunk = self.compiler.chunks.items[self.compiler.lastErrChunk];
             switch (err) {
@@ -4733,6 +4737,8 @@ pub const EvalConfig = struct {
     /// Whether this process intends to perform eval once and exit.
     /// In that scenario, the compiler can skip generating the final release ops for the main block.
     singleRun: bool = false,
+
+    enableFileModules: bool = false,
 };
 
 fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 {

@@ -21,7 +21,8 @@ jobs:
         uses: peaceiris/actions-hugo@v2
         with:
           hugo-version: 'latest'
-          # extended: true
+          # Needed to build SCSS/SASS with transpiler set to 'libsass'
+          extended: true
 
       - name: Generate.
         run: |

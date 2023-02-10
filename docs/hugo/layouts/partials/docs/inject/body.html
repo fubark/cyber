@@ -1,0 +1,29 @@
+<script src="/highlight.min.js"></script>
+<script>
+hljs.registerLanguage('cy', function() {
+	return {
+	keywords: [
+		'func', 'import', 'for', 'coinit', 'coresume', 'coyield',
+		'return', 'if', 'then', 'else', 'as', 'each', 'while', 'var', 'tagtype', 'object',
+		'break', 'continue', 'match', 'export', 'pass', 'or', 'and', 'not', 'is',
+		'static', 'capture', 'true', 'false', 'none', 'try', 'catch', 'recover', 'compt'
+	],
+	contains: [
+		{
+		scope: 'string',
+		begin: '\'', end: '\''
+		},
+		hljs.COMMENT(
+		'\-\-', // begin
+		'\n', // end
+		{
+			contains: [
+			]
+		}
+		),
+		hljs.C_NUMBER_MODE,
+	]
+	};
+})
+hljs.highlightAll();
+</script>

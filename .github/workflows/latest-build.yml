@@ -268,3 +268,9 @@ jobs:
             cyber-windows-x64.zip
             cyber.dll
             cyber.wasm
+  # docs:
+  #   needs: release
+  #   name: Gen Docs
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: 

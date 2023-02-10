@@ -1,0 +1,9 @@
+baseURL = 'http://example.org/'
+languageCode = 'en-us'
+title = 'Cyber Docs v0.1'
+theme = 'hugo-book'
+
+[params]
+BookTheme = 'light'
+BookRepo = 'https://github.com/fubark/cyber'
+BookEditPath = 'edit/master/docs/hugo'

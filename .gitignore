@@ -4,6 +4,10 @@
 /todo.md
 /site
 /docs-todo.md
+/docs/hugo/themes
+/docs/hugo/resources
+/docs/hugo/.hugo_build.lock
+/docs/hugo/public
 /temp.cy
 /test.txt
 /test/assets/write.txt

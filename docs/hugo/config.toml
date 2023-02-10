@@ -4,6 +4,6 @@ title = 'Cyber Docs v0.1'
 theme = 'hugo-book'
 
 [params]
-BookTheme = 'light'
+BookTheme = 'dark'
 BookRepo = 'https://github.com/fubark/cyber'
 BookEditPath = 'edit/master/docs/hugo'

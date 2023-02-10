@@ -1,0 +1,149 @@
+:root {
+    --bg: #0c0c0c;
+    --accent-bg: #0d0707;
+    --border: #614721;
+    --text: white;
+    --text-light: #888888;
+    --accent-light: #ffc57b;
+    --accent: #ffa430;
+    --marked: #ffa430;
+    --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
+
+    /* Hugo Book */
+    --body-background: var(--bg);
+    --body-font-color: var(--text);
+}
+
+html, body {
+    font-family: 'Inter', sans-serif;
+    font-size: 18px;
+
+    /* Reset to defaults */ 
+    letter-spacing: normal;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+}
+
+.markdown h1 {
+    color: var(--accent-light);
+    font-weight: bold;
+}
+
+.markdown h2 {
+    color: var(--accent-light);
+    font-weight: bold;
+}
+
+.markdown h3 {
+    color: var(--accent-light);
+    font-weight: bold;
+}
+
+.markdown table tr:nth-child(2n) {
+    background: transparent;
+}
+
+.markdown table tr th {
+    text-align: left;
+    color: var(--text-light);
+    font-weight: normal;
+}
+
+.markdown table tr th, .markdown table tr td {
+    border-color: var(--border);
+}
+
+.book-search input {
+    background-color: var(--bg);
+    border: 1px solid var(--border);
+}
+
+.book-menu .book-brand a {
+    color: var(--accent);
+    font-weight: bold;
+}
+
+.book-menu a {
+    color: var(--accent-light);
+}
+.book-menu a:hover {
+    opacity: 1;
+    color: var(--accent-light);
+    text-decoration: underline;
+}
+
+.book-menu a.active {
+    color: var(--accent);
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+ul a {
+    color: var(--accent-light);
+}
+
+a {
+    color: var(--accent);
+}
+
+.markdown a:visited {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.markdown a {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+:focus {
+    outline-style: none;
+}
+
+.markdown pre {
+    background-color: inherit;
+}
+
+/* inline code */
+.markdown code {
+    font-size: 17px;
+    background-color: transparent;
+    color: var(--accent-light);
+    padding: 0px 4px;
+}
+
+/* block code */
+.markdown pre code {
+    font-size: 15px;
+    color: var(--text);
+    font-weight: normal;
+    font-family: var(--mono-font);
+}
+
+pre {
+    padding: 10px;
+    font-size: 15px;
+    border: 1px solid var(--border);
+}
+
+pre code.hljs {
+    padding: 0px;
+}
+
+.hljs {
+    background-color: var(--accent-bg);
+    color: white;
+}
+.hljs-keyword {
+    color: #fab760;
+    font-weight: normal;
+}
+.hljs-number,
+.hljs-string {
+    color: rgb(120, 206, 120);
+}
+.hljs-built_in {
+    color: white;
+}
+.hljs-comment {
+    color: var(--text-light);
+}

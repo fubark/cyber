@@ -1,0 +1,105 @@
+<!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Functions. # In Cyber, there are first-class functions (or function values) as well as statically defined functions.
+Static Functions. # Static functions are not initally values themselves. They allow function calls to be optimal since they don&rsquo;t need to resolve a dynamic value. A nice feature of Cyber&rsquo;s static functions is they can be used just like a function value.
+Static functions are declared with the func keyword and must have a name."><meta name=theme-color content="#FFFFFF"><meta name=color-scheme content="light dark"><meta property="og:title" content="Functions"><meta property="og:description" content="Functions. # In Cyber, there are first-class functions (or function values) as well as statically defined functions.
+Static Functions. # Static functions are not initally values themselves. They allow function calls to be optimal since they don&rsquo;t need to resolve a dynamic value. A nice feature of Cyber&rsquo;s static functions is they can be used just like a function value.
+Static functions are declared with the func keyword and must have a name."><meta property="og:type" content="article"><meta property="og:url" content="http://example.org/docs/toc/functions/"><meta property="article:section" content="docs"><title>Functions | Cyber Docs v0.1</title><link rel=manifest href=/manifest.json><link rel=icon href=/favicon.png type=image/x-icon><link rel=stylesheet href=/book.min.c58292d36b18b675680ab9baea2029204537b839ea72f258746ec0f32ce8d6c8.css integrity="sha256-xYKS02sYtnVoCrm66iApIEU3uDnqcvJYdG7A8yzo1sg=" crossorigin=anonymous><script defer src=/flexsearch.min.js></script>
+<script defer src=/en.search.min.2cbbbc1b3eacb2288891e6a3bd724d69fd7272d550473b9fa482cb5d76a3b6ee.js integrity="sha256-LLu8Gz6ssiiIkeajvXJNaf1yctVQRzufpILLXXajtu4=" crossorigin=anonymous></script>
+<link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/hljs.min.css><link rel=stylesheet href=/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
+<input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/><span>Cyber Docs v0.1</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li class=book-section-flat><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a><ul></ul></li><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/docs/toc/syntax/>Syntax</a></li><li><a href=/docs/toc/data-types/>Data Types</a></li><li><a href=/docs/toc/control-flow/>Control Flow</a></li><li><a href=/docs/toc/functions/ class=active>Functions</a></li><li><a href=/docs/toc/modules/>Modules</a></li><li><a href=/docs/toc/ffi/>FFI</a></li><li><a href=/docs/toc/errors/>Error Handling</a></li><li><a href=/docs/toc/concurrency/>Concurrency</a></li><li><a href=/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/docs/toc/embedding/>Embedding</a></li><li><a href=/docs/toc/gradual-typing/>Gradual Typing</a></li><li><a href=/docs/toc/memory/>Memory</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/svg/menu.svg class=book-icon alt=Menu></label>
+<strong>Functions</strong>
+<label for=toc-control><img src=/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#static-functions>Static Functions.</a></li><li><a href=#function-overloading>Function Overloading.</a></li><li><a href=#lambdas>Lambdas.</a></li><li><a href=#closures>Closures.</a></li><li><a href=#function-calls>Function Calls.</a></li></ul></nav></aside></header><article class=markdown><h1 id=functions>Functions.
+<a class=anchor href=#functions>#</a></h1><p>In Cyber, there are first-class functions (or function values) as well as statically defined functions.</p><h2 id=static-functions>Static Functions.
+<a class=anchor href=#static-functions>#</a></h2><p>Static functions are not initally values themselves. They allow function calls to be optimal since they don&rsquo;t need to resolve a dynamic value. A nice feature of Cyber&rsquo;s static functions is they can be used just like a function value.</p><p>Static functions are declared with the <code>func</code> keyword and must have a name.</p><pre tabindex=0><code class=language-cy data-lang=cy>import m &#39;math&#39;
+
+func dist(x0, y0, x1, y1):
+    dx = x0-x1
+    dy = y0-y1
+    return m.sqrt(dx^2 + dy^2)
+</code></pre><p>Calling static functions is straightforward. You can also reassign or pass them around as values.</p><pre tabindex=0><code class=language-cy data-lang=cy>print dist(0, 0, 10, 20)
+
+-- Assigning to a local variable.
+bar = dist
+
+-- Passing `dist` as an argument.
+func squareDist(dist, size):
+    return dist(0, 0, size, size)
+print squareDist(dist, 30)
+</code></pre><p>The function declaration can also be initialized to an expression that evaluates to a function. However, the expression can not contain any local variable references since it&rsquo;s a static declaration. The function signatures also have to match.</p><pre tabindex=0><code class=language-cy data-lang=cy>func myAdd(a, b):
+    return a + b
+func add(a, b) = myAdd      -- Valid declaration.
+
+myInc = func(a):
+    return a + 1
+func inc(a) = myInc         -- CompileError, referencing local variable `myInc`.
+
+func foo(a, b, c) = myAdd   -- panic, signature mismatch.
+</code></pre><p>Functions can return multiple values.</p><pre tabindex=0><code class=language-cy data-lang=cy>import {cos, sin} &#39;math&#39;
+
+func compute(rad):
+    return cos(rad), sin(rad)
+x, y = compute(pi)
+</code></pre><h2 id=function-overloading>Function Overloading.
+<a class=anchor href=#function-overloading>#</a></h2><p>Static functions can be overloaded by the number of parameters in its signature.</p><pre tabindex=0><code class=language-cy data-lang=cy>func foo():
+    return 2 + 2
+
+func foo(n):
+    return 10 + n
+
+func foo(n, m):
+    return n * m
+
+print foo()         -- &#34;4&#34;
+print foo(2)        -- &#34;12&#34;
+print foo(20, 5)    -- &#34;100&#34;
+</code></pre><h2 id=lambdas>Lambdas.
+<a class=anchor href=#lambdas>#</a></h2><p>Lambdas or function values can be assigned to variables or passed as arguments into other constructs.</p><p>When a lambda only returns an expression, it can be declared with a simplified syntax.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Passing simple lambda as an argument.
+foo(word =&gt; toUpper(word))
+
+-- A simple lambda with multiple arguments.
+foo((word, prefix) =&gt; prefix + toUpper(word))
+
+-- Assigning a simple lambda.
+canvas.onUpdate = delta_ms =&gt; print delta_ms
+</code></pre><p>Lambdas that need a block of statements can be declared with the <code>func</code> keyword without a name.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Assigning lambda block to a variable.
+add = func (a, b):
+    return a + b
+
+-- Passing a lambda block as an argument.
+canvas.onUpdate():
+    ..func (delta_ms):
+        print delta_ms
+</code></pre><p>Passing a lambda block as a call argument is only possible in a call expression block. To understand how that works, see <a href=#function-calls>Function Calls</a>.</p><h2 id=closures>Closures.
+<a class=anchor href=#closures>#</a></h2><p>In Cyber, functions can close over local variables in parent blocks.</p><pre tabindex=0><code class=language-cy data-lang=cy>func add():
+    a = 123
+    return b =&gt; a + b
+addTo = add()
+addTo(10)         -- Prints &#39;133&#39;
+</code></pre><h2 id=function-calls>Function Calls.
+<a class=anchor href=#function-calls>#</a></h2><p>The straightforward way to call a function is to use parentheses.</p><pre tabindex=0><code class=language-cy data-lang=cy>d = dist(100, 100, 200, 200)
+</code></pre><p>You can call functions with named parameters.</p><pre tabindex=0><code class=language-cy data-lang=cy>d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
+</code></pre><p>The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:</p><pre tabindex=0><code class=language-cy data-lang=cy>d = dist 100 100 200 200  -- Calls the function `dist`.
+
+func random():            -- Function with no parameters.
+    return 4
+
+r = random                -- Returns the function itself as a value. Does not call the function `random`.
+r = random()              -- Calls the function `random`.
+</code></pre><p>The top level arguments for the shorthand convention must be separated by whitespace. A string can contain whitespace since it&rsquo;s surrounded by delimiters.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = myFunc &#39;cyber script&#39;
+</code></pre><p>The following has a binary expression with spaces inbetween which is not allowed. Removing that whitespace fixes the call expression.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = myFunc 1 + 2     -- Not allowed.
+a = myFunc 1+2       -- Correct.
+</code></pre><p>Wrapping arguments in parentheses allows you to keep the whitespace in the sub-expression.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- This calls the function `myFunc` with 2 arguments.
+a = myFunc &#39;hello&#39; (1 + 2 * 3)
+
+-- Nested function call using the shorthand convention.
+a = myFunc &#39;hello&#39; (otherFunc 1+2 &#39;world&#39;)
+</code></pre><p>The call expression block continues to add arguments from the block&rsquo;s body. If arguments are omitted from the initial call expression they can be added inside using the <code>..</code> syntax. Arguments mapped to named parameters have a key value syntax separated by a <code>:</code>. All other arguments are added into a list and passed as the last argument.</p><pre tabindex=0><code class=language-cy data-lang=cy>foo(123):
+    ..func ():
+        return 123
+    param3: 123
+    234
+    bar()
+    &#39;hello&#39;
+</code></pre><p>In the example above, the function <code>foo</code> is called with 4 arguments. The first argument <code>123</code> is included in the starting call expression. The second argument is a function value inside the call expression block. The third argument is mapped to the param <code>param3</code>. Finally, the fourth argument is a list that contains <code>234</code>, <code>bar()</code>, and <code>'hello'</code>.</p></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/functions.md target=_blank rel=noopener><img src=/svg/edit.svg class=book-icon alt=Edit>
+<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#static-functions>Static Functions.</a></li><li><a href=#function-overloading>Function Overloading.</a></li><li><a href=#lambdas>Lambdas.</a></li><li><a href=#closures>Closures.</a></li><li><a href=#function-calls>Function Calls.</a></li></ul></nav></div></aside></main><script src=/highlight.min.js></script>
+<script>hljs.registerLanguage("cy",function(){return{keywords:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","tagtype","object","break","continue","match","export","pass","or","and","not","is","static","capture","true","false","none","try","catch","recover","compt"],contains:[{scope:"string",begin:"'",end:"'"},hljs.COMMENT("--",`
+`,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

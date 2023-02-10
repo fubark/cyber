@@ -5,6 +5,7 @@
     --text: white;
     --text-light: #888888;
     --accent-light: #ffc57b;
+    /* --accent-light: #fab760; */
     --accent: #ffa430;
     --marked: #ffa430;
     --mono-font: Consolas, Menlo, Monaco, "Andale Mono", "Ubuntu Mono", monospace;
@@ -25,18 +26,19 @@ html, body {
 }
 
 .markdown h1 {
-    color: var(--accent-light);
+    color: var(--accent);
     font-weight: bold;
 }
 
 .markdown h2 {
     color: var(--accent-light);
-    font-weight: bold;
+    /* font-weight: bold; */
+    margin-top: 60px;
 }
 
 .markdown h3 {
     color: var(--accent-light);
-    font-weight: bold;
+    /* font-weight: bold; */
 }
 
 .markdown table tr:nth-child(2n) {
@@ -50,12 +52,16 @@ html, body {
 }
 
 .markdown table tr th, .markdown table tr td {
-    border-color: var(--border);
+    border: 3px solid #222;
+}
+
+.markdown table tr td:first-child code {
+    font-size: 15px;
 }
 
 .book-search input {
     background-color: var(--bg);
-    border: 1px solid var(--border);
+    border: 3px solid #222;
 }
 
 .book-menu .book-brand a {
@@ -106,9 +112,9 @@ a {
 /* inline code */
 .markdown code {
     font-size: 17px;
-    background-color: transparent;
+    background-color: #1a1a1a;
     color: var(--accent-light);
-    padding: 0px 4px;
+    padding: 2px 6px;
 }
 
 /* block code */
@@ -133,7 +139,7 @@ pre code.hljs {
     color: white;
 }
 .hljs-keyword {
-    color: #fab760;
+    color: var(--accent-light);
     font-weight: normal;
 }
 .hljs-number,

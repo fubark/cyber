@@ -1,9 +1,12 @@
 name: Gen Docs
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
+    paths:
+      - 'docs/hugo/**'
 jobs:
   deploy:
     runs-on: ubuntu-22.04

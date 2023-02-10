@@ -65,6 +65,27 @@ test "Imports." {
         .lineStartPos = 0,
     });
 
+    // Import using relative path prefix.
+    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
+        \\import a './test_mods/a.cy'
+        \\import t 'test'
+        \\try t.eq(a.varNum, 123)
+    );
+
+    // Import using implied relative path prefix.
+    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
+        \\import a 'test_mods/a.cy'
+        \\import t 'test'
+        \\try t.eq(a.varNum, 123)
+    );
+
+    // Import using unresolved relative path.
+    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
+        \\import a './test_mods/../test_mods/a.cy'
+        \\import t 'test'
+        \\try t.eq(a.varNum, 123)
+    );
+
     // Import when running main script in the cwd.
     try std.os.chdir("./test");
     _ = try run.evalExt(Config.withFileModules("./import_test.cy"),

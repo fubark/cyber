@@ -1,4 +1,4 @@
-baseURL = 'http://example.org/'
+baseURL = 'https://fubark.github.io/cyber'
 languageCode = 'en-us'
 title = 'Cyber Docs v0.1'
 theme = 'hugo-book'

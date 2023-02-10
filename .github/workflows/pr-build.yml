@@ -11,6 +11,7 @@ on:
   pull_request:
     paths-ignore:
       - '.github/**'
+      - 'docs/hugo/**'
       - '**.md'
 concurrency:
   group: pr-${{ github.ref }}

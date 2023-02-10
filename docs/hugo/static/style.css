@@ -2,7 +2,7 @@
     --bg: #0c0c0c;
     --accent-bg: #0d0707;
     --border: #614721;
-    --text: white;
+    --text: #d2d2d2;
     --text-light: #888888;
     --accent-light: #ffc57b;
     /* --accent-light: #fab760; */
@@ -136,7 +136,7 @@ pre code.hljs {
 
 .hljs {
     background-color: var(--accent-bg);
-    color: white;
+    color: var(--text);
 }
 .hljs-keyword {
     color: var(--accent-light);
@@ -147,7 +147,7 @@ pre code.hljs {
     color: rgb(120, 206, 120);
 }
 .hljs-built_in {
-    color: white;
+    color: var(--text);
 }
 .hljs-comment {
     color: var(--text-light);

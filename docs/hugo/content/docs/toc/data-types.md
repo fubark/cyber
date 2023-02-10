@@ -4,7 +4,7 @@ weight: 2
 ---
 
 # Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Tags](#tags), [Tag Literals](#tags), [Errors](/docs/toc/errors), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas](/docs/toc/functions/#lambdas), [Fibers](/docs/toc/concurrency/#fibers), [Errors with payloads](/docs/toc/errors), and several internal object types.
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Tags](#tags), [Tag Literals](#tags), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), and several internal object types.
 
 The `none` value represents an empty value. This is similar to null in other languages.
 

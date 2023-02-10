@@ -145,7 +145,7 @@ b = a         -- Reassigning can reference a local variable.
 ```
 
 Static variable initializers have a natural order based on when it was encountered by the compiler.
-In the case of [imported](/docs/toc/modules/#importing) variables, the order of the import would affect this order.
+In the case of [imported]({{<relref "/docs/toc/modules#importing">}}) variables, the order of the import would affect this order.
 The following would print '123' before '234'
 ```cy
 var a = print(123)
@@ -182,18 +182,18 @@ The final resulting value that is set to the static variable is provided by a `b
 ## Keywords.
 There are currently `34` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
-- [Control Flow](/docs/toc/control-flow): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass`
+- [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass`
 - [Operators](#operators): `or` `and` `not` `is`
 - [Variables](#variables): `var` `static` `capture` `as`
-- [Functions](/docs/toc/functions): `func` `return`
-- [Coroutines](/docs/toc/concurrency/#fibers): `coinit` `coyield`, `coresume`
-- [Data Types](/docs/toc/data-types): `object` `tagtype` `true` `false` `none`
-- [Error Handling](/docs/toc/errors): `try` `catch` `recover`
-- [Modules](/docs/toc/modules): `import` `export`
+- [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
+- [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`
+- [Data Types]({{<relref "/docs/toc/data-types">}}): `object` `tagtype` `true` `false` `none`
+- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `recover`
+- [Modules]({{<relref "/docs/toc/modules">}}): `import` `export`
 - Metaprogramming: `compt`
 
 ## Operators.
-Cyber supports the following arithmetic operators. To understand how these operators affect the number type, see [Numbers](/docs/toc/data-types/#numbers).
+Cyber supports the following arithmetic operators. To understand how these operators affect the number type, see [Numbers]({{<relref "/docs/toc/data-types#numbers">}}).
 ```cy
 1 + 2     -- Addition, evaluates to 3.
 100 - 10  -- Subtraction, evaluates to 90.
@@ -207,7 +207,7 @@ Cyber supports the following arithmetic operators. To understand how these opera
 ### Comparison Operators.
 
 Cyber supports the following comparison operators.
-A comparison expression always evaluates to a [Boolean](/docs/toc/data-types/#booleans) value.
+A comparison expression always evaluates to a [Boolean]({{<relref "/docs/toc/data-types#booleans">}}) value.
 
 The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.
 ```cy

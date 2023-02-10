@@ -55,7 +55,7 @@ export func printA():
 export func printC():
     print 'done'
 ```
-Static variable declarations from imports can have circular references. Read more about this in [Static Variables](/docs/toc/syntax/#static-variables).
+Static variable declarations from imports can have circular references. Read more about this in [Static Variables]({{<relref "/docs/toc/syntax#static-variables">}}).
 
 Modules can also be destructured using the following syntax:
 ```cy
@@ -109,7 +109,7 @@ print contents
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
 | `opaque(val any) opaque` | Converts a value to an opaque pointer value. This is usually used with FFI. | 
-| `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors](/docs/toc/errors/#unexpected-errors). |
+| `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 

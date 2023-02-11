@@ -331,6 +331,10 @@ const HostFileWriter = struct {
         core.hostFileWrite(self.fid, data.ptr, data.len);
     }
 
+    pub fn write(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
+        core.hostFileWrite(self.fid, data.ptr, data.len);
+    }
+
     pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {
         var bytes: [256]u8 = undefined;
         std.mem.set(u8, bytes[0..], byte);

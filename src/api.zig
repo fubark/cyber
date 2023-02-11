@@ -8,6 +8,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const fmt = @import("fmt.zig");
+const debug = @import("debug.zig");
 const VM = cy.VM;
 const Value = cy.Value;
 
@@ -44,6 +45,11 @@ pub const UserVM = struct {
         const vm = @ptrCast(*const VM, self);
         const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
         return chunk.parser.last_err;
+    }
+
+    pub fn allocLastUserParseError(self: *const UserVM) ![]const u8 {
+        const vm = @ptrCast(*const VM, self);
+        return debug.allocLastUserParseError(vm);
     }
 
     pub fn getParserErrorPos(self: *const UserVM) u32 {

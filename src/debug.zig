@@ -13,16 +13,17 @@ pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, ou
     var lineStart: u32 = 0;
     for (src) |ch, i| {
         if (i == loc) {
-            outLine.* = line;
-            outCol.* = loc - lineStart;
-            outLineStart.* = lineStart;
-            return;
+            break;
         }
         if (ch == '\n') {
             line += 1;
             lineStart = @intCast(u32, i + 1);
         }
     }
+    // This also handles the case where target pos is at the end of source.
+    outLine.* = line;
+    outCol.* = loc - lineStart;
+    outLineStart.* = lineStart;
 }
 
 pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
@@ -144,40 +145,78 @@ pub inline fn atLeastTestDebugLevel() bool {
     return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
 }
 
-pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, isTokenError: bool) linksection(cy.Section) !void {
+pub fn allocLastUserParseError(vm: *const cy.VM) ![]const u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    const w = buf.writer(vm.alloc);
+    try writeLastUserParseError(vm, w);
+    return buf.toOwnedSlice(vm.alloc);
+}
+
+pub fn writeLastUserTokenError(vm: *const cy.VM, w: anytype) !void {
+    const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
+    try writeUserError(vm, w, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
+}
+
+pub fn printLastUserTokenError(vm: *const cy.VM) !void {
     if (cy.silentError) {
         return;
     }
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    try writeLastUserTokenError(vm, w);
+}
+
+pub fn writeLastUserParseError(vm: *const cy.VM, w: anytype) !void {
+    const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
+    try writeUserError(vm, w, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
+}
+
+pub fn printLastUserParseError(vm: *const cy.VM) !void {
+    if (cy.silentError) {
+        return;
+    }
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    try writeLastUserParseError(vm, w);
+}
+
+pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, isCharPos: bool) linksection(cy.Section) !void {
+    if (cy.silentError) {
+        return;
+    }
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    try writeUserError(vm, w, title, msg, chunkId, pos, isCharPos);
+}
+
+/// Reduced to using writer so printed errors can be tested.
+pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, isCharPos: bool) linksection(cy.Section) !void {
     const chunk = vm.compiler.chunks.items[chunkId];
     if (pos != NullId) {
         var line: u32 = undefined;
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
-        if (isTokenError) {
+        if (isCharPos) {
             computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
         } else {
             computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
         }
         const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, lineStart, '\n') orelse chunk.src.len;
-        var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
-        defer arrowBuf.deinit(vm.alloc);
-        var w = arrowBuf.writer(vm.alloc);
-        try w.writeByteNTimes(' ', col);
-        try w.writeByte('^');
-        fmt.printStderr(
+        try fmt.format(w,
             \\{}: {}
             \\
             \\{}:{}:{}:
             \\{}
-            \\{}
             \\
         , &.{
             fmt.v(title), fmt.v(msg), fmt.v(chunk.srcUri),
-            fmt.v(line+1), fmt.v(col+1), fmt.v(chunk.src[lineStart..lineEnd]),
-            fmt.v(arrowBuf.items)
+            fmt.v(line+1), fmt.v(col+1),
+            fmt.v(chunk.src[lineStart..lineEnd]),
         });
+        try w.writeByteNTimes(' ', col);
+        _ = try w.write("^\n");
     } else {
-        fmt.printStderr(
+        try fmt.format(w,
             \\{}: {}
             \\
             \\in {}

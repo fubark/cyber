@@ -10,6 +10,73 @@ const cy = @import("../src/cyber.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "User parse errors." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    t.setLogLevel(.debug);
+
+    // Test parse error on first line.
+    var val = run.evalExt(.{ .silent = true },
+        \\var
+        \\var a = 123
+        \\var b = 234
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Expected local name identifier.");
+    try t.eq(run.vm.getParserErrorPos(), 3);
+    var err = try run.vm.allocLastUserParseError();
+    try t.eqStr(err,
+        \\ParseError: Expected local name identifier.
+        \\
+        \\main:1:4:
+        \\var
+        \\   ^
+        \\
+    );
+    t.alloc.free(err);
+
+    // Test parse error on middle line.
+    val = run.evalExt(.{ .silent = true },
+        \\var a = 123
+        \\var
+        \\var b = 234
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Expected local name identifier.");
+    try t.eq(run.vm.getParserErrorPos(), 15);
+    err = try run.vm.allocLastUserParseError();
+    try t.eqStr(err,
+        \\ParseError: Expected local name identifier.
+        \\
+        \\main:2:4:
+        \\var
+        \\   ^
+        \\
+    );
+    t.alloc.free(err);
+
+    // Test parse error on last line.
+    val = run.evalExt(.{ .silent = true },
+        \\var a = 123
+        \\var b = 234
+        \\var
+    );
+    try t.expectError(val, error.ParseError);
+    try t.eqStr(run.vm.getParserErrorMsg(), "Expected local name identifier.");
+    try t.eq(run.vm.getParserErrorPos(), 27);
+    err = try run.vm.allocLastUserParseError();
+    try t.eqStr(err,
+        \\ParseError: Expected local name identifier.
+        \\
+        \\main:3:4:
+        \\var
+        \\   ^
+        \\
+    );
+    t.alloc.free(err);
+}
+
 test "Imports." {
     const run = VMrunner.create();
     defer run.destroy();

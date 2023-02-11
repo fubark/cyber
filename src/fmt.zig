@@ -294,17 +294,28 @@ pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
     };
 }
 
-pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
-    @setCold(true);
+pub const StderrWriter = if (!cy.isWasm) std.fs.File.Writer else HostFileWriter;
+
+pub fn lockStderrWriter() StderrWriter {
     if (!cy.isWasm) {
         printMutex.lock();
-        defer printMutex.unlock();
-        const w = std.io.getStdErr().writer();
-        try format(w, fmt, vals);
+        return std.io.getStdErr().writer();
     } else {
-        const w = HostFileWriter{ .fid = 2 };
-        try format(w, fmt, vals);
+        return HostFileWriter{ .fid = 2 };
     }
+}
+
+pub fn unlockPrint() void {
+    if (!cy.isWasm) {
+        printMutex.unlock();
+    }
+}
+
+pub fn printStderrOrErr(fmt: []const u8, vals: []const FmtValue) !void {
+    @setCold(true);
+    const w = lockStderrWriter();
+    defer unlockPrint();
+    try format(w, fmt, vals);
 }
 
 const HostFileWriter = struct {

@@ -14,8 +14,6 @@ test "User parse errors." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    t.setLogLevel(.debug);
-
     // Test parse error on first line.
     var val = run.evalExt(.{ .silent = true },
         \\var

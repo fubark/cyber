@@ -308,11 +308,11 @@ pub const VM = struct {
         if (res.err) |err| {
             switch (err) {
                 .tokenize => {
-                    try debug.printLastTokenError(self);
+                    try debug.printLastUserTokenError(self);
                     return error.TokenError;
                 },
                 .parse => {
-                    try debug.printLastParseError(self);
+                    try debug.printLastUserParseError(self);
                     return error.ParseError;
                 },
                 .compile => {

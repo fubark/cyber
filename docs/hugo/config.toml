@@ -3,6 +3,17 @@ languageCode = 'en-us'
 title = 'Cyber Docs v0.1'
 theme = 'hugo-book'
 
+[menu]
+[[menu.before]]
+  name = "Homepage"
+  url = "https://cyberscript.dev"
+  weight = 1
+[[menu.before]]
+  name = "Playground"
+  url = "https://cyberscript.dev/play.html"
+  weight = 2
+# [[menu.after]]
+
 [params]
 BookTheme = 'dark'
 BookRepo = 'https://github.com/fubark/cyber'

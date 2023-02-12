@@ -316,14 +316,7 @@ pub const VM = struct {
                     return error.ParseError;
                 },
                 .compile => {
-                    const chunk = self.compiler.chunks.items[self.compiler.lastErrChunk];
-                    if (self.compiler.lastErrNode != cy.NullId) {
-                        const token = chunk.nodes[self.compiler.lastErrNode].start_token;
-                        const pos = chunk.tokens[token].pos();
-                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, pos, false);
-                    } else {
-                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, cy.NullId, false);
-                    }
+                    try debug.printLastUserCompileError(self);
                     return error.CompileError;
                 },
             }
@@ -347,14 +340,7 @@ pub const VM = struct {
                     return error.ParseError;
                 },
                 .compile => {
-                    const chunk = self.compiler.chunks.items[self.compiler.lastErrChunk];
-                    if (self.compiler.lastErrNode != cy.NullId) {
-                        const token = chunk.nodes[self.compiler.lastErrNode].start_token;
-                        const pos = chunk.tokens[token].pos();
-                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, pos, false);
-                    } else {
-                        try debug.printUserError(self, "CompileError", self.compiler.lastErr, chunk.id, cy.NullId, false);
-                    }
+                    try debug.printLastUserCompileError(self);
                     return error.CompileError;
                 },
             }

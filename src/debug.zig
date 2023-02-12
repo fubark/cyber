@@ -145,6 +145,33 @@ pub inline fn atLeastTestDebugLevel() bool {
     return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
 }
 
+pub fn allocLastUserCompileError(vm: *const cy.VM) ![]const u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    const w = buf.writer(vm.alloc);
+    try writeLastUserCompileError(vm, w);
+    return buf.toOwnedSlice(vm.alloc);
+}
+
+pub fn printLastUserCompileError(vm: *const cy.VM) !void {
+    if (cy.silentError) {
+        return;
+    }
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    try writeLastUserCompileError(vm, w);
+}
+
+fn writeLastUserCompileError(vm: *const cy.VM, w: anytype) !void {
+    const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
+    if (vm.compiler.lastErrNode != cy.NullId) {
+        const token = chunk.nodes[vm.compiler.lastErrNode].start_token;
+        const pos = chunk.tokens[token].pos();
+        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, pos, false);
+    } else {
+        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId, false);
+    }
+}
+
 pub fn allocLastUserParseError(vm: *const cy.VM) ![]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
@@ -152,7 +179,7 @@ pub fn allocLastUserParseError(vm: *const cy.VM) ![]const u8 {
     return buf.toOwnedSlice(vm.alloc);
 }
 
-pub fn writeLastUserTokenError(vm: *const cy.VM, w: anytype) !void {
+fn writeLastUserTokenError(vm: *const cy.VM, w: anytype) !void {
     const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
     try writeUserError(vm, w, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
 }
@@ -166,7 +193,7 @@ pub fn printLastUserTokenError(vm: *const cy.VM) !void {
     try writeLastUserTokenError(vm, w);
 }
 
-pub fn writeLastUserParseError(vm: *const cy.VM, w: anytype) !void {
+fn writeLastUserParseError(vm: *const cy.VM, w: anytype) !void {
     const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
     try writeUserError(vm, w, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
 }

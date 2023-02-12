@@ -71,13 +71,6 @@ pub fn eqStrFree(alloc_: std.mem.Allocator, act: []const u8, exp: []const u8) !v
     try std.testing.expectEqualStrings(exp, act);
 }
 
-pub fn eqStrFreeFmt(alloc_: std.mem.Allocator, act: []const u8, comptime expFormat: []const u8, args: anytype) !void {
-    defer alloc_.free(act);
-    const exp = try std.fmt.allocPrint(alloc, expFormat, args);
-    defer alloc.free(exp);
-    try std.testing.expectEqualStrings(exp, act);
-}
-
 pub fn eqStr(act: []const u8, exp: []const u8) !void {
     try std.testing.expectEqualStrings(exp, act);
 }

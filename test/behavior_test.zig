@@ -93,15 +93,10 @@ test "Import http spec." {
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    var userErr = try run.vm.allocLastUserCompileError();
-    try t.eqStrFreeFmt(t.alloc, userErr,
-        \\CompileError: Can not connect to `doesnotexist123.com`.
-        \\
-        \\{s}/test/import_test.cy:1:11:
+    try eqCompileError(run.vm, "CompileError: Can not connect to `doesnotexist123.com`.",
+        &.{"test", "import_test.cy"}, 1, 11,
         \\import a 'https://doesnotexist123.com/'
         \\          ^
-        \\
-        , .{basePath},
     );
 
     // Import NotFound response code.
@@ -114,15 +109,10 @@ test "Import http spec." {
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    userErr = try run.vm.allocLastUserCompileError();
-    try t.eqStrFreeFmt(t.alloc, userErr,
-        \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
-        \\
-        \\{s}/test/import_test.cy:1:11:
+    try eqCompileError(run.vm, "CompileError: Can not load `https://exists.com/missing`. Response code: not_found",
+        &.{"test", "import_test.cy"}, 1, 11,
         \\import a 'https://exists.com/missing'
         \\          ^
-        \\
-        , .{basePath},
     );
 
     // Successful import.
@@ -1949,3 +1939,25 @@ const Config = struct {
         };
     }
 };
+
+/// relPath does not have to physically exist.
+fn eqCompileError(vm: *cy.UserVM, msg: []const u8, relPath: []const []const u8, line: u32, col: u32, marker: []const u8) !void {
+    const act = try vm.allocLastUserCompileError();
+    defer t.alloc.free(act);
+    const basePath = try std.fs.realpathAlloc(t.alloc, ".");
+    defer t.alloc.free(basePath);
+    const path = try std.fs.path.resolve(t.alloc, relPath);
+    defer t.alloc.free(path);
+    const absPath = try std.fs.path.join(t.alloc, &.{basePath, path});
+    defer t.alloc.free(absPath);
+    const exp = try std.fmt.allocPrint(t.alloc, 
+        \\{s}
+        \\
+        \\{s}:{}:{}:
+        \\{s}
+        \\
+        , .{ msg, absPath, line, col, marker },
+    );
+    defer t.alloc.free(exp);
+    return t.eqStr(act, exp);
+}

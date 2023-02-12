@@ -80,6 +80,9 @@ test "Import http spec." {
     const run = VMrunner.create();
     defer run.destroy();
 
+    const basePath = try std.fs.realpathAlloc(t.alloc, ".");
+    defer t.alloc.free(basePath);
+
     // Import error.UnknownHostName.
     try run.resetEnv();
     var client = http.MockHttpClient.init();
@@ -91,13 +94,14 @@ test "Import http spec." {
     );
     try t.expectError(res, error.CompileError);
     var userErr = try run.vm.allocLastUserCompileError();
-    try t.eqStrFree(t.alloc, userErr,
+    try t.eqStrFreeFmt(t.alloc, userErr,
         \\CompileError: Can not connect to `doesnotexist123.com`.
         \\
-        \\/Users/fubar/dev/cyber/test/import_test.cy:1:11:
+        \\{s}/test/import_test.cy:1:11:
         \\import a 'https://doesnotexist123.com/'
         \\          ^
         \\
+        , .{basePath},
     );
 
     // Import NotFound response code.
@@ -111,13 +115,14 @@ test "Import http spec." {
     );
     try t.expectError(res, error.CompileError);
     userErr = try run.vm.allocLastUserCompileError();
-    try t.eqStrFree(t.alloc, userErr,
+    try t.eqStrFreeFmt(t.alloc, userErr,
         \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
         \\
-        \\/Users/fubar/dev/cyber/test/import_test.cy:1:11:
+        \\{s}/test/import_test.cy:1:11:
         \\import a 'https://exists.com/missing'
         \\          ^
         \\
+        , .{basePath},
     );
 
     // Successful import.

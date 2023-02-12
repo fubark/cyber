@@ -2715,7 +2715,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
-                    break :b @call(.never_inline, cond.toBool, .{});
+                    break :b cond.assumeNotBoolToBool();
                 };
                 if (!condVal) {
                     pc += jump;
@@ -3127,7 +3127,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
-                    break :b @call(.never_inline, cond.toBool, .{});
+                    break :b cond.assumeNotBoolToBool();
                 };
                 if (condVal) {
                     @setRuntimeSafety(false);

@@ -515,12 +515,11 @@ test "test module" {
     );
     try t.expectError(res, error.Panic);
 
-    var val = try run.eval(
+    _ = try run.eval(
         \\import t 'test'
         \\t.eq(123, 123)
         \\t.eq(1.2345, 1.2345)
     );
-    try t.expect(val.isTrue());
 }
 
 test "Objects." {

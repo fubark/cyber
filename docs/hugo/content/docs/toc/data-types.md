@@ -16,10 +16,8 @@ if a:
     print 'a is true'
 ```
 When other value types are coerced to the boolean type, the truthy value is determined as follows.
-- Numbers are `true` if the value is not 0.
-- Strings are `true` if the length is greater than 0.
-- Other objects are always `true`.
 - The `none` value is `false`.
+- Other objects and values are always `true`.
 
 ## Numbers.
 In Cyber, the `number` is the default number type and has a 64-bit double precision floating point format.

@@ -1,13 +1,16 @@
 import t 'test'
 
--- Non zero number evaluates to true.
+try t.eq(bool(true), true)
+try t.eq(bool(false), false)
+
+-- Numbers including zero evaluates to true.
 try t.eq(bool(123), true)
 try t.eq(bool(-123), true)
-try t.eq(bool(0), false)
+try t.eq(bool(0), true)
 
--- String evaluates to true if not empty.
+-- Strings including the empty string evaluates to true.
 try t.eq(bool('cyber'), true)
-try t.eq(bool(''), false)
+try t.eq(bool(''), true)
 
 -- Heap objects evaluate to true.
 try t.eq(bool({}), true)

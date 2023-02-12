@@ -142,33 +142,15 @@ pub const Value = packed union {
         }
     }
 
-    pub fn toBool(self: *const Value) linksection(cy.HotSection) bool {
-        @setCold(true);
-        if (self.isNumber()) {
-            return self.asF64() != 0;
-        } else {
-            if (self.isPointer()) {
-                const obj = self.asHeapObject();
-                if (obj.common.structId == cy.AstringT) {
-                    return obj.astring.len > 0;
-                } else if (obj.common.structId == cy.UstringT) {
-                    return obj.ustring.len > 0;
-                } else {
-                    return true;
-                }
-            } else {
-                switch (self.getTag()) {
-                    cy.NoneT => return false,
-                    cy.BooleanT => return self.asBool(),
-                    cy.StaticAstringT => return self.asStaticStringSlice().len() > 0,
-                    cy.StaticUstringT => return self.asStaticStringSlice().len() > 0,
-                    else => {
-                        log.debug("tag {}", .{self.getTag()});
-                        stdx.panic("unexpected tag");
-                    },
-                }
-            }
+    pub inline fn assumeNotBoolToBool(self: *const Value) bool {
+        return !self.isNone();
+    }
+
+    pub inline fn toBool(self: *const Value) bool {
+        if (self.isBool()) {
+            return self.asBool();
         }
+        return !self.isNone();
     }
 
     pub inline fn isList(self: *const Value) bool {
@@ -285,11 +267,11 @@ pub const Value = packed union {
         return self.val == TrueMask;
     }
 
-    pub inline fn isNone(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isNone(self: *const Value) bool {
         return self.val == NoneMask;
     }
 
-    pub inline fn isTrue(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isTrue(self: *const Value) bool {
         return self.val == TrueMask;
     }
 

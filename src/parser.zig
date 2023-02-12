@@ -1581,13 +1581,18 @@ pub const Parser = struct {
                 self.advanceToken();
 
                 var right: NodeId = undefined;
-                if (self.peekToken().tag() == .func_k) {
-                    // Multi-line lambda.
-                    right = try self.parseMultilineLambdaFunction();
-                } else {
-                    right = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                    };
+                switch (self.peekToken().tag()) {
+                    .func_k => {
+                        right = try self.parseMultilineLambdaFunction();
+                    },
+                    .match_k => {
+                        right = (try self.parseStatement()).?;
+                    },
+                    else => {
+                        right = (try self.parseExpr(.{})) orelse {
+                            return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                        };
+                    },
                 }
                 const decl = try self.pushNode(.varDecl, start);
                 self.nodes.items[decl].head = .{

@@ -1070,15 +1070,20 @@ fn semaVarDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
         c.semaVarDeclDeps.clearRetainingCapacity();
         defer c.curSemaSymVar = cy.NullId;
 
-        _ = semaExpr(c, node.head.varDecl.right, false) catch |err| {
-            if (err == error.CanNotUseLocal) {
-                const local = c.nodes[c.compiler.errorPayload];
-                const localName = c.getNodeTokenString(local);
-                return c.reportErrorAt("The declaration of static variable `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
-            } else {
-                return err;
-            } 
-        };
+        const right = c.nodes[node.head.varDecl.right];
+        if (right.node_t == .matchBlock) {
+            _ = try semaMatchBlock(c, node.head.varDecl.right, true);
+        } else {
+            _ = semaExpr(c, node.head.varDecl.right, false) catch |err| {
+                if (err == error.CanNotUseLocal) {
+                    const local = c.nodes[c.compiler.errorPayload];
+                    const localName = c.getNodeTokenString(local);
+                    return c.reportErrorAt("The declaration of static variable `{}` can not reference the local variable `{}`.", &.{v(name), v(localName)}, nodeId);
+                } else {
+                    return err;
+                } 
+            };
+        }
     } else {
         return c.reportErrorAt("Static variable declarations can only have an identifier as the name. Parsed {} instead.", &.{fmt.v(left.node_t)}, nodeId);
     }

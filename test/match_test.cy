@@ -51,3 +51,17 @@ res = match 'three':
     'one': 1
     'two': 2
 try t.eq(res, none)
+
+-- var match assign block.
+var varRes = match 'one':
+    'one': 1
+    'two': 2
+try t.eq(varRes, 1)
+var varRes2 = match 'two':
+    'one': 1
+    'two': 2
+try t.eq(varRes2, 2)
+var varRes3 = match 'three':
+    'one': 1
+    'two': 2
+try t.eq(varRes3, none)

@@ -894,7 +894,7 @@ test "Statements." {
         \\if true: foo = 123: foo = 234
     );
     try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Expected end of line or file, got colon");
+    try t.eqStr(run.vm.getParserErrorMsg(), "Expected end of line or file. Got colon.");
     val = run.evalExt(.{ .silent = true },
         \\if true: foo = 123
         \\  foo = 234

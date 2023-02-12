@@ -637,8 +637,14 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .assign_stmt => {
             const left = c.nodes[node.head.left_right.left];
             if (left.node_t == .ident) {
-                const rtype = try semaExpr(c, node.head.left_right.right, false);
-                _ = try assignVar(c, node.head.left_right.left, rtype, .assign);
+                const right = c.nodes[node.head.left_right.right];
+                if (right.node_t == .matchBlock) {
+                    const rtype = try semaMatchBlock(c, node.head.left_right.right, true);
+                    _ = try assignVar(c, node.head.left_right.left, rtype, .assign);
+                } else {
+                    const rtype = try semaExpr(c, node.head.left_right.right, false);
+                    _ = try assignVar(c, node.head.left_right.left, rtype, .assign);
+                }
             } else if (left.node_t == .arr_access_expr) {
                 _ = try semaExpr(c, left.head.left_right.left, false);
                 _ = try semaExpr(c, left.head.left_right.right, false);
@@ -863,30 +869,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             try endIterSubBlock(c);
         },
         .matchBlock => {
-            _ = try semaExpr(c, node.head.matchBlock.expr, false);
-
-            var curCase = node.head.matchBlock.firstCase;
-            while (curCase != cy.NullId) {
-                const case = c.nodes[curCase];
-                var curCond = case.head.caseBlock.firstCond;
-                while (curCond != cy.NullId) {
-                    const cond = c.nodes[curCond];
-                    if (cond.node_t != .elseCase) {
-                        _ = try semaExpr(c, curCond, false);
-                    }
-                    curCond = cond.next;
-                }
-                curCase = case.next;
-            }
-
-            curCase = node.head.matchBlock.firstCase;
-            while (curCase != cy.NullId) {
-                const case = c.nodes[curCase];
-                try pushSubBlock(c);
-                try semaStmts(c, case.head.caseBlock.firstChild, false);
-                try endSubBlock(c);
-                curCase = case.next;
-            }
+            _ = try semaMatchBlock(c, nodeId, false);
         },
         .if_stmt => {
             _ = try semaExpr(c, node.head.left_right.left, false);
@@ -949,6 +932,40 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             }
         },
         else => return c.reportErrorAt("Unsupported node", &.{}, nodeId),
+    }
+}
+
+fn semaMatchBlock(c: *cy.CompileChunk, nodeId: cy.NodeId, canBreak: bool) !Type {
+    const node = c.nodes[nodeId];
+    _ = try semaExpr(c, node.head.matchBlock.expr, false);
+
+    var curCase = node.head.matchBlock.firstCase;
+    while (curCase != cy.NullId) {
+        const case = c.nodes[curCase];
+        var curCond = case.head.caseBlock.firstCond;
+        while (curCond != cy.NullId) {
+            const cond = c.nodes[curCond];
+            if (cond.node_t != .elseCase) {
+                _ = try semaExpr(c, curCond, false);
+            }
+            curCond = cond.next;
+        }
+        curCase = case.next;
+    }
+
+    curCase = node.head.matchBlock.firstCase;
+    while (curCase != cy.NullId) {
+        const case = c.nodes[curCase];
+        try pushSubBlock(c);
+        try semaStmts(c, case.head.caseBlock.firstChild, false);
+        try endSubBlock(c);
+        curCase = case.next;
+    }
+
+    if (canBreak) {
+        return AnyType;
+    } else {
+        return UndefinedType;
     }
 }
 

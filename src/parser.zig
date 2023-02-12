@@ -1756,7 +1756,7 @@ pub const Parser = struct {
         if (tag == .none) {
             return;
         }
-        return self.reportParseError("Expected new line or end.", &.{});
+        return self.reportParseError("Expected end of line or file. Got {}.", &.{v(tag)});
     }
 
     fn consumeWhitespaceTokens(self: *Parser) void {
@@ -2824,22 +2824,31 @@ pub const Parser = struct {
 
             const start = self.nodes.items[expr_id].start_token;
             var assignStmt: NodeId = undefined;
-            var rightExpr: NodeId = undefined;
+
+            // Right can be an expr or stmt.
+            var right: NodeId = undefined;
+            var rightIsStmt = false;
             switch (assignTag) {
                 .equal => {
                     assignStmt = try self.pushNode(.assign_stmt, start);
-                    if (self.peekToken().tag() == .func_k) {
-                        // Multi-line lambda.
-                        rightExpr = try self.parseMultilineLambdaFunction();
-                    } else {
-                        rightExpr = (try self.parseExpr(.{})) orelse {
-                            return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                        };
+                    switch (self.peekToken().tag()) {
+                        .func_k => {
+                            right = try self.parseMultilineLambdaFunction();
+                        },
+                        .match_k => {
+                            right = (try self.parseStatement()).?;
+                            rightIsStmt = true;
+                        },
+                        else => {
+                            right = (try self.parseExpr(.{})) orelse {
+                                return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                            };
+                        }
                     }
                     self.nodes.items[assignStmt].head = .{
                         .left_right = .{
                             .left = expr_id,
-                            .right = rightExpr,
+                            .right = right,
                         },
                     };
                 },
@@ -2851,14 +2860,14 @@ pub const Parser = struct {
                         .star,
                         .slash => {
                             self.advanceToken();
-                            rightExpr = (try self.parseExpr(.{})) orelse {
+                            right = (try self.parseExpr(.{})) orelse {
                                 return self.reportParseError("Expected right expression for assignment statement.", &.{});
                             };
                             assignStmt = try self.pushNode(.opAssignStmt, start);
                             self.nodes.items[assignStmt].head = .{
                                 .opAssignStmt = .{
                                     .left = expr_id,
-                                    .right = rightExpr,
+                                    .right = right,
                                     .op = toBinExprOp(op_t),
                                 },
                             };
@@ -2868,7 +2877,6 @@ pub const Parser = struct {
                 },
                 else => return self.reportParseErrorAt("Unsupported assignment operator.", &.{}, opStart),
             }
-
 
             const left = self.nodes.items[expr_id];
             if (left.node_t == .ident) {
@@ -2884,14 +2892,12 @@ pub const Parser = struct {
                 try block.vars.put(self.alloc, name, {});
             }
 
-            if (self.nodes.items[rightExpr].node_t != .lambda_multi) {
+            if (self.nodes.items[right].node_t != .lambda_multi) {
                 token = self.peekToken();
-                if (token.tag() == .new_line) {
-                    self.advanceToken();
-                    return assignStmt;
-                } else if (token.tag() == .none) {
-                    return assignStmt;
-                } else return self.reportParseError("Expected end of line or file, got {}", &.{fmt.v(token.tag())});
+                if (!rightIsStmt) {
+                    try self.consumeNewLineOrEnd();
+                }
+                return assignStmt;
             } else {
                 return assignStmt;
             }

@@ -36,3 +36,18 @@ match a:
     10, 123: res = 2
     else: res = 3
 try t.eq(res, 2)
+
+-- Match assign block.
+res = 0
+res = match 'one':
+    'one': 1
+    'two': 2
+try t.eq(res, 1)
+res = match 'two':
+    'one': 1
+    'two': 2
+try t.eq(res, 2)
+res = match 'three':
+    'one': 1
+    'two': 2
+try t.eq(res, none)

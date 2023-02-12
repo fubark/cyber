@@ -879,6 +879,9 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
             }
             return self.reportErrorAt("Tag `{}` does not have member `{}`", &.{ v(tname), v(lname) }, nodeId);
         },
+        .matchBlock => {
+            return genMatchBlock(self, nodeId, dst, retain);
+        },
         .structInit => {
             return genObjectInit(self, nodeId, dst, retain, dstIsUsed);
         },
@@ -1485,86 +1488,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, forRangeOp);
         },
         .matchBlock => {
-            const expr = try self.genExpr(node.head.matchBlock.expr, false);
-
-            const operandStart = self.operandStack.items.len;
-
-            var jumpsStart = self.subBlockJumpStack.items.len;
-            defer self.subBlockJumpStack.items.len = jumpsStart;
-
-            var hasElse = false;
-            var numConds: u32 = 0;
-            var curCase = node.head.matchBlock.firstCase;
-            while (curCase != cy.NullId) {
-                const case = self.nodes[curCase];
-                var curCond = case.head.caseBlock.firstCond;
-                while (curCond != cy.NullId) {
-                    const cond = self.nodes[curCond];
-                    if (cond.node_t == .elseCase) {
-                        // Skip else cond.
-                        curCond = cond.next;
-                        hasElse = true;
-                        continue;
-                    }
-                    const condv = try self.genExpr(curCond, false);
-                    try self.pushTempOperand(condv.local);
-                    // Reserve another two for jump.
-                    try self.pushTempOperand(0);
-                    try self.pushTempOperand(0);
-                    curCond = cond.next;
-                    numConds += 1;
-                }
-                curCase = case.next;
-            }
-            const condJumpStart = self.buf.ops.items.len + 4;
-            const matchPc = self.buf.ops.items.len;
-            try self.buf.pushOp2(.match, expr.local, @intCast(u8, numConds));
-            try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-            // Reserve last jump for `else` case.
-            try self.buf.pushOperand(0);
-            try self.buf.pushOperand(0);
-            self.operandStack.items.len = operandStart;
-
-            // Generate case blocks.
-            curCase = node.head.matchBlock.firstCase;
-            var condOffset: u32 = 0;
-            while (curCase != cy.NullId) {
-                const case = self.nodes[curCase];
-                self.nextSemaSubBlock();
-                defer self.prevSemaSubBlock();
-
-                const blockPc = self.buf.ops.items.len;
-                try genStatements(self, case.head.caseBlock.firstChild, false);
-
-                if (case.next != cy.NullId) {
-                    // Not the last block.
-                    // Reserve jump to end.
-                    const pc = try self.pushEmptyJump();
-                    try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
-                }
-
-                // For each cond for this case, patch the jump offset.
-                var curCond = case.head.caseBlock.firstCond;
-                while (curCond != cy.NullId) {
-                    const cond = self.nodes[curCond];
-                    // Patch jump.
-                    if (cond.node_t == .elseCase) {
-                        self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, blockPc - matchPc));
-                    } else {
-                        self.buf.setOpArgU16(condJumpStart + condOffset * 3, @intCast(u16, blockPc - matchPc));
-                    }
-                    condOffset += 1;
-                    curCond = cond.next;
-                }
-
-                curCase = case.next;
-            }
-            if (!hasElse) {
-                self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, self.buf.ops.items.len - matchPc));
-            }
-
-            // Patch all block end jumps.
-            jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
+            _ = try genMatchBlock(self, nodeId, cy.NullU8, undefined);
         },
         .if_stmt => {
             const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -1665,6 +1589,120 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         else => {
             return self.reportErrorAt("Unsupported statement: {}", &.{v(node.node_t)}, nodeId);
         },
+    }
+}
+
+/// If `dst` is NullId, this will generate as a statement and NoValue is returned.
+fn genMatchBlock(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) !GenValue {
+    const isStmt = dst == cy.NullId;
+    const node = self.nodes[nodeId];
+    const expr = try self.genExpr(node.head.matchBlock.expr, false);
+
+    const operandStart = self.operandStack.items.len;
+
+    var jumpsStart = self.subBlockJumpStack.items.len;
+    defer self.subBlockJumpStack.items.len = jumpsStart;
+
+    var hasElse = false;
+    var numConds: u32 = 0;
+    var curCase = node.head.matchBlock.firstCase;
+    while (curCase != cy.NullId) {
+        const case = self.nodes[curCase];
+        var curCond = case.head.caseBlock.firstCond;
+        while (curCond != cy.NullId) {
+            const cond = self.nodes[curCond];
+            if (cond.node_t == .elseCase) {
+                // Skip else cond.
+                curCond = cond.next;
+                hasElse = true;
+                continue;
+            }
+            const condv = try self.genExpr(curCond, false);
+            try self.pushTempOperand(condv.local);
+            // Reserve another two for jump.
+            try self.pushTempOperand(0);
+            try self.pushTempOperand(0);
+            curCond = cond.next;
+            numConds += 1;
+        }
+        curCase = case.next;
+    }
+    const condJumpStart = self.buf.ops.items.len + 4;
+    const matchPc = self.buf.ops.items.len;
+    try self.buf.pushOp2(.match, expr.local, @intCast(u8, numConds));
+    try self.buf.pushOperands(self.operandStack.items[operandStart..]);
+    // Reserve last jump for `else` case.
+    try self.buf.pushOperand(0);
+    try self.buf.pushOperand(0);
+    self.operandStack.items.len = operandStart;
+
+    // Generate case blocks.
+    curCase = node.head.matchBlock.firstCase;
+    var condOffset: u32 = 0;
+    while (curCase != cy.NullId) {
+        const case = self.nodes[curCase];
+        self.nextSemaSubBlock();
+        defer self.prevSemaSubBlock();
+
+        const blockPc = self.buf.ops.items.len;
+        if (isStmt) {
+            try genStatements(self, case.head.caseBlock.firstChild, false);
+        } else {
+            // Check for single expression stmt.
+            const first = self.nodes[case.head.caseBlock.firstChild];
+            if (first.next == cy.NullId and first.node_t == .expr_stmt) {
+                const firstExpr = first.head.child_head;
+                _  = try genExprTo2(self, firstExpr, dst, sema.AnyType, retain, true);
+            } else {
+                try genStatements(self, case.head.caseBlock.firstChild, false);
+            }
+        }
+
+        if (isStmt) {
+            if (case.next != cy.NullId) {
+                // Not the last block.
+                // Reserve jump to end.
+                const pc = try self.pushEmptyJump();
+                try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
+            }
+        } else {
+            const pc = try self.pushEmptyJump();
+            try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
+        }
+
+        // For each cond for this case, patch the jump offset.
+        var curCond = case.head.caseBlock.firstCond;
+        while (curCond != cy.NullId) {
+            const cond = self.nodes[curCond];
+            // Patch jump.
+            if (cond.node_t == .elseCase) {
+                self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, blockPc - matchPc));
+            } else {
+                self.buf.setOpArgU16(condJumpStart + condOffset * 3, @intCast(u16, blockPc - matchPc));
+            }
+            condOffset += 1;
+            curCond = cond.next;
+        }
+
+        curCase = case.next;
+    }
+    if (!hasElse) {
+        // When missing an else case, patch else jump to end of the block.
+        self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, self.buf.ops.items.len - matchPc));
+    }
+
+    if (!isStmt) {
+        // Defaults to `none`.
+        _ = try genNone(self, dst);
+    }
+
+    // Patch all block end jumps.
+    jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
+
+    if (isStmt) {
+        return GenValue.initNoValue();
+    } else {
+        return self.initGenValue(dst, sema.AnyType);
     }
 }
 

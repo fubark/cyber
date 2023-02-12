@@ -7,6 +7,7 @@ const t = stdx.testing;
 
 const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
+const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
@@ -73,6 +74,64 @@ test "User parse errors." {
         \\
     );
     t.alloc.free(err);
+}
+
+test "Import http spec." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    // Import error.UnknownHostName.
+    try run.resetEnv();
+    var client = http.MockHttpClient.init();
+    client.retReqError = error.UnknownHostName;
+    run.vm.internal().httpClient = client.iface();
+    var res = run.evalExtNoReset(Config.silentWithFileModules("./test/import_test.cy"),
+        \\import a 'https://doesnotexist123.com/'
+        \\b = a
+    );
+    try t.expectError(res, error.CompileError);
+    var userErr = try run.vm.allocLastUserCompileError();
+    try t.eqStrFree(t.alloc, userErr,
+        \\CompileError: Can not connect to `doesnotexist123.com`.
+        \\
+        \\/Users/fubar/dev/cyber/test/import_test.cy:1:11:
+        \\import a 'https://doesnotexist123.com/'
+        \\          ^
+        \\
+    );
+
+    // Import NotFound response code.
+    try run.resetEnv();
+    client = http.MockHttpClient.init();
+    client.retStatusCode = std.http.Status.not_found;
+    run.vm.internal().httpClient = client.iface();
+    res = run.evalExtNoReset(Config.silentWithFileModules("./test/import_test.cy"),
+        \\import a 'https://exists.com/missing'
+        \\b = a
+    );
+    try t.expectError(res, error.CompileError);
+    userErr = try run.vm.allocLastUserCompileError();
+    try t.eqStrFree(t.alloc, userErr,
+        \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
+        \\
+        \\/Users/fubar/dev/cyber/test/import_test.cy:1:11:
+        \\import a 'https://exists.com/missing'
+        \\          ^
+        \\
+    );
+
+    // Successful import.
+    try run.resetEnv();
+    client = http.MockHttpClient.init();
+    client.retBody =
+        \\export var foo = 123
+        ;
+    run.vm.internal().httpClient = client.iface();
+    _ = try run.evalExtNoReset(Config.withFileModules("./test/import_test.cy"),
+        \\import a 'https://exists.com/a.cy'
+        \\import t 'test'
+        \\try t.eq(a.foo, 123)
+    );
 }
 
 test "Imports." {
@@ -1765,6 +1824,20 @@ const VMrunner = struct {
             }
         }
         try self.resetEnv();
+        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
+            return err;
+        };
+    }
+
+    fn evalExtNoReset(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
+        if (config.silent) {
+            cy.silentError = true;
+        }
+        defer {
+            if (config.silent) {
+                cy.silentError = false;
+            }
+        }
         return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
             return err;
         };

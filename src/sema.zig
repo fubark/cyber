@@ -2369,6 +2369,11 @@ fn resolveSpecTemp(self: *cy.CompileChunk, spec: []const u8, outBuiltin: *bool) 
         return error.NotSupported;
     }
 
+    if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
+        outBuiltin.* = false;
+        return spec;
+    }
+
     self.tempBufU8.clearRetainingCapacity();
 
     // Create path from the current script.

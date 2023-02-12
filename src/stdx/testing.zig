@@ -66,6 +66,11 @@ pub fn eqUnionEnum(act: anytype, exp: @Type(.EnumLiteral)) !void {
     }
 }
 
+pub fn eqStrFree(alloc_: std.mem.Allocator, act: []const u8, exp: []const u8) !void {
+    defer alloc_.free(act);
+    try std.testing.expectEqualStrings(exp, act);
+}
+
 pub fn eqStr(act: []const u8, exp: []const u8) !void {
     try std.testing.expectEqualStrings(exp, act);
 }

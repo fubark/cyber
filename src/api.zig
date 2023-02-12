@@ -58,6 +58,11 @@ pub const UserVM = struct {
         return chunk.parser.last_err_pos;
     }
 
+    pub fn allocLastUserCompileError(self: *const UserVM) ![]const u8 {
+        const vm = @ptrCast(*const VM, self);
+        return debug.allocLastUserCompileError(vm);
+    }
+
     pub fn getCompileErrorMsg(self: *const UserVM) []const u8 {
         return @ptrCast(*const VM, self).compiler.lastErr;
     }

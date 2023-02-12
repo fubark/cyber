@@ -13,6 +13,7 @@ const sema = @import("sema.zig");
 const bindings = @import("builtins/bindings.zig");
 const Value = cy.Value;
 const debug = @import("debug.zig");
+const http = @import("http.zig");
 const TraceEnabled = @import("build_options").trace;
 const HeapObject = cy.HeapObject;
 const release = cy.arc.release;
@@ -129,6 +130,10 @@ pub const VM = struct {
     panicType: debug.PanicType,
     panicPayload: debug.PanicPayload,
 
+    /// Interface used for imports and fetch.
+    httpClient: http.HttpClient,
+    stdHttpClient: http.StdHttpClient,
+
     trace: if (TraceEnabled) *TraceInfo else void,
 
     /// Object to pc of instruction that allocated it.
@@ -190,10 +195,17 @@ pub const VM = struct {
             .deinited = false,
             .funcSymDeps = .{},
             .config = undefined,
+            .httpClient = undefined,
+            .stdHttpClient = undefined,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
         try self.compiler.init(self);
+
+        if (!cy.isWasm) {
+            self.stdHttpClient = http.StdHttpClient.init(self.alloc);
+            self.httpClient = self.stdHttpClient.iface();
+        }
 
         // Perform decently sized allocation for hot data paths since the allocator
         // will likely use a more consistent allocation.
@@ -294,6 +306,8 @@ pub const VM = struct {
         if (builtin.mode == .Debug) {
             self.objectTraceMap.deinit(self.alloc);
         }
+
+        self.stdHttpClient.deinit();
 
         self.deinited = true;
     }

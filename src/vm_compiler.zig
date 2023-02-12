@@ -400,7 +400,49 @@ pub const VMcompiler = struct {
             if (cy.isWasm) {
                 return error.Unsupported;
             }
-            const src = try std.fs.cwd().readFileAlloc(self.alloc, task.absSpec, 1e10);
+
+            var src: []const u8 = undefined;
+            if (std.mem.startsWith(u8, task.absSpec, "http://") or std.mem.startsWith(u8, task.absSpec, "https://")) {
+                const client = self.vm.httpClient;
+
+                const uri = try std.Uri.parse(task.absSpec);
+                var req = client.request(uri) catch |err| {
+                    if (err == error.UnknownHostName) {
+                        const chunk = &self.chunks.items[task.chunkId];
+                        const stmt = chunk.nodes[task.nodeId];
+                        return chunk.reportErrorAt("Can not connect to `{}`.", &.{v(uri.host.?)}, stmt.head.left_right.right);
+                    } else {
+                        return err;
+                    }
+                };
+
+                var buf: std.ArrayListUnmanaged(u8) = .{};
+                errdefer buf.deinit(self.alloc);
+                var readBuf: [4096]u8 = undefined;
+
+                // First read should consume the status code.
+                var read = try client.readAll(&req, &readBuf);
+                try buf.appendSlice(self.alloc, readBuf[0..read]);
+
+                switch (req.response.headers.status) {
+                    .ok => {
+                        // Whitelisted status codes.
+                    },
+                    else => {
+                        const chunk = &self.chunks.items[task.chunkId];
+                        const stmt = chunk.nodes[task.nodeId];
+                        return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.headers.status)}, stmt.head.left_right.right);
+                    },
+                }
+
+                while (read > 0) {
+                    read = try client.readAll(&req, &readBuf);
+                    try buf.appendSlice(self.alloc, readBuf[0..read]);
+                }
+                src = try buf.toOwnedSlice(self.alloc);
+            } else {
+                src = try std.fs.cwd().readFileAlloc(self.alloc, task.absSpec, 1e10);
+            }
 
             // Push another chunk.
             const newChunkId = @intCast(u32, self.chunks.items.len);

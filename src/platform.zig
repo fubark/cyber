@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 
 pub const KnownFolder = enum {
     home,
+    local_configuration,
 };
 
 pub const Error = error{ ParseError, OutOfMemory };
@@ -155,16 +156,19 @@ const windows_folder_spec = blk: {
 //     @setEvalBranchQuota(10_000);
     break :blk KnownFolderSpec(WindowsFolderSpec){
         .home = WindowsFolderSpec{ .by_guid = std.os.windows.GUID.parse("{5E6C858F-0E22-4760-9AFE-EA3317B67173}") }, // FOLDERID_Profile
+        .local_configuration = WindowsFolderSpec{ .by_guid = std.os.windows.GUID.parse("{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}") }, // FOLDERID_LocalAppData
     };
 };
 
 const mac_folder_spec = KnownFolderSpec(MacFolderSpec){
     .home = MacFolderSpec{ .suffix = null },
+    .local_configuration = MacFolderSpec{ .suffix = "Library/Application Support" },
 };
 
 /// Stores how to find each known folder in xdg.
 const xdg_folder_spec = KnownFolderSpec(XdgFolderSpec){
     .home = XdgFolderSpec{ .env = .{ .name = "HOME", .user_dir = false, .suffix = null }, .default = null },
+    .local_configuration = XdgFolderSpec{ .env = .{ .name = "XDG_CONFIG_HOME", .user_dir = false, .suffix = null }, .default = "~/.config" },
 };
 
 /// This returns a struct type with one field per KnownFolder of type `T`.
@@ -174,6 +178,7 @@ fn KnownFolderSpec(comptime T: type) type {
         const Self = @This();
 
         home: T,
+        local_configuration: T,
 
         fn get(self: Self, folder: KnownFolder) T {
             inline for (std.meta.fields(Self)) |fld| {

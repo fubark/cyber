@@ -6,10 +6,12 @@ weight: 6
 # FFI.
 Cyber supports binding to an existing C ABI compatible library at runtime.
 This allows you to call into dynamic libraries created in C or other languages.
-Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bindLib` is part of the core library and accepts the path to the library as a string and a list of [CFunc](#cfunc) or [CStruct](#cstruct) declarations.
+Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bindLib` is part of the `os` module and accepts the path to the library as a string and a list of [CFunc](#cfunc) or [CStruct](#cstruct) declarations.
 
 ```cy
-lib = bindLib('mylib.so', [
+import os 'os'
+
+lib = os.bindLib('mylib.so', [
     CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
@@ -46,7 +48,9 @@ Once the object is released by ARC, the TCCState is also released which removes 
 The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-function's symbol name in the dynamic library. The `args` field declares the type mapping from Cyber to C-function's arguments. Finally, the `ret` field declares the type mapping from the C-function's return type to a Cyber type.
 
 ```cy
-lib = bindLib('mylib.so', [
+import os 'os'
+
+lib = os.bindLib('mylib.so', [
     CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
@@ -62,12 +66,14 @@ int add(int a, int b) {
 You can also bind object types to C-structs using the `CStruct` object. The `type` field accepts an object type symbol and `fields` indicates the mapping for each field in `type` to and from a C-struct.
 After adding a `CStruct` declaration, you can use the object type symbol in CFunc `args` and `ret` and also other CStruct `fields`.
 ```cy
+import os 'os'
+
 object MyObject
     a number
     b string
     c bool
 
-lib = bindLib('mylib.so', [
+lib = os.bindLib('mylib.so', [
     CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
     CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
 ])
@@ -88,7 +94,9 @@ MyObject foo(MyObject o) {
 
 `CStruct` also generates `ptrTo[Type]` as a helper function to dereference an opaque ptr to a new Cyber object:
 ```cy
-lib = bindLib('mylib.so', [
+import os 'os'
+
+lib = os.bindLib('mylib.so', [
     CFunc{ sym: 'foo', args: [MyObject], ret: #ptr }
     CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
 ])

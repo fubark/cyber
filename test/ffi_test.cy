@@ -4,7 +4,7 @@ import t 'test'
 import os 'os'
 
 -- Not found.
-lib = bindLib('xyz123.so', [])
+lib = os.bindLib('xyz123.so', [])
 try t.eq(lib, error(#FileNotFound))
 
 if os.system == 'macos':
@@ -16,7 +16,7 @@ else:
   libPath = none
 
 -- Missing symbol.
-lib = bindLib(libPath, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
+lib = os.bindLib(libPath, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
 try t.eq(lib, error(#MissingSymbol))
 
 object MyObject:
@@ -25,7 +25,7 @@ object MyObject:
   c string
   d bool
 
-lib = try bindLib(libPath, [
+lib = try os.bindLib(libPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
   CFunc{ sym: 'testI8', args: [#char], ret: #char }
   CFunc{ sym: 'testU8', args: [#uchar], ret: #uchar }
@@ -95,7 +95,7 @@ try t.eq(lib.testBool(true), true)
 try t.eq(lib.testBool(false), false)
 
 -- bindLib that returns a map of functions.
-lib = try bindLib(libPath, [
+lib = try os.bindLib(libPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
 testAdd = lib['testAdd']
@@ -104,7 +104,7 @@ try t.eq(testAdd(123, 321), 444)
 -- Reassign a binded function to a static function.
 -- TODO: Use statements once initializer block is done.
 var staticLibPath = if os.system == 'macos' then 'test/macos_lib.dylib' else if os.system == 'windows' then 'test/win_lib.dll' else none
-var staticLib = bindLib(staticLibPath, [
+var staticLib = os.bindLib(staticLibPath, [
   CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
 func staticAdd(a, b) = staticLib.testAdd

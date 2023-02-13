@@ -95,8 +95,8 @@ print contents
 | `arrayFill(val any, n number) list` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | `asciiCode(val any) number` | Converts the first character of a string to an ASCII code number. | 
 | `bool(val any) bool` | Converts a value to either `true` or `false`. | 
-| `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
-| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 
+| `bindLib(path string, decls [](CFunc\|CStruct)) map` | Deprecated: Use `os.bindLib` instead. | 
+| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Deprecated: Use `os.bindLib` instead. | 
 | `char(val any) number` | Deprecated: Use `asciiCode` instead. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
@@ -206,6 +206,8 @@ for map each k, v:
 | Function | Summary |
 | -- | -- |
 | `args() list<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
+| `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
+| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 
 | `createDir(path string) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
 | `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cwd() string` | Returns the current working directory. |

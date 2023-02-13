@@ -26,7 +26,7 @@ export func DrawRectangle(x, y, width, height, color) = lib.DrawRectangle
 export func MeasureText(text, size) = lib.MeasureText
 export func DrawText(text, x, y, size, color) = lib.DrawText
 
-var lib = try bindLib(path, [
+var lib = try os.bindLib(path, [
     CFunc{ sym: 'InitWindow', args: [#int, #int, #charPtrZ], ret: #void }
     CFunc{ sym: 'CloseWindow', args: [], ret: #void }
     CFunc{ sym: 'SetTargetFPS', args: [#int], ret: #void }

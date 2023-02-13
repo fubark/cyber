@@ -35,6 +35,11 @@ file = os.openFile('test/assets/file.txt', #read)
 info = file.stat()
 try t.eq(info.type, #file)
 
+-- free() / malloc()
+ptr = os.malloc(16)
+try t.eq(valtag(ptr), #pointer)
+try os.free(ptr)
+
 -- File.read()
 file = os.openFile('test/assets/file.txt', #read)
 try t.eq(file.read(3), rawstring('foo'))

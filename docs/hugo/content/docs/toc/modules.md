@@ -108,7 +108,7 @@ print contents
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
-| `opaque(val any) opaque` | Converts a value to an opaque pointer value. This is usually used with FFI. | 
+| `opaque(val any) pointer` | Converts a value to an opaque pointer value. This is usually used with FFI. | 
 | `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
@@ -212,8 +212,10 @@ for map each k, v:
 | `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cwd() string` | Returns the current working directory. |
 | `exePath() string` | Returns the current executable's path. |
+| `free(ptr pointer) none` | Frees the memory located at `ptr`. |
 | `getEnv(string) string` | Returns an environment value by key. |
 | `getEnvAll() map` | Returns all environment entries as a map. |
+| `malloc(size number) pointer` | Allocates `size` bytes of memory and returns a pointer. |
 | `milliTime() number` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
 | `openFile(path string, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
 | `openDir(path string) Dir \| error` | Invokes `openDir(path, false)`. |

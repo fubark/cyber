@@ -56,8 +56,10 @@ pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
         try mod.setNativeFunc(self, "createFile", 2, bindings.nop2);
         try mod.setNativeFunc(self, "cwd", 0, bindings.nop0);
         try mod.setNativeFunc(self, "exePath", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "free", 1, bindings.nop1);
         try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
         try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "malloc", 1, bindings.nop1);
     } else {
         try mod.setNativeFunc(self, "bindLib", 2, bindLib);
         try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
@@ -65,6 +67,7 @@ pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
         try mod.setNativeFunc(self, "createFile", 2, createFile);
         try mod.setNativeFunc(self, "cwd", 0, cwd);
         try mod.setNativeFunc(self, "exePath", 0, exePath);
+        try mod.setNativeFunc(self, "free", 1, osFree);
         if (builtin.os.tag == .windows) {
             try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
             try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
@@ -72,6 +75,7 @@ pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
             try mod.setNativeFunc(self, "getEnv", 1, getEnv);
             try mod.setNativeFunc(self, "getEnvAll", 0, getEnvAll);
         }
+        try mod.setNativeFunc(self, "malloc", 1, malloc);
     }
     try mod.setNativeFunc(self, "milliTime", 0, milliTime);
     if (cy.isWasm) {
@@ -277,6 +281,25 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
         gvm.setIndex(map, key, val) catch stdx.fatal();
     }
     return map;
+}
+
+pub fn osFree(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    if (args[0].isObjectType(cy.OpaquePtrS)) {
+        const ptr = args[0].asHeapObject().opaquePtr.ptr;
+        std.c.free(ptr);
+        return Value.None;
+    } else {
+        log.debug("Expected opaque ptr.", .{});
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+}
+
+pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    const size = @floatToInt(usize, args[0].toF64());
+    const ptr = std.c.malloc(size);
+    return cy.heap.allocOpaquePtr(vm.internal(), ptr) catch stdx.fatal();
 }
 
 pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {

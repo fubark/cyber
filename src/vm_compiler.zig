@@ -8,6 +8,7 @@ const v = fmt.v;
 const vm_ = @import("vm.zig");
 const sema = cy.sema;
 const gen = cy.codegen;
+const cache = @import("cache.zig");
 const core_mod = @import("builtins/core.zig");
 const math_mod = @import("builtins/math.zig");
 const os_mod = @import("builtins/os.zig");
@@ -403,43 +404,7 @@ pub const VMcompiler = struct {
 
             var src: []const u8 = undefined;
             if (std.mem.startsWith(u8, task.absSpec, "http://") or std.mem.startsWith(u8, task.absSpec, "https://")) {
-                const client = self.vm.httpClient;
-
-                const uri = try std.Uri.parse(task.absSpec);
-                var req = client.request(uri) catch |err| {
-                    if (err == error.UnknownHostName) {
-                        const chunk = &self.chunks.items[task.chunkId];
-                        const stmt = chunk.nodes[task.nodeId];
-                        return chunk.reportErrorAt("Can not connect to `{}`.", &.{v(uri.host.?)}, stmt.head.left_right.right);
-                    } else {
-                        return err;
-                    }
-                };
-
-                var buf: std.ArrayListUnmanaged(u8) = .{};
-                errdefer buf.deinit(self.alloc);
-                var readBuf: [4096]u8 = undefined;
-
-                // First read should consume the status code.
-                var read = try client.readAll(&req, &readBuf);
-                try buf.appendSlice(self.alloc, readBuf[0..read]);
-
-                switch (req.response.headers.status) {
-                    .ok => {
-                        // Whitelisted status codes.
-                    },
-                    else => {
-                        const chunk = &self.chunks.items[task.chunkId];
-                        const stmt = chunk.nodes[task.nodeId];
-                        return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.headers.status)}, stmt.head.left_right.right);
-                    },
-                }
-
-                while (read > 0) {
-                    read = try client.readAll(&req, &readBuf);
-                    try buf.appendSlice(self.alloc, readBuf[0..read]);
-                }
-                src = try buf.toOwnedSlice(self.alloc);
+                src = try self.importUrl(task);
             } else {
                 src = try std.fs.cwd().readFileAlloc(self.alloc, task.absSpec, 1e10);
             }
@@ -453,7 +418,73 @@ pub const VMcompiler = struct {
             self.modules.items[task.modId].chunkId = newChunkId;
         }
     }
+
+    fn importUrl(self: *VMcompiler, task: ImportTask) ![]const u8 {
+        // First check local cache.
+        const specGroup = try cache.getSpecHashGroup(self.alloc, task.absSpec);
+        defer specGroup.deinit(self.alloc);
+        if (specGroup.findEntryBySpec(task.absSpec)) |entry| {
+            var found = true;
+            const src = cache.allocFileContents(self.alloc, entry.fileName) catch |err| b: {
+                if (err == error.FileNotFound) {
+                    // Fallthrough.
+                    found = false;
+                    break :b "";
+                } else {
+                    return err;
+                }
+            };
+            if (found) {
+                log.debug("Using cached {s}", .{task.absSpec});
+                return src;
+            }
+        }
+
+        const client = self.vm.httpClient;
+
+        const uri = try std.Uri.parse(task.absSpec);
+        var req = client.request(uri) catch |err| {
+            if (err == error.UnknownHostName) {
+                const chunk = &self.chunks.items[task.chunkId];
+                const stmt = chunk.nodes[task.nodeId];
+                return chunk.reportErrorAt("Can not connect to `{}`.", &.{v(uri.host.?)}, stmt.head.left_right.right);
+            } else {
+                return err;
+            }
+        };
+
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        errdefer buf.deinit(self.alloc);
+        var readBuf: [4096]u8 = undefined;
+
+        // First read should consume the status code.
+        var read = try client.readAll(&req, &readBuf);
+        try buf.appendSlice(self.alloc, readBuf[0..read]);
+
+        switch (req.response.headers.status) {
+            .ok => {
+                // Whitelisted status codes.
+            },
+            else => {
+                const chunk = &self.chunks.items[task.chunkId];
+                const stmt = chunk.nodes[task.nodeId];
+                return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.headers.status)}, stmt.head.left_right.right);
+            },
+        }
+
+        while (read > 0) {
+            read = try client.readAll(&req, &readBuf);
+            try buf.appendSlice(self.alloc, readBuf[0..read]);
+        }
+        const src = try buf.toOwnedSlice(self.alloc);
+
+        // Cache to local.
+        try cache.saveNewSpecFile(self.alloc, specGroup, task.absSpec, src);
+
+        return src;
+    }
 };
+
 
 const CompileErrorType = enum {
     tokenize,

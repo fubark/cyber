@@ -2371,6 +2371,18 @@ fn resolveSpecTemp(self: *cy.CompileChunk, spec: []const u8, outBuiltin: *bool) 
 
     if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
         outBuiltin.* = false;
+        const uri = try std.Uri.parse(spec);
+        if (std.mem.endsWith(u8, uri.host.?, "github.com")) {
+            if (std.mem.count(u8, uri.path, "/") == 2 and uri.path[uri.path.len-1] != '/') {
+                self.tempBufU8.clearRetainingCapacity();
+                try self.tempBufU8.appendSlice(self.alloc, uri.scheme);
+                try self.tempBufU8.appendSlice(self.alloc, "://raw.githubusercontent.com");
+                try self.tempBufU8.appendSlice(self.alloc, uri.path);
+                try self.tempBufU8.appendSlice(self.alloc, "/master/mod.cy");
+                std.debug.print("{s}\n", .{self.tempBufU8.items});
+                return self.tempBufU8.items;
+            }
+        }
         return spec;
     }
 

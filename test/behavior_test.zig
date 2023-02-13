@@ -276,118 +276,7 @@ test "os module" {
 test "Fibers" {
     const run = VMrunner.create();
     defer run.destroy();
-
-    // Init fiber without starting.
-    var val = try run.eval(
-        \\func foo(list):
-        \\  coyield
-        \\  list.append(123)
-        \\list = []
-        \\f = coinit foo(list)
-        \\list.len()
-    );
-    try run.valueIsI32(val, 0);
-
-    // Start fiber with yield at start.
-    val = try run.eval(
-        \\func foo(list):
-        \\  coyield
-        \\  list.append(123)
-        \\list = []
-        \\f = coinit foo(list)
-        \\coresume f
-        \\list.len()
-    );
-    try run.valueIsI32(val, 0);
-
-    // Start fiber without yield.
-    val = try run.eval(
-        \\func foo(list):
-        \\  list.append(123)
-        \\list = []
-        \\f = coinit foo(list)
-        \\coresume f
-        \\list[0]
-    );
-    try run.valueIsI32(val, 123);
-
-    // coresume returns final value.
-    val = try run.eval(
-        \\import t 'test'
-        \\func foo(list):
-        \\  list.append(123)
-        \\  return list[0]
-        \\list = []
-        \\f = coinit foo(list)
-        \\try t.eq(coresume f, 123)
-    );
-
-    // Start fiber with yield in nested function.
-    val = try run.eval(
-        \\func bar():
-        \\  alist = [] --This should be released after fiber is freed.
-        \\  coyield
-        \\func foo(list):
-        \\  bar()
-        \\  list.append(123)
-        \\list = []
-        \\f = coinit foo(list)
-        \\coresume f
-        \\list.len()
-    );
-    try run.valueIsI32(val, 0);
-
-    // Continue to resume fiber.
-    val = try run.eval(
-        \\func foo(list):
-        \\  list.append(123)
-        \\  coyield
-        \\  list.append(234)
-        \\list = []
-        \\f = coinit foo(list)
-        \\coresume f
-        \\coresume f
-        \\list.len()
-    );
-    try run.valueIsI32(val, 2);
-
-    // Fiber status.
-    _ = try run.eval(
-        \\import t 'test'
-        \\func foo():
-        \\  coyield
-        \\f = coinit foo()
-        \\try t.eq(f.status(), #paused)
-        \\coresume f
-        \\try t.eq(f.status(), #paused)
-        \\coresume f
-        \\try t.eq(f.status(), #done)
-    );
-
-    // Resuming after fiber is done is a nop.
-    _ = try run.eval(
-        \\import t 'test'
-        \\func foo():
-        \\  coyield
-        \\f = coinit foo()
-        \\coresume f
-        \\coresume f
-        \\try t.eq(f.status(), #done)
-        \\coresume f
-        \\try t.eq(f.status(), #done)
-    );
-
-    // Grow fiber stack.
-    _ = try run.eval(
-        \\import t 'test'
-        \\func sum(n):
-        \\  if n == 0:
-        \\    return 0
-        \\  return n + sum(n - 1)
-        \\f = coinit sum(20)
-        \\res = coresume f
-        \\try t.eq(res, 210)
-    );
+    _ = try run.eval(@embedFile("fiber_test.cy"));
 }
 
 test "try value" {
@@ -406,13 +295,7 @@ test "try value" {
 test "Errors." {
     const run = VMrunner.create();
     defer run.destroy();
-
-    _ = try run.eval(
-        \\import t 'test'
-        \\err = error(#FileNotFound)
-        \\try t.eq(valtag(err), #error)
-        \\try t.eq(err, error(#FileNotFound))
-    );
+    _ = try run.eval(@embedFile("error_test.cy"));
 }
 
 test "FFI." {
@@ -518,45 +401,15 @@ test "Tag types." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // TagType to number.
-    var val = try run.eval(
-        \\tagtype Animal:
-        \\  Bear
-        \\  Tiger
-        \\n = Animal#Tiger
-        \\number(n)
-    );
-    try t.eq(val.asF64toI32(), 1);
-
-    // Using TagType declared afterwards.
-    val = try run.eval(
-        \\n = Animal#Tiger
-        \\tagtype Animal:
-        \\  Bear
-        \\  Tiger
-        \\number(n)
-    );
-    try t.eq(val.asF64toI32(), 1);
-
-    // Reassign using tag literal.
-    val = try run.eval(
-        \\tagtype Animal:
-        \\  Bear
-        \\  Tiger
-        \\  Dragon
-        \\n = Animal#Tiger
-        \\n = #Dragon
-        \\number(n)
-    );
-    try t.eq(val.asF64toI32(), 2);
-
     // Tag literal.
-    val = try run.eval(
+    var val = try run.eval(
         \\n = #Tiger
         \\number(n)
     );
     const id = try vm_.gvm.ensureTagLitSym("Tiger");
     try t.eq(val.asF64toI32(), @intCast(i32, id));
+
+    _ = try run.eval(@embedFile("tagtype_test.cy"));
 }
 
 test "test module" {
@@ -569,11 +422,7 @@ test "test module" {
     );
     try t.expectError(res, error.Panic);
 
-    _ = try run.eval(
-        \\import t 'test'
-        \\t.eq(123, 123)
-        \\t.eq(1.2345, 1.2345)
-    );
+    _ = try run.eval(@embedFile("test_mod_test.cy"));
 }
 
 test "Objects." {

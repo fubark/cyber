@@ -467,6 +467,7 @@ pub const VMcompiler = struct {
                 // Whitelisted status codes.
             },
             else => {
+                // Stop immediately.
                 const chunk = &self.chunks.items[task.chunkId];
                 const stmt = chunk.nodes[task.nodeId];
                 return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.headers.status)}, stmt.head.left_right.right);

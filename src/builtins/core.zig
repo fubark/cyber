@@ -8,6 +8,7 @@ const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 const fmt = @import("../fmt.zig");
 const os_mod = @import("os.zig");
+const http = @import("../http.zig");
 
 const log = stdx.log.scoped(.core);
 
@@ -191,26 +192,13 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         hostFetchUrl(url.ptr, url.len);
         return Value.None;
     } else {
-        const res = std.ChildProcess.exec(.{
-            .allocator = alloc,
-            // Use curl, follow redirects.
-            .argv = &.{ "curl", "-L", url },
-            .max_output_bytes = 1024 * 1024 * 10,
-        }) catch |err| {
-            switch (err) {
-                error.FileNotFound => 
-                    return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound)),
-                error.StdoutStreamTooLong =>
-                    return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
-                error.StderrStreamTooLong =>
-                    return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
-                else => stdx.panicFmt("curl err {}\n", .{err}),
-            }
+        const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
+            log.debug("fetchUrl error: {}", .{err});
+            return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
         };
-        alloc.free(res.stderr);
-        defer vm.allocator().free(res.stdout);
+        defer alloc.free(resp.body);
         // TODO: Use allocOwnedString
-        return vm.allocRawString(res.stdout) catch stdx.fatal();
+        return vm.allocRawString(resp.body) catch stdx.fatal();
     }
 }
 

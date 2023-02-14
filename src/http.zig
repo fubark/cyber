@@ -120,3 +120,31 @@ pub const MockHttpClient = struct {
         }
     }
 };
+
+const Response = struct {
+    status: std.http.Status,
+    body: []const u8,
+};
+
+/// HTTP GET, always cosumes body.
+pub fn get(alloc: std.mem.Allocator, client: HttpClient, url: []const u8) !Response {
+    const uri = try std.Uri.parse(url);
+    var req = try client.request(uri);
+    defer req.deinit();
+
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    errdefer buf.deinit(alloc);
+    var readBuf: [4096]u8 = undefined;
+
+    while (true) {
+        const read = try client.readAll(&req, &readBuf);
+        try buf.appendSlice(alloc, readBuf[0..read]);
+        if (read == 0) {
+            break;
+        }
+    }
+    return Response{
+        .status = req.response.headers.status,
+        .body = try buf.toOwnedSlice(alloc),
+    };
+}

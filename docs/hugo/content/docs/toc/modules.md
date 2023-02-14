@@ -103,7 +103,7 @@ print contents
 | `exit(status number) noreturn` | Exits the program with a status code. | 
 | `error(any) error` | Create an error from a tag or tag literal. | 
 | `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
-| `fetchUrl(url string) rawstring` | Uses previously installed `curl` to fetch the contents at a URL. If `curl` does not exist, `error(#FileNotFound)` is returned. Cyber has not included an http/tls library yet. | 
+| `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 

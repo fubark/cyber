@@ -801,10 +801,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
                 const symId = try ensureSym(c, objSymId, funcNameId, numParams);
                 const resolvedParentSymId = c.semaSyms.items[objSymId].resolvedSymId;
-                const res = try resolveLocalFuncSym(c, resolvedParentSymId, funcNameId, func.head.func.decl_id, retType, false);
-                c.funcDecls[func.head.func.decl_id].semaResolvedSymId = res.resolvedSymId;
-                c.funcDecls[func.head.func.decl_id].semaResolvedFuncSymId = res.resolvedFuncSymId;
-                c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
+                _ = try resolveLocalFuncSym(c, symId, resolvedParentSymId, funcNameId, func.head.func.decl_id, retType, false);
 
                 funcId = func.next;
             }
@@ -1006,13 +1003,10 @@ fn semaFuncDeclAssign(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !v
         }
     };
 
-    const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, declId, retType orelse AnyType, exported);
+    const res = try resolveLocalFuncSym(c, symId, c.semaResolvedRootSymId, nameId, declId, retType orelse AnyType, exported);
     c.compiler.semaResolvedFuncSyms.items[res.resolvedFuncSymId].hasStaticInitializer = true;
-    c.funcDecls[declId].semaResolvedSymId = res.resolvedSymId;
-    c.funcDecls[declId].semaResolvedFuncSymId = res.resolvedFuncSymId;
     // `semaBlockId` is repurposed to save the nodeId.
     c.funcDecls[declId].semaBlockId = nodeId;
-    c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
 }
 
 fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
@@ -1046,11 +1040,8 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
 
     const symId = try ensureSym(c, null, nameId, numParams);
     linkNodeToSym(c, nodeId, symId);
-    const res = try resolveLocalFuncSym(c, c.semaResolvedRootSymId, nameId, declId, retType.?, exported);
-    c.funcDecls[declId].semaResolvedSymId = res.resolvedSymId;
-    c.funcDecls[declId].semaResolvedFuncSymId = res.resolvedFuncSymId;
+    _ = try resolveLocalFuncSym(c, symId, c.semaResolvedRootSymId, nameId, declId, retType.?, exported);
     c.funcDecls[declId].semaBlockId = blockId;
-    c.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
 }
 
 fn semaVarDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
@@ -1060,13 +1051,13 @@ fn semaVarDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
         const name = c.getNodeTokenString(left);
 
         const nameId = try ensureNameSym(c.compiler, name);
-        const rsymId = try resolveLocalVarSym(c, c.semaResolvedRootSymId, nameId, nodeId, exported);
-        // Link to local symbol.
         const symId = try ensureSym(c, null, nameId, null);
-        c.semaSyms.items[symId].resolvedSymId = rsymId;
+
         // Mark as used since there is an initializer that could alter state.
         c.semaSyms.items[symId].used = true;
         c.nodes[nodeId].head.varDecl.semaSymId = symId;
+
+        _ = try resolveLocalVarSym(c, symId, c.semaResolvedRootSymId, nameId, nodeId, exported);
 
         c.curSemaSymVar = symId;
         c.semaVarDeclDeps.clearRetainingCapacity();
@@ -2506,9 +2497,9 @@ pub fn resolveRootModuleSym(self: *cy.VMcompiler, name: []const u8, modId: Modul
 }
 
 /// Given the local sym path, add a resolved var sym entry.
-/// Fail if there is already a symbol in this path.with the same name.
-fn resolveLocalVarSym(self: *cy.CompileChunk, resolvedParentId: ?ResolvedSymId, nameId: NameSymId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
-    const key = vm_.KeyU64{
+/// Fail if there is already a symbol in this path with the same name.
+fn resolveLocalVarSym(self: *cy.CompileChunk, symId: SymId, resolvedParentId: ?ResolvedSymId, nameId: NameSymId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
+    const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
             .resolvedParentSymId = if (resolvedParentId == null) cy.NullId else resolvedParentId.?,
             .nameId = nameId,
@@ -2516,6 +2507,14 @@ fn resolveLocalVarSym(self: *cy.CompileChunk, resolvedParentId: ?ResolvedSymId, 
     };
     if (self.compiler.semaResolvedSymMap.contains(key)) {
         return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(getName(self.compiler, nameId))}, declId);
+    }
+
+    if (resolvedParentId != null and resolvedParentId.? == self.semaResolvedRootSymId) {
+        // Root symbol, check that it's not a local alias.
+        if (self.semaSymToRef.contains(symId)) {
+            const node = self.nodes[declId];
+            return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(getName(self.compiler, nameId))}, node.head.varDecl.left);
+        }
     }
 
     // Resolve the symbol.
@@ -2533,6 +2532,10 @@ fn resolveLocalVarSym(self: *cy.CompileChunk, resolvedParentId: ?ResolvedSymId, 
     });
 
     try @call(.never_inline, self.compiler.semaResolvedSymMap.put, .{self.alloc, key, resolvedId});
+
+    // Link to local symbol.
+    self.semaSyms.items[symId].resolvedSymId = resolvedId;
+
     return resolvedId;
 }
 
@@ -2631,7 +2634,7 @@ fn resolveSymAsFunc(self: *cy.CompileChunk, key: AbsResolvedSymKey, numParams: u
 
 /// Given the local sym path, add a resolved func sym entry.
 /// Assumes parent local sym is resolved.
-fn resolveLocalFuncSym(self: *cy.CompileChunk, resolvedParentSymId: ?ResolvedSymId, nameId: NameSymId, declId: u32, retType: Type, exported: bool) !ResolveFuncSymResult {
+fn resolveLocalFuncSym(self: *cy.CompileChunk, symId: SymId, resolvedParentSymId: ?ResolvedSymId, nameId: NameSymId, declId: u32, retType: Type, exported: bool) !ResolveFuncSymResult {
     const func = self.funcDecls[declId];
     const numParams = func.params.len();
 
@@ -2641,8 +2644,21 @@ fn resolveLocalFuncSym(self: *cy.CompileChunk, resolvedParentSymId: ?ResolvedSym
             .nameId = nameId,
         },
     };
+
+    if (key.absResolvedSymKey.resolvedParentSymId == self.semaResolvedRootSymId) {
+        // Root symbol, check that it's not a local alias.
+        if (self.semaSymToRef.contains(symId)) {
+            return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(getName(self.compiler, key.absResolvedSymKey.nameId))}, func.name);
+        }
+    }
+
     const res = try resolveSymAsFunc(self, key, numParams, declId, retType, exported);
     dumpAbsResolvedSymName(self.compiler, res.resolvedSymId) catch stdx.fatal();
+
+    self.funcDecls[declId].semaResolvedSymId = res.resolvedSymId;
+    self.funcDecls[declId].semaResolvedFuncSymId = res.resolvedFuncSymId;
+    self.semaSyms.items[symId].resolvedSymId = res.resolvedSymId;
+
     return res;
 }
 

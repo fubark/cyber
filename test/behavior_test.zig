@@ -1060,6 +1060,21 @@ test "Static variable declaration." {
         \\try t.eq(c, 567) 
     );
 
+    // Declaration for an existing alias symbol.
+    res = run.evalExt(.{ .silent = true },
+        \\var print = 123
+    );
+    try t.expectError(res, error.CompileError);
+    const err = try run.vm.allocLastUserCompileError();
+    try t.eqStrFree(t.alloc, err,
+        \\CompileError: The symbol `print` was already declared.
+        \\
+        \\main:1:5:
+        \\var print = 123
+        \\    ^
+        \\
+    );
+
     _ = try run.eval(@embedFile("staticvar_decl_test.cy"));
 }
 
@@ -1497,6 +1512,21 @@ test "Static functions." {
     );
     try t.expectError(res, error.Panic);
     try run.assertPanicMsg("Assigning to static function with a different function signature.");
+
+    // Declaration initializer for a function already imported from core.
+    res = run.evalExt(.{ .silent = true },
+        \\func print(val) = number
+    );
+    try t.expectError(res, error.CompileError);
+    const err = try run.vm.allocLastUserCompileError();
+    try t.eqStrFree(t.alloc, err,
+        \\CompileError: The symbol `print` was already declared.
+        \\
+        \\main:1:6:
+        \\func print(val) = number
+        \\     ^
+        \\
+    );
 
     _ = try run.eval(@embedFile("static_func_test.cy"));
 }

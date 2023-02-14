@@ -669,10 +669,13 @@ pub const CompileChunk = struct {
     capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
     /// Local paths to syms.
     semaSyms: std.ArrayListUnmanaged(sema.Sym),
-    semaSymMap: std.HashMapUnmanaged(vm_.KeyU96, sema.SymId, vm_.KeyU96Context, 80),
+    semaSymMap: std.HashMapUnmanaged(sema.AbsLocalSymKey, sema.SymId, vm_.KeyU96Context, 80),
     /// Track first nodes that use the symbol for error reporting.
     semaSymFirstNodes: std.ArrayListUnmanaged(cy.NodeId),
+    /// Mapping for local symbol aliases.
     semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.SymRef),
+    /// Additional info for initializer symbols.
+    semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.InitializerSym),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     curSemaBlockId: sema.BlockId,
     curSemaSubBlockId: sema.SubBlockId,
@@ -736,6 +739,7 @@ pub const CompileChunk = struct {
             .semaSymMap = .{},
             .semaSymFirstNodes = .{},
             .semaSymToRef = .{},
+            .semaInitializerSyms = .{},
             .vars = .{},
             .capVarDescs = .{},
             .blocks = .{},
@@ -799,6 +803,7 @@ pub const CompileChunk = struct {
         self.semaSymMap.deinit(self.alloc);
         self.semaSymFirstNodes.deinit(self.alloc);
         self.semaSymToRef.deinit(self.alloc);
+        self.semaInitializerSyms.deinit(self.alloc);
         self.parser.deinit();
         if (self.srcOwned) {
             self.alloc.free(self.src);

@@ -2085,9 +2085,9 @@ fn genCallArgs(self: *CompileChunk, first: cy.NodeId) !u32 {
 }
 
 fn genStaticInitializerDeps(c: *CompileChunk, symId: sema.SymId) !void {
-    if (c.semaSymToRef.get(symId)) |ref| {
+    if (c.semaInitializerSyms.get(symId)) |ref| {
         // Contains dependencies. Generate initializers for them first.
-        const deps = c.bufU32.items[ref.inner.initDeps.start..ref.inner.initDeps.end];
+        const deps = c.bufU32.items[ref.depsStart..ref.depsEnd];
         for (deps) |dep| {
             const depSym = c.semaSyms.items[dep];
             // Only if it has a static initializer and hasn't been visited.

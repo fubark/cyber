@@ -300,8 +300,6 @@ pub const NameSymId = u32;
 
 pub const SymId = u32;
 
-const AbsLocalSymKey = vm_.KeyU96;
-
 /// Represents a sema symbol in the current module. It can be an intermediate sym in a sym path or a sym leaf.
 /// Since module namespaces use the same accessor operator as local variables, a symbol doesn't always get resolved post sema.
 pub const Sym = struct {
@@ -425,6 +423,7 @@ const SymRefType = enum {
     initDeps,
 };
 
+/// Represents a mapping to another symbol.
 pub const SymRef = struct {
     refT: SymRefType,
     inner: union {
@@ -437,12 +436,14 @@ pub const SymRef = struct {
             modId: ModuleId,
             numParams: u32,
         },
-        /// For variable symbols, this points to a list of sema sym ids in `bufU32` that it depends on for initialization.
-        initDeps: struct {
-            start: u32 = 0,
-            end: u32 = 0,
-        },
     },
+};
+
+/// Additional info attached to a initializer symbol.
+pub const InitializerSym = struct {
+    /// This points to a list of sema sym ids in `bufU32` that it depends on for initialization.
+    depsStart: u32,
+    depsEnd: u32,
 };
 
 const RelModuleSymKey = vm_.KeyU64;
@@ -583,6 +584,7 @@ pub const AbsSymSigKey = vm_.KeyU64;
 pub const AbsResolvedSymKey = vm_.KeyU64;
 pub const AbsResolvedFuncSymKey = vm_.KeyU64;
 pub const AbsSymSigKeyContext = cy.AbsFuncSigKeyContext;
+pub const AbsLocalSymKey = vm_.KeyU96;
 
 pub fn semaStmts(self: *cy.CompileChunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
     var cur_id = head;
@@ -1644,25 +1646,20 @@ fn referenceSym(c: *cy.CompileChunk, parentId: ?SymId, name: []const u8, numPara
     if (trackDep) {
         if (c.curSemaSymVar != cy.NullId) {
             // Record this symbol as a dependency.
-            const res = try c.semaSymToRef.getOrPut(c.alloc, c.curSemaSymVar);
+            const res = try c.semaInitializerSyms.getOrPut(c.alloc, c.curSemaSymVar);
             if (res.found_existing) {
                 const depRes = try c.semaVarDeclDeps.getOrPut(c.alloc, symId);
                 if (!depRes.found_existing) {
                     try c.bufU32.append(c.alloc, symId);
-                    res.value_ptr.*.inner.initDeps.end = @intCast(u32, c.bufU32.items.len);
+                    res.value_ptr.*.depsEnd = @intCast(u32, c.bufU32.items.len);
                     depRes.value_ptr.* = {};
                 }
             } else {
                 const start = @intCast(u32, c.bufU32.items.len);
                 try c.bufU32.append(c.alloc, symId);
                 res.value_ptr.* = .{
-                    .refT = .initDeps,
-                    .inner = .{
-                        .initDeps = .{
-                            .start = start,
-                            .end = @intCast(u32, c.bufU32.items.len),
-                        },
-                    }
+                    .depsStart = start,
+                    .depsEnd = @intCast(u32, c.bufU32.items.len),
                 };
             }
         }

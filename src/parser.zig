@@ -432,7 +432,7 @@ pub const Parser = struct {
         const start = self.next_pos;
 
         var decl = FuncDecl{
-            .name = undefined,
+            .name = cy.NullId,
             .params = undefined,
             .return_type = null,
         };
@@ -767,7 +767,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         const left_pos = self.next_pos;
         if (token.tag() == .ident) {
-            decl.name = IndexSlice.init(token.pos(), token.data.end_pos);
+            decl.name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
         } else return self.reportParseError("Expected function name identifier.", &.{});
 
@@ -833,7 +833,7 @@ pub const Parser = struct {
             decl.params = try self.parseFunctionParams();
             decl.return_type = self.parseFunctionReturn();
 
-            const name = self.src[decl.name.start..decl.name.end];
+            const name = decl.getNameFromParser(self);
             const block = &self.block_stack.items[self.block_stack.items.len-1];
             try block.vars.put(self.alloc, name, {});
 
@@ -3547,7 +3547,8 @@ pub const StructDecl = struct {
 const FuncDeclId = u32;
 
 pub const FuncDecl = struct {
-    name: IndexSlice,
+    /// Can be NullId.
+    name: NodeId,
     params: IndexSlice,
     return_type: ?IndexSlice,
 
@@ -3557,6 +3558,26 @@ pub const FuncDecl = struct {
 
     semaResolvedSymId: u32 = NullId,
     semaResolvedFuncSymId: u32 = NullId,
+
+    pub fn getName(self: *const FuncDecl, chunk: *const cy.CompileChunk) []const u8 {
+        if (self.name == cy.NullId) {
+            return "";
+        } else {
+            const node = chunk.nodes[self.name];
+            const token = chunk.tokens[node.start_token];
+            return chunk.src[token.pos()..token.data.end_pos];
+        }
+    }
+
+    pub fn getNameFromParser(self: *const FuncDecl, parser: *const Parser) []const u8 {
+        if (self.name == cy.NullId) {
+            return "";
+        } else {
+            const node = parser.nodes.items[self.name];
+            const token = parser.tokens.items[node.start_token];
+            return parser.src[token.pos()..token.data.end_pos];
+        }
+    }
 };
 
 pub const FunctionParam = struct {

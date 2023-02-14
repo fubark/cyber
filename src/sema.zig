@@ -668,14 +668,14 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 try semaFuncDecl(c, stmt, true);
                 const funcId = c.nodes[stmt].head.func.decl_id;
                 const func = c.funcDecls[funcId];
-                const name = c.src[func.name.start..func.name.end];
+                const name = func.getName(c);
                 const numParams = @intCast(u16, func.params.end - func.params.start);
                 try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
             } else if (c.nodes[stmt].node_t == .funcDeclInit) {
                 try semaFuncDeclAssign(c, stmt, true);
                 const funcId = c.nodes[stmt].head.funcDeclInit.declId;
                 const func = c.funcDecls[funcId];
-                const name = c.src[func.name.start..func.name.end];
+                const name = func.getName(c);
                 const numParams = @intCast(u16, func.params.end - func.params.start);
                 try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
             } else {
@@ -780,7 +780,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 }
 
                 // Struct function.
-                const funcName = c.src[decl.name.start..decl.name.end];
+                const funcName = decl.getName(c);
                 const funcNameId = try ensureNameSym(c.compiler, funcName);
                 const numParams = @intCast(u16, decl.params.end - decl.params.start);
                 if (getSym(c, objSymId, funcNameId, numParams) == null) {
@@ -982,7 +982,7 @@ fn semaFuncDeclAssign(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !v
     }
 
     const numParams = @intCast(u16, func.params.end - func.params.start);
-    const name = c.src[func.name.start..func.name.end];
+    const name = func.getName(c);
     const nameId = try ensureNameSym(c.compiler, name);
     // Link to local symbol.
     const symId = try ensureSym(c, null, nameId, numParams);
@@ -1035,7 +1035,7 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     if (retType == null) {
         retType = sblock.getReturnType();
     }
-    const name = c.src[func.name.start..func.name.end];
+    const name = func.getName(c);
     const nameId = try ensureNameSym(c.compiler, name);
     const numParams = @intCast(u16, func.params.end - func.params.start);
 

@@ -1240,7 +1240,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 func = self.nodes[funcId];
                 const decl = self.funcDecls[func.head.func.decl_id];
 
-                const funcName = self.src[decl.name.start..decl.name.end];
+                const funcName = decl.getName(self);
                 if (decl.params.end > decl.params.start) {
                     const param = self.funcParams[decl.params.start];
                     const paramName = self.src[param.name.start..param.name.end];

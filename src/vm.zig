@@ -1505,7 +1505,7 @@ pub const VM = struct {
                 const chunk = self.compiler.chunks.items[sym.file];
                 const frameNode = chunk.nodes[sym.frameLoc];
                 const func = chunk.funcDecls[frameNode.head.func.decl_id];
-                const name = chunk.src[func.name.start..func.name.end];
+                const name = func.getName(&chunk);
 
                 const node = chunk.nodes[sym.loc];
                 var line: u32 = undefined;

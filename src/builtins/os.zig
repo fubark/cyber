@@ -389,6 +389,21 @@ const BindLibConfig = struct {
     genMap: bool = false,
 };
 
+fn dlopen(path: []const u8) !std.DynLib {
+    if (builtin.os.tag == .linux and builtin.link_libc) {
+        const path_c = try std.os.toPosixPath(path);
+        // Place the lookup scope of the symbols in this library ahead of the global scope.
+        const RTLD_DEEPBIND = 0x00008;
+        return std.DynLib{
+            .handle = std.os.system.dlopen(&path_c, std.os.system.RTLD.LAZY | RTLD_DEEPBIND) orelse {
+                return error.FileNotFound;
+            }
+        };
+    } else {
+        return std.DynLib.open(path);
+    }
+}
+
 fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value {
     const Context = struct {
         ivm: *cy.VM,
@@ -573,12 +588,12 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         if (builtin.os.tag == .macos) {
             const exe = try std.fs.selfExePathAlloc(alloc);
             defer alloc.free(exe);
-            lib.* = try std.DynLib.open(exe);
+            lib.* = try dlopen(exe);
         } else {
-            lib.* = try std.DynLib.openZ("");
+            lib.* = try dlopen("");
         }
     } else {
-        lib.* = std.DynLib.open(vm.valueToTempString(path)) catch |err| {
+        lib.* = dlopen(vm.valueToTempString(path)) catch |err| {
             if (err == error.FileNotFound) {
                 return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
             } else {

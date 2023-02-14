@@ -100,13 +100,18 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const url = vm.valueToTempString(args[0]);
     defer vm.release(args[0]);
 
-    // First check local cache.
     const specGroup = cache.getSpecHashGroup(alloc, url) catch stdx.fatal();
     defer specGroup.deinit(alloc);
-    if (specGroup.findEntryBySpec(url) catch stdx.fatal()) |entry| {
-        const path = cache.allocSpecFilePath(alloc, entry) catch stdx.fatal();
-        defer alloc.free(path);
-        return vm.allocStringInfer(path) catch stdx.fatal();
+
+    if (vm.internal().config.reload) {
+        specGroup.markEntryBySpecForRemoval(url) catch stdx.fatal();
+    } else {
+        // First check local cache.
+        if (specGroup.findEntryBySpec(url) catch stdx.fatal()) |entry| {
+            const path = cache.allocSpecFilePath(alloc, entry) catch stdx.fatal();
+            defer alloc.free(path);
+            return vm.allocStringInfer(path) catch stdx.fatal();
+        }
     }
 
     const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {

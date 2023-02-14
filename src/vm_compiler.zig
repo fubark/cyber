@@ -420,23 +420,29 @@ pub const VMcompiler = struct {
     }
 
     fn importUrl(self: *VMcompiler, task: ImportTask) ![]const u8 {
-        // First check local cache.
         const specGroup = try cache.getSpecHashGroup(self.alloc, task.absSpec);
         defer specGroup.deinit(self.alloc);
-        if (try specGroup.findEntryBySpec(task.absSpec)) |entry| {
-            var found = true;
-            const src = cache.allocSpecFileContents(self.alloc, entry) catch |err| b: {
-                if (err == error.FileNotFound) {
-                    // Fallthrough.
-                    found = false;
-                    break :b "";
-                } else {
-                    return err;
+
+        if (self.vm.config.reload) {
+            // Remove cache entry.
+            try specGroup.markEntryBySpecForRemoval(task.absSpec);
+        } else {
+            // First check local cache.
+            if (try specGroup.findEntryBySpec(task.absSpec)) |entry| {
+                var found = true;
+                const src = cache.allocSpecFileContents(self.alloc, entry) catch |err| b: {
+                    if (err == error.FileNotFound) {
+                        // Fallthrough.
+                        found = false;
+                        break :b "";
+                    } else {
+                        return err;
+                    }
+                };
+                if (found) {
+                    log.debug("Using cached {s}", .{task.absSpec});
+                    return src;
                 }
-            };
-            if (found) {
-                log.debug("Using cached {s}", .{task.absSpec});
-                return src;
             }
         }
 
@@ -486,7 +492,6 @@ pub const VMcompiler = struct {
         return try buf.toOwnedSlice(self.alloc);
     }
 };
-
 
 const CompileErrorType = enum {
     tokenize,

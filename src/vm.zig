@@ -4739,6 +4739,9 @@ pub const EvalConfig = struct {
     singleRun: bool = false,
 
     enableFileModules: bool = false,
+
+    /// Whether url imports and cached assets should be reloaded.
+    reload: bool = false,
 };
 
 fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 {

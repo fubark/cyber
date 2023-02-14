@@ -75,6 +75,9 @@ pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec:
     };
     defer entryFile.close();
     for (specGroup.entries) |e| {
+        if (e.removed) {
+            continue;
+        }
         try writeSpecEntry(entryFile, e);
     }
     try writeSpecEntry(entryFile, new);
@@ -172,6 +175,9 @@ const SpecEntry = struct {
     /// Unix timestamp (seconds) of when the file was cached.
     cacheDate: u64,
 
+    /// Whether the next save should skip this entry.
+    removed: bool = false,
+
     pub fn deinit(self: *const SpecEntry, alloc: std.mem.Allocator) void {
         alloc.free(self.spec);
     }
@@ -179,13 +185,23 @@ const SpecEntry = struct {
 
 const SpecHashGroup = struct {
     hash: [16]u8,
-    entries: []const SpecEntry,
+    entries: []SpecEntry,
 
     pub fn deinit(self: *const SpecHashGroup, alloc: std.mem.Allocator) void {
         for (self.entries) |e| {
             e.deinit(alloc);
         }
         alloc.free(self.entries);
+    }
+
+    pub fn markEntryBySpecForRemoval(self: *const SpecHashGroup, spec: []const u8) !void {
+        const cacheSpec = try toCacheSpec(spec);
+        for (self.entries) |*e| {
+            if (std.mem.eql(u8, e.spec, cacheSpec)) {
+                e.removed = true;
+                break;
+            }
+        }
     }
 
     pub fn findEntryBySpec(self: *const SpecHashGroup, spec: []const u8) !?SpecEntry {

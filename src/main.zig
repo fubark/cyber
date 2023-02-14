@@ -17,6 +17,9 @@ var gpa: std.heap.GeneralPurposeAllocator(.{
 }) = .{};
 var miAlloc: mi.Allocator = undefined;
 
+var verbose = false;
+var reload = false;
+
 pub fn main() !void {
     if (UseMimalloc) {
         miAlloc.init();
@@ -43,11 +46,12 @@ pub fn main() !void {
 
     var cmd = Command.none;
     var arg0: ?[]const u8 = null;
-    var verbose = false;
     for (args[1..]) |arg| {
         if (arg[0] == '-') {
             if (std.mem.eql(u8, arg, "-v")) {
                 verbose = true;
+            } else if (std.mem.eql(u8, arg, "-r")) {
+                reload = true;
             }
         } else {
             if (cmd == .none) {
@@ -75,7 +79,7 @@ pub fn main() !void {
     switch (cmd) {
         .eval => {
             if (arg0) |path| {
-                try evalPath(alloc, path, verbose);
+                try evalPath(alloc, path);
             } else {
                 return error.MissingFilePath;
             }
@@ -133,7 +137,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     buf.dump();
 }
 
-fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
+fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e10, 4096, @alignOf(u8), null);
     defer alloc.free(src);
 
@@ -146,6 +150,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8, verbose: bool) !void {
     _ = vm.eval(path, src, .{
         .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,
+        .reload = reload,
     }) catch |err| {
         switch (err) {
             error.Panic => {
@@ -185,6 +190,7 @@ fn help() void {
         \\  cyber version              Print version number.
         \\  
         \\General Options:
+        \\  -r      Refetch url imports and cached assets.
         \\  -v      Verbose.
         \\
     , .{build_options.version});

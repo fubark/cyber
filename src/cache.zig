@@ -41,7 +41,7 @@ fn toCacheSpec(spec: []const u8) ![]const u8 {
     }
 }
 
-pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec: []const u8, contents: []const u8) !void {
+pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec: []const u8, contents: []const u8) !SpecEntry {
     const cacheSpec = try toCacheSpec(spec);
     const cyberPath = try getCyberPath(alloc);
 
@@ -58,7 +58,7 @@ pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec:
     try file.writeAll(contents);
 
     const new = SpecEntry{
-        .spec = cacheSpec,
+        .spec = try alloc.dupe(u8, cacheSpec),
         .cacheDate = now,
     };
 
@@ -78,6 +78,7 @@ pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec:
         try writeSpecEntry(entryFile, e);
     }
     try writeSpecEntry(entryFile, new);
+    return new;
 }
 
 fn writeSpecEntry(file: std.fs.File, entry: SpecEntry) !void {
@@ -145,6 +146,11 @@ fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
     return entries.toOwnedSlice(alloc);
 }
 
+pub fn allocSpecFilePath(alloc: std.mem.Allocator, entry: SpecEntry) ![]const u8 {
+    const cyberPath = try getCyberPath(alloc);
+    return try std.fs.path.join(alloc, &.{cyberPath, entry.spec});
+}
+
 pub fn allocSpecFileContents(alloc: std.mem.Allocator, entry: SpecEntry) ![]const u8 {
     const cyberPath = try getCyberPath(alloc);
     const path = try std.fs.path.join(alloc, &.{cyberPath, entry.spec});
@@ -166,7 +172,7 @@ const SpecEntry = struct {
     /// Unix timestamp (seconds) of when the file was cached.
     cacheDate: u64,
 
-    fn deinit(self: *const SpecEntry, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *const SpecEntry, alloc: std.mem.Allocator) void {
         alloc.free(self.spec);
     }
 };

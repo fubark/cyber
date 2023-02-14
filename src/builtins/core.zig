@@ -9,6 +9,7 @@ const TagLit = bindings.TagLit;
 const fmt = @import("../fmt.zig");
 const os_mod = @import("os.zig");
 const http = @import("../http.zig");
+const cache = @import("../cache.zig");
 
 const log = stdx.log.scoped(.core);
 
@@ -29,6 +30,11 @@ pub fn initModule(self: *cy.VMcompiler) !cy.Module {
         try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
     }
     try mod.setNativeFunc(self, "bool", 1, coreBool);
+    if (cy.isWasm) {
+        try mod.setNativeFunc(self, "cacheUrl", 1, bindings.nop1);
+    } else {
+        try mod.setNativeFunc(self, "cacheUrl", 1, cacheUrl);
+    }
     try mod.setNativeFunc(self, "char", 1, char);
     try mod.setNativeFunc(self, "copy", 1, copy);
     try mod.setNativeFunc(self, "error", 1, coreError);
@@ -86,6 +92,37 @@ pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
         return Value.initF64(@intToFloat(f64, str[0]));
     } else {
         return Value.None;
+    }
+}
+
+fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const alloc = vm.allocator();
+    const url = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
+
+    // First check local cache.
+    const specGroup = cache.getSpecHashGroup(alloc, url) catch stdx.fatal();
+    defer specGroup.deinit(alloc);
+    if (specGroup.findEntryBySpec(url) catch stdx.fatal()) |entry| {
+        const path = cache.allocSpecFilePath(alloc, entry) catch stdx.fatal();
+        defer alloc.free(path);
+        return vm.allocStringInfer(path) catch stdx.fatal();
+    }
+
+    const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
+        log.debug("cacheUrl error: {}", .{err});
+        return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+    };
+    defer alloc.free(resp.body);
+    if (resp.status != .ok) {
+        log.debug("cacheUrl response status: {}", .{resp.status});
+        return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+    } else {
+        const entry = cache.saveNewSpecFile(alloc, specGroup, url, resp.body) catch stdx.fatal();
+        defer entry.deinit(alloc);
+        const path = cache.allocSpecFilePath(alloc, entry) catch stdx.fatal();
+        defer alloc.free(path);
+        return vm.allocStringInfer(path) catch stdx.fatal();
     }
 }
 
@@ -188,6 +225,7 @@ pub fn exit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const alloc = vm.allocator();
     const url = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
     if (cy.isWasm) {
         hostFetchUrl(url.ptr, url.len);
         return Value.None;

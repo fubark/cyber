@@ -480,7 +480,8 @@ pub const VMcompiler = struct {
         }
 
         // Cache to local.
-        try cache.saveNewSpecFile(self.alloc, specGroup, task.absSpec, buf.items);
+        const entry = try cache.saveNewSpecFile(self.alloc, specGroup, task.absSpec, buf.items);
+        entry.deinit(self.alloc);
 
         return try buf.toOwnedSlice(self.alloc);
     }

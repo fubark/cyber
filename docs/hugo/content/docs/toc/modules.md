@@ -97,6 +97,7 @@ print contents
 | `bool(val any) bool` | Converts a value to either `true` or `false`. | 
 | `bindLib(path string, decls [](CFunc\|CStruct)) map` | Deprecated: Use `os.bindLib` instead. | 
 | `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Deprecated: Use `os.bindLib` instead. | 
+| `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `char(val any) number` | Deprecated: Use `asciiCode` instead. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 

@@ -24,3 +24,12 @@ try t.eq(a.initOnce, 1)
 -- Generates dependencies from symbol's source module and not this module.
 try t.eq(a.varDepRes, 123)
 try t.eq(a.funcDepRes(), 123)
+
+-- Declare a function with the same name in `a.cy`
+func sameFuncName():
+    return 123
+try t.eq(a.sameFuncName(), sameFuncName())
+
+-- Reference the alias `number` in `a.cy` that was already resolved in main.
+try t.eq(number(1), 1)
+try t.eq(a.useNumber(1), 1)

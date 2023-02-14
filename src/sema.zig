@@ -1860,7 +1860,9 @@ pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
     log.debug("resolving {} {}.{s} {}", .{symId, sym.key.absLocalSymKey.localParentSymId, getSymName(self.compiler, sym), sym.key.absLocalSymKey.numParams});
     defer {
         if (sym.resolvedSymId != cy.NullId) {
-            log.debug("resolved", .{});
+            const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+            const key = rsym.key.absResolvedSymKey;
+            log.debug("resolved id: {}, resolvedParentId: {}, type: {}", .{sym.resolvedSymId, key.resolvedParentSymId, rsym.symT});
         }
     }
     const nameId = sym.key.absLocalSymKey.nameId;
@@ -1891,12 +1893,20 @@ pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
         if (self.semaSymToRef.get(symId)) |ref| {
             if (ref.refT == .moduleMember) {
                 const modId = ref.inner.moduleMember.modId;
+                if (try getVisibleResolvedSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
+                    sym.resolvedSymId = resolvedId;
+                    return;
+                }
                 if (try resolveSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
                     sym.resolvedSymId = resolvedId;
                     return;
                 }
             } else if (ref.refT == .moduleFuncMember) {
                 const modId = ref.inner.moduleFuncMember.modId;
+                if (try getVisibleResolvedSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
+                    sym.resolvedSymId = resolvedId;
+                    return;
+                }
                 if (try resolveSymFromModule(self, modId, nameId, ref.inner.moduleFuncMember.numParams, firstNodeId)) |resolvedId| {
                     sym.resolvedSymId = resolvedId;
                     return;
@@ -1964,6 +1974,25 @@ fn getResolvedSymRootMod(c: *cy.VMcompiler, id: ResolvedSymId) ModuleId {
     } else {
         return getResolvedSymRootMod(c, rsym.key.absResolvedSymKey.resolvedParentSymId);
     }
+}
+
+fn getVisibleResolvedSymFromModule(c: *cy.CompileChunk, modId: ModuleId, nameId: NameSymId, numParams: u32, firstNodeId: cy.NodeId) !?ResolvedSymId {
+    const mod = c.compiler.modules.items[modId];
+    const key = AbsResolvedSymKey{
+        .absResolvedSymKey = .{
+            .nameId = nameId,
+            .resolvedParentSymId = mod.resolvedRootSymId,
+        },
+    };
+    if (try getAndCheckResolvedSymBySig(c, key, numParams, firstNodeId)) |rsymId| {
+        if (isResolvedSymVisibleFromMod(c.compiler, rsymId, c.modId)) {
+            return rsymId;
+        } else {
+            const name = getName(c.compiler, nameId);
+            return c.reportErrorAt("Symbol is not exported: `{}`", &.{v(name)}, firstNodeId);
+        }
+    }
+    return null;
 }
 
 /// Get the resolved sym that matches a signature (numParams).
@@ -2578,7 +2607,8 @@ fn resolveSymAsFunc(self: *cy.CompileChunk, key: AbsResolvedSymKey, numParams: u
         const rsym = c.semaResolvedSyms.items[id];
         if (rsym.symT != .func) {
             // Only fail if the symbol already exists and isn't a function.
-            return self.reportError("The symbol `{}` was already declared.", &.{v(getName(c, key.absResolvedSymKey.nameId))});
+            const name = getName(c, key.absResolvedSymKey.nameId);
+            return self.reportError("The symbol `{}` was already declared.", &.{v(name)});
         }
         rsymId = id;
     } else {
@@ -2605,7 +2635,8 @@ fn resolveSymAsFunc(self: *cy.CompileChunk, key: AbsResolvedSymKey, numParams: u
         },
     };
     if (c.semaResolvedFuncSymMap.contains(funcKey)) {
-        return self.reportError("The function symbol `{}` with the same signature was already declared.", &.{v(key.absResolvedSymKey.nameId)});
+        const name = getName(c, key.absResolvedSymKey.nameId);
+        return self.reportError("The function symbol `{}` with the same signature was already declared.", &.{v(name)});
     }
 
     // Resolve the func symbol.

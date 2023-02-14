@@ -38,3 +38,9 @@ var varDep = 123
 export func funcDepRes() = funcDep
 var funcDep = func ():
     return 123
+
+export func sameFuncName():
+    return 123
+
+export func useNumber(a):
+    return number(a)

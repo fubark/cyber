@@ -5,9 +5,8 @@ const platform = @import("platform.zig");
 /// Once loaded, common sub directories are assumed to exist.
 var CyberPath: []const u8 = "";
 
-const CyberDir = "cyber";
+const CyberDir = ".cyber";
 const EntriesDir = "entries";
-const FilesDir = "files";
 
 fn getCyberPath(alloc: std.mem.Allocator) ![]const u8 {
     const S = struct {
@@ -27,73 +26,71 @@ fn getCyberPath(alloc: std.mem.Allocator) ![]const u8 {
         var cyberDir = try dir.makeOpenPath(CyberDir, .{});
         defer cyberDir.close();
         try cyberDir.makePath(EntriesDir);
-        try cyberDir.makePath(FilesDir);
     }
     return CyberPath;
 }
 
+fn toCacheSpec(spec: []const u8) ![]const u8 {
+    // Remove scheme part.
+    if (std.mem.startsWith(u8, spec, "http://")) {
+        return spec[7..];
+    } else if (std.mem.startsWith(u8, spec, "https://")) {
+        return spec[8..];
+    } else {
+        return error.UnsupportedScheme;
+    }
+}
+
 pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec: []const u8, contents: []const u8) !void {
+    const cacheSpec = try toCacheSpec(spec);
     const cyberPath = try getCyberPath(alloc);
 
     const now = @intCast(u64, std.time.timestamp());
-    // Obtain a name hash based on the spec, timestamp, and attempt count.
-    var attempts: u64 = 0;
-    const MaxAttempts = 10;
-    var name: [16]u8 = undefined;
-    while (attempts < MaxAttempts) : (attempts += 1) {
-        name = computeFileNameHashStr(spec, now, attempts);
-        const path = try std.fs.path.join(alloc, &.{cyberPath, FilesDir, &name});
-        defer alloc.free(path);
 
-        const file = std.fs.cwd().createFile(path, .{ .exclusive = true }) catch |err| {
-            if (err == error.PathAlreadyExists) {
-                continue;
-            } else {
-                return err;
-            }
-        };
-        defer file.close();
-        try file.writeAll(contents);
-        break;
-    }
-    if (attempts == MaxAttempts) {
-        return error.TooManyHashConflicts;
-    }
+    const filePath = try std.fs.path.join(alloc, &.{cyberPath, cacheSpec});
+    defer alloc.free(filePath);
+
+    // Ensure path exists.
+    try std.fs.cwd().makePath(std.fs.path.dirname(filePath).?);
+
+    const file = try std.fs.cwd().createFile(filePath, .{ .truncate = true, .exclusive = false });
+    defer file.close();
+    try file.writeAll(contents);
 
     const new = SpecEntry{
-        .spec = spec,
+        .spec = cacheSpec,
         .cacheDate = now,
-        .fileName = &name,
     };
 
     const path = try std.fs.path.join(alloc, &.{cyberPath, EntriesDir, &specGroup.hash});
     defer alloc.free(path);
 
     // Save spec entries.
-    const file = std.fs.cwd().createFile(path, .{ .truncate = true, .exclusive = false }) catch |err| {
+    const entryFile = std.fs.cwd().createFile(path, .{ .truncate = true, .exclusive = false }) catch |err| {
         if (err == error.FileNotFound) {
             return error.ExpectedSpecFile;
         } else {
             return err;
         }
     };
-    defer file.close();
+    defer entryFile.close();
     for (specGroup.entries) |e| {
-        try writeSpecEntry(file, e);
+        try writeSpecEntry(entryFile, e);
     }
-    try writeSpecEntry(file, new);
+    try writeSpecEntry(entryFile, new);
 }
 
 fn writeSpecEntry(file: std.fs.File, entry: SpecEntry) !void {
     const w = file.writer();
     try std.fmt.format(w, "@{s}\n", .{entry.spec});
-    try std.fmt.format(w, "cacheDate={},fileName={s}\n", .{entry.cacheDate, entry.fileName});
+    try std.fmt.format(w, "cacheDate={}\n", .{entry.cacheDate});
 }
 
 /// Given absolute specifier, return the cached spec entries.
 /// If the file does not exist, an empty slice is returned.
 pub fn getSpecHashGroup(alloc: std.mem.Allocator, spec: []const u8) !SpecHashGroup {
-    const hash = computeSpecHashStr(spec);
+    const cacheSpec = try toCacheSpec(spec);
+    const hash = computeSpecHashStr(cacheSpec);
     const cyberPath = try getCyberPath(alloc);
     const path = try std.fs.path.join(alloc, &.{cyberPath, EntriesDir, &hash});
     defer alloc.free(path);
@@ -129,7 +126,6 @@ fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
             var entry = SpecEntry{
                 .spec = spec,
                 .cacheDate = 0,
-                .fileName = "",
             };
             while (bodyIter.next()) |field| {
                 const idx = std.mem.indexOfScalar(u8, field, '=') orelse return error.InvalidEntryFile;
@@ -138,17 +134,9 @@ fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
                         return error.InvalidEntryFile;
                     }
                     entry.cacheDate = try std.fmt.parseInt(u64, field[idx+1..], 10);
-                } else if (std.mem.eql(u8, field[0..idx], "fileName")) {
-                    if (entry.fileName.len > 0) {
-                        return error.InvalidEntryFile;
-                    }
-                    entry.fileName = try alloc.dupe(u8, field[idx+1..]);
                 }
             }
             if (entry.cacheDate == 0) {
-                return error.InvalidEntryFile;
-            }
-            if (entry.fileName.len != 16) {
                 return error.InvalidEntryFile;
             }
             try entries.append(alloc, entry);
@@ -157,9 +145,9 @@ fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
     return entries.toOwnedSlice(alloc);
 }
 
-pub fn allocFileContents(alloc: std.mem.Allocator, name: []const u8) ![]const u8 {
+pub fn allocSpecFileContents(alloc: std.mem.Allocator, entry: SpecEntry) ![]const u8 {
     const cyberPath = try getCyberPath(alloc);
-    const path = try std.fs.path.join(alloc, &.{cyberPath, FilesDir, name});
+    const path = try std.fs.path.join(alloc, &.{cyberPath, entry.spec});
     defer alloc.free(path);
     return std.fs.cwd().readFileAlloc(alloc, path, 1e10);
 }
@@ -171,30 +159,15 @@ fn computeSpecHashStr(spec: []const u8) [16]u8 {
     return res;
 }
 
-fn computeFileNameHashStr(spec: []const u8, ts: u64, extra: u64) [16]u8 {
-    var res: [16]u8 = undefined;
-    var b = std.hash.Wyhash.init(0);
-    @call(.always_inline, b.update, .{spec});
-    @call(.always_inline, b.update, .{std.mem.asBytes(&ts)});
-    @call(.always_inline, b.update, .{std.mem.asBytes(&extra)});
-    const hash = @call(.always_inline, b.final, .{});
-    _ = std.fmt.formatIntBuf(&res, hash, 16, .lower, .{});
-    return res;
-}
-
 const SpecEntry = struct {
-    /// Specifier name.
+    /// Specifier name. Does not include the scheme.
     spec: []const u8,
-
-    /// Name of the cached file.
-    fileName: []const u8,
 
     /// Unix timestamp (seconds) of when the file was cached.
     cacheDate: u64,
 
     fn deinit(self: *const SpecEntry, alloc: std.mem.Allocator) void {
         alloc.free(self.spec);
-        alloc.free(self.fileName);
     }
 };
 
@@ -209,9 +182,10 @@ const SpecHashGroup = struct {
         alloc.free(self.entries);
     }
 
-    pub fn findEntryBySpec(self: *const SpecHashGroup, spec: []const u8) ?SpecEntry {
+    pub fn findEntryBySpec(self: *const SpecHashGroup, spec: []const u8) !?SpecEntry {
+        const cacheSpec = try toCacheSpec(spec);
         for (self.entries) |e| {
-            if (std.mem.eql(u8, e.spec, spec)) {
+            if (std.mem.eql(u8, e.spec, cacheSpec)) {
                 return e;
             }
         }

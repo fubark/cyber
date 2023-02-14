@@ -423,9 +423,9 @@ pub const VMcompiler = struct {
         // First check local cache.
         const specGroup = try cache.getSpecHashGroup(self.alloc, task.absSpec);
         defer specGroup.deinit(self.alloc);
-        if (specGroup.findEntryBySpec(task.absSpec)) |entry| {
+        if (try specGroup.findEntryBySpec(task.absSpec)) |entry| {
             var found = true;
-            const src = cache.allocFileContents(self.alloc, entry.fileName) catch |err| b: {
+            const src = cache.allocSpecFileContents(self.alloc, entry) catch |err| b: {
                 if (err == error.FileNotFound) {
                     // Fallthrough.
                     found = false;

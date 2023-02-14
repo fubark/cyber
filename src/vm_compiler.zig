@@ -452,6 +452,7 @@ pub const VMcompiler = struct {
                 return err;
             }
         };
+        defer req.deinit();
 
         var buf: std.ArrayListUnmanaged(u8) = .{};
         errdefer buf.deinit(self.alloc);
@@ -476,12 +477,11 @@ pub const VMcompiler = struct {
             read = try client.readAll(&req, &readBuf);
             try buf.appendSlice(self.alloc, readBuf[0..read]);
         }
-        const src = try buf.toOwnedSlice(self.alloc);
 
         // Cache to local.
-        try cache.saveNewSpecFile(self.alloc, specGroup, task.absSpec, src);
+        try cache.saveNewSpecFile(self.alloc, specGroup, task.absSpec, buf.items);
 
-        return src;
+        return try buf.toOwnedSlice(self.alloc);
     }
 };
 

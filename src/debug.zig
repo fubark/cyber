@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const fmt = @import("fmt.zig");
+const v = fmt.v;
 const log = stdx.log.scoped(.debug);
 
 const NullId = std.math.maxInt(u32);
@@ -236,9 +237,9 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
             \\{}
             \\
         , &.{
-            fmt.v(title), fmt.v(msg), fmt.v(chunk.srcUri),
-            fmt.v(line+1), fmt.v(col+1),
-            fmt.v(chunk.src[lineStart..lineEnd]),
+            v(title), v(msg), v(chunk.srcUri),
+            v(line+1), v(col+1),
+            v(chunk.src[lineStart..lineEnd]),
         });
         try w.writeByteNTimes(' ', col);
         _ = try w.write("^\n");
@@ -249,7 +250,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
             \\in {}
             \\
         , &.{
-            fmt.v(title), fmt.v(msg), fmt.v(chunk.srcUri),
+            v(title), v(msg), v(chunk.srcUri),
         });
     }
 }
@@ -270,7 +271,7 @@ pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
     switch (vm.panicType) {
         .err => {
             const str = vm.valueToTempString(cy.Value{ .val = vm.panicPayload });
-            return try fmt.allocFormat(vm.alloc, "{}", &.{fmt.v(str)});
+            return try fmt.allocFormat(vm.alloc, "{}", &.{v(str)});
         },
         .msg => {
             const ptr = @intCast(usize, vm.panicPayload & ((1 << 48) - 1));
@@ -293,4 +294,111 @@ pub fn freePanicPayload(vm: *const cy.VM) void {
         },
         .none => {},
     }
+}
+
+pub const StackTrace = struct {
+    frames: []const StackFrame = &.{},
+
+    pub fn deinit(self: *StackTrace, alloc: std.mem.Allocator) void {
+        alloc.free(self.frames);
+    }
+
+    pub fn dump(self: *const StackTrace, vm: *const cy.VM) !void {
+        const w = fmt.lockStderrWriter();
+        defer fmt.unlockPrint();
+        try self.write(vm, w);
+    }
+
+    pub fn write(self: *const StackTrace, vm: *const cy.VM, w: anytype) !void {
+        for (self.frames) |frame| {
+            const chunk = vm.compiler.chunks.items[frame.chunkId];
+            const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, frame.lineStartPos, '\n') orelse chunk.src.len;
+            try fmt.format(w,
+                \\{}:{}:{} {}:
+                \\{}
+                \\
+            , &.{
+                v(chunk.srcUri), v(frame.line+1), v(frame.col+1), v(frame.name),
+                v(chunk.src[frame.lineStartPos..lineEnd]),
+            });
+            try w.writeByteNTimes(' ', frame.col);
+            try w.writeAll("^\n");
+        }
+    }
+};
+
+pub const StackFrame = struct {
+    /// Name identifier (eg. function name, or "main" for the main block)
+    name: []const u8,
+    /// Starts at 0.
+    line: u32,
+    /// Starts at 0.
+    col: u32,
+    /// Where the line starts in the source file.
+    lineStartPos: u32,
+    chunkId: u32,
+};
+
+pub fn buildStackTrace(self: *cy.VM, fromPanic: bool) !void {
+    @setCold(true);
+    self.stackTrace.deinit(self.alloc);
+    var frames: std.ArrayListUnmanaged(StackFrame) = .{};
+
+    var framePtr = cy.framePtrOffset(self.framePtr);
+    var pc = cy.pcOffset(self, self.pc);
+    var isTopFrame = true;
+    while (true) {
+        const idx = b: {
+            if (isTopFrame) {
+                isTopFrame = false;
+                if (fromPanic) {
+                    const len = cy.getInstLenAt(self.ops.ptr + pc);
+                    break :b indexOfDebugSym(self, pc + len) orelse return error.NoDebugSym;
+                }
+            }
+            break :b indexOfDebugSym(self, pc) orelse return error.NoDebugSym;
+        };
+        const sym = self.debugTable[idx];
+
+        if (sym.frameLoc == cy.NullId) {
+            const chunk = self.compiler.chunks.items[sym.file];
+            const node = chunk.nodes[sym.loc];
+            var line: u32 = undefined;
+            var col: u32 = undefined;
+            var lineStart: u32 = undefined;
+            const pos = chunk.tokens[node.start_token].pos();
+            computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
+            try frames.append(self.alloc, .{
+                .name = "main",
+                .chunkId = sym.file,
+                .line = line,
+                .col = col,
+                .lineStartPos = lineStart,
+            });
+            break;
+        } else {
+            const chunk = self.compiler.chunks.items[sym.file];
+            const frameNode = chunk.nodes[sym.frameLoc];
+            const func = chunk.funcDecls[frameNode.head.func.decl_id];
+            const name = func.getName(&chunk);
+
+            const node = chunk.nodes[sym.loc];
+            var line: u32 = undefined;
+            var col: u32 = undefined;
+            var lineStart: u32 = undefined;
+            const pos = chunk.tokens[node.start_token].pos();
+            computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
+            try frames.append(self.alloc, .{
+                .name = name,
+                .chunkId = sym.file,
+                .line = line,
+                .col = col,
+                .lineStartPos = lineStart,
+            });
+            pc = cy.pcOffset(self, self.stack[framePtr + 2].retPcPtr);
+            framePtr = cy.framePtrOffset(self.stack[framePtr + 3].retFramePtr);
+        }
+    }
+
+    self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
 }

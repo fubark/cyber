@@ -54,10 +54,9 @@ pub const VarSym = vm.VarSym;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 pub const EvalError = vm.EvalError;
-pub const StackTrace = vm.StackTrace;
-pub const StackFrame = vm.StackFrame;
 pub const buildReturnInfo = vm.buildReturnInfo;
 pub const framePtrOffset = vm.framePtrOffset;
+pub const pcOffset = vm.pcOffset;
 pub const FuncSymDetail = vm.FuncSymDetail;
 pub const KeyU96 = vm.KeyU96;
 pub const KeyU96Context = vm.KeyU96Context;
@@ -114,6 +113,8 @@ pub const List = list.List;
 pub const ListAligned = list.ListAligned;
 
 pub const debug = @import("debug.zig");
+pub const StackTrace = debug.StackTrace;
+pub const StackFrame = debug.StackFrame;
 
 pub const string = @import("string.zig");
 pub const HeapStringBuilder = string.HeapStringBuilder;

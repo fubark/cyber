@@ -113,7 +113,7 @@ pub const VM = struct {
     u8Buf: cy.ListAligned(u8, 8),
     u8Buf2: cy.ListAligned(u8, 8),
 
-    stackTrace: StackTrace,
+    stackTrace: cy.StackTrace,
 
     /// Since func syms can be reassigned, track any RC dependencies.
     funcSymDeps: std.AutoHashMapUnmanaged(SymbolId, Value),
@@ -1460,72 +1460,8 @@ pub const VM = struct {
         };
     }
 
-    pub fn getStackTrace(self: *const VM) *const StackTrace {
+    pub fn getStackTrace(self: *const VM) *const cy.StackTrace {
         return &self.stackTrace;
-    }
-
-    pub fn buildStackTrace(self: *VM, fromPanic: bool) !void {
-        @setCold(true);
-        self.stackTrace.deinit(self.alloc);
-        var frames: std.ArrayListUnmanaged(StackFrame) = .{};
-
-        var framePtr = framePtrOffset(self.framePtr);
-        var pc = pcOffset(self, self.pc);
-        var isTopFrame = true;
-        while (true) {
-            const idx = b: {
-                if (isTopFrame) {
-                    isTopFrame = false;
-                    if (fromPanic) {
-                        const len = cy.getInstLenAt(self.ops.ptr + pc);
-                        break :b debug.indexOfDebugSym(self, pc + len) orelse return error.NoDebugSym;
-                    }
-                }
-                break :b debug.indexOfDebugSym(self, pc) orelse return error.NoDebugSym;
-            };
-            const sym = self.debugTable[idx];
-
-            if (sym.frameLoc == cy.NullId) {
-                const chunk = self.compiler.chunks.items[sym.file];
-                const node = chunk.nodes[sym.loc];
-                var line: u32 = undefined;
-                var col: u32 = undefined;
-                var lineStart: u32 = undefined;
-                const pos = chunk.tokens[node.start_token].pos();
-                debug.computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
-                try frames.append(self.alloc, .{
-                    .name = "main",
-                    .chunkId = sym.file,
-                    .line = line,
-                    .col = col,
-                    .lineStartPos = lineStart,
-                });
-                break;
-            } else {
-                const chunk = self.compiler.chunks.items[sym.file];
-                const frameNode = chunk.nodes[sym.frameLoc];
-                const func = chunk.funcDecls[frameNode.head.func.decl_id];
-                const name = func.getName(&chunk);
-
-                const node = chunk.nodes[sym.loc];
-                var line: u32 = undefined;
-                var col: u32 = undefined;
-                var lineStart: u32 = undefined;
-                const pos = chunk.tokens[node.start_token].pos();
-                debug.computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
-                try frames.append(self.alloc, .{
-                    .name = name,
-                    .chunkId = sym.file,
-                    .line = line,
-                    .col = col,
-                    .lineStartPos = lineStart,
-                });
-                pc = pcOffset(self, self.stack[framePtr + 2].retPcPtr);
-                framePtr = framePtrOffset(self.stack[framePtr + 3].retFramePtr);
-            }
-        }
-
-        self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
     }
 
     pub fn valueAsStaticString(self: *const VM, val: Value) linksection(cy.HotSection) []const u8 {
@@ -2485,7 +2421,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
             } else if (err == error.End) {
                 return;
             } else if (err == error.Panic) {
-                try @call(.never_inline, vm.buildStackTrace, .{true});
+                try @call(.never_inline, debug.buildStackTrace, .{vm, true});
                 return error.Panic;
             } else return err;
         };
@@ -4174,50 +4110,6 @@ pub const EvalError = error{
     OutOfBounds,
     StackOverflow,
     NoDebugSym,
-};
-
-pub const StackTrace = struct {
-    frames: []const StackFrame = &.{},
-
-    fn deinit(self: *StackTrace, alloc: std.mem.Allocator) void {
-        alloc.free(self.frames);
-    }
-
-    pub fn dump(self: *const StackTrace, vm: *const VM) !void {
-        @setCold(true);
-        var arrowBuf: std.ArrayListUnmanaged(u8) = .{};
-        var w = arrowBuf.writer(vm.alloc);
-        defer arrowBuf.deinit(vm.alloc);
-
-        for (self.frames) |frame| {
-            const chunk = vm.compiler.chunks.items[frame.chunkId];
-            const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, frame.lineStartPos, '\n') orelse chunk.src.len;
-            arrowBuf.clearRetainingCapacity();
-            try w.writeByteNTimes(' ', frame.col);
-            try w.writeByte('^');
-            fmt.printStderr(
-                \\{}:{}:{} {}:
-                \\{}
-                \\{}
-                \\
-            , &.{
-                fmt.v(chunk.srcUri), fmt.v(frame.line+1), fmt.v(frame.col+1), fmt.v(frame.name),
-                fmt.v(chunk.src[frame.lineStartPos..lineEnd]), fmt.v(arrowBuf.items),
-            });
-        }
-    }
-};
-
-pub const StackFrame = struct {
-    /// Name identifier (eg. function name, or "main" for the main block)
-    name: []const u8,
-    /// Starts at 0.
-    line: u32,
-    /// Starts at 0.
-    col: u32,
-    /// Where the line starts in the source file.
-    lineStartPos: u32,
-    chunkId: u32,
 };
 
 const ObjectSymKey = struct {

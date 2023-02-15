@@ -227,7 +227,9 @@ pub const Parser = struct {
         defer self.popBlock();
         const first_stmt = try self.parseBodyStatements(0);
         self.nodes.items[root_id].head = .{
-            .child_head = first_stmt,
+            .root = .{
+                .headStmt = first_stmt,
+            },
         };
         return 0;
     }
@@ -3334,6 +3336,10 @@ pub const Node = struct {
         unary: struct {
             child: NodeId,
             op: UnaryOp,
+        },
+        root: struct {
+            headStmt: NodeId,
+            genEndLocalsPc: u32 = NullId,
         },
         child_head: NodeId,
         annotation: struct {

@@ -503,7 +503,12 @@ pub const VM = struct {
         self.consts = buf.mconsts;
         self.strBuf = buf.strBuf.items;
 
-        try @call(.never_inline, evalLoopGrowStack, .{self});
+        @call(.never_inline, evalLoopGrowStack, .{self}) catch |err| {
+            if (err == error.Panic) {
+                unwindReleaseStack(self, self.stack, self.framePtr, self.pc);
+            }
+            return err;
+        };
         if (TraceEnabled) {
             log.info("main stack size: {}", .{buf.mainStackSize});
         }
@@ -4749,3 +4754,29 @@ const MethodSymExtra = struct {
         return self.namePtr[0..self.nameLen];
     }
 };
+
+/// Unwind given stack starting at a pc, framePtr and release all locals.
+/// TODO: See if fiber.releaseFiberStack can resuse the same code.
+fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const Value, startPc: [*]const cy.OpData) void {
+    var pc = pcOffset(vm, startPc);
+    var framePtr = framePtrOffset(vm, startFramePtr);
+
+    // Top of the frame needs to advance pc to index into the debug table.
+    pc += cy.getInstLenAt(vm.ops.ptr + pc);
+
+    while (true) {
+        log.debug("release frame at {}", .{pc});
+        const endLocalsPc = debug.pcToEndLocalsPc(vm, pc);
+        if (endLocalsPc != cy.NullId) {
+            cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);
+        }
+        if (framePtr == 0) {
+            // Done, at main block.
+            break;
+        } else {
+            // Unwind.
+            pc = pcOffset(vm, stack[framePtr + 2].retPcPtr);
+            framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
+        }
+    }
+}

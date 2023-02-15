@@ -439,5 +439,11 @@ pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.frameLoc];
         return node.head.func.genEndLocalsPc;
-    } else return cy.NullId;
+    } else {
+        // Located in the main block.
+        const chunk = vm.compiler.chunks.items[0];
+        const node = chunk.nodes[0];
+        // Can be NullId if `shouldGenMainScopeReleaseOps` is false.
+        return node.head.root.genEndLocalsPc;
+    }
 }

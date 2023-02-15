@@ -1052,6 +1052,7 @@ pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: b
             const local = try genExprStmt(self, cur_id, true, false);
             if (shouldGenMainScopeReleaseOps(self.compiler)) {
                 self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+                self.nodes[0].head.root.genEndLocalsPc = self.curBlock.endLocalsPc;
                 try self.endLocals();
             }
             try self.buf.pushOp1(.end, local);
@@ -1063,6 +1064,7 @@ pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: b
             try genStatement(self, cur_id, false);
             if (shouldGenMainScopeReleaseOps(self.compiler)) {
                 self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+                self.nodes[0].head.root.genEndLocalsPc = self.curBlock.endLocalsPc;
                 try self.endLocals();
             }
             try self.buf.pushOp1(.end, 255);

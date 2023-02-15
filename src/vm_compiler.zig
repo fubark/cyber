@@ -330,7 +330,7 @@ pub const VMcompiler = struct {
         }
 
         chunk.mainSemaBlockId = try sema.pushBlock(chunk);
-        sema.semaStmts(chunk, root.head.child_head, true) catch |err| {
+        sema.semaStmts(chunk, root.head.root.headStmt, true) catch |err| {
             try sema.endBlock(chunk);
             return err;
         };
@@ -367,7 +367,7 @@ pub const VMcompiler = struct {
             try gen.genInitLocals(chunk);
             const jumpStackStart = chunk.blockJumpStack.items.len;
             const root = chunk.nodes[0];
-            try gen.genStatements(chunk, root.head.child_head, true);
+            try gen.genStatements(chunk, root.head.root.headStmt, true);
             chunk.patchBlockJumps(jumpStackStart);
             chunk.blockJumpStack.items.len = jumpStackStart;
             chunk.popBlock();
@@ -375,7 +375,7 @@ pub const VMcompiler = struct {
         } else {
             // Modules perform gen for only the top level declarations.
             const root = chunk.nodes[0];
-            try gen.genTopDeclStatements(chunk, root.head.child_head);
+            try gen.genTopDeclStatements(chunk, root.head.root.headStmt);
             chunk.popBlock();
         }
     }

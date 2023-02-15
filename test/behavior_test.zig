@@ -93,10 +93,14 @@ test "Import http spec." {
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    try eqCompileError(run.vm, "CompileError: Can not connect to `doesnotexist123.com`.",
-        &.{"test", "import_test.cy"}, 1, 11,
+    var err = try run.vm.allocLastUserCompileError();
+    try eqUserError(t.alloc, err,
+        \\CompileError: Can not connect to `doesnotexist123.com`.
+        \\
+        \\@AbsPath(test/import_test.cy):1:11:
         \\import a 'https://doesnotexist123.com/'
         \\          ^
+        \\
     );
 
     // Import NotFound response code.
@@ -109,10 +113,14 @@ test "Import http spec." {
         \\b = a
     );
     try t.expectError(res, error.CompileError);
-    try eqCompileError(run.vm, "CompileError: Can not load `https://exists.com/missing`. Response code: not_found",
-        &.{"test", "import_test.cy"}, 1, 11,
+    err = try run.vm.allocLastUserCompileError();
+    try eqUserError(t.alloc, err,
+        \\CompileError: Can not load `https://exists.com/missing`. Response code: not_found
+        \\
+        \\@AbsPath(test/import_test.cy):1:11:
         \\import a 'https://exists.com/missing'
         \\          ^
+        \\
     );
 
     // Successful import.
@@ -174,15 +182,15 @@ test "Imports." {
         \\try t.eq(valtag(a.foo), #function)
     );
     try t.expectError(res, error.Panic);
-    var trace = run.getStackTrace();
-    try t.eq(trace.frames.len, 1);
-    try eqStackFrame(trace.frames[0], .{
-        .name = "main",
-        .chunkId = 1,
-        .line = 0,
-        .col = 20,
-        .lineStartPos = 0,
-    });
+    const err = try run.vm.allocLastUserPanicError();
+    try eqUserError(t.alloc, err,
+        \\panic: Assigning to static function with a different function signature.
+        \\
+        \\@AbsPath(test/test_mods/init_func_error.cy):1:21 main:
+        \\export func foo() = number
+        \\                    ^
+        \\
+    );
 
     // Import using relative path prefix.
     _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
@@ -446,13 +454,31 @@ test "Objects." {
         \\o = S{ b: 100 }
     );
     try t.expectError(res, error.CompileError);
-    const err = try run.vm.allocLastUserCompileError();
+    var err = try run.vm.allocLastUserCompileError();
     try t.eqStrFree(t.alloc, err,
         \\CompileError: Missing field `b` in `S`.
         \\
         \\main:3:8:
         \\o = S{ b: 100 }
         \\       ^
+        \\
+    );
+
+    // Write to undeclared field.
+    res = run.evalExt(.{ .silent = true },
+        \\object S:
+        \\  a
+        \\o = S{ a: 100 }
+        \\o.b = 200
+    );
+    try t.expectError(res, error.Panic);
+    err = try run.vm.allocLastUserPanicError();
+    try t.eqStrFree(t.alloc, err,
+        \\panic: Field not found in value.
+        \\
+        \\main:4:1 main:
+        \\o.b = 200
+        \\^
         \\
     );
 
@@ -1837,23 +1863,31 @@ const Config = struct {
 };
 
 /// relPath does not have to physically exist.
-fn eqCompileError(vm: *cy.UserVM, msg: []const u8, relPath: []const []const u8, line: u32, col: u32, marker: []const u8) !void {
-    const act = try vm.allocLastUserCompileError();
-    defer t.alloc.free(act);
-    const basePath = try std.fs.realpathAlloc(t.alloc, ".");
-    defer t.alloc.free(basePath);
-    const path = try std.fs.path.resolve(t.alloc, relPath);
-    defer t.alloc.free(path);
-    const absPath = try std.fs.path.join(t.alloc, &.{basePath, path});
-    defer t.alloc.free(absPath);
-    const exp = try std.fmt.allocPrint(t.alloc, 
-        \\{s}
-        \\
-        \\{s}:{}:{}:
-        \\{s}
-        \\
-        , .{ msg, absPath, line, col, marker },
-    );
-    defer t.alloc.free(exp);
-    return t.eqStr(act, exp);
+fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !void {
+    defer alloc.free(act);
+    var exp: std.ArrayListUnmanaged(u8) = .{};
+    defer exp.deinit(alloc);
+    var pos: usize = 0;
+    while (true) {
+        if (std.mem.indexOfPos(u8, expTmpl, pos, "@AbsPath(")) |idx| {
+            if (std.mem.indexOfScalarPos(u8, expTmpl, idx, ')')) |endIdx| {
+                try exp.appendSlice(alloc, expTmpl[pos..idx]);
+                const basePath = try std.fs.realpathAlloc(alloc, ".");
+                defer t.alloc.free(basePath);
+                try exp.appendSlice(alloc, basePath);
+                try exp.append(alloc, std.fs.path.sep);
+
+                const relPathStart = exp.items.len;
+                try exp.appendSlice(alloc, expTmpl[idx+9..endIdx]);
+                if (builtin.os.tag == .windows) {
+                    _ = std.mem.replace(u8, exp.items[relPathStart..], '/', '\\', exp.items[relPathStart..]);
+                }
+
+                pos = endIdx + 1;
+            }
+        }
+        try exp.appendSlice(alloc, expTmpl[pos..]);
+        break;
+    }
+    try t.eqStr(act, exp.items);
 }

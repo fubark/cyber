@@ -54,7 +54,9 @@ func kaboom():
 kaboom()     -- Scripts ends and prints the stack trace.
 ```
 
-While the error is propagated up the call stack, the fiber can regain control in a `recover` block. The recover block must be declared before the statement that triggers a panic.
+While the panic exception is propagated up the call stack, the current fiber can catch the exception in a `recover` block.
+The recover block can only be declared at the first indentation level of a scope block.
+The recover block is also deferred. After its evaluation, only the top level return statement is evaluated and the current call frame is done.
 ```cy
 func kaboom():
     recover err:

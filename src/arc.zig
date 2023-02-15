@@ -55,6 +55,16 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     }
 }
 
+pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
+    var pc = startPc;
+    while (vm.ops[pc].code == .release) {
+        const local = vm.ops[pc+1].arg;
+        // stack[framePtr + local].dump();
+        cy.arc.release(vm, stack[framePtr + local]);
+        pc += 2;
+    }
+}
+
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
     obj.retainedCommon.rc += 1;
     log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});

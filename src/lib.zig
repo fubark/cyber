@@ -57,7 +57,7 @@ export fn cyVmEval(vm: *cy.UserVM, src: [*]const u8, srcLen: usize) cy.Value {
         .singleRun = false,
     }) catch |err| {
         if (err == error.Panic) {
-            vm.dumpPanicStackTrace() catch stdx.fatal();
+            vm.printLastUserPanicError() catch stdx.fatal();
             return cy.Value.Panic;
         } else {
             stdx.panicFmt("{}", .{err});

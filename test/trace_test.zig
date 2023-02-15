@@ -349,7 +349,7 @@ const VMrunner = struct {
         self.vm.setTrace(&self.trace);
         return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
-                try self.vm.dumpPanicStackTrace();
+                try self.vm.printLastUserPanicError();
             }
             return err;
         };

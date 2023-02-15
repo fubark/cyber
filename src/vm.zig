@@ -423,7 +423,7 @@ pub const VM = struct {
 
     pub fn dumpInfo(self: *VM) void {
         fmt.printStderr("stack size: {}\n", &.{v(self.stack.len)});
-        fmt.printStderr("stack framePtr: {}\n", &.{v(framePtrOffset(self.framePtr))});
+        fmt.printStderr("stack framePtr: {}\n", &.{v(framePtrOffset(self, self.framePtr))});
         fmt.printStderr("heap pages: {}\n", &.{v(self.heapPages.len)});
 
         // Dump object symbols.
@@ -4362,21 +4362,6 @@ fn callSymEntryNoInline(vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, sym
     return pc;
 }
 
-
-/// Given pc position, return the end locals pc in the same frame.
-/// TODO: Memoize this function.
-pub fn pcToEndLocalsPc(vm: *const VM, pc: usize) u32 {
-    const idx = debug.indexOfDebugSym(vm, pc) orelse {
-        stdx.panic("Missing debug symbol.");
-    };
-    const sym = vm.debugTable[idx];
-    if (sym.frameLoc != cy.NullId) {
-        const chunk = vm.compiler.chunks.items[sym.file];
-        const node = chunk.nodes[sym.frameLoc];
-        return node.head.func.genEndLocalsPc;
-    } else return cy.NullId;
-}
-
 pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(cy.HotSection) Value {
     return Value{
         .retInfo = .{
@@ -4406,9 +4391,9 @@ pub inline fn framePtrOffsetFrom(stackPtr: [*]const Value, framePtr: [*]const Va
     return (@ptrToInt(framePtr) - @ptrToInt(stackPtr)) >> 3;
 }
 
-pub inline fn framePtrOffset(framePtr: [*]const Value) usize {
+pub inline fn framePtrOffset(vm: *const VM, framePtr: [*]const Value) usize {
     // Divide by eight.
-    return (@ptrToInt(framePtr) - @ptrToInt(gvm.stack.ptr)) >> 3;
+    return (@ptrToInt(framePtr) - @ptrToInt(vm.stack.ptr)) >> 3;
 }
 
 pub inline fn toFramePtr(offset: usize) [*]Value {

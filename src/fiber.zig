@@ -150,29 +150,22 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) void {
             const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
             log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
             // The yield statement already contains the end locals pc.
-            runReleaseOps(vm, stack, framePtr, pc + jump);
+            cy.arc.runReleaseOps(vm, stack, framePtr, pc + jump);
         }
+
         // Unwind stack and release all locals.
         while (framePtr > 0) {
             pc = cy.vm.pcOffset(vm, stack[framePtr + 2].retPcPtr);
+
+            // Compute next frame ptr offset.
             framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
-            const endLocalsPc = cy.vm.pcToEndLocalsPc(vm, pc);
+            const endLocalsPc = cy.debug.pcToEndLocalsPc(vm, pc);
             log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
             if (endLocalsPc != cy.NullId) {
-                runReleaseOps(vm, stack, framePtr, endLocalsPc);
+                cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);
             }
         }
     }
     // Finally free stack.
     vm.alloc.free(stack);
-}
-
-fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    var pc = startPc;
-    while (vm.ops[pc].code == .release) {
-        const local = vm.ops[pc+1].arg;
-        // stack[framePtr + local].dump();
-        cy.arc.release(vm, stack[framePtr + local]);
-        pc += 2;
-    }
 }

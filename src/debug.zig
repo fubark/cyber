@@ -369,7 +369,7 @@ pub fn buildStackTrace(self: *cy.VM, fromPanic: bool) !void {
     self.stackTrace.deinit(self.alloc);
     var frames: std.ArrayListUnmanaged(StackFrame) = .{};
 
-    var framePtr = cy.framePtrOffset(self.framePtr);
+    var framePtr = cy.framePtrOffset(self, self.framePtr);
     var pc = cy.pcOffset(self, self.pc);
     var isTopFrame = true;
     while (true) {
@@ -421,9 +421,23 @@ pub fn buildStackTrace(self: *cy.VM, fromPanic: bool) !void {
                 .lineStartPos = lineStart,
             });
             pc = cy.pcOffset(self, self.stack[framePtr + 2].retPcPtr);
-            framePtr = cy.framePtrOffset(self.stack[framePtr + 3].retFramePtr);
+            framePtr = cy.framePtrOffset(self, self.stack[framePtr + 3].retFramePtr);
         }
     }
 
     self.stackTrace.frames = try frames.toOwnedSlice(self.alloc);
+}
+
+/// Given pc position, return the end locals pc in the same frame.
+/// TODO: Memoize this function.
+pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
+    const idx = indexOfDebugSym(vm, pc) orelse {
+        stdx.panic("Missing debug symbol.");
+    };
+    const sym = vm.debugTable[idx];
+    if (sym.frameLoc != cy.NullId) {
+        const chunk = vm.compiler.chunks.items[sym.file];
+        const node = chunk.nodes[sym.frameLoc];
+        return node.head.func.genEndLocalsPc;
+    } else return cy.NullId;
 }

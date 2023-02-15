@@ -146,6 +146,31 @@ pub inline fn atLeastTestDebugLevel() bool {
     return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
 }
 
+pub fn allocLastUserPanicError(vm: *const cy.VM) ![]const u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    const w = buf.writer(vm.alloc);
+    try writeLastUserPanicError(vm, w);
+    return buf.toOwnedSlice(vm.alloc);
+}
+
+pub fn printLastUserPanicError(vm: *const cy.VM) !void {
+    if (cy.silentError) {
+        return;
+    }
+    const w = fmt.lockStderrWriter();
+    defer fmt.unlockPrint();
+    try writeLastUserPanicError(vm, w);
+}
+
+fn writeLastUserPanicError(vm: *const cy.VM, w: anytype) !void {
+    const msg = try allocPanicMsg(vm);
+    defer vm.alloc.free(msg);
+
+    try fmt.format(w, "panic: {}\n\n", &.{v(msg)});
+    const trace = vm.getStackTrace();
+    try trace.write(vm, w);
+}
+
 pub fn allocLastUserCompileError(vm: *const cy.VM) ![]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);

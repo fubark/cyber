@@ -30,6 +30,10 @@ pub const UserVM = struct {
         return @ptrCast(*cy.VM, self);
     }
 
+    pub inline fn constInternal(self: *const UserVM) *const cy.VM {
+        return @ptrCast(*const cy.VM, self);
+    }
+
     pub fn setTrace(self: *UserVM, trace: *cy.TraceInfo) void {
         if (!cy.TraceEnabled) {
             return;
@@ -48,8 +52,7 @@ pub const UserVM = struct {
     }
 
     pub fn allocLastUserParseError(self: *const UserVM) ![]const u8 {
-        const vm = @ptrCast(*const VM, self);
-        return debug.allocLastUserParseError(vm);
+        return debug.allocLastUserParseError(self.constInternal());
     }
 
     pub fn getParserErrorPos(self: *const UserVM) u32 {
@@ -59,26 +62,23 @@ pub const UserVM = struct {
     }
 
     pub fn allocLastUserCompileError(self: *const UserVM) ![]const u8 {
-        const vm = @ptrCast(*const VM, self);
-        return debug.allocLastUserCompileError(vm);
+        return debug.allocLastUserCompileError(self.constInternal());
     }
 
     pub fn getCompileErrorMsg(self: *const UserVM) []const u8 {
-        return @ptrCast(*const VM, self).compiler.lastErr;
+        return self.constInternal().compiler.lastErr;
     }
 
     pub fn allocPanicMsg(self: *const UserVM) ![]const u8 {
-        return cy.debug.allocPanicMsg(@ptrCast(*const VM, self));
+        return cy.debug.allocPanicMsg(self.constInternal());
     }
 
-    pub fn dumpPanicStackTrace(self: *UserVM) !void {
-        @setCold(true);
-        const vm = self.internal();
-        const msg = try self.allocPanicMsg();
-        defer vm.alloc.free(msg);
-        fmt.printStderr("panic: {}\n\n", &.{fmt.v(msg)});
-        const trace = vm.getStackTrace();
-        try trace.dump(vm);
+    pub fn allocLastUserPanicError(self: *const UserVM) ![]const u8 {
+        return cy.debug.allocLastUserPanicError(self.constInternal());
+    }
+
+    pub fn printLastUserPanicError(self: *const UserVM) !void {
+        try cy.debug.printLastUserPanicError(self.constInternal());
     }
 
     pub fn dumpInfo(self: *UserVM) void {

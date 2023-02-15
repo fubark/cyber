@@ -1739,7 +1739,7 @@ const VMrunner = struct {
         try self.resetEnv();
         return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
-                try self.vm.dumpPanicStackTrace();
+                try self.vm.printLastUserPanicError();
             }
             return err;
         };
@@ -1759,7 +1759,7 @@ const VMrunner = struct {
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
         return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
-                try self.vm.dumpPanicStackTrace();
+                try self.vm.printLastUserPanicError();
             }
             return err;
         };

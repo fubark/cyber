@@ -56,8 +56,6 @@ print fiber.status()   -- '#done'
 ```
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 
-Fibers are freed by ARC just like any other object. Once there are no references to the fiber, it begins to release it's child references by unwinding its call stack.
-
 ## Async.
 
 ## Multi-thread.

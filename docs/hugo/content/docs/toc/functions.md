@@ -99,7 +99,7 @@ canvas.onUpdate():
 Passing a lambda block as a call argument is only possible in a call expression block. To understand how that works, see [Function Calls](#function-calls).
 
 ## Closures.
-In Cyber, functions can close over local variables in parent blocks.
+In Cyber, functions can capture local variables in parent blocks. In the following, the `a` referenced in the lambda expression is captured from the function `add`'s variable scope.
 ```cy
 func add():
     a = 123

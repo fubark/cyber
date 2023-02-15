@@ -1880,7 +1880,7 @@ fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !
                 const relPathStart = exp.items.len;
                 try exp.appendSlice(alloc, expTmpl[idx+9..endIdx]);
                 if (builtin.os.tag == .windows) {
-                    _ = std.mem.replace(u8, exp.items[relPathStart..], '/', '\\', exp.items[relPathStart..]);
+                    _ = std.mem.replaceScalar(u8, exp.items[relPathStart..], '/', '\\');
                 }
 
                 pos = endIdx + 1;

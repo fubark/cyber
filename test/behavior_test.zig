@@ -430,14 +430,31 @@ test "Objects." {
     defer run.destroy();
 
     // Missing semicolon.
-    var val = run.evalExt(.{ .silent = true },
+    var res = run.evalExt(.{ .silent = true },
         \\object Vec2
         \\  x
         \\  y
     );
-    try t.expectError(val, error.ParseError);
+    try t.expectError(res, error.ParseError);
     try t.eqStr(run.vm.getParserErrorMsg(), "Expected colon to start an object type block.");
     try t.eq(run.vm.getParserErrorPos(), 11);
+
+    // Initialize with undeclared field.
+    res = run.evalExt(.{ .silent = true },
+        \\object S:
+        \\  a
+        \\o = S{ b: 100 }
+    );
+    try t.expectError(res, error.CompileError);
+    const err = try run.vm.allocLastUserCompileError();
+    try t.eqStrFree(t.alloc, err,
+        \\CompileError: Missing field `b` in `S`.
+        \\
+        \\main:3:8:
+        \\o = S{ b: 100 }
+        \\       ^
+        \\
+    );
 
     _ = try run.eval(@embedFile("object_test.cy"));
 }

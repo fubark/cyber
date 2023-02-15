@@ -211,7 +211,8 @@ fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
         const prop = self.nodes[entry.head.mapEntry.left];
         const fieldName = self.getNodeTokenString(prop);
         const fieldIdx = self.compiler.vm.getStructFieldIdx(sid, fieldName) orelse {
-            return self.reportErrorAt("Missing field {}", &.{fmt.v(fieldName)}, entry.head.mapEntry.left);
+            const objectName = self.compiler.vm.structs.buf[sid].name;
+            return self.reportErrorAt("Missing field `{}` in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
         };
         initFields[fieldIdx] = entryId;
         entryId = entry.next;

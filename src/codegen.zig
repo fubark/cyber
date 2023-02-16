@@ -1376,21 +1376,21 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             try self.setReservedTempLocal(iterLocal);
             try self.buf.pushOp2(.copyRetainSrc, iterable.local, iterLocal + 4);
             if (pairIter) {
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.compiler.vm.pairIteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.pairIteratorObjSym));
                 try self.pushDebugSym(node.head.for_iter_stmt.iterable);
             } else {
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal, 1, 1, @intCast(u8, self.compiler.vm.iteratorObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.iteratorObjSym));
                 try self.pushDebugSym(node.head.for_iter_stmt.iterable);
             }
 
             try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
             if (pairIter) {
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                try pushCallObjSym(self, iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym));
                 try self.pushDebugSym(node.head.for_iter_stmt.iterable);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
             } else {
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                try pushCallObjSym(self, iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym));
                 try self.pushDebugSym(node.head.for_iter_stmt.iterable);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
             }
@@ -1407,11 +1407,11 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const contPc = self.buf.ops.items.len;
             try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
             if (pairIter) {
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                try pushCallObjSym(self, iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym));
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
             } else {
-                try self.buf.pushOpSlice(.callObjSym, &.{ iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+                try pushCallObjSym(self, iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym));
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
             }
 
@@ -1958,10 +1958,10 @@ fn genCallObjSym(self: *CompileChunk, callStartLocal: u8, leftId: cy.NodeId, ide
     _ = try self.genRetainedTempExpr(leftId, false);
 
     if (dstIsUsed) {
-        try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId));
         try self.pushDebugSym(debugNodeId);
     } else {
-        try self.buf.pushOpSlice(.callObjSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId), 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId));
         try self.pushDebugSym(debugNodeId);
     }
     return GenValue.initTempValue(callStartLocal, sema.AnyType);
@@ -2410,4 +2410,8 @@ fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
         fmt.printStderr(format, vals);
     }
     stdx.fatal();
+}
+
+fn pushCallObjSym(chunk: *cy.CompileChunk, startLocal: u8, numArgs: u8, numRet: u8, symId: u8) !void {
+    try chunk.buf.pushOpSlice(.callObjSym, &.{ startLocal, numArgs, numRet, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
 }

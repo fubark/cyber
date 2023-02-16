@@ -711,7 +711,6 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             } else {
                 const tag = field.asTagLiteralId();
                 switch (@intToEnum(TagLit, tag)) {
-                    .dupeCharPtrZ,
                     .charPtrZ => {
                         try w.print("icyToCStr(vm, args[{}])", .{i});
                     },
@@ -839,7 +838,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                     const tag = carg.asTagLiteralId();
                     switch (@intToEnum(TagLit, tag)) {
                         .charPtrZ => {
-                            try w.print("char* str{} = icyToCStr(vm, args[{}]);\n", .{i, i});
+                            try w.print("  char* str{} = icyToCStr(vm, args[{}]);\n", .{i, i});
                         },
                         else => {},
                     }
@@ -1067,7 +1066,12 @@ fn fromCStr(vm: *cy.UserVM, ptr: [*:0]const u8) callconv(.C) Value {
 }
 
 fn toCStr(vm: *cy.UserVM, val: Value) callconv(.C) [*]const u8 {
-    const str = vm.valueAsString(val);
+    var str: []const u8 = undefined;
+    if (val.isRawString()) {
+        str = val.asRawString();
+    } else {
+        str = vm.valueToTempString(val);
+    }
     const dupe = @ptrCast([*]u8, std.c.malloc(str.len + 1));
     std.mem.copy(u8, dupe[0..str.len], str);
     dupe[str.len] = 0;

@@ -52,7 +52,7 @@ float testF32(float n) {
 double testF64(double n) {
     return n;
 }
-char buf[10];
+char buf[1024];
 char* testCharPtrZ(char* ptr) {
     strcpy(buf, ptr);
     return &buf[0];

@@ -158,7 +158,11 @@ pub const Value = packed union {
     }
 
     pub inline fn isRawString(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().common.structId == cy.RawStringT;
+        if (!self.isPointer()) {
+            return false;
+        }
+        const typeId = self.asHeapObject().common.structId;
+        return typeId == cy.RawStringT or typeId == cy.RawStringSliceT;
     }
 
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
@@ -242,7 +246,7 @@ pub const Value = packed union {
         return false;
     }
 
-    pub inline fn asRawStringSlice(self: *const Value) []const u8 {
+    pub inline fn asRawString(self: *const Value) []const u8 {
         const obj = self.asHeapObject();
         if (obj.common.structId == cy.RawStringT) {
             return obj.rawstring.getConstSlice();

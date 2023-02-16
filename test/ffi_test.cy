@@ -76,16 +76,24 @@ try t.eq(res.b, 10)
 try t.eq(res.c, rawstring('foo'))
 try t.eq(res.d, true)
 
--- pass in const string
+-- testCharPtrZ with const string
 try t.eq(lib.testCharPtrZ('foo'), rawstring('foo'))
 
--- pass in heap string
+-- testCharPtrZ with heap string
 str = 'foo{123}'
 try t.eq(lib.testCharPtrZ(str), rawstring('foo123'))
-try t.eq(lib.testPtr(opaque(123)), opaque(123))
+
+-- testCharPtrZ with number
+try t.eq(lib.testCharPtrZ(100), rawstring('100'))
+
+-- testCharPtrZ with rawstring
+try t.eq(lib.testCharPtrZ(rawstring('foo')), rawstring('foo'))
 
 -- testDupeCharPtrZ
 try t.eq(lib.testDupeCharPtrZ('foo'), rawstring('foo'))
+
+-- testPtr
+try t.eq(lib.testPtr(opaque(123)), opaque(123))
 
 -- void return and no args.
 try t.eq(lib.testVoid(), none)

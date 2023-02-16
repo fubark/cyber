@@ -398,7 +398,7 @@ test "FFI." {
             return &temp;
         }
         var temp: MyObject = undefined;
-        var buf: [10]u8 = undefined;
+        var buf: [1024]u8 = undefined;
     };
     _ = S;
 

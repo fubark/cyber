@@ -57,8 +57,8 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 }
             },
             .rawstring => {
-                const actStr = act.asRawStringSlice();
-                const expStr = exp.asRawStringSlice();
+                const actStr = act.asRawString();
+                const expStr = exp.asRawString();
                 if (std.mem.eql(u8, actStr, expStr)) {
                     return true;
                 } else {

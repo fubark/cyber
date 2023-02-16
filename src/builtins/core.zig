@@ -470,7 +470,7 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     defer vm.allocator().free(path);
     var content: []const u8 = undefined;
     if (args[1].isRawString()) {
-        content = args[1].asHeapObject().rawstring.getConstSlice();
+        content = args[1].asRawString();
     } else {
         content = vm.valueToTempString(args[1]);
     }

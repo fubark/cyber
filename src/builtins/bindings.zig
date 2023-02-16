@@ -875,7 +875,7 @@ pub fn stringLess(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             if (isRawStringObject(T)) {
                 var right: []const u8 = undefined;
                 if (args[0].isRawString()) {
-                    right = args[0].asHeapObject().rawstring.getConstSlice();
+                    right = args[0].asRawString();
                 } else {
                     right = vm.valueToTempString(args[0]);
                 }
@@ -2009,7 +2009,7 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
 
     var buf: []const u8 = undefined;
     if (args[0].isRawString()) {
-        buf = args[0].asHeapObject().rawstring.getConstSlice();
+        buf = args[0].asRawString();
     } else {
         buf = vm.valueToTempString(args[0]);
     }

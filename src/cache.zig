@@ -1,4 +1,6 @@
 const std = @import("std");
+const stdx = @import("stdx");
+const t = stdx.testing;
 const platform = @import("platform.zig");
 
 /// Loaded on demand.
@@ -164,8 +166,15 @@ pub fn allocSpecFileContents(alloc: std.mem.Allocator, entry: SpecEntry) ![]cons
 fn computeSpecHashStr(spec: []const u8) [16]u8 {
     var res: [16]u8 = undefined;
     const hash = std.hash.Wyhash.hash(0, spec);
-    _ = std.fmt.formatIntBuf(&res, hash, 16, .lower, .{});
+    _ = std.fmt.formatIntBuf(&res, hash, 16, .lower, .{ .width = 16, .fill = '0'});
     return res;
+}
+
+test "computeSpecHashStr" {
+    // Formats 0 to entire width.
+    var res: [16]u8 = undefined;
+    _ = std.fmt.formatIntBuf(&res, 0, 16, .lower, .{ .width = 16, .fill = '0' });
+    try std.testing.expectEqualStrings(&res, "0000000000000000");
 }
 
 const SpecEntry = struct {

@@ -845,9 +845,11 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
             if (eachClause.head.eachClause.key != cy.NullId) {
-                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, AnyType);
+                const keyv = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, AnyType);
+                c.vars.items[keyv].genInitializer = true;
             }
-            _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, AnyType);
+            const valv = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, AnyType);
+            c.vars.items[valv].genInitializer = true;
 
             try semaStmts(c, node.head.for_iter_stmt.body_head, false);
             try endIterSubBlock(c);

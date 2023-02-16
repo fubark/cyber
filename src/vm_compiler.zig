@@ -235,12 +235,13 @@ pub const VMcompiler = struct {
             try chunk.pushSemaBlock(chunk.mainSemaBlockId);
             try chunk.pushBlock();
             chunk.buf = &self.buf;
+            // Temp locals can start at 0 for initializers codegen.
+            chunk.curBlock.numLocals = 0;
         }
 
         // Once all symbols have been resolved, the static initializers are generated in DFS order.
-        // Uses temp locals from the main block.
         for (self.chunks.items) |*chunk| {
-            log.debug("gen static initializer for block: {}", .{chunk.id});
+            log.debug("gen static initializer for chunk: {}", .{chunk.id});
             for (chunk.semaSyms.items) |sym, i| {
                 const symId = @intCast(u32, i);
                 // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});
@@ -252,7 +253,7 @@ pub const VMcompiler = struct {
         }
 
         for (self.chunks.items) |*chunk, i| {
-            log.debug("perform codegen {}", .{i});
+            log.debug("perform codegen for chunk: {}", .{i});
             try self.performChunkCodegen(chunk.id);
         }
 

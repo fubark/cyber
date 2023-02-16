@@ -2,6 +2,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const platform = @import("platform.zig");
+const log = stdx.log.scoped(.cache);
 
 /// Loaded on demand.
 /// Once loaded, common sub directories are assumed to exist.
@@ -101,13 +102,18 @@ pub fn getSpecHashGroup(alloc: std.mem.Allocator, spec: []const u8) !SpecHashGro
     const path = try std.fs.path.join(alloc, &.{cyberPath, EntriesDir, &hash});
     defer alloc.free(path);
     const entries = readEntryFile(alloc, path) catch |err| {
-        if (err == error.FileNotFound) {
-            return SpecHashGroup{
-                .hash = hash,
-                .entries = &.{},
-            };
-        } else {
-            return err;
+        switch (err) {
+            error.FileNotFound,
+            // EBADF
+            error.Unexpected => {
+                return SpecHashGroup{
+                    .hash = hash,
+                    .entries = &.{},
+                };
+            },
+            else => {
+                return err;
+            }
         }
     };
     return SpecHashGroup{

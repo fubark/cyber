@@ -1,10 +1,9 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
 -- Snake, a game ported from Raylib examples.
--- Check that `ray.cy` points to your platform's raylib library.
 
 import os 'os'
-import ray 'ray.cy'
+import ray 'https://github.com/fubark/ray-cyber'
 
 var SNAKE_LENGTH = 256
 var SQUARE_SIZE = 31

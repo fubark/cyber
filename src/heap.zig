@@ -498,6 +498,13 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
+        if (builtin.mode == .Debug) {
+            // log.debug("alloc {*}", .{ptr});
+            self.objectTraceMap.put(self.alloc, ptr, .{
+                .allocPc = cy.pcOffset(self, self.debugPc),
+                .freePc = cy.NullId,
+            }) catch stdx.fatal();
+        }
         return ptr;
     }
 }
@@ -1510,6 +1517,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 vm.alloc.free(slice);
             }
         },
+    }
+    if (builtin.mode == .Debug) {
+        if (vm.objectTraceMap.getPtr(obj)) |trace| {
+            trace.freePc = cy.pcOffset(vm, vm.debugPc);
+        } else {
+            log.debug("Missing object trace {*}", .{obj});
+        }
     }
 }
 

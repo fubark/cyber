@@ -17,7 +17,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         if (builtin.mode == .Debug) {
             if (obj.retainedCommon.structId == cy.NullId) {
                 log.debug("object already freed. {*}", .{obj});
-                cy.debug.dumpObjectTrace(vm, obj);
+                cy.debug.dumpObjectTrace(vm, obj) catch stdx.fatal();
                 stdx.fatal();
             }
         }

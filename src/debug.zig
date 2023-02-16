@@ -27,6 +27,7 @@ pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, ou
     outLineStart.* = lineStart;
 }
 
+/// `pos` is the char pos in `src`.
 pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
@@ -124,22 +125,37 @@ pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
     return null;
 }
 
-pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) void {
-    if (vm.objectTraceMap.get(obj)) |pc| {
-        if (indexOfDebugSym(vm, pc)) |idx| {
+pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
+    if (vm.objectTraceMap.get(obj)) |trace| {
+        var queryPc = trace.allocPc + cy.getInstLenAt(vm.ops.ptr + trace.allocPc);
+        if (indexOfDebugSym(vm, queryPc)) |idx| {
             const sym = vm.debugTable[idx];
             const chunk = &vm.compiler.chunks.items[sym.file];
             const node = chunk.nodes[sym.loc];
-            var line: u32 = undefined;
-            var col: u32 = undefined;
-            var lineStart: u32 = undefined;
-            const pos = chunk.tokens[node.start_token].pos();
-            computeLinePosWithTokens(chunk.parser.tokens.items, chunk.src, pos, &line, &col, &lineStart);
-            log.debug("{*} was allocated at {}:{}", .{obj, line + 1, col + 1});
-            return;
-        } 
+            const token = chunk.tokens[node.start_token];
+            const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}", .{obj, trace.allocPc});
+            defer vm.alloc.free(msg);
+            try printUserError(vm, "DebugTrace", msg, sym.file, token.pos(), false);
+        } else {
+            log.debug("Missing debug sym for {}, pc: {}.", .{vm.ops[trace.allocPc].code, trace.allocPc});
+        }
+        if (trace.freePc != cy.NullId) {
+            queryPc = trace.freePc + cy.getInstLenAt(vm.ops.ptr + trace.freePc);
+            if (indexOfDebugSym(vm, queryPc)) |idx| {
+                const sym = vm.debugTable[idx];
+                const chunk = &vm.compiler.chunks.items[sym.file];
+                const node = chunk.nodes[sym.loc];
+                const token = chunk.tokens[node.start_token];
+                const msg = try std.fmt.allocPrint(vm.alloc, "Freed object: {*} at pc: {}", .{obj, trace.freePc});
+                defer vm.alloc.free(msg);
+                try printUserError(vm, "DebugTrace", msg, sym.file, token.pos(), false);
+            } else {
+                log.debug("Missing debug sym for {}, pc: {}.", .{vm.ops[trace.freePc].code, trace.freePc});
+            }
+        }
+    } else {
+        log.debug("No trace for {*}.", .{obj});
     }
-    log.debug("No trace for {*}.", .{obj});
 }
 
 pub inline fn atLeastTestDebugLevel() bool {
@@ -233,23 +249,23 @@ pub fn printLastUserParseError(vm: *const cy.VM) !void {
     try writeLastUserParseError(vm, w);
 }
 
-pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, isCharPos: bool) linksection(cy.Section) !void {
+pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, queryPosFromSrc: bool) linksection(cy.Section) !void {
     if (cy.silentError) {
         return;
     }
     const w = fmt.lockStderrWriter();
     defer fmt.unlockPrint();
-    try writeUserError(vm, w, title, msg, chunkId, pos, isCharPos);
+    try writeUserError(vm, w, title, msg, chunkId, pos, queryPosFromSrc);
 }
 
 /// Reduced to using writer so printed errors can be tested.
-pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, isCharPos: bool) linksection(cy.Section) !void {
+pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, queryPosFromSrc: bool) linksection(cy.Section) !void {
     const chunk = vm.compiler.chunks.items[chunkId];
     if (pos != NullId) {
         var line: u32 = undefined;
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
-        if (isCharPos) {
+        if (queryPosFromSrc) {
             computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
         } else {
             computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
@@ -447,3 +463,11 @@ pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
         return node.head.root.genEndLocalsPc;
     }
 }
+
+pub const ObjectTrace = struct {
+    /// Points to inst that allocated the object.
+    allocPc: u32,
+
+    /// Points to inst that freed the object.
+    freePc: u32,
+};

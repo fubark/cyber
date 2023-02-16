@@ -287,8 +287,16 @@ pub const ByteCodeBuffer = struct {
                     const symId = pc[4].arg;
                     fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}\n", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
                 },
+                .jump => {
+                    const jump = @ptrCast(*const align(1) i16, pc + 1).*;
+                    fmt.printStderr("{} {} offset={}\n", &.{v(pcOffset), v(code), v(jump)});
+                },
                 .jumpNotCond => {
                     const jump = @ptrCast(*const align(1) u16, pc + 1).*;
+                    fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
+                },
+                .jumpNotNone => {
+                    const jump = @ptrCast(*const align(1) i16, pc + 1).*;
                     fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
                 },
                 else => {

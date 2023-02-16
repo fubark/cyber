@@ -137,7 +137,10 @@ pub const VM = struct {
     trace: if (TraceEnabled) *TraceInfo else void,
 
     /// Object to pc of instruction that allocated it.
-    objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, u32) else void,
+    objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
+
+    /// In debug mode, always save the current pc so tracing can be obtained.
+    debugPc: if (builtin.mode == .Debug) [*]const cy.OpData else void,
 
     config: EvalConfig,
 
@@ -192,6 +195,7 @@ pub const VM = struct {
             .curFiber = undefined,
             .endLocal = undefined,
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
+            .debugPc = undefined,
             .deinited = false,
             .funcSymDeps = .{},
             .config = undefined,
@@ -2538,6 +2542,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
     defer {
         vm.pc = pc;
         vm.framePtr = framePtr;
+        if (builtin.mode == .Debug) {
+            vm.debugPc = pc;
+        }
     } 
 
     while (true) {
@@ -2548,6 +2555,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
         }
         if (builtin.mode == .Debug) {
             dumpEvalOp(vm, pc);
+            vm.debugPc = pc;
         }
         if (EnableAarch64ComputedGoto) {
             // Base address to jump from.
@@ -2903,9 +2911,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numFields = pc[3].arg;
                 const fields = framePtr[startLocal .. startLocal + numFields];
                 framePtr[pc[4].arg] = try cy.heap.allocObjectSmall(vm, sid, fields);
-                if (builtin.mode == .Debug) {
-                    vm.objectTraceMap.put(vm.alloc, framePtr[pc[4].arg].asHeapObject(), pcOffset(vm, pc)) catch stdx.fatal();
-                }
                 pc += 5;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;

@@ -2051,16 +2051,20 @@ pub const Parser = struct {
                     },
                 };
 
-                // Before returning, perform left recursion with the right if the op prec is the same.
+                // Before returning the expr, perform left recursion if the op prec greater than the starting op.
                 // eg. a + b * c * d
-                // The result should be a + ((b * c) * d).
+                //         ^ parseRightExpression starts here
+                // Returns ((b * c) * d).
+                // eg. a < b * c - d
+                //         ^ parseRightExpression starts here
+                // Returns ((b * c) - d).
                 var left = binExpr;
                 while (true) {
                     token = self.peekToken();
                     if (token.tag() == .operator) {
                         const right2_op = toBinExprOp(token.data.operator_t);
                         const right2_op_prec = getBinOpPrecedence(right2_op);
-                        if (right2_op_prec == right_op_prec) {
+                        if (right2_op_prec > op_prec) {
                             self.advanceToken();
                             const rightExpr = try self.parseRightExpression(right_op);
                             const newBinExpr = try self.pushNode(.binExpr, start);

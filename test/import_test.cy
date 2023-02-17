@@ -33,3 +33,15 @@ try t.eq(a.sameFuncName(), sameFuncName())
 -- Reference the alias `number` in `a.cy` that was already resolved in main.
 try t.eq(number(1), 1)
 try t.eq(a.useNumber(1), 1)
+
+object Vec2:
+    x number
+    y number
+-- Same name, different object types.
+v1 = Vec2{ x: 1, y: 2 }
+v2 = a.Vec2{ x: 3, y: 4 }
+try t.eq(typeid(v1) != typeid(v2), true)
+try t.eq(v1.x, 1)
+try t.eq(v1.y, 2)
+try t.eq(v2.x, 3)
+try t.eq(v2.y, 4)

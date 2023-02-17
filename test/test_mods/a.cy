@@ -44,3 +44,7 @@ export func sameFuncName():
 
 export func useNumber(a):
     return number(a)
+
+export object Vec2:
+    x number
+    y number

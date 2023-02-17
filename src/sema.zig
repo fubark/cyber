@@ -725,7 +725,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     try c.compiler.modules.items[c.modId].setUserFunc(c.compiler, name, numParams, stmt);
                 },
                 .objectDecl => {
-                    try semaObjectDecl(c, stmt);
+                    try semaObjectDecl(c, stmt, true);
                 },
                 else => {
                     return c.reportErrorAt("Unsupported export {}", &.{v(c.nodes[stmt].node_t)}, nodeId);
@@ -781,7 +781,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             }
         },
         .objectDecl => {
-            try semaObjectDecl(c, nodeId);
+            try semaObjectDecl(c, nodeId, false);
         },
         .funcDeclInit => {
             try semaFuncDeclAssign(c, nodeId, false);
@@ -947,7 +947,7 @@ fn semaMatchBlock(c: *cy.CompileChunk, nodeId: cy.NodeId, canBreak: bool) !Type 
     }
 }
 
-fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
+fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.objectDecl.name];
     const name = c.getNodeTokenString(nameN);
@@ -961,7 +961,7 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
         return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
     }
     const objSymId = try ensureSym(c, null, nameId, null);
-    _ = try resolveLocalObjectSym(c, objSymId, c.semaResolvedRootSymId, name, nodeId);
+    _ = try resolveLocalObjectSym(c, objSymId, c.semaResolvedRootSymId, name, nodeId, exported);
     // Object type should be constructed during sema so it's available for static initializer codegen.
     const sid = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId);
 
@@ -2557,7 +2557,7 @@ pub fn getOrLoadModule(self: *cy.CompileChunk, spec: []const u8, nodeId: cy.Node
 
 /// Given the local sym path, add a resolved object sym entry.
 /// Assumes parent is resolved.
-fn resolveLocalObjectSym(chunk: *cy.CompileChunk, symId: SymId, resolvedParentId: ResolvedSymId, name: []const u8, declId: cy.NodeId) !u32 {
+fn resolveLocalObjectSym(chunk: *cy.CompileChunk, symId: SymId, resolvedParentId: ResolvedSymId, name: []const u8, declId: cy.NodeId, exported: bool) !u32 {
     const c = chunk.compiler;
     const nameId = try ensureNameSym(c, name);
     const key = vm_.KeyU64{
@@ -2581,7 +2581,7 @@ fn resolveLocalObjectSym(chunk: *cy.CompileChunk, symId: SymId, resolvedParentId
                 .declId = declId,
             },
         },
-        .exported = false,
+        .exported = exported,
     });
     try @call(.never_inline, c.semaResolvedSymMap.put, .{chunk.alloc, key, resolvedId});
 

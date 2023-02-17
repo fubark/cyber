@@ -957,9 +957,6 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
     }
 
-    if (getSym(c, null, nameId, null) != null) {
-        return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
-    }
     const objSymId = try ensureSym(c, null, nameId, null);
     _ = try resolveLocalObjectSym(c, objSymId, c.semaResolvedRootSymId, name, nodeId, exported);
     // Object type should be constructed during sema so it's available for static initializer codegen.

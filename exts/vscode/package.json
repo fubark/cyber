@@ -13,7 +13,7 @@
     "languages": [{
       "id": "cyber",
       "aliases": ["Cyber", "cyber"],
-      "extensions": [".cy"],
+      "extensions": [".cy", ".cys", ".cyber"],
       "configuration": "./language-configuration.json"
     }],
     "grammars": [{

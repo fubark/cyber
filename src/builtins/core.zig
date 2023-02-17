@@ -66,6 +66,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
     try mod.setNativeFunc(self, "string", 1, string);
+    try mod.setNativeFunc(self, "typeid", 1, typeid);
     try mod.setNativeFunc(self, "valtag", 1, valtag);
     if (cy.hasStdFiles) {
         try mod.setNativeFunc(self, "writeFile", 2, writeFile);
@@ -419,8 +420,7 @@ pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return getInput(vm, args, nargs);
 }
 
-pub fn string(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = nargs;
+pub fn string(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     defer vm.release(args[0]);
     if (val.isString()) {
@@ -429,6 +429,11 @@ pub fn string(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
         const str = vm.valueToTempString(val);
         return vm.allocStringInfer(str) catch stdx.fatal();
     }
+}
+
+pub fn typeid(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    defer vm.release(args[0]);
+    return Value.initF64(@intToFloat(f64, args[0].getTypeId()));
 }
 
 pub fn valtag(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

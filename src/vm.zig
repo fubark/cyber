@@ -11,6 +11,7 @@ const v = fmt.v;
 const cy = @import("cyber.zig");
 const sema = @import("sema.zig");
 const bindings = @import("builtins/bindings.zig");
+const math_mod = @import("builtins/math.zig");
 const Value = cy.Value;
 const debug = @import("debug.zig");
 const http = @import("http.zig");
@@ -594,15 +595,32 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureStruct(self: *VM, nameId: sema.NameSymId, uniqId: u32) !TypeId {
+    pub fn addAnonymousStruct(self: *VM, baseName: []const u8) !TypeId {
+        const name = try self.alloc.alloc(u8, baseName.len + 16);
+        defer self.alloc.free(name);
+
+        var attempts: u32 = 0;
+        while (attempts < 100): (attempts += 1) {
+            const next = math_mod.rand.next();
+            std.mem.copy(u8, name[0..baseName.len], baseName);
+            _ = std.fmt.formatIntBuf(name[baseName.len..], next, 16, .lower, .{ .width = 16, .fill = '0'});
+            if (!self.compiler.semaNameSymMap.contains(name)) {
+                const nameId = try cy.sema.ensureNameSymExt(&self.compiler, name, true);
+                return try self.ensureObjectType(cy.NullId, nameId);
+            }
+        }
+        return error.TooManyAttempts;
+    }
+
+    pub fn ensureObjectType(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
         const res = try @call(.never_inline, self.structSignatures.getOrPut, .{self.alloc, .{
             .structKey = .{
+                .resolvedParentSymId = resolvedParentId,
                 .nameId = nameId,
-                .uniqId = uniqId,
             },
         }});
         if (!res.found_existing) {
-            return self.addStructExt(nameId, uniqId);
+            return self.addObjectTypeExt(resolvedParentId, nameId);
         } else {
             return res.value_ptr.*;
         }
@@ -633,16 +651,16 @@ pub const VM = struct {
         return id;
     }
 
-    pub inline fn getStruct(self: *const VM, nameId: sema.NameSymId, uniqId: u32) ?TypeId {
+    pub inline fn getObjectTypeId(self: *const VM, resolvedParentId: sema.ResolvedSymId, nameId: sema.NameSymId) ?TypeId {
         return self.structSignatures.get(.{
             .structKey = .{
+                .resolvedParentSymId = resolvedParentId,
                 .nameId = nameId,
-                .uniqId = uniqId,
             },
         });
     }
 
-    pub fn addStructExt(self: *VM, nameId: sema.NameSymId, uniqId: u32) !TypeId {
+    pub fn addObjectTypeExt(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
         const name = sema.getName(&self.compiler, nameId);
         const s = Struct{
             .name = name,
@@ -653,16 +671,16 @@ pub const VM = struct {
         try vm.structs.append(vm.alloc, s);
         try vm.structSignatures.put(vm.alloc, .{
             .structKey = .{
+                .resolvedParentSymId = resolvedParentId,
                 .nameId = nameId,
-                .uniqId = uniqId,
             },
         }, id);
         return id;
     }
 
-    pub fn addStruct(self: *VM, name: []const u8) !TypeId {
+    pub fn addObjectType(self: *VM, name: []const u8) !TypeId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
-        return self.addStructExt(nameId, 0);
+        return self.addObjectTypeExt(cy.NullId, nameId);
     }
 
     inline fn getVM(self: *VM) *VM {
@@ -4556,8 +4574,8 @@ pub const KeyU64 = extern union {
         numParams: u32,
     },
     structKey: extern struct {
+        resolvedParentSymId: u32,
         nameId: u32,
-        uniqId: u32,
     },
 };
 

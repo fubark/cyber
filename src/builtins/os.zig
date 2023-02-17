@@ -13,13 +13,35 @@ const TagLit = bindings.TagLit;
 
 const log = stdx.log.scoped(.os);
 
-pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
-    var mod = cy.Module{
-        .syms = .{},
-        .chunkId = cy.NullId,
-        .resolvedRootSymId = cy.NullId,
-    };
+pub var CFuncT: cy.TypeId = undefined;
+pub var CStructT: cy.TypeId = undefined;
 
+pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
+    const vm = self.vm;
+
+    // Object Types.
+    var id: u32 = undefined;
+    var nameId = try cy.sema.ensureNameSym(self, "CFunc");
+    CFuncT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId);
+    vm.structs.buf[CFuncT].numFields = 3;
+    id = try vm.ensureFieldSym("sym");
+    try vm.addFieldSym(CFuncT, id, 0);
+    id = try vm.ensureFieldSym("args");
+    try vm.addFieldSym(CFuncT, id, 1);
+    id = try vm.ensureFieldSym("ret");
+    try vm.addFieldSym(CFuncT, id, 2);
+    try mod.setObject(self, "CFunc", CFuncT);
+
+    nameId = try cy.sema.ensureNameSym(self, "CStruct");
+    CStructT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId);
+    vm.structs.buf[CStructT].numFields = 2;
+    id = try vm.ensureFieldSym("fields");
+    try vm.addFieldSym(CStructT, id, 0);
+    id = try vm.ensureFieldSym("type");
+    try vm.addFieldSym(CStructT, id, 1);
+    try mod.setObject(self, "CStruct", CStructT);
+
+    // Variables.
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
     if (builtin.cpu.arch.endian() == .Little) {
         try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.little)));
@@ -48,6 +70,7 @@ pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
         try mod.setVar(self, "vecBitSize", cy.Value.initF64(0));
     }
 
+    // Functions.
     try mod.setNativeFunc(self, "args", 0, osArgs);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
@@ -109,7 +132,6 @@ pub fn initModule(self: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
     } else {
         try mod.setNativeFunc(self, "unsetEnv", 1, unsetEnv);
     }
-    return mod;
 }
 
 pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) !void {
@@ -619,7 +641,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
     const fieldsF = try ivm.ensureFieldSym("fields");
     const typeF = try ivm.ensureFieldSym("type");
     for (decls.items()) |decl| {
-        if (decl.isObjectType(bindings.CFuncT)) {
+        if (decl.isObjectType(CFuncT)) {
             const sym = vm.valueToTempString(try ivm.getField(decl, symF));
             const symz = try std.cstr.addNullByte(alloc, sym);
             defer alloc.free(symz);
@@ -632,7 +654,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 log.debug("Missing sym: '{s}'", .{sym});
                 return Value.initErrorTagLit(@enumToInt(TagLit.MissingSymbol));
             }
-        } else if (decl.isObjectType(bindings.CStructT)) {
+        } else if (decl.isObjectType(CStructT)) {
             const val = try ivm.getField(decl, typeF);
             if (val.isObjectType(cy.SymbolT)) {
                 const objType = val.asPointer(*cy.heap.Symbol);
@@ -1012,8 +1034,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         return map;
     } else {
         // Create anonymous struct with binded C-functions as methods.
-        const nameId = try cy.sema.ensureNameSym(&ivm.compiler, "BindLib");
-        const sid = try ivm.ensureStruct(nameId, @intCast(u32, ivm.structs.len));
+        const sid = try ivm.addAnonymousStruct("BindLib");
         const tccField = try ivm.ensureFieldSym("tcc");
         ivm.structs.buf[sid].numFields = 1;
         try ivm.addFieldSym(sid, tccField, 0);

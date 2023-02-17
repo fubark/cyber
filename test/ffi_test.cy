@@ -16,7 +16,7 @@ else:
   libPath = none
 
 -- Missing symbol.
-lib = os.bindLib(libPath, [ CFunc{ sym: 'missing123', args: [], ret: #int }])
+lib = os.bindLib(libPath, [ os.CFunc{ sym: 'missing123', args: [], ret: #int }])
 try t.eq(lib, error(#MissingSymbol))
 
 object MyObject:
@@ -26,26 +26,26 @@ object MyObject:
   d bool
 
 lib = try os.bindLib(libPath, [
-  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
-  CFunc{ sym: 'testI8', args: [#char], ret: #char }
-  CFunc{ sym: 'testU8', args: [#uchar], ret: #uchar }
-  CFunc{ sym: 'testI16', args: [#short], ret: #short }
-  CFunc{ sym: 'testU16', args: [#ushort], ret: #ushort }
-  CFunc{ sym: 'testI32', args: [#int], ret: #int }
-  CFunc{ sym: 'testU32', args: [#uint], ret: #uint }
-  CFunc{ sym: 'testI64', args: [#long], ret: #long }
-  CFunc{ sym: 'testU64', args: [#ulong], ret: #ulong }
-  CFunc{ sym: 'testUSize', args: [#usize], ret: #usize }
-  CFunc{ sym: 'testF32', args: [#float], ret: #float }
-  CFunc{ sym: 'testF64', args: [#double], ret: #double }
-  CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
-  CFunc{ sym: 'testDupeCharPtrZ', args: [#dupeCharPtrZ], ret: #charPtrZ }
-  CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
-  CFunc{ sym: 'testVoid', args: [], ret: #void }
-  CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
-  CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
-  CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #ptr }
-  CStruct{ fields: [#double, #int, #charPtrZ, #bool], type: MyObject }
+  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+  os.CFunc{ sym: 'testI8', args: [#char], ret: #char }
+  os.CFunc{ sym: 'testU8', args: [#uchar], ret: #uchar }
+  os.CFunc{ sym: 'testI16', args: [#short], ret: #short }
+  os.CFunc{ sym: 'testU16', args: [#ushort], ret: #ushort }
+  os.CFunc{ sym: 'testI32', args: [#int], ret: #int }
+  os.CFunc{ sym: 'testU32', args: [#uint], ret: #uint }
+  os.CFunc{ sym: 'testI64', args: [#long], ret: #long }
+  os.CFunc{ sym: 'testU64', args: [#ulong], ret: #ulong }
+  os.CFunc{ sym: 'testUSize', args: [#usize], ret: #usize }
+  os.CFunc{ sym: 'testF32', args: [#float], ret: #float }
+  os.CFunc{ sym: 'testF64', args: [#double], ret: #double }
+  os.CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
+  os.CFunc{ sym: 'testDupeCharPtrZ', args: [#dupeCharPtrZ], ret: #charPtrZ }
+  os.CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
+  os.CFunc{ sym: 'testVoid', args: [], ret: #void }
+  os.CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
+  os.CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
+  os.CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #ptr }
+  os.CStruct{ fields: [#double, #int, #charPtrZ, #bool], type: MyObject }
 ])
 try t.eq(lib.testAdd(123, 321), 444)
 try t.eq(lib.testI8(-128), -128)
@@ -104,7 +104,7 @@ try t.eq(lib.testBool(false), false)
 
 -- bindLib that returns a map of functions.
 lib = try os.bindLib(libPath, [
-  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
 testAdd = lib['testAdd']
 try t.eq(testAdd(123, 321), 444)
@@ -113,7 +113,7 @@ try t.eq(testAdd(123, 321), 444)
 -- TODO: Use statements once initializer block is done.
 var staticLibPath = if os.system == 'macos' then 'test/macos_lib.dylib' else if os.system == 'windows' then 'test/win_lib.dll' else none
 var staticLib = os.bindLib(staticLibPath, [
-  CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
 func staticAdd(a, b) = staticLib.testAdd
 try t.eq(staticAdd(123, 321), 444)

@@ -8,6 +8,6 @@
 import os 'os'
 
 lib = os.bindLib('./libfoo.so', [
-    CFunc{ sym: 'add', args: [#int, #int], ret: #int }
+    os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)

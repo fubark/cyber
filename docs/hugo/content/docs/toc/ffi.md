@@ -12,7 +12,7 @@ Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bin
 import os 'os'
 
 lib = os.bindLib('mylib.so', [
-    CFunc{ sym: 'add', args: [#int, #int], ret: #int }
+    os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
 ```
@@ -51,7 +51,7 @@ The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-
 import os 'os'
 
 lib = os.bindLib('mylib.so', [
-    CFunc{ sym: 'add', args: [#int, #int], ret: #int }
+    os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
 ```
@@ -74,8 +74,8 @@ object MyObject
     c bool
 
 lib = os.bindLib('mylib.so', [
-    CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
-    CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+    os.CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
+    os.CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
 ])
 res = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
 ```
@@ -97,8 +97,8 @@ MyObject foo(MyObject o) {
 import os 'os'
 
 lib = os.bindLib('mylib.so', [
-    CFunc{ sym: 'foo', args: [MyObject], ret: #ptr }
-    CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+    os.CFunc{ sym: 'foo', args: [MyObject], ret: #ptr }
+    os.CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
 ])
 ptr = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
 res = lib.ptrToMyObject(ptr)

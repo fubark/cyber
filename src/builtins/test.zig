@@ -9,16 +9,10 @@ const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const v = fmt.v;
 
-pub fn initModule(c: *cy.VMcompiler) linksection(cy.InitSection) !cy.Module {
-    var mod = cy.Module{
-        .syms = .{},
-        .chunkId = cy.NullId,
-        .resolvedRootSymId = cy.NullId,
-    };
+pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     try mod.setNativeFunc(c, "eq", 2, eq);
     try mod.setNativeFunc(c, "eqList", 2, eqList);
     try mod.setNativeFunc(c, "eqNear", 2, eqNear);
-    return mod;
 }
 
 fn getComparableTag(val: Value) cy.ValueUserTag {

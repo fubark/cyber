@@ -82,9 +82,6 @@ pub const TagLit = enum {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
-pub var CFuncT: cy.TypeId = undefined;
-pub var CStructT: cy.TypeId = undefined;
-
 pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
 
@@ -136,14 +133,14 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     // Init compile time builtins.
 
     // Primitive types.
-    var id = try self.addStruct("none");
+    var id = try self.addObjectType("none");
     std.debug.assert(id == cy.NoneT);
-    id = try self.addStruct("boolean");
+    id = try self.addObjectType("boolean");
     std.debug.assert(id == cy.BooleanT);
-    id = try self.addStruct("error");
+    id = try self.addObjectType("error");
     std.debug.assert(id == cy.ErrorT);
 
-    id = try self.addStruct("string");
+    id = try self.addObjectType("string");
     std.debug.assert(id == cy.StaticAstringT);
     try self.addMethodSym(cy.StaticAstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.staticAstring)));
@@ -165,7 +162,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticAstring)));
 
-    id = try self.addStruct("string"); // Astring and Ustring share the same string user type.
+    id = try self.addObjectType("string"); // Astring and Ustring share the same string user type.
     std.debug.assert(id == cy.StaticUstringT);
     try self.addMethodSym(cy.StaticUstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.staticUstring)));
@@ -187,16 +184,16 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticUstring)));
 
-    id = try self.addStruct("tag");
+    id = try self.addObjectType("tag");
     std.debug.assert(id == cy.UserTagT);
-    id = try self.addStruct("tagliteral");
+    id = try self.addObjectType("tagliteral");
     std.debug.assert(id == cy.UserTagLiteralT);
-    id = try self.addStruct("integer");
+    id = try self.addObjectType("integer");
     std.debug.assert(id == cy.IntegerT);
-    id = try self.addStruct("number");
+    id = try self.addObjectType("number");
     std.debug.assert(id == cy.NumberT);
 
-    id = try self.addStruct("List");
+    id = try self.addObjectType("List");
     std.debug.assert(id == cy.ListS);
     try self.addMethodSym(cy.ListS, add, cy.MethodSym.initNativeFunc1(listAdd));
     try self.addMethodSym(cy.ListS, append, cy.MethodSym.initNativeFunc1(listAppend));
@@ -210,30 +207,30 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.ListS, resize, cy.MethodSym.initNativeFunc1(listResize));
     try self.addMethodSym(cy.ListS, sort, cy.MethodSym.initNativeFunc1(listSort));
 
-    id = try self.addStruct("ListIterator");
+    id = try self.addObjectType("ListIterator");
     std.debug.assert(id == cy.ListIteratorT);
     try self.addMethodSym(cy.ListIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(listIteratorNext));
     try self.addMethodSym(cy.ListIteratorT, self.nextPairObjSym, cy.MethodSym.initNativeFunc2(listIteratorNextPair));
 
-    id = try self.addStruct("Map");
+    id = try self.addObjectType("Map");
     std.debug.assert(id == cy.MapS);
     try self.addMethodSym(cy.MapS, remove, cy.MethodSym.initNativeFunc1(mapRemove));
     try self.addMethodSym(cy.MapS, size, cy.MethodSym.initNativeFunc1(mapSize));
     try self.addMethodSym(cy.MapS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(mapIterator));
     try self.addMethodSym(cy.MapS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(mapIterator));
 
-    id = try self.addStruct("MapIterator");
+    id = try self.addObjectType("MapIterator");
     std.debug.assert(id == cy.MapIteratorT);
     try self.addMethodSym(cy.MapIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(mapIteratorNext));
     try self.addMethodSym(cy.MapIteratorT, self.nextPairObjSym, cy.MethodSym.initNativeFunc2(mapIteratorNextPair));
 
-    id = try self.addStruct("Closure");
+    id = try self.addObjectType("Closure");
     std.debug.assert(id == cy.ClosureS);
 
-    id = try self.addStruct("Lambda");
+    id = try self.addObjectType("Lambda");
     std.debug.assert(id == cy.LambdaS);
 
-    id = try self.addStruct("string");
+    id = try self.addObjectType("string");
     std.debug.assert(id == cy.AstringT);
     try self.addMethodSym(cy.AstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.astring)));
     try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.astring)));
@@ -255,7 +252,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.astring)));
     try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.astring)));
 
-    id = try self.addStruct("string");
+    id = try self.addObjectType("string");
     std.debug.assert(id == cy.UstringT);
     try self.addMethodSym(cy.UstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.ustring)));
     try self.addMethodSym(cy.UstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.ustring)));
@@ -277,7 +274,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.ustring)));
     try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.ustring)));
 
-    id = try self.addStruct("string");
+    id = try self.addObjectType("string");
     std.debug.assert(id == cy.StringSliceT);
     try self.addMethodSym(cy.StringSliceT, append, cy.MethodSym.initNativeFunc1(stringAppend(.slice)));
     try self.addMethodSym(cy.StringSliceT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.slice)));
@@ -299,7 +296,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.slice)));
     try self.addMethodSym(cy.StringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.slice)));
 
-    id = try self.addStruct("rawstring");
+    id = try self.addObjectType("rawstring");
     std.debug.assert(id == cy.RawStringT);
     try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.rawstring)));
     try self.addMethodSym(cy.RawStringT, byteAt, cy.MethodSym.initNativeFunc1(rawStringByteAt));
@@ -325,7 +322,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawstring)));
     try self.addMethodSym(cy.RawStringT, utf8, cy.MethodSym.initNativeFunc1(rawStringUtf8));
 
-    id = try self.addStruct("rawstring");
+    id = try self.addObjectType("rawstring");
     std.debug.assert(id == cy.RawStringSliceT);
     try self.addMethodSym(cy.RawStringSliceT, append, cy.MethodSym.initNativeFunc1(stringAppend(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, byteAt, cy.MethodSym.initNativeFunc1(rawStringSliceByteAt));
@@ -351,23 +348,23 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, utf8, cy.MethodSym.initNativeFunc1(rawStringSliceUtf8));
 
-    id = try self.addStruct("Fiber");
+    id = try self.addObjectType("Fiber");
     std.debug.assert(id == cy.FiberS);
     try self.addMethodSym(cy.FiberS, status, cy.MethodSym.initNativeFunc1(fiberStatus));
 
-    id = try self.addStruct("Box");
+    id = try self.addObjectType("Box");
     std.debug.assert(id == cy.BoxS);
 
-    id = try self.addStruct("NativeFunc1");
+    id = try self.addObjectType("NativeFunc1");
     std.debug.assert(id == cy.NativeFunc1S);
 
-    id = try self.addStruct("TccState");
+    id = try self.addObjectType("TccState");
     std.debug.assert(id == cy.TccStateS);
 
-    id = try self.addStruct("OpaquePtr");
+    id = try self.addObjectType("OpaquePtr");
     std.debug.assert(id == cy.OpaquePtrS);
 
-    id = try self.addStruct("File");
+    id = try self.addObjectType("File");
     std.debug.assert(id == cy.FileT);
     if (cy.hasStdFiles) {
         try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(fileIterator));
@@ -395,7 +392,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(objNop1));
     }
 
-    id = try self.addStruct("Dir");
+    id = try self.addObjectType("Dir");
     std.debug.assert(id == cy.DirT);
     if (cy.hasStdFiles) {
         try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(dirIterator));
@@ -407,7 +404,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(objNop0));
     }
 
-    id = try self.addStruct("DirIterator");
+    id = try self.addObjectType("DirIterator");
     std.debug.assert(id == cy.DirIteratorT);
     if (cy.hasStdFiles) {
         try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(dirIteratorNext));
@@ -415,24 +412,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
     }
 
-    id = try self.addStruct("Symbol");
+    id = try self.addObjectType("Symbol");
     std.debug.assert(id == cy.SymbolT);
-
-    CFuncT = try self.addStruct("CFunc");
-    self.structs.buf[CFuncT].numFields = 3;
-    id = try self.ensureFieldSym("sym");
-    try self.addFieldSym(CFuncT, id, 0);
-    id = try self.ensureFieldSym("args");
-    try self.addFieldSym(CFuncT, id, 1);
-    id = try self.ensureFieldSym("ret");
-    try self.addFieldSym(CFuncT, id, 2);
-
-    CStructT = try self.addStruct("CStruct");
-    self.structs.buf[CStructT].numFields = 2;
-    id = try self.ensureFieldSym("fields");
-    try self.addFieldSym(CStructT, id, 0);
-    id = try self.ensureFieldSym("type");
-    try self.addFieldSym(CStructT, id, 1);
 
     try ensureTagLitSym(self, "bool", .bool);
     try ensureTagLitSym(self, "char", .char);

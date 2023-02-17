@@ -2,13 +2,7 @@ const std = @import("std");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 
-pub fn initModule(c: *cy.VMcompiler) !cy.Module {
-    var mod = cy.Module{
-        .syms = .{},
-        .chunkId = cy.NullId,
-        .resolvedRootSymId = cy.NullId,
-    };
-
+pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) !void {
     // Euler's number and the base of natural logarithms; approximately 2.718.
     try mod.setVar(c, "e", Value.initF64(std.math.e));
 
@@ -78,7 +72,6 @@ pub fn initModule(c: *cy.VMcompiler) !cy.Module {
     try mod.setNativeFunc(c, "tan", 1, tan);
     try mod.setNativeFunc(c, "tanh", 1, tanh);
     try mod.setNativeFunc(c, "trunc", 1, trunc);
-    return mod;
 }
 
 /// Returns the absolute value of x.
@@ -217,7 +210,7 @@ pub fn pow(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 /// Returns a pseudo-random number between 0 and 1.
-var rand = std.rand.DefaultPrng.init(0);
+pub var rand = std.rand.DefaultPrng.init(0);
 pub fn random(_: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return Value.initF64(rand.random().float(f64));
 }

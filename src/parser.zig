@@ -2582,18 +2582,22 @@ pub const Parser = struct {
                     left_id = call_id;
                 },
                 .left_brace => {
-                    if (self.nodes.items[left_id].node_t == .ident) {
-                        const props = try self.parseMapLiteral();
-                        const initN = try self.pushNode(.objectInit, start);
-                        self.nodes.items[initN].head = .{
-                            .objectInit = .{
-                                .name = left_id,
-                                .initializer = props,
-                            },
-                        };
-                        left_id = initN;
-                    } else {
-                        return self.reportParseError("Expected struct type to the left for initializer.", &.{});
+                    switch (self.nodes.items[left_id].node_t) {
+                        .ident,
+                        .accessExpr => {
+                            const props = try self.parseMapLiteral();
+                            const initN = try self.pushNode(.objectInit, start);
+                            self.nodes.items[initN].head = .{
+                                .objectInit = .{
+                                    .name = left_id,
+                                    .initializer = props,
+                                },
+                            };
+                            left_id = initN;
+                        },
+                        else => {
+                            return self.reportParseError("Expected struct type to the left for initializer.", &.{});
+                        }
                     }
                 },
                 .dot_dot,
@@ -3361,6 +3365,7 @@ pub const Node = struct {
         objectInit: struct {
             name: NodeId,
             initializer: NodeId,
+            semaSymId: u32 = cy.NullId,
         },
         objectField: struct {
             name: NodeId,

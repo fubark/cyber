@@ -35,7 +35,7 @@ pub const VMcompiler = struct {
     errorPayload: cy.NodeId,
 
     /// Unique name syms.
-    semaNameSyms: std.ArrayListUnmanaged([]const u8),
+    semaNameSyms: std.ArrayListUnmanaged(sema.Name),
     semaNameSymMap: std.StringHashMapUnmanaged(sema.NameSymId),
 
     /// Absolute path to syms and shared among modules.
@@ -112,6 +112,11 @@ pub const VMcompiler = struct {
 
         self.typeNames.deinit(self.alloc);
 
+        for (self.semaNameSyms.items) |name| {
+            if (name.owned) {
+                self.alloc.free(name.ptr[0..name.len]);
+            }
+        }
         self.semaNameSyms.deinit(self.alloc);
         self.semaNameSymMap.deinit(self.alloc);
 
@@ -200,7 +205,9 @@ pub const VMcompiler = struct {
         // Load core module first since the members are imported into each user module.
         const coreModSpec = try self.alloc.dupe(u8, "core");
         const coreModId = @intCast(u32, self.modules.items.len);
-        try self.modules.append(self.alloc, try core_mod.initModule(self));
+        var coreMod = try self.initModule("core", coreModId);
+        try core_mod.initModule(self, &coreMod);
+        try self.modules.append(self.alloc, coreMod);
         try self.moduleMap.put(self.alloc, coreModSpec, coreModId);
 
         // Perform sema on all chunks.
@@ -381,22 +388,29 @@ pub const VMcompiler = struct {
         }
     }
 
+    fn initModule(self: *VMcompiler, spec: []const u8, modId: cy.sema.ModuleId) !cy.Module {
+        return cy.Module{
+            .syms = .{},
+            .chunkId = cy.NullId,
+            .resolvedRootSymId = try sema.resolveRootModuleSym(self, spec, modId),
+        };
+    }
+
     fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
         if (task.builtin) {
-            var mod: sema.Module = undefined;
+            var mod = try self.initModule(task.absSpec, task.modId);
             if (std.mem.eql(u8, "test", task.absSpec)) {
-                mod = try test_mod.initModule(self);
+                try test_mod.initModule(self, &mod);
             } else if (std.mem.eql(u8, "math", task.absSpec)) {
-                mod = try math_mod.initModule(self);
+                try math_mod.initModule(self, &mod);
             } else if (std.mem.eql(u8, "core", task.absSpec)) {
-                mod = try core_mod.initModule(self);
+                try core_mod.initModule(self, &mod);
             } else if (std.mem.eql(u8, "os", task.absSpec)) {
-                mod = try os_mod.initModule(self);
+                try os_mod.initModule(self, &mod);
             } else {
                 const chunk = &self.chunks.items[task.chunkId];
                 return chunk.reportErrorAt("Unsupported builtin. {}", &.{fmt.v(task.absSpec)}, task.nodeId);
             }
-            mod.resolvedRootSymId = try sema.resolveRootModuleSym(self, task.absSpec, task.modId);
             self.modules.items[task.modId] = mod;
         } else {
             if (cy.isWasm) {
@@ -1156,12 +1170,13 @@ pub const CompileChunk = struct {
     }
 
     pub fn genGetResolvedSym(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSym {
-        const sym = self.semaSyms.items[semaSymId];
-        if (sym.resolvedSymId != cy.NullId) {
-            return self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
-        } else {
-            return null;
+        if (semaSymId != cy.NullId) {
+            const sym = self.semaSyms.items[semaSymId];
+            if (sym.resolvedSymId != cy.NullId) {
+                return self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+            }
         }
+        return null;
     }
 
     pub fn genBlockEnding(self: *CompileChunk) !void {

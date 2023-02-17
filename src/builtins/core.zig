@@ -13,12 +13,7 @@ const cache = @import("../cache.zig");
 
 const log = stdx.log.scoped(.core);
 
-pub fn initModule(self: *cy.VMcompiler) !cy.Module {
-    var mod = cy.Module{
-        .syms = .{},
-        .chunkId = cy.NullId,
-        .resolvedRootSymId = cy.NullId,
-    };
+pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try mod.syms.ensureTotalCapacity(self.alloc, 13);
     try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);
     try mod.setNativeFunc(self, "asciiCode", 1, asciiCode);
@@ -77,7 +72,6 @@ pub fn initModule(self: *cy.VMcompiler) !cy.Module {
     } else {
         try mod.setNativeFunc(self, "writeFile", 2, bindings.nop2);
     }
-    return mod;
 }
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

@@ -108,10 +108,9 @@ fn genSymbolTo(self: *CompileChunk, symId: sema.SymId, dst: LocalId, retain: boo
             }
             return self.initGenValue(dst, sema.AnyType);
         } else if (rsym.symT == .object) {
-            const nameId = rsym.key.absResolvedSymKey.nameId;
-            const rtObjId = try self.compiler.vm.ensureStruct(nameId, 0);
+            const typeId = rsym.getObjectTypeId(self.compiler.vm).?;
             try self.buf.pushOp1(.sym, @enumToInt(cy.heap.SymbolType.object));
-            try self.buf.pushOperandsRaw(std.mem.asBytes(&rtObjId));
+            try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
             try self.buf.pushOperand(dst);
             if (!retain and self.isTempLocal(dst)) {
                 try self.setReservedTempLocal(dst);
@@ -173,80 +172,82 @@ fn genStringTemplate(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retai
 fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
     const node = self.nodes[nodeId];
     const stype = self.nodes[node.head.objectInit.name];
-    const oname = self.getNodeTokenString(stype);
-    const onameId = try sema.ensureNameSym(self.compiler, oname);
-    const sid = self.compiler.vm.getStruct(onameId, 0) orelse {
-        return self.reportErrorAt("Missing object type: `{}`", &.{v(oname)}, nodeId);
-    };
 
-    const initializer = self.nodes[node.head.objectInit.initializer];
+    if (self.genGetResolvedSym(node.head.objectInit.semaSymId)) |rsym| {
+        if (rsym.symT == .object) {
+            const typeId = rsym.getObjectTypeId(self.compiler.vm).?;
+            const initializer = self.nodes[node.head.objectInit.initializer];
 
-    // TODO: Would it be faster/efficient to copy the fields into contiguous registers
-    //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
-    //       The current implementation is the former.
-    // TODO: Have sema sort the fields so eval can handle default values easier.
+            // TODO: Would it be faster/efficient to copy the fields into contiguous registers
+            //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
+            //       The current implementation is the former.
+            // TODO: Have sema sort the fields so eval can handle default values easier.
 
-    // Push props onto stack.
+            // Push props onto stack.
 
-    const numFields = self.compiler.vm.structs.buf[sid].numFields;
-    // Repurpose stack for sorting fields.
-    const sortedFieldsStart = self.assignedVarStack.items.len;
-    try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
-    defer self.assignedVarStack.items.len = sortedFieldsStart;
+            const numFields = self.compiler.vm.structs.buf[typeId].numFields;
+            // Repurpose stack for sorting fields.
+            const sortedFieldsStart = self.assignedVarStack.items.len;
+            try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
+            defer self.assignedVarStack.items.len = sortedFieldsStart;
 
-    // Initially set to NullId so leftovers are defaulted to `none`.
-    const initFields = self.assignedVarStack.items[sortedFieldsStart..];
-    std.mem.set(u32, initFields, cy.NullId);
+            // Initially set to NullId so leftovers are defaulted to `none`.
+            const initFields = self.assignedVarStack.items[sortedFieldsStart..];
+            std.mem.set(u32, initFields, cy.NullId);
 
-    const startTempLocal = self.curBlock.firstFreeTempLocal;
-    defer self.computeNextTempLocalFrom(startTempLocal);
+            const startTempLocal = self.curBlock.firstFreeTempLocal;
+            defer self.computeNextTempLocalFrom(startTempLocal);
 
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+            const argStartLocal = self.advanceNextTempLocalPastArcTemps();
 
-    var i: u32 = 0;
-    var entryId = initializer.head.child_head;
-    // First iteration to sort the initializer fields.
-    while (entryId != cy.NullId) : (i += 1) {
-        const entry = self.nodes[entryId];
-        const prop = self.nodes[entry.head.mapEntry.left];
-        const fieldName = self.getNodeTokenString(prop);
-        const fieldIdx = self.compiler.vm.getStructFieldIdx(sid, fieldName) orelse {
-            const objectName = self.compiler.vm.structs.buf[sid].name;
-            return self.reportErrorAt("Missing field `{}` in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
-        };
-        initFields[fieldIdx] = entryId;
-        entryId = entry.next;
-    }
-
-    i = 0;
-    while (i < numFields) : (i += 1) {
-        entryId = self.assignedVarStack.items[sortedFieldsStart + i];
-        if (entryId == cy.NullId) {
-            if (dstIsUsed) {
-                // Push none.
-                const local = try self.nextFreeTempLocal();
-                try self.buf.pushOp1(.none, local);
+            var i: u32 = 0;
+            var entryId = initializer.head.child_head;
+            // First iteration to sort the initializer fields.
+            while (entryId != cy.NullId) : (i += 1) {
+                const entry = self.nodes[entryId];
+                const prop = self.nodes[entry.head.mapEntry.left];
+                const fieldName = self.getNodeTokenString(prop);
+                const fieldIdx = self.compiler.vm.getStructFieldIdx(typeId, fieldName) orelse {
+                    const objectName = self.compiler.vm.structs.buf[typeId].name;
+                    return self.reportErrorAt("Missing field `{}` in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
+                };
+                initFields[fieldIdx] = entryId;
+                entryId = entry.next;
             }
-        } else {
-            const entry = self.nodes[entryId];
-            _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, !dstIsUsed);
-        }
-    }
 
-    if (dstIsUsed) {
-        if (self.compiler.vm.structs.buf[sid].numFields <= 4) {
-            try self.pushOptionalDebugSym(nodeId);
-            try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
-        } else {
-            try self.buf.pushOpSlice(.object, &.{ @intCast(u8, sid), argStartLocal, @intCast(u8, numFields), dst });
+            i = 0;
+            while (i < numFields) : (i += 1) {
+                entryId = self.assignedVarStack.items[sortedFieldsStart + i];
+                if (entryId == cy.NullId) {
+                    if (dstIsUsed) {
+                        // Push none.
+                        const local = try self.nextFreeTempLocal();
+                        try self.buf.pushOp1(.none, local);
+                    }
+                } else {
+                    const entry = self.nodes[entryId];
+                    _ = try self.genRetainedTempExpr(entry.head.mapEntry.right, !dstIsUsed);
+                }
+            }
+
+            if (dstIsUsed) {
+                if (self.compiler.vm.structs.buf[typeId].numFields <= 4) {
+                    try self.pushOptionalDebugSym(nodeId);
+                    try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, typeId), argStartLocal, @intCast(u8, numFields), dst });
+                } else {
+                    try self.buf.pushOpSlice(.object, &.{ @intCast(u8, typeId), argStartLocal, @intCast(u8, numFields), dst });
+                }
+                if (!retain and self.isTempLocal(dst)) {
+                    try self.setReservedTempLocal(dst);
+                }
+                return GenValue.initTempValue(dst, sema.AnyType);
+            } else {
+                return GenValue.initNoValue();
+            }
         }
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
-        return GenValue.initTempValue(dst, sema.AnyType);
-    } else {
-        return GenValue.initNoValue();
     }
+    const oname = self.getNodeTokenString(stype);
+    return self.reportErrorAt("Expected object type: `{}`", &.{v(oname)}, nodeId);
 }
 
 fn genMapInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
@@ -1235,7 +1236,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const name = self.getNodeTokenString(nameN);
             const nameId = try sema.ensureNameSym(self.compiler, name);
 
-            const sid = try self.compiler.vm.ensureStruct(nameId, 0);
+            const sid = try self.compiler.vm.ensureObjectType(self.semaResolvedRootSymId, nameId);
 
             var funcId = node.head.objectDecl.funcsHead;
             var func: cy.Node = undefined;

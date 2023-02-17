@@ -732,8 +732,8 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 memberId = member.next;
             }
         },
-        .structDecl => {
-            const nameN = c.nodes[node.head.structDecl.name];
+        .objectDecl => {
+            const nameN = c.nodes[node.head.objectDecl.name];
             const name = c.getNodeTokenString(nameN);
             const nameId = try ensureNameSym(c.compiler, name);
 
@@ -749,7 +749,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const sid = try c.compiler.vm.ensureStruct(nameId, 0);
 
             var i: u32 = 0;
-            var fieldId = node.head.structDecl.fieldsHead;
+            var fieldId = node.head.objectDecl.fieldsHead;
             while (fieldId != cy.NullId) : (i += 1) {
                 const field = c.nodes[fieldId];
                 const fieldName = c.getNodeTokenString(field);
@@ -760,7 +760,7 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const numFields = i;
             c.compiler.vm.structs.buf[sid].numFields = numFields;
 
-            var funcId = node.head.structDecl.funcsHead;
+            var funcId = node.head.objectDecl.funcsHead;
             while (funcId != cy.NullId) {
                 const func = c.nodes[funcId];
                 const decl = c.funcDecls[func.head.func.decl_id];
@@ -1118,8 +1118,8 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
             const tid = try c.compiler.vm.ensureTagType(name);
             return initTagType(tid);
         },
-        .structInit => {
-            const initializer = c.nodes[node.head.structInit.initializer];
+        .objectInit => {
+            const initializer = c.nodes[node.head.objectInit.initializer];
 
             var i: u32 = 0;
             var entry_id = initializer.head.child_head;

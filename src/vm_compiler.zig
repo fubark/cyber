@@ -547,7 +547,7 @@ fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
         .stringTemplate,
         .arr_access_expr,
         .coinit,
-        .structInit => return true,
+        .objectInit => return true,
         .accessExpr => {
             if (node.head.accessExpr.semaSymId != cy.NullId) {
                 if (c.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {

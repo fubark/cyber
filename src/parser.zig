@@ -579,34 +579,27 @@ pub const Parser = struct {
                 const typeN = try self.pushIdentNode(self.next_pos);
                 self.advanceToken();
 
-                token = self.peekToken();
-                if (token.tag() == .new_line) {
-                    self.advanceToken();
-                } else {
-                    return self.reportParseError("Expected new line.", &.{});
-                }
+                try self.consumeNewLineOrEnd();
 
-                const field = try self.pushNode(.structField, start);
+                const field = try self.pushNode(.objectField, start);
                 self.nodes.items[field].head = .{
-                    .structField = .{
+                    .objectField = .{
                         .name = name,
                         .fieldType = typeN,
                     },
                 };
                 return field;
-            } else if (token.tag() == .new_line) {
-                self.advanceToken();
-                const field = try self.pushNode(.structField, start);
-                self.nodes.items[field].head = .{
-                    .structField = .{
-                        .name = name,
-                        .fieldType = NullId,
-                    },
-                };
-                return field;
-            } else {
-                return self.reportParseError("Expected type.", &.{});
             }
+            try self.consumeNewLineOrEnd();
+
+            const field = try self.pushNode(.objectField, start);
+            self.nodes.items[field].head = .{
+                .objectField = .{
+                    .name = name,
+                    .fieldType = NullId,
+                },
+            };
+            return field;
         } else return null;
     }
 
@@ -702,9 +695,9 @@ pub const Parser = struct {
                     lastField = id;
                 } else if (indent <= prevIndent) {
                     self.next_pos = start2;
-                    const id = try self.pushNode(.structDecl, start);
+                    const id = try self.pushNode(.objectDecl, start);
                     self.nodes.items[id].head = .{
-                        .structDecl = .{
+                        .objectDecl = .{
                             .name = name,
                             .fieldsHead = firstField,
                             .funcsHead = NullId,
@@ -740,9 +733,9 @@ pub const Parser = struct {
                 }
             }
 
-            const id = try self.pushNode(.structDecl, start);
+            const id = try self.pushNode(.objectDecl, start);
             self.nodes.items[id].head = .{
-                .structDecl = .{
+                .objectDecl = .{
                     .name = name,
                     .fieldsHead = firstField,
                     .funcsHead = firstFunc,
@@ -1552,6 +1545,7 @@ pub const Parser = struct {
                 switch (stmt.node_t) {
                     .funcDeclInit,
                     .funcDecl,
+                    .objectDecl,
                     .varDecl => {
                         const exportStmt = try self.pushNode(.exportStmt, start);
                         self.nodes.items[exportStmt].head = .{
@@ -2590,9 +2584,9 @@ pub const Parser = struct {
                 .left_brace => {
                     if (self.nodes.items[left_id].node_t == .ident) {
                         const props = try self.parseMapLiteral();
-                        const initN = try self.pushNode(.structInit, start);
+                        const initN = try self.pushNode(.objectInit, start);
                         self.nodes.items[initN].head = .{
-                            .structInit = .{
+                            .objectInit = .{
                                 .name = left_id,
                                 .initializer = props,
                             },
@@ -3230,9 +3224,9 @@ pub const NodeType = enum {
     label_decl,
     funcDecl,
     funcDeclInit,
-    structDecl,
-    structField,
-    structInit,
+    objectDecl,
+    objectField,
+    objectInit,
     tagDecl,
     tagMember,
     tagInit,
@@ -3364,15 +3358,15 @@ pub const Node = struct {
             body_head: NodeId,
             assign_expr: NodeId,
         },
-        structInit: struct {
+        objectInit: struct {
             name: NodeId,
             initializer: NodeId,
         },
-        structField: struct {
+        objectField: struct {
             name: NodeId,
             fieldType: NodeId,
         },
-        structDecl: struct {
+        objectDecl: struct {
             name: NodeId,
             fieldsHead: NodeId,
             funcsHead: NodeId,

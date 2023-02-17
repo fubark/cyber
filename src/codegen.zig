@@ -172,14 +172,14 @@ fn genStringTemplate(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retai
 
 fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
     const node = self.nodes[nodeId];
-    const stype = self.nodes[node.head.structInit.name];
+    const stype = self.nodes[node.head.objectInit.name];
     const oname = self.getNodeTokenString(stype);
     const onameId = try sema.ensureNameSym(self.compiler, oname);
     const sid = self.compiler.vm.getStruct(onameId, 0) orelse {
         return self.reportErrorAt("Missing object type: `{}`", &.{v(oname)}, nodeId);
     };
 
-    const initializer = self.nodes[node.head.structInit.initializer];
+    const initializer = self.nodes[node.head.objectInit.initializer];
 
     // TODO: Would it be faster/efficient to copy the fields into contiguous registers
     //       and copy all at once to heap or pass locals into the operands and iterate each and copy to heap?
@@ -883,7 +883,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         .matchBlock => {
             return genMatchBlock(self, nodeId, dst, retain);
         },
-        .structInit => {
+        .objectInit => {
             return genObjectInit(self, nodeId, dst, retain, dstIsUsed);
         },
         .if_expr => {
@@ -1230,14 +1230,14 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .tagDecl => {
             // Nop.
         },
-        .structDecl => {
-            const nameN = self.nodes[node.head.structDecl.name];
+        .objectDecl => {
+            const nameN = self.nodes[node.head.objectDecl.name];
             const name = self.getNodeTokenString(nameN);
             const nameId = try sema.ensureNameSym(self.compiler, name);
 
             const sid = try self.compiler.vm.ensureStruct(nameId, 0);
 
-            var funcId = node.head.structDecl.funcsHead;
+            var funcId = node.head.objectDecl.funcsHead;
             var func: cy.Node = undefined;
             while (funcId != cy.NullId) : (funcId = func.next) {
                 func = self.nodes[funcId];

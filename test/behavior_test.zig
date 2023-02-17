@@ -447,6 +447,18 @@ test "Objects." {
     try t.eqStr(run.vm.getParserErrorMsg(), "Expected colon to start an object type block.");
     try t.eq(run.vm.getParserErrorPos(), 11);
 
+    // Field declaration ends the file without parser error.
+    _ = try run.eval(
+        \\object Vec2:
+        \\  x
+        \\  y
+    );
+    _ = try run.eval(
+        \\object Vec2:
+        \\  x number
+        \\  y number
+    );
+
     // Initialize with undeclared field.
     res = run.evalExt(.{ .silent = true },
         \\object S:

@@ -130,7 +130,6 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
         printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
         return false;
     }
-
 }
 
 pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {

@@ -175,9 +175,29 @@ fn getEndPos(file: std.fs.File) GetSeekPosError!u64 {
     return std.fs.File.Stat.fromSystem(st).size;
 }
 
+fn close(file: std.fs.File) void {
+    if (builtin.os.tag == .windows) {
+        std.os.windows.CloseHandle(file.handle);
+    } else {
+        if (comptime builtin.target.isDarwin()) {
+            // This avoids the EINTR problem.
+            switch (std.os.darwin.getErrno(std.os.darwin.@"close$NOCANCEL"(file.handle))) {
+                .BADF => unreachable, // Always a race condition.
+                else => return,
+            }
+        }
+        switch (std.os.errno(std.os.system.close(file.handle))) {
+            // WSL.
+            .BADF => return,
+            .INTR => return, // This is still a success. See https://github.com/ziglang/zig/issues/2425
+            else => return,
+        }
+    }
+}
+
 fn readFileAlloc(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8, max_bytes: usize) ![]const u8 {
     var file = try dir.openFile(path, .{});
-    defer file.close();
+    defer close(file);
 
     // If the file size doesn't fit a usize it'll be certainly greater than `max_bytes`
     const stat_size = std.math.cast(usize, try getEndPos(file)) orelse

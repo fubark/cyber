@@ -705,6 +705,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         \\extern void* icyGetPtr(uint64_t);
         \\extern uint64_t icyAllocObject(UserVM*, uint32_t);
         \\extern uint64_t icyAllocOpaquePtr(UserVM*, void*);
+        // \\extern int printf(char* fmt, ...);
         \\
     , .{});
 
@@ -966,10 +967,8 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         _ = tcc.tcc_add_symbol(state, "__floatundidf", __floatundidf);
     }
     // _ = tcc.tcc_add_symbol(state, "__floatundisf", __floatundisf);
-    // _ = tcc.tcc_add_symbol(state, "printU64", printU64);
-    // _ = tcc.tcc_add_symbol(state, "printF64", printF64);
-    // _ = tcc.tcc_add_symbol(state, "printF32", printF32);
-    // _ = tcc.tcc_add_symbol(state, "printInt", printInt);
+    // _ = tcc.tcc_add_symbol(state, "printf", std.c.printf);
+    // _ = tcc.tcc_add_symbol(state, "breakpoint", breakpoint);
     _ = tcc.tcc_add_symbol(state, "icyFromCStr", fromCStr);
     _ = tcc.tcc_add_symbol(state, "icyToCStr", toCStr);
     _ = tcc.tcc_add_symbol(state, "icyFree", free);
@@ -1124,18 +1123,6 @@ fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
     }
 }
 
-// fn printInt(n: i32) callconv(.C) void {
-//     std.debug.print("print int: {}\n", .{n});
-// }
-
-// export fn printU64(n: u64) void {
-//     std.debug.print("print u64: {}\n", .{n});
-// }
-
-// export fn printF64(n: f64) void {
-//     std.debug.print("print f64: {}\n", .{n});
-// }
-
-// export fn printF32(n: f32) void {
-//     std.debug.print("print f32: {}\n", .{n});
-// }
+fn breakpoint() callconv(.C) void {
+    @breakpoint();
+}

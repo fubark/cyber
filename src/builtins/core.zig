@@ -373,7 +373,7 @@ fn stdMapPut(vm: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
-    const str = vm.internal().valueToRawOrTempString(args[0]);
+    const str = vm.valueToTempRawString(args[0]);
     if (cy.isWasm) {
         hostFileWrite(1, str.ptr, str.len);
         hostFileWrite(1, "\n", 1);
@@ -388,7 +388,7 @@ pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 
 pub fn prints(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const str = vm.internal().valueToRawOrTempString(args[0]);
+    const str = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
     if (cy.isWasm) {
         hostFileWrite(1, str.ptr, str.len);

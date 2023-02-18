@@ -250,7 +250,11 @@ pub const UserVM = struct {
     }
 
     pub inline fn getOrWriteValueString(self: *UserVM, writer: anytype, val: Value, charLen: *u32) []const u8 {
-        return @ptrCast(*const VM, self).getOrWriteValueString(writer, val, charLen, true);
+        return self.internal().getOrWriteValueString(writer, val, charLen, true);
+    }
+
+    pub inline fn valueToTempRawString(self: *const UserVM, val: Value) []const u8 {
+        return self.constInternal().valueToTempRawString(val);
     }
 
     pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {

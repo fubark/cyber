@@ -25,6 +25,8 @@ pub const VMcompiler = vm_compiler.VMcompiler;
 pub const CompileChunk = vm_compiler.CompileChunk;
 pub const unescapeString = vm_compiler.unescapeString;
 
+pub const bindings = @import("builtins/bindings.zig");
+
 pub const codegen = @import("codegen.zig");
 
 pub const value = @import("value.zig");
@@ -197,3 +199,4 @@ pub const NullU8 = std.math.maxInt(u8);
 pub const NativeObjFuncPtr = *const fn (*UserVM, Value, [*]const Value, u8) Value;
 pub const NativeObjFunc2Ptr = *const fn (*UserVM, Value, [*]const Value, u8) ValuePair;
 pub const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
+pub const NativeErrorFunc = fn (*UserVM, [*]const Value, u8) anyerror!Value;

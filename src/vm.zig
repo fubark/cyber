@@ -1572,7 +1572,8 @@ pub const VM = struct {
         return try self.alloc.dupe(u8, str);
     }
 
-    pub fn valueToRawOrTempString(self: *const VM, val: Value) linksection(cy.StdSection) []const u8 {
+    /// Like valueToTempString but does not guarantee a valid string.
+    pub fn valueToTempRawString(self: *const VM, val: Value) linksection(cy.StdSection) []const u8 {
         if (val.isRawString()) {
             return val.asRawString();
         } else {
@@ -1580,6 +1581,8 @@ pub const VM = struct {
         }
     }
 
+    /// String is guaranteed to be valid UTF-8.
+    /// Uses a short desc for rawstring instead of performing validation.
     pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         tempU8Writer.reset();
         return self.getOrWriteValueString(tempU8Writer, val, undefined, false);

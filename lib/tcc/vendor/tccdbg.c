@@ -568,36 +568,64 @@ static void dwarf_line_op(TCCState *s1, unsigned char op)
 
 static void dwarf_file(TCCState *s1)
 {
-    int i;
+    int i, j;
     char *filename;
+    int index_offset = s1->dwarf < 5;
 
+    if (!strcmp(file->filename, "<command line>")) {
+        dwarf_line.cur_file = 1;
+	return;
+    }
     filename = strrchr(file->filename, '/');
     if (filename == NULL) {
         for (i = 1; i < dwarf_line.filename_size; i++)
             if (dwarf_line.filename_table[i].dir_entry == 0 &&
 		strcmp(dwarf_line.filename_table[i].name,
-		file->filename) == 0) {
-		    dwarf_line.cur_file = i;
+		       file->filename) == 0) {
+		    dwarf_line.cur_file = i + index_offset;
 	            return;
 		}
+	i = -index_offset;
+	filename = file->filename;
     }
     else {
-	int j;
 	char *undo = filename;
+	char *dir = file->filename;
 
 	*filename++ = '\0';
         for (i = 0; i < dwarf_line.dir_size; i++)
-	    if (strcmp(dwarf_line.dir_table[i], file->filename) == 0)
+	    if (strcmp(dwarf_line.dir_table[i], dir) == 0) {
 		for (j = 1; j < dwarf_line.filename_size; j++)
-		    if (dwarf_line.filename_table[j].dir_entry == i &&
+		    if (dwarf_line.filename_table[j].dir_entry - index_offset
+			== i &&
 			strcmp(dwarf_line.filename_table[j].name,
-			filename) == 0) {
+			       filename) == 0) {
 			*undo = '/';
-		        dwarf_line.cur_file = j;
+		        dwarf_line.cur_file = j + index_offset;
 			return;
 		    }
+		break;
+	    }
+	if (i == dwarf_line.dir_size) {
+	    dwarf_line.dir_size++;
+	    dwarf_line.dir_table = 
+                (char **) tcc_realloc(dwarf_line.dir_table,
+                                      dwarf_line.dir_size *
+                                      sizeof (char *));
+            dwarf_line.dir_table[i] = tcc_strdup(dir);
+	}
 	*undo = '/';
     }
+    dwarf_line.filename_table =
+        (struct dwarf_filename_struct *)
+        tcc_realloc(dwarf_line.filename_table,
+                    (dwarf_line.filename_size + 1) *
+                    sizeof (struct dwarf_filename_struct));
+    dwarf_line.filename_table[dwarf_line.filename_size].dir_entry =
+	i + index_offset;
+    dwarf_line.filename_table[dwarf_line.filename_size].name =
+        tcc_strdup(filename);
+    dwarf_line.cur_file = dwarf_line.filename_size++ + index_offset;
     return;
 }
 
@@ -1027,55 +1055,10 @@ ST_FUNC void tcc_debug_bincl(TCCState *s1)
 {
     if (!s1->do_debug)
         return;
-    if (s1->dwarf) {
-	int i, j;
-	char *filename = strrchr(file->filename, '/');
-	char *dir;
-
-	if (filename == NULL) {
-	    filename = file->filename;
-	    i = 0;
-	}
-	else {
-	    char *undo = filename;
-
-	    *filename++ = '\0';
-	    dir = file->filename;
-	    for (i = 0; i < dwarf_line.dir_size; i++)
-	        if (strcmp (dwarf_line.dir_table[i], dir) == 0)
-		    break;
-	    if (i == dwarf_line.dir_size) {
-	        dwarf_line.dir_size++;
-	        dwarf_line.dir_table =
-		    (char **) tcc_realloc(dwarf_line.dir_table,
-					  dwarf_line.dir_size *
-					  sizeof (char *));
-	        dwarf_line.dir_table[i] = tcc_strdup(dir);
-	    }
-	    *undo = '/';
-	}
-        if (strcmp(filename, "<command line>")) {
-	    for (j = 1; j < dwarf_line.filename_size; j++)
-	        if (dwarf_line.filename_table[j].dir_entry == i &&
-		    strcmp (dwarf_line.filename_table[j].name, filename) == 0)
-		    break;
-	    if (j == dwarf_line.filename_size) {
-	        dwarf_line.filename_table =
-		    (struct dwarf_filename_struct *)
-		    tcc_realloc(dwarf_line.filename_table,
-			        (dwarf_line.filename_size + 1) *
-			        sizeof (struct dwarf_filename_struct));
-	        dwarf_line.filename_table[dwarf_line.filename_size].dir_entry = i;
-	        dwarf_line.filename_table[dwarf_line.filename_size++].name =
-		    tcc_strdup(filename);
-	    }
-        }
+    if (s1->dwarf)
         dwarf_file(s1);
-    }
     else
-    {
         put_stabs(s1, file->filename, N_BINCL, 0, 0, 0);
-    }
     new_file = 1;
 }
 
@@ -1958,7 +1941,8 @@ ST_FUNC void tcc_debug_extern_sym(TCCState *s1, Sym *sym, int sh_num, int sym_bi
     }
     else
     {
-        Section *s = s1->sections[sh_num];
+        Section *s = sh_num == SHN_COMMON ? common_section
+					  : s1->sections[sh_num];
         CString str;
 
         cstr_new (&str);

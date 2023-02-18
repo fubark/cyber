@@ -2,10 +2,13 @@
 #ifndef CONFIG_TCCDIR
 # define CONFIG_TCCDIR "/usr/local/lib/tcc"
 #endif
+#ifndef DWARF_VERSION
+# define DWARF_VERSION 4
+#endif
 #ifndef CONFIG_TCC_PREDEFS
 # define CONFIG_TCC_PREDEFS 1
 #endif
 #define TCC_VERSION "0.9.27"
-#define GCC_MAJOR 11
-#define GCC_MINOR 3
-#define CC_NAME CC_gcc
+#define GCC_MAJOR 14
+#define GCC_MINOR 0
+#define CC_NAME CC_clang

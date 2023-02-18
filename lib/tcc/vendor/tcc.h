@@ -497,8 +497,8 @@ typedef int nwchar_t;
 
 typedef struct CString {
     int size; /* size in bytes */
-    void *data; /* either 'char *' or 'nwchar_t *' */
     int size_allocated;
+    void *data; /* either 'char *' or 'nwchar_t *' */
 } CString;
 
 /* type definition */
@@ -975,6 +975,12 @@ struct TCCState {
 # endif
 #endif
 
+#if defined TCC_TARGET_MACHO
+    char *install_name;
+    uint32_t compatibility_version;
+    uint32_t current_version;
+#endif
+
 #ifndef ELF_OBJ_ONLY
     int nb_sym_versions;
     struct sym_version *sym_versions;
@@ -999,7 +1005,7 @@ struct TCCState {
     int total_idents;
     int total_lines;
     int total_bytes;
-    int total_output[4];
+    unsigned int total_output[4];
 
     /* option -dnum (for general development purposes) */
     int g_debug;
@@ -1503,7 +1509,7 @@ ST_DATA int func_bound_add_epilog;
 #define TCC_OUTPUT_FORMAT_COFF   2 /* COFF */
 #define TCC_OUTPUT_DYN           TCC_OUTPUT_DLL
 
-#define ARMAG  "!<arch>\012"    /* For COFF and a.out archives */
+#define ARMAG  "!<arch>\n"    /* For COFF and a.out archives */
 
 typedef struct {
     unsigned int n_strx;         /* index into string table of name */

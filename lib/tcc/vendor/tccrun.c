@@ -771,9 +771,6 @@ static addr_t rt_printline_dwarf (rt_context *rc, addr_t wanted_pc,
     } filename_table[FILE_TABLE_SIZE];
     addr_t last_pc;
     addr_t pc;
-#if defined TCC_TARGET_MACHO
-    addr_t first_pc = 0;
-#endif
     addr_t func_addr;
     int line;
     char *filename;
@@ -934,9 +931,8 @@ check_pc:
 		        pc = dwarf_read_8(cp, end);
 #endif
 #if defined TCC_TARGET_MACHO
-			if (first_pc == 0 && rc->prog_base != (addr_t) -1)
-			    first_pc += rc->prog_base - ((uint64_t)1 << 32);
-			pc += first_pc;
+			if (rc->prog_base != (addr_t) -1)
+			    pc += rc->prog_base;
 #endif
 		        opindex = 0;
 		        break;
@@ -979,6 +975,7 @@ check_pc:
 		    break;
 	        case DW_LNS_set_file:
 		    i = dwarf_read_uleb128(&ln, end);
+		    i -= i > 0 && version < 5;
 		    if (i < FILE_TABLE_SIZE && i < filename_size)
 		        filename = filename_table[i].name;
 		    break;

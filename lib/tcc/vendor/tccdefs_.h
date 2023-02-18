@@ -303,4 +303,16 @@
     "#undef __MAYBE_REDIR\n"
     "#undef __RENAME\n"
 
+#if !defined TCC_TARGET_PE
+    "#define __BUILTIN_EXTERN(name,u) int __builtin_##name(u int);int __builtin_##name##l(u long);int __builtin_##name##ll(u long long);\n"
+
+    "__BUILTIN_EXTERN(ffs,)\n"
+    "__BUILTIN_EXTERN(clz,unsigned)\n"
+    "__BUILTIN_EXTERN(ctz,unsigned)\n"
+    "__BUILTIN_EXTERN(clrsb,)\n"
+    "__BUILTIN_EXTERN(popcount,unsigned)\n"
+    "__BUILTIN_EXTERN(parity,unsigned)\n"
+    "#undef __BUILTIN_EXTERN\n"
+#endif
+
     "#endif\n" /* ndef __TCC_PP__ */

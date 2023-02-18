@@ -1572,6 +1572,14 @@ pub const VM = struct {
         return try self.alloc.dupe(u8, str);
     }
 
+    pub fn valueToRawOrTempString(self: *const VM, val: Value) linksection(cy.StdSection) []const u8 {
+        if (val.isRawString()) {
+            return val.asRawString();
+        } else {
+            return self.valueToTempString(val);
+        }
+    }
+
     pub fn valueToTempString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         tempU8Writer.reset();
         return self.getOrWriteValueString(tempU8Writer, val, undefined, false);

@@ -2234,3 +2234,22 @@ pub fn objNop1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksec
     vm.release(args[0]);
     return Value.None;
 }
+
+pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFunc) cy.NativeFuncPtr {
+    const S = struct {
+        fn wrapped(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+            return func(vm, args, nargs) catch |err| {
+                fmt.printStderr("{} {}\n", &.{ fmt.v(name), fmt.v(err) });
+                switch (err) {
+                    error.FileNotFound => {
+                        return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+                    },
+                    else => {
+                        return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+                    },
+                }
+            };
+        }
+    };
+    return S.wrapped;
+}

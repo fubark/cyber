@@ -18,6 +18,7 @@ pub var CStructT: cy.TypeId = undefined;
 
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     const vm = self.vm;
+    const wrapErrorFunc = bindings.wrapErrorFunc;
 
     // Object Types.
     var id: u32 = undefined;
@@ -75,6 +76,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
         try mod.setNativeFunc(self, "bindLib", 3, bindings.nop3);
+        try mod.setNativeFunc(self, "copyFile", 2, bindings.nop2);
         try mod.setNativeFunc(self, "createDir", 1, bindings.nop1);
         try mod.setNativeFunc(self, "createFile", 2, bindings.nop2);
         try mod.setNativeFunc(self, "cwd", 0, bindings.nop0);
@@ -86,6 +88,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     } else {
         try mod.setNativeFunc(self, "bindLib", 2, bindLib);
         try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
+        try mod.setNativeFunc(self, "copyFile", 2, wrapErrorFunc("copyFile", copyFile));
         try mod.setNativeFunc(self, "createDir", 1, createDir);
         try mod.setNativeFunc(self, "createFile", 2, createFile);
         try mod.setNativeFunc(self, "cwd", 0, cwd);
@@ -189,6 +192,20 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
         fmt.printStderr("removeDir {}", &.{fmt.v(err)});
         return Value.None;
     };
+    return Value.True;
+}
+
+fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) !Value {
+    defer {
+        vm.release(args[0]);
+        vm.release(args[1]);
+    }
+    const src = vm.valueToTempRawString(args[0]);
+    const alloc = vm.allocator();
+    const srcDupe = try alloc.dupe(u8, src);
+    defer alloc.free(srcDupe);
+    const dst = vm.valueToTempRawString(args[1]);
+    try std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{});
     return Value.True;
 }
 

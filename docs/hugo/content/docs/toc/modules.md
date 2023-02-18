@@ -210,6 +210,7 @@ for map each k, v:
 | `args() list<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
 | `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
 | `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 
+| `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |
 | `createDir(path string) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
 | `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cwd() string` | Returns the current working directory. |

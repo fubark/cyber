@@ -1,0 +1,65 @@
+%YAML 1.2
+---
+# Note that blackslashes don't need to be escaped within single quoted
+# strings in YAML. When using single quoted strings, only single quotes
+# need to be escaped: this is done by using two single quotes next to each
+# other.
+
+# See http://www.sublimetext.com/docs/syntax.html
+file_extensions:
+  - cys
+  - cy
+  - cyber
+  - cyb
+scope: source.cyber
+contexts:
+  main:
+    # Strings begin and end with quotes, and use backslashes as an escape
+    # character
+    - match: '"'
+      scope: punctuation.definition.string.begin.example-c
+      push: double_quoted_string
+
+    - match: '--'
+      scope: punctuation.definition.comment.cyber
+      push: line_comment
+
+    - match: '\b(if|then|else|match|while|for|each|break|continue|pass)\b'
+      scope: keyword.control.cyber
+
+    - match: '\b(or|and|not|is)\b'
+      scope: keyword.operator.cyber
+
+    - match: '\b(var|static|capture|as)\b'
+      scope: keyword.variable.cyber
+
+    - match: '\b(func|return)\b'
+      scope: keyword.function.cyber
+
+    - match: '\b(coyield|coresume|coinit)\b'
+      scope: keyword.coroutine.cyber
+
+    - match: '\b(object|tagtype|true|false|none)\b'
+      scope: keyword.type.cyber
+
+    - match: '\b(try|catch|recover)\b'
+      scope: keyword.error.cyber
+
+    - match: '\b(import|export)\b'
+      scope: keyword.module.cyber
+
+    - match: '\b(-)?[0-9.]+\b'
+      scope: constant.numeric.cyber
+
+  double_quoted_string:
+    - meta_scope: string.quoted.double.example-c
+    - match: '\\.'
+      scope: constant.character.escape.example-c
+    - match: '"'
+      scope: punctuation.definition.string.end.example-c
+      pop: true
+
+  line_comment:
+    - meta_scope: comment.line.cyber
+    - match: $
+      pop: true

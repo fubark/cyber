@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>scope</key>
+	<string>source.cyber</string>
+	<key>settings</key>
+	<dict>
+		<key>increaseIndentPattern</key>
+		<!-- <string>^\s*(object|if)\s*.*:\s*$ | \s*(while)\s*:\s*$</string> -->
+		<string>^\s*(object|if|func|while|for|else)\s*.*:\s*(--.*)?$|^\s*(while|else)\s*:\s*(--.*)?$</string>
+		<key>disableIndentNextLinePattern</key>
+		<string></string>
+	</dict>
+</dict>
+</plist>

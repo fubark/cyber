@@ -2217,6 +2217,7 @@ fn genBinOpAssignToField(self: *CompileChunk, code: cy.OpCode, leftId: cy.NodeId
     const accessLeftv = try self.genExpr(left.head.accessExpr.left, false);
     const accessLocal = try self.nextFreeTempLocal();
     try self.buf.pushOpSlice(.field, &.{ accessLeftv.local, accessLocal, @intCast(u8, fieldId), 0, 0, 0 });
+    try self.pushDebugSym(leftId);
 
     const rightv = try self.genExpr(rightId, false);
     try self.buf.pushOp3(code, accessLocal, rightv.local, accessLocal);

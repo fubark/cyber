@@ -1831,7 +1831,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                             const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
                             const func = funcChunk.funcDecls[funcSym.declId];
                             const params = funcChunk.funcParams[func.params.start..func.params.end];
-                            numArgs = try genCallArgs2(self, params, node.head.func_call.arg_head);
+                            numArgs = try genCallArgs2(self, &funcChunk, params, node.head.func_call.arg_head);
                         } else {
                             numArgs = try genCallArgs(self, node.head.func_call.arg_head);
                         }
@@ -1895,7 +1895,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                             const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
                             const func = funcChunk.funcDecls[funcSym.declId];
                             const params = funcChunk.funcParams[func.params.start..func.params.end];
-                            numArgs = try genCallArgs2(self, params, node.head.func_call.arg_head);
+                            numArgs = try genCallArgs2(self, &funcChunk, params, node.head.func_call.arg_head);
                             genArgs = true;
                         }
                         optFuncSym = funcSym;
@@ -2063,7 +2063,7 @@ fn genFuncDecl(self: *CompileChunk, parentSymId: sema.ResolvedSymId, nodeId: cy.
     }
 }
 
-fn genCallArgs2(self: *CompileChunk, params: []const cy.FunctionParam, first: cy.NodeId) !u32 {
+fn genCallArgs2(self: *CompileChunk, paramsChunk: *const CompileChunk, params: []const cy.FunctionParam, first: cy.NodeId) !u32 {
     var numArgs: u32 = 0;
     var argId = first;
     while (argId != cy.NullId) : (numArgs += 1) {
@@ -2071,8 +2071,8 @@ fn genCallArgs2(self: *CompileChunk, params: []const cy.FunctionParam, first: cy
         var reqType = sema.AnyType;
         const param = params[numArgs];
         if (param.typeSpec != cy.NullId) {
-            const spec = self.nodes[param.typeSpec];
-            const typeName = self.getNodeTokenString(spec);
+            const spec = paramsChunk.nodes[param.typeSpec];
+            const typeName = paramsChunk.getNodeTokenString(spec);
             if (self.compiler.typeNames.get(typeName)) |paramT| {
                 reqType = paramT;
             }

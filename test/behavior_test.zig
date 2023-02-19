@@ -76,6 +76,12 @@ test "User parse errors." {
     t.alloc.free(err);
 }
 
+test "Type specifiers." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.eval(@embedFile("typespec_test.cy"));
+}
+
 test "Type alias." {
     const run = VMrunner.create();
     defer run.destroy();

@@ -1640,8 +1640,9 @@ fn pushFuncParamVars(c: *cy.CompileChunk, func: cy.FuncDecl) !void {
         for (c.funcParams[func.params.start..func.params.end]) |param| {
             const paramName = c.src[param.name.start..param.name.end];
             var paramT = AnyType;
-            if (param.typeName.len() > 0) {
-                const typeName = c.src[param.typeName.start..param.typeName.end];
+            if (param.typeSpec != cy.NullId) {
+                const spec = c.nodes[param.typeSpec];
+                const typeName = c.getNodeTokenString(spec);
                 if (c.compiler.typeNames.get(typeName)) |vtype| {
                     paramT = vtype;
                 }

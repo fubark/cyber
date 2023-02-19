@@ -343,7 +343,7 @@ pub const Parser = struct {
         const name = IndexSlice.init(token.pos(), token.data.end_pos);
         try self.func_params.append(self.alloc, .{
             .name = name,
-            .typeName = IndexSlice.init(0, 0),
+            .typeSpec = cy.NullId,
         });
 
         // Parse body expr.
@@ -481,17 +481,10 @@ pub const Parser = struct {
                 self.advanceToken();
                 const name = IndexSlice.init(token.pos(), token.data.end_pos);
 
-                // Check for type.
-                token = self.peekToken();
-                var typeName = IndexSlice.init(0, 0);
-                if (token.tag() == .ident) {
-                    self.advanceToken();
-                    typeName = IndexSlice.init(token.pos(), token.data.end_pos);
-                }
-
+                const typeSpec = (try self.parseOptTypeSpec()) orelse cy.NullId;
                 try self.func_params.append(self.alloc, .{
                     .name = name,
-                    .typeName = typeName,
+                    .typeSpec = typeSpec,
                 });
             } else if (token.tag() == .right_paren) {
                 self.advanceToken();
@@ -517,17 +510,10 @@ pub const Parser = struct {
                 self.advanceToken();
                 const name = IndexSlice.init(token.pos(), token.data.end_pos);
 
-                // Check for type.
-                token = self.peekToken();
-                var typeName = IndexSlice.init(0, 0);
-                if (token.tag() == .ident) {
-                    self.advanceToken();
-                    typeName = IndexSlice.init(token.pos(), token.data.end_pos);
-                }
-
+                const typeSpec = (try self.parseOptTypeSpec()) orelse cy.NullId;
                 try self.func_params.append(self.alloc, .{
                     .name = name,
-                    .typeName = typeName,
+                    .typeSpec = typeSpec,
                 });
             }
         }
@@ -568,6 +554,43 @@ pub const Parser = struct {
         } else return null;
     }
 
+    fn parseOptTypeSpec(self: *Parser) !?NodeId {
+        const start = self.next_pos;
+
+        var token = self.peekToken();
+        if (token.tag() == .ident) {
+            const head = try self.pushIdentNode(self.next_pos);
+            var last = head;
+            self.advanceToken();
+
+            while (true) {
+                token = self.peekToken();
+                if (token.tag() == .dot) {
+                    self.advanceToken();
+                    if (self.peekToken().tag() == .ident) {
+                        const ident = try self.pushIdentNode(self.next_pos);
+                        self.nodes.items[last].next = ident;
+                        last = ident;
+                        self.advanceToken();
+                        continue;
+                    } else {
+                        return self.reportParseError("Expected ident.", &.{});
+                    }
+                }
+                break;
+            }
+
+            const res = try self.pushNode(.typeSpec, start);
+            self.nodes.items[res].head = .{
+                .typeSpec = .{
+                    .head = head,
+                },
+            };
+            return res;
+        }
+        return null;
+    }
+
     fn parseObjectField(self: *Parser) !?NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
@@ -575,18 +598,13 @@ pub const Parser = struct {
             const name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
-            token = self.peekToken();
-            if (token.tag() == .ident) {
-                const typeN = try self.pushIdentNode(self.next_pos);
-                self.advanceToken();
-
+            if (try self.parseOptTypeSpec()) |typeSpec| {
                 try self.consumeNewLineOrEnd();
-
                 const field = try self.pushNode(.objectField, start);
                 self.nodes.items[field].head = .{
                     .objectField = .{
                         .name = name,
-                        .fieldType = typeN,
+                        .typeSpec = typeSpec,
                     },
                 };
                 return field;
@@ -597,7 +615,7 @@ pub const Parser = struct {
             self.nodes.items[field].head = .{
                 .objectField = .{
                     .name = name,
-                    .fieldType = NullId,
+                    .typeSpec = NullId,
                 },
             };
             return field;
@@ -3273,6 +3291,7 @@ pub const NodeType = enum {
     objectField,
     objectInit,
     typeAliasDecl,
+    typeSpec,
     tagDecl,
     tagMember,
     tagInit,
@@ -3408,6 +3427,9 @@ pub const Node = struct {
             name: NodeId,
             expr: NodeId,
         },
+        typeSpec: struct {
+            head: NodeId,
+        },
         objectInit: struct {
             name: NodeId,
             initializer: NodeId,
@@ -3415,7 +3437,7 @@ pub const Node = struct {
         },
         objectField: struct {
             name: NodeId,
-            fieldType: NodeId,
+            typeSpec: NodeId,
         },
         objectDecl: struct {
             name: NodeId,
@@ -3633,7 +3655,7 @@ pub const FuncDecl = struct {
 
 pub const FunctionParam = struct {
     name: IndexSlice,
-    typeName: IndexSlice,
+    typeSpec: NodeId,
 };
 
 fn toBinExprOp(op: OperatorType) BinaryExprOp {

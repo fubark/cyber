@@ -2068,8 +2068,9 @@ fn genCallArgs2(self: *CompileChunk, params: []const cy.FunctionParam, first: cy
         const arg = self.nodes[argId];
         var reqType = sema.AnyType;
         const param = params[numArgs];
-        if (param.typeName.len() > 0) {
-            const typeName = self.src[param.typeName.start..param.typeName.end];
+        if (param.typeSpec != cy.NullId) {
+            const spec = self.nodes[param.typeSpec];
+            const typeName = self.getNodeTokenString(spec);
             if (self.compiler.typeNames.get(typeName)) |paramT| {
                 reqType = paramT;
             }

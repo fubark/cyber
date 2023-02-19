@@ -14,10 +14,12 @@ file_extensions:
 scope: source.cyber
 contexts:
   main:
-    # Strings begin and end with quotes, and use backslashes as an escape
-    # character
+    - match: ''''
+      scope: punctuation.definition.string.begin.cyber
+      push: single_quoted_string
+
     - match: '"'
-      scope: punctuation.definition.string.begin.example-c
+      scope: punctuation.definition.string.begin.cyber
       push: double_quoted_string
 
     - match: '--'
@@ -51,12 +53,22 @@ contexts:
     - match: '\b(-)?[0-9.]+\b'
       scope: constant.numeric.cyber
 
-  double_quoted_string:
-    - meta_scope: string.quoted.double.example-c
+  single_quoted_string:
+    - meta_scope: string.quoted.single.cyber
+    # Uses backslashes as an escape character.
     - match: '\\.'
-      scope: constant.character.escape.example-c
+      scope: constant.character.escape.cyber
+    - match: ''''
+      scope: punctuation.definition.string.end.cyber
+      pop: true
+
+  double_quoted_string:
+    - meta_scope: string.quoted.double.cyber
+    # Uses backslashes as an escape character.
+    - match: '\\.'
+      scope: constant.character.escape.cyber
     - match: '"'
-      scope: punctuation.definition.string.end.example-c
+      scope: punctuation.definition.string.end.cyber
       pop: true
 
   line_comment:

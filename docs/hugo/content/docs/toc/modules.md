@@ -214,6 +214,7 @@ for map each k, v:
 | `createDir(path string) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
 | `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cwd() string` | Returns the current working directory. |
+| `dirName(string) string \| none` | Returns the given path with its last component removed. |
 | `exePath() string` | Returns the current executable's path. |
 | `free(ptr pointer) none` | Frees the memory located at `ptr`. |
 | `getEnv(string) string` | Returns an environment value by key. |

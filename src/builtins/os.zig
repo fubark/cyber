@@ -80,6 +80,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try mod.setNativeFunc(self, "createDir", 1, bindings.nop1);
         try mod.setNativeFunc(self, "createFile", 2, bindings.nop2);
         try mod.setNativeFunc(self, "cwd", 0, bindings.nop0);
+        try mod.setNativeFunc(self, "dirName", 1, bindings.nop1);
         try mod.setNativeFunc(self, "exePath", 0, bindings.nop0);
         try mod.setNativeFunc(self, "free", 1, bindings.nop1);
         try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
@@ -92,6 +93,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try mod.setNativeFunc(self, "createDir", 1, createDir);
         try mod.setNativeFunc(self, "createFile", 2, createFile);
         try mod.setNativeFunc(self, "cwd", 0, cwd);
+        try mod.setNativeFunc(self, "dirName", 1, dirName);
         try mod.setNativeFunc(self, "exePath", 0, exePath);
         try mod.setNativeFunc(self, "free", 1, osFree);
         if (builtin.os.tag == .windows) {
@@ -351,8 +353,19 @@ pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
 
 extern fn hostMilliTime() f64;
 
+pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const path = vm.valueToTempRawString(args[0]);
+    defer vm.release(args[0]);
+    if (std.fs.path.dirname(path)) |res| {
+        return vm.allocStringInfer(res) catch stdx.fatal();
+    } else {
+        return Value.None;
+    }
+}
+
 pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
     const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch stdx.fatal();
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString.

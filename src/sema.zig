@@ -995,7 +995,7 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
     }
 
     const objSymId = try ensureSym(c, null, nameId, null);
-    _ = try resolveLocalObjectSym(c, objSymId, c.semaResolvedRootSymId, name, nodeId, exported);
+    const robjSymId = try resolveLocalObjectSym(c, objSymId, c.semaResolvedRootSymId, name, nodeId, exported);
     // Object type should be constructed during sema so it's available for static initializer codegen.
     const sid = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId);
 
@@ -1036,11 +1036,6 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         const funcName = decl.getName(c);
         const funcNameId = try ensureNameSym(c.compiler, funcName);
         const numParams = @intCast(u16, decl.params.end - decl.params.start);
-        if (getSym(c, objSymId, funcNameId, numParams) == null) {
-            _ = try ensureSym(c, objSymId, funcNameId, numParams);
-        } else {
-            return c.reportErrorAt("Symbol `{}` is already declared.", &.{v(funcName)}, nodeId);
-        }
 
         const blockId = try pushBlock(c);
         c.funcDecls[func.head.func.decl_id].semaBlockId = blockId;
@@ -1051,8 +1046,7 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         try endBlock(c);
 
         const symId = try ensureSym(c, objSymId, funcNameId, numParams);
-        const resolvedParentSymId = c.semaSyms.items[objSymId].resolvedSymId;
-        _ = try resolveLocalFuncSym(c, symId, resolvedParentSymId, funcNameId, func.head.func.decl_id, retType, false);
+        _ = try resolveLocalFuncSym(c, symId, robjSymId, funcNameId, func.head.func.decl_id, retType, false);
 
         funcId = func.next;
     }
@@ -2238,17 +2232,6 @@ fn resolveSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSy
     return null;
 }
 
-fn getSym(self: *const cy.CompileChunk, parentId: ?u32, nameId: NameSymId, numParams: ?u16) ?SymId {
-    const key = vm_.KeyU96{
-        .absLocalSymKey = .{
-            .localParentSymId = parentId orelse cy.NullId,
-            .nameId = nameId,
-            .numParams = numParams orelse cy.NullId,
-        },
-    };
-    return self.semaSymMap.get(key);
-}
-
 pub fn ensureNameSym(c: *cy.VMcompiler, name: []const u8) !NameSymId {
     return ensureNameSymExt(c, name, false);
 }
@@ -2284,8 +2267,19 @@ pub fn linkNodeToSym(c: *cy.CompileChunk, nodeId: cy.NodeId, symId: SymId) void 
     }
 }
 
+fn getSym(self: *const cy.CompileChunk, parentId: ?u32, nameId: NameSymId, numParams: ?u16) ?SymId {
+    const key = AbsLocalSymKey{
+        .absLocalSymKey = .{
+            .localParentSymId = parentId orelse cy.NullId,
+            .nameId = nameId,
+            .numParams = numParams orelse cy.NullId,
+        },
+    };
+    return self.semaSymMap.get(key);
+}
+
 pub fn ensureSym(c: *cy.CompileChunk, parentId: ?SymId, nameId: NameSymId, numParams: ?u32) !SymId {
-    const key = vm_.KeyU96{
+    const key = AbsLocalSymKey{
         .absLocalSymKey = .{
             .localParentSymId = parentId orelse cy.NullId,
             .nameId = nameId,

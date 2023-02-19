@@ -434,7 +434,9 @@ const SymRefType = enum {
     module,
     moduleMember,
     moduleFuncMember,
-    initDeps,
+
+    // Local sym.
+    sym,
 };
 
 /// Represents a mapping to another symbol.
@@ -449,6 +451,9 @@ pub const SymRef = struct {
         moduleFuncMember: struct {
             modId: ModuleId,
             numParams: u32,
+        },
+        sym: struct {
+            symId: SymId,
         },
     },
 };
@@ -753,6 +758,38 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 _ = try assignVar(c, node.head.left_right.left, rtype, .staticAssign);
             } else {
                 _ = try assignVar(c, node.head.left_right.left, UndefinedType, .staticAssign);
+            }
+        },
+        .typeAliasDecl => {
+            const nameN = c.nodes[node.head.typeAliasDecl.name];
+            const name = c.getNodeTokenString(nameN);
+            const nameId = try ensureNameSym(c.compiler, name);
+
+            const expr = c.nodes[node.head.typeAliasDecl.expr];
+            if (expr.node_t == .ident or expr.node_t == .accessExpr) {
+                _ = try semaExpr(c, node.head.typeAliasDecl.expr, false);
+
+                var symId: SymId = undefined;
+                if (expr.node_t == .ident) {
+                    symId = c.nodes[node.head.typeAliasDecl.expr].head.ident.semaSymId;
+                } else if (expr.node_t == .accessExpr) {
+                    symId = c.nodes[node.head.typeAliasDecl.expr].head.accessExpr.semaSymId;
+                } else {
+                    stdx.panic("unreachable");
+                }
+
+                const aliasSymId = try ensureSym(c, null, nameId, null);
+
+                try c.semaSymToRef.put(c.alloc, aliasSymId, .{
+                    .refT = .sym,
+                    .inner = .{
+                        .sym = .{
+                            .symId = symId,
+                        },
+                    },
+                });
+            } else {
+                return c.reportErrorAt("Unsupported type alias expression: {}", &.{v(expr.node_t)}, node.head.typeAliasDecl.expr);
             }
         },
         .tagDecl => {
@@ -1951,32 +1988,46 @@ pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) !void {
 
         // Check alias map. eg. Imported modules, module members.
         if (self.semaSymToRef.get(symId)) |ref| {
-            if (ref.refT == .moduleMember) {
-                const modId = ref.inner.moduleMember.modId;
-                if (try getVisibleResolvedSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
-                    sym.resolvedSymId = resolvedId;
+            switch (ref.refT) {
+                .moduleMember => {
+                    const modId = ref.inner.moduleMember.modId;
+                    if (try getVisibleResolvedSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
+                        sym.resolvedSymId = resolvedId;
+                        return;
+                    }
+                    if (try resolveSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
+                        sym.resolvedSymId = resolvedId;
+                        return;
+                    }
+                },
+                .moduleFuncMember => {
+                    const modId = ref.inner.moduleFuncMember.modId;
+                    if (try getVisibleResolvedSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
+                        sym.resolvedSymId = resolvedId;
+                        return;
+                    }
+                    if (try resolveSymFromModule(self, modId, nameId, ref.inner.moduleFuncMember.numParams, firstNodeId)) |resolvedId| {
+                        sym.resolvedSymId = resolvedId;
+                        return;
+                    }
+                },
+                .module => {
+                    const modId = ref.inner.module;
+                    sym.resolvedSymId = self.compiler.modules.items[modId].resolvedRootSymId;
                     return;
-                }
-                if (try resolveSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
-                    sym.resolvedSymId = resolvedId;
-                    return;
-                }
-            } else if (ref.refT == .moduleFuncMember) {
-                const modId = ref.inner.moduleFuncMember.modId;
-                if (try getVisibleResolvedSymFromModule(self, modId, nameId, numParams, firstNodeId)) |resolvedId| {
-                    sym.resolvedSymId = resolvedId;
-                    return;
-                }
-                if (try resolveSymFromModule(self, modId, nameId, ref.inner.moduleFuncMember.numParams, firstNodeId)) |resolvedId| {
-                    sym.resolvedSymId = resolvedId;
-                    return;
-                }
-            } else if (ref.refT == .module) {
-                const modId = ref.inner.module;
-                sym.resolvedSymId = self.compiler.modules.items[modId].resolvedRootSymId;
-                return;
-            } else {
-                return self.reportError("Unsupported {}", &.{fmt.v(ref.refT)});
+                },
+                .sym => {
+                    if (self.semaSyms.items[ref.inner.sym.symId].resolvedSymId != cy.NullId) {
+                        sym.resolvedSymId = self.semaSyms.items[ref.inner.sym.symId].resolvedSymId;
+                        return;
+                    } else {
+                        const name = getName(self.compiler, nameId);
+                        return self.reportError("Type alias `{}` can not point to an unresolved symbol.", &.{v(name)});
+                    }
+                },
+                // else => {
+                //     return self.reportError("Unsupported {}", &.{fmt.v(ref.refT)});
+                // }
             }
         }
     } else {

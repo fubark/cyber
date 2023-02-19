@@ -76,6 +76,12 @@ test "User parse errors." {
     t.alloc.free(err);
 }
 
+test "Type alias." {
+    const run = VMrunner.create();
+    defer run.destroy();
+    _ = try run.evalExt(Config.withFileModules("./test/atype_test.cy"), @embedFile("atype_test.cy"));
+}
+
 test "Import http spec." {
     const run = VMrunner.create();
     defer run.destroy();

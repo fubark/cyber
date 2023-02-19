@@ -1231,6 +1231,9 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .tagDecl => {
             // Nop.
         },
+        .typeAliasDecl => {
+            // Nop.
+        },
         .objectDecl => {
             const nameN = self.nodes[node.head.objectDecl.name];
             const name = self.getNodeTokenString(nameN);

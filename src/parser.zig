@@ -43,6 +43,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "pass", .pass_k },
     .{ "recover", .recover_k },
     .{ "return", .return_k },
+    .{ "atype", .atype_k },
     .{ "tagtype", .tagtype_k },
     .{ "then", .then_k },
     .{ "true", .true_k },
@@ -601,6 +602,33 @@ pub const Parser = struct {
             };
             return field;
         } else return null;
+    }
+
+    fn parseTypeAliasDecl(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is the `atype` keyword.
+        self.advanceToken();
+
+        // Parse name.
+        var token = self.peekToken();
+        var name: NodeId = NullId;
+        if (token.tag() == .ident) {
+            name = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+        } else return self.reportParseError("Expected type alias name identifier.", &.{});
+
+        // TODO: Only allow single term expr.
+        const expr = (try self.parseExpr(.{})) orelse {
+            return self.reportParseError("Expected type alias expression.", &.{});
+        };
+        const id = try self.pushNode(.typeAliasDecl, start);
+        self.nodes.items[id].head = .{
+            .typeAliasDecl = .{
+                .name = name,
+                .expr = expr,
+            },
+        };
+        return id;
     }
 
     fn parseTagDecl(self: *Parser) !NodeId {
@@ -1494,6 +1522,9 @@ pub const Parser = struct {
             },
             .tagtype_k => {
                 return try self.parseTagDecl();
+            },
+            .atype_k => {
+                return try self.parseTypeAliasDecl();
             },
             .func_k => {
                 return try self.parseFunctionDecl();
@@ -3145,6 +3176,7 @@ pub const TokenType = enum(u6) {
     pass_k,
     none_k,
     object_k,
+    atype_k,
     tagtype_k,
     func_k,
     is_k,
@@ -3235,6 +3267,7 @@ pub const NodeType = enum {
     objectDecl,
     objectField,
     objectInit,
+    typeAliasDecl,
     tagDecl,
     tagMember,
     tagInit,
@@ -3365,6 +3398,10 @@ pub const Node = struct {
             decl_id: FuncDeclId,
             body_head: NodeId,
             assign_expr: NodeId,
+        },
+        typeAliasDecl: struct {
+            name: NodeId,
+            expr: NodeId,
         },
         objectInit: struct {
             name: NodeId,
@@ -4498,6 +4535,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 60);
-    try t.eq(keywords.kvs.len, 34);
+    try t.eq(std.enums.values(TokenType).len, 61);
+    try t.eq(keywords.kvs.len, 35);
 }

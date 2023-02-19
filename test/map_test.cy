@@ -1,6 +1,14 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
 import t 'test'
+
+-- Omits last comma for multiline initializer.
+a = {
+  foo: 123,
+  bar: 234,
+}
+try t.eq(a.size(), 2)
+
 a = {
     b: 123
     'c': 234

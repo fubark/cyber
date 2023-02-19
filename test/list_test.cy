@@ -2,6 +2,13 @@
 
 import t 'test'
 
+-- Omits last comma for multiline initializer.
+a = [
+  1,
+  2,
+]
+try t.eq(a.len(), 2)
+
 -- Index access.
 a = [1, 2, 3]
 try t.eq(a[0], 1)

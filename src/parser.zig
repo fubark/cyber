@@ -1832,6 +1832,10 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() == .comma) {
                     self.advanceToken();
+                    if (self.peekToken().tag() == .new_line) {
+                        self.advanceToken();
+                        self.consumeWhitespaceTokens();
+                    }
                 } else if (token.tag() == .right_bracket) {
                     break :outer;
                 }
@@ -1896,6 +1900,10 @@ pub const Parser = struct {
                 token = self.peekToken();
                 if (token.tag() == .comma) {
                     self.advanceToken();
+                    if (self.peekToken().tag() == .new_line) {
+                        self.advanceToken();
+                        self.consumeWhitespaceTokens();
+                    }
                 } else if (token.tag() == .right_brace) {
                     break :outer;
                 }
@@ -1919,9 +1927,6 @@ pub const Parser = struct {
                     },
                     .right_brace => {
                         break :outer;
-                    },
-                    .new_line => {
-                        continue;
                     },
                     else => return self.reportParseError("Expected map key.", &.{}),
                 }

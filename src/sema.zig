@@ -1046,7 +1046,8 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         try endBlock(c);
 
         const symId = try ensureSym(c, objSymId, funcNameId, numParams);
-        _ = try resolveLocalFuncSym(c, symId, robjSymId, funcNameId, func.head.func.decl_id, retType, false);
+        // Export all static funcs in the object's namespace since `export` may be removed later on.
+        _ = try resolveLocalFuncSym(c, symId, robjSymId, funcNameId, func.head.func.decl_id, retType, true);
 
         funcId = func.next;
     }

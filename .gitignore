@@ -19,3 +19,4 @@
 /scratch
 /scratch.o
 *.class
+.DS_Store

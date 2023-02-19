@@ -48,3 +48,6 @@ export func useNumber(a):
 export object Vec2:
     x number
     y number
+
+    func new(x, y):
+        return Vec2{ x: x, y: y }

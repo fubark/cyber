@@ -999,6 +999,9 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
     // Object type should be constructed during sema so it's available for static initializer codegen.
     const sid = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId);
 
+    // Persist local sym for codegen.
+    c.nodes[node.head.objectDecl.name].head.ident.semaSymId = objSymId;
+
     var i: u32 = 0;
     var fieldId = node.head.objectDecl.fieldsHead;
     while (fieldId != cy.NullId) : (i += 1) {
@@ -1032,7 +1035,7 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
             }
         }
 
-        // Struct function.
+        // Object function.
         const funcName = decl.getName(c);
         const funcNameId = try ensureNameSym(c.compiler, funcName);
         const numParams = @intCast(u16, decl.params.end - decl.params.start);
@@ -1043,7 +1046,9 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         try pushFuncParamVars(c, decl);
         try semaStmts(c, func.head.func.body_head, false);
         const retType = curBlock(c).getReturnType();
-        try endBlock(c);
+
+        const rtSymId = try c.compiler.vm.ensureFuncSym(robjSymId, funcNameId, numParams);
+        try endFuncSymBlock(c, rtSymId, numParams);
 
         const symId = try ensureSym(c, objSymId, funcNameId, numParams);
         // Export all static funcs in the object's namespace since `export` may be removed later on.
@@ -2604,7 +2609,7 @@ pub fn getOrLoadModule(self: *cy.CompileChunk, spec: []const u8, nodeId: cy.Node
 fn resolveLocalObjectSym(chunk: *cy.CompileChunk, symId: SymId, resolvedParentId: ResolvedSymId, name: []const u8, declId: cy.NodeId, exported: bool) !u32 {
     const c = chunk.compiler;
     const nameId = try ensureNameSym(c, name);
-    const key = vm_.KeyU64{
+    const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
             .resolvedParentSymId = resolvedParentId,
             .nameId = nameId,
@@ -2853,7 +2858,7 @@ fn endFuncBlock(self: *cy.CompileChunk, numParams: u32) !void {
     try endBlock(self);
 }
 
-fn endFuncSymBlock(self: *cy.CompileChunk, symId: u32, numParams: u32) !void {
+fn endFuncSymBlock(self: *cy.CompileChunk, rtSymId: u32, numParams: u32) !void {
     const sblock = curBlock(self);
     const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
     // Update original var to boxed.
@@ -2877,7 +2882,7 @@ fn endFuncSymBlock(self: *cy.CompileChunk, symId: u32, numParams: u32) !void {
                 try self.dataNodes.append(self.alloc, .{
                     .inner = .{
                         .funcSym = .{
-                            .symId = @intCast(u24, symId),
+                            .symId = @intCast(u24, rtSymId),
                             .capVarIdx = @intCast(u8, i - numParams),
                         },
                     },

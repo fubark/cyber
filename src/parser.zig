@@ -3440,6 +3440,7 @@ pub const Node = struct {
             typeSpec: NodeId,
         },
         objectDecl: struct {
+            // `name` is an ident token with a semaSymId.
             name: NodeId,
             fieldsHead: NodeId,
             funcsHead: NodeId,

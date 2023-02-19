@@ -1200,6 +1200,8 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const stmt = node.head.child_head;
             if (self.nodes[stmt].node_t == .funcDecl) {
                 try genStatement(self, stmt, discardTopExprReg);
+            } else if (self.nodes[stmt].node_t == .objectDecl) {
+                try genStatement(self, stmt, discardTopExprReg);
             } else {
                 // Nop. Static variables are hoisted and initialized at the start of the program.
             }
@@ -1238,7 +1240,8 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const nameN = self.nodes[node.head.objectDecl.name];
             const name = self.getNodeTokenString(nameN);
             const nameId = try sema.ensureNameSym(self.compiler, name);
-
+            const objSymId = nameN.head.ident.semaSymId;
+            const robjSymId = self.genGetResolvedSymId(objSymId).?;
             const sid = try self.compiler.vm.ensureObjectType(self.semaResolvedRootSymId, nameId);
 
             var funcId = node.head.objectDecl.funcsHead;
@@ -1258,19 +1261,18 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     }
                 }
 
-                const detail = cy.FuncSymDetail{
-                    .name = try self.alloc.dupe(u8, funcName),
-                };
-                try self.compiler.vm.funcSymDetails.append(self.alloc, detail);
-
-                try genFuncDecl(self, funcId);
+                // const detail = cy.FuncSymDetail{
+                //     .name = try self.alloc.dupe(u8, funcName),
+                // };
+                // try self.compiler.vm.funcSymDetails.append(self.alloc, detail);
+                try genFuncDecl(self, robjSymId, funcId);
             }
         },
         .funcDeclInit => {
             // Nop. Func declaration initializer are hoisted and initialized at the start of the program.
         },
         .funcDecl => {
-            try genFuncDecl(self, nodeId);
+            try genFuncDecl(self, self.semaResolvedRootSymId, nodeId);
         },
         .forOptStmt => {
             self.nextSemaSubBlock();
@@ -1995,14 +1997,14 @@ fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, 
     }
 }
 
-fn genFuncDecl(self: *CompileChunk, nodeId: cy.NodeId) !void {
+fn genFuncDecl(self: *CompileChunk, parentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !void {
     const node = self.nodes[nodeId];
     const func = self.funcDecls[node.head.func.decl_id];
     const rsym = self.compiler.semaResolvedSyms.items[func.semaResolvedSymId];
     const key = rsym.key.absResolvedSymKey;
     const numParams = @intCast(u8, func.params.end - func.params.start);
 
-    const symId = try self.compiler.vm.ensureFuncSym(key.resolvedParentSymId, key.nameId, numParams);
+    const symId = try self.compiler.vm.ensureFuncSym(parentSymId, key.nameId, numParams);
 
     const jumpPc = try self.pushEmptyJump();
 

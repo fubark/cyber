@@ -712,7 +712,7 @@ pub const VM = struct {
         return self.varSymSigs.get(key);
     }
 
-    pub fn ensureVarSym(self: *VM, resolvedParentId: SymbolId, nameId: u32) !SymbolId {
+    pub fn ensureVarSym(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: u32) !SymbolId {
         const key = KeyU64{
             .rtVarSymKey = .{
                 .resolvedParentSymId = resolvedParentId,
@@ -730,7 +730,7 @@ pub const VM = struct {
         }
     }
     
-    pub fn ensureFuncSym(self: *VM, resolvedParentId: SymbolId, nameId: u32, numParams: u32) !SymbolId {
+    pub fn ensureFuncSym(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: u32, numParams: u32) !SymbolId {
         const key = KeyU96{
             .rtFuncSymKey = .{
                 .resolvedParentSymId = resolvedParentId,

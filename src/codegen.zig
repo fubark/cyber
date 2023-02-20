@@ -122,7 +122,9 @@ fn genSymbolTo(self: *CompileChunk, symId: sema.SymId, dst: LocalId, retain: boo
             return self.reportError("Can't use symbol `{}` as a value.", &.{v(name)});
         }
     } else {
-        return genNone(self, dst);
+        // TODO: This should be a runtime error since symbols should be evaluated at runtime (a missing sym could be hotloaded)
+        const name = sema.getName(self.compiler, self.semaSyms.items[symId].key.absLocalSymKey.nameId);
+        return self.reportError("Missing symbol `{}`", &.{v(name)});
     }
 }
 
@@ -785,6 +787,7 @@ fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: 
 ///    If `dstIsUsed` is false and the current expr does not contain side-effects, it can omit generating its code.
 pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedType: sema.Type, retain: bool, comptime dstIsUsed: bool) anyerror!GenValue {
     const node = self.nodes[nodeId];
+    self.curNodeId = nodeId;
     // log.debug("gen reg expr {}", .{node.node_t});
     switch (node.node_t) {
         .ident => {

@@ -21,11 +21,7 @@ test "User parse errors." {
         \\var a = 123
         \\var b = 234
     );
-    try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Expected local name identifier.");
-    try t.eq(run.vm.getParserErrorPos(), 3);
-    var err = try run.vm.allocLastUserParseError();
-    try t.eqStr(err,
+    try run.expectErrorReport(val, error.ParseError,
         \\ParseError: Expected local name identifier.
         \\
         \\main:1:4:
@@ -33,7 +29,6 @@ test "User parse errors." {
         \\   ^
         \\
     );
-    t.alloc.free(err);
 
     // Test parse error on middle line.
     val = run.evalExt(.{ .silent = true },
@@ -41,11 +36,7 @@ test "User parse errors." {
         \\var
         \\var b = 234
     );
-    try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Expected local name identifier.");
-    try t.eq(run.vm.getParserErrorPos(), 15);
-    err = try run.vm.allocLastUserParseError();
-    try t.eqStr(err,
+    try run.expectErrorReport(val, error.ParseError,
         \\ParseError: Expected local name identifier.
         \\
         \\main:2:4:
@@ -53,7 +44,6 @@ test "User parse errors." {
         \\   ^
         \\
     );
-    t.alloc.free(err);
 
     // Test parse error on last line.
     val = run.evalExt(.{ .silent = true },
@@ -61,11 +51,7 @@ test "User parse errors." {
         \\var b = 234
         \\var
     );
-    try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Expected local name identifier.");
-    try t.eq(run.vm.getParserErrorPos(), 27);
-    err = try run.vm.allocLastUserParseError();
-    try t.eqStr(err,
+    try run.expectErrorReport(val, error.ParseError,
         \\ParseError: Expected local name identifier.
         \\
         \\main:3:4:
@@ -73,7 +59,6 @@ test "User parse errors." {
         \\   ^
         \\
     );
-    t.alloc.free(err);
 }
 
 test "Type specifiers." {
@@ -1100,20 +1085,32 @@ test "Undefined variable references." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Reading an undefined variable declares a new local variable with the `none` value.
-    _ = try run.eval(
+    // Reading an undefined variable assumes it's a symbol and returns a CompileError. (TODO: should be runtime error).
+    var res = run.evalExt(.{ .silent = true },
         \\import t 'test'
-        \\func foo(arg):
-        \\  pass
-        \\foo(a)
-        \\try t.eq(a, none)
+        \\try t.eq(a, 123)
+    );
+    try run.expectErrorReport(res, error.CompileError,
+        \\CompileError: Missing symbol `a`
+        \\
+        \\main:2:10:
+        \\try t.eq(a, 123)
+        \\         ^
+        \\
     );
 
-    // Using an undefined variable as a callee uses it as a sym so the runtime call panics.
-    const res = run.evalExt(.{ .silent = true },
+    // Using an undefined variable as a callee is a runtime panic error.
+    res = run.evalExt(.{ .silent = true },
         \\a()
     );
-    try t.expectError(res, error.Panic);
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: Missing function symbol `a`.
+        \\
+        \\main:1:1 main:
+        \\a()
+        \\^
+        \\
+    );
 }
 
 test "Static variable declaration." {

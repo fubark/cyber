@@ -254,8 +254,9 @@ jobs:
         with:
           name: bin
 
-      - name: Github Release.
+      - name: Github Latest Release.
         uses: marvinpinto/action-automatic-releases@latest
+        if: !startsWith(github.ref, 'refs/tags/')
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           automatic_release_tag: latest
@@ -269,9 +270,17 @@ jobs:
             cyber-windows-x64.zip
             cyber.dll
             cyber.wasm
-  # docs:
-  #   needs: release
-  #   name: Gen Docs
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - uses: 
+
+      - name: Github Release.
+        uses: softprops/action-gh-release@v1
+        # Releases for tags only.
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            cyber-linux-x64.tar.gz
+            cyber-selinux-x64.tar.gz
+            cyber-macos-x64.tar.gz
+            cyber-macos-arm64.tar.gz
+            cyber-windows-x64.zip
+            cyber.dll
+            cyber.wasm

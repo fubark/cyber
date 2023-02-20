@@ -20,7 +20,20 @@ var miAlloc: mi.Allocator = undefined;
 var verbose = false;
 var reload = false;
 
+const CP_UTF8 = 65001;
+var prevWinConsoleOutputCP: u32 = undefined;
+
 pub fn main() !void {
+    if (builtin.os.tag == .windows) {
+        prevWinConsoleOutputCP = std.os.windows.kernel32.GetConsoleOutputCP();
+        _ = std.os.windows.kernel32.SetConsoleOutputCP(CP_UTF8);
+    }
+    defer {
+        if (builtin.os.tag == .windows) {
+            _ = std.os.windows.kernel32.SetConsoleOutputCP(prevWinConsoleOutputCP);
+        }
+    }
+
     if (UseMimalloc) {
         miAlloc.init();
     }
@@ -99,9 +112,16 @@ pub fn main() !void {
         },
         .none => {
             help();
-            std.os.exit(1);
+            exit(1);
         },
     }
+}
+
+fn exit(code: u8) noreturn {
+    if (builtin.os.tag == .windows) {
+        _ = std.os.windows.kernel32.SetConsoleOutputCP(prevWinConsoleOutputCP);
+    }
+    std.os.exit(code);
 }
 
 const Command = enum {
@@ -127,7 +147,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
             error.TokenError,
             error.ParseError,
             error.CompileError => {
-                std.os.exit(1);
+                exit(1);
             },
             else => {
                 fmt.panic("unexpected {}\n", &.{fmt.v(err)});
@@ -155,12 +175,12 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         switch (err) {
             error.Panic => {
                 try vm.printLastUserPanicError();
-                std.os.exit(1);
+                exit(1);
             },
             error.TokenError,
             error.ParseError,
             error.CompileError => {
-                std.os.exit(1);
+                exit(1);
             },
             else => {
                 fmt.panic("unexpected {}\n", &.{fmt.v(err)});

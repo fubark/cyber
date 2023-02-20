@@ -496,7 +496,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                         .dupeCharPtrZ => {
                             try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                         },
-                        .ptr => {
+                        .voidPtr => {
                             try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                         },
                         else => {},
@@ -527,7 +527,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .double => return "double",
                 .charPtrZ => return "char*",
                 .dupeCharPtrZ => return "char*",
-                .ptr => return "void*",
+                .voidPtr => return "void*",
                 .void => return "void",
                 else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getTagLitName(tag) }),
             }
@@ -579,7 +579,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .charPtrZ => {
                     try w.print("str{}", .{i});
                 },
-                .ptr => {
+                .voidPtr => {
                     try w.print("icyGetPtr(args[{}])", .{i});
                 },
                 else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getTagLitName(tag) }),
@@ -607,7 +607,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .charPtrZ => {
                     try w.print("icyFromCStr(vm, {s})", .{cval});
                 },
-                .ptr => {
+                .voidPtr => {
                     try w.print("icyAllocOpaquePtr(vm, {s})", .{cval});
                 },
                 .void => {
@@ -932,7 +932,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                 .charPtrZ => {
                     try w.print("  char* res = {s}(", .{sym});
                 },
-                .ptr => {
+                .voidPtr => {
                     try w.print("  void* res = {s}(", .{sym});
                 },
                 .void => {

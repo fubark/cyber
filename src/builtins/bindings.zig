@@ -25,6 +25,8 @@ pub const TagLit = enum {
     ushort,
     int,
     uint,
+    uint31,
+    uint1,
     long,
     ulong,
     usize,
@@ -32,7 +34,7 @@ pub const TagLit = enum {
     double,
     charPtrZ,
     dupeCharPtrZ,
-    ptr,
+    voidPtr,
     void,
 
     little,
@@ -422,6 +424,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "ushort", .ushort);
     try ensureTagLitSym(self, "int", .int);
     try ensureTagLitSym(self, "uint", .uint);
+    try ensureTagLitSym(self, "uint31", .uint31);
+    try ensureTagLitSym(self, "uint1", .uint1);
     try ensureTagLitSym(self, "long", .long);
     try ensureTagLitSym(self, "ulong", .ulong);
     try ensureTagLitSym(self, "usize", .usize);
@@ -429,7 +433,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "double", .double);
     try ensureTagLitSym(self, "charPtrZ", .charPtrZ);
     try ensureTagLitSym(self, "dupeCharPtrZ", .dupeCharPtrZ);
-    try ensureTagLitSym(self, "ptr", .ptr);
+    try ensureTagLitSym(self, "voidPtr", .voidPtr);
     try ensureTagLitSym(self, "void", .void);
 
     try ensureTagLitSym(self, "little", .little);

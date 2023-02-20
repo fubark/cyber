@@ -40,11 +40,11 @@ lib = try os.bindLib(libPath, [
   os.CFunc{ sym: 'testF64', args: [#double], ret: #double }
   os.CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
   os.CFunc{ sym: 'testDupeCharPtrZ', args: [#dupeCharPtrZ], ret: #charPtrZ }
-  os.CFunc{ sym: 'testPtr', args: [#ptr], ret: #ptr }
+  os.CFunc{ sym: 'testPtr', args: [#voidPtr], ret: #voidPtr }
   os.CFunc{ sym: 'testVoid', args: [], ret: #void }
   os.CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
   os.CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
-  os.CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #ptr }
+  os.CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #voidPtr }
   os.CStruct{ fields: [#double, #int, #charPtrZ, #bool], type: MyObject }
 ])
 try t.eq(lib.testAdd(123, 321), 444)

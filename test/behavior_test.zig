@@ -1591,14 +1591,52 @@ test "Static functions." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Call with wrong number of arugments.
+    // Call with missing func sym.
     var res = run.evalExt(.{ .silent = true },
+        \\foo(1)
+    );
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: Missing function symbol `foo`.
+        \\
+        \\main:1:1 main:
+        \\foo(1)
+        \\^
+        \\
+    );
+
+    // Call with wrong number of arguments.
+    res = run.evalExt(.{ .silent = true },
         \\func foo():
         \\  return 1
         \\foo(1)
     );
-    try t.expectError(res, error.Panic);
-    try run.assertPanicMsg("Symbol is not defined.");
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: Unsupported call signature: `foo(1 args)`.
+        \\A function with signature `foo(0 args)` exists.
+        \\
+        \\main:3:1 main:
+        \\foo(1)
+        \\^
+        \\
+    );
+
+    // Call with wrong number of arguments for overloaded function.
+    res = run.evalExt(.{ .silent = true },
+        \\func foo():
+        \\  return 1
+        \\func foo(n):
+        \\  return n
+        \\foo(1, 2)
+    );
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: Unsupported call signature: `foo(2 args)`.
+        \\There are multiple overloaded functions named `foo`
+        \\
+        \\main:5:1 main:
+        \\foo(1, 2)
+        \\^
+        \\
+    );
 
     // Declaration initializer has a reference to a local.
     res = run.evalExt(.{ .silent = true },

@@ -1326,11 +1326,65 @@ pub const VM = struct {
                 };
             },
             .none => {
-                return self.panic("Symbol is not defined.");
+                return @call(.never_inline, reportMissingFuncSym, .{self, pc, symId});
             },
             // else => {
             //     return self.panic("unsupported callsym");
             // },
+        }
+    }
+
+    fn reportMissingFuncSym(vm: *VM, pc: [*]const cy.OpData, rtSymId: SymbolId) error{Panic, OutOfMemory} {
+        const relPc = pcOffset(vm, pc + cy.getInstLenAt(pc));
+        if (debug.getDebugSym(vm, relPc)) |sym| {
+            const chunk = vm.compiler.chunks.items[sym.file];
+            const callExpr = chunk.nodes[sym.loc];
+            const callee = chunk.nodes[callExpr.head.callExpr.callee];
+            var symId: cy.sema.SymId = undefined;
+            if (callee.node_t == .accessExpr) {
+                symId = callee.head.accessExpr.semaSymId;
+            } else if (callee.node_t == .ident) {
+                symId = callee.head.ident.semaSymId;
+            } else {
+                return vm.panic("Failed to generate error report.");
+            }
+            const key = chunk.semaSyms.items[symId].key.absLocalSymKey;
+            const name = cy.sema.getName(&vm.compiler, key.nameId);
+            var rpSymId: sema.ResolvedSymId = undefined;
+            if (key.localParentSymId == cy.NullId) {
+                rpSymId = chunk.semaResolvedRootSymId;
+            } else {
+                rpSymId = chunk.semaSyms.items[key.localParentSymId].resolvedSymId;
+            }
+            const rkey = sema.AbsResolvedSymKey{
+                .absResolvedSymKey = .{
+                    .resolvedParentSymId = rpSymId,
+                    .nameId = key.nameId,
+                },
+            };
+            if (vm.compiler.semaResolvedSymMap.get(rkey)) |rsymId| {
+                const rsym = vm.compiler.semaResolvedSyms.items[rsymId];
+                if (rsym.symT == .func) {
+                    const rtSym = vm.funcSyms.buf[rtSymId];
+                    if (rsym.inner.func.resolvedFuncSymId == cy.NullId) {
+                        return vm.panicFmt("Unsupported call signature: `{}({} args)`.\nThere are multiple overloaded functions named `{}`", &.{
+                            v(name), v(rtSym.innerExtra.none.numParams), v(name),
+                        });
+                    } else {
+                        const rfSym = vm.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
+                        return vm.panicFmt("Unsupported call signature: `{}({} args)`.\nA function with signature `{}({} args)` exists.", &.{
+                            v(name), v(rtSym.innerExtra.none.numParams), v(name), v(rfSym.numParams),
+                        });
+                    }
+                }
+            } else {
+                return vm.panicFmt("Missing function symbol `{}`.", &.{
+                    v(name),
+                });
+            }
+            return vm.panic("Failed to generate error report.");
+        } else {
+            return vm.panicFmt("Missing debug sym at {}", &.{v(pcOffset(vm, pc))});
         }
     }
 

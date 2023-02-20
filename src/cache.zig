@@ -104,9 +104,7 @@ pub fn getSpecHashGroup(alloc: std.mem.Allocator, spec: []const u8) !SpecHashGro
     defer alloc.free(path);
     const entries = readEntryFile(alloc, path) catch |err| {
         switch (err) {
-            error.FileNotFound,
-            // WSL.
-            error.BadFile => {
+            error.FileNotFound => {
                 return SpecHashGroup{
                     .hash = hash,
                     .entries = &.{},
@@ -123,91 +121,8 @@ pub fn getSpecHashGroup(alloc: std.mem.Allocator, spec: []const u8) !SpecHashGro
     };
 }
 
-pub const FStatError = error{
-    SystemResources,
-    BadFile,
-
-    /// In WASI, this error may occur when the file descriptor does
-    /// not hold the required rights to get its filestat information.
-    AccessDenied,
-} || std.os.UnexpectedError;
-
-fn fstat(fd: std.os.fd_t) FStatError!std.os.Stat {
-    if (builtin.os.tag == .wasi and !builtin.link_libc) {
-        var stat: std.os.wasi.filestat_t = undefined;
-        switch (std.os.wasi.fd_filestat_get(fd, &stat)) {
-            .SUCCESS => return std.os.Stat.fromFilestat(stat),
-            .INVAL => unreachable,
-            .BADF => unreachable, // Always a race condition.
-            .NOMEM => return error.SystemResources,
-            .ACCES => return error.AccessDenied,
-            .NOTCAPABLE => return error.AccessDenied,
-            else => |err| return std.os.unexpectedErrno(err),
-        }
-    }
-    if (builtin.os.tag == .windows) {
-        @compileError("fstat is not yet implemented on Windows");
-    }
-
-    const fstat_sym = if (builtin.os.tag == .linux and builtin.link_libc)
-        std.os.system.fstat64
-    else
-        std.os.system.fstat;
-
-    var stat = std.mem.zeroes(std.os.Stat);
-    switch (std.os.errno(fstat_sym(fd, &stat))) {
-        .SUCCESS => return stat,
-        .INVAL => unreachable,
-        .BADF => return error.BadFile,
-        .NOMEM => return error.SystemResources,
-        .ACCES => return error.AccessDenied,
-        else => |err| return std.os.unexpectedErrno(err),
-    }
-}
-
-const GetSeekPosError = std.os.SeekError || FStatError;
-
-fn getEndPos(file: std.fs.File) GetSeekPosError!u64 {
-    if (builtin.os.tag == .windows) {
-        return std.os.windows.GetFileSizeEx(file.handle);
-    }
-    const st = try fstat(file.handle);
-    return std.fs.File.Stat.fromSystem(st).size;
-}
-
-fn close(file: std.fs.File) void {
-    if (builtin.os.tag == .windows) {
-        std.os.windows.CloseHandle(file.handle);
-    } else {
-        if (comptime builtin.target.isDarwin()) {
-            // This avoids the EINTR problem.
-            switch (std.os.darwin.getErrno(std.os.darwin.@"close$NOCANCEL"(file.handle))) {
-                .BADF => unreachable, // Always a race condition.
-                else => return,
-            }
-        }
-        switch (std.os.errno(std.os.system.close(file.handle))) {
-            // WSL.
-            .BADF => return,
-            .INTR => return, // This is still a success. See https://github.com/ziglang/zig/issues/2425
-            else => return,
-        }
-    }
-}
-
-fn readFileAlloc(alloc: std.mem.Allocator, dir: std.fs.Dir, path: []const u8, max_bytes: usize) ![]const u8 {
-    var file = try dir.openFile(path, .{});
-    defer close(file);
-
-    // If the file size doesn't fit a usize it'll be certainly greater than `max_bytes`
-    const stat_size = std.math.cast(usize, try getEndPos(file)) orelse
-        return error.FileTooBig;
-
-    return file.readToEndAllocOptions(alloc, max_bytes, stat_size, @alignOf(u8), null);
-}
-
 fn readEntryFile(alloc: std.mem.Allocator, path: []const u8) ![]SpecEntry {
-    const content = try readFileAlloc(alloc, std.fs.cwd(), path, 1e10);
+    const content = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
     defer alloc.free(content);
 
     var entries: std.ArrayListUnmanaged(SpecEntry) = .{};

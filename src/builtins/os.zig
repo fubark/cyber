@@ -13,6 +13,8 @@ const TagLit = bindings.TagLit;
 
 const log = stdx.log.scoped(.os);
 
+const DumpCGen = builtin.mode == .Debug and false;
+
 pub var CFuncT: cy.TypeId = undefined;
 pub var CStructT: cy.TypeId = undefined;
 
@@ -584,6 +586,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             }
         }
 
+        /// If the c value is converted to a number, this assumes `cval` is already a double.
         fn printCyValue(ivm: *cy.VM, w: anytype, argType: Value, cval: []const u8) !void {
             const tag = argType.asTagLiteralId();
             switch (@intToEnum(TagLit, tag)) {
@@ -980,7 +983,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
     }
 
     try w.writeByte(0);
-    // log.debug("{s}", .{csrc.items});
+    if (DumpCGen) {
+        log.debug("{s}", .{csrc.items});
+    }
 
     const state = tcc.tcc_new();
     // Don't include libtcc1.a.

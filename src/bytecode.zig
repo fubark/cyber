@@ -31,7 +31,7 @@ pub const ByteCodeBuffer = struct {
     /// This means that debug symbols should be indexed by each inst's end pos to be optimal.
     /// Call frames below the top frame can index into `debugTable` by the saved pc.
     /// However, the top frame would need to index with `pc + getInstLenAt(pc)`.
-    debugTable: std.ArrayListUnmanaged(OpDebug),
+    debugTable: std.ArrayListUnmanaged(DebugSym),
 
     pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
         var new = ByteCodeBuffer{
@@ -370,9 +370,13 @@ pub const OpData = packed union {
     }
 };
 
-pub const OpDebug = struct {
+pub const DebugSym = struct {
     pc: u32,
+
+    /// Points to a cy.NodeId.
     loc: u32,
+
+    /// Points to the parent function decl's cy.NodeId or NullId if it's in the main block.
     frameLoc: u32,
 
     /// CompileChunkId.

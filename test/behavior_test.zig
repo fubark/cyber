@@ -455,9 +455,14 @@ test "Objects." {
         \\  x
         \\  y
     );
-    try t.expectError(res, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Expected colon to start an object type block.");
-    try t.eq(run.vm.getParserErrorPos(), 11);
+    try run.expectErrorReport(res, error.ParseError,
+        \\ParseError: Expected colon to start an object type block.
+        \\
+        \\main:1:12:
+        \\object Vec2
+        \\           ^
+        \\
+    );
 
     // Field declaration ends the file without parser error.
     _ = try run.eval(
@@ -477,9 +482,7 @@ test "Objects." {
         \\  a
         \\o = S{ b: 100 }
     );
-    try t.expectError(res, error.CompileError);
-    var err = try run.vm.allocLastUserCompileError();
-    try t.eqStrFree(t.alloc, err,
+    try run.expectErrorReport(res, error.CompileError,
         \\CompileError: Missing field `b` in `S`.
         \\
         \\main:3:8:
@@ -495,13 +498,45 @@ test "Objects." {
         \\o = S{ a: 100 }
         \\o.b = 200
     );
-    try t.expectError(res, error.Panic);
-    err = try run.vm.allocLastUserPanicError();
-    try t.eqStrFree(t.alloc, err,
+    try run.expectErrorReport(res, error.Panic,
         \\panic: Field not found in value.
         \\
         \\main:4:1 main:
         \\o.b = 200
+        \\^
+        \\
+    );
+
+    // Calling a missing method name.
+    res = run.evalExt(.{ .silent = true },
+        \\object S:
+        \\  a
+        \\o = S{}
+        \\o.foo()
+    );
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: `foo` is either missing in `S` or the call signature: foo(self, 0 args) is unsupported.
+        \\
+        \\main:4:1 main:
+        \\o.foo()
+        \\^
+        \\
+    );
+
+    // Calling a method with the wrong signature.
+    res = run.evalExt(.{ .silent = true },
+        \\object S:
+        \\  a
+        \\  func foo(self):
+        \\    return 123
+        \\o = S{}
+        \\o.foo(234)
+    );
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: `foo` is either missing in `S` or the call signature: foo(self, 1 args) is unsupported.
+        \\
+        \\main:6:1 main:
+        \\o.foo(234)
         \\^
         \\
     );
@@ -1755,6 +1790,24 @@ const VMrunner = struct {
         return self.vm.allocPanicMsg();
     }
 
+    fn expectErrorReport(self: *VMrunner, val: anytype, expErr: UserError, expReport: []const u8) !void {
+        try t.expectError(val, expErr);
+        var report: []const u8 = undefined;
+        switch (expErr) {
+            error.Panic => {
+                report = try self.vm.allocLastUserPanicError();
+            },
+            error.CompileError => {
+                report = try self.vm.allocLastUserCompileError();
+            },
+            error.ParseError => {
+                report = try self.vm.allocLastUserParseError();
+            },
+        }
+        defer t.alloc.free(report);
+        try t.eqStr(report, expReport);
+    }
+
     fn evalExt(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
         if (config.silent) {
             cy.silentError = true;
@@ -1915,3 +1968,6 @@ fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !
     }
     try t.eqStr(act, exp.items);
 }
+
+const UserError = error{Panic, CompileError, ParseError};
+

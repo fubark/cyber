@@ -116,6 +116,11 @@ test "computeLinePosFromTokens" {
     try t.eq(lineStart, 0);
 }
 
+pub fn getDebugSym(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
+    const idx = indexOfDebugSym(vm, pc) orelse return null;
+    return vm.debugTable[idx];
+}
+
 pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
     for (vm.debugTable) |sym, i| {
         if (sym.pc == pc) {

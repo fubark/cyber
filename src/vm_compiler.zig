@@ -555,7 +555,7 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
 /// The temp register allocator needs to know this ahead of time to determine the dst register.
 fn genWillAlwaysRetainNode(c: *CompileChunk, node: cy.Node) bool {
     switch (node.node_t) {
-        .call_expr,
+        .callExpr,
         .arr_literal,
         .map_literal,
         .stringTemplate,
@@ -1041,7 +1041,7 @@ pub const CompileChunk = struct {
                     return svar.local;
                 }
             }
-        } else if (node.node_t == .call_expr) {
+        } else if (node.node_t == .callExpr) {
             // Since call expr args allocate arg locals past the arc temps,
             // select the call dst to be past the arc temps to skip generating an extra copy op.
             _ = self.advanceNextTempLocalPastArcTemps();

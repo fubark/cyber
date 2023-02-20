@@ -1488,14 +1488,14 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
             _ = try semaExpr(c, node.head.child_head, false);
             return FiberType;
         },
-        .call_expr => {
-            const callee = c.nodes[node.head.func_call.callee];
-            if (!node.head.func_call.has_named_arg) {
+        .callExpr => {
+            const callee = c.nodes[node.head.callExpr.callee];
+            if (!node.head.callExpr.has_named_arg) {
                 if (callee.node_t == .accessExpr) {
                     _ = try semaExpr(c, callee.head.accessExpr.left, false);
 
                     var numArgs: u32 = 0;
-                    var arg_id = node.head.func_call.arg_head;
+                    var arg_id = node.head.callExpr.arg_head;
                     while (arg_id != cy.NullId) : (numArgs += 1) {
                         const arg = c.nodes[arg_id];
                         _ = try semaExpr(c, arg_id, false);
@@ -1514,7 +1514,7 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
                         const right = c.nodes[callee.head.accessExpr.right];
                         const name = c.getNodeTokenString(right);
                         const symId = try referenceSym(c, leftSymId, name, numArgs, callee.head.accessExpr.right, true);
-                        c.nodes[node.head.func_call.callee].head.accessExpr.semaSymId = symId;
+                        c.nodes[node.head.callExpr.callee].head.accessExpr.semaSymId = symId;
                     }
 
                     return AnyType;
@@ -1522,10 +1522,10 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
                     const name = c.getNodeTokenString(callee);
                     const res = try getOrLookupVar(c, name, .read);
                     if (res.isLocal) {
-                        c.nodes[node.head.func_call.callee].head.ident.semaVarId = res.varId;
+                        c.nodes[node.head.callExpr.callee].head.ident.semaVarId = res.varId;
 
                         var numArgs: u32 = 1;
-                        var arg_id = node.head.func_call.arg_head;
+                        var arg_id = node.head.callExpr.arg_head;
                         while (arg_id != cy.NullId) : (numArgs += 1) {
                             const arg = c.nodes[arg_id];
                             _ = try semaExpr(c, arg_id, false);
@@ -1537,7 +1537,7 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
                         return AnyType;
                     } else {
                         var numArgs: u32 = 0;
-                        var arg_id = node.head.func_call.arg_head;
+                        var arg_id = node.head.callExpr.arg_head;
                         while (arg_id != cy.NullId) : (numArgs += 1) {
                             const arg = c.nodes[arg_id];
                             _ = try semaExpr(c, arg_id, false);
@@ -1545,22 +1545,22 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
                         }
 
                         // Ensure func sym.
-                        const symId = try referenceSym(c, null, name, numArgs, node.head.func_call.callee, true);
-                        c.nodes[node.head.func_call.callee].head.ident.semaSymId = symId;
+                        const symId = try referenceSym(c, null, name, numArgs, node.head.callExpr.callee, true);
+                        c.nodes[node.head.callExpr.callee].head.ident.semaSymId = symId;
 
                         return AnyType;
                     }
                 } else {
                     // All other callees are treated as function value calls.
                     var numArgs: u32 = 0;
-                    var arg_id = node.head.func_call.arg_head;
+                    var arg_id = node.head.callExpr.arg_head;
                     while (arg_id != cy.NullId) : (numArgs += 1) {
                         const arg = c.nodes[arg_id];
                         _ = try semaExpr(c, arg_id, false);
                         arg_id = arg.next;
                     }
 
-                    _ = try semaExpr(c, node.head.func_call.callee, false);
+                    _ = try semaExpr(c, node.head.callExpr.callee, false);
                     return AnyType;
                 }
             } else return c.reportErrorAt("Unsupported named args", &.{}, nodeId);

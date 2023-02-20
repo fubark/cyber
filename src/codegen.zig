@@ -907,8 +907,8 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         },
         .comptExpr => {
             const child = self.nodes[node.head.child_head];
-            if (child.node_t == .call_expr) {
-                const callee = self.nodes[child.head.func_call.callee];
+            if (child.node_t == .callExpr) {
+                const callee = self.nodes[child.head.callExpr.callee];
                 const name = self.getNodeTokenString(callee);
                 if (std.mem.eql(u8, name, "compilerDumpLocals")) {
                     try self.dumpLocals();
@@ -969,7 +969,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         .binExpr => {
             return genBinExpr(self, nodeId, dst, requestedType, retain, dstIsUsed);
         },
-        .call_expr => {
+        .callExpr => {
             const val = try genCallExpr(self, nodeId, dst, !dstIsUsed, false);
             if (dst != val.local) {
                 try self.buf.pushOp2(.copy, val.local, dst);
@@ -1817,8 +1817,8 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
     const genCallStartLocal = if (startFiber) 1 else callStartLocal;
 
     const node = self.nodes[nodeId];
-    const callee = self.nodes[node.head.func_call.callee];
-    if (!node.head.func_call.has_named_arg) {
+    const callee = self.nodes[node.head.callExpr.callee];
+    if (!node.head.callExpr.has_named_arg) {
         if (callee.node_t == .accessExpr) {
             if (callee.head.accessExpr.semaSymId != cy.NullId) {
                 if (self.genGetResolvedSymId(callee.head.accessExpr.semaSymId)) |rsymId| {
@@ -1831,9 +1831,9 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                             const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
                             const func = funcChunk.funcDecls[funcSym.declId];
                             const params = funcChunk.funcParams[func.params.start..func.params.end];
-                            numArgs = try genCallArgs2(self, &funcChunk, params, node.head.func_call.arg_head);
+                            numArgs = try genCallArgs2(self, &funcChunk, params, node.head.callExpr.arg_head);
                         } else {
-                            numArgs = try genCallArgs(self, node.head.func_call.arg_head);
+                            numArgs = try genCallArgs(self, node.head.callExpr.arg_head);
                         }
 
                         // var isStdCall = false;
@@ -1869,7 +1869,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                     // Assume left child is a valid reference from sema. Generate callObjSym.
                     const right = self.nodes[callee.head.accessExpr.right];
                     if (right.node_t == .ident) {
-                        return genCallObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.func_call.arg_head, discardTopExprReg, nodeId);
+                        return genCallObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.callExpr.arg_head, discardTopExprReg, nodeId);
                     } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                 }
             }
@@ -1877,7 +1877,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
             // accessExpr is not a symbol.
             const right = self.nodes[callee.head.accessExpr.right];
             if (right.node_t == .ident) {
-                return genCallObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.func_call.arg_head, discardTopExprReg, nodeId);
+                return genCallObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.callExpr.arg_head, discardTopExprReg, nodeId);
             } else return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
         } else if (callee.node_t == .ident) {
             if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
@@ -1895,7 +1895,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                             const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
                             const func = funcChunk.funcDecls[funcSym.declId];
                             const params = funcChunk.funcParams[func.params.start..func.params.end];
-                            numArgs = try genCallArgs2(self, &funcChunk, params, node.head.func_call.arg_head);
+                            numArgs = try genCallArgs2(self, &funcChunk, params, node.head.callExpr.arg_head);
                             genArgs = true;
                         }
                         optFuncSym = funcSym;
@@ -1912,7 +1912,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                 }
 
                 if (!genArgs) {
-                    numArgs = try genCallArgs(self, node.head.func_call.arg_head);
+                    numArgs = try genCallArgs(self, node.head.callExpr.arg_head);
                 }
 
                 const coinitPc = self.buf.ops.items.len;
@@ -1975,7 +1975,7 @@ fn genCallObjSym(self: *CompileChunk, callStartLocal: u8, leftId: cy.NodeId, ide
 
 fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, comptime discardTopExprReg: bool) !GenValue {
     var numArgs: u32 = 0;
-    var argId = node.head.func_call.arg_head;
+    var argId = node.head.callExpr.arg_head;
     while (argId != cy.NullId) : (numArgs += 1) {
         const arg = self.nodes[argId];
         _ = try self.genRetainedTempExpr(argId, false);
@@ -1984,7 +1984,7 @@ fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, 
 
     // TODO: Doesn't have to retain to a temp if it's a local (would just need retain op).
     // If copied to temp, it should be after the last param so it can persist until the function returns.
-    const calleev = try self.genRetainedTempExpr(node.head.func_call.callee, false);
+    const calleev = try self.genRetainedTempExpr(node.head.callExpr.callee, false);
     // Mark as reserved so it get's released later.
     try self.setReservedTempLocal(calleev.local);
 

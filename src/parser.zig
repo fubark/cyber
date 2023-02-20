@@ -1494,10 +1494,10 @@ pub const Parser = struct {
                         const callStart = self.next_pos;
                         const call_id = try self.parseAnyCallExpr(at_ident);
                         const call_expr = self.nodes.items[call_id];
-                        if (call_expr.head.func_call.arg_head == NullId) {
+                        if (call_expr.head.callExpr.arg_head == NullId) {
                             return self.reportParseErrorAt("Expected arg for @name.", &.{}, callStart);
                         }
-                        const arg = self.nodes.items[call_expr.head.func_call.arg_head];
+                        const arg = self.nodes.items[call_expr.head.callExpr.arg_head];
                         if (std.mem.eql(u8, "name", name)) {
                             if (arg.node_t == .ident) {
                                 const arg_token = self.tokens.items[arg.start_token];
@@ -2005,7 +2005,7 @@ pub const Parser = struct {
         self.advanceToken();
 
         const expr_start = self.nodes.items[left_id].start_token;
-        const expr_id = try self.pushNode(.call_expr, expr_start);
+        const expr_id = try self.pushNode(.callExpr, expr_start);
 
         var has_named_arg = false;
         var first: NodeId = NullId;
@@ -2039,7 +2039,7 @@ pub const Parser = struct {
         if (token.tag() == .right_paren) {
             self.advanceToken();
             self.nodes.items[expr_id].head = .{
-                .func_call = .{
+                .callExpr = .{
                     .callee = left_id,
                     .arg_head = first,
                     .has_named_arg = has_named_arg,
@@ -2052,12 +2052,12 @@ pub const Parser = struct {
     /// Assumes first arg exists.
     fn parseNoParenCallExpression(self: *Parser, left_id: NodeId) !NodeId {
         const expr_start = self.nodes.items[left_id].start_token;
-        const expr_id = try self.pushNode(.call_expr, expr_start);
+        const expr_id = try self.pushNode(.callExpr, expr_start);
 
         const firstArg = try self.parseTightTermExpr();
         var last_arg_id = firstArg;
         self.nodes.items[expr_id].head = .{
-            .func_call = .{
+            .callExpr = .{
                 .callee = left_id,
                 .arg_head = firstArg,
                 .has_named_arg = false,
@@ -2308,7 +2308,7 @@ pub const Parser = struct {
                     return self.reportParseError("Expected call expression.", &.{});
                 };
                 const callExpr = self.nodes.items[callExprId];
-                if (callExpr.node_t != .call_expr) {
+                if (callExpr.node_t != .callExpr) {
                     return self.reportParseError("Expected call expression.", &.{});
                 }
                 const coinit = try self.pushNode(.coinit, start);
@@ -3268,7 +3268,7 @@ pub const NodeType = enum {
     accessExpr,
     arr_access_expr,
     arr_range_expr,
-    call_expr,
+    callExpr,
     named_arg,
     binExpr,
     unary_expr,
@@ -3383,10 +3383,20 @@ pub const Node = struct {
             /// Symbol id of a var or func. NullId if it does not point to a symbol.
             semaSymId: u32 = NullId,
         },
-        func_call: struct {
+        callExpr: struct {
             callee: NodeId,
             arg_head: NodeId,
             has_named_arg: bool,
+
+            pub fn getNumArgs(self: @This(), nodes: []const Node) u32 {
+                var numArgs: u32 = 0;
+                var argId = self.arg_head;
+                while (argId != cy.NullId) : (numArgs += 1) {
+                    const arg = nodes[argId];
+                    argId = arg.next;
+                }
+                return numArgs;
+            }
         },
         ident: struct {
             semaVarId: u32 = NullId,

@@ -431,10 +431,10 @@ pub fn decode(alloc: std.mem.Allocator, parser: *Parser, cyon: []const u8) !Deco
     }
 
     const root = res.nodes.items[res.root_id];
-    if (root.head.child_head == NullId) {
+    if (root.head.root.headStmt == NullId) {
         return error.NotAValue;
     }
-    const first_stmt = res.nodes.items[root.head.child_head];
+    const first_stmt = res.nodes.items[root.head.root.headStmt];
     if (first_stmt.node_t != .expr_stmt) {
         return error.NotAValue;
     }

@@ -20,3 +20,5 @@
 /scratch.o
 *.class
 .DS_Store
+/cyber.sublime-project
+/cyber.sublime-workspace

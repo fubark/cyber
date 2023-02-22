@@ -1,6 +1,6 @@
 baseURL = 'https://fubark.github.io/cyber'
 languageCode = 'en-us'
-title = 'Cyber Docs v0.1'
+title = 'Cyber Docs v0.2'
 theme = 'hugo-book'
 
 [menu]

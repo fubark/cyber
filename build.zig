@@ -3,8 +3,8 @@ const cy_config = @import("src/config.zig");
 const mimalloc = @import("lib/mimalloc/lib.zig");
 const tcc = @import("lib/tcc/lib.zig");
 
-// FIND: v0.1
-const Version = "0.1";
+// FIND: v0.2
+const Version = "0.2";
 
 const Options = struct {
     linkMimalloc: bool = false,

@@ -1,6 +1,7 @@
-count = 0
+var count = 0
 
 func inc():
+    static count
     count += 1
     coyield
     count += 1

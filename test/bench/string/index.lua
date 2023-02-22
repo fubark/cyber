@@ -2,7 +2,7 @@ local str = string.rep('abcdefghijklmnopqrstuvwxyz123456', 1000000) .. 'waldo'
 
 local start = os.clock()
 local idx
-for _ = 0, 99 do
+for _ = 0, 49 do
     idx = string.find(str, 'waldo', 1, true)
 end
 

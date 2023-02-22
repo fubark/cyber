@@ -4,7 +4,7 @@ $str = str_repeat('abcdefghijklmnopqrstuvwxyz123456', 1000000) . 'waldo';
 
 $start = microtime(true);
 
-for ($i = 0; $i < 100; $i++) {
+for ($i = 0; $i < 50; $i++) {
     $idx = strpos($str, 'waldo');
 }
 

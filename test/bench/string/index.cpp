@@ -18,8 +18,8 @@ int main(int argc, char* argv[]) {
 
     double start = now();
     int idx = 0;
-    for (int i = 0; i < 100; i += 1) {
+    for (int i = 0; i < 50; i += 1) {
         idx = str.find("waldo");
     }
-    printf("idx: %d ms: %f\n", idx, now() - start);
+    printf("idx: %d ms: %f\n", idx, (now() - start) * 1000);
 }

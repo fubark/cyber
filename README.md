@@ -12,14 +12,14 @@ Cyber is a fast, efficient, and concurrent scripting language. You can embed it 
 
 ### Supported Platforms
 - Linux x64 (Ubuntu, Fedora, Arch)
-- MacOS x64
-- MacOS arm64 (Manually tested. Not as optimized as the x64 build.)
+- macOS x64
+- macOS arm64 (Manually tested. Not as optimized as the x64 build.)
 - Windows x64
 - WASM Web
 - WASM WASI (soon)
 
 ### Install
-- Install using the command prompt.
+- Install using the command prompt (Linux, macOS)
 ```sh
 curl -fsSL https://cyberscript.dev/install.sh | bash
 # Alternative url.

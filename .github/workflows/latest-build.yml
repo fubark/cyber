@@ -140,7 +140,7 @@ jobs:
           version=$(zig build version)
           echo "SHORT_VERSION=$version" >> $GITHUB_ENV
           git fetch --all --tags
-          echo "BUILD=$(git rev-list --count $version-init..master)" >> $GITHUB_ENV
+          echo "BUILD=$(git rev-list --count $version..$GITHUB_SHA)" >> $GITHUB_ENV
 
       - name: Get version. (windows)
         if: env.BUILD_HOST == 'windows-2022'
@@ -149,7 +149,7 @@ jobs:
           version=$(zig build version)
           echo "SHORT_VERSION=$version" >> $env:GITHUB_ENV
           git fetch --all --tags
-          echo "BUILD=$(git rev-list --count $version-init..master)" >> $env:GITHUB_ENV
+          echo "BUILD=$(git rev-list --count $version..$GITHUB_SHA)" >> $env:GITHUB_ENV
 
       - name: Cache.
         #if: env.BUILD_TARGET != 'x86_64-windows-gnu'

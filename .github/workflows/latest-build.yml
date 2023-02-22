@@ -17,6 +17,7 @@ on:
       - 'docs/hugo/**'
       - '.gitattributes'
       - 'examples/**.cy'
+      - 'examples/**/*.cy'
 # Cancel previous job if it's running.
 concurrency:
   group: latest

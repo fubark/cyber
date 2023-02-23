@@ -336,6 +336,7 @@ pub const Parser = struct {
             .name = undefined,
             .params = stdx.IndexSlice(u32).init(@intCast(u32, self.func_params.items.len), @intCast(u32, self.func_params.items.len+1)),
             .return_type = null,
+            .isStatic = false,
         };
 
         const param = self.nodes.items[paramIdent];
@@ -373,6 +374,7 @@ pub const Parser = struct {
             .name = undefined,
             .params = stdx.IndexSlice(u32).init(0, 0),
             .return_type = null,
+            .isStatic = false,
         };
 
         // Parse body expr.
@@ -403,6 +405,7 @@ pub const Parser = struct {
             .name = undefined,
             .params = undefined,
             .return_type = null,
+            .isStatic = false,
         };
 
         decl.params = try self.parseFunctionParams();
@@ -438,6 +441,7 @@ pub const Parser = struct {
             .name = cy.NullId,
             .params = undefined,
             .return_type = null,
+            .isStatic = false,
         };
 
         decl.params = try self.parseFunctionParams();
@@ -802,6 +806,7 @@ pub const Parser = struct {
             .name = undefined,
             .params = undefined,
             .return_type = null,
+            .isStatic = true,
         };
 
         // Parse function name.
@@ -3630,6 +3635,7 @@ pub const StructDecl = struct {
 
 const FuncDeclId = u32;
 
+/// TODO: Should be moved to sema.
 pub const FuncDecl = struct {
     /// Can be NullId.
     name: NodeId,
@@ -3642,6 +3648,9 @@ pub const FuncDecl = struct {
 
     semaResolvedSymId: u32 = NullId,
     semaResolvedFuncSymId: u32 = NullId,
+
+    /// Whether this is a static function.
+    isStatic: bool,
 
     pub fn getName(self: *const FuncDecl, chunk: *const cy.CompileChunk) []const u8 {
         if (self.name == cy.NullId) {

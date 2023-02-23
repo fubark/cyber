@@ -153,6 +153,9 @@ pub const LocalVar = struct {
     /// Whether this var references a static variable.
     isStaticAlias: bool = false,
 
+    /// Whether the variable references a captured/static var from a modifier or implicity from a read reference.
+    hasCaptureOrStaticModifier: bool = false,
+
     /// Currently a captured var always needs to be boxed.
     /// In the future, the concept of a const variable could change this.
     isBoxed: bool = false,
@@ -262,6 +265,9 @@ pub const Block = struct {
     /// Current sub block depth.
     subBlockDepth: u32,
 
+    /// Index into `CompileChunk.funcDecls`. Main block if `NullId`.
+    funcDeclId: u32,
+
     /// If the return type is not provided, sema tries to infer it.
     /// It won't try to infer non-trivial cases.
     /// Return type is updated only if `inferRetType` is true while iterating the body statements.
@@ -269,24 +275,43 @@ pub const Block = struct {
     hasRetType: bool,
     inferRetType: bool,
 
-    pub fn init(firstSubBlockId: SubBlockId) Block {
+    /// Whether this block belongs to a static function.
+    isStaticFuncBlock: bool,
+
+    /// Whether temporaries (nameToVar) was deinit.
+    deinitedTemps: bool,
+
+    pub fn init(funcDeclId: cy.NodeId, firstSubBlockId: SubBlockId, isStaticFuncBlock: bool) Block {
         return .{
             .nameToVar = .{},
             .locals = .{},
             .params = .{},
             .subBlockDepth = 0,
+            .funcDeclId = funcDeclId,
             .hasRetType = false,
             .inferRetType = false,
             .firstSubBlockId = firstSubBlockId,
             .retType = undefined,
+            .isStaticFuncBlock = isStaticFuncBlock,
+            .deinitedTemps = false,
         };
     }
 
     pub fn deinit(self: *Block, alloc: std.mem.Allocator) void {
         self.locals.deinit(alloc);
         self.params.deinit(alloc);
+
+        // Deinit for CompileError during sema.
+        self.deinitTemps(alloc);
     }
-    
+
+    fn deinitTemps(self: *Block, alloc: std.mem.Allocator) void {
+        if (!self.deinitedTemps) {
+            self.nameToVar.deinit(alloc);
+            self.deinitedTemps = true;
+        }
+    }
+
     fn getReturnType(self: *const Block) Type {
         if (self.hasRetType) {
             return self.retType;
@@ -1024,7 +1049,7 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
             const paramName = c.src[param.name.start..param.name.end];
             if (std.mem.eql(u8, paramName, "self")) {
                 // Struct method.
-                const blockId = try pushBlock(c);
+                const blockId = try pushBlock(c, func.head.func.decl_id);
                 c.funcDecls[func.head.func.decl_id].semaBlockId = blockId;
                 errdefer endBlock(c) catch stdx.fatal();
                 try pushMethodParamVars(c, decl);
@@ -1040,7 +1065,7 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         const funcNameId = try ensureNameSym(c.compiler, funcName);
         const numParams = @intCast(u16, decl.params.end - decl.params.start);
 
-        const blockId = try pushBlock(c);
+        const blockId = try pushBlock(c, func.head.func.decl_id);
         c.funcDecls[func.head.func.decl_id].semaBlockId = blockId;
         errdefer endBlock(c) catch stdx.fatal();
         try pushFuncParamVars(c, decl);
@@ -1111,7 +1136,7 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
         }
     }
 
-    const blockId = try pushBlock(c);
+    const blockId = try pushBlock(c, declId);
     if (retType == null) {
         curBlock(c).inferRetType = true;
     }
@@ -1567,7 +1592,7 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
         },
         .lambda_multi => {
             if (!discardTopExprReg) {
-                const blockId = try pushBlock(c);
+                const blockId = try pushBlock(c, node.head.func.decl_id);
 
                 // Generate function body.
                 const func = c.funcDecls[node.head.func.decl_id];
@@ -1582,7 +1607,7 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
         },
         .lambda_expr => {
             if (!discardTopExprReg) {
-                const blockId = try pushBlock(c);
+                const blockId = try pushBlock(c, node.head.func.decl_id);
 
                 // Generate function body.
                 const func = c.funcDecls[node.head.func.decl_id];
@@ -1599,12 +1624,15 @@ fn semaExpr(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: 
     }
 }
 
-pub fn pushBlock(self: *cy.CompileChunk) !BlockId {
+pub fn pushBlock(self: *cy.CompileChunk, funcDeclId: u32) !BlockId {
     self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
     const nextSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
-    try self.semaBlocks.append(self.alloc, Block.init(nextSubBlockId));
+    var isStaticFuncBlock = false;
+    if (funcDeclId != cy.NullId) {
+        isStaticFuncBlock = self.funcDecls[funcDeclId].isStatic;
+    }
+    try self.semaBlocks.append(self.alloc, Block.init(funcDeclId, nextSubBlockId, isStaticFuncBlock));
     try self.semaBlockStack.append(self.alloc, self.curSemaBlockId);
-    self.semaBlockDepth += 1;
     try pushSubBlock(self);
     return self.curSemaBlockId;
 }
@@ -1782,14 +1810,14 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
         const svar = self.vars.items[varId];
         switch (strat) {
             .read => {
-                // Can not reference local var in a static var decl unless it's in a nested block.
-                // eg. var a = func(b):
-                //         return b
-                if (self.curSemaSymVar != cy.NullId and self.semaBlockDepth == 1) {
-                    self.compiler.errorPayload = self.curNodeId;
-                    return error.CanNotUseLocal;
-                }
                 if (!svar.isStaticAlias) {
+                    // Can not reference local var in a static var decl unless it's in a nested block.
+                    // eg. a = 0
+                    //     var b = a
+                    if (self.isInStaticInitializer() and self.semaBlockDepth() == 1) {
+                        self.compiler.errorPayload = self.curNodeId;
+                        return error.CanNotUseLocal;
+                    }
                     return VarLookupResult{
                         .varId = varId,
                         .isLocal = true,
@@ -1804,16 +1832,31 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                 }
             },
             .assign => {
-                if (!svar.isStaticAlias) {
+                if (svar.isStaticAlias) {
+                    // Assumes static variables can only exist in the main block.
+                    if (svar.hasCaptureOrStaticModifier or self.semaBlockDepth() == 1) {
+                        return VarLookupResult{
+                            .varId = cy.NullId,
+                            .isLocal = false,
+                            .created = false,
+                        };
+                    } else {
+                        return self.reportError("`{}` already references a static variable. The variable must be declared with `static` before assigning to it.", &.{v(name)});
+                    }
+                } else if (svar.isCaptured) {
+                    if (svar.hasCaptureOrStaticModifier) {
+                        return VarLookupResult{
+                            .varId = varId,
+                            .isLocal = true,
+                            .created = false,
+                        };
+                    } else {
+                        return self.reportError("`{}` already references a captured variable. The variable must be declared with `capture` before assigning to it.", &.{v(name)});
+                    }
+                } else {
                     return VarLookupResult{
                         .varId = varId,
                         .isLocal = true,
-                        .created = false,
-                    };
-                } else {
-                    return VarLookupResult{
-                        .varId = cy.NullId,
-                        .isLocal = false,
                         .created = false,
                     };
                 }
@@ -1857,11 +1900,19 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
     switch (strat) {
         .read => {
             if (lookupParentLocal(self, name)) |res| {
-                // Can only capture a local that is under the var init block.
-                if (self.curSemaSymVar != cy.NullId and res.blockDepth < 2) {
-                    self.compiler.errorPayload = self.curNodeId;
-                    return error.CanNotUseLocal;
+                if (self.isInStaticInitializer()) {
+                    // Can not capture local before this block.
+                    if (res.blockDepth == 1) {
+                        self.compiler.errorPayload = self.curNodeId;
+                        return error.CanNotUseLocal;
+                    }
+                } else if (sblock.isStaticFuncBlock) {
+                    // Can not capture local before static function block.
+                    const funcDecl = self.funcDecls[sblock.funcDeclId];
+                    const funcName = funcDecl.getName(self);
+                    return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (function values) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
                 }
+
                 // Create a local captured variable.
                 const parentVar = self.vars.items[res.varId];
                 const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
@@ -1871,6 +1922,9 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
                     .created = true,
                 };
             } else {
+                const nameId = try ensureNameSym(self.compiler, name);
+                const symId = try ensureSym(self, null, nameId, null);
+                _ = try pushStaticVarAlias(self, name, symId);
                 return VarLookupResult{
                     .varId = cy.NullId,
                     .isLocal = false,
@@ -1881,7 +1935,8 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
         .staticAssign => {
             const nameId = try ensureNameSym(self.compiler, name);
             const symId = try ensureSym(self, null, nameId, null);
-            _ = try pushStaticVarAlias(self, name, symId);
+            const id = try pushStaticVarAlias(self, name, symId);
+            self.vars.items[id].hasCaptureOrStaticModifier = true;
             return VarLookupResult{
                 .varId = cy.NullId,
                 .isLocal = false,
@@ -1890,12 +1945,20 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
         },
         .captureAssign => {
             if (lookupParentLocal(self, name)) |res| {
-                if (self.curSemaSymVar != cy.NullId and res.blockDepth < 2) {
-                    return self.reportError("Can not use local in static variable initializer.", &.{});
+                if (self.isInStaticInitializer()) {
+                    if (res.blockDepth == 1) {
+                        return self.reportError("Can not use local in static variable initializer.", &.{});
+                    }
+                } else if (sblock.isStaticFuncBlock) {
+                    // Can not capture local before static function block.
+                    const funcDecl = self.funcDecls[sblock.funcDeclId];
+                    const funcName = funcDecl.getName(self);
+                    return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (function values) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
                 }
                 // Create a local captured variable.
                 const parentVar = self.vars.items[res.varId];
                 const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
+                self.vars.items[id].hasCaptureOrStaticModifier = true;
                 return VarLookupResult{
                     .varId = id,
                     .isLocal = true,
@@ -1908,7 +1971,7 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
         .assign => {
             // Prefer static variable in the same block.
             // For now, only do this for main block.
-            if (self.semaBlockDepth == 1) {
+            if (self.semaBlockDepth() == 1) {
                 const nameId = try ensureNameSym(self.compiler, name);
                 if (getSym(self, null, nameId, null) != null) {
                     return VarLookupResult{
@@ -1933,19 +1996,21 @@ fn getOrLookupVar(self: *cy.CompileChunk, name: []const u8, strat: VarLookupStra
 
 const LookupParentLocalResult = struct {
     varId: LocalVarId,
+
+    // Main block starts at 1.
     blockDepth: u32,
 };
 
 fn lookupParentLocal(c: *cy.CompileChunk, name: []const u8) ?LookupParentLocalResult {
     // Only check one block above.
-    if (c.semaBlockDepth > 1) {
-        const prevId = c.semaBlockStack.items[c.semaBlockStack.items.len-2];
+    if (c.semaBlockDepth() > 1) {
+        const prevId = c.semaBlockStack.items[c.semaBlockDepth() - 1];
         const prev = c.semaBlocks.items[prevId];
         if (prev.nameToVar.get(name)) |varId| {
             if (!c.vars.items[varId].isStaticAlias) {
                 return .{
                     .varId = varId,
-                    .blockDepth = c.semaBlockDepth - 1,
+                    .blockDepth = c.semaBlockDepth(),
                 };
             }
         }
@@ -2327,10 +2392,9 @@ pub fn curBlock(self: *cy.CompileChunk) *Block {
 pub fn endBlock(self: *cy.CompileChunk) !void {
     try endSubBlock(self);
     const sblock = curBlock(self);
-    sblock.nameToVar.deinit(self.alloc);
+    sblock.deinitTemps(self.alloc);
     self.semaBlockStack.items.len -= 1;
     self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
-    self.semaBlockDepth -= 1;
 }
 
 fn semaAccessExpr(self: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !Type {

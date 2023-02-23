@@ -26,16 +26,6 @@ try t.eq(bar(), 5)
 -- Wrong number of arguments when invoking lambda.
 try t.eq(bar(2), error(#InvalidSignature))
 
--- Static function closure wrapped in value.
-a = 123
-func foo4():
-    return a
-bar = foo4
-try t.eq(bar(), 123)
-
--- Wrong number of arugments when invoking closure.
-try t.eq(bar(2), error(#InvalidSignature))
-
 -- Static function binding wrapped in value.
 bar = asciiCode
 try t.eq(bar('a'), 97)

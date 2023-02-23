@@ -314,8 +314,6 @@ pub const VMcompiler = struct {
         try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
         try chunk.semaBlockStack.append(self.alloc, 0);
 
-        chunk.semaBlockDepth = 0;
-
         // Resolve the module sym so local static declarations can branch from it.
         chunk.semaResolvedRootSymId = try sema.resolveRootModuleSym(self, chunk.srcUri, chunk.modId);
         self.modules.items[chunk.modId].resolvedRootSymId = chunk.semaResolvedRootSymId;
@@ -337,7 +335,7 @@ pub const VMcompiler = struct {
             _ = try sema.ensureSym(chunk, null, nameId, null);
         }
 
-        chunk.mainSemaBlockId = try sema.pushBlock(chunk);
+        chunk.mainSemaBlockId = try sema.pushBlock(chunk, cy.NullId);
         sema.semaStmts(chunk, root.head.root.headStmt, true) catch |err| {
             try sema.endBlock(chunk);
             return err;
@@ -711,8 +709,6 @@ pub const CompileChunk = struct {
     semaResolvedRootSymId: sema.ResolvedSymId,
     /// Current block stack.
     semaBlockStack: std.ArrayListUnmanaged(sema.BlockId),
-    /// Since `semaBlockStack` has a dummy head element, this will track `semaBlockStack.items.len-1`.
-    semaBlockDepth: u32,
     /// Main sema block id.
     mainSemaBlockId: sema.BlockId,
 
@@ -770,7 +766,6 @@ pub const CompileChunk = struct {
             .reservedTempLocalStack = .{},
             .assignedVarStack = .{},
             .operandStack = .{},
-            .semaBlockDepth = undefined,
             .curBlock = undefined,
             .curSemaBlockId = undefined,
             .curSemaSubBlockId = undefined,
@@ -830,6 +825,15 @@ pub const CompileChunk = struct {
         if (self.srcOwned) {
             self.alloc.free(self.src);
         }
+    }
+
+    pub inline fn isInStaticInitializer(self: *CompileChunk) bool {
+        return self.curSemaSymVar != cy.NullId;
+    }
+
+    /// Assumes `semaBlockStack` has a dummy head element. Main block starts at 1.
+    pub inline fn semaBlockDepth(self: *CompileChunk) u32 {
+        return @intCast(u32, self.semaBlockStack.items.len-1);
     }
 
     pub fn pushSemaBlock(self: *CompileChunk, id: sema.BlockId) !void {

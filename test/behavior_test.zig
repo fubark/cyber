@@ -1117,7 +1117,7 @@ test "Static variable declaration." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Using a local variable in a static var initializer is not allowed.
+    // Capturing a local variable in a static var initializer is not allowed.
     var res = run.evalExt(.{ .silent = true },
         \\b = 123
         \\var a = b
@@ -1180,6 +1180,25 @@ test "Static variable declaration." {
 test "Static variable assignment." {
     const run = VMrunner.create();
     defer run.destroy();
+
+    // Assigning to a implicit static var alias is not allowed.
+    var res = run.evalExt(.{ .silent = true },
+        \\var a = 1
+        \\func foo():
+        \\  -- Implicitly references static var.
+        \\  print a
+        \\  -- Attempting to assign.
+        \\  a = 3
+    );
+    try run.expectErrorReport(res, error.CompileError, 
+        \\CompileError: `a` already references a static variable. The variable must be declared with `static` before assigning to it.
+        \\
+        \\main:6:7:
+        \\  a = 3
+        \\      ^
+        \\
+    );
+
     _ = try run.eval(@embedFile("staticvar_assign_test.cy"));
 }
 
@@ -1365,86 +1384,27 @@ test "Native function call." {
     try t.eq(val.asF64toI32(), 9);
 }
 
-test "Static closures." {
+test "Closures." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Closure read over number in main block.
-    _ = try run.eval(
-        \\import t 'test'
-        \\a = 123
-        \\func foo():
-        \\  return a
-        \\try t.eq(foo(), 123)
+    // Assigning to a implicitly captured var is not allowed.
+    var res = run.evalExt(.{ .silent = true },
+        \\a = 1
+        \\foo = func():
+        \\  -- Implicitly captured for read.
+        \\  print a
+        \\  -- Attempting to assign.
+        \\  a = 3
     );
-
-    // Closure write over number in main block.
-    var val = try run.eval(
-        \\a = 123
-        \\func foo():
-        \\  capture a = 234
-        \\foo()
-        \\a
+    try run.expectErrorReport(res, error.CompileError, 
+        \\CompileError: `a` already references a captured variable. The variable must be declared with `capture` before assigning to it.
+        \\
+        \\main:6:7:
+        \\  a = 3
+        \\      ^
+        \\
     );
-    try run.valueIsI32(val, 234);
-
-    // Closure read then write over number in main block.
-    _ = try run.eval(
-        \\import t 'test'
-        \\a = 123
-        \\func foo():
-        \\  b = a
-        \\  try t.eq(b, 123)
-        \\  capture a = 234
-        \\try foo()
-        \\try t.eq(a, 234)
-    );
-
-    // Closure add assign over number in main block.
-    val = try run.eval(
-        \\a = 123
-        \\func foo():
-        \\  capture a
-        \\  a += 1
-        \\foo()
-        \\a
-    );
-    try run.valueIsI32(val, 124);
-
-    // Closure called before declaration.
-    _ = try run.eval(
-        \\import t 'test'
-        \\a = 123
-        \\try t.eq(foo(), 123)
-        \\func foo():
-        \\  return a
-    );
-
-    // Closure called before declaration and captured var.
-    _ = try run.eval(
-        \\import t 'test'
-        \\try t.eq(foo(), none)
-        \\a = 123
-        \\func foo():
-        \\  return a
-    );
-
-    // Closure with more than 3 captured vars forces allocation outside of object pool.
-    _ = try run.eval(
-        \\import t 'test'
-        \\a = 123
-        \\b = 234
-        \\c = 345
-        \\d = 456
-        \\func foo():
-        \\  return a + b + c + d
-        \\try t.eq(foo(), 1158)
-    );
-}
-
-test "Value closures." {
-    const run = VMrunner.create();
-    defer run.destroy();
 
     // Closure read over number in main block.
     var val = try run.eval(
@@ -1665,6 +1625,38 @@ test "Static functions." {
         \\
     );
 
+    // Capture local from static function is not allowed.
+    res = run.evalExt(.{ .silent = true },
+        \\a = 123
+        \\func foo():
+        \\  return a
+    );
+    try run.expectErrorReport(res, error.CompileError,
+        \\CompileError: Can not capture the local variable `a` from static function `foo`.
+        \\Only lambdas (function values) can capture local variables.
+        \\
+        \\main:3:10:
+        \\  return a
+        \\         ^
+        \\
+    );
+
+    // Explicit capture from static function is not allowed.
+    res = run.evalExt(.{ .silent = true },
+        \\a = 123
+        \\func foo():
+        \\  capture a = 234
+    );
+    try run.expectErrorReport(res, error.CompileError,
+        \\CompileError: Can not capture the local variable `a` from static function `foo`.
+        \\Only lambdas (function values) can capture local variables.
+        \\
+        \\main:3:15:
+        \\  capture a = 234
+        \\              ^
+        \\
+    );
+
     _ = try run.eval(@embedFile("static_func_test.cy"));
 }
 
@@ -1795,7 +1787,7 @@ const VMrunner = struct {
         self.vm.deinit();
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
-            stdx.panicFmt("{} unreleased objects from previous eval", .{rc});
+            stdx.panicFmt("{} unreleased refcount from previous eval", .{rc});
         }
     }
 
@@ -1887,7 +1879,7 @@ const VMrunner = struct {
         self.vm.deinit();
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
-            log.debug("{} unreleased objects from previous eval", .{rc});
+            log.debug("{} unreleased refcount from previous eval", .{rc});
             return error.UnreleasedObjects;
         }
         try self.vm.init(t.alloc);

@@ -5,6 +5,7 @@ import t 'test'
 -- Assign to variable.
 a = 0 
 next = func():
+  capture a
   if a < 4:
     a += 1
     return a
@@ -18,6 +19,7 @@ try t.eq(sum, 10)
 -- Assign rc value to variable.
 a = 0 
 next = func ():
+  capture a
   if a < 4:
     a += 1
     return [a]
@@ -31,6 +33,7 @@ try t.eq(sum, 10)
 -- Single line block.
 a = 0 
 next = func():
+  capture a
   if a < 4:
     a += 1
     return a

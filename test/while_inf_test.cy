@@ -29,7 +29,7 @@ try t.eq(count, 9)
 
 -- Single line block.
 i = 0
-func inc(): 
+inc = func(): 
   capture i
   i += 1
   return i

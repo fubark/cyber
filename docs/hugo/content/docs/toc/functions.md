@@ -99,13 +99,28 @@ canvas.onUpdate():
 Passing a lambda block as a call argument is only possible in a call expression block. To understand how that works, see [Function Calls](#function-calls).
 
 ## Closures.
-In Cyber, functions can capture local variables in parent blocks. In the following, the `a` referenced in the lambda expression is captured from the function `add`'s variable scope.
+In Cyber, lambdas can capture local variables in parent blocks. This example shows the lambda `f` capturing `a` from the main scope.
+```cy
+a = 1
+f = func():
+    return a + 2
+print f()         -- "3"
+```
+
+In the following, the `a` referenced in the lambda expression is captured from the static function `add`'s scope.
 ```cy
 func add():
     a = 123
     return b => a + b
 addTo = add()
-addTo(10)         -- Prints '133'
+addTo(10)         -- "133"
+```
+
+However, static functions can not capture local variables.
+```cy
+a = 1
+func foo():
+    print a       -- Compile Error: Can't reference local from static function.
 ```
 
 ## Function Calls.

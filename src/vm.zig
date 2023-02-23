@@ -430,6 +430,9 @@ pub const VM = struct {
         fmt.printStderr("stack size: {}\n", &.{v(self.stack.len)});
         fmt.printStderr("stack framePtr: {}\n", &.{v(framePtrOffset(self, self.framePtr))});
         fmt.printStderr("heap pages: {}\n", &.{v(self.heapPages.len)});
+        if (cy.TrackGlobalRC) {
+            fmt.printStderr("global rc: {}\n", &.{v(self.refCounts)});
+        }
 
         // Dump object symbols.
         {

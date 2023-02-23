@@ -1507,9 +1507,9 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .if_stmt => {
             const startTempLocal = self.curBlock.firstFreeTempLocal;
 
-            var arcLocalStart = self.beginArcExpr();
+            // var arcLocalStart = self.beginArcExpr();
             const condv = try self.genExpr(node.head.left_right.left, false);
-            try self.endArcExpr(arcLocalStart);
+            // try self.endArcExpr(arcLocalStart);
 
             var lastCondJump = try self.pushEmptyJumpNotCond(condv.local);
             self.setFirstFreeTempLocal(startTempLocal);
@@ -1539,9 +1539,9 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                         self.setFirstFreeTempLocal(startTempLocal);
                         break;
                     } else {
-                        arcLocalStart = self.beginArcExpr();
+                        // arcLocalStart = self.beginArcExpr();
                         const elifCondv = try self.genExpr(elseClause.head.else_clause.cond, false);
-                        try self.endArcExpr(arcLocalStart);
+                        // try self.endArcExpr(arcLocalStart);
                         lastCondJump = try self.pushEmptyJumpNotCond(elifCondv.local);
 
                         self.nextSemaSubBlock();

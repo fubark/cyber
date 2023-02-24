@@ -116,6 +116,21 @@ test "computeLinePosFromTokens" {
     try t.eq(lineStart, 0);
 }
 
+/// Assumes symbol exists.
+/// Since there are different call insts with varying lengths,
+/// the call convention prefers to advance the pc before saving it so
+/// stepping over the call will already have the correct pc.
+/// The saved pc would point to the end of the inst so the lookup
+/// returns first entry before the saved pc.
+pub fn getDebugSymBefore(vm: *const cy.VM, pc: usize) cy.DebugSym {
+    for (vm.debugTable) |sym, i| {
+        if (sym.pc >= pc) {
+            return vm.debugTable[i - 1];
+        }
+    }
+    return vm.debugTable[vm.debugTable.len-1];
+}
+
 pub fn getDebugSym(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
     const idx = indexOfDebugSym(vm, pc) orelse return null;
     return vm.debugTable[idx];
@@ -132,8 +147,7 @@ pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
 
 pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
-        var queryPc = trace.allocPc + cy.getInstLenAt(vm.ops.ptr + trace.allocPc);
-        if (indexOfDebugSym(vm, queryPc)) |idx| {
+        if (indexOfDebugSym(vm, trace.allocPc)) |idx| {
             const sym = vm.debugTable[idx];
             const chunk = &vm.compiler.chunks.items[sym.file];
             const node = chunk.nodes[sym.loc];
@@ -145,8 +159,7 @@ pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
             log.debug("Missing debug sym for {}, pc: {}.", .{vm.ops[trace.allocPc].code, trace.allocPc});
         }
         if (trace.freePc != cy.NullId) {
-            queryPc = trace.freePc + cy.getInstLenAt(vm.ops.ptr + trace.freePc);
-            if (indexOfDebugSym(vm, queryPc)) |idx| {
+            if (indexOfDebugSym(vm, trace.freePc)) |idx| {
                 const sym = vm.debugTable[idx];
                 const chunk = &vm.compiler.chunks.items[sym.file];
                 const node = chunk.nodes[sym.loc];
@@ -394,17 +407,15 @@ pub fn buildStackTrace(self: *cy.VM, fromPanic: bool) !void {
     var pc = cy.pcOffset(self, self.pc);
     var isTopFrame = true;
     while (true) {
-        const idx = b: {
+        const sym = b: {
             if (isTopFrame) {
                 isTopFrame = false;
                 if (fromPanic) {
-                    const len = cy.getInstLenAt(self.ops.ptr + pc);
-                    break :b indexOfDebugSym(self, pc + len) orelse return error.NoDebugSym;
+                    break :b getDebugSym(self, pc) orelse return error.NoDebugSym;
                 }
             }
-            break :b indexOfDebugSym(self, pc) orelse return error.NoDebugSym;
+            break :b getDebugSymBefore(self, pc);
         };
-        const sym = self.debugTable[idx];
 
         if (sym.frameLoc == cy.NullId) {
             const chunk = self.compiler.chunks.items[sym.file];
@@ -456,6 +467,20 @@ pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
         stdx.panic("Missing debug symbol.");
     };
     const sym = vm.debugTable[idx];
+    if (sym.frameLoc != cy.NullId) {
+        const chunk = vm.compiler.chunks.items[sym.file];
+        const node = chunk.nodes[sym.frameLoc];
+        return node.head.func.genEndLocalsPc;
+    } else {
+        // Located in the main block.
+        const chunk = vm.compiler.chunks.items[0];
+        const node = chunk.nodes[0];
+        // Can be NullId if `shouldGenMainScopeReleaseOps` is false.
+        return node.head.root.genEndLocalsPc;
+    }
+}
+
+pub fn debugSymToEndLocalsPc(vm: *const cy.VM, sym: cy.DebugSym) u32 {
     if (sym.frameLoc != cy.NullId) {
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.frameLoc];

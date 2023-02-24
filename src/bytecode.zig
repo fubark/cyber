@@ -25,12 +25,7 @@ pub const ByteCodeBuffer = struct {
     strMap: std.HashMapUnmanaged(stdx.IndexSlice(u32), u32, StringIndexContext, std.hash_map.default_max_load_percentage),
 
     /// Maps bytecode insts back to source code.
-    /// Since there are different call insts with varying lengths,
-    /// the call convention prefers to advance the pc before saving it so
-    /// stepping over the call would already have the correct pc.
-    /// This means that debug symbols should be indexed by each inst's end pos to be optimal.
-    /// Call frames below the top frame can index into `debugTable` by the saved pc.
-    /// However, the top frame would need to index with `pc + getInstLenAt(pc)`.
+    /// Contains entries ordered by `pc`. 
     debugTable: std.ArrayListUnmanaged(DebugSym),
 
     pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
@@ -371,6 +366,7 @@ pub const OpData = packed union {
 };
 
 pub const DebugSym = struct {
+    // Start position of an inst.
     pc: u32,
 
     /// Points to a cy.NodeId.

@@ -159,7 +159,8 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) void {
 
             // Compute next frame ptr offset.
             framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
-            const endLocalsPc = cy.debug.pcToEndLocalsPc(vm, pc);
+            const sym = cy.debug.getDebugSymBefore(vm, pc);
+            const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
             log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
             if (endLocalsPc != cy.NullId) {
                 cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);

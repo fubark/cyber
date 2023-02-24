@@ -1338,7 +1338,7 @@ pub const VM = struct {
     }
 
     fn reportMissingFuncSym(vm: *VM, pc: [*]const cy.OpData, rtSymId: SymbolId) error{Panic, OutOfMemory} {
-        const relPc = pcOffset(vm, pc + cy.getInstLenAt(pc));
+        const relPc = pcOffset(vm, pc);
         if (debug.getDebugSym(vm, relPc)) |sym| {
             const chunk = vm.compiler.chunks.items[sym.file];
             const callExpr = chunk.nodes[sym.loc];
@@ -3526,7 +3526,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         // Inline cache.
                         pc[0] = cy.OpData{ .code = .fieldIC };
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
-                        pc[6] = cy.OpData { .arg = offset };
+                        pc[6] = cy.OpData{ .arg = offset };
                     } else {
                         framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                     }
@@ -4362,7 +4362,7 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32
     // - a method exists with the name but the call signature doesn't match up
     // - multiple methods exist with the name but the call signature doesn't match up
     release(vm, recv);
-    const relPc = pcOffset(vm, pc + cy.getInstLenAt(pc));
+    const relPc = pcOffset(vm, pc);
     if (debug.getDebugSym(vm, relPc)) |sym| {
         const chunk = vm.compiler.chunks.items[sym.file];
         const callExpr = chunk.nodes[sym.loc];
@@ -4866,18 +4866,29 @@ fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const 
     var pc = pcOffset(vm, startPc);
     var framePtr = framePtrOffset(vm, startFramePtr);
 
-    // Top of the frame needs to advance pc to index into the debug table.
-    pc += cy.getInstLenAt(vm.ops.ptr + pc);
+    // Top of the frame indexes directly into the debug table.
+    log.debug("release frame at {}", .{pc});
+    var endLocalsPc = debug.pcToEndLocalsPc(vm, pc);
+    if (endLocalsPc != cy.NullId) {
+        cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);
+    }
+    if (framePtr == 0) {
+        return;
+    } else {
+        pc = pcOffset(vm, stack[framePtr + 2].retPcPtr);
+        framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
+    }
 
     while (true) {
         log.debug("release frame at {}", .{pc});
-        const endLocalsPc = debug.pcToEndLocalsPc(vm, pc);
+        const sym = debug.getDebugSymBefore(vm, pc);
+        endLocalsPc = debug.debugSymToEndLocalsPc(vm, sym);
         if (endLocalsPc != cy.NullId) {
             cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);
         }
         if (framePtr == 0) {
             // Done, at main block.
-            break;
+            return;
         } else {
             // Unwind.
             pc = pcOffset(vm, stack[framePtr + 2].retPcPtr);

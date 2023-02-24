@@ -654,7 +654,14 @@ test "Stack trace unwinding." {
         \\a = 123
         \\1 + a.foo
     );
-    try t.expectError(res, error.Panic);
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: Field not found in value.
+        \\
+        \\main:2:5 main:
+        \\1 + a.foo
+        \\    ^
+        \\
+    );
     var trace = run.getStackTrace();
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
@@ -672,7 +679,17 @@ test "Stack trace unwinding." {
         \\  return 1 + a.foo
         \\foo()
     );
-    try t.expectError(res, error.Panic);
+    try run.expectErrorReport(res, error.Panic,
+        \\panic: Field not found in value.
+        \\
+        \\main:3:14 foo:
+        \\  return 1 + a.foo
+        \\             ^
+        \\main:4:1 main:
+        \\foo()
+        \\^
+        \\
+    );
     trace = run.getStackTrace();
     try t.eq(trace.frames.len, 2);
     try eqStackFrame(trace.frames[0], .{

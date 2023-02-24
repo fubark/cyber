@@ -13,7 +13,7 @@ const NullId = std.math.maxInt(u32);
 pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
-    for (src) |ch, i| {
+    for (src, 0..) |ch, i| {
         if (i == loc) {
             break;
         }
@@ -124,7 +124,7 @@ test "computeLinePosFromTokens" {
 /// The saved pc would point to the end of the inst so the lookup
 /// returns first entry before the saved pc.
 pub fn getDebugSymBefore(vm: *const cy.VM, pc: usize) cy.DebugSym {
-    for (vm.debugTable) |sym, i| {
+    for (vm.debugTable, 0..) |sym, i| {
         if (sym.pc >= pc) {
             return vm.debugTable[i - 1];
         }
@@ -146,7 +146,7 @@ pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
 }
 
 pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
-    for (table) |sym, i| {
+    for (table, 0..) |sym, i| {
         if (sym.pc == pc) {
             return i;
         }

@@ -334,7 +334,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             var dlist = val.asList() catch stdx.fatal();
             defer dlist.deinit();
             const elems = try ivm.alloc.alloc(Value, dlist.arr.len);
-            for (elems) |*elem, i| {
+            for (elems, 0..) |*elem, i| {
                 elem.* = try fromCyonValue(self, dlist.getIndex(i));
             }
             return try cy.heap.allocOwnedList(ivm, elems);

@@ -314,7 +314,7 @@ pub const UserVM = struct {
         self.retain(func);
         defer self.release(func);
         vm.framePtr[4 + args.len] = func;
-        for (args) |arg, i| {
+        for (args, 0..) |arg, i| {
             self.retain(arg);
             vm.framePtr[4 + i] = arg;
         }

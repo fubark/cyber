@@ -228,9 +228,9 @@ pub const VMcompiler = struct {
         }
         
         // After sema pass, resolve used syms.
-        for (self.chunks.items) |*chunk, i| {
+        for (self.chunks.items, 0..) |*chunk, i| {
             log.debug("resolving for chunk: {}", .{i});
-            for (chunk.semaSyms.items) |sym, symId| {
+            for (chunk.semaSyms.items, 0..) |sym, symId| {
                 // Only full symbol paths that are unresolved.
                 if (sym.used and sym.resolvedSymId == cy.NullId) {
                     try sema.resolveSym(chunk, @intCast(u32, symId));
@@ -249,7 +249,7 @@ pub const VMcompiler = struct {
         // Once all symbols have been resolved, the static initializers are generated in DFS order.
         for (self.chunks.items) |*chunk| {
             log.debug("gen static initializer for chunk: {}", .{chunk.id});
-            for (chunk.semaSyms.items) |sym, i| {
+            for (chunk.semaSyms.items, 0..) |sym, i| {
                 const symId = @intCast(u32, i);
                 // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});
                 if (sym.used and sema.symHasStaticInitializer(self, &sym) and !sym.visited) {
@@ -259,7 +259,7 @@ pub const VMcompiler = struct {
             chunk.resetNextFreeTemp();
         }
 
-        for (self.chunks.items) |*chunk, i| {
+        for (self.chunks.items, 0..) |*chunk, i| {
             log.debug("perform codegen for chunk: {}", .{i});
             try self.performChunkCodegen(chunk.id);
         }

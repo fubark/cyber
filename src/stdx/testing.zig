@@ -90,7 +90,7 @@ pub fn eqStringSlices(act: []const []const u8, exp: []const []const u8) !void {
 
 pub fn eqSliceCb(comptime T: type, cb: fn (act: T, exp: T) anyerror!void, act_slice: []const T, exp_slice: []const T) !void {
     try eq(act_slice.len, exp_slice.len);
-    for (act_slice) |act, i| {
+    for (act_slice, 0..) |act, i| {
         cb(act, exp_slice[i]) catch |err| {
             std.debug.print("expected {any}, found {any} at idx {}\n", .{ exp_slice[i], act, i });
             return err;
@@ -144,7 +144,7 @@ pub const Mock = struct {
     pub fn destroy(self: *Self) void {
         self.funcs.deinit();
         alloc.destroy(self);
-        for (mocks.items) |it, i| {
+        for (mocks.items, 0..) |it, i| {
             if (it == self) {
                 _ = mocks.orderedRemove(i);
                 if (mocks.items.len == 0) {

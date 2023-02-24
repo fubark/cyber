@@ -324,7 +324,7 @@ pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, c
 }
 
 fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize {
-    for (buf) |ch, i| {
+    for (buf, 0..) |ch, i| {
         if (ch == needle) {
             return i;
         }
@@ -525,7 +525,7 @@ pub fn indexOf(str: []const u8, needle: []const u8) linksection(cy.StdSection) ?
 }
 
 fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
-    for (str) |code, i| {
+    for (str, 0..) |code, i| {
         if (indexOfChar(set, code) != null) {
             return i;
         }
@@ -754,7 +754,7 @@ pub fn charIndexOfCodepoint(str: []const u8, needle: u21) linksection(cy.Section
 }
 
 fn getLineEndCpu(buf: []const u8) linksection(cy.StdSection) ?usize {
-    for (buf) |ch, i| {
+    for (buf, 0..) |ch, i| {
         if (ch == '\n') {
             return i + 1;
         } else if (ch == '\r') {

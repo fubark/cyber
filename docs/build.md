@@ -2,11 +2,11 @@
 To get the maximum performance, you'll need to build Cyber from source.
 
 ## Dependencies
-Get the Zig compiler (0.11.0-dev.1580+a5b34a61a) here:
-- [Linux x64](https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.1580+a5b34a61a.tar.xz)
-- [macOS x64](https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.1580+a5b34a61a.tar.xz)
-- [macOS arm64](https://ziglang.org/builds/zig-macos-aarch64-0.11.0-dev.1580+a5b34a61a.tar.xz)
-- [Windows x64](https://ziglang.org/builds/zig-windows-x86_64-0.11.0-dev.1580+a5b34a61a.zip)
+Get the Zig compiler (0.11.0-dev.1797+d3c9bfada) here:
+- [Linux x64](https://ziglang.org/builds/zig-linux-x86_64-0.11.0-dev.1797+d3c9bfada.tar.xz)
+- [macOS x64](https://ziglang.org/builds/zig-macos-x86_64-0.11.0-dev.1797+d3c9bfada.tar.xz)
+- [macOS arm64](https://ziglang.org/builds/zig-macos-aarch64-0.11.0-dev.1797+d3c9bfada.tar.xz)
+- [Windows x64](https://ziglang.org/builds/zig-windows-x86_64-0.11.0-dev.1797+d3c9bfada.zip)
 - If you use Zig often, you can use [zigup](https://github.com/marler8997/zigup) to manage different versions of the compiler.
 
 Once you have zig installed, checkout the repo:

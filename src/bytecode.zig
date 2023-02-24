@@ -116,7 +116,7 @@ pub const ByteCodeBuffer = struct {
     pub fn pushOperandsRaw(self: *ByteCodeBuffer, args: []const u8) !void {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len);
-        for (args) |arg, i| {
+        for (args, 0..) |arg, i| {
             self.ops.items[start+i] = .{ .arg = arg };
         }
     }
@@ -125,7 +125,7 @@ pub const ByteCodeBuffer = struct {
         const start = self.ops.items.len;
         try self.ops.resize(self.alloc, self.ops.items.len + args.len + 1);
         self.ops.items[start] = .{ .code = code };
-        for (args) |arg, i| {
+        for (args, 0..) |arg, i| {
             self.ops.items[start+i+1] = .{ .arg = arg };
         }
     }

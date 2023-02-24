@@ -469,13 +469,13 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         }
 
         fn genFuncReleaseOps(self: *@This(), w: anytype, cargs: []const Value) !void {
-            for (cargs) |carg, i| {
+            for (cargs, 0..) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
                     try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                     // Free any child temps.
                     const objType = carg.asPointer(*cy.heap.Symbol);
                     const fields = self.symToCStructFields.get(objType.symId).?.items();
-                    for (fields) |field, fidx| {
+                    for (fields, 0..) |field, fidx| {
                         if (!field.isObjectType(cy.SymbolT)) {
                             const fieldType = field.asTagLiteralId();
                             switch (@intToEnum(TagLit, fieldType)) {
@@ -749,7 +749,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
         // Generate C struct.
         try w.print("typedef struct Struct{} {{\n", .{objSymId});
-        for (fields.items()) |field, i| {
+        for (fields.items(), 0..) |field, i| {
             try w.print("  {s} f{};\n", .{S.toCType(ivm, field), i});
         }
         try w.print("}} Struct{};\n", .{objSymId});
@@ -759,7 +759,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         // Get pointer to first cyber object field.
         try w.print("  uint64_t* args = (uint64_t*)(val & ~PointerMask) + 1;\n", .{});
         try w.print("  Struct{} res;\n", .{objSymId, });
-        for (fields.items()) |field, i| {
+        for (fields.items(), 0..) |field, i| {
             try w.print("  res.f{} = ", .{i});
             if (field.isObjectType(cy.SymbolT)) {
                 const objType = field.asPointer(*cy.heap.Symbol);
@@ -785,7 +785,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         try w.print("  uint64_t obj = icyAllocObject(vm, {});\n", .{objSymId});
         try w.print("  uint64_t* args = (uint64_t*)(obj & ~PointerMask) + 1;\n", .{});
         var buf: [8]u8 = undefined;
-        for (fields.items()) |field, i| {
+        for (fields.items(), 0..) |field, i| {
             if (!field.isObjectType(cy.SymbolT)) {
                 const fieldTag = field.asTagLiteralId();
                 switch (@intToEnum(TagLit, fieldTag)) {
@@ -858,7 +858,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         }
         if (cargs.len > 0) {
             const lastArg = cargs.len-1;
-            for (cargs) |carg, i| {
+            for (cargs, 0..) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
                     const objType = carg.asPointer(*cy.heap.Symbol);
                     if (ctx.symToCStructFields.contains(objType.symId)) {
@@ -886,7 +886,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
         // Gen temp args.
         if (cargs.len > 0) {
-            for (cargs) |carg, i| {
+            for (cargs, 0..) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
                     const objType = carg.asPointer(*cy.heap.Symbol);
                     try w.print("Struct{} s{} = toStruct{}(vm, args[{}]);\n", .{objType.symId, i, objType.symId, i});
@@ -948,7 +948,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         // Gen args.
         if (cargs.len > 0) {
             const lastArg = cargs.len-1;
-            for (cargs) |carg, i| {
+            for (cargs, 0..) |carg, i| {
                 if (carg.isObjectType(cy.SymbolT)) {
                     try w.print("s{}", .{i});
                 } else {

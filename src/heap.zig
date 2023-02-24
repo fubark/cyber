@@ -654,7 +654,7 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []const cy.OpData, vals: []const Value) !
     };
 
     const inner = @ptrCast(*MapInner, &obj.map.inner);
-    for (keyIdxs) |idx, i| {
+    for (keyIdxs, 0..) |idx, i| {
         const val = vals[i];
 
         const keyVal = Value{ .val = self.consts[idx.arg].val };
@@ -738,7 +738,7 @@ pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: 
         .firstCapturedVal = undefined,
     };
     const dst = obj.closure.getCapturedValuesPtr();
-    for (capturedVals) |local, i| {
+    for (capturedVals, 0..) |local, i| {
         dst[i] = framePtr[local.arg];
     }
     return Value.initPtr(obj);
@@ -762,7 +762,7 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.OpData, vals: []const 
     std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
     const writer = self.u8Buf.writer(self.alloc);
-    for (vals) |val, i| {
+    for (vals, 0..) |val, i| {
         self.writeValueToString(writer, val);
         cy.arc.release(self, val);
         try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].arg].val)));

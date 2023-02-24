@@ -2927,7 +2927,7 @@ fn endFuncSymBlock(self: *cy.CompileChunk, rtSymId: u32, numParams: u32) !void {
     const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
     // Update original var to boxed.
     if (numCaptured > 0) {
-        for (sblock.params.items) |varId, i| {
+        for (sblock.params.items, 0..) |varId, i| {
             const svar = self.vars.items[varId];
             if (svar.isCaptured) {
                 const pId = self.capVarDescs.get(varId).?.user;

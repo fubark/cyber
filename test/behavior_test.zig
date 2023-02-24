@@ -1869,7 +1869,7 @@ const VMrunner = struct {
         const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
         const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
         const dupe = try t.alloc.alloc(i32, list.len);
-        for (list.items()) |it, i| {
+        for (list.items(), 0..) |it, i| {
             dupe[i] = @floatToInt(i32, it.toF64());
         }
         return dupe;

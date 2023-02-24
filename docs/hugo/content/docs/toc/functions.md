@@ -107,13 +107,13 @@ f = func():
 print f()         -- "3"
 ```
 
-In the following, the `a` referenced in the lambda expression is captured from the static function `add`'s scope.
+In the following, `a` referenced in the lambda expression is captured from the scope of the static function `add`.
 ```cy
 func add():
     a = 123
     return b => a + b
 addTo = add()
-addTo(10)         -- "133"
+print addTo(10)   -- "133"
 ```
 
 However, static functions can not capture local variables.

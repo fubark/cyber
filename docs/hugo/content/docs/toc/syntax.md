@@ -51,7 +51,7 @@ Function blocks and the main block have their own local variable scope.
 Variable assignments prefer to set the variable in the current block. If there is no such variable in the current block, it will create a new local variable.
 ```cy
 a = 123
-func foo():
+foo = func():
     -- A new local `a` inside `foo`.
     a = 234
 foo()
@@ -61,7 +61,7 @@ print a      -- '123'
 If the assignment was intended for a parent local variable, the `capture` keyword is used.
 ```cy
 a = 123
-func foo():
+foo = func():
     capture a = 234
 foo()
 print a      -- '234'
@@ -70,7 +70,7 @@ print a      -- '234'
 Once declared with `capture`, any subsequent assignments will also set the parent local variable.
 ```cy
 a = 123
-func foo():
+foo = func():
     capture a = 234
     a = 345
 foo()
@@ -88,7 +88,7 @@ print a      -- '234'
 Referencing a variable that doesn't exist in the current block, will find the first variable above the current block.
 ```cy
 a = 123
-func foo():
+foo = func():
     print a
 foo()        -- '123'
 ```

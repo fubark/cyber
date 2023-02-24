@@ -1378,10 +1378,9 @@ pub const CompileChunk = struct {
         return Root.unescapeString(self.tempBufU8.items, literal);
     }
 
-    pub fn dumpLocals(self: *CompileChunk) !void {
+    pub fn dumpLocals(self: *const CompileChunk, sblock: *sema.Block) !void {
         if (builtin.mode == .Debug and !cy.silentInternal) {
-            const sblock = sema.curBlock(self);
-            fmt.printStderr("Compiler (dump locals):\n", &.{});
+            fmt.printStderr("Locals:\n", &.{});
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
                 fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
@@ -1422,7 +1421,7 @@ pub const CompileChunk = struct {
 
     /// An optional debug sym is only included in Debug builds.
     pub fn pushOptionalDebugSym(self: *CompileChunk, nodeId: cy.NodeId) !void {
-        if (builtin.mode == .Debug) {
+        if (builtin.mode == .Debug or self.compiler.vm.config.genAllDebugSyms) {
             try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc);
         }
     }

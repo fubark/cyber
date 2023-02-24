@@ -915,9 +915,10 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                 const callee = self.nodes[child.head.callExpr.callee];
                 const name = self.getNodeTokenString(callee);
                 if (std.mem.eql(u8, name, "compilerDumpLocals")) {
-                    try self.dumpLocals();
+                    const sblock = sema.curBlock(self);
+                    try self.dumpLocals(sblock);
                 } else if (std.mem.eql(u8, name, "compilerDumpBytecode")) {
-                    self.buf.dump();
+                    try cy.debug.dumpBytecode(self.compiler.vm, null);
                 }
                 try self.buf.pushOp1(.none, dst);
                 return self.initGenValue(dst, sema.AnyType);

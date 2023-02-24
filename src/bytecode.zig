@@ -5,6 +5,7 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.bytecode);
 const fmt = @import("fmt.zig");
+const debug = @import("debug.zig");
 const v = fmt.v;
 
 /// Holds vm instructions.
@@ -195,126 +196,105 @@ pub const ByteCodeBuffer = struct {
             return error.InvalidUtf8;
         }
     }
-
-    fn printStderr(comptime format: []const u8, args: anytype) void {
-        if (builtin.is_test) {
-            if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
-                std.debug.print(format, args);
-            }
-        } else {
-            if (!cy.isWasm) {
-                std.debug.print(format, args);
-            }
-        }
-    }
-
-    pub fn dump(self: ByteCodeBuffer) void {
-        var pcOffset: usize = 0;
-        const ops = self.ops.items;
-        var pc = @ptrCast([*]OpData, self.ops.items.ptr);
-
-        fmt.printStderr("Bytecode:\n", &.{});
-        while (pcOffset < ops.len) {
-            const code = pc[0].code;
-            const len = getInstLenAt(pc);
-            switch (code) {
-                .closure => {
-                    const negFuncPcOffset = pc[1].arg;
-                    const numParams = pc[2].arg;
-                    const numCaptured = pc[3].arg;
-                    const numLocals = pc[4].arg;
-                    const dst = pc[5].arg;
-                    fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(dst)});
-                    printStderr(" {any}\n", .{std.mem.sliceAsBytes(pc[6..6+numCaptured])});
-                },
-                .box => {
-                    const local = pc[1].arg;
-                    const dst = pc[2].arg;
-                    fmt.printStderr("{} {} local={}, dst={}\n", &.{v(pcOffset), v(code), v(local), v(dst)});
-                },
-                .boxValue => {
-                    const local = pc[1].arg;
-                    const dst = pc[2].arg;
-                    fmt.printStderr("{} {} local={}, dst={}\n", &.{v(pcOffset), v(code), v(local), v(dst)});
-                },
-                .stringTemplate => {
-                    const startLocal = pc[1].arg;
-                    const exprCount = pc[2].arg;
-                    const dst = pc[3].arg;
-                    fmt.printStderr("{} {} startLocal={}, exprCount={}, dst={}\n", &.{v(pcOffset), v(code), v(startLocal), v(exprCount), v(dst)});
-                },
-                .slice => {
-                    const recv = pc[1].arg;
-                    const start = pc[2].arg;
-                    const end = pc[3].arg;
-                    fmt.printStderr("{} {} recv={}, start={}, end={}\n", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
-                },
-                .constI8 => {
-                    const val = pc[1].arg;
-                    const dst = pc[2].arg;
-                    fmt.printStderr("{} {} val={} dst={}\n", &.{v(pcOffset), v(code), v(val), v(dst)});
-                },
-                .tryValue => {
-                    const local = pc[1].arg;
-                    const dst = pc[2].arg;
-                    const jump = @ptrCast(*const align(1) u16, pc + 3).*;
-                    fmt.printStderr("{} {} local={} dst={} jump={}\n", &.{v(pcOffset), v(code), v(local), v(dst), v(jump)});
-                },
-                .staticVar => {
-                    const symId = pc[1].arg;
-                    const dst = pc[2].arg;
-                    fmt.printStderr("{} {} sym={} dst={}\n", &.{v(pcOffset), v(code), v(symId), v(dst)});
-                },
-                .release => {
-                    const local = pc[1].arg;
-                    fmt.printStderr("{} {} local={}\n", &.{v(pcOffset), v(code), v(local)});
-                },
-                .fieldRetain => {
-                    const recv = pc[1].arg;
-                    const dst = pc[2].arg;
-                    const symId = pc[3].arg;
-                    fmt.printStderr("{} {} recv={}, dst={}, sym={}\n", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
-                },
-                .callSym => {
-                    const startLocal = pc[1].arg;
-                    const numArgs = pc[2].arg;
-                    const numRet = pc[3].arg;
-                    const symId = pc[4].arg;
-                    fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}\n", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
-                },
-                .jump => {
-                    const jump = @ptrCast(*const align(1) i16, pc + 1).*;
-                    fmt.printStderr("{} {} offset={}\n", &.{v(pcOffset), v(code), v(jump)});
-                },
-                .jumpNotCond => {
-                    const jump = @ptrCast(*const align(1) u16, pc + 1).*;
-                    fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
-                },
-                .jumpNotNone => {
-                    const jump = @ptrCast(*const align(1) i16, pc + 1).*;
-                    fmt.printStderr("{} {} offset={}, cond={}\n", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
-                },
-                else => {
-                    fmt.printStderr("{} {}", &.{v(pcOffset), v(code)});
-                    printStderr(" {any}", .{std.mem.sliceAsBytes(pc[1..len])});
-                    fmt.printStderr("\n", &.{});
-                },
-            }
-            pcOffset += len;
-            pc += len;
-        }
-
-        fmt.printStderr("\nConstants:\n", &.{});
-        for (self.mconsts) |extra| {
-            const val = cy.Value{ .val = extra.val };
-            if (val.isNumber()) {
-                fmt.printStderr("{}\n", &.{v(val.asF64())});
-            } else {
-                fmt.printStderr("{}\n", &.{v(extra.val)});
-            }
-        }
-    }
 };
+
+fn printStderr(comptime format: []const u8, args: anytype) void {
+    if (builtin.is_test) {
+        if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
+            std.debug.print(format, args);
+        }
+    } else {
+        if (!cy.isWasm) {
+            std.debug.print(format, args);
+        }
+    }
+}
+
+pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]OpData, len: usize, extra: []const u8) void {
+    switch (code) {
+        .closure => {
+            const negFuncPcOffset = pc[1].arg;
+            const numParams = pc[2].arg;
+            const numCaptured = pc[3].arg;
+            const numLocals = pc[4].arg;
+            const dst = pc[5].arg;
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(dst)});
+            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[6..6+numCaptured])});
+        },
+        .box => {
+            const local = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} local={}, dst={}", &.{v(pcOffset), v(code), v(local), v(dst)});
+        },
+        .boxValue => {
+            const local = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} local={}, dst={}", &.{v(pcOffset), v(code), v(local), v(dst)});
+        },
+        .stringTemplate => {
+            const startLocal = pc[1].arg;
+            const exprCount = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} startLocal={}, exprCount={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(exprCount), v(dst)});
+        },
+        .slice => {
+            const recv = pc[1].arg;
+            const start = pc[2].arg;
+            const end = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, start={}, end={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
+        },
+        .constI8 => {
+            const val = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} val={} dst={}", &.{v(pcOffset), v(code), v(val), v(dst)});
+        },
+        .tryValue => {
+            const local = pc[1].arg;
+            const dst = pc[2].arg;
+            const jump = @ptrCast(*const align(1) u16, pc + 3).*;
+            fmt.printStderr("{} {} local={} dst={} jump={}", &.{v(pcOffset), v(code), v(local), v(dst), v(jump)});
+        },
+        .staticVar => {
+            const symId = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} sym={} dst={}", &.{v(pcOffset), v(code), v(symId), v(dst)});
+        },
+        .release => {
+            const local = pc[1].arg;
+            fmt.printStderr("{} {} local={}", &.{v(pcOffset), v(code), v(local)});
+        },
+        .fieldRetain => {
+            const recv = pc[1].arg;
+            const dst = pc[2].arg;
+            const symId = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
+        },
+        .callSym => {
+            const startLocal = pc[1].arg;
+            const numArgs = pc[2].arg;
+            const numRet = pc[3].arg;
+            const symId = pc[4].arg;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
+        },
+        .jump => {
+            const jump = @ptrCast(*const align(1) i16, pc + 1).*;
+            fmt.printStderr("{} {} offset={}", &.{v(pcOffset), v(code), v(jump)});
+        },
+        .jumpNotCond => {
+            const jump = @ptrCast(*const align(1) u16, pc + 1).*;
+            fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
+        },
+        .jumpNotNone => {
+            const jump = @ptrCast(*const align(1) i16, pc + 1).*;
+            fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
+        },
+        else => {
+            fmt.printStderr("{} {}", &.{v(pcOffset), v(code)});
+            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[1..len])});
+        },
+    }
+    fmt.printStderr(" {}\n", &.{v(extra)});
+}
 
 pub const StringIndexContext = struct {
     buf: *std.ArrayListUnmanaged(u8),

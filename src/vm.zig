@@ -321,6 +321,7 @@ pub const VM = struct {
         self.config = .{
             .singleRun = false,
             .enableFileModules = true,
+            .genAllDebugSyms = true,
         };
         var tt = stdx.debug.trace();
         const res = try self.compiler.compile(srcUri, src);
@@ -390,7 +391,7 @@ pub const VM = struct {
         } else {
             if (builtin.is_test and debug.atLeastTestDebugLevel()) {
                 // Only visible for tests with .debug log level.
-                res.buf.dump();
+                try debug.dumpBytecode(self, null);
             }
         }
 
@@ -4729,6 +4730,9 @@ pub const EvalConfig = struct {
 
     /// Whether url imports and cached assets should be reloaded.
     reload: bool = false,
+
+    /// By default, debug syms are only generated for insts that can potentially fail.
+    genAllDebugSyms: bool = false,
 };
 
 fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 {

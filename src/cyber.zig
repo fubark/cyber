@@ -60,6 +60,7 @@ pub const buildReturnInfo = vm.buildReturnInfo;
 pub const framePtrOffset = vm.framePtrOffset;
 pub const pcOffset = vm.pcOffset;
 pub const FuncSymDetail = vm.FuncSymDetail;
+pub const KeyU64 = vm.KeyU64;
 pub const KeyU96 = vm.KeyU96;
 pub const KeyU96Context = vm.KeyU96Context;
 pub const StringType = vm.StringType;

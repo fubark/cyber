@@ -19,6 +19,7 @@ var miAlloc: mi.Allocator = undefined;
 
 var verbose = false;
 var reload = false;
+var pc: ?u32 = null;
 
 const CP_UTF8 = 65001;
 var prevWinConsoleOutputCP: u32 = undefined;
@@ -59,12 +60,23 @@ pub fn main() !void {
 
     var cmd = Command.none;
     var arg0: ?[]const u8 = null;
-    for (args[1..]) |arg| {
+
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
         if (arg[0] == '-') {
             if (std.mem.eql(u8, arg, "-v")) {
                 verbose = true;
             } else if (std.mem.eql(u8, arg, "-r")) {
                 reload = true;
+            } else if (std.mem.eql(u8, arg, "-pc")) {
+                i += 1;
+                if (i < args.len) {
+                    pc = try std.fmt.parseInt(u32, args[i], 10);
+                } else {
+                    std.debug.print("Missing pc arg.\n", .{});
+                    exit(1);
+                }
             }
         } else {
             if (cmd == .none) {
@@ -142,7 +154,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    const buf = vm.compile(path, src) catch |err| {
+    _ = vm.compile(path, src) catch |err| {
         switch (err) {
             error.TokenError,
             error.ParseError,
@@ -154,7 +166,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
             },
         }
     };
-    buf.dump();
+    try cy.debug.dumpBytecode(vm.constInternal(), pc);
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
@@ -204,14 +216,17 @@ fn help() void {
         \\       cyber [command] ...
         \\
         \\Commands:
-        \\  cyber [source]             Compile and run a script.
-        \\  cyber compile [source]     Compile script and dump the bytecode.
-        \\  cyber help                 Print usage.
-        \\  cyber version              Print version number.
+        \\  cyber [source]            Compile and run a script.
+        \\  cyber compile [source]    Compile script and dump the bytecode.
+        \\  cyber help                Print usage.
+        \\  cyber version             Print version number.
         \\  
         \\General Options:
         \\  -r      Refetch url imports and cached assets.
         \\  -v      Verbose.
+        \\                            
+        \\cyber compile Options:
+        \\  -pc     Next arg is the pc to dump bytecode at.
         \\
     , .{build_options.version});
 }

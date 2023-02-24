@@ -4,6 +4,7 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const fmt = @import("fmt.zig");
+const bytecode = @import("bytecode.zig");
 const v = fmt.v;
 const log = stdx.log.scoped(.debug);
 
@@ -132,12 +133,20 @@ pub fn getDebugSymBefore(vm: *const cy.VM, pc: usize) cy.DebugSym {
 }
 
 pub fn getDebugSym(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
-    const idx = indexOfDebugSym(vm, pc) orelse return null;
-    return vm.debugTable[idx];
+    return getDebugSymFromTable(vm.debugTable, pc);
+}
+
+pub fn getDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?cy.DebugSym {
+    const idx = indexOfDebugSymFromTable(table, pc) orelse return null;
+    return table[idx];
 }
 
 pub fn indexOfDebugSym(vm: *const cy.VM, pc: usize) ?usize {
-    for (vm.debugTable) |sym, i| {
+    return indexOfDebugSymFromTable(vm.debugTable, pc);
+}
+
+pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
+    for (table) |sym, i| {
         if (sym.pc == pc) {
             return i;
         }
@@ -500,4 +509,135 @@ pub const ObjectTrace = struct {
 
     /// Points to inst that freed the object.
     freePc: u32,
+};
+
+/// When `optPcContext` is null, all the bytecode is dumped along with constants.
+/// When `optPcContext` is non null, it will dump a trace at `optPcContext` and the surrounding bytecode with extra details.
+pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
+    var pcOffset: u32 = 0;
+    var opsLen = vm.compiler.buf.ops.items.len;
+    var pc = vm.compiler.buf.ops.items.ptr;
+    const debugTable = vm.compiler.buf.debugTable.items;
+
+    if (optPcContext) |pcContext| {
+        const idx = indexOfDebugSymFromTable(debugTable, pcContext) orelse {
+            return stdx.panicFmt("Missing debug sym at {}", .{pcContext});
+        };
+        const sym = debugTable[idx];
+        const chunk = vm.compiler.chunks.items[sym.file];
+
+        if (sym.frameLoc == cy.NullId) {
+            fmt.printStderr("Block: main\n", &.{});
+            const sblock = &chunk.semaBlocks.items[chunk.mainSemaBlockId];
+            try chunk.dumpLocals(sblock);
+        } else {
+            const funcNode = chunk.nodes[sym.frameLoc];
+            const funcDecl = chunk.funcDecls[funcNode.head.func.decl_id];
+            const funcName = funcDecl.getName(&chunk);
+            if (funcName.len == 0) {
+                fmt.printStderr("Block: lambda()\n", &.{});
+            } else {
+                fmt.printStderr("Block: {}()\n", &.{ v(funcName) });
+            }
+            const sblock = &chunk.semaBlocks.items[funcDecl.semaBlockId];
+            try chunk.dumpLocals(sblock);
+        }
+        fmt.printStderr("\n", &.{});
+
+        var dumpCtx = DumpContext{
+            .vm = vm,
+            .symIdToVar = .{},
+        };
+        defer dumpCtx.deinit();
+        var iter = vm.varSymSigs.iterator();
+        while (iter.next()) |e| {
+            try dumpCtx.symIdToVar.put(vm.alloc, e.value_ptr.*, e.key_ptr.*);
+        }
+
+        const node = chunk.nodes[sym.loc];
+        const token = chunk.tokens[node.start_token];
+        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} {}", .{ pcContext, node.node_t });
+        defer vm.alloc.free(msg);
+        try printUserError(vm, "Trace", msg, sym.file, token.pos(), false);
+
+        fmt.printStderr("Bytecode:\n", &.{});
+        const ContextSize = 40;
+        const startSymIdx = if (idx >= ContextSize) idx - ContextSize else 0;
+        pcOffset = debugTable[startSymIdx].pc;
+
+        // Print until requested inst.
+        pc += pcOffset;
+        while (pcOffset < pcContext) {
+            const code = pc[0].code;
+            const len = bytecode.getInstLenAt(pc);
+            try dumpCtx.dumpInst(pcOffset, code, pc, len);
+            pcOffset += len;
+            pc += len;
+        }
+
+        // Special marker for requested inst.
+        fmt.printStderr("--", &.{});
+        var code = pc[0].code;
+        var len = bytecode.getInstLenAt(pc);
+        try dumpCtx.dumpInst(pcOffset, code, pc, len);
+        pcOffset += len;
+        pc += len;
+
+        // Keep printing instructions until ContextSize or end is reached.
+        var i: usize = 0;
+        while (pcOffset < opsLen) {
+            code = pc[0].code;
+            len = bytecode.getInstLenAt(pc);
+            try dumpCtx.dumpInst(pcOffset, code, pc, len);
+            pcOffset += len;
+            pc += len;
+            i += 1;
+            if (i >= ContextSize) {
+                break;
+            }
+        }
+    } else {
+        fmt.printStderr("Bytecode:\n", &.{});
+        while (pcOffset < opsLen) {
+            const code = pc[0].code;
+            const len = bytecode.getInstLenAt(pc);
+            bytecode.dumpInst(pcOffset, code, pc, len, "");
+            pcOffset += len;
+            pc += len;
+        }
+
+        fmt.printStderr("\nConstants:\n", &.{});
+        for (vm.compiler.buf.mconsts) |extra| {
+            const val = cy.Value{ .val = extra.val };
+            if (val.isNumber()) {
+                fmt.printStderr("{}\n", &.{v(val.asF64())});
+            } else {
+                fmt.printStderr("{}\n", &.{v(extra.val)});
+            }
+        }
+    }
+}
+
+const DumpContext = struct {
+    vm: *const cy.VM,
+    symIdToVar: std.AutoHashMapUnmanaged(u32, cy.KeyU64),
+
+    fn deinit(self: *DumpContext) void {
+        self.symIdToVar.deinit(self.vm.alloc);
+    }
+
+    fn dumpInst(self: *const DumpContext, pcOffset: u32, code: cy.OpCode, pc: [*]cy.OpData, len: u32) !void {
+        var buf: [1024]u8 = undefined;
+        var extra: []const u8 = "";
+        switch (code) {
+            .staticVar => {
+                const symId = pc[1].arg;
+                const nameId = self.symIdToVar.get(symId).?.rtVarSymKey.nameId;
+                const name = cy.sema.getName(&self.vm.compiler, nameId);
+                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+            },
+            else => {},
+        }
+        bytecode.dumpInst(pcOffset, code, pc, len, extra);
+    }
 };

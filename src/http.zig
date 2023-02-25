@@ -52,7 +52,7 @@ pub const StdHttpClient = struct {
 
     fn request(ptr: *anyopaque, uri: std.Uri) RequestError!Request {
         const self = stdx.ptrAlignCast(*StdHttpClient, ptr);
-        return self.client.request(uri, .{}, .{});
+        return stdRequest(&self.client, uri, .{}, .{});
     }
 
     fn readAll(_: *anyopaque, req: *Request, buf: []u8) RequestError!usize {
@@ -147,4 +147,58 @@ pub fn get(alloc: std.mem.Allocator, client: HttpClient, url: []const u8) !Respo
         .status = req.response.headers.status,
         .body = try buf.toOwnedSlice(alloc),
     };
+}
+
+/// std/http/Client.request
+fn stdRequest(client: *std.http.Client, uri: std.Uri, headers: std.http.Client.Request.Headers, options: std.http.Client.Request.Options) !std.http.Client.Request {
+    const protocol: std.http.Client.Connection.Protocol = if (std.mem.eql(u8, uri.scheme, "http"))
+        .plain
+    else if (std.mem.eql(u8, uri.scheme, "https"))
+        .tls
+    else
+        return error.UnsupportedUrlScheme;
+
+    const port: u16 = uri.port orelse switch (protocol) {
+        .plain => 80,
+        .tls => 443,
+    };
+
+    const host = uri.host orelse return error.UriMissingHost;
+
+    if (client.next_https_rescan_certs and protocol == .tls) {
+        try client.ca_bundle.rescan(client.allocator);
+        client.next_https_rescan_certs = false;
+    }
+
+    var req: Request = .{
+        .client = client,
+        .headers = headers,
+        .connection = try client.connect(host, port, protocol),
+        .redirects_left = options.max_redirects,
+        .response = switch (options.header_strategy) {
+            .dynamic => |max| Request.Response.initDynamic(max),
+            .static => |buf| Request.Response.initStatic(buf),
+        },
+    };
+
+    {
+        var h = try std.BoundedArray(u8, 1000).init(0);
+        try h.appendSlice(@tagName(headers.method));
+        try h.appendSlice(" ");
+        try h.appendSlice(uri.path);
+        if (uri.query) |query| {
+            try h.appendSlice("?");
+            try h.appendSlice(query);
+        }
+        try h.appendSlice(" ");
+        try h.appendSlice(@tagName(headers.version));
+        try h.appendSlice("\r\nHost: ");
+        try h.appendSlice(host);
+        try h.appendSlice("\r\nConnection: close\r\n\r\n");
+
+        const header_bytes = h.slice();
+        try req.connection.writeAll(header_bytes);
+    }
+
+    return req;
 }

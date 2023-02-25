@@ -129,11 +129,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
             try mod.setNativeFunc(self, "setEnv", 2, setEnv);
         }
     }
-    if (builtin.os.tag == .windows) {
-        try mod.setNativeFunc(self, "sleep", 1, bindings.nop1);
-    } else {
-        try mod.setNativeFunc(self, "sleep", 1, sleep);
-    }
+    try mod.setNativeFunc(self, "sleep", 1, sleep);
     if (cy.isWasm or builtin.os.tag == .windows) {
         try mod.setNativeFunc(self, "unsetEnv", 1, bindings.nop1);
     } else {
@@ -388,14 +384,20 @@ pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
-pub fn sleep(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const ms = args[0].toF64();
-    const secs = @floatToInt(u64, @divFloor(ms, 1000));
-    const nsecs = @floatToInt(u64, 1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
-    if (cy.isWasm) {
-        hostSleep(secs, nsecs);
+pub fn sleep(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    if (builtin.os.tag == .windows) {
+        const ms = @floatToInt(u32, args[0].toF64());
+        std.os.windows.kernel32.Sleep(ms);
     } else {
-        std.os.nanosleep(secs, nsecs);
+        const ms = args[0].toF64();
+        const secs = @floatToInt(u64, @divFloor(ms, 1000));
+        const nsecs = @floatToInt(u64, 1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
+        if (cy.isWasm) {
+            hostSleep(secs, nsecs);
+        } else {
+            std.os.nanosleep(secs, nsecs);
+        }
     }
     return Value.None;
 }

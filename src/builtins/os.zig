@@ -6,7 +6,6 @@ const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
-const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
@@ -317,7 +316,7 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     while (iter.next()) |entry| {
         const key = vm.allocStringInfer(entry.key_ptr.*) catch stdx.fatal();
         const val = vm.allocStringInfer(entry.value_ptr.*) catch stdx.fatal();
-        gvm.setIndex(map, key, val) catch stdx.fatal();
+        vm.internal().setIndex(map, key, val) catch stdx.fatal();
     }
     return map;
 }

@@ -672,10 +672,9 @@ pub const VM = struct {
             .name = name,
             .numFields = 0,
         };
-        const vm = self.getVM();
-        const id = @intCast(u32, vm.structs.len);
-        try vm.structs.append(vm.alloc, s);
-        try vm.structSignatures.put(vm.alloc, .{
+        const id = @intCast(u32, self.structs.len);
+        try self.structs.append(self.alloc, s);
+        try self.structSignatures.put(self.alloc, .{
             .structKey = .{
                 .resolvedParentSymId = resolvedParentId,
                 .nameId = nameId,
@@ -687,14 +686,6 @@ pub const VM = struct {
     pub fn addObjectType(self: *VM, name: []const u8) !TypeId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
         return self.addObjectTypeExt(cy.NullId, nameId);
-    }
-
-    inline fn getVM(self: *VM) *VM {
-        if (UseGlobalVM) {
-            return &gvm;
-        } else {
-            return self;
-        }
     }
 
     pub inline fn getFuncSym(self: *const VM, resolvedParentId: u32, nameId: u32, numParams: u32) ?SymbolId {
@@ -768,11 +759,10 @@ pub const VM = struct {
     }
 
     pub fn ensureTagLitSym(self: *VM, name: []const u8) !SymbolId {
-        _ = self;
-        const res = try gvm.tagLitSymSignatures.getOrPut(gvm.alloc, name);
+        const res = try self.tagLitSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, gvm.tagLitSyms.len);
-            try gvm.tagLitSyms.append(gvm.alloc, .{
+            const id = @intCast(u32, self.tagLitSyms.len);
+            try self.tagLitSyms.append(self.alloc, .{
                 .symT = .empty,
                 .inner = undefined,
                 .name = name,
@@ -1272,7 +1262,7 @@ pub const VM = struct {
                 pc[0] = cy.OpData{ .code = .callNativeFuncIC };
                 @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
 
-                gvm.framePtr = newFramePtr;
+                self.framePtr = newFramePtr;
                 const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (res.isPanic()) {
                     return error.Panic;
@@ -1313,7 +1303,7 @@ pub const VM = struct {
                 };
             },
             .closure => {
-                if (@ptrToInt(framePtr + startLocal + sym.inner.closure.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr + startLocal + sym.inner.closure.numLocals) >= @ptrToInt(self.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -1397,7 +1387,7 @@ pub const VM = struct {
     fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: MethodSym, recv: Value, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) !PcFramePtr {
         switch (sym.entryT) {
             .func => {
-                if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stackEndPtr)) {
+                if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(self.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -3550,7 +3540,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
-                    const offset = gvm.getFieldOffset(obj, symId);
+                    const offset = vm.getFieldOffset(obj, symId);
                     if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
@@ -3558,7 +3548,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData { .arg = offset };
                     } else {
-                        framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, vm.fieldSyms.buf[symId].name});
                     }
                     retain(vm, framePtr[dst]);
                     pc += 7;
@@ -3578,7 +3568,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
-                    const offset = gvm.getFieldOffset(obj, symId);
+                    const offset = vm.getFieldOffset(obj, symId);
                     if (offset != cy.NullU8) {
                         const lastValue = obj.object.getValuePtr(offset);
                         release(vm, lastValue.*);
@@ -4404,7 +4394,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value
 fn callSymEntryNoInline(vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !PcFramePtr {
     switch (sym.entryT) {
         .func => {
-            if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(gvm.stack.ptr) + 8 * gvm.stack.len) {
+            if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(vm.stack.ptr) + 8 * vm.stack.len) {
                 return error.StackOverflow;
             }
 

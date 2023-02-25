@@ -1485,118 +1485,136 @@ test "Function overloading." {
 }
 
 test "Static functions." {
-    const run = VMrunner.create();
-    defer run.destroy();
 
     // Call with missing func sym.
-    var res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\foo(1)
-    );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: Missing function symbol `foo`.
-        \\
-        \\main:1:1 main:
-        \\foo(1)
-        \\^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Missing function symbol `foo`.
+            \\
+            \\main:1:1 main:
+            \\foo(1)
+            \\^
+            \\
+        );
+    }}.func);
 
     // Call with wrong number of arguments.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\func foo():
         \\  return 1
         \\foo(1)
-    );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: Unsupported call signature: `foo(1 args)`.
-        \\A function with signature `foo(0 args)` exists.
-        \\
-        \\main:3:1 main:
-        \\foo(1)
-        \\^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Unsupported call signature: `foo(1 args)`.
+            \\A function with signature `foo(0 args)` exists.
+            \\
+            \\main:3:1 main:
+            \\foo(1)
+            \\^
+            \\
+        );
+    }}.func);
 
     // Call with wrong number of arguments for overloaded function.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\func foo():
         \\  return 1
         \\func foo(n):
         \\  return n
         \\foo(1, 2)
-    );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: Unsupported call signature: `foo(2 args)`.
-        \\There are multiple overloaded functions named `foo`
-        \\
-        \\main:5:1 main:
-        \\foo(1, 2)
-        \\^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Unsupported call signature: `foo(2 args)`.
+            \\There are multiple overloaded functions named `foo`
+            \\
+            \\main:5:1 main:
+            \\foo(1, 2)
+            \\^
+            \\
+        );
+    }}.func);
 
     // Declaration initializer has a reference to a local.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\a = 123
         \\func foo() = a
-    );
-    try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "The declaration initializer of static function `foo` can not reference the local variable `a`.");
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: The declaration initializer of static function `foo` can not reference the local variable `a`.
+            \\
+            \\main:2:1:
+            \\func foo() = a
+            \\^
+            \\
+        );
+    }}.func);
 
     // Declaration initializer has a function value with a different signature.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\func foo() = number
-    );
-    try t.expectError(res, error.Panic);
-    try run.assertPanicMsg("Assigning to static function with a different function signature.");
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Assigning to static function with a different function signature.
+            \\
+            \\main:1:14 main:
+            \\func foo() = number
+            \\             ^
+            \\
+        );
+    }}.func);
 
     // Declaration initializer for a function already imported from core.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\func print(val) = number
-    );
-    try t.expectError(res, error.CompileError);
-    const err = try run.vm.allocLastUserCompileError();
-    try t.eqStrFree(t.alloc, err,
-        \\CompileError: The symbol `print` was already declared.
-        \\
-        \\main:1:6:
-        \\func print(val) = number
-        \\     ^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: The symbol `print` was already declared.
+            \\
+            \\main:1:6:
+            \\func print(val) = number
+            \\     ^
+            \\
+        );
+    }}.func);
 
     // Capture local from static function is not allowed.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\a = 123
         \\func foo():
         \\  return a
-    );
-    try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Can not capture the local variable `a` from static function `foo`.
-        \\Only lambdas (function values) can capture local variables.
-        \\
-        \\main:3:10:
-        \\  return a
-        \\         ^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not capture the local variable `a` from static function `foo`.
+            \\Only lambdas (function values) can capture local variables.
+            \\
+            \\main:3:10:
+            \\  return a
+            \\         ^
+            \\
+        );
+    }}.func);
 
     // Explicit capture from static function is not allowed.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\a = 123
         \\func foo():
         \\  capture a = 234
-    );
-    try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Can not capture the local variable `a` from static function `foo`.
-        \\Only lambdas (function values) can capture local variables.
-        \\
-        \\main:3:15:
-        \\  capture a = 234
-        \\              ^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not capture the local variable `a` from static function `foo`.
+            \\Only lambdas (function values) can capture local variables.
+            \\
+            \\main:3:15:
+            \\  capture a = 234
+            \\              ^
+            \\
+        );
+    }}.func);
 
+    const run = VMrunner.create();
+    defer run.destroy();
     _ = try run.eval(@embedFile("static_func_test.cy"));
 }
 
@@ -1784,7 +1802,7 @@ const VMrunner = struct {
                 cy.silentError = false;
             }
         }
-        try self.resetEnv();
+        try self.resetEnv();    
         return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
             return err;
         };
@@ -1805,14 +1823,7 @@ const VMrunner = struct {
     }
 
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {
-        // Eval with new env.
-        try self.resetEnv();
-        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
-            if (err == error.Panic) {
-                try self.vm.printLastUserPanicError();
-            }
-            return err;
-        };
+        return self.evalExt(.{ .uri = "main" }, src);
     }
 
     fn resetEnv(self: *VMrunner) !void {
@@ -1827,12 +1838,7 @@ const VMrunner = struct {
     }
 
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
-            if (err == error.Panic) {
-                try self.vm.printLastUserPanicError();
-            }
-            return err;
-        };
+        return self.evalExtNoReset(.{ .uri = "main" }, src);
     }
 
     pub fn valueIsF64(self: *VMrunner, act: cy.Value, exp: f64) !void {
@@ -1890,6 +1896,8 @@ const Config = struct {
 
     enableFileModules: bool = false,
 
+    checkGlobalRc: bool = true,
+
     fn silentWithFileModules(uri: []const u8) Config {
         return .{
             .silent = true,
@@ -1938,3 +1946,29 @@ fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !
 
 const UserError = error{Panic, CompileError, ParseError};
 
+/// TODO: Refactor to use eval.
+fn eval(config: Config, src: []const u8, cb: *const fn (*VMrunner, anyerror!cy.Value) anyerror!void) !void {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    if (config.silent) {
+        cy.silentError = true;
+    }
+    defer {
+        if (config.silent) {
+            cy.silentError = false;
+        }
+    }
+
+    const res = run.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules });
+    try cb(run, res);
+    if (config.checkGlobalRc) {
+        const rc = run.vm.getGlobalRC();
+        if (rc != 0) {
+            std.debug.print("{} unreleased refcount from previous eval\n", .{rc});
+            return error.UnreleasedReferences;
+        }
+    }
+}
+
+const EvalResult = anyerror!cy.Value;

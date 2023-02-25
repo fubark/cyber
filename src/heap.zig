@@ -467,6 +467,15 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         self.heapFreeHead = try growHeapPages(self, std.math.max(1, (self.heapPages.len * 15) / 10));
     }
     const ptr = self.heapFreeHead.?;
+    defer {
+        if (builtin.mode == .Debug) {
+            // log.debug("alloc {*} {}", .{ptr, cy.pcOffset(self, self.debugPc)});
+            self.objectTraceMap.put(self.alloc, ptr, .{
+                .allocPc = self.debugPc,
+                .freePc = cy.NullId,
+            }) catch stdx.fatal();
+        }
+    }
     if (ptr.freeSpan.len == 1) {
         // This is the only free slot, move to the next free span.
         self.heapFreeHead = ptr.freeSpan.next;
@@ -497,13 +506,6 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         if (cy.TraceEnabled) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
-        }
-        if (builtin.mode == .Debug) {
-            // log.debug("alloc {*}", .{ptr});
-            self.objectTraceMap.put(self.alloc, ptr, .{
-                .allocPc = cy.pcOffset(self, self.debugPc),
-                .freePc = cy.NullId,
-            }) catch stdx.fatal();
         }
         return ptr;
     }
@@ -1520,7 +1522,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
     }
     if (builtin.mode == .Debug) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = cy.pcOffset(vm, vm.debugPc);
+            trace.freePc = vm.debugPc;
         } else {
             log.debug("Missing object trace {*}", .{obj});
         }

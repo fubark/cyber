@@ -880,11 +880,16 @@ pub const CompileChunk = struct {
         return local >= self.curBlock.numLocals;
     }
 
+    /// TODO: Remove.
     pub fn initGenValue(self: *const CompileChunk, local: LocalId, vtype: sema.Type) gen.GenValue {
+        return self.initGenValue2(local, vtype, false);
+    }
+
+    pub fn initGenValue2(self: *const CompileChunk, local: LocalId, vtype: sema.Type, retained: bool) gen.GenValue {
         if (local >= self.curBlock.numLocals) {
-            return gen.GenValue.initTempValue(local, vtype);
+            return gen.GenValue.initTempValue2(local, vtype, retained);
         } else {
-            return gen.GenValue.initLocalValue(local, vtype);
+            return gen.GenValue.initLocalValue2(local, vtype, retained);
         }
     }
 

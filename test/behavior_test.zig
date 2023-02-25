@@ -304,9 +304,6 @@ test "Errors." {
 }
 
 test "FFI." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
     const S = struct {
         export fn testAdd(a: i32, b: i32) i32 {
             return a + b;
@@ -399,7 +396,7 @@ test "FFI." {
     };
     _ = S;
 
-    _ = try run.eval(@embedFile("ffi_test.cy"));
+    try evalPass(.{}, @embedFile("ffi_test.cy"));
 }
 
 test "Tag types." {
@@ -1619,9 +1616,7 @@ test "Static functions." {
 }
 
 test "Lambdas." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("lambda_test.cy"));
+    _ = try evalPass(.{}, @embedFile("lambda_test.cy"));
 //     // Lambda assign declaration.
 //     val = try run.eval(
 //         \\foo = {}
@@ -1898,6 +1893,8 @@ const Config = struct {
 
     checkGlobalRc: bool = true,
 
+    debug: bool = false,
+
     fn silentWithFileModules(uri: []const u8) Config {
         return .{
             .silent = true,
@@ -1947,7 +1944,7 @@ fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !
 const UserError = error{Panic, CompileError, ParseError};
 
 /// TODO: Refactor to use eval.
-fn eval(config: Config, src: []const u8, cb: *const fn (*VMrunner, anyerror!cy.Value) anyerror!void) !void {
+fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!cy.Value) anyerror!void) !void {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -1960,15 +1957,38 @@ fn eval(config: Config, src: []const u8, cb: *const fn (*VMrunner, anyerror!cy.V
         }
     }
 
-    const res = run.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules });
-    try cb(run, res);
+    const res = run.vm.eval(config.uri, src, .{ 
+        .singleRun = false,
+        .enableFileModules = config.enableFileModules,
+        .genAllDebugSyms = config.debug,
+    });
+    if (optCb) |cb| {
+        try cb(run, res);
+    } 
+    // Deinit, so global objects from builtins are released.
+    run.vm.deinit();
     if (config.checkGlobalRc) {
         const rc = run.vm.getGlobalRC();
         if (rc != 0) {
             std.debug.print("{} unreleased refcount from previous eval\n", .{rc});
+
+            var iter = run.vm.internal().objectTraceMap.iterator();
+            while (iter.next()) |it| {
+                const trace = it.value_ptr.*;
+                if (trace.freePc == cy.NullId) {
+                    const msg = try std.fmt.allocPrint(t.alloc, "Init alloc: {*} at pc: {}", .{it.key_ptr.*, trace.allocPc});
+                    defer t.alloc.free(msg);
+                    try cy.debug.printTraceAtPc(run.vm.internal(), trace.allocPc, msg);
+                }
+            }
+
             return error.UnreleasedReferences;
         }
     }
+}
+
+fn evalPass(config: Config, src: []const u8) !void {
+    return eval(config, src, null);
 }
 
 const EvalResult = anyerror!cy.Value;

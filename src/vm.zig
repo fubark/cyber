@@ -141,7 +141,8 @@ pub const VM = struct {
     objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
 
     /// In debug mode, always save the current pc so tracing can be obtained.
-    debugPc: if (builtin.mode == .Debug) [*]const cy.OpData else void,
+    /// debugPc == NullId indicates execution has not started.
+    debugPc: if (builtin.mode == .Debug) u32 else void,
 
     config: EvalConfig,
 
@@ -196,7 +197,8 @@ pub const VM = struct {
             .curFiber = undefined,
             .endLocal = undefined,
             .objectTraceMap = if (builtin.mode == .Debug) .{} else undefined,
-            .debugPc = undefined,
+            // Initialize to NullId to indicate vm is still in initing.
+            .debugPc = if (builtin.mode == .Debug) cy.NullId else undefined,
             .deinited = false,
             .funcSymDeps = .{},
             .config = undefined,
@@ -368,8 +370,8 @@ pub const VM = struct {
         tt.endPrint("compile");
 
         if (TraceEnabled) {
-            if (!builtin.is_test and debug.atLeastTestDebugLevel()) {
-                res.buf.dump();
+            if (builtin.is_test and debug.atLeastTestDebugLevel()) {
+                try debug.dumpBytecode(self, null);
             }
             const numOps = comptime std.enums.values(cy.OpCode).len;
             self.trace.opCounts = try self.alloc.alloc(cy.OpCount, numOps);
@@ -2630,7 +2632,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
         vm.pc = pc;
         vm.framePtr = framePtr;
         if (builtin.mode == .Debug) {
-            vm.debugPc = pc;
+            vm.debugPc = pcOffset(vm, pc);
         }
     } 
 
@@ -2642,7 +2644,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
         }
         if (builtin.mode == .Debug) {
             dumpEvalOp(vm, pc);
-            vm.debugPc = pc;
+            vm.debugPc = pcOffset(vm, pc);
         }
         if (EnableAarch64ComputedGoto) {
             // Base address to jump from.

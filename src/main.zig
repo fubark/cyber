@@ -173,6 +173,8 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAllocOptions(alloc, path, 1e10, 4096, @alignOf(u8), null);
     defer alloc.free(src);
 
+    cy.verbose = verbose;
+
     const vm = cy.getUserVM();
     try vm.init(alloc);
     defer vm.deinit();

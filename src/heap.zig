@@ -1345,7 +1345,11 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
 }
 
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    log.debug("free {}", .{obj.getUserTag()});
+    if (builtin.mode == .Debug) {
+        if (cy.verbose) {
+            log.debug("free {}", .{obj.getUserTag()});
+        }   
+    }
     switch (obj.retainedCommon.structId) {
         ListS => {
             const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
@@ -1499,9 +1503,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             freePoolObject(vm, obj);
         },
         else => {
-            log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});
             // Struct deinit.
             if (builtin.mode == .Debug) {
+
+                if (cy.verbose) {
+                    log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});
+                }
+
                 // Check range.
                 if (obj.retainedCommon.structId >= vm.structs.len) {
                     log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});

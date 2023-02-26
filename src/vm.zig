@@ -2645,7 +2645,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             vm.trace.totalOpCounts += 1;
         }
         if (builtin.mode == .Debug) {
-            dumpEvalOp(vm, pc) catch stdx.fatal();
+            if (cy.verbose) {
+                dumpEvalOp(vm, pc) catch stdx.fatal();
+            }
             vm.debugPc = pcOffset(vm, pc);
         }
         if (EnableAarch64ComputedGoto) {

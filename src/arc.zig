@@ -22,7 +22,11 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
             }
         }
         obj.retainedCommon.rc -= 1;
-        log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
+        if (builtin.mode == .Debug) {
+            if (cy.verbose) {
+                log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
+            }
+        }
         if (cy.TrackGlobalRC) {
             vm.refCounts -= 1;
         }
@@ -42,7 +46,11 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
         }
     }
     obj.retainedCommon.rc -= 1;
-    log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+    if (builtin.mode == .Debug) {
+        if (cy.verbose) {
+            log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+        }
+    }
     if (cy.TrackGlobalRC) {
         vm.refCounts -= 1;
     }
@@ -67,7 +75,11 @@ pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, start
 
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
     obj.retainedCommon.rc += 1;
-    log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+    if (builtin.mode == .Debug) {
+        if (cy.verbose) {
+            log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+        }
+    }
     if (cy.TrackGlobalRC) {
         self.refCounts += 1;
     }
@@ -84,7 +96,11 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         obj.retainedCommon.rc += 1;
-        log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+        if (builtin.mode == .Debug) {
+            if (cy.verbose) {
+                log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+            }
+        }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }

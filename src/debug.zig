@@ -564,7 +564,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
         const node = chunk.nodes[sym.loc];
         const token = chunk.tokens[node.start_token];
-        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} {}", .{ pcContext, node.node_t });
+        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].code), @tagName(node.node_t) });
         defer vm.alloc.free(msg);
         try printUserError(vm, "Trace", msg, sym.file, token.pos(), false);
 
@@ -642,6 +642,11 @@ const DumpContext = struct {
                 const symId = pc[1].arg;
                 const nameId = self.symIdToVar.get(symId).?.rtVarSymKey.nameId;
                 const name = cy.sema.getName(&self.vm.compiler, nameId);
+                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+            },
+            .fieldRetain => {
+                const symId = pc[3].arg;
+                const name = self.vm.fieldSyms.buf[symId].name;
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
             },
             else => {},

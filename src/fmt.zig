@@ -12,6 +12,7 @@ const log = stdx.log.scoped(.fmt);
 const FmtValueType = enum {
     char,
     string,
+    i8,
     u8,
     i16,
     u16,
@@ -43,6 +44,7 @@ pub const FmtValue = struct {
 fn toFmtValueType(comptime T: type) FmtValueType {
     switch (T) {
         bool => return .bool,
+        i8 => return .i8,
         u8 => return .u8,
         u16 => return .u16,
         i16 => return .i16,
@@ -89,6 +91,14 @@ pub fn v(val: anytype) FmtValue {
                 .valT = .char,
                 .inner = .{
                     .u8 = val,
+                }
+            };
+        },
+        .i8 => {
+            return .{
+                .valT = .i8,
+                .inner = .{
+                    .u8 = @bitCast(u8, val),
                 }
             };
         },
@@ -198,6 +208,9 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         },
         .char => {
             try writer.writeByte(val.inner.char);
+        },
+        .i8 => {
+            try std.fmt.formatInt(@bitCast(i8, val.inner.u8), 10, .lower, .{}, writer);
         },
         .u8 => {
             try std.fmt.formatInt(val.inner.u8, 10, .lower, .{}, writer);

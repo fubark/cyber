@@ -2633,7 +2633,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             vm.trace.totalOpCounts += 1;
         }
         if (builtin.mode == .Debug) {
-            dumpEvalOp(vm, pc);
+            dumpEvalOp(vm, pc) catch stdx.fatal();
             vm.debugPc = pcOffset(vm, pc);
         }
         if (EnableAarch64ComputedGoto) {
@@ -4124,69 +4124,26 @@ fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) li
     }
 }
 
-fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) void {
+fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) !void {
+    if (builtin.is_test and !debug.atLeastTestDebugLevel()) {
+        return;
+    }
+    var buf: [1024]u8 = undefined;
+    var extra: []const u8 = "";
+
     const offset = pcOffset(vm, pc);
     switch (pc[0].code) {
-        .callObjSym => {
-            log.debug("{} op: {s} {any}", .{offset, @tagName(pc[0].code), std.mem.sliceAsBytes(pc[1..14])});
-        },
-        .callSym => {
-            log.debug("{} op: {s} {any}", .{offset, @tagName(pc[0].code), std.mem.sliceAsBytes(pc[1..11])});
-        },
-        .release => {
-            const local = pc[1].arg;
-            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), local});
-        },
-        .copy => {
-            const local = pc[1].arg;
-            const dst = pc[2].arg;
-            log.debug("{} op: {s} {} {}", .{offset, @tagName(pc[0].code), local, dst});
-        },
-        .copyRetainSrc => {
-            const src = pc[1].arg;
-            const dst = pc[2].arg;
-            log.debug("{} op: {s} {} {}", .{offset, @tagName(pc[0].code), src, dst});
-        },
-        .map => {
-            const startLocal = pc[1].arg;
-            const numEntries = pc[2].arg;
-            const startConst = pc[3].arg;
-            log.debug("{} op: {s} {} {} {}", .{offset, @tagName(pc[0].code), startLocal, numEntries, startConst});
-        },
-        .constI8 => {
-            const val = pc[1].arg;
-            const dst = pc[2].arg;
-            log.debug("{} op: {s} [{}] -> %{}", .{offset, @tagName(pc[0].code), @bitCast(i8, val), dst});
-        },
-        .add => {
-            const left = pc[1].arg;
-            const right = pc[2].arg;
-            const dst = pc[3].arg;
-            log.debug("{} op: {s} {} {} -> %{}", .{offset, @tagName(pc[0].code), left, right, dst});
-        },
         .constOp => {
             const idx = pc[1].arg;
             const dst = pc[2].arg;
+            _ = dst;
             const val = Value{ .val = vm.consts[idx].val };
-            log.debug("{} op: {s} [{s}] -> %{}", .{offset, @tagName(pc[0].code), vm.valueToTempString(val), dst});
+            extra = try std.fmt.bufPrint(&buf, "[constVal={s}]", .{vm.valueToTempString(val)});
         },
-        .end => {
-            const endLocal = pc[1].arg;
-            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), endLocal});
-        },
-        .setInitN => {
-            const numLocals = pc[1].arg;
-            const locals = pc[2..2+numLocals];
-            log.debug("{} op: {s} {}", .{offset, @tagName(pc[0].code), numLocals});
-            for (locals) |local| {
-                log.debug("{}", .{local.arg});
-            }
-        },
-        else => {
-            const len = cy.getInstLenAt(pc);
-            log.debug("{} op: {s} {any}", .{offset, @tagName(pc[0].code), std.mem.sliceAsBytes(pc[1..len])});
-        },
+        else => {},
     }
+    const len = cy.getInstLenAt(pc);
+    cy.bytecode.dumpInst(offset, pc[0].code, pc, len, extra);
 }
 
 pub const EvalError = error{

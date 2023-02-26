@@ -134,7 +134,7 @@ pub const prepReplacement = string.prepReplacement;
 pub const replaceAtIdxes = string.replaceAtIdxes;
 pub const utf8CodeAtNoCheck = string.utf8CodeAtNoCheck;
 
-const bytecode = @import("bytecode.zig");
+pub const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;
 pub const OpCode = bytecode.OpCode;
 pub const OpData = bytecode.OpData;

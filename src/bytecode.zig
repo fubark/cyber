@@ -210,16 +210,13 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
     }
 }
 
-pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]OpData, len: usize, extra: []const u8) void {
+pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, extra: []const u8) void {
     switch (code) {
-        .closure => {
-            const negFuncPcOffset = pc[1].arg;
-            const numParams = pc[2].arg;
-            const numCaptured = pc[3].arg;
-            const numLocals = pc[4].arg;
-            const dst = pc[5].arg;
-            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(dst)});
-            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[6..6+numCaptured])});
+        .add => {
+            const left = pc[1].arg;
+            const right = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} left={} right={} dst={}", &.{v(pcOffset), v(code), v(left), v(right), v(dst)});
         },
         .box => {
             const local = pc[1].arg;
@@ -231,43 +228,12 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]OpData, len: usize, extra: [
             const dst = pc[2].arg;
             fmt.printStderr("{} {} local={}, dst={}", &.{v(pcOffset), v(code), v(local), v(dst)});
         },
-        .stringTemplate => {
+        .callObjSym => {
             const startLocal = pc[1].arg;
-            const exprCount = pc[2].arg;
-            const dst = pc[3].arg;
-            fmt.printStderr("{} {} startLocal={}, exprCount={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(exprCount), v(dst)});
-        },
-        .slice => {
-            const recv = pc[1].arg;
-            const start = pc[2].arg;
-            const end = pc[3].arg;
-            fmt.printStderr("{} {} recv={}, start={}, end={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
-        },
-        .constI8 => {
-            const val = pc[1].arg;
-            const dst = pc[2].arg;
-            fmt.printStderr("{} {} val={} dst={}", &.{v(pcOffset), v(code), v(val), v(dst)});
-        },
-        .tryValue => {
-            const local = pc[1].arg;
-            const dst = pc[2].arg;
-            const jump = @ptrCast(*const align(1) u16, pc + 3).*;
-            fmt.printStderr("{} {} local={} dst={} jump={}", &.{v(pcOffset), v(code), v(local), v(dst), v(jump)});
-        },
-        .staticVar => {
-            const symId = pc[1].arg;
-            const dst = pc[2].arg;
-            fmt.printStderr("{} {} sym={} dst={}", &.{v(pcOffset), v(code), v(symId), v(dst)});
-        },
-        .release => {
-            const local = pc[1].arg;
-            fmt.printStderr("{} {} local={}", &.{v(pcOffset), v(code), v(local)});
-        },
-        .fieldRetain => {
-            const recv = pc[1].arg;
-            const dst = pc[2].arg;
-            const symId = pc[3].arg;
-            fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
+            const numArgs = pc[2].arg;
+            const numRet = pc[3].arg;
+            const symId = pc[4].arg;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
         },
         .callSym => {
             const startLocal = pc[1].arg;
@@ -275,6 +241,57 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]OpData, len: usize, extra: [
             const numRet = pc[3].arg;
             const symId = pc[4].arg;
             fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
+        },
+        .closure => {
+            const negFuncPcOffset = pc[1].arg;
+            const numParams = pc[2].arg;
+            const numCaptured = pc[3].arg;
+            const numLocals = pc[4].arg;
+            const dst = pc[5].arg;
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(dst)});
+            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[6..6+numCaptured])});
+        },
+        .constI8 => {
+            const val = @bitCast(i8, pc[1].arg);
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} val={} dst={}", &.{v(pcOffset), v(code), v(val), v(dst)});
+        },
+        .constOp => {
+            const idx = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} constIdx={} dst={}", &.{v(pcOffset), v(code), v(idx), v(dst)});
+        },
+        .copy => {
+            const src = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} src={} dst={}", &.{v(pcOffset), v(code), v(src), v(dst)});
+        },
+        .copyRetainSrc => {
+            const src = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} src={} dst={}", &.{v(pcOffset), v(code), v(src), v(dst)});
+        },
+        .end => {
+            const endLocal = pc[1].arg;
+            fmt.printStderr("{} {} endLocal={}", &.{v(pcOffset), v(code), v(endLocal) });
+        },
+        .field => {
+            const recv = pc[1].arg;
+            const dst = pc[2].arg;
+            const symId = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
+        },
+        .fieldRetain => {
+            const recv = pc[1].arg;
+            const dst = pc[2].arg;
+            const symId = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
+        },
+        .index => {
+            const recv = pc[1].arg;
+            const index = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, index={}, dst={}", &.{v(pcOffset), v(code), v(recv), v(index), v(dst)});
         },
         .jump => {
             const jump = @ptrCast(*const align(1) i16, pc + 1).*;
@@ -287,6 +304,61 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]OpData, len: usize, extra: [
         .jumpNotNone => {
             const jump = @ptrCast(*const align(1) i16, pc + 1).*;
             fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
+        },
+        .list => {
+            const startLocal = pc[1].arg;
+            const numElems = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} startLocal={}, numElems={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(numElems), v(dst)});
+        },
+        .map => {
+            const startLocal = pc[1].arg;
+            const numEntries = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} startLocal={}, numEntries={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(numEntries), v(dst)});
+            const keyIdxes = pc[4..4+numEntries];
+            printStderr(" {any}", .{std.mem.sliceAsBytes(keyIdxes)});
+        },
+        .release => {
+            const local = pc[1].arg;
+            fmt.printStderr("{} {} local={}", &.{v(pcOffset), v(code), v(local)});
+        },
+        .setFieldRelease => {
+            const recv = pc[1].arg;
+            const val = pc[2].arg;
+            const symId = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, val={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(val), v(symId)});
+        },
+        .setInitN => {
+            const numLocals = pc[1].arg;
+            const locals = pc[2..2+numLocals];
+            fmt.printStderr("{} {} numLocals={}, locals=", &.{v(pcOffset), v(code), v(numLocals) });
+            for (locals) |local| {
+                fmt.printStderr("{} ", &.{v(local.arg)});
+            }
+        },
+        .slice => {
+            const recv = pc[1].arg;
+            const start = pc[2].arg;
+            const end = pc[3].arg;
+            fmt.printStderr("{} {} recv={}, start={}, end={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
+        },
+        .staticVar => {
+            const symId = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} sym={} dst={}", &.{v(pcOffset), v(code), v(symId), v(dst)});
+        },
+        .stringTemplate => {
+            const startLocal = pc[1].arg;
+            const exprCount = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} startLocal={}, exprCount={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(exprCount), v(dst)});
+        },
+        .tryValue => {
+            const local = pc[1].arg;
+            const dst = pc[2].arg;
+            const jump = @ptrCast(*const align(1) u16, pc + 3).*;
+            fmt.printStderr("{} {} local={} dst={} jump={}", &.{v(pcOffset), v(code), v(local), v(dst), v(jump)});
         },
         else => {
             fmt.printStderr("{} {}", &.{v(pcOffset), v(code)});

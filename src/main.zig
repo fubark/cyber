@@ -205,6 +205,12 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         if (TraceEnabled) {
             vm.dumpStats();
         }
+
+        if (cy.TrackGlobalRC) {
+            vm.internal().compiler.deinitRtObjects();
+            vm.internal().deinitRtObjects();
+            try cy.arc.checkGlobalRC(vm.internal());
+        }
     }
 }
 
@@ -226,7 +232,7 @@ fn help() void {
         \\  -v      Verbose.
         \\                            
         \\cyber compile Options:
-        \\  -pc     Next arg is the pc to dump bytecode at.
+        \\  -pc     Next arg is the pc to dump detailed bytecode at.
         \\
     , .{build_options.version});
 }

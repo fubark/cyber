@@ -1969,22 +1969,7 @@ fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!
     run.vm.internal().deinitRtObjects();
 
     if (config.checkGlobalRc) {
-        const rc = run.vm.getGlobalRC();
-        if (rc != 0) {
-            std.debug.print("{} unreleased refcount\n", .{rc});
-
-            var iter = run.vm.internal().objectTraceMap.iterator();
-            while (iter.next()) |it| {
-                const trace = it.value_ptr.*;
-                if (trace.freePc == cy.NullId) {
-                    const msg = try std.fmt.allocPrint(t.alloc, "Init alloc: {*} at pc: {}", .{it.key_ptr.*, trace.allocPc});
-                    defer t.alloc.free(msg);
-                    try cy.debug.printTraceAtPc(run.vm.internal(), trace.allocPc, msg);
-                }
-            }
-
-            return error.UnreleasedReferences;
-        }
+        try cy.arc.checkGlobalRC(run.vm.internal());
     }
 }
 

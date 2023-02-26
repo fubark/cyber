@@ -218,3 +218,22 @@ const RcNode = struct {
     visited: bool,
     entered: bool,
 };
+
+pub fn checkGlobalRC(vm: *cy.VM) !void {
+    const rc = getGlobalRC(vm);
+    if (rc != 0) {
+        std.debug.print("{} unreleased refcount\n", .{rc});
+        var buf: [128]u8 = undefined;
+
+        var iter = vm.objectTraceMap.iterator();
+        while (iter.next()) |it| {
+            const trace = it.value_ptr.*;
+            if (trace.freePc == cy.NullId) {
+                const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*} at pc: {}, rc: {}", .{it.key_ptr.*, trace.allocPc, it.key_ptr.*.retainedCommon.rc});
+                try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
+            }
+        }
+
+        return error.UnreleasedReferences;
+    }
+}

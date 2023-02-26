@@ -11,6 +11,21 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Debug labels." {
+    try eval(.{},
+        \\a = 1
+        \\@genLabel('MyLabel')
+        \\a = 1
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try t.eq(std.meta.isError(res), false);
+        const vm = run.vm.internal();
+        try t.eq(vm.compiler.buf.debugLabels.items.len, 1);
+        const actLabel = vm.compiler.buf.debugLabels.items[0];
+        try t.eq(actLabel.pc, 3);
+        try t.eqStr(actLabel.getName(), "MyLabel");
+    }}.func);
+}
+
 test "User parse errors." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -230,16 +245,15 @@ test "Imports." {
     _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
 }
 
-test "compile time" {
+test "Dump locals." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // compt is valid syntax
     cy.silentInternal = true;
     defer cy.silentInternal = false;
     _ = try run.eval(
         \\func foo(a):
-        \\  compt compilerDumpLocals()
+        \\  @dumpLocals()
     );
 }
 

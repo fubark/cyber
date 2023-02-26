@@ -971,7 +971,10 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 }
             }
         },
-        else => return c.reportErrorAt("Unsupported node", &.{}, nodeId),
+        .atStmt => {
+            return;
+        },
+        else => return c.reportErrorAt("Unsupported node: {}", &.{v(node.node_t)}, nodeId),
     }
 }
 

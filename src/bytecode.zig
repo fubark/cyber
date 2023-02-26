@@ -29,6 +29,9 @@ pub const ByteCodeBuffer = struct {
     /// Contains entries ordered by `pc`. 
     debugTable: std.ArrayListUnmanaged(DebugSym),
 
+    /// Ordered labels by `pc` for debugging only.
+    debugLabels: std.ArrayListUnmanaged(DebugLabel),
+
     pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
         var new = ByteCodeBuffer{
             .alloc = alloc,
@@ -38,6 +41,7 @@ pub const ByteCodeBuffer = struct {
             .strBuf = .{},
             .strMap = .{},
             .debugTable = .{},
+            .debugLabels = .{},
             .mconsts = &.{},
         };
         // Perform big allocation for instruction buffer for more consistent heap allocation.
@@ -51,6 +55,7 @@ pub const ByteCodeBuffer = struct {
         self.strBuf.deinit(self.alloc);
         self.strMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
+        self.debugLabels.deinit(self.alloc);
     }
 
     pub fn clear(self: *ByteCodeBuffer) void {
@@ -59,6 +64,7 @@ pub const ByteCodeBuffer = struct {
         self.strBuf.clearRetainingCapacity();
         self.strMap.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
+        self.debugLabels.clearRetainingCapacity();
     }
 
     pub fn pushConst(self: *ByteCodeBuffer, val: Const) !u32 {
@@ -66,6 +72,14 @@ pub const ByteCodeBuffer = struct {
         try self.consts.resize(self.alloc, self.consts.items.len + 1);
         self.consts.items[start] = val;
         return start;
+    }
+
+    pub fn pushDebugLabel(self: *ByteCodeBuffer, pc: usize, name: []const u8) !void {
+        try self.debugLabels.append(self.alloc, .{
+            .pc = @intCast(u32, pc),
+            .namePtr = name.ptr,
+            .nameLen = @intCast(u32, name.len),
+        });
     }
 
     pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32) !void {
@@ -440,7 +454,7 @@ pub const OpData = packed union {
 };
 
 pub const DebugSym = struct {
-    // Start position of an inst.
+    /// Start position of an inst.
     pc: u32,
 
     /// Points to a cy.NodeId.
@@ -451,6 +465,19 @@ pub const DebugSym = struct {
 
     /// CompileChunkId.
     file: u32,
+};
+
+const DebugLabel = struct {
+    /// Unowned.
+    namePtr: [*]const u8,
+    nameLen: u32,
+
+    /// Start position of an inst.
+    pc: u32,
+
+    pub fn getName(self: DebugLabel) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
 };
 
 pub fn getInstLenAt(pc: [*]const OpData) u8 {

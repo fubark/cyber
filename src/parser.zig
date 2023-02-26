@@ -1480,64 +1480,34 @@ pub const Parser = struct {
                 const start = self.next_pos;
                 self.advanceToken();
                 token = self.peekToken();
-                if (token.tag() == .ident) {
-                    const name_token = self.tokens.items[self.next_pos];
-                    const name = self.src[name_token.pos() .. name_token.data.end_pos];
-                    var skip_compile = false;
 
+                if (token.tag() == .ident) {
                     const ident = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
-                    const at_ident = try self.pushNode(.at_ident, start);
-                    self.nodes.items[at_ident].head = .{
-                        .annotation = .{
-                            .child = ident,
+
+                    if (self.peekToken().tag() != .left_paren) {
+                        return self.reportParseError("Expected ( after ident.", &.{});
+                    }
+
+                    const callExpr = try self.parseCallExpression(ident);
+                    try self.consumeNewLineOrEnd();
+
+                    const atExpr = try self.pushNode(.atExpr, start);
+                    self.nodes.items[atExpr].head = .{
+                        .atExpr = .{
+                            .child = callExpr,
                         },
                     };
 
-                    const child: NodeId = b: {
-                        // Parse as call expr.
-                        const callStart = self.next_pos;
-                        const call_id = try self.parseAnyCallExpr(at_ident);
-                        const call_expr = self.nodes.items[call_id];
-                        if (call_expr.head.callExpr.arg_head == NullId) {
-                            return self.reportParseErrorAt("Expected arg for @name.", &.{}, callStart);
-                        }
-                        const arg = self.nodes.items[call_expr.head.callExpr.arg_head];
-                        if (std.mem.eql(u8, "name", name)) {
-                            if (arg.node_t == .ident) {
-                                const arg_token = self.tokens.items[arg.start_token];
-                                self.name = self.src[arg_token.pos() .. arg_token.data.end_pos];
-                                skip_compile = true;
-                            } else {
-                                return self.reportParseErrorAt("Expected ident arg for @name.", &.{}, callStart);
-                            }
-                        } else if (std.mem.eql(u8, "compileError", name)) {
-                            skip_compile = true;
-                        }
-                        break :b call_id;
-                    };
-
-                    const id = try self.pushNode(.at_stmt, start);
-                    self.nodes.items[id].head = .{
-                        .at_stmt = .{
-                            .child = child,
-                            .skip_compile = skip_compile,
+                    const atStmt = try self.pushNode(.atStmt, start);
+                    self.nodes.items[atStmt].head = .{
+                        .atStmt = .{
+                            .expr = atExpr,
                         },
                     };
-
-                    token = self.peekToken();
-                    if (token.tag() == .new_line) {
-                        self.advanceToken();
-                        return id;
-                    } else if (token.tag() == .none) {
-                        return id;
-                    } else return self.reportParseError("Expected end of line or file", &.{});
-                }
-
-                // Reparse as expression.
-                self.next_pos = start;
-                if (try self.parseExprOrAssignStatement()) |id| {
-                    return id;
+                    return atStmt;
+                } else {
+                    return self.reportParseError("Expected ident after @.", &.{});
                 }
             },
             .object_k => {
@@ -2389,13 +2359,13 @@ pub const Parser = struct {
                 if (token.tag() == .ident) {
                     const ident = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
-                    const at_ident = try self.pushNode(.at_ident, start);
-                    self.nodes.items[at_ident].head = .{
-                        .annotation = .{
+                    const atExpr = try self.pushNode(.atExpr, start);
+                    self.nodes.items[atExpr].head = .{
+                        .atExpr = .{
                             .child = ident,
                         },
                     };
-                    break :b at_ident;
+                    break :b atExpr;
                 } else {
                     return self.reportParseError("Expected identifier.", &.{});
                 }
@@ -3261,9 +3231,9 @@ pub const NodeType = enum {
     continueStmt,
     return_stmt,
     return_expr_stmt,
-    at_stmt,
+    atExpr,
+    atStmt,
     ident,
-    at_ident,
     true_literal,
     false_literal,
     none,
@@ -3416,12 +3386,12 @@ pub const Node = struct {
             genEndLocalsPc: u32 = NullId,
         },
         child_head: NodeId,
-        annotation: struct {
+        atExpr: struct {
             child: NodeId,
         },
-        at_stmt: struct {
-            child: NodeId,
-            skip_compile: bool,
+        atStmt: struct {
+            /// atExpr node.
+            expr: NodeId,
         },
         func: struct {
             decl_id: FuncDeclId,

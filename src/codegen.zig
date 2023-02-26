@@ -923,20 +923,9 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         },
         .comptExpr => {
             const child = self.nodes[node.head.child_head];
-            if (child.node_t == .callExpr) {
-                const callee = self.nodes[child.head.callExpr.callee];
-                const name = self.getNodeTokenString(callee);
-                if (std.mem.eql(u8, name, "compilerDumpLocals")) {
-                    const sblock = sema.curBlock(self);
-                    try self.dumpLocals(sblock);
-                } else if (std.mem.eql(u8, name, "compilerDumpBytecode")) {
-                    try cy.debug.dumpBytecode(self.compiler.vm, null);
-                }
-                try self.buf.pushOp1(.none, dst);
-                return self.initGenValue(dst, sema.AnyType, false);
-            } else {
-                return self.reportError("Unsupported compt expr {}", &.{fmt.v(child.node_t)});
-            }
+            // try self.buf.pushOp1(.none, dst);
+            // return self.initGenValue(dst, sema.AnyType, false);
+            return self.reportError("Unsupported compt expr {}", &.{fmt.v(child.node_t)});
         },
         .tryExpr => {
             var child: GenValue = undefined;
@@ -1612,6 +1601,37 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 _ = try self.genRetainedExprTo(node.head.child_head, 0, false);
                 try self.endLocals();
                 try self.buf.pushOp(.ret1);
+            }
+        },
+        .atStmt => {
+            const atExpr = self.nodes[node.head.atStmt.expr];
+            const expr = self.nodes[atExpr.head.atExpr.child];
+            if (expr.node_t == .callExpr) {
+                const callee = self.nodes[expr.head.callExpr.callee];
+                const name = self.getNodeTokenString(callee);
+
+                if (std.mem.eql(u8, "genLabel", name)) {
+                    if (expr.head.callExpr.getNumArgs(self.nodes) != 1) {
+                        return self.reportErrorAt("genLabel expected 1 arg", &.{}, nodeId);
+                    }
+
+                    const arg = self.nodes[expr.head.callExpr.arg_head];
+                    if (arg.node_t != .string) {
+                        return self.reportErrorAt("genLabel expected string arg", &.{}, nodeId);
+                    }
+
+                    const label = self.getNodeTokenString(arg);
+                    try self.buf.pushDebugLabel(self.buf.ops.items.len, label);
+                } else if (std.mem.eql(u8, "dumpLocals", name)) {
+                    const sblock = sema.curBlock(self);
+                    try self.dumpLocals(sblock);
+                } else if (std.mem.eql(u8, "dumpBytecode", name)) {
+                    try cy.debug.dumpBytecode(self.compiler.vm, null);
+                } else {
+                    return self.reportErrorAt("Unsupported annotation: {}", &.{v(name)}, nodeId);
+                }
+            } else {
+                return self.reportErrorAt("Unsupported atExpr: {}", &.{v(expr.node_t)}, nodeId);
             }
         },
         else => {

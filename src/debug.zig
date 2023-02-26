@@ -519,6 +519,17 @@ pub const ObjectTrace = struct {
     freePc: u32,
 };
 
+fn getOpCodeAtPc(ops: []const cy.OpData, atPc: u32) ?cy.OpCode {
+    var i: usize = 0;
+    while (i < ops.len) {
+        if (i == atPc) {
+            return ops[i].code;
+        }
+        i += bytecode.getInstLenAt(ops.ptr + i);
+    }
+    return null;
+}
+
 /// When `optPcContext` is null, all the bytecode is dumped along with constants.
 /// When `optPcContext` is non null, it will dump a trace at `optPcContext` and the surrounding bytecode with extra details.
 pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
@@ -529,7 +540,11 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
     if (optPcContext) |pcContext| {
         const idx = indexOfDebugSymFromTable(debugTable, pcContext) orelse {
-            return stdx.panicFmt("Missing debug sym at {} {}", .{pcContext, pc[pcContext].code});
+            if (getOpCodeAtPc(vm.compiler.buf.ops.items, pcContext)) |code| {
+                return stdx.panicFmt("Missing debug sym at {}, code={}", .{pcContext, code});
+            } else {
+                return stdx.panicFmt("Missing debug sym at {}, Invalid pc", .{pcContext});
+            }
         };
         const sym = debugTable[idx];
         const chunk = vm.compiler.chunks.items[sym.file];
@@ -573,9 +588,16 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         const startSymIdx = if (idx >= ContextSize) idx - ContextSize else 0;
         pcOffset = debugTable[startSymIdx].pc;
 
+        var curLabelIdx: u32 = if (vm.compiler.buf.debugLabels.items.len > 0) 0 else cy.NullId;
+        var nextLabelPc: u32 = if (curLabelIdx == 0) vm.compiler.buf.debugLabels.items[curLabelIdx].pc else cy.NullId;
+
         // Print until requested inst.
         pc += pcOffset;
         while (pcOffset < pcContext) {
+            if (pcOffset == nextLabelPc) {
+                dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
+            }
+
             const code = pc[0].code;
             const len = bytecode.getInstLenAt(pc);
             try dumpCtx.dumpInst(pcOffset, code, pc, len);
@@ -583,6 +605,9 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
             pc += len;
         }
 
+        if (pcOffset == nextLabelPc) {
+            dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
+        }
         // Special marker for requested inst.
         fmt.printStderr("--", &.{});
         var code = pc[0].code;
@@ -594,6 +619,9 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         // Keep printing instructions until ContextSize or end is reached.
         var i: usize = 0;
         while (pcOffset < opsLen) {
+            if (pcOffset == nextLabelPc) {
+                dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
+            }
             code = pc[0].code;
             len = bytecode.getInstLenAt(pc);
             try dumpCtx.dumpInst(pcOffset, code, pc, len);
@@ -606,7 +634,15 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         }
     } else {
         fmt.printStderr("Bytecode:\n", &.{});
+
+        var curLabelIdx: u32 = if (vm.compiler.buf.debugLabels.items.len > 0) 0 else cy.NullId;
+        var nextLabelPc: u32 = if (curLabelIdx == 0) vm.compiler.buf.debugLabels.items[curLabelIdx].pc else cy.NullId;
+
         while (pcOffset < opsLen) {
+            if (pcOffset == nextLabelPc) {
+                dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
+            }
+
             const code = pc[0].code;
             const len = bytecode.getInstLenAt(pc);
             bytecode.dumpInst(pcOffset, code, pc, len, "");
@@ -623,6 +659,16 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
                 fmt.printStderr("{}\n", &.{v(extra.val)});
             }
         }
+    }
+}
+
+fn dumpLabelAdvance(vm: *const cy.VM, curLabelIdx: *u32, nextLabelPc: *u32) void {
+    fmt.printStderr("{}:\n", &.{v(vm.compiler.buf.debugLabels.items[curLabelIdx.*].getName())});
+    curLabelIdx.* += 1;
+    if (curLabelIdx.* == vm.compiler.buf.debugLabels.items.len) {
+        nextLabelPc.* = cy.NullId;
+    } else {
+        nextLabelPc.* = vm.compiler.buf.debugLabels.items[curLabelIdx.*].pc;
     }
 }
 

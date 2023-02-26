@@ -215,8 +215,8 @@ test "ARC on temp locals in expressions." {
         \\{ a: [123] }.a[0]
     );
     try run.valueIsI32(val, 123);
-    try t.eq(trace.numRetains, 2);
-    try t.eq(trace.numReleases, 2);
+    try t.eq(trace.numRetains, 3);
+    try t.eq(trace.numReleases, 3);
 
     // The string template literal is released at the end of the arc expression.
     val = try run.eval(

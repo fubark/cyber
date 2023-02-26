@@ -985,10 +985,50 @@ pub const CompileChunk = struct {
         }
     }
 
+    pub fn genExprPreferLocalOrReplaceableDest(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
+        return self.genExprPreferLocalOrReplaceableDest2(sema.AnyType, nodeId, dst, usedDst, discardTopExprReg);
+    }
+
+    /// Prefers a local.
+    /// Then prefers unused dest if the dest can be replaced without ARC release.
+    /// Otherwise, a temp is used.
+    pub fn genExprPreferLocalOrReplaceableDest2(self: *CompileChunk, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
+        const node = self.nodes[nodeId];
+        if (node.node_t == .ident) {
+            if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
+                if (canUseVarAsDst(svar)) {
+                    return gen.genExprTo2(self, nodeId, svar.local, requestedType, false, !discardTopExprReg);
+                }
+            }
+        }
+        if (usedDst.*) {
+            const finalDst = try self.nextFreeTempLocal();
+            return gen.genExprTo2(self, nodeId, finalDst, requestedType, false, !discardTopExprReg);
+        } else {
+            // TODO: Handle other expressions that can save to dst.
+            var useDst = false;
+            switch (node.node_t) {
+                .number,
+                .false_literal,
+                .true_literal => useDst = true,
+                else => {}
+            }
+            if (useDst) {
+                usedDst.* = true;
+                return gen.genExprTo2(self, nodeId, dst, requestedType, false, !discardTopExprReg);
+            } else {
+                const finalDst = try self.nextFreeTempLocal();
+                return gen.genExprTo2(self, nodeId, finalDst, requestedType, false, !discardTopExprReg);
+            }
+        }
+    }
+
     pub fn genExprToDestOrTempLocal(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
         return self.genExprToDestOrTempLocal2(sema.AnyType, nodeId, dst, usedDst, discardTopExprReg);
     }
 
+    /// Attempts to gen expression to the destination if it can avoid a retain op.
+    /// Otherwise, it is copied to a temp.
     pub fn genExprToDestOrTempLocal2(self: *CompileChunk, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
         const node = self.nodes[nodeId];
         if (genWillAlwaysRetainNode(self, node) or usedDst.*) {

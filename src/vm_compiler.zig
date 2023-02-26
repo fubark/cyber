@@ -887,20 +887,15 @@ pub const CompileChunk = struct {
         }
     }
 
-    pub fn isTempLocal(self: *const CompileChunk, local: LocalId) bool {
+    pub inline fn isTempLocal(self: *const CompileChunk, local: LocalId) bool {
         return local >= self.curBlock.numLocals;
     }
 
-    /// TODO: Remove.
-    pub fn initGenValue(self: *const CompileChunk, local: LocalId, vtype: sema.Type) gen.GenValue {
-        return self.initGenValue2(local, vtype, false);
-    }
-
-    pub fn initGenValue2(self: *const CompileChunk, local: LocalId, vtype: sema.Type, retained: bool) gen.GenValue {
-        if (local >= self.curBlock.numLocals) {
-            return gen.GenValue.initTempValue2(local, vtype, retained);
+    pub fn initGenValue(self: *const CompileChunk, local: LocalId, vtype: sema.Type, retained: bool) gen.GenValue {
+        if (self.isTempLocal(local)) {
+            return gen.GenValue.initTempValue(local, vtype, retained);
         } else {
-            return gen.GenValue.initLocalValue2(local, vtype, retained);
+            return gen.GenValue.initLocalValue(local, vtype, retained);
         }
     }
 
@@ -1052,8 +1047,6 @@ pub const CompileChunk = struct {
 
     /// Ensures that the expr value is retained and ends up in the next temp local.
     pub fn genRetainedTempExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
-        const arcLocalStart = self.beginArcExpr();
-
         const dst = try self.nextFreeTempLocal();
         // ARC temps released at the end of this expr,
         // so the next free temp is guaranteed to be after dst.
@@ -1061,7 +1054,6 @@ pub const CompileChunk = struct {
 
         const val = try gen.genExprTo2(self, nodeId, dst, requiredType, true, !discardTopExprReg);
         try self.genEnsureRequiredType(val, requiredType);
-        try self.endArcExpr(arcLocalStart);
         return val;
     }
 
@@ -1104,13 +1096,13 @@ pub const CompileChunk = struct {
         } else if (node.node_t == .callExpr) {
             // Since call expr args allocate arg locals past the arc temps,
             // select the call dst to be past the arc temps to skip generating an extra copy op.
-            _ = self.advanceNextTempLocalPastArcTemps();
+            _ = self.advanceNextTempLocalPastReservedTemps();
             return self.nextFreeTempLocal();
         }
         return self.nextFreeTempLocal();
     }
 
-    pub fn advanceNextTempLocalPastArcTemps(self: *CompileChunk) LocalId {
+    pub fn advanceNextTempLocalPastReservedTemps(self: *CompileChunk) LocalId {
         if (self.curBlock.reservedTempLocalStart < self.reservedTempLocalStack.items.len) {
             for (self.reservedTempLocalStack.items[self.curBlock.reservedTempLocalStart..]) |temp| {
                 if (self.curBlock.firstFreeTempLocal <= temp.local) {
@@ -1174,24 +1166,6 @@ pub const CompileChunk = struct {
                 self.vars.items[varId].genIsDefined = true;
             }
         }
-    }
-
-    /// ARC managed temps need to be released at the end of the current ARC expression.
-    pub fn beginArcExpr(self: *CompileChunk) u32 {
-        const cur = self.curBlock.arcTempLocalStart;
-        self.curBlock.arcTempLocalStart = @intCast(u32, self.reservedTempLocalStack.items.len);
-        return cur;
-    }
-
-    pub fn endArcExpr(self: *CompileChunk, arcTempLocalStart: u32) !void {
-        // Gen release ops.
-        for (self.reservedTempLocalStack.items[self.curBlock.arcTempLocalStart..]) |temp| {
-            try self.buf.pushOp1(.release, temp.local);
-        }
-        self.reservedTempLocalStack.items.len = self.curBlock.arcTempLocalStart;
-
-        // Restore current local start.
-        self.curBlock.arcTempLocalStart = arcTempLocalStart;
     }
 
     pub fn genEnsureRtFuncSym(self: *CompileChunk, symId: sema.SymId) !u32 {
@@ -1512,11 +1486,6 @@ const GenBlock = struct {
     /// Start of the first reserved temp local.
     reservedTempLocalStart: u32,
 
-    /// Start of the first retained temp local of the current ARC expr.
-    /// This must be kept updated as codegen walks the ast so that sub expressions
-    /// knows which ARC expr they belong to.
-    arcTempLocalStart: u32,
-
     /// Whether codegen should create an ending that returns 1 arg.
     /// Otherwise `ret0` is generated.
     requiresEndingRet1: bool,
@@ -1528,7 +1497,6 @@ const GenBlock = struct {
             .numTempLocals = 0,
             .firstFreeTempLocal = 0,
             .reservedTempLocalStart = 0,
-            .arcTempLocalStart = 0,
             .requiresEndingRet1 = false,
         };
     }

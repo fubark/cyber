@@ -27,12 +27,7 @@ pub const GenValue = struct {
         };
     }
 
-    /// TODO: Remove.
-    pub fn initLocalValue(local: LocalId, vtype: sema.Type) GenValue {
-        return initLocalValue2(local, vtype, false);
-    }
-
-    pub fn initLocalValue2(local: LocalId, vtype: sema.Type, retained: bool) GenValue {
+    pub fn initLocalValue(local: LocalId, vtype: sema.Type, retained: bool) GenValue {
         return .{
             .vtype = vtype,
             .local = local,
@@ -41,12 +36,7 @@ pub const GenValue = struct {
         };
     }
 
-    /// TODO: Remove.
-    pub fn initTempValue(local: LocalId, vtype: sema.Type) GenValue {
-        return initTempValue2(local, vtype, false);
-    }
-
-    pub fn initTempValue2(local: LocalId, vtype: sema.Type, retained: bool) GenValue {
+    pub fn initTempValue(local: LocalId, vtype: sema.Type, retained: bool) GenValue {
         return .{
             .vtype = vtype,
             .local = local,
@@ -83,14 +73,14 @@ fn genIdent(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) 
                     } else {
                         try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
                     }
-                    return self.initGenValue2(dst, svar.vtype, true);
+                    return self.initGenValue(dst, svar.vtype, true);
                 } else {
                     if (svar.isBoxed) {
                         try self.buf.pushOp2(.boxValue, svar.local, dst);
                     } else {
                         try self.buf.pushOp2(.copy, svar.local, dst);
                     }
-                    return self.initGenValue2(dst, svar.vtype, false);
+                    return self.initGenValue(dst, svar.vtype, false);
                 }
             }
         }
@@ -113,19 +103,19 @@ fn genSymbolTo(self: *CompileChunk, symId: sema.SymId, dst: LocalId, retain: boo
             const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
 
             try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         } else if (rsym.symT == .variable) {
             const sym = self.semaSyms.items[symId];
             const localKey = sym.key.absLocalSymKey;
             const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
             try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         } else if (rsym.symT == .object) {
             const typeId = rsym.getObjectTypeId(self.compiler.vm).?;
             try self.buf.pushOp1(.sym, @enumToInt(cy.heap.SymbolType.object));
             try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
             try self.buf.pushOperand(dst);
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         } else {
             const sym = self.semaSyms.items[symId];
             const name = sema.getSymName(self.compiler, &sym);
@@ -146,7 +136,7 @@ fn genStringTemplate(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, compt
     const startTempLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startTempLocal);
 
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+    const argStartLocal = self.advanceNextTempLocalPastReservedTemps();
 
     var expStringPart = true;
     var curId = node.head.stringTemplate.partsHead;
@@ -171,13 +161,14 @@ fn genStringTemplate(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, compt
     if (dstIsUsed) {
         try self.buf.pushOp3(.stringTemplate, argStartLocal, @intCast(u8, numExprs), dst);
         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-        return self.initGenValue2(dst, sema.StringType, true);
+        return self.initGenValue(dst, sema.StringType, true);
     } else {
         return GenValue.initNoValue();
     }
 }
 
 fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    _ = retain;
     const node = self.nodes[nodeId];
     const stype = self.nodes[node.head.objectInit.name];
 
@@ -206,7 +197,7 @@ fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
             const startTempLocal = self.curBlock.firstFreeTempLocal;
             defer self.computeNextTempLocalFrom(startTempLocal);
 
-            const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+            const argStartLocal = self.advanceNextTempLocalPastReservedTemps();
 
             var i: u32 = 0;
             var entryId = initializer.head.child_head;
@@ -245,10 +236,7 @@ fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                 } else {
                     try self.buf.pushOpSlice(.object, &.{ @intCast(u8, typeId), argStartLocal, @intCast(u8, numFields), dst });
                 }
-                if (!retain and self.isTempLocal(dst)) {
-                    try self.setReservedTempLocal(dst);
-                }
-                return GenValue.initTempValue(dst, sema.AnyType);
+                return GenValue.initTempValue(dst, sema.AnyType, true);
             } else {
                 return GenValue.initNoValue();
             }
@@ -266,7 +254,7 @@ fn genMapInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime dst
     const startTempLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startTempLocal);
 
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+    const argStartLocal = self.advanceNextTempLocalPastReservedTemps();
 
     var i: u32 = 0;
     var entry_id = node.head.child_head;
@@ -301,7 +289,7 @@ fn genMapInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime dst
             try self.buf.pushOp3(.map, argStartLocal, @intCast(u8, i), dst);
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
         }
-        return self.initGenValue2(dst, sema.MapType, true);
+        return self.initGenValue(dst, sema.MapType, true);
     } else {
         return GenValue.initNoValue();
     }
@@ -321,7 +309,7 @@ fn genPushBinOp(self: *CompileChunk, code: cy.OpCode, left: cy.NodeId, right: cy
         try genReleaseIfRetainedTemp(self, leftv);
         try genReleaseIfRetainedTemp(self, rightv);
 
-        return self.initGenValue2(dst, vtype, false);
+        return self.initGenValue(dst, vtype, false);
     } else return GenValue.initNoValue();
 }
 
@@ -354,11 +342,11 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             if (dstIsUsed) {
                 if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
                     try self.buf.pushOp3(.addInt, leftv.local, rightv.local, dst);
-                    return self.initGenValue2(dst, sema.IntegerType, false);
+                    return self.initGenValue(dst, sema.IntegerType, false);
                 }
                 try self.pushDebugSym(nodeId);
                 try self.buf.pushOp3(.add, leftv.local, rightv.local, dst);
-                return self.initGenValue2(dst, sema.NumberType, false);
+                return self.initGenValue(dst, sema.NumberType, false);
             } else {
                 return GenValue.initNoValue();
             }
@@ -373,10 +361,10 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             if (dstIsUsed) {
                 if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
                     try self.buf.pushOp3(.minusInt, leftv.local, rightv.local, dst);
-                    return self.initGenValue2(dst, sema.IntegerType, false);
+                    return self.initGenValue(dst, sema.IntegerType, false);
                 }
                 try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
-                return self.initGenValue2(dst, sema.NumberType, false);
+                return self.initGenValue(dst, sema.NumberType, false);
             } else return GenValue.initNoValue();
         },
         .equal_equal => {
@@ -402,10 +390,10 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             if (dstIsUsed) {
                 if (node.head.binExpr.semaCanRequestIntegerOperands) {
                     try self.buf.pushOp3(.lessInt, leftv.local, rightv.local, dst);
-                    return self.initGenValue2(dst, sema.BoolType, false);
+                    return self.initGenValue(dst, sema.BoolType, false);
                 }
                 try self.buf.pushOp3(.less, leftv.local, rightv.local, dst);
-                return self.initGenValue2(dst, sema.BoolType, false);
+                return self.initGenValue(dst, sema.BoolType, false);
             } else return GenValue.initNoValue();
         },
         .less_equal => {
@@ -448,9 +436,9 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             self.patchJumpToCurrent(jumpPc);
 
             if (leftv.vtype.typeT == rightv.vtype.typeT) {
-                return self.initGenValue2(dst, leftv.vtype, retain);
+                return self.initGenValue(dst, leftv.vtype, retain and leftv.vtype.rcCandidate);
             } else {
-                return self.initGenValue2(dst, sema.AnyType, retain);
+                return self.initGenValue(dst, sema.AnyType, retain);
             }
         },
         .or_op => {
@@ -469,8 +457,8 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             self.patchJumpToCurrent(jumpPc);
 
             if (leftv.vtype.typeT == rightv.vtype.typeT) {
-                return self.initGenValue2(dst, leftv.vtype, retain and leftv.vtype.rcCandidate);
-            } else return self.initGenValue2(dst, sema.AnyType, retain);
+                return self.initGenValue(dst, leftv.vtype, retain and leftv.vtype.rcCandidate);
+            } else return self.initGenValue(dst, sema.AnyType, retain);
         },
         else => return self.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
     }
@@ -514,7 +502,7 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             try self.pushOptionalDebugSym(nodeId);
             try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         } else {
             const operandStart = self.operandStack.items.len;
             defer self.operandStack.items.len = operandStart;
@@ -536,7 +524,7 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         }
     } else {
         return GenValue.initNoValue();
@@ -573,7 +561,7 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             try self.pushOptionalDebugSym(nodeId);
             try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         } else {
             const operandStart = self.operandStack.items.len;
             defer self.operandStack.items.len = operandStart;
@@ -595,7 +583,7 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         }
     } else {
         return GenValue.initNoValue();
@@ -607,7 +595,7 @@ fn genListInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime ds
     const startLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startLocal);
 
-    const argStartLocal = self.advanceNextTempLocalPastArcTemps();
+    const argStartLocal = self.advanceNextTempLocalPastReservedTemps();
 
     var exprId = node.head.child_head;
     var i: u32 = 0;
@@ -620,13 +608,14 @@ fn genListInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime ds
     if (dstIsUsed) {
         try self.pushDebugSym(nodeId);
         try self.buf.pushOp3(.list, argStartLocal, @intCast(u8, i), dst);
-        return self.initGenValue2(dst, sema.ListType, true);
+        return self.initGenValue(dst, sema.ListType, true);
     } else {
         return GenValue.initNoValue();
     }
 }
 
 fn genRangeAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime dstIsUsed: bool) !GenValue {
+    _ = retain;
     const node = self.nodes[nodeId];
     const startTempLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startTempLocal);
@@ -670,14 +659,11 @@ fn genRangeAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, reta
 
     if (dstIsUsed) {
         try self.buf.pushOpSlice(.slice, &.{ parentv.local, leftv.local, rightv.local, dst });
-        if (!retain and self.isTempLocal(dst)) {
-            try self.setReservedTempLocal(dst);
-        }
 
         // ARC cleanup.
         try genReleaseIfRetainedTemp(self, parentv);
 
-        return self.initGenValue(dst, sema.ListType);
+        return self.initGenValue(dst, sema.ListType, true);
     } else {
         return GenValue.initNoValue();
     }
@@ -714,7 +700,7 @@ fn genIndexAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comp
             try genReleaseIfRetainedTemp(self, indexv);
         }
 
-        return self.initGenValue2(dst, sema.AnyType, true);
+        return self.initGenValue(dst, sema.AnyType, true);
     } else {
         return GenValue.initNoValue();
     }
@@ -731,7 +717,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                     if (dstIsUsed) {
                         // Static variable.
                         try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
-                        return self.initGenValue2(dst, sema.AnyType, true);
+                        return self.initGenValue(dst, sema.AnyType, true);
                     } else {
                         return GenValue.initNoValue();
                     }
@@ -741,7 +727,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                 const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
                 const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
                 try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
-                return self.initGenValue(dst, sema.AnyType);
+                return self.initGenValue(dst, sema.AnyType, true);
             }
         } else {
             // Assume left is a valid reference from sema.
@@ -785,14 +771,14 @@ fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: 
             // ARC cleanup.
             try genReleaseIfRetainedTemp(self, leftv);
 
-            return self.initGenValue2(dst, sema.AnyType, true);
+            return self.initGenValue(dst, sema.AnyType, true);
         } else {
             try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
 
             // ARC cleanup.
             try genReleaseIfRetainedTemp(self, leftv);
 
-            return self.initGenValue2(dst, sema.AnyType, false);
+            return self.initGenValue(dst, sema.AnyType, false);
         }
     } else {
         return GenValue.initNoValue();
@@ -823,13 +809,13 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         .true_literal => {
             if (dstIsUsed) {
                 try self.buf.pushOp1(.true, dst);
-                return self.initGenValue(dst, sema.BoolType);
+                return self.initGenValue(dst, sema.BoolType, false);
             } else return GenValue.initNoValue();
         },
         .false_literal => {
             if (dstIsUsed) {
                 try self.buf.pushOp1(.false, dst);
-                return self.initGenValue(dst, sema.BoolType);
+                return self.initGenValue(dst, sema.BoolType, false);
             } else return GenValue.initNoValue();
         },
         .number => {
@@ -870,7 +856,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
             const name = self.getNodeTokenString(node);
             const symId = try self.compiler.vm.ensureTagLitSym(name);
             try self.buf.pushOp2(.tagLiteral, @intCast(u8, symId), dst);
-            return self.initGenValue(dst, sema.TagLiteralType);
+            return self.initGenValue(dst, sema.TagLiteralType, false);
         },
         .string => {
             if (dstIsUsed) {
@@ -906,7 +892,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                 if (sym.inner.one.id == tid) {
                     try self.buf.pushOp3(.tag, @intCast(u8, tid), @intCast(u8, sym.inner.one.val), dst);
                     const vtype = sema.initTagType(tid);
-                    return self.initGenValue(dst, vtype);
+                    return self.initGenValue(dst, vtype, false);
                 }
             }
             return self.reportErrorAt("Tag `{}` does not have member `{}`", &.{ v(tname), v(lname) }, nodeId);
@@ -947,7 +933,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                     try cy.debug.dumpBytecode(self.compiler.vm, null);
                 }
                 try self.buf.pushOp1(.none, dst);
-                return self.initGenValue2(dst, sema.AnyType, false);
+                return self.initGenValue(dst, sema.AnyType, false);
             } else {
                 return self.reportError("Unsupported compt expr {}", &.{fmt.v(child.node_t)});
             }
@@ -970,7 +956,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                 try genReleaseIfRetainedTemp(self, child);
             }
 
-            return self.initGenValue2(dst, sema.AnyType, retain);
+            return self.initGenValue(dst, sema.AnyType, retain);
         },
         .unary_expr => {
             const op = node.head.unary.op;
@@ -979,21 +965,21 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                     const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
                     if (dstIsUsed) {
                         try self.buf.pushOp2(.neg, child.local, dst);
-                        return self.initGenValue2(dst, sema.NumberType, false);
+                        return self.initGenValue(dst, sema.NumberType, false);
                     } else return GenValue.initNoValue();
                 },
                 .not => {
                     const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
                     if (dstIsUsed) {
                         try self.buf.pushOp2(.not, child.local, dst);
-                        return self.initGenValue2(dst, sema.BoolType, false);
+                        return self.initGenValue(dst, sema.BoolType, false);
                     } else return GenValue.initNoValue();
                 },
                 .bitwiseNot => {
                     const child = try self.genExpr(node.head.unary.child, !dstIsUsed);
                     if (dstIsUsed) {
                         try self.buf.pushOp2(.bitwiseNot, child.local, dst);
-                        return self.initGenValue2(dst, sema.NumberType, false);
+                        return self.initGenValue(dst, sema.NumberType, false);
                     } else return GenValue.initNoValue();
                 },
                 // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
@@ -1010,7 +996,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
             if (dst != val.local) {
                 try self.buf.pushOp2(.copy, val.local, dst);
             }
-            return self.initGenValue2(dst, val.vtype, val.retained);
+            return self.initGenValue(dst, val.vtype, val.retained);
         },
         .lambda_multi => {
             return genLambdaMulti(self, nodeId, dst, dstIsUsed);
@@ -1025,7 +1011,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
             } else {
                 try self.buf.pushOp2(.coresume, fiber.local, cy.NullU8);
             }
-            return self.initGenValue(dst, sema.AnyType);
+            return self.initGenValue(dst, sema.AnyType, true);
         },
         .coyield => {
             const pc = self.buf.ops.items.len;
@@ -1041,7 +1027,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         },
         .coinit => {
             _ = try genCallExpr(self, node.head.child_head, dst, !dstIsUsed, true);
-            return self.initGenValue(dst, sema.FiberType);
+            return self.initGenValue(dst, sema.FiberType, true);
         },
         else => {
             return self.reportError("Unsupported {}", &.{fmt.v(node.node_t)});
@@ -1134,8 +1120,6 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .cont, .pc = pc });
         },
         .opAssignStmt => {
-            const arcLocalStart = self.beginArcExpr();
-
             const left = self.nodes[node.head.opAssignStmt.left];
             const genOp: cy.OpCode = switch (node.head.opAssignStmt.op) {
                 .plus => .add,
@@ -1177,12 +1161,8 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             } else {
                 unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
             }
-
-            try self.endArcExpr(arcLocalStart);
         },
         .assign_stmt => {
-            const arcLocalStart = self.beginArcExpr();
-
             const left = self.nodes[node.head.left_right.left];
             if (left.node_t == .ident) {
                 if (left.head.ident.semaVarId != cy.NullId) {
@@ -1205,7 +1185,13 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 const leftv = try self.genExpr(left.head.left_right.left, false);
                 const indexv = try self.genExpr(left.head.left_right.right, false);
                 const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
+
+                try self.pushDebugSym(nodeId);
                 try self.buf.pushOp3(.setIndexRelease, leftv.local, indexv.local, rightv.local);
+
+                // ARC cleanup. Right is not released since it's being assigned to the index.
+                try genReleaseIfRetainedTempAt(self, leftv, left.head.left_right.left);
+                try genReleaseIfRetainedTempAt(self, indexv, left.head.left_right.right);
             } else if (left.node_t == .accessExpr) {
                 const startTempLocal = self.curBlock.firstFreeTempLocal;
                 defer self.setFirstFreeTempLocal(startTempLocal);
@@ -1225,12 +1211,10 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 try self.buf.pushOpSlice(.setFieldRelease, &.{ leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
 
                 // ARC cleanup. Right is not released since it's being assigned to the field.
-                try genReleaseIfRetainedTempAt(self, leftv, node.head.left_right.left);
+                try genReleaseIfRetainedTempAt(self, leftv, left.head.accessExpr.left);
             } else {
                 unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
             }
-
-            try self.endArcExpr(arcLocalStart);
         },
         .exportStmt => {
             const stmt = node.head.child_head;
@@ -1462,6 +1446,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, contPc);
 
             try self.pushOptionalDebugSym(nodeId);
+            // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
             try self.buf.pushOp1(.release, iterLocal);
             self.patchJumpToCurrent(skipBodyJump);
         },
@@ -1613,8 +1598,6 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             }
         },
         .return_expr_stmt => {
-            const lastArcStart = self.beginArcExpr();
-
             if (self.blocks.items.len == 1) {
                 var val: GenValue = undefined;
                 if (self.curBlock.resolvedFuncSymId != cy.NullId) {
@@ -1623,12 +1606,10 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 } else {
                     val = try self.genRetainedTempExpr(node.head.child_head, false);
                 }
-                try self.endArcExpr(lastArcStart);
                 try self.endLocals();
                 try self.buf.pushOp1(.end, @intCast(u8, val.local));
             } else {
                 _ = try self.genRetainedExprTo(node.head.child_head, 0, false);
-                try self.endArcExpr(lastArcStart);
                 try self.endLocals();
                 try self.buf.pushOp(.ret1);
             }
@@ -1749,14 +1730,14 @@ fn genMatchBlock(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
     if (isStmt) {
         return GenValue.initNoValue();
     } else {
-        return self.initGenValue(dst, sema.AnyType);
+        return self.initGenValue(dst, sema.AnyType, retain);
     }
 }
 
 fn genString(self: *CompileChunk, str: []const u8, dst: LocalId) !GenValue {
     const idx = try self.buf.getOrPushStringConst(str);
     try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-    return self.initGenValue(dst, sema.StaticStringType);
+    return self.initGenValue(dst, sema.StaticStringType, false);
 }
 
 fn genConstInt(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
@@ -1764,7 +1745,7 @@ fn genConstInt(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
         const i = @floatToInt(i64, val);
         if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
             try self.buf.pushOp2(.constI8Int, @bitCast(u8, @intCast(i8, i)), dst);
-            return self.initGenValue(dst, sema.IntegerType);
+            return self.initGenValue(dst, sema.IntegerType, false);
         }
     } else {
         return self.reportError("TODO: coerce", &.{});
@@ -1772,7 +1753,7 @@ fn genConstInt(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
     const int = @floatToInt(i32, val);
     const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initI32(int).val));
     try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-    return self.initGenValue(dst, sema.IntegerType);
+    return self.initGenValue(dst, sema.IntegerType, false);
 }
 
 fn genConstNumber(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
@@ -1780,15 +1761,15 @@ fn genConstNumber(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
         const i = @floatToInt(i64, val);
         if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
             try self.buf.pushOp2(.constI8, @bitCast(u8, @intCast(i8, i)), dst);
-            return self.initGenValue(dst, sema.NumberType);
+            return self.initGenValue(dst, sema.NumberType, false);
         }
     }
     const idx = try self.buf.pushConst(cy.Const.init(@bitCast(u64, val)));
     try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
-    return self.initGenValue(dst, sema.NumberType);
+    return self.initGenValue(dst, sema.NumberType, false);
 }
 
-fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !GenValue {
+fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool, comptime discardTopExprReg: bool) !GenValue {
     const node = self.nodes[nodeId];
     const startTempLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startTempLocal);
@@ -1798,7 +1779,7 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retainEscapeT
 
     self.computeNextTempLocalFrom(startTempLocal);
 
-    var truev = try self.genExprTo(node.head.if_expr.body_expr, dst, retainEscapeTop, false);
+    var truev = try self.genExprTo(node.head.if_expr.body_expr, dst, retain, false);
     const jumpPc = try self.pushEmptyJump();
     self.patchJumpToCurrent(jumpNotPc);
 
@@ -1807,7 +1788,7 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retainEscapeT
     var falsev: GenValue = undefined;
     if (node.head.if_expr.else_clause != cy.NullId) {
         const else_clause = self.nodes[node.head.if_expr.else_clause];
-        falsev = try self.genExprTo(else_clause.head.child_head, dst, retainEscapeTop, discardTopExprReg);
+        falsev = try self.genExprTo(else_clause.head.child_head, dst, retain, discardTopExprReg);
     } else {
         if (!discardTopExprReg) {
             falsev = try genNone(self, dst);
@@ -1817,9 +1798,9 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retainEscapeT
     self.patchJumpToCurrent(jumpPc);
 
     if (truev.vtype.typeT != falsev.vtype.typeT) {
-        return self.initGenValue(dst, sema.AnyType);
+        return self.initGenValue(dst, sema.AnyType, retain);
     } else {
-        return self.initGenValue(dst, truev.vtype);
+        return self.initGenValue(dst, truev.vtype, retain and truev.vtype.rcCandidate);
     }
 }
 
@@ -1828,7 +1809,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
     // Can assume temps after startTempLocal are not arc temps.
     defer self.setFirstFreeTempLocal(startTempLocal);
 
-    var callStartLocal = self.advanceNextTempLocalPastArcTemps();
+    var callStartLocal = self.advanceNextTempLocalPastReservedTemps();
     var considerUsingDst = true;
     if (self.blocks.items.len == 1) {
         // Main block.
@@ -1880,11 +1861,11 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                         if (discardTopExprReg) {
                             try self.pushDebugSym(nodeId);
                             try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
-                            return GenValue.initTempValue2(callStartLocal, funcSym.retType, false);
+                            return GenValue.initTempValue(callStartLocal, funcSym.retType, false);
                         } else {
                             try self.pushDebugSym(nodeId);
                             try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
-                            return GenValue.initTempValue2(callStartLocal, funcSym.retType, true);
+                            return GenValue.initTempValue(callStartLocal, funcSym.retType, true);
                         }
 
                         // if (try self.readScopedVar(leftName)) |info| {
@@ -1980,9 +1961,9 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                 }
 
                 if (optFuncSym) |funcSym| {
-                    return GenValue.initTempValue2(callStartLocal, funcSym.retType, !discardTopExprReg);
+                    return GenValue.initTempValue(callStartLocal, funcSym.retType, !discardTopExprReg);
                 } else {
-                    return GenValue.initTempValue2(callStartLocal, sema.AnyType, !discardTopExprReg);
+                    return GenValue.initTempValue(callStartLocal, sema.AnyType, !discardTopExprReg);
                 }
             }
         } else {
@@ -2005,11 +1986,11 @@ fn genCallObjSym(self: *CompileChunk, callStartLocal: u8, leftId: cy.NodeId, ide
     if (dstIsUsed) {
         try self.pushDebugSym(debugNodeId);
         try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId));
-        return GenValue.initTempValue2(callStartLocal, sema.AnyType, false);
+        return GenValue.initTempValue(callStartLocal, sema.AnyType, false);
     } else {
         try self.pushDebugSym(debugNodeId);
         try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId));
-        return GenValue.initTempValue2(callStartLocal, sema.AnyType, true);
+        return GenValue.initTempValue(callStartLocal, sema.AnyType, true);
     }
 }
 
@@ -2039,7 +2020,7 @@ fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, 
         // ARC cleanup.
         try genReleaseIfRetainedTemp(self, calleev);
 
-        return GenValue.initTempValue(callStartLocal, sema.AnyType);
+        return GenValue.initTempValue(callStartLocal, sema.AnyType, true);
     }
 }
 
@@ -2214,12 +2195,10 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) anyerror!void {
 
 fn genNone(self: *CompileChunk, dst: LocalId) !GenValue {
     try self.buf.pushOp1(.none, dst);
-    return self.initGenValue(dst, sema.AnyType);
+    return self.initGenValue(dst, sema.AnyType, false);
 }
 
 fn genExprStmt(self: *CompileChunk, stmtId: cy.NodeId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !LocalId {
-    const arcLocalStart = self.beginArcExpr();
-
     const stmt = self.nodes[stmtId];
     var val: GenValue = undefined;
     if (retainEscapeTop) {
@@ -2230,8 +2209,10 @@ fn genExprStmt(self: *CompileChunk, stmtId: cy.NodeId, retainEscapeTop: bool, co
                 if (!svar.isBoxed) {
                     if (svar.vtype.rcCandidate) {
                         try self.buf.pushOp1(.retain, svar.local);
+                        val = GenValue.initLocalValue(svar.local, svar.vtype, true);
+                    } else {
+                        val = GenValue.initLocalValue(svar.local, svar.vtype, false);
                     }
-                    val = GenValue.initLocalValue(svar.local, svar.vtype);
                     retLocal = true;
                 }
             }
@@ -2242,8 +2223,6 @@ fn genExprStmt(self: *CompileChunk, stmtId: cy.NodeId, retainEscapeTop: bool, co
     } else {
         val = try self.genExpr(stmt.head.child_head, discardTopExprReg);
     }
-
-    try self.endArcExpr(arcLocalStart);
     return val.local;
 }
 
@@ -2270,6 +2249,9 @@ fn genBinOpAssignToField(self: *CompileChunk, code: cy.OpCode, leftId: cy.NodeId
 
     try self.pushDebugSym(leftId);
     try self.buf.pushOp3(.setField, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
+
+    // ARC cleanup. Right is not released since it's being assigned to the index.
+    try genReleaseIfRetainedTempAt(self, accessLeftv, left.head.accessExpr.left);
 }
 
 fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: cy.FuncDecl, name: []const u8) !void {

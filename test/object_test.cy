@@ -24,10 +24,25 @@ f = func():
   return snode.value
 try t.eq(f(), 123)
 
--- Set object field.
+-- Assign to object field.
 n = Node{ value: 123 }
 n.value = 234
 try t.eq(n.value, 234)
+
+-- Op assign to object field.
+nw = Node{ value: 123 }
+nw.value += 1
+try t.eq(nw.value, 124)
+
+-- Assign to object field when the object is a temp local.
+nodes = [ Node{ value: 123 } ]
+nodes[0].value = 234
+try t.eq(nodes[0].value, 234)
+
+-- Op assign to object field when the object is a temp local.
+nodes = [ Node{ value: 123 } ]
+nodes[0].value += 1
+try t.eq(nodes[0].value, 124)
 
 -- Set object field after declared as a static var.
 snode.value = 123

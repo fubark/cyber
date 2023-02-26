@@ -148,6 +148,7 @@ pub const VM = struct {
 
     /// Whether this VM is already deinited. Used to skip the next deinit to avoid using undefined memory.
     deinited: bool,
+    deinitedRtObjects: bool,
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -200,6 +201,7 @@ pub const VM = struct {
             // Initialize to NullId to indicate vm is still in initing.
             .debugPc = if (builtin.mode == .Debug) cy.NullId else undefined,
             .deinited = false,
+            .deinitedRtObjects = false,
             .funcSymDeps = .{},
             .config = undefined,
             .httpClient = undefined,
@@ -236,6 +238,29 @@ pub const VM = struct {
         try @call(.never_inline, bindings.bindCore, .{self});
     }
 
+    pub fn deinitRtObjects(self: *VM) void {
+        if (self.deinitedRtObjects) {
+            return;
+        }
+        for (self.funcSyms.items()) |sym| {
+            if (sym.entryT == @enumToInt(FuncSymbolEntryType.closure)) {
+                cy.arc.releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
+            }
+        }
+
+        for (self.varSyms.items()) |vsym| {
+            release(self, vsym.value);
+        }
+
+        {
+            var iter = self.funcSymDeps.iterator();
+            while (iter.next()) |e| {
+                release(self, e.value_ptr.*);
+            }
+        }
+        self.deinitedRtObjects = true;
+    }
+
     pub fn deinit(self: *VM) void {
         if (self.deinited) {
             return;
@@ -245,16 +270,7 @@ pub const VM = struct {
 
         // Deinit runtime related resources first, since they may depend on
         // compiled/debug resources.
-        for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == @enumToInt(FuncSymbolEntryType.closure)) {
-                cy.arc.releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
-            }
-        }
-        self.funcSyms.deinit(self.alloc);
-        for (self.varSyms.items()) |vsym| {
-            release(self, vsym.value);
-        }
-        self.varSyms.deinit(self.alloc);
+        self.deinitRtObjects();
 
         // Deinit compiler first since it depends on buffers from parser.
         self.compiler.deinit();
@@ -271,19 +287,15 @@ pub const VM = struct {
         self.methodSymSigs.deinit(self.alloc);
         self.methodTable.deinit(self.alloc);
 
+        self.funcSyms.deinit(self.alloc);
         self.funcSymSigs.deinit(self.alloc);
         for (self.funcSymDetails.items()) |detail| {
             self.alloc.free(detail.name);
         }
         self.funcSymDetails.deinit(self.alloc);
-        {
-            var iter = self.funcSymDeps.iterator();
-            while (iter.next()) |e| {
-                release(self, e.value_ptr.*);
-            }
-            self.funcSymDeps.deinit(self.alloc);
-        }
+        self.funcSymDeps.deinit(self.alloc);
 
+        self.varSyms.deinit(self.alloc);
         self.varSymSigs.deinit(self.alloc);
 
         self.fieldSyms.deinit(self.alloc);

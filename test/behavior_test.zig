@@ -275,13 +275,13 @@ test "os module" {
         try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.big));
     }
 
-    _ = try run.eval(@embedFile("os_test.cy"));
+    run.deinit();
+
+    try evalPass(.{}, @embedFile("os_test.cy"));
 }
 
 test "Fibers" {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("fiber_test.cy"));
+    try evalPass(.{}, @embedFile("fiber_test.cy"));
 }
 
 test "try value" {
@@ -298,9 +298,7 @@ test "try value" {
 }
 
 test "Errors." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("error_test.cy"));
+    try evalPass(.{}, @embedFile("error_test.cy"));
 }
 
 test "FFI." {
@@ -747,7 +745,7 @@ fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
     try t.eq(act.lineStartPos, exp.lineStartPos);
 }
 
-test "Optionals" {
+test "Optionals." {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -772,33 +770,23 @@ test "Optionals" {
 // }
 
 test "Compare numbers." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _= try run.eval(@embedFile("compare_num_test.cy"));
+    try evalPass(.{}, @embedFile("compare_num_test.cy"));
 }
 
 test "Compare equals." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _= try run.eval(@embedFile("compare_eq_test.cy"));
+    try evalPass(.{}, @embedFile("compare_eq_test.cy"));
 }
 
 test "Compare not equals." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("compare_neq_test.cy"));
+    try evalPass(.{}, @embedFile("compare_neq_test.cy"));
 }
 
 test "Truthy evaluation." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("truthy_test.cy"));
+    try evalPass(.{}, @embedFile("truthy_test.cy"));
 }
 
 test "Logic operators" {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("logic_op_test.cy"));
+    try evalPass(.{}, @embedFile("logic_op_test.cy"));
 }
 
 test "boolean" {
@@ -1420,7 +1408,9 @@ test "Closures." {
         \\
     );
 
-    _ = try run.eval(@embedFile("closure_test.cy"));
+    run.deinit();
+
+    try evalPass(.{}, @embedFile("closure_test.cy"));
 }
 
 test "Function recursion." {
@@ -1718,7 +1708,7 @@ const VMrunner = struct {
 
     fn create() *VMrunner {
         var new = t.alloc.create(VMrunner) catch fatal();
-        new.init();
+        new.init() catch fatal();
         return new;
     }
 
@@ -1727,7 +1717,7 @@ const VMrunner = struct {
         t.alloc.destroy(self);
     }
 
-    fn init(self: *VMrunner) void {
+    fn init(self: *VMrunner) !void {
         self.* = .{
             .vm = cy.getUserVM(),
             .trace = undefined,
@@ -1962,15 +1952,26 @@ fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!
         .enableFileModules = config.enableFileModules,
         .genAllDebugSyms = config.debug,
     });
+
     if (optCb) |cb| {
         try cb(run, res);
-    } 
+    }  else {
+        _ = res catch |err| {
+            if (err == error.Panic) {
+                try run.vm.printLastUserPanicError();
+            }
+            return err;
+        };
+    }
+
     // Deinit, so global objects from builtins are released.
-    run.vm.deinit();
+    run.vm.internal().compiler.deinitRtObjects();
+    run.vm.internal().deinitRtObjects();
+
     if (config.checkGlobalRc) {
         const rc = run.vm.getGlobalRC();
         if (rc != 0) {
-            std.debug.print("{} unreleased refcount from previous eval\n", .{rc});
+            std.debug.print("{} unreleased refcount\n", .{rc});
 
             var iter = run.vm.internal().objectTraceMap.iterator();
             while (iter.next()) |it| {

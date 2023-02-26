@@ -61,6 +61,8 @@ pub const VMcompiler = struct {
     /// Imports are queued.
     importTasks: std.ArrayListUnmanaged(ImportTask),
 
+    deinitedRtObjects: bool,
+
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
             .alloc = vm.alloc,
@@ -81,8 +83,19 @@ pub const VMcompiler = struct {
             .typeNames = .{},
             .chunks = .{},
             .importTasks = .{},
+            .deinitedRtObjects = false,
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
+    }
+
+    pub fn deinitRtObjects(self: *VMcompiler) void {
+        if (self.deinitedRtObjects) {
+            return;
+        }
+        if (self.moduleMap.get("os")) |id| {
+            os_mod.deinitModule(self, self.modules.items[id]) catch stdx.fatal();
+        }
+        self.deinitedRtObjects = true;
     }
 
     pub fn deinit(self: *VMcompiler) void {
@@ -96,9 +109,7 @@ pub const VMcompiler = struct {
         self.semaResolvedFuncSyms.deinit(self.alloc);
         self.semaResolvedFuncSymMap.deinit(self.alloc);
 
-        if (self.moduleMap.get("os")) |id| {
-            os_mod.deinitModule(self, self.modules.items[id]) catch stdx.fatal();
-        }
+        self.deinitRtObjects();
         for (self.modules.items) |*mod| {
             mod.deinit(self.alloc);
         }

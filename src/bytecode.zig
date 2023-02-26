@@ -287,6 +287,22 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const symId = pc[3].arg;
             fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
         },
+        .forRangeInit => {
+            const start = pc[1].arg;
+            const end = pc[2].arg;
+            const step = pc[3].arg;
+            const forRangeInstOffset = @ptrCast(*const align(1) u16, pc + 6).*;
+            fmt.printStderr("{} {} start={}, end={}, step={}, forRangeInstOffset={}", &.{v(pcOffset), v(code), v(start), v(end), v(step), v(forRangeInstOffset)});
+        },
+        .forRangeReverse,
+        .forRange => {
+            const counter = pc[1].arg;
+            const step = pc[2].arg;
+            const end = pc[3].arg;
+            const userCounter = pc[4].arg;
+            const negOffset = @ptrCast(*const align(1) u16, pc + 5).*;
+            fmt.printStderr("{} {} counter={}, step={}, end={}, userCounter={}, negOffset={}", &.{v(pcOffset), v(code), v(counter), v(step), v(end), v(userCounter), v(negOffset)});
+        },
         .index => {
             const recv = pc[1].arg;
             const index = pc[2].arg;
@@ -328,6 +344,12 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const val = pc[2].arg;
             const symId = pc[3].arg;
             fmt.printStderr("{} {} recv={}, val={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(val), v(symId)});
+        },
+        .setIndexRelease => {
+            const left = pc[1].arg;
+            const index = pc[2].arg;
+            const right = pc[3].arg;
+            fmt.printStderr("{} {} left={}, index={}, right={}", &.{v(pcOffset), v(code), v(left), v(index), v(right)});
         },
         .setInitN => {
             const numLocals = pc[1].arg;

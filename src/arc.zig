@@ -245,7 +245,8 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
         while (iter.next()) |it| {
             const trace = it.value_ptr.*;
             if (trace.freePc == cy.NullId) {
-                const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*} at pc: {}, rc: {}", .{it.key_ptr.*, trace.allocPc, it.key_ptr.*.retainedCommon.rc});
+                const typeName = vm.structs.buf[it.key_ptr.*.retainedCommon.structId].name;
+                const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.retainedCommon.rc, trace.allocPc });
                 try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
             }
         }

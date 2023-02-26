@@ -529,7 +529,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
     if (optPcContext) |pcContext| {
         const idx = indexOfDebugSymFromTable(debugTable, pcContext) orelse {
-            return stdx.panicFmt("Missing debug sym at {}", .{pcContext});
+            return stdx.panicFmt("Missing debug sym at {} {}", .{pcContext, pc[pcContext].code});
         };
         const sym = debugTable[idx];
         const chunk = vm.compiler.chunks.items[sym.file];

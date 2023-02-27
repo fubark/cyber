@@ -207,12 +207,11 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         if (TraceEnabled) {
             vm.dumpStats();
         }
-
-        if (cy.TrackGlobalRC) {
-            vm.internal().compiler.deinitRtObjects();
-            vm.internal().deinitRtObjects();
-            try cy.arc.checkGlobalRC(vm.internal());
-        }
+    }
+    if (cy.TrackGlobalRC) {
+        vm.internal().compiler.deinitRtObjects();
+        vm.internal().deinitRtObjects();
+        try cy.arc.checkGlobalRC(vm.internal());
     }
 }
 

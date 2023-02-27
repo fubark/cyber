@@ -77,15 +77,11 @@ test "User parse errors." {
 }
 
 test "Type specifiers." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("typespec_test.cy"));
+    try evalPass(.{}, @embedFile("typespec_test.cy"));
 }
 
 test "Type alias." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.evalExt(Config.withFileModules("./test/atype_test.cy"), @embedFile("atype_test.cy"));
+    try evalPass(Config.initFileModules("./test/atype_test.cy"), @embedFile("atype_test.cy"));
 }
 
 test "Import http spec." {
@@ -100,7 +96,7 @@ test "Import http spec." {
     var client = http.MockHttpClient.init();
     client.retReqError = error.UnknownHostName;
     run.vm.internal().httpClient = client.iface();
-    var res = run.evalExtNoReset(Config.silentWithFileModules("./test/import_test.cy"),
+    var res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'https://doesnotexist123.com/'
         \\b = a
     );
@@ -120,7 +116,7 @@ test "Import http spec." {
     client = http.MockHttpClient.init();
     client.retStatusCode = std.http.Status.not_found;
     run.vm.internal().httpClient = client.iface();
-    res = run.evalExtNoReset(Config.silentWithFileModules("./test/import_test.cy"),
+    res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'https://exists.com/missing'
         \\b = a
     );
@@ -154,7 +150,7 @@ test "Imports." {
     defer run.destroy();
 
     // Import missing file.
-    var res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
+    var res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/missing.cy'
         \\b = a
     );
@@ -164,7 +160,7 @@ test "Imports." {
     try t.expect(std.mem.indexOf(u8, errMsg, "test/test_mods/missing.cy") != null);
 
     // Using unexported func symbol.
-    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
+    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/a.cy'
         \\b = a.barNoExport
     );
@@ -172,7 +168,7 @@ test "Imports." {
     try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `barNoExport`");
 
     // Using unexported var symbol.
-    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
+    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/a.cy'
         \\b = a.varNoExport
     );
@@ -180,7 +176,7 @@ test "Imports." {
     try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
 
     // Using missing symbol.
-    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
+    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/a.cy'
         \\b = a.missing
     );
@@ -188,7 +184,7 @@ test "Imports." {
     try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `missing`");
 
     // Failed to set func from another module
-    res = run.evalExt(Config.silentWithFileModules("./test/import_test.cy"),
+    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/init_func_error.cy'
         \\import t 'test'
         \\try t.eq(valtag(a.foo), #function)
@@ -205,21 +201,21 @@ test "Imports." {
     );
 
     // Import using relative path prefix.
-    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
+    _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a './test_mods/a.cy'
         \\import t 'test'
         \\try t.eq(a.varNum, 123)
     );
 
     // Import using implied relative path prefix.
-    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
+    _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
         \\try t.eq(a.varNum, 123)
     );
 
     // Import using unresolved relative path.
-    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"),
+    _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a './test_mods/../test_mods/a.cy'
         \\import t 'test'
         \\try t.eq(a.varNum, 123)
@@ -227,7 +223,7 @@ test "Imports." {
 
     // Import when running main script in the cwd.
     try std.os.chdir("./test");
-    _ = try run.evalExt(Config.withFileModules("./import_test.cy"),
+    _ = try run.evalExt(Config.initFileModules("./import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
         \\try t.eq(a.varNum, 123)
@@ -235,14 +231,14 @@ test "Imports." {
 
     // Import when running main script in a child directory.
     try std.os.chdir("./test_mods");
-    _ = try run.evalExt(Config.withFileModules("../import_test.cy"),
+    _ = try run.evalExt(Config.initFileModules("../import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
         \\try t.eq(a.varNum, 123)
     );
 
     try std.os.chdir("../..");
-    _ = try run.evalExt(Config.withFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
+    _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
 }
 
 test "Dump locals." {
@@ -1887,15 +1883,19 @@ const Config = struct {
 
     debug: bool = false,
 
-    fn silentWithFileModules(uri: []const u8) Config {
-        return .{
-            .silent = true,
-            .enableFileModules = true,
-            .uri = uri,
-        };
+    fn withSilent(self: Config) Config {
+        var new = self;
+        new.silent = true;
+        return new;
     }
 
-    fn withFileModules(uri: []const u8) Config {
+    fn withDebug(self: Config) Config {
+        var new = self;
+        new.debug = true;
+        return new;
+    }
+
+    fn initFileModules(uri: []const u8) Config {
         return .{
             .enableFileModules = true,
             .uri = uri,
@@ -1943,9 +1943,17 @@ fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!
     if (config.silent) {
         cy.silentError = true;
     }
+    if (config.debug) {
+        cy.verbose = true;
+        t.setLogLevel(.debug);
+    }
     defer {
         if (config.silent) {
             cy.silentError = false;
+        }
+        if (config.debug) {
+            cy.verbose = false;
+            t.setLogLevel(.warn);
         }
     }
 

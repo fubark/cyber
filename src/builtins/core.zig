@@ -295,7 +295,7 @@ pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         },
         .tag => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
         .tagLiteral => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-        .int => return Value.initF64(@intToFloat(f64, val.asI32())),
+        .int => return Value.initF64(@intToFloat(f64, val.asInteger())),
         else => return Value.initF64(0),
     }
 }

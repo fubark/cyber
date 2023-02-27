@@ -138,7 +138,7 @@ test "Import http spec." {
         \\export var foo = 123
         ;
     run.vm.internal().httpClient = client.iface();
-    _ = try run.evalExtNoReset(Config.withFileModules("./test/import_test.cy"),
+    _ = try run.evalExtNoReset(Config.initFileModules("./test/import_test.cy"),
         \\import a 'https://exists.com/a.cy'
         \\import t 'test'
         \\try t.eq(a.foo, 123)
@@ -1140,7 +1140,7 @@ test "Static variable declaration." {
     // Declaration with a circular reference.
     _ = try run.eval(
         \\import t 'test'
-        \\var a = b + 123
+        \\var a = number(b) + 123
         \\var b = a
         \\try t.eq(b, none)
         \\try t.eq(a, 123)
@@ -1689,15 +1689,95 @@ test "Math" {
 }
 
 test "Bitwise operators." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("bitwise_op_test.cy"));
+    try evalPass(.{}, @embedFile("bitwise_op_test.cy"));
 }
 
-test "Binary Expressions" {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("binexpr_test.cy"));
+test "Arithmetic operators." {
+    // Can only add numbers.
+    try eval(.{ .silent = true },
+        \\a = 'foo' + 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Cannot convert `string` to number.
+            \\
+            \\main:1:6 main:
+            \\a = 'foo' + 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    // Can only subtract numbers.
+    try eval(.{ .silent = true },
+        \\a = 'foo' - 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Cannot convert `string` to number.
+            \\
+            \\main:1:6 main:
+            \\a = 'foo' - 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    // Can only multiply numbers.
+    try eval(.{ .silent = true },
+        \\a = 'foo' * 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Cannot convert `string` to number.
+            \\
+            \\main:1:6 main:
+            \\a = 'foo' * 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    // Can only divide numbers.
+    try eval(.{ .silent = true },
+        \\a = 'foo' / 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Cannot convert `string` to number.
+            \\
+            \\main:1:6 main:
+            \\a = 'foo' / 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    // Can only mod numbers.
+    try eval(.{ .silent = true },
+        \\a = 'foo' % 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Cannot convert `string` to number.
+            \\
+            \\main:1:6 main:
+            \\a = 'foo' % 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    // Can only pow numbers.
+    try eval(.{ .silent = true },
+        \\a = 'foo' ^ 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Cannot convert `string` to number.
+            \\
+            \\main:1:6 main:
+            \\a = 'foo' ^ 123
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{}, @embedFile("arithmetic_op_test.cy"));
 }
 
 const VMrunner = struct {

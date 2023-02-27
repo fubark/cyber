@@ -91,7 +91,7 @@ pub const Value = packed union {
     /// Can be returned from native functions.
     pub const Panic = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
-    pub inline fn asI32(self: *const Value) i32 {
+    pub inline fn asInteger(self: *const Value) i32 {
         return @bitCast(i32, @intCast(u32, self.val & 0xffffffff));
     }
 
@@ -136,7 +136,7 @@ pub const Value = packed union {
             switch (self.getTag()) {
                 TagNone => return 0,
                 TagBoolean => return if (self.asBool()) 1 else 0,
-                TagInteger => return @intToFloat(f64, self.asI32()),
+                TagInteger => return @intToFloat(f64, self.asInteger()),
                 else => stdx.panicFmt("unexpected tag {}", .{self.getTag()}),
             }
         }
@@ -224,17 +224,21 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn isNumberOrPointer(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isNumberOrPointer(self: *const Value) bool {
         // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
         return self.isNumber() or self.isPointer();
     }
 
-    pub inline fn isNumber(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isNumber(self: *const Value) bool {
         // Only a number(f64) if not all tagged bits are set.
         return self.val & TaggedValueMask != TaggedValueMask;
     }
 
-    pub inline fn isPointer(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isInteger(self: *const Value) bool {
+        return self.val & (TaggedPrimitiveMask | SignMask) == IntegerMask;
+    }
+
+    pub inline fn isPointer(self: *const Value) bool {
         // Only a pointer if nan bits and sign bit are set.
         return self.val & PointerMask == PointerMask;
     }

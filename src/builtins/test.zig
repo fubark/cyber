@@ -25,10 +25,10 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
     if (actType == expType) {
         switch (actType) {
             .int => {
-                if (act.asI32() == exp.asI32()) {
+                if (act.asInteger() == exp.asInteger()) {
                     return true;
                 } else {
-                    printStderr("actual: {} != {}\n", &.{v(act.asI32()), v(exp.asI32())});
+                    printStderr("actual: {} != {}\n", &.{v(act.asInteger()), v(exp.asInteger())});
                     return false;
                 }
             },

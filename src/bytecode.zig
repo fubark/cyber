@@ -555,8 +555,8 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .reverseIndex,
         .jumpNotNone,
         .jumpCond,
-        .minus,
-        .minusInt,
+        .sub,
+        .subInt,
         .mul,
         .div,
         .setField,
@@ -648,8 +648,7 @@ pub const OpCode = enum(u8) {
     add,
     // addNumber,
     /// Subtracts second local from first local and stores result to a dst local.
-    /// TODO: Rename to sub.
-    minus,
+    sub,
     /// Push boolean onto register stack.
     true,
     false,
@@ -771,7 +770,7 @@ pub const OpCode = enum(u8) {
     bitwiseRightShift,
     jumpNotNone,
     addInt,
-    minusInt,
+    subInt,
     lessInt,
     forRangeInit,
     forRange,

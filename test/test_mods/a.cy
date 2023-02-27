@@ -25,11 +25,11 @@ panic(#ExecutedModuleMain)
 
 export func declAssign(val) = number
 
-export var initOnce = incInitOnce()
+export var initOnce = incInitOnce(initOnceCount)
 var initOnceCount = 0
-func incInitOnce():
+func incInitOnce(cur):
     static initOnceCount
-    initOnceCount += 1
+    initOnceCount = cur + 1
     return initOnceCount
 
 -- Tests dependency generation, so set resulting symbol's natural order before the dependency.

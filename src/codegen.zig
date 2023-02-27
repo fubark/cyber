@@ -305,6 +305,15 @@ fn genPushBinOp(self: *CompileChunk, code: cy.OpCode, left: cy.NodeId, right: cy
     const leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
     const rightv = try self.genExprToDestOrTempLocal(right, dst, &usedDstAsTemp, discardTopExprReg);
     if (!discardTopExprReg) {
+        switch (code) {
+            .mod,
+            .pow,
+            .div,
+            .mul => {
+                try self.pushDebugSym(left);
+            },
+            else => {},
+        }
         try self.buf.pushOp3(code, leftv.local, rightv.local, dst);
 
         // ARC cleanup.
@@ -362,10 +371,11 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             const rightv = try self.genExprToDestOrTempLocal2(requestedType, right, dst, &usedDstAsTemp, !dstIsUsed);
             if (dstIsUsed) {
                 if (leftv.vtype.typeT == .int and rightv.vtype.typeT == .int) {
-                    try self.buf.pushOp3(.minusInt, leftv.local, rightv.local, dst);
+                    try self.buf.pushOp3(.subInt, leftv.local, rightv.local, dst);
                     return self.initGenValue(dst, sema.IntegerType, false);
                 }
-                try self.buf.pushOp3(.minus, leftv.local, rightv.local, dst);
+                try self.pushDebugSym(nodeId);
+                try self.buf.pushOp3(.sub, leftv.local, rightv.local, dst);
                 return self.initGenValue(dst, sema.NumberType, false);
             } else return GenValue.initNoValue();
         },
@@ -1115,7 +1125,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const left = self.nodes[node.head.opAssignStmt.left];
             const genOp: cy.OpCode = switch (node.head.opAssignStmt.op) {
                 .plus => .add,
-                .minus => .minus,
+                .minus => .sub,
                 .star => .mul,
                 .slash => .div,
                 else => fmt.panic("Unexpected operator assignment.", &.{}),
@@ -1127,10 +1137,14 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     if (svar.isBoxed) {
                         const tempLocal = try self.nextFreeTempLocal();
                         try self.buf.pushOp2(.boxValue, svar.local, tempLocal);
+
+                        try self.pushDebugSym(nodeId);
                         try self.buf.pushOp3(genOp, tempLocal, right.local, tempLocal);
+
                         try self.buf.pushOp2(.setBoxValue, svar.local, tempLocal);
                         return;
                     } else {
+                        try self.pushDebugSym(nodeId);
                         try self.buf.pushOp3(genOp, svar.local, right.local, svar.local);
                     }
                 } else {
@@ -1142,6 +1156,8 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                         const tempLocal = try self.nextFreeTempLocal();
                         try self.pushOptionalDebugSym(nodeId);       
                         try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), tempLocal);
+
+                        try self.pushDebugSym(nodeId);
                         try self.buf.pushOp3(genOp, tempLocal, rightv.local, tempLocal);
                         try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), tempLocal);
                     } else {

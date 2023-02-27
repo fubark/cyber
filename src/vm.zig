@@ -1817,7 +1817,7 @@ pub const VM = struct {
                     },
                     cy.IntegerT => {
                         const start = writer.pos();
-                        std.fmt.format(writer, "{}", .{val.asI32()}) catch stdx.fatal();
+                        std.fmt.format(writer, "{}", .{val.asInteger()}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, slice.len);
@@ -2097,125 +2097,53 @@ fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSecti
     return Value.False;
 }
 
-fn evalMinusFallback(left: Value, right: Value) linksection(cy.HotSection) Value {
+fn evalMinusFallback(vm: *VM, left: Value, right: Value) linksection(cy.HotSection) !Value {
     @setCold(true);
-    if (left.isPointer()) {
-        return Value.initF64(left.toF64() - right.toF64());
+    return Value.initF64(try toF64OrPanic(vm, left) - try toF64OrPanic(vm, right));
+}
+
+fn evalPower(vm: *VM, left: cy.Value, right: cy.Value) !cy.Value {
+    if (Value.bothNumbers(left, right)) {
+        return Value.initF64(std.math.pow(f64, left.asF64(), right.asF64()));
     } else {
-        switch (left.getTag()) {
-            cy.BooleanT => {
-                if (left.asBool()) {
-                    return Value.initF64(1 - right.toF64());
-                } else {
-                    return Value.initF64(-right.toF64());
-                }
-            },
-            cy.NoneT => return Value.initF64(-right.toF64()),
-            else => stdx.panic("unexpected tag"),
-        }
+        return Value.initF64(std.math.pow(f64, try toF64OrPanic(vm, left), try toF64OrPanic(vm, right)));
     }
 }
 
-fn evalPower(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        return Value.initF64(std.math.pow(f64, left.asF64(), right.toF64()));
-    } else {
-        switch (left.getTag()) {
-            cy.BooleanT => {
-                if (left.asBool()) {
-                    return Value.initF64(1);
-                } else {
-                    return Value.initF64(0);
-                }
-            },
-            cy.NoneT => return Value.initF64(0),
-            else => stdx.panic("unexpected tag"),
-        }
-    }
-}
-
-fn evalDivide(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        return Value.initF64(left.asF64() / right.toF64());
-    } else {
-        switch (left.getTag()) {
-            cy.BooleanT => {
-                if (left.asBool()) {
-                    return Value.initF64(1.0 / right.toF64());
-                } else {
-                    return Value.initF64(0);
-                }
-            },
-            cy.NoneT => return Value.initF64(0),
-            else => stdx.panic("unexpected tag"),
-        }
-    }
-}
-
-fn evalMod(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        return Value.initF64(std.math.mod(f64, left.asF64(), right.toF64()) catch std.math.nan_f64);
-    } else {
-        switch (left.getTag()) {
-            cy.BooleanT => {
-                if (left.asBool()) {
-                    const rightf = right.toF64();
-                    if (rightf > 0) {
-                        return Value.initF64(1);
-                    } else if (rightf == 0) {
-                        return Value.initF64(std.math.nan_f64);
-                    } else {
-                        return Value.initF64(rightf + 1);
-                    }
-                } else {
-                    if (right.toF64() != 0) {
-                        return Value.initF64(0);
-                    } else {
-                        return Value.initF64(std.math.nan_f64);
-                    }
-                }
-            },
-            cy.NoneT => {
-                if (right.toF64() != 0) {
-                    return Value.initF64(0);
-                } else {
-                    return Value.initF64(std.math.nan_f64);
-                }
-            },
-            else => stdx.panic("unexpected tag"),
-        }
-    }
-}
-
-fn evalMultiply(left: cy.Value, right: cy.Value) cy.Value {
-    if (left.isNumber()) {
-        return Value.initF64(left.asF64() * right.toF64());
-    } else {
-        switch (left.getTag()) {
-            cy.BooleanT => {
-                if (left.asBool()) {
-                    return Value.initF64(right.toF64());
-                } else {
-                    return Value.initF64(0);
-                }
-            },
-            cy.NoneT => return Value.initF64(0),
-            else => stdx.panic("unexpected tag"),
-        }
-    }
-}
-
-fn evalAddFallback(left: cy.Value, right: cy.Value) linksection(cy.HotSection) !cy.Value {
+fn evalDivideFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) !cy.Value {
     @setCold(true);
-    return Value.initF64(try toF64OrPanic(left) + try toF64OrPanic(right));
+    return Value.initF64(try toF64OrPanic(vm, left) / try toF64OrPanic(vm, right));
 }
 
-fn toF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
+fn evalModFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) !cy.Value {
+    @setCold(true);
+    return Value.initF64(std.math.mod(f64, try toF64OrPanic(vm, left), try toF64OrPanic(vm, right)) catch std.math.nan_f64);
+}
+
+fn evalMultiplyFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) !cy.Value {
+    @setCold(true);
+    return Value.initF64(try toF64OrPanic(vm, left) * try toF64OrPanic(vm, right));
+}
+
+fn evalAddFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) !cy.Value {
+    @setCold(true);
+    return Value.initF64(try toF64OrPanic(vm, left) + try toF64OrPanic(vm, right));
+}
+
+fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
     if (val.isNumber()) {
         return val.asF64();
+    } else if (val.isInteger()) {
+        return @intToFloat(f64, val.asInteger());
     } else {
-        return try @call(.never_inline, convToF64OrPanic, .{val});
+        return @call(.never_inline, panicConvertNumberError, .{vm, val});
     }
+}
+
+fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
+    @setCold(true);
+    const typeId = val.getTypeId();
+    return vm.panicFmt("Cannot convert `{}` to number.", &.{v(vm.structs.buf[typeId].name)});
 }
 
 fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
@@ -2825,7 +2753,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (Value.bothNumbers(left, right)) {
                     framePtr[pc[3].arg] = Value.initF64(left.asF64() + right.asF64());
                 } else {
-                    framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ left, right });
+                    framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ vm, left, right });
                 }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
@@ -2837,31 +2765,31 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = Value.initI32(left.asI32() + right.asI32());
+                framePtr[pc[3].arg] = Value.initI32(left.asInteger() + right.asInteger());
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
-            .minus => {
+            .sub => {
                 if (GenLabels) {
-                    _ = asm volatile ("LOpMinus:"::);
+                    _ = asm volatile ("LOpSub:"::);
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
                     Value.initF64(left.asF64() - right.asF64())
-                else @call(.never_inline, evalMinusFallback, .{left, right});
+                else try @call(.never_inline, evalMinusFallback, .{vm, left, right});
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
-            .minusInt => {
+            .subInt => {
                 if (GenLabels) {
-                    _ = asm volatile ("LOpMinusInt:"::);
+                    _ = asm volatile ("LOpSubInt:"::);
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = Value.initI32(left.asI32() - right.asI32());
+                framePtr[pc[3].arg] = Value.initI32(left.asInteger() - right.asInteger());
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -2886,7 +2814,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = Value.initBool(left.asI32() < right.asI32());
+                framePtr[pc[3].arg] = Value.initBool(left.asInteger() < right.asInteger());
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -3739,11 +3667,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpMul:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initF64(left.asF64() * right.asF64());
+                } else {
+                    framePtr[pc[3].arg] = try @call(.never_inline, evalMultiplyFallback, .{ vm, left, right });
+                }
                 pc += 4;
-                framePtr[dstLocal] = @call(.never_inline, evalMultiply, .{srcLeft, srcRight});
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -3751,11 +3682,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpDiv:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initF64(left.asF64() / right.asF64());
+                } else {
+                    framePtr[pc[3].arg] = try @call(.never_inline, evalDivideFallback, .{ vm, left, right });
+                }
                 pc += 4;
-                framePtr[dstLocal] = @call(.never_inline, evalDivide, .{srcLeft, srcRight});
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -3763,11 +3697,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpMod:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initF64(std.math.mod(f64, left.asF64(), right.asF64()) catch std.math.nan_f64);
+                } else {
+                    framePtr[pc[3].arg] = try @call(.never_inline, evalModFallback, .{ vm, left, right });
+                }
                 pc += 4;
-                framePtr[dstLocal] = @call(.never_inline, evalMod, .{srcLeft, srcRight});
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -3775,11 +3712,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpPow:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                framePtr[pc[3].arg] = try @call(.never_inline, evalPower, .{ vm, left, right });
                 pc += 4;
-                framePtr[dstLocal] = @call(.never_inline, evalPower, .{srcLeft, srcRight});
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },

@@ -194,8 +194,6 @@ pub const LocalVar = struct {
 };
 
 pub const CapVarDesc = packed union {
-    /// The owner of a captured var contains the `DataNode` head to a list of func sym that depend on it.
-    owner: u32,
     /// The user of a captured var contains the SemaVarId back to the owner's var.
     user: LocalVarId,
 };
@@ -1075,8 +1073,8 @@ fn semaObjectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void 
         try semaStmts(c, func.head.func.body_head, false);
         const retType = curBlock(c).getReturnType();
 
-        const rtSymId = try c.compiler.vm.ensureFuncSym(robjSymId, funcNameId, numParams);
-        try endFuncSymBlock(c, rtSymId, numParams);
+        _ = try c.compiler.vm.ensureFuncSym(robjSymId, funcNameId, numParams);
+        try endFuncSymBlock(c, numParams);
 
         const symId = try ensureSym(c, objSymId, funcNameId, numParams);
         // Export all static funcs in the object's namespace since `export` may be removed later on.
@@ -1153,8 +1151,8 @@ fn semaFuncDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     const nameId = try ensureNameSym(c.compiler, name);
     const numParams = @intCast(u16, func.params.end - func.params.start);
 
-    const rtSymId = try c.compiler.vm.ensureFuncSym(c.semaResolvedRootSymId, nameId, numParams);
-    try endFuncSymBlock(c, rtSymId, numParams);
+    _ = try c.compiler.vm.ensureFuncSym(c.semaResolvedRootSymId, nameId, numParams);
+    try endFuncSymBlock(c, numParams);
 
     const symId = try ensureSym(c, null, nameId, numParams);
     linkNodeToSym(c, nodeId, symId);
@@ -1681,15 +1679,6 @@ fn pushFuncParamVars(c: *cy.CompileChunk, func: cy.FuncDecl) !void {
             const id = try pushLocalVar(c, paramName, paramT);
             try sblock.params.append(c.alloc, id);
         }
-    }
-}
-
-fn ensureCapVarOwner(c: *cy.CompileChunk, varId: LocalVarId) !void {
-    const res = try c.capVarDescs.getOrPut(c.alloc, varId);
-    if (!res.found_existing) {
-        res.value_ptr.* = .{
-            .owner = cy.NullId,
-        };
     }
 }
 
@@ -2925,39 +2914,11 @@ fn endFuncBlock(self: *cy.CompileChunk, numParams: u32) !void {
     try endBlock(self);
 }
 
-fn endFuncSymBlock(self: *cy.CompileChunk, rtSymId: u32, numParams: u32) !void {
+fn endFuncSymBlock(self: *cy.CompileChunk, numParams: u32) !void {
     const sblock = curBlock(self);
     const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-    // Update original var to boxed.
-    if (numCaptured > 0) {
-        for (sblock.params.items, 0..) |varId, i| {
-            const svar = self.vars.items[varId];
-            if (svar.isCaptured) {
-                const pId = self.capVarDescs.get(varId).?.user;
-                const pvar = &self.vars.items[pId];
-
-                if (!pvar.isBoxed) {
-                    pvar.isBoxed = true;
-                    pvar.lifetimeRcCandidate = true;
-                }
-
-                try ensureCapVarOwner(self, pId);
-                const owner = self.capVarDescs.getPtr(pId).?;
-
-                // Add func sym as dependent.
-                const dataId = @intCast(u32, self.dataNodes.items.len);
-                try self.dataNodes.append(self.alloc, .{
-                    .inner = .{
-                        .funcSym = .{
-                            .symId = @intCast(u24, rtSymId),
-                            .capVarIdx = @intCast(u8, i - numParams),
-                        },
-                    },
-                    .next = owner.owner,
-                });
-                owner.owner = dataId;
-            }
-        }
+    if (builtin.mode == .Debug and numCaptured > 0) {
+        stdx.panicFmt("Captured var in static func.", .{});
     }
     try endBlock(self);
 }

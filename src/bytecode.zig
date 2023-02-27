@@ -549,10 +549,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .constOp => {
             return 3;
         },
-        .setCapValToFuncSyms => {
-            const numFuncSyms = pc[2].arg;
-            return 3 + numFuncSyms * 2;
-        },
         .setIndex,
         .setIndexRelease,
         .index,
@@ -760,7 +756,6 @@ pub const OpCode = enum(u8) {
     setBoxValueRelease,
     boxValue,
     boxValueRetain,
-    setCapValToFuncSyms,
     tag,
     tagLiteral,
 
@@ -812,7 +807,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 95);
+    try t.eq(std.enums.values(OpCode).len, 94);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -656,8 +656,7 @@ const unexpected = stdx.fatal;
 const DataNode = packed struct {
     inner: packed union {
         funcSym: packed struct {
-            symId: u24,
-            capVarIdx: u8,
+            symId: u32,
         },
     },
     next: u32,

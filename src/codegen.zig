@@ -2321,23 +2321,6 @@ fn genSetVarToExpr(self: *CompileChunk, leftId: cy.NodeId, exprId: cy.NodeId, co
 
                 svar.vtype = exprv.vtype;
 
-                if (self.capVarDescs.get(varId)) |desc| {
-                    // Update dependent func syms.
-                    const start = self.operandStack.items.len;
-                    defer self.operandStack.items.len = start;
-                    var cur = desc.owner;
-                    var numFuncSyms: u8 = 0;
-                    while (cur != cy.NullId) {
-                        const dep = self.dataNodes.items[cur];
-                        try self.pushTempOperand(@intCast(u8, dep.inner.funcSym.symId));
-                        try self.pushTempOperand(dep.inner.funcSym.capVarIdx);
-                        numFuncSyms += 1;
-                        cur = dep.next;
-                    }
-                    try self.buf.pushOp2(.setCapValToFuncSyms, svar.local, numFuncSyms);
-                    try self.buf.pushOperands(self.operandStack.items[start..]);
-                }
-
                 svar.genIsDefined = true;
                 return;
             } else {

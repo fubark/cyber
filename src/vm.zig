@@ -3983,18 +3983,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
-            .setCapValToFuncSyms => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSetCapValToFuncSyms:"::);
-                }
-                const capVal = framePtr[pc[1].arg];
-                const numSyms = pc[2].arg;
-                const syms = pc[3..3+numSyms*2];
-                @call(.never_inline, setCapValToFuncSyms, .{ vm, capVal, numSyms, syms });
-                pc += 3 + numSyms*2;
-                if (useGoto) { gotoNext(pc, jumpTablePtr); }
-                continue;
-            },
             .callObjSym => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpCallObjSym:"::);
@@ -4495,18 +4483,6 @@ fn boxValueRetain(vm: *VM, box: Value) linksection(cy.HotSection) Value {
         }
         return Value.None;
     }
-}
-
-fn setCapValToFuncSyms(vm: *VM, capVal: Value, numSyms: u8, syms: []const cy.OpData) void {
-    @setCold(true);
-    var i: u32 = 0;
-    while (i < numSyms) : (i += 1) {
-        const capVarIdx = syms[i * 2 + 1].arg;
-        const sym = vm.funcSyms.buf[syms[i*2].arg];
-        const ptr = sym.inner.closure.getCapturedValuesPtr();
-        ptr[capVarIdx] = capVal;
-    }
-    cy.arc.retainInc(vm, capVal, numSyms);
 }
 
 /// Like Value.dump but shows heap values.

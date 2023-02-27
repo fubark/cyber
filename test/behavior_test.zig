@@ -1324,39 +1324,27 @@ test "Return statement." {
 }
 
 test "Match statement." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("match_test.cy"));
+    try evalPass(.{}, @embedFile("match_test.cy"));
 }
 
 test "If statement." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("if_test.cy"));
+    try evalPass(.{}, @embedFile("if_test.cy"));
 }
 
 test "Infinite while loop." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("while_inf_test.cy"));
+    try evalPass(.{}, @embedFile("while_inf_test.cy"));
 }
 
 test "While conditional." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("while_cond_test.cy"));
+    try evalPass(.{}, @embedFile("while_cond_test.cy"));
 }
 
 test "For optional." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("for_opt_test.cy"));
+    try evalPass(.{}, @embedFile("for_opt_test.cy"));
 }
 
 test "For iterator." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("for_iter_test.cy"));
+    try evalPass(.{}, @embedFile("for_iter_test.cy"));
 }
 
 test "For loop over range." {

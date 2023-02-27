@@ -108,6 +108,8 @@ fn genSymbolTo(self: *CompileChunk, symId: sema.SymId, dst: LocalId, retain: boo
             const sym = self.semaSyms.items[symId];
             const localKey = sym.key.absLocalSymKey;
             const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
+
+            try self.pushOptionalDebugSym(self.curNodeId);       
             try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
             return self.initGenValue(dst, sema.AnyType, true);
         } else if (rsym.symT == .object) {
@@ -716,6 +718,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                 if (self.compiler.vm.getVarSym(key.resolvedParentSymId, key.nameId)) |symId| {
                     if (dstIsUsed) {
                         // Static variable.
+                        try self.pushOptionalDebugSym(nodeId);       
                         try self.buf.pushOp2(.staticVar, @intCast(u8, symId), dst);
                         return self.initGenValue(dst, sema.AnyType, true);
                     } else {
@@ -1137,6 +1140,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                         const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
 
                         const tempLocal = try self.nextFreeTempLocal();
+                        try self.pushOptionalDebugSym(nodeId);       
                         try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), tempLocal);
                         try self.buf.pushOp3(genOp, tempLocal, rightv.local, tempLocal);
                         try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), tempLocal);
@@ -1361,8 +1365,6 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             self.nextSemaSubBlock();
             defer self.prevSemaSubBlock();
 
-            const iterable = try self.genExpr(node.head.for_iter_stmt.iterable, false);
-
             const eachClause = self.nodes[node.head.for_iter_stmt.eachClause];
 
             var keyVar: sema.LocalVar = undefined;
@@ -1389,7 +1391,8 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             // Reserve temp local for iterator.
             const iterLocal = try self.nextFreeTempLocal();
             try self.setReservedTempLocal(iterLocal);
-            try self.buf.pushOp2(.copyRetainSrc, iterable.local, iterLocal + 4);
+
+            _ = try self.genRetainedExprTo(node.head.for_iter_stmt.iterable, iterLocal + 4, false);
             if (pairIter) {
                 try self.pushDebugSym(node.head.for_iter_stmt.iterable);
                 try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.pairIteratorObjSym));

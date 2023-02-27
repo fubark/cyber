@@ -280,6 +280,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const dst = pc[2].arg;
             fmt.printStderr("{} {} src={} dst={}", &.{v(pcOffset), v(code), v(src), v(dst)});
         },
+        .copyReleaseDst => {
+            const src = pc[1].arg;
+            const dst = pc[2].arg;
+            fmt.printStderr("{} {} src={} dst={}", &.{v(pcOffset), v(code), v(src), v(dst)});
+        },
         .copyRetainSrc => {
             const src = pc[1].arg;
             const dst = pc[2].arg;
@@ -348,6 +353,22 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             fmt.printStderr("{} {} startLocal={}, numEntries={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(numEntries), v(dst)});
             const keyIdxes = pc[4..4+numEntries];
             printStderr(" {any}", .{std.mem.sliceAsBytes(keyIdxes)});
+        },
+        .object => {
+            const typeId = pc[1].arg;
+            const startLocal = pc[2].arg;
+            const numFields = pc[3].arg;
+            const dst = pc[4].arg;
+            fmt.printStderr("{} {} typeId={}, startLocal={}, numFields={}, dst={}", &.{v(pcOffset), v(code),
+                v(typeId), v(startLocal), v(numFields), v(dst)});
+        },
+        .objectSmall => {
+            const typeId = pc[1].arg;
+            const startLocal = pc[2].arg;
+            const numFields = pc[3].arg;
+            const dst = pc[4].arg;
+            fmt.printStderr("{} {} typeId={}, startLocal={}, numFields={}, dst={}", &.{v(pcOffset), v(code),
+                v(typeId), v(startLocal), v(numFields), v(dst)});
         },
         .release => {
             const local = pc[1].arg;

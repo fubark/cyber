@@ -92,6 +92,7 @@ evalJS('alert("circle area: {area(10)}")')
         const output = document.getElementById('output')
         let cy = null
         let wasm = null
+        let buf = null
         const decoder = new TextDecoder()
         function getString(ptr, len) {
             const buf = new Uint8Array(wasm.instance.exports.memory.buffer, ptr, len)
@@ -107,6 +108,26 @@ evalJS('alert("circle area: {area(10)}")')
                 i += 1;
             }
             return decoder.decode(buf.slice(0, i))
+        }
+        function allocStringZ(vm, str) {
+            const ptr = cy.cyVmAlloc(vm, str.length * 3 + 1);
+            const view = new Uint8Array(cy.memory.buffer, ptr, str.length * 3 + 1);
+            const encoder = new TextEncoder();
+            const size = encoder.encodeInto(str, view).written;
+            view[size] = 0;
+            return { ptr: ptr, len: size, cap: str.length * 3 + 1 }
+        }
+        function vmEval(vm, src) {
+            const view = new DataView(cy.memory.buffer);
+            console.log(src)
+            view.setUint32(buf + 0, src.ptr, true);
+            view.setUint32(buf + 4, src.len, true);
+            const res = cy.cyVmEval(vm, buf, buf + 8);
+            return { code: res, valPtr: buf + 8 }
+        }
+        function getUint32(ptr) {
+            const view = new DataView(cy.memory.buffer);
+            return view.getUint32(ptr, true);
         }
         function getBigUint64(ptr) {
             const view = new DataView(cy.memory.buffer);
@@ -200,21 +221,24 @@ evalJS('alert("circle area: {area(10)}")')
                 const start = Date.now()
                 const src = editor.getValue();
                 const vm = cy.cyVmCreate();
-                const ptr = cy.cyVmAlloc(vm, src.length * 3);
-                const view = new Uint8Array(wasm.instance.exports.memory.buffer, ptr, src.length * 3);
-                const encoder = new TextEncoder();
-                const size = encoder.encodeInto(src, view).written;
+                buf = cy.cyVmAlloc(vm, 1024);
                 output.innerHTML = ''
                 lastOutLineElem = addLine('')
-                const tempBuf = cy.cyWasmGetTempBuf();
-                const res = cy.cyVmEval(vm, ptr, size, tempBuf);
+
+                const str = allocStringZ(vm, src)
+                const res = vmEval(vm, str);
                 const end = Date.now() - start
-                if (res == 0) {
+                if (res.code == 0) {
                     addSuccessLine(`success: ${end}ms`)
-                    const val = getBigUint64(tempBuf);
+                    const val = getBigUint64(res.valPtr);
                     cy.cyVmRelease(vm, val)
+                } else {
+                    cy.cyVmGetLastErrorReport(buf, vm);
+                    const ptr = getUint32(buf);
+                    console.error(getStringZ(ptr));
                 }
-                cy.cyVmFree(vm, ptr, src.length * 3)
+                cy.cyVmFree(vm, str.ptr, str.cap);
+                cy.cyVmFree(vm, buf, 1024);
             })
         }
         load(examples['hello'])

@@ -1,4 +1,3 @@
-#include <string.h>
 #include <stdio.h>
 #include "cyber.h"
 
@@ -7,14 +6,18 @@
 
 int main() {
     UserVM* vm = cyVmCreate();
-    char* src = 
+    CStr src = cstr(
         "a = 2\n"
-        "print b";
+        "print a"
+    );
     Value val;
-    int res = cyVmEval(vm, src, strlen(src), &val);
+    int res = cyVmEval(vm, src, &val);
     if (res == CY_Success) {
         printf("Success!\n");
         cyVmRelease(vm, val);
+    } else {
+        CStr err = cyVmGetLastErrorReport(vm);
+        printf("%s\n", err.charz);
     }
     cyVmDestroy(vm);
     return 0;

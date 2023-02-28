@@ -46,17 +46,17 @@ export fn cyVmDestroy(vm: *cy.UserVM) void {
 }
 
 /// This is useful when calling into wasm to allocate some memory.
-export fn cyVmAlloc(vm: *cy.UserVM, size: usize) [*]const u8 {
-    const slice = vm.allocator().alloc(u8, size) catch stdx.fatal();
+export fn cyVmAlloc(vm: *cy.UserVM, size: usize) [*]const align(8) u8 {
+    const slice = vm.allocator().alignedAlloc(u8, 8, size) catch stdx.fatal();
     return slice.ptr;
 }
 
-export fn cyVmFree(vm: *cy.UserVM, ptr: [*]const u8, size: usize) void {
+export fn cyVmFree(vm: *cy.UserVM, ptr: [*]const align(8) u8, size: usize) void {
     vm.allocator().free(ptr[0..size]);
 }
 
-export fn cyVmEval(vm: *cy.UserVM, src: [*]const u8, srcLen: usize, outVal: *cy.Value) c.ResultCode {
-    outVal.* = vm.eval("main", src[0..srcLen], .{
+export fn cyVmEval(vm: *cy.UserVM, src: c.CStr, outVal: *cy.Value) c.ResultCode {
+    outVal.* = vm.eval("main", src.charz[0..src.len], .{
         .singleRun = false,
     }) catch |err| {
         switch (err) {
@@ -82,17 +82,12 @@ export fn cyVmEval(vm: *cy.UserVM, src: [*]const u8, srcLen: usize, outVal: *cy.
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-comptime {
-    if (cy.isWasm) {
-        @export(cyWasmGetTempBuf, .{ .name = "cyWasmGetTempBuf" });
-    }
-}
+// comptime {
+//     if (cy.isWasm) {
+//     }
+// }
 
-fn cyWasmGetTempBuf() callconv(.C) [*]const u8 {
-    return &tempBuf;
-}
-
-export fn cyVmGetLastErrorReport(vm: *cy.UserVM) [*:0]const u8 {
+export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
     const report = vm.allocLastErrorReport() catch stdx.fatal();
     defer vm.internal().alloc.free(report);
     if (report.len > tempBuf.len - 1) {
@@ -100,7 +95,10 @@ export fn cyVmGetLastErrorReport(vm: *cy.UserVM) [*:0]const u8 {
     }
     @memcpy(&tempBuf, report.ptr, report.len);
     tempBuf[report.len] = 0;
-    return @ptrCast([*:0]const u8, &tempBuf);
+    return c.CStr{
+        .charz = &tempBuf,
+        .len = report.len,
+    };
 }
 
 export fn cyVmRelease(vm: *cy.UserVM, val: cy.Value) void {

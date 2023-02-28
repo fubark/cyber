@@ -1000,70 +1000,52 @@ test "Comments" {
     try t.eq(val.asF64toI32(), 4);
 }
 
+test "Escape sequence." {
+    try evalPass(.{}, @embedFile("escape_seq_test.cy"));
+}
+
 test "Static ASCII strings." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("static_astring_test.cy"));
+    try evalPass(.{}, @embedFile("static_astring_test.cy"));
 }
 
 test "Static UTF-8 strings." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("static_ustring_test.cy"));
+    try evalPass(.{}, @embedFile("static_ustring_test.cy"));
 }
 
 test "Heap ASCII String." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("astring_test.cy"));
+    try evalPass(.{}, @embedFile("astring_test.cy"));
 }
 
 test "Heap UTF-8 String." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("ustring_test.cy"));
+    try evalPass(.{}, @embedFile("ustring_test.cy"));
 }
 
 test "Heap ASCII String Slice." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("astring_slice_test.cy"));
+    try evalPass(.{}, @embedFile("astring_slice_test.cy"));
 }
 
 test "Heap UTF-8 String Slice." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("ustring_slice_test.cy"));
+    try evalPass(.{}, @embedFile("ustring_slice_test.cy"));
 }
 
 test "Heap RawString." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("rawstring_test.cy"));
+    try evalPass(.{}, @embedFile("rawstring_test.cy"));
 }
 
 test "Heap RawString Slice." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("rawstring_slice_test.cy"));
+    try evalPass(.{}, @embedFile("rawstring_slice_test.cy"));
 }
 
 test "String interpolation." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("string_interpolation_test.cy"));
+    try evalPass(.{}, @embedFile("string_interpolation_test.cy"));
 }
 
 test "Lists" {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("list_test.cy"));
+    try evalPass(.{}, @embedFile("list_test.cy"));
 }
 
 test "Maps" {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("map_test.cy"));
+    try evalPass(.{}, @embedFile("map_test.cy"));
 }
 
 test "Assignment statements" {

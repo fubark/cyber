@@ -625,6 +625,15 @@ pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
     while (i < literal.len) : (newIdx += 1) {
         if (literal[i] == '\\') {
             switch (literal[i + 1]) {
+                'a' => {
+                    buf[newIdx] = 0x07;
+                },
+                'b' => {
+                    buf[newIdx] = 0x08;
+                },
+                'e' => {
+                    buf[newIdx] = 0x1b;
+                },
                 'n' => {
                     buf[newIdx] = '\n';
                 },

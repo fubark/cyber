@@ -150,6 +150,8 @@ pub const VM = struct {
     deinited: bool,
     deinitedRtObjects: bool,
 
+    lastError: ?error{TokenError, ParseError, CompileError, Panic},
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -206,6 +208,7 @@ pub const VM = struct {
             .config = undefined,
             .httpClient = undefined,
             .stdHttpClient = undefined,
+            .lastError = null,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -367,14 +370,17 @@ pub const VM = struct {
             switch (err) {
                 .tokenize => {
                     try debug.printLastUserTokenError(self);
+                    self.lastError = error.TokenError;
                     return error.TokenError;
                 },
                 .parse => {
                     try debug.printLastUserParseError(self);
+                    self.lastError = error.ParseError;
                     return error.ParseError;
                 },
                 .compile => {
                     try debug.printLastUserCompileError(self);
+                    self.lastError = error.CompileError;
                     return error.CompileError;
                 },
             }
@@ -528,6 +534,7 @@ pub const VM = struct {
 
         @call(.never_inline, evalLoopGrowStack, .{self}) catch |err| {
             if (err == error.Panic) {
+                self.lastError = error.Panic;
                 unwindReleaseStack(self, self.stack, self.framePtr, self.pc);
             }
             return err;
@@ -601,6 +608,19 @@ pub const VM = struct {
                     },
                 }
             }
+        }
+    }
+
+    pub fn allocLastErrorReport(self: *VM) ![]const u8 {
+        if (self.lastError) |err| {
+            switch (err) {
+                error.TokenError => return debug.allocLastUserParseError(self),
+                error.ParseError => return debug.allocLastUserParseError(self),
+                error.CompileError => return debug.allocLastUserCompileError(self),
+                error.Panic => return debug.allocLastUserPanicError(self),
+            }
+        } else {
+            return error.NoLastError;
         }
     }
 

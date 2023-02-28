@@ -26,10 +26,10 @@ pub const Duration = struct {
     }
 };
 
-pub fn getMillisTime() f64 {
+pub fn getMilliTimestamp() i64 {
     if (IsWasm) {
-        return time_wasm.getMillisTime();
+        return time_wasm.getMilliTimestamp();
     } else {
-        unreachable;
+        return std.time.milliTimestamp();
     }
 }

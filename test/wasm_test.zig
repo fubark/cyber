@@ -48,8 +48,9 @@ export fn _start() void {
 fn runTest(src: []const u8) void {
     const vm = cy.cyVmCreate();
     defer cy.cyVmDestroy(vm);
-    const val = cy.cyVmEval(vm, src.ptr, src.len);
-    if (cy.cyValueIsPanic(val)) {
+    var val: cy.Value = undefined;
+    const res = cy.cyVmEval(vm, src.ptr, src.len, &val);
+    if (res != cy.CY_Success) {
         @panic("error");
     }
 }
@@ -58,18 +59,4 @@ export fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void {
     _ = fid;
     _ = str;
     _ = strLen;
-}
-
-export fn jsLog(ptr: [*]const u8, len: usize) void {
-    _ = ptr;
-    _ = len;
-}
-
-export fn jsErr(ptr: [*]const u8, len: usize) void {
-    _ = ptr;
-    _ = len;
-}
-
-export fn jsPerformanceNow() f64 {
-    return 0;
 }

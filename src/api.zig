@@ -56,9 +56,13 @@ pub const UserVM = struct {
     }
 
     pub fn getParserErrorPos(self: *const UserVM) u32 {
-        const vm = @ptrCast(*const VM, self);
-        const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
+        const vm = self.internal();
+        const chunk = vm.chunks.items[vm.compiler.lastErrChunk];
         return chunk.parser.last_err_pos;
+    }
+
+    pub fn allocLastErrorReport(self: *UserVM) ![]const u8 {
+        return self.internal().allocLastErrorReport();
     }
 
     pub fn allocLastUserCompileError(self: *const UserVM) ![]const u8 {

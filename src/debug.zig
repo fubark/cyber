@@ -186,7 +186,7 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, msg: []const u8) !void {
         try printUserError(vm, "Trace", msg, sym.file, token.pos(), false);
     } else {
         if (pc == cy.NullId) {
-            std.debug.print("Trace: {s} (vm global allocation)\n", .{msg});
+            fmt.printStderr("Trace: {} (vm global allocation)\n", &.{v(msg)});
         } else {
             log.debug("Missing debug sym for {}, pc: {}.", .{vm.ops[pc].code, pc});
         }
@@ -253,6 +253,13 @@ pub fn allocLastUserParseError(vm: *const cy.VM) ![]const u8 {
     var buf: std.ArrayListUnmanaged(u8) = .{};
     const w = buf.writer(vm.alloc);
     try writeLastUserParseError(vm, w);
+    return buf.toOwnedSlice(vm.alloc);
+}
+
+pub fn allocLastUserTokenError(vm: *const cy.VM) ![]const u8 {
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    const w = buf.writer(vm.alloc);
+    try writeLastUserTokenError(vm, w);
     return buf.toOwnedSlice(vm.alloc);
 }
 

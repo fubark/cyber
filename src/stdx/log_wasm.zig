@@ -2,9 +2,10 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx.zig");
 
-extern fn jsWarn(ptr: [*]const u8, len: usize) void;
-pub extern fn jsLog(ptr: [*]const u8, len: usize) void;
-extern fn jsErr(ptr: [*]const u8, len: usize) void;
+extern fn hostLogDebug(ptr: [*]const u8, len: usize) void;
+extern fn hostLogInfo(ptr: [*]const u8, len: usize) void;
+extern fn hostLogWarn(ptr: [*]const u8, len: usize) void;
+extern fn hostLogError(ptr: [*]const u8, len: usize) void;
 
 const DebugLog = builtin.mode == .Debug and true;
 
@@ -34,7 +35,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
             if (DebugLog) {
                 const prefix = if (Scope == .default) "debug: " else "(" ++ @tagName(Scope) ++ "): ";
                 const str = fmt(prefix, format, args);
-                jsLog(str.ptr, str.len);
+                hostLogDebug(str.ptr, str.len);
             }
         }
 
@@ -44,7 +45,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
         ) void {
             const prefix = if (Scope == .default) "info: " else "(" ++ @tagName(Scope) ++ "): ";
             const str = fmt(prefix, format, args);
-            jsLog(str.ptr, str.len);
+            hostLogInfo(str.ptr, str.len);
         }
 
         pub fn warn(
@@ -53,7 +54,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
         ) void {
             const prefix = if (Scope == .default) "warn: " else "(" ++ @tagName(Scope) ++ "): ";
             const str = fmt(prefix, format, args);
-            jsWarn(str.ptr, str.len);
+            hostLogWarn(str.ptr, str.len);
         }
 
         pub fn err(
@@ -62,7 +63,7 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
         ) void {
             const prefix = if (Scope == .default) "err: " else "(" ++ @tagName(Scope) ++ "): ";
             const str = fmt(prefix, format, args);
-            jsErr(str.ptr, str.len);
+            hostLogError(str.ptr, str.len);
         }
 
         inline fn fmt(comptime prefix: []const u8, comptime format: []const u8, args: anytype) []const u8 {

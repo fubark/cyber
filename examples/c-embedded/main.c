@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdio.h>
 #include "cyber.h"
 
 // Compile this program with a C compiler. `zig cc` is used here as an example.
@@ -8,8 +9,13 @@ int main() {
     UserVM* vm = cyVmCreate();
     char* src = 
         "a = 2\n"
-        "print a";
-    uint64_t val = cyVmEval(vm, src, strlen(src));
+        "print b";
+    Value val;
+    int res = cyVmEval(vm, src, strlen(src), &val);
+    if (res == CY_Success) {
+        printf("Success!\n");
+        cyVmRelease(vm, val);
+    }
     cyVmDestroy(vm);
     return 0;
 }

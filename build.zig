@@ -67,6 +67,7 @@ pub fn build(b: *std.build.Builder) !void {
             lib.strip = true;
         }
         lib.setOutputDir("zig-out/lib");
+        lib.addIncludePath(srcPath() ++ "/src");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         // lib.addRPath(".");

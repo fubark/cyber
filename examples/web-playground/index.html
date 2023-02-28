@@ -97,6 +97,21 @@ evalJS('alert("circle area: {area(10)}")')
             const buf = new Uint8Array(wasm.instance.exports.memory.buffer, ptr, len)
             return decoder.decode(buf)
         }
+        function getStringZ(ptr) {
+            const buf = new Uint8Array(wasm.instance.exports.memory.buffer, ptr)
+            let i = 0;
+            while (i < buf.length) {
+                if (buf[i] == 0) {
+                    break;
+                }
+                i += 1;
+            }
+            return decoder.decode(buf.slice(0, i))
+        }
+        function getBigUint64(ptr) {
+            const view = new DataView(cy.memory.buffer);
+            return view.getBigUint64(ptr, true);
+        }
         function addErrorLine(line) {
             const lineElem = document.createElement('div')
             lineElem.className = 'error'
@@ -151,8 +166,8 @@ evalJS('alert("circle area: {area(10)}")')
                 hostFetchUrl() {
                     addErrorLine('TODO: WASM fetch')
                 },
-                hostMilliTime() {
-                    addErrorLine('TODO: WASM millitime')
+                hostMilliTimestamp() {
+                    return Date.now();
                 },
                 hostSleep() {
                     addErrorLine('TODO: WASM sleep')
@@ -160,10 +175,16 @@ evalJS('alert("circle area: {area(10)}")')
                 exit() {
                     addErrorLine('TODO: WASM exit')
                 },
-                jsLog(ptr, len) {
+                hostLogDebug(ptr, len) {
                     console.log(getString(ptr, len))
                 },
-                jsErr(ptr, len) {
+                hostLogInfo(ptr, len) {
+                    console.log(getString(ptr, len))
+                },
+                hostLogWarn(ptr, len) {
+                    console.warn(getString(ptr, len))
+                },
+                hostLogError(ptr, len) {
                     console.error(getString(ptr, len))
                 },
             },
@@ -185,12 +206,14 @@ evalJS('alert("circle area: {area(10)}")')
                 const size = encoder.encodeInto(src, view).written;
                 output.innerHTML = ''
                 lastOutLineElem = addLine('')
-                const val = cy.cyVmEval(vm, ptr, size)
+                const tempBuf = cy.cyWasmGetTempBuf();
+                const res = cy.cyVmEval(vm, ptr, size, tempBuf);
                 const end = Date.now() - start
-                if (!cy.cyValueIsPanic(val)) {
+                if (res == 0) {
                     addSuccessLine(`success: ${end}ms`)
+                    const val = getBigUint64(tempBuf);
+                    cy.cyVmRelease(vm, val)
                 }
-                cy.cyVmRelease(vm, val)
                 cy.cyVmFree(vm, ptr, src.length * 3)
             })
         }

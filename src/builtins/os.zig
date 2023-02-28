@@ -341,14 +341,8 @@ pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 }
 
 pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    if (cy.isWasm) {
-        return Value.initF64(hostMilliTime());
-    } else {
-        return Value.initF64(@intToFloat(f64, std.time.milliTimestamp()));
-    }
+    return Value.initF64(@intToFloat(f64, stdx.time.getMilliTimestamp()));
 }
-
-extern fn hostMilliTime() f64;
 
 pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);

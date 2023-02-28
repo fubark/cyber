@@ -345,15 +345,15 @@ pub const VM = struct {
         if (res.err) |err| {
             switch (err) {
                 .tokenize => {
-                    try debug.printLastUserTokenError(self);
+                    self.lastError = error.TokenError;
                     return error.TokenError;
                 },
                 .parse => {
-                    try debug.printLastUserParseError(self);
+                    self.lastError = error.ParseError;
                     return error.ParseError;
                 },
                 .compile => {
-                    try debug.printLastUserCompileError(self);
+                    self.lastError = error.CompileError;
                     return error.CompileError;
                 },
             }
@@ -369,17 +369,14 @@ pub const VM = struct {
         if (res.err) |err| {
             switch (err) {
                 .tokenize => {
-                    try debug.printLastUserTokenError(self);
                     self.lastError = error.TokenError;
                     return error.TokenError;
                 },
                 .parse => {
-                    try debug.printLastUserParseError(self);
                     self.lastError = error.ParseError;
                     return error.ParseError;
                 },
                 .compile => {
-                    try debug.printLastUserCompileError(self);
                     self.lastError = error.CompileError;
                     return error.CompileError;
                 },

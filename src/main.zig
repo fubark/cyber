@@ -159,6 +159,11 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
             error.TokenError,
             error.ParseError,
             error.CompileError => {
+                if (!cy.silentError) {
+                    const report = try vm.allocLastErrorReport();
+                    defer alloc.free(report);
+                    fmt.printStderr(report, &.{});
+                }
                 exit(1);
             },
             else => {
@@ -187,13 +192,15 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         .reload = reload,
     }) catch |err| {
         switch (err) {
-            error.Panic => {
-                try vm.printLastUserPanicError();
-                exit(1);
-            },
+            error.Panic,
             error.TokenError,
             error.ParseError,
             error.CompileError => {
+                if (!cy.silentError) {
+                    const report = try vm.allocLastErrorReport();
+                    defer alloc.free(report);
+                    fmt.printStderr(report, &.{});
+                }
                 exit(1);
             },
             else => {

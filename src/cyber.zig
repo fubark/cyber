@@ -204,3 +204,4 @@ pub const NativeObjFuncPtr = *const fn (*UserVM, Value, [*]const Value, u8) Valu
 pub const NativeObjFunc2Ptr = *const fn (*UserVM, Value, [*]const Value, u8) ValuePair;
 pub const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const NativeErrorFunc = fn (*UserVM, [*]const Value, u8) anyerror!Value;
+pub const ModuleLoaderFunc = *const fn (*UserVM, *Module) void;

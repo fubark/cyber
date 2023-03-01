@@ -4,8 +4,11 @@
 
 #define bool _Bool
 
-typedef struct UserVM UserVM;
-typedef uint64_t Value;
+typedef struct CyUserVM CyUserVM;
+typedef struct CyModule CyModule;
+typedef uint64_t CyValue;
+
+const uint32_t CY_NullId = UINT32_MAX;
 
 typedef enum {
     CY_Success = 0,
@@ -14,7 +17,7 @@ typedef enum {
     CY_ErrorCompile,
     CY_ErrorPanic,
     CY_ErrorUnknown,
-} ResultCode;
+} CyResultCode;
 
 // Null terminated string, but also includes a length.
 typedef struct CStr {
@@ -23,13 +26,29 @@ typedef struct CStr {
 } CStr;
 #define cstr(X) (CStr){ X, strlen(X) }
 
-UserVM* cyVmCreate();
-void cyVmDestroy(UserVM* vm);
-ResultCode cyVmEval(UserVM* vm, CStr src, Value* outVal);
-CStr cyVmGetLastErrorReport(UserVM* vm);
-ModuleId cyVmGetModule(UserVM* vm, CStr name);
-void cyVmRelease(UserVM* vm, Value val);
+typedef CyValue (*CyFunc)(CyUserVM* vm, CyValue* args, uint8_t nargs);
+typedef void (*CyLoadModuleFunc)(CyUserVM* vm, CyModule* mod);
+
+// VM.
+CyUserVM* cyVmCreate();
+void cyVmDestroy(CyUserVM* vm);
+CyResultCode cyVmEval(CyUserVM* vm, CStr src, CyValue* outVal);
+CStr cyVmGetLastErrorReport(CyUserVM* vm);
+void cyVmRelease(CyUserVM* vm, CyValue val);
+
+// Modules.
+void cyVmAddModuleLoader(CyUserVM* vm, CStr name, CyLoadModuleFunc func);
+void cyVmSetModuleFunc(CyUserVM* vm, CyModule* mod, CStr name, uint32_t numParams, CyFunc func);
 
 // Intended to be used to manage accessible buffers when embedding WASM.
-void* cyVmAlloc(UserVM* vm, size_t size);
-void cyVmFree(UserVM* vm, void* ptr, size_t len);
+void* cyVmAlloc(CyUserVM* vm, size_t size);
+void cyVmFree(CyUserVM* vm, void* ptr, size_t len);
+
+// Initialize values.
+CyValue cyValueNone();
+CyValue cyValueTrue();
+CyValue cyValueFalse();
+CyValue cyValueNumber(double n);
+
+// Values to C types.
+double cyValueAsDouble(CyValue val);

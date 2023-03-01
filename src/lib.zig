@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
+const Value = cy.Value;
 
 const c = @cImport({
     @cInclude("cyber.h");
@@ -55,7 +56,7 @@ export fn cyVmFree(vm: *cy.UserVM, ptr: [*]const align(8) u8, size: usize) void 
     vm.allocator().free(ptr[0..size]);
 }
 
-export fn cyVmEval(vm: *cy.UserVM, src: c.CStr, outVal: *cy.Value) c.ResultCode {
+export fn cyVmEval(vm: *cy.UserVM, src: c.CStr, outVal: *cy.Value) c.CyResultCode {
     outVal.* = vm.eval("main", src.charz[0..src.len], .{
         .singleRun = false,
     }) catch |err| {
@@ -101,6 +102,36 @@ export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
     };
 }
 
-export fn cyVmRelease(vm: *cy.UserVM, val: cy.Value) void {
+export fn cyVmAddModuleLoader(vm: *cy.UserVM, cspec: c.CStr, func: c.CyLoadModuleFunc) void {
+    const absSpec = cspec.charz[0..cspec.len];
+    vm.addModuleLoader(absSpec, @ptrCast(cy.ModuleLoaderFunc, func)) catch stdx.fatal();
+}
+
+export fn cyVmSetModuleFunc(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, numParams: u32, func: c.CyFunc) void {
+    const symName = cname.charz[0..cname.len];
+    mod.setNativeFunc(&vm.internal().compiler, symName, numParams, @ptrCast(cy.NativeFuncPtr, func)) catch stdx.fatal();
+}
+
+export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {
     vm.release(val);
+}
+
+export fn cyValueNone() Value {
+    return Value.None;
+}
+
+export fn cyValueTrue() Value {
+    return Value.True;
+}
+
+export fn cyValueFalse() Value {
+    return Value.False;
+}
+
+export fn cyValueNumber(n: f64) Value {
+    return Value.initF64(n);
+}
+
+export fn cyValueAsDouble(val: Value) f64 {
+    return val.asF64();
 }

@@ -53,6 +53,9 @@ pub const VMcompiler = struct {
     /// Owned absolute specifier path to module.
     moduleMap: std.StringHashMapUnmanaged(sema.ModuleId),
 
+    /// Absolute specifier to additional loaders.
+    moduleLoaders: std.StringHashMapUnmanaged(std.ArrayListUnmanaged(cy.ModuleLoaderFunc)),
+
     typeNames: std.StringHashMapUnmanaged(sema.Type),
 
     /// Compilation units indexed by their id.
@@ -83,6 +86,7 @@ pub const VMcompiler = struct {
             .typeNames = .{},
             .chunks = .{},
             .importTasks = .{},
+            .moduleLoaders = .{},
             .deinitedRtObjects = false,
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
@@ -115,11 +119,13 @@ pub const VMcompiler = struct {
         }
         self.modules.deinit(self.alloc);
 
-        var iter = self.moduleMap.keyIterator();
-        while (iter.next()) |absSpec| {
-            self.alloc.free(absSpec.*);
+        {
+            var iter = self.moduleMap.keyIterator();
+            while (iter.next()) |absSpec| {
+                self.alloc.free(absSpec.*);
+            }
+            self.moduleMap.deinit(self.alloc);
         }
-        self.moduleMap.deinit(self.alloc);
 
         self.typeNames.deinit(self.alloc);
 
@@ -137,6 +143,14 @@ pub const VMcompiler = struct {
         self.chunks.deinit(self.alloc);
 
         self.importTasks.deinit(self.alloc);
+
+        {
+            var iter = self.moduleLoaders.iterator();
+            while (iter.next()) |e| {
+                e.value_ptr.deinit(self.alloc);
+            }
+            self.moduleLoaders.deinit(self.alloc);
+        }
     }
 
     fn resetCompiler(self: *VMcompiler) void {
@@ -216,10 +230,20 @@ pub const VMcompiler = struct {
         // Load core module first since the members are imported into each user module.
         const coreModSpec = try self.alloc.dupe(u8, "core");
         const coreModId = @intCast(u32, self.modules.items.len);
-        var coreMod = try self.initModule("core", coreModId);
-        try core_mod.initModule(self, &coreMod);
-        try self.modules.append(self.alloc, coreMod);
+        try self.modules.append(self.alloc, .{
+            .syms = .{},
+            .chunkId = cy.NullId,
+            .resolvedRootSymId = cy.NullId,
+        });
         try self.moduleMap.put(self.alloc, coreModSpec, coreModId);
+        const importCore = ImportTask{
+            .chunkId = nextId,
+            .nodeId = cy.NullId,
+            .absSpec = "core",
+            .modId = coreModId,
+            .builtin = true,
+        };
+        try performImportTask(self, importCore);
 
         // Perform sema on all chunks.
         var id: u32 = 0;
@@ -440,6 +464,12 @@ pub const VMcompiler = struct {
             newChunk.modId = task.modId;
             try self.chunks.append(self.alloc, newChunk);
             self.modules.items[task.modId].chunkId = newChunkId;
+        }
+        if (self.moduleLoaders.get(task.absSpec)) |loaders| {
+            const mod = &self.modules.items[task.modId];
+            for (loaders.items) |loader| {
+                loader(@ptrCast(*cy.UserVM, self.vm), mod);
+            }
         }
     }
 

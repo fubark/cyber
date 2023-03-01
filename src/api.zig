@@ -34,6 +34,19 @@ pub const UserVM = struct {
         return @ptrCast(*const cy.VM, self);
     }
 
+    pub fn addModuleLoader(self: *UserVM, absSpec: []const u8, func: cy.ModuleLoaderFunc) !void {
+        const alloc = self.allocator();
+        const res = try self.internal().compiler.moduleLoaders.getOrPut(alloc, absSpec);
+        if (res.found_existing) {
+            const list = res.value_ptr;
+            try list.append(alloc, func);
+        } else {
+            res.value_ptr.* = .{};
+            const list = res.value_ptr;
+            try list.append(alloc, func);
+        }
+    }
+
     pub fn setTrace(self: *UserVM, trace: *cy.TraceInfo) void {
         if (!cy.TraceEnabled) {
             return;

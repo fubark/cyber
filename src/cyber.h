@@ -1,8 +1,7 @@
 // Copyright (c) 2023 Cyber (See LICENSE)
 #include <string.h>
+#include <stdbool.h>
 #include <stdint.h>
-
-#define bool _Bool
 
 typedef struct CyUserVM CyUserVM;
 typedef struct CyModule CyModule;
@@ -27,7 +26,7 @@ typedef struct CStr {
 #define cstr(X) (CStr){ X, strlen(X) }
 
 typedef CyValue (*CyFunc)(CyUserVM* vm, CyValue* args, uint8_t nargs);
-typedef void (*CyLoadModuleFunc)(CyUserVM* vm, CyModule* mod);
+typedef bool (*CyLoadModuleFunc)(CyUserVM* vm, CyModule* mod);
 
 // VM.
 CyUserVM* cyVmCreate();

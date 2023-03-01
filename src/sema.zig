@@ -2576,13 +2576,11 @@ pub fn importAllFromModule(self: *cy.CompileChunk, modId: ModuleId) !void {
 
 /// Writes resolved spec to temp buf.
 fn resolveSpecTemp(self: *cy.CompileChunk, spec: []const u8, outBuiltin: *bool) ![]const u8 {
-    if (std.mem.eql(u8, "test", spec) or 
-        std.mem.eql(u8, "math", spec) or
-        std.mem.eql(u8, "core", spec) or
-        std.mem.eql(u8, "os", spec)) {
+    if (self.compiler.moduleLoaders.contains(spec)) {
         outBuiltin.* = true;
         return spec;
     }
+
     if (cy.isWasm) {
         return error.NotSupported;
     }

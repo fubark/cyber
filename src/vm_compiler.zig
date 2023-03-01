@@ -90,6 +90,11 @@ pub const VMcompiler = struct {
             .deinitedRtObjects = false,
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
+
+        try self.addModuleLoader("core", initModuleCompat("core", core_mod.initModule));
+        try self.addModuleLoader("math", initModuleCompat("math", math_mod.initModule));
+        try self.addModuleLoader("os", initModuleCompat("os", os_mod.initModule));
+        try self.addModuleLoader("test", initModuleCompat("test", test_mod.initModule));
     }
 
     pub fn deinitRtObjects(self: *VMcompiler) void {
@@ -431,21 +436,21 @@ pub const VMcompiler = struct {
 
     fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
         if (task.builtin) {
-            var mod = try self.initModule(task.absSpec, task.modId);
-            if (std.mem.eql(u8, "test", task.absSpec)) {
-                try test_mod.initModule(self, &mod);
-            } else if (std.mem.eql(u8, "math", task.absSpec)) {
-                try math_mod.initModule(self, &mod);
-            } else if (std.mem.eql(u8, "core", task.absSpec)) {
-                try core_mod.initModule(self, &mod);
-            } else if (std.mem.eql(u8, "os", task.absSpec)) {
-                try os_mod.initModule(self, &mod);
+            if (self.moduleLoaders.get(task.absSpec)) |loaders| {
+                var mod = try self.initModule(task.absSpec, task.modId);
+                for (loaders.items) |loader| {
+                    if (!loader(@ptrCast(*cy.UserVM, self.vm), &mod)) {
+                        return error.LoadModuleError;
+                    }
+                }
+                self.modules.items[task.modId] = mod;
             } else {
                 const chunk = &self.chunks.items[task.chunkId];
                 return chunk.reportErrorAt("Unsupported builtin. {}", &.{fmt.v(task.absSpec)}, task.nodeId);
             }
-            self.modules.items[task.modId] = mod;
         } else {
+            // Default loader.
+
             if (cy.isWasm) {
                 return error.Unsupported;
             }
@@ -465,11 +470,19 @@ pub const VMcompiler = struct {
             try self.chunks.append(self.alloc, newChunk);
             self.modules.items[task.modId].chunkId = newChunkId;
         }
-        if (self.moduleLoaders.get(task.absSpec)) |loaders| {
-            const mod = &self.modules.items[task.modId];
-            for (loaders.items) |loader| {
-                loader(@ptrCast(*cy.UserVM, self.vm), mod);
-            }
+    }
+
+    pub fn addModuleLoader(self: *VMcompiler, absSpec: []const u8, func: cy.ModuleLoaderFunc) !void {
+        const res = try self.moduleLoaders.getOrPut(self.alloc, absSpec);
+        if (res.found_existing) {
+            const list = res.value_ptr;
+            try list.append(self.alloc, func);
+        } else {
+            // Start with initial cap = 1.
+            res.value_ptr.* = try std.ArrayListUnmanaged(cy.ModuleLoaderFunc).initCapacity(self.alloc, 1);
+            const list = res.value_ptr;
+            list.items.len = 1;
+            list.items[0] = func;
         }
     }
 
@@ -1583,3 +1596,16 @@ const ImportTask = struct {
     modId: sema.ModuleId,
     builtin: bool,
 };
+
+pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, mod: *cy.Module) anyerror!void) cy.ModuleLoaderFunc {
+    return struct {
+        fn initCompat(vm: *cy.UserVM, mod: *cy.Module) bool {
+            initFn(&vm.internal().compiler, mod) catch |err| {
+                log.debug("Init module `{s}` failed: {}", .{name, err});
+                return false;
+            };
+            return true;
+        }
+    }.initCompat;
+}
+

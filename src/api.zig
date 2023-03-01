@@ -35,16 +35,7 @@ pub const UserVM = struct {
     }
 
     pub fn addModuleLoader(self: *UserVM, absSpec: []const u8, func: cy.ModuleLoaderFunc) !void {
-        const alloc = self.allocator();
-        const res = try self.internal().compiler.moduleLoaders.getOrPut(alloc, absSpec);
-        if (res.found_existing) {
-            const list = res.value_ptr;
-            try list.append(alloc, func);
-        } else {
-            res.value_ptr.* = .{};
-            const list = res.value_ptr;
-            try list.append(alloc, func);
-        }
+        return self.internal().compiler.addModuleLoader(absSpec, func);
     }
 
     pub fn setTrace(self: *UserVM, trace: *cy.TraceInfo) void {

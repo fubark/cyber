@@ -38,6 +38,7 @@ void cyVmRelease(CyUserVM* vm, CyValue val);
 // Modules.
 void cyVmAddModuleLoader(CyUserVM* vm, CStr name, CyLoadModuleFunc func);
 void cyVmSetModuleFunc(CyUserVM* vm, CyModule* mod, CStr name, uint32_t numParams, CyFunc func);
+void cyVmSetModuleVar(CyUserVM* vm, CyModule* mod, CStr name, CyValue val);
 
 // Intended to be used to manage accessible buffers when embedding WASM.
 void* cyVmAlloc(CyUserVM* vm, size_t size);
@@ -48,6 +49,9 @@ CyValue cyValueNone();
 CyValue cyValueTrue();
 CyValue cyValueFalse();
 CyValue cyValueNumber(double n);
+CyValue cyValueGetOrAllocStringInfer(CyUserVM* vm, CStr str);
+CyValue cyValueGetOrAllocAstring(CyUserVM* vm, CStr str);
+CyValue cyValueGetOrAllocUstring(CyUserVM* vm, CStr str, uint32_t charLen);
 
 // Values to C types.
 double cyValueAsDouble(CyValue val);

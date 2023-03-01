@@ -12,10 +12,10 @@ CyValue add(CyUserVM* vm, CyValue* args, uint8_t nargs);
 int main() {
     CyUserVM* vm = cyVmCreate();
 
-    // Add "add" to the default module (Loaded into each script's namespace).
+    // Add syms to the default module (Loaded into each script's namespace).
     cyVmAddModuleLoader(vm, cstr("core"), loadCore);
 
-    // Add "add" to a custom builtin named "mymod".
+    // Add syms to a custom builtin named "mymod".
     cyVmAddModuleLoader(vm, cstr("mymod"), loadMyMod);
 
     CStr src = cstr(
@@ -23,7 +23,8 @@ int main() {
         "\n"
         "a = 2\n"
         "print add(a, 100)\n"
-        "print mod.add(a, a)"
+        "print mod.add(a, a)\n"
+        "print mod.hello"
     );
     CyValue val;
     int res = cyVmEval(vm, src, &val);
@@ -40,6 +41,9 @@ int main() {
 
 bool loadMyMod(CyUserVM* vm, CyModule* mod) {
     cyVmSetModuleFunc(vm, mod, cstr("add"), 2, add);
+
+    CyValue str = cyValueGetOrAllocStringInfer(vm, cstr("hello world"));
+    cyVmSetModuleVar(vm, mod, cstr("hello"), str);
     return true;
 }
 

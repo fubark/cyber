@@ -112,6 +112,11 @@ export fn cyVmSetModuleFunc(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, numP
     mod.setNativeFunc(&vm.internal().compiler, symName, numParams, @ptrCast(cy.NativeFuncPtr, func)) catch stdx.fatal();
 }
 
+export fn cyVmSetModuleVar(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, val: c.CyValue) void {
+    const symName = cname.charz[0..cname.len];
+    mod.setVar(&vm.internal().compiler, symName, @bitCast(cy.Value, val)) catch stdx.fatal();
+}
+
 export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {
     vm.release(val);
 }
@@ -130,6 +135,18 @@ export fn cyValueFalse() Value {
 
 export fn cyValueNumber(n: f64) Value {
     return Value.initF64(n);
+}
+
+export fn cyValueGetOrAllocStringInfer(vm: *cy.UserVM, cstr: c.CStr) Value {
+    return vm.allocStringInfer(cstr.charz[0..cstr.len]) catch stdx.fatal();
+}
+
+export fn cyValueGetOrAllocAstring(vm: *cy.UserVM, cstr: c.CStr) Value {
+    return vm.allocAstring(cstr.charz[0..cstr.len]) catch stdx.fatal();
+}
+
+export fn cyValueGetOrAllocUstring(vm: *cy.UserVM, cstr: c.CStr, charLen: u32) Value {
+    return vm.allocUstring(cstr.charz[0..cstr.len], charLen) catch stdx.fatal();
 }
 
 export fn cyValueAsDouble(val: Value) f64 {

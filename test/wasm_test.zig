@@ -45,11 +45,16 @@ export fn _start() void {
     runTest(@embedFile("while_inf_test.cy"));
 }
 
-fn runTest(src: []const u8) void {
+fn runTest(src: [:0]const u8) void {
     const vm = cy.cyVmCreate();
     defer cy.cyVmDestroy(vm);
-    var val: cy.Value = undefined;
-    const res = cy.cyVmEval(vm, src.ptr, src.len, &val);
+    var val: cy.CyValue = undefined;
+
+    const csrc = cy.CStr{
+        .charz = @intToPtr([*c]u8, @ptrToInt(src.ptr)),
+        .len = src.len,
+    };
+    const res = cy.cyVmEval(vm, csrc, &val);
     if (res != cy.CY_Success) {
         @panic("error");
     }

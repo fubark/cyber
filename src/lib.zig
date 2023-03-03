@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
+const fatal = stdx.fatal;
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const Value = cy.Value;
@@ -32,7 +33,7 @@ export fn cyVmCreate() *cy.UserVM {
     }
 
     const vm = cy.getUserVM();
-    vm.init(alloc) catch stdx.fatal();
+    vm.init(alloc) catch fatal();
     if (cy.isWasm) {
         stdx.log.wasm.init(alloc);
     }
@@ -48,7 +49,7 @@ export fn cyVmDestroy(vm: *cy.UserVM) void {
 
 /// This is useful when calling into wasm to allocate some memory.
 export fn cyVmAlloc(vm: *cy.UserVM, size: usize) [*]const align(8) u8 {
-    const slice = vm.allocator().alignedAlloc(u8, 8, size) catch stdx.fatal();
+    const slice = vm.allocator().alignedAlloc(u8, 8, size) catch fatal();
     return slice.ptr;
 }
 
@@ -89,7 +90,7 @@ var tempBuf: [1024]u8 align(8) = undefined;
 // }
 
 export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
-    const report = vm.allocLastErrorReport() catch stdx.fatal();
+    const report = vm.allocLastErrorReport() catch fatal();
     defer vm.internal().alloc.free(report);
     if (report.len > tempBuf.len - 1) {
         stdx.panic("Buffer too small.");
@@ -104,17 +105,17 @@ export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
 
 export fn cyVmAddModuleLoader(vm: *cy.UserVM, cspec: c.CStr, func: c.CyLoadModuleFunc) void {
     const absSpec = cspec.charz[0..cspec.len];
-    vm.addModuleLoader(absSpec, @ptrCast(cy.ModuleLoaderFunc, func)) catch stdx.fatal();
+    vm.addModuleLoader(absSpec, @ptrCast(cy.ModuleLoaderFunc, func)) catch fatal();
 }
 
 export fn cyVmSetModuleFunc(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, numParams: u32, func: c.CyFunc) void {
     const symName = cname.charz[0..cname.len];
-    mod.setNativeFunc(&vm.internal().compiler, symName, numParams, @ptrCast(cy.NativeFuncPtr, func)) catch stdx.fatal();
+    mod.setNativeFunc(&vm.internal().compiler, symName, numParams, @ptrCast(cy.NativeFuncPtr, func)) catch fatal();
 }
 
 export fn cyVmSetModuleVar(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, val: c.CyValue) void {
     const symName = cname.charz[0..cname.len];
-    mod.setVar(&vm.internal().compiler, symName, @bitCast(cy.Value, val)) catch stdx.fatal();
+    mod.setVar(&vm.internal().compiler, symName, @bitCast(cy.Value, val)) catch fatal();
 }
 
 export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {
@@ -138,17 +139,39 @@ export fn cyValueNumber(n: f64) Value {
 }
 
 export fn cyValueGetOrAllocStringInfer(vm: *cy.UserVM, cstr: c.CStr) Value {
-    return vm.allocStringInfer(cstr.charz[0..cstr.len]) catch stdx.fatal();
+    return vm.allocStringInfer(cstr.charz[0..cstr.len]) catch fatal();
 }
 
 export fn cyValueGetOrAllocAstring(vm: *cy.UserVM, cstr: c.CStr) Value {
-    return vm.allocAstring(cstr.charz[0..cstr.len]) catch stdx.fatal();
+    return vm.allocAstring(cstr.charz[0..cstr.len]) catch fatal();
 }
 
 export fn cyValueGetOrAllocUstring(vm: *cy.UserVM, cstr: c.CStr, charLen: u32) Value {
-    return vm.allocUstring(cstr.charz[0..cstr.len], charLen) catch stdx.fatal();
+    return vm.allocUstring(cstr.charz[0..cstr.len], charLen) catch fatal();
 }
 
 export fn cyValueAsDouble(val: Value) f64 {
     return val.asF64();
+}
+
+export fn cyValueToTempString(vm: *cy.UserVM, val: Value) c.CStr {
+    const str = vm.valueToTempString(val);
+    vm.internal().u8Buf.resize(vm.allocator(), str.len + 1) catch fatal();
+    @memcpy(vm.internal().u8Buf.buf.ptr, str.ptr, str.len);
+    vm.internal().u8Buf.buf[str.len] = 0;
+    return .{
+        .charz = vm.internal().u8Buf.buf.ptr,
+        .len = str.len,
+    };
+}
+
+export fn cyValueToTempRawString(vm: *cy.UserVM, val: Value) c.CStr {
+    const str = vm.valueToTempRawString(val);
+    vm.internal().u8Buf.resize(vm.allocator(), str.len + 1) catch fatal();
+    @memcpy(vm.internal().u8Buf.buf.ptr, str.ptr, str.len);
+    vm.internal().u8Buf.buf[str.len] = 0;
+    return .{
+        .charz = vm.internal().u8Buf.buf.ptr,
+        .len = str.len,
+    };
 }

@@ -55,3 +55,5 @@ CyValue cyValueGetOrAllocUstring(CyUserVM* vm, CStr str, uint32_t charLen);
 
 // Values to C types.
 double cyValueAsDouble(CyValue val);
+CStr cyValueToTempString(CyUserVM* vm, CyValue val);
+CStr cyValueToTempRawString(CyUserVM* vm, CyValue val);

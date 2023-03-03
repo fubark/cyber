@@ -266,7 +266,7 @@ pub const UserVM = struct {
     }
 
     pub inline fn valueToTempString(self: *UserVM, val: Value) []const u8 {
-        return @ptrCast(*const VM, self).valueToTempString(val);
+        return self.constInternal().valueToTempString(val);
     }
 
     pub inline fn valueToTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {

@@ -412,7 +412,7 @@ pub const Value = packed union {
                         log.info("None", .{});
                     },
                     TagInteger => {
-                        log.info("Integer {}", .{self.asI32()});
+                        log.info("Integer {}", .{self.asInteger()});
                     },
                     TagStaticUstring,
                     TagStaticAstring => {

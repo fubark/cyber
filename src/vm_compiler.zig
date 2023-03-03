@@ -107,49 +107,82 @@ pub const VMcompiler = struct {
         self.deinitedRtObjects = true;
     }
 
-    pub fn deinit(self: *VMcompiler) void {
+    pub fn deinit(self: *VMcompiler, comptime reset: bool) void {
         self.alloc.free(self.lastErr);
 
-        self.buf.deinit();
+        if (reset) {
+            self.buf.clear();
+        } else {
+            self.buf.deinit();
+        }
 
-        self.semaResolvedSyms.deinit(self.alloc);
-        self.semaResolvedSymMap.deinit(self.alloc);
-
-        self.semaResolvedFuncSyms.deinit(self.alloc);
-        self.semaResolvedFuncSymMap.deinit(self.alloc);
+        if (reset) {
+            self.semaResolvedSyms.clearRetainingCapacity();
+            self.semaResolvedSymMap.clearRetainingCapacity();
+            self.semaResolvedFuncSyms.clearRetainingCapacity();
+            self.semaResolvedFuncSymMap.clearRetainingCapacity();
+        } else {
+            self.semaResolvedSyms.deinit(self.alloc);
+            self.semaResolvedSymMap.deinit(self.alloc);
+            self.semaResolvedFuncSyms.deinit(self.alloc);
+            self.semaResolvedFuncSymMap.deinit(self.alloc);
+        }
 
         self.deinitRtObjects();
         for (self.modules.items) |*mod| {
             mod.deinit(self.alloc);
         }
-        self.modules.deinit(self.alloc);
+        if (reset) {
+            self.modules.clearRetainingCapacity();
+        } else {
+            self.modules.deinit(self.alloc);
+        }
 
         {
             var iter = self.moduleMap.keyIterator();
             while (iter.next()) |absSpec| {
                 self.alloc.free(absSpec.*);
             }
+        }
+        if (reset) {
+            self.moduleMap.clearRetainingCapacity();
+        } else {
             self.moduleMap.deinit(self.alloc);
         }
 
-        self.typeNames.deinit(self.alloc);
+        if (reset) {
+            self.typeNames.clearRetainingCapacity();
+        } else {
+            self.typeNames.deinit(self.alloc);
+        }
 
         for (self.semaNameSyms.items) |name| {
             if (name.owned) {
-                self.alloc.free(name.ptr[0..name.len]);
+                self.alloc.free(name.getName());
             }
         }
-        self.semaNameSyms.deinit(self.alloc);
-        self.semaNameSymMap.deinit(self.alloc);
+        if (reset) {
+            self.semaNameSyms.clearRetainingCapacity();
+            self.semaNameSymMap.clearRetainingCapacity();
+        } else {
+            self.semaNameSyms.deinit(self.alloc);
+            self.semaNameSymMap.deinit(self.alloc);
+        }
 
         for (self.chunks.items) |*chunk| {
             chunk.deinit();
         }
-        self.chunks.deinit(self.alloc);
+        if (reset) {
+            self.chunks.clearRetainingCapacity();
+            self.importTasks.clearRetainingCapacity();
+        } else {
+            self.chunks.deinit(self.alloc);
+            self.importTasks.deinit(self.alloc);
+        }
 
-        self.importTasks.deinit(self.alloc);
-
-        {
+        if (reset) {
+            // `moduleLoaders` persists.
+        } else {
             var iter = self.moduleLoaders.iterator();
             while (iter.next()) |e| {
                 e.value_ptr.deinit(self.alloc);
@@ -158,12 +191,9 @@ pub const VMcompiler = struct {
         }
     }
 
-    fn resetCompiler(self: *VMcompiler) void {
-        self.buf.clear();
-        for (self.chunks.items) |*chunk| {
-            chunk.deinit();
-        }
-        self.chunks.clearRetainingCapacity();
+    pub fn resetCompiler(self: *VMcompiler) void {
+        self.deinit(true);
+        self.deinitedRtObjects = false;
         self.lastErrNode = cy.NullId;
         self.lastErrChunk = cy.NullId;
     }
@@ -207,8 +237,6 @@ pub const VMcompiler = struct {
 
     /// Wrap compile so all errors can be handled in one place.
     fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8) !void {
-        self.resetCompiler();
-
         var finalSrcUri: []const u8 = undefined;
         if (!cy.isWasm and self.vm.config.enableFileModules) {
             // Ensure that `srcUri` is resolved.

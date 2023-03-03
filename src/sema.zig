@@ -325,6 +325,10 @@ pub const Name = struct {
     ptr: [*]const u8,
     len: u32,
     owned: bool,
+
+    pub fn getName(self: Name) []const u8 {
+        return self.ptr[0..self.len];
+    }
 };
 
 pub const SymId = u32;

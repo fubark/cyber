@@ -504,7 +504,10 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksectio
 
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
-            const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch stdx.fatal();
+            const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch |err| {
+                log.debug("{}", .{err});
+                stdx.fatal();
+            };
             return res.toBool();
         }
     };

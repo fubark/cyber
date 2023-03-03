@@ -384,6 +384,7 @@ pub const StackTrace = struct {
 
     pub fn deinit(self: *StackTrace, alloc: std.mem.Allocator) void {
         alloc.free(self.frames);
+        self.frames = &.{};
     }
 
     pub fn dump(self: *const StackTrace, vm: *const cy.VM) !void {

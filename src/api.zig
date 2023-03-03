@@ -23,7 +23,7 @@ pub const UserVM = struct {
     }
 
     pub fn deinit(self: *UserVM) void {
-        self.internal().deinit();
+        self.internal().deinit(false);
     }
 
     pub inline fn internal(self: *UserVM) *cy.VM {

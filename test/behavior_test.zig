@@ -11,6 +11,33 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Multiple evals with same VM." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    const src =
+        \\import t 'test'
+        \\a = 1
+        \\try t.eq(a, 1)
+        ;
+
+    _ = try run.vm.eval("main", src, .{ 
+        .singleRun = false,
+        .enableFileModules = false,
+        .genAllDebugSyms = false,
+    });
+    _ = try run.vm.eval("main", src, .{ 
+        .singleRun = false,
+        .enableFileModules = false,
+        .genAllDebugSyms = false,
+    });
+    _ = try run.vm.eval("main", src, .{ 
+        .singleRun = false,
+        .enableFileModules = false,
+        .genAllDebugSyms = false,
+    });
+}
+
 test "Debug labels." {
     try eval(.{},
         \\a = 1

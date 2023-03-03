@@ -236,9 +236,6 @@ pub const VM = struct {
 
         // Force linksection order. Using `try` makes this work.
         try @call(.never_inline, cy.forceSectionDeps, .{});
-
-        // Core bindings.
-        try @call(.never_inline, bindings.bindCore, .{self});
     }
 
     pub fn deinitRtObjects(self: *VM) void {
@@ -264,7 +261,7 @@ pub const VM = struct {
         self.deinitedRtObjects = true;
     }
 
-    pub fn deinit(self: *VM) void {
+    pub fn deinit(self: *VM, comptime reset: bool) void {
         if (self.deinited) {
             return;
         }
@@ -276,65 +273,126 @@ pub const VM = struct {
         self.deinitRtObjects();
 
         // Deinit compiler first since it depends on buffers from parser.
-        self.compiler.deinit();
-        self.alloc.free(self.stack);
-        self.stack = &.{};
+        if (reset) {
+            self.compiler.resetCompiler();
+        } else {
+            self.compiler.deinit(false);
+        }
 
-        self.methodSyms.deinit(self.alloc);
+        if (reset) {
+            // `stack` is kept with previous size.
+        } else {
+            self.alloc.free(self.stack);
+            self.stack = &.{};
+        }
+
         for (self.methodSymExtras.items()) |extra| {
             if (extra.nameIsOwned) {
                 self.alloc.free(extra.getName());
             }
         }
-        self.methodSymExtras.deinit(self.alloc);
-        self.methodSymSigs.deinit(self.alloc);
-        self.methodTable.deinit(self.alloc);
+        if (reset) {
+            self.methodSyms.clearRetainingCapacity();
+            self.methodSymExtras.clearRetainingCapacity();
+            self.methodSymSigs.clearRetainingCapacity();
+            self.methodTable.clearRetainingCapacity();
+        } else {
+            self.methodSyms.deinit(self.alloc);
+            self.methodSymExtras.deinit(self.alloc);
+            self.methodSymSigs.deinit(self.alloc);
+            self.methodTable.deinit(self.alloc);
+        }
 
-        self.funcSyms.deinit(self.alloc);
-        self.funcSymSigs.deinit(self.alloc);
         for (self.funcSymDetails.items()) |detail| {
             self.alloc.free(detail.name);
         }
-        self.funcSymDetails.deinit(self.alloc);
-        self.funcSymDeps.deinit(self.alloc);
-
-        self.varSyms.deinit(self.alloc);
-        self.varSymSigs.deinit(self.alloc);
-
-        self.fieldSyms.deinit(self.alloc);
-        self.fieldTable.deinit(self.alloc);
-        self.fieldSymSignatures.deinit(self.alloc);
-
-        for (self.heapPages.items()) |page| {
-            self.alloc.destroy(page);
+        if (reset) {
+            self.funcSyms.clearRetainingCapacity();
+            self.funcSymSigs.clearRetainingCapacity();
+            self.funcSymDetails.clearRetainingCapacity();
+            self.funcSymDeps.clearRetainingCapacity();
+        } else {
+            self.funcSyms.deinit(self.alloc);
+            self.funcSymSigs.deinit(self.alloc);
+            self.funcSymDetails.deinit(self.alloc);
+            self.funcSymDeps.deinit(self.alloc);
         }
-        self.heapPages.deinit(self.alloc);
 
-        self.structs.deinit(self.alloc);
-        self.structSignatures.deinit(self.alloc);
+        if (reset) {
+            self.varSyms.clearRetainingCapacity();
+            self.varSymSigs.clearRetainingCapacity();
+        } else {
+            self.varSyms.deinit(self.alloc);
+            self.varSymSigs.deinit(self.alloc);
+        }
 
-        self.tagTypes.deinit(self.alloc);
-        self.tagTypeSignatures.deinit(self.alloc);
+        if (reset) {
+            self.fieldSyms.clearRetainingCapacity();
+            self.fieldTable.clearRetainingCapacity();
+            self.fieldSymSignatures.clearRetainingCapacity();
+        } else {
+            self.fieldSyms.deinit(self.alloc);
+            self.fieldTable.deinit(self.alloc);
+            self.fieldSymSignatures.deinit(self.alloc);
+        }
 
-        self.tagLitSyms.deinit(self.alloc);
-        self.tagLitSymSignatures.deinit(self.alloc);
+        if (reset) {
+            // Does not clear heap pages so objects can persist.
+        } else {
+            for (self.heapPages.items()) |page| {
+                self.alloc.destroy(page);
+            }
+            self.heapPages.deinit(self.alloc);
+        }
 
-        self.u8Buf.deinit(self.alloc);
-        self.u8Buf2.deinit(self.alloc);
+        if (reset) {
+            self.structs.clearRetainingCapacity();
+            self.structSignatures.clearRetainingCapacity();
+        } else {
+            self.structs.deinit(self.alloc);
+            self.structSignatures.deinit(self.alloc);
+        }
+
+        if (reset) {
+            self.tagTypes.clearRetainingCapacity();
+            self.tagTypeSignatures.clearRetainingCapacity();
+            self.tagLitSyms.clearRetainingCapacity();
+            self.tagLitSymSignatures.clearRetainingCapacity();
+        } else {
+            self.tagTypes.deinit(self.alloc);
+            self.tagTypeSignatures.deinit(self.alloc);
+            self.tagLitSyms.deinit(self.alloc);
+            self.tagLitSymSignatures.deinit(self.alloc);
+        }
+
         self.stackTrace.deinit(self.alloc);
-
-        self.strInterns.deinit(self.alloc);
+        if (reset) {
+            self.u8Buf.clearRetainingCapacity();
+            self.u8Buf2.clearRetainingCapacity();
+            self.strInterns.clearRetainingCapacity();
+        } else {
+            self.u8Buf.deinit(self.alloc);
+            self.u8Buf2.deinit(self.alloc);
+            self.strInterns.deinit(self.alloc);
+        }
 
         if (builtin.mode == .Debug) {
-            self.objectTraceMap.deinit(self.alloc);
+            if (reset) {
+                self.objectTraceMap.clearRetainingCapacity();
+            } else {
+                self.objectTraceMap.deinit(self.alloc);
+            }
         }
 
-        self.stdHttpClient.deinit();
+        if (!reset) {
+            self.stdHttpClient.deinit();
+        }
 
         self.deinited = true;
     }
 
     pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
+        try self.resetVM();
         self.config = .{
             .singleRun = false,
             .enableFileModules = true,
@@ -362,7 +420,21 @@ pub const VM = struct {
         return res.buf;
     }
 
+    fn resetVM(self: *VM) !void {
+        self.deinit(true);
+
+        // Reset flags for next reset/deinit.
+        self.deinitedRtObjects = false;
+        self.deinited = false;
+
+        // Before reinit, everything in VM, VMcompiler should be cleared.
+
+        // Core bindings.
+        try @call(.never_inline, bindings.bindCore, .{self});
+    }
+
     pub fn eval(self: *VM, srcUri: []const u8, src: []const u8, config: EvalConfig) !Value {
+        try self.resetVM();
         self.config = config;
         var tt = stdx.debug.trace();
         const res = try self.compiler.compile(srcUri, src);

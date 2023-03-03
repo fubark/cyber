@@ -34,6 +34,9 @@ void cyVmDestroy(CyUserVM* vm);
 CyResultCode cyVmEval(CyUserVM* vm, CStr src, CyValue* outVal);
 CStr cyVmGetLastErrorReport(CyUserVM* vm);
 void cyVmRelease(CyUserVM* vm, CyValue val);
+void cyVmRetain(CyUserVM* vm, CyValue val);
+void* cyVmGetUserData(CyUserVM* vm);
+void cyVmSetUserData(CyUserVM* vm, void* userData);
 
 // Modules.
 void cyVmAddModuleLoader(CyUserVM* vm, CStr name, CyLoadModuleFunc func);

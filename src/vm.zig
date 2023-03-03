@@ -150,6 +150,9 @@ pub const VM = struct {
     deinited: bool,
     deinitedRtObjects: bool,
 
+    /// User data ptr. Useful for embedders.
+    userData: ?*anyopaque,
+
     lastError: ?error{TokenError, ParseError, CompileError, Panic},
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
@@ -209,6 +212,7 @@ pub const VM = struct {
             .httpClient = undefined,
             .stdHttpClient = undefined,
             .lastError = null,
+            .userData = null,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;

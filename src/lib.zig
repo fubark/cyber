@@ -122,6 +122,18 @@ export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {
     vm.release(val);
 }
 
+export fn cyVmRetain(vm: *cy.UserVM, val: Value) void {
+    vm.retain(val);
+}
+
+export fn cyVmGetUserData(vm: *cy.UserVM) ?*anyopaque {
+    return vm.getUserData();
+}
+
+export fn cyVmSetUserData(vm: *cy.UserVM, userData: ?*anyopaque) void {
+    vm.setUserData(userData);
+}
+
 export fn cyValueNone() Value {
     return Value.None;
 }

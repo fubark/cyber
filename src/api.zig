@@ -34,6 +34,14 @@ pub const UserVM = struct {
         return @ptrCast(*const cy.VM, self);
     }
 
+    pub fn getUserData(self: *UserVM) ?*anyopaque {
+        return self.internal().userData;
+    }
+
+    pub fn setUserData(self: *UserVM, userData: ?*anyopaque) void {
+        self.internal().userData = userData;
+    }
+
     pub fn addModuleLoader(self: *UserVM, absSpec: []const u8, func: cy.ModuleLoaderFunc) !void {
         return self.internal().compiler.addModuleLoader(absSpec, func);
     }

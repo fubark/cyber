@@ -11,6 +11,43 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Multiple evals persisting state." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    var global = run.vm.allocEmptyMap() catch fatal();
+    defer run.vm.release(global);
+    run.vm.setUserData(&global);
+
+    try run.vm.addModuleLoader("core", struct {
+        fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
+            const g = stdx.ptrAlignCast(*cy.Value, vm.getUserData()).*;
+            // vm.retain(g);
+            mod.setVar(&vm.internal().compiler, "g", g) catch fatal();
+            return true;
+        }
+    }.loader);
+
+    const src1 =
+        \\g['a'] = 1
+        ;
+    _ = try run.vm.eval("main", src1, .{ 
+        .singleRun = false,
+        .enableFileModules = false,
+        .genAllDebugSyms = false,
+    });
+
+    const src2 = 
+        \\import t 'test'
+        \\try t.eq(g['a'], 1)
+        ;
+    _ = try run.vm.eval("main", src2, .{ 
+        .singleRun = false,
+        .enableFileModules = false,
+        .genAllDebugSyms = false,
+    });
+}
+
 test "Multiple evals with same VM." {
     const run = VMrunner.create();
     defer run.destroy();

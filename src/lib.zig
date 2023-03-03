@@ -162,6 +162,14 @@ export fn cyValueGetOrAllocUstring(vm: *cy.UserVM, cstr: c.CStr, charLen: u32) V
     return vm.allocUstring(cstr.charz[0..cstr.len], charLen) catch fatal();
 }
 
+export fn cyValueAllocList(vm: *cy.UserVM) Value {
+    return vm.allocEmptyList() catch fatal();
+}
+
+export fn cyValueAllocMap(vm: *cy.UserVM) Value {
+    return vm.allocEmptyMap() catch fatal();
+}
+
 export fn cyValueAsDouble(val: Value) f64 {
     return val.asF64();
 }

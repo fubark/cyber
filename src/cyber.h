@@ -55,6 +55,8 @@ CyValue cyValueNumber(double n);
 CyValue cyValueGetOrAllocStringInfer(CyUserVM* vm, CStr str);
 CyValue cyValueGetOrAllocAstring(CyUserVM* vm, CStr str);
 CyValue cyValueGetOrAllocUstring(CyUserVM* vm, CStr str, uint32_t charLen);
+CyValue cyValueAllocList(CyUserVM* vm);
+CyValue cyValueAllocMap(CyUserVM* vm);
 
 // Values to C types.
 double cyValueAsDouble(CyValue val);

@@ -18,12 +18,46 @@ typedef enum {
     CY_ErrorUnknown,
 } CyResultCode;
 
+typedef enum {
+    CY_TypeNone = 0,
+    CY_TypeBoolean,
+    CY_TypeError,
+    CY_TypeStaticAstring,
+    CY_TypeStaticUstring,
+    CY_TypeUserTag,
+    CY_TypeUserTagLiteral,
+    CY_TypeInteger,
+    CY_TypeNumber,
+    CY_TypeList,
+    CY_TypeListIter,
+    CY_TypeMap,
+    CY_TypeMapIter,
+    CY_TypeClosure,
+    CY_TypeLambda,
+    CY_TypeAstring,
+    CY_TypeUstring,
+    CY_TypeStringSlice,
+    CY_TypeRawString,
+    CY_TypeRawStringSlice,
+    CY_TypeFiber,
+    CY_TypeBox,
+    CY_TypeNativeFunc1,
+    CY_TypeTccState,
+    CY_TypeOpaquePtr,
+    CY_TypeFile,
+    CY_TypeDir,
+    CY_TypeDirIter,
+    CY_TypeSymbol,
+};
+
 // Null terminated string, but also includes a length.
 typedef struct CStr {
     char* charz;
     size_t len;
 } CStr;
 #define cstr(X) (CStr){ X, strlen(X) }
+
+typedef uint32_t CyTypeId;
 
 typedef CyValue (*CyFunc)(CyUserVM* vm, CyValue* args, uint8_t nargs);
 typedef bool (*CyLoadModuleFunc)(CyUserVM* vm, CyModule* mod);
@@ -58,7 +92,15 @@ CyValue cyValueGetOrAllocUstring(CyUserVM* vm, CStr str, uint32_t charLen);
 CyValue cyValueAllocList(CyUserVM* vm);
 CyValue cyValueAllocMap(CyUserVM* vm);
 
+// Values.
+CyTypeId cyValueGetTypeId(CyValue val);
+
 // Values to C types.
-double cyValueAsDouble(CyValue val);
+double cyValueToNumber(CyValue val);
+double cyValueAsNumber(CyValue val);
+bool cyValueToBool(CyValue val);
+bool cyValueAsBool(CyValue val);
+int asInteger(CyValue val);
+uint32_t asTagLiteralId(CyValue val);
 CStr cyValueToTempString(CyUserVM* vm, CyValue val);
 CStr cyValueToTempRawString(CyUserVM* vm, CyValue val);

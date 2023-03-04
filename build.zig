@@ -166,6 +166,31 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
+        const step = b.addTest(.{
+            .root_source_file = .{ .path = "./test/lib_test.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        step.setMainPkgPath(".");
+        step.addIncludePath(srcPath() ++ "/src");
+
+        try addBuildOptions(b, step, false);
+        step.addModule("stdx", stdx);
+        step.rdynamic = true;
+
+        tcc.addModule(step);
+        tcc.buildAndLink(step, .{
+            .selinux = selinux,
+        });
+
+        const traceTest = try addTraceTest(b, optimize, target, .{
+            .selinux = selinux,
+        });
+        traceTest.step.dependOn(&step.step);
+        b.step("test-lib", "Run tests.").dependOn(&traceTest.step);
+    }
+
+    {
         // Just trace test.
         const traceTest = try addTraceTest(b, optimize, target, .{
             .selinux = selinux,

@@ -104,12 +104,12 @@ pub const Value = packed union {
         return @floatToInt(u32, self.asF64());
     }
 
-    pub inline fn asF64(self: *const Value) linksection(cy.HotSection) f64 {
+    pub inline fn asF64(self: *const Value) f64 {
         @setRuntimeSafety(debug);
         return @bitCast(f64, self.val);
     }
 
-    pub inline fn asTagLiteralId(self: *const Value) linksection(cy.HotSection) u32 {
+    pub inline fn asTagLiteralId(self: *const Value) u32 {
         return @intCast(u32, self.val & @as(u64, 0xFFFFFFFF));
     }
 
@@ -174,41 +174,41 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn bothNumbers(a: Value, b: Value) linksection(cy.HotSection) bool {
+    pub inline fn bothNumbers(a: Value, b: Value) bool {
         return a.isNumber() and b.isNumber();
     }
 
-    pub inline fn isStaticString(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isStaticString(self: *const Value) bool {
         const mask = self.val & (TaggedPrimitiveMask | SignMask);
         return mask == StaticAstringMask or mask == StaticUstringMask;
     }
 
-    pub inline fn isStaticAstring(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isStaticAstring(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == StaticAstringMask;
     }
 
-    pub inline fn isStaticUstring(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isStaticUstring(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == StaticUstringMask;
     }
 
-    pub inline fn assumeNotPtrIsStaticString(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn assumeNotPtrIsStaticString(self: *const Value) bool {
         const mask = self.val & TaggedPrimitiveMask;
         return mask == StaticAstringMask or mask == StaticUstringMask;
     }
 
-    pub inline fn isError(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isError(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == ErrorMask;
     }
 
-    pub inline fn assumeNotPtrIsError(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn assumeNotPtrIsError(self: *const Value) bool {
         return self.val & TaggedPrimitiveMask == ErrorMask;
     }
 
-    pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) bool {
         return self.val & TaggedPrimitiveMask == UserTagLiteralMask;
     }
 
-    pub inline fn getPrimitiveTypeId(self: *const Value) linksection(cy.HotSection) u32 {
+    pub inline fn getPrimitiveTypeId(self: *const Value) u32 {
         if (self.isNumber()) {
             return NumberT;
         } else {
@@ -283,23 +283,23 @@ pub const Value = packed union {
         return self.val == TrueMask;
     }
 
-    pub inline fn isPanic(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isPanic(self: *const Value) bool {
         return self.val == Panic.val;
     }
 
-    pub inline fn isBool(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn isBool(self: *const Value) bool {
         return self.val & (TaggedPrimitiveMask | SignMask) == BooleanMask;
     }
 
-    pub inline fn assumeNotPtrIsBool(self: *const Value) linksection(cy.HotSection) bool {
+    pub inline fn assumeNotPtrIsBool(self: *const Value) bool {
         return self.val & TaggedPrimitiveMask == BooleanMask;
     }
 
-    pub inline fn getTag(self: *const Value) linksection(cy.HotSection) u3 {
+    pub inline fn getTag(self: *const Value) u3 {
         return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
     }
 
-    pub inline fn initTag(tag: u8, val: u8) linksection(cy.HotSection) Value {
+    pub inline fn initTag(tag: u8, val: u8) Value {
         return .{ .val = UserTagMask | (@as(u32, tag) << 8) | val };
     }
 
@@ -307,7 +307,7 @@ pub const Value = packed union {
         return self.val & (TaggedPrimitiveMask | SignMask) == UserTagLiteralMask;
     }
 
-    pub inline fn initTagLiteral(symId: u8) linksection(cy.HotSection) Value {
+    pub inline fn initTagLiteral(symId: u8) Value {
         return .{ .val = UserTagLiteralMask | symId };
     }
 
@@ -324,7 +324,7 @@ pub const Value = packed union {
         return .{ .val = val };
     }
 
-    pub inline fn initBool(b: bool) linksection(cy.HotSection) Value {
+    pub inline fn initBool(b: bool) Value {
         if (b) {
             return True;
         } else {
@@ -357,7 +357,7 @@ pub const Value = packed union {
         return false;
     }
 
-    pub inline fn floatCanBeInteger(val: f64) linksection(cy.HotSection) bool {
+    pub inline fn floatCanBeInteger(val: f64) bool {
         @setRuntimeSafety(debug);
         // return @fabs(std.math.floor(val) - val) < std.math.f64_epsilon;
         

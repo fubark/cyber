@@ -5,6 +5,7 @@ const fatal = stdx.fatal;
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const Value = cy.Value;
+const t = stdx.testing;
 
 const c = @cImport({
     @cInclude("cyber.h");
@@ -170,8 +171,41 @@ export fn cyValueAllocMap(vm: *cy.UserVM) Value {
     return vm.allocEmptyMap() catch fatal();
 }
 
-export fn cyValueAsDouble(val: Value) f64 {
+export fn cyValueAsNumber(val: Value) f64 {
     return val.asF64();
+}
+
+test "cyValueAsNumber()" {
+    try t.eq(c.cyValueAsNumber(c.cyValueNumber(123.0)), 123);
+}
+
+export fn cyValueToBool(val: Value) bool {
+    return val.toBool();
+}
+
+test "cyValueToBool()" {
+    try t.eq(c.cyValueToBool(c.cyValueNumber(123.0)), true);
+    try t.eq(c.cyValueToBool(c.cyValueNumber(0)), true);
+    try t.eq(c.cyValueToBool(c.cyValueTrue()), true);
+    try t.eq(c.cyValueToBool(c.cyValueNone()), false);
+    try t.eq(c.cyValueToBool(c.cyValueFalse()), false);
+}
+
+export fn cyValueAsBool(val: Value) bool {
+    return val.asBool();
+}
+
+test "cyValueAsBool()" {
+    try t.eq(c.cyValueAsBool(c.cyValueTrue()), true);
+    try t.eq(c.cyValueAsBool(c.cyValueFalse()), false);
+}
+
+export fn cyValueAsInteger(val: Value) c_int {
+    return val.asInteger();
+}
+
+export fn cyValueAsTagLiteralId(val: Value) u32 {
+    return val.asTagLiteralId();
 }
 
 export fn cyValueToTempString(vm: *cy.UserVM, val: Value) c.CStr {
@@ -194,4 +228,44 @@ export fn cyValueToTempRawString(vm: *cy.UserVM, val: Value) c.CStr {
         .charz = vm.internal().u8Buf.buf.ptr,
         .len = str.len,
     };
+}
+
+test "Constants." {
+    try t.eq(c.CY_TypeNone, cy.NoneT);
+    try t.eq(c.CY_TypeBoolean, cy.BooleanT);
+    try t.eq(c.CY_TypeError, cy.ErrorT);
+    try t.eq(c.CY_TypeStaticAstring, cy.StaticAstringT);
+    try t.eq(c.CY_TypeStaticUstring, cy.StaticUstringT);
+    try t.eq(c.CY_TypeUserTag, cy.UserTagT);
+    try t.eq(c.CY_TypeUserTagLiteral, cy.UserTagLiteralT);
+    try t.eq(c.CY_TypeInteger, cy.IntegerT);
+    try t.eq(c.CY_TypeNumber, cy.NumberT);
+    try t.eq(c.CY_TypeList, cy.ListS);
+    try t.eq(c.CY_TypeListIter, cy.ListIteratorT);
+    try t.eq(c.CY_TypeMap, cy.MapS);
+    try t.eq(c.CY_TypeMapIter, cy.MapIteratorT);
+    try t.eq(c.CY_TypeClosure, cy.ClosureS);
+    try t.eq(c.CY_TypeLambda, cy.LambdaS);
+    try t.eq(c.CY_TypeAstring, cy.AstringT);
+    try t.eq(c.CY_TypeUstring, cy.UstringT);
+    try t.eq(c.CY_TypeStringSlice, cy.StringSliceT);
+    try t.eq(c.CY_TypeRawString, cy.RawStringT);
+    try t.eq(c.CY_TypeRawStringSlice, cy.RawStringSliceT);
+    try t.eq(c.CY_TypeFiber, cy.FiberS);
+    try t.eq(c.CY_TypeBox, cy.BoxS);
+    try t.eq(c.CY_TypeNativeFunc1, cy.NativeFunc1S);
+    try t.eq(c.CY_TypeTccState, cy.TccStateS);
+    try t.eq(c.CY_TypeOpaquePtr, cy.OpaquePtrS);
+    try t.eq(c.CY_TypeFile, cy.FileT);
+    try t.eq(c.CY_TypeDir, cy.DirT);
+    try t.eq(c.CY_TypeDirIter, cy.DirIteratorT);
+    try t.eq(c.CY_TypeSymbol, cy.SymbolT);
+}
+
+export fn cyValueGetTypeId(val: Value) c.CyTypeId {
+    return val.getTypeId();
+}
+
+test "cyValueGetType()" {
+    try t.eq(c.cyValueGetTypeId(c.cyValueNumber(123)), cy.NumberT);
 }

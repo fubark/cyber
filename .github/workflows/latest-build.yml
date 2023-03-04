@@ -166,9 +166,12 @@ jobs:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'wasm32-freestanding'
-        #run: zig build test ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }} 
+        if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD != 'lib'
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
+
+      - name: Run tests.
+        if: env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
+        run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
         if: env.BUILD_TARGET == 'wasm32-freestanding'

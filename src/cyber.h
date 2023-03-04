@@ -92,6 +92,8 @@ CyValue cyValueGetOrAllocAstring(CyUserVM* vm, CStr str);
 CyValue cyValueGetOrAllocUstring(CyUserVM* vm, CStr str, uint32_t charLen);
 CyValue cyValueAllocList(CyUserVM* vm);
 CyValue cyValueAllocMap(CyUserVM* vm);
+CyValue cyValueAllocNativeFunc(CyUserVM* vm, CyFunc func, uint32_t numParams);
+CyValue cyValueAllocOpaquePtr(CyUserVM* vm, void* ptr);
 
 // Values.
 CyTypeId cyValueGetTypeId(CyValue val);

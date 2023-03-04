@@ -175,6 +175,30 @@ export fn cyValueAllocMap(vm: *cy.UserVM) Value {
     return vm.allocEmptyMap() catch fatal();
 }
 
+export fn cyValueAllocNativeFunc(vm: *cy.UserVM, func: c.CyFunc, numParams: u32) Value {
+    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(cy.NativeFuncPtr, func), numParams, null) catch fatal();
+}
+
+test "cyValueAllocNativeFunc()" {
+    const vm = c.cyVmCreate();
+    defer c.cyVmDestroy(vm);
+
+    const val = c.cyValueAllocNativeFunc(vm, @intToPtr(c.CyFunc, 0), 2);
+    try t.eq(c.cyValueGetTypeId(val), cy.NativeFunc1S);
+}
+
+export fn cyValueAllocOpaquePtr(vm: *cy.UserVM, ptr: ?*anyopaque) Value {
+    return cy.heap.allocOpaquePtr(vm.internal(), ptr) catch fatal();
+}
+
+test "cyValueAllocOpaquePtr()" {
+    const vm = c.cyVmCreate();
+    defer c.cyVmDestroy(vm);
+
+    const val = c.cyValueAllocOpaquePtr(vm, @intToPtr(?*anyopaque, 123));
+    try t.eq(c.cyValueGetTypeId(val), cy.OpaquePtrS);
+}
+
 export fn cyValueAsNumber(val: Value) f64 {
     return val.asF64();
 }

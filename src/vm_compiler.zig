@@ -185,6 +185,7 @@ pub const VMcompiler = struct {
         } else {
             var iter = self.moduleLoaders.iterator();
             while (iter.next()) |e| {
+                self.alloc.free(e.key_ptr.*);
                 e.value_ptr.deinit(self.alloc);
             }
             self.moduleLoaders.deinit(self.alloc);
@@ -506,8 +507,10 @@ pub const VMcompiler = struct {
             const list = res.value_ptr;
             try list.append(self.alloc, func);
         } else {
+            const keyDupe = try self.alloc.dupe(u8, absSpec);
             // Start with initial cap = 1.
             res.value_ptr.* = try std.ArrayListUnmanaged(cy.ModuleLoaderFunc).initCapacity(self.alloc, 1);
+            res.key_ptr.* = keyDupe;
             const list = res.value_ptr;
             list.items.len = 1;
             list.items[0] = func;

@@ -86,6 +86,7 @@ CyValue cyValueNone();
 CyValue cyValueTrue();
 CyValue cyValueFalse();
 CyValue cyValueNumber(double n);
+CyValue cyValueInteger(int n);
 CyValue cyValueGetOrAllocStringInfer(CyUserVM* vm, CStr str);
 CyValue cyValueGetOrAllocAstring(CyUserVM* vm, CStr str);
 CyValue cyValueGetOrAllocUstring(CyUserVM* vm, CStr str, uint32_t charLen);
@@ -96,11 +97,10 @@ CyValue cyValueAllocMap(CyUserVM* vm);
 CyTypeId cyValueGetTypeId(CyValue val);
 
 // Values to C types.
-double cyValueToNumber(CyValue val);
 double cyValueAsNumber(CyValue val);
 bool cyValueToBool(CyValue val);
 bool cyValueAsBool(CyValue val);
-int asInteger(CyValue val);
+int cyValueAsInteger(CyValue val);
 uint32_t asTagLiteralId(CyValue val);
 CStr cyValueToTempString(CyUserVM* vm, CyValue val);
 CStr cyValueToTempRawString(CyUserVM* vm, CyValue val);

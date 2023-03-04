@@ -151,6 +151,10 @@ export fn cyValueNumber(n: f64) Value {
     return Value.initF64(n);
 }
 
+export fn cyValueInteger(n: i32) Value {
+    return Value.initI32(n);
+}
+
 export fn cyValueGetOrAllocStringInfer(vm: *cy.UserVM, cstr: c.CStr) Value {
     return vm.allocStringInfer(cstr.charz[0..cstr.len]) catch fatal();
 }
@@ -202,6 +206,10 @@ test "cyValueAsBool()" {
 
 export fn cyValueAsInteger(val: Value) c_int {
     return val.asInteger();
+}
+
+test "cyValueAsInteger()" {
+    try t.eq(c.cyValueAsInteger(c.cyValueInteger(123)), 123);
 }
 
 export fn cyValueAsTagLiteralId(val: Value) u32 {

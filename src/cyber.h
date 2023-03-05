@@ -94,6 +94,7 @@ CyValue cyValueAllocList(CyUserVM* vm);
 CyValue cyValueAllocMap(CyUserVM* vm);
 CyValue cyValueAllocNativeFunc(CyUserVM* vm, CyFunc func, uint32_t numParams);
 CyValue cyValueAllocOpaquePtr(CyUserVM* vm, void* ptr);
+CyValue cyValueTagLiteral(CyUserVM* vm, CStr str);
 
 // Values.
 CyTypeId cyValueGetTypeId(CyValue val);
@@ -103,6 +104,6 @@ double cyValueAsNumber(CyValue val);
 bool cyValueToBool(CyValue val);
 bool cyValueAsBool(CyValue val);
 int cyValueAsInteger(CyValue val);
-uint32_t asTagLiteralId(CyValue val);
+uint32_t cyValueAsTagLiteralId(CyValue val);
 CStr cyValueToTempString(CyUserVM* vm, CyValue val);
 CStr cyValueToTempRawString(CyUserVM* vm, CyValue val);

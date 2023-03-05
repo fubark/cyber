@@ -179,6 +179,11 @@ export fn cyValueAllocNativeFunc(vm: *cy.UserVM, func: c.CyFunc, numParams: u32)
     return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(cy.NativeFuncPtr, func), numParams, null) catch fatal();
 }
 
+export fn cyValueTagLiteral(vm: *cy.UserVM, str: c.CStr) Value {
+    const id = vm.internal().ensureTagLitSymExt(str.charz[0..str.len], true) catch fatal();
+    return Value.initTagLiteral(@intCast(u8, id));
+}
+
 test "cyValueAllocNativeFunc()" {
     const vm = c.cyVmCreate();
     defer c.cyVmDestroy(vm);
@@ -238,6 +243,38 @@ test "cyValueAsInteger()" {
 
 export fn cyValueAsTagLiteralId(val: Value) u32 {
     return val.asTagLiteralId();
+}
+
+test "cyValueAsTagLiteralId()" {
+    const vm = c.cyVmCreate();
+    defer c.cyVmDestroy(vm);
+
+    var zstr = try t.alloc.dupe(u8, "foo");
+    defer t.alloc.free(zstr);
+    var str = c.CStr{
+        .charz = zstr.ptr,
+        .len = zstr.len,
+    };
+    var val = c.cyValueTagLiteral(vm, str);
+    try t.eq(c.cyValueAsTagLiteralId(val), 0);
+
+    var zstr2 = try t.alloc.dupe(u8, "bar");
+    defer t.alloc.free(zstr2);
+    str = c.CStr{
+        .charz = zstr2.ptr,
+        .len = zstr2.len,
+    };
+    val = c.cyValueTagLiteral(vm, str);
+    try t.eq(c.cyValueAsTagLiteralId(val), 1);
+
+    var zstr3 = try t.alloc.dupe(u8, "foo");
+    defer t.alloc.free(zstr3);
+    str = c.CStr{
+        .charz = zstr3.ptr,
+        .len = zstr3.len,
+    };
+    val = c.cyValueTagLiteral(vm, str);
+    try t.eq(c.cyValueAsTagLiteralId(val), 0);
 }
 
 export fn cyValueToTempString(vm: *cy.UserVM, val: Value) c.CStr {

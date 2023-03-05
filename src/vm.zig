@@ -357,6 +357,11 @@ pub const VM = struct {
             self.structSignatures.deinit(self.alloc);
         }
 
+        for (self.tagLitSyms.items()) |sym| {
+            if (sym.nameOwned) {
+                self.alloc.free(sym.name);
+            }
+        }
         if (reset) {
             self.tagTypes.clearRetainingCapacity();
             self.tagTypeSignatures.clearRetainingCapacity();
@@ -864,13 +869,22 @@ pub const VM = struct {
     }
 
     pub fn ensureTagLitSym(self: *VM, name: []const u8) !SymbolId {
+        return self.ensureTagLitSymExt(name, false);
+    }
+
+    pub fn ensureTagLitSymExt(self: *VM, name: []const u8, owned: bool) !SymbolId {
         const res = try self.tagLitSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
             const id = @intCast(u32, self.tagLitSyms.len);
+            var effName = name;
+            if (owned) {
+                effName = try self.alloc.dupe(u8, name);
+            }
             try self.tagLitSyms.append(self.alloc, .{
                 .symT = .empty,
                 .inner = undefined,
-                .name = name,
+                .name = effName,
+                .nameOwned = owned,
             });
             res.value_ptr.* = id;
             return id;
@@ -2319,6 +2333,7 @@ const TagLitSym = struct {
         },
     },
     name: []const u8,
+    nameOwned: bool,
 };
 
 const FieldSymbolMap = struct {

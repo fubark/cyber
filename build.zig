@@ -19,7 +19,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     const selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     fastArm64 = b.option(bool, "fast-arm64", "Experimental: Computed gotos for arm64.") orelse false;
-    const testFilter = b.option([]const u8, "test-filter", "Test filter.") orelse "";
+    const testFilter = b.option([]const u8, "test-filter", "Test filter.");
 
     stdx = b.createModule(.{
         .source_file = .{ .path = srcPath() ++ "/src/stdx/stdx.zig" },

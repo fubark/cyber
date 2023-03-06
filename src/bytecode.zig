@@ -261,9 +261,10 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const numParams = pc[2].arg;
             const numCaptured = pc[3].arg;
             const numLocals = pc[4].arg;
-            const dst = pc[5].arg;
-            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(dst)});
-            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[6..6+numCaptured])});
+            const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+            const dst = pc[7].arg;
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, rFuncSigId={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(rFuncSigId), v(dst)});
+            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[8..8+numCaptured])});
         },
         .constI8 => {
             const val = @bitCast(i8, pc[1].arg);
@@ -339,6 +340,14 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
         .jumpNotNone => {
             const jump = @ptrCast(*const align(1) i16, pc + 1).*;
             fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
+        },
+        .lambda => {
+            const negFuncPcOffset = pc[1].arg;
+            const numParams = pc[2].arg;
+            const numLocals = pc[3].arg;
+            const rFuncSigId = @ptrCast(*const align(1) u16, pc + 4).*;
+            const dst = pc[6].arg;
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numLocals={}, rFuncSigId={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numLocals), v(rFuncSigId), v(dst)});
         },
         .list => {
             const startLocal = pc[1].arg;
@@ -592,8 +601,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .slice,
         .object,
         .objectSmall,
-        .tryValue,
-        .lambda => {
+        .tryValue => {
             return 5;
         },
         .match => {
@@ -603,10 +611,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .coinit => {
             return 6;
         },
-        .closure => {
-            const numCaptured = pc[3].arg;
-            return 6 + numCaptured;
-        },
+        .lambda,
         .sym,
         .forRange,
         .forRangeReverse,
@@ -620,6 +625,10 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         },
         .forRangeInit => {
             return 8;
+        },
+        .closure => {
+            const numCaptured = pc[3].arg;
+            return 8 + numCaptured;
         },
         .callSym,
         .callNativeFuncIC,

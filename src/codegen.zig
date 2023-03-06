@@ -99,15 +99,15 @@ fn genSymbolTo(self: *CompileChunk, symId: sema.SymId, dst: LocalId, retain: boo
             const sym = self.semaSyms.items[symId];
             const localKey = sym.key.absLocalSymKey;
 
-            const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-            const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
+            const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.rFuncSymId];
+            const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.rParentSymId, localKey.nameId, rfsym.rFuncSigId);
 
             try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
             return self.initGenValue(dst, sema.AnyType, true);
         } else if (rsym.symT == .variable) {
             const sym = self.semaSyms.items[symId];
             const localKey = sym.key.absLocalSymKey;
-            const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId);
+            const varId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.rParentSymId, localKey.nameId);
 
             try self.pushOptionalDebugSym(self.curNodeId);       
             try self.buf.pushOp2(.staticVar, @intCast(u8, varId), dst);
@@ -513,7 +513,10 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
         if (numCaptured == 0) {
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             try self.pushOptionalDebugSym(nodeId);
-            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
+
+            const start = self.buf.ops.items.len;
+            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, 0, 0, dst });
+            self.buf.setOpArgU16(start + 4, @intCast(u16, func.inner.lambda.rFuncSigId));
             return self.initGenValue(dst, sema.AnyType, true);
         } else {
             const operandStart = self.operandStack.items.len;
@@ -534,7 +537,9 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
             }
 
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
+            const start = self.buf.ops.items.len;
+            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, 0, 0, dst });
+            self.buf.setOpArgU16(start + 5, @intCast(u16, func.inner.lambda.rFuncSigId));
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
             return self.initGenValue(dst, sema.AnyType, true);
         }
@@ -572,7 +577,9 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
         if (numCaptured == 0) {
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             try self.pushOptionalDebugSym(nodeId);
-            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, dst });
+            const start = self.buf.ops.items.len;
+            try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, numParams, numLocals, 0, 0, dst });
+            self.buf.setOpArgU16(start + 4, @intCast(u16, func.inner.lambda.rFuncSigId));
             return self.initGenValue(dst, sema.AnyType, true);
         } else {
             const operandStart = self.operandStack.items.len;
@@ -593,7 +600,9 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
             }
 
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
-            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, dst });
+            const start = self.buf.ops.items.len;
+            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, numParams, numCaptured, numLocals, 0, 0, dst });
+            self.buf.setOpArgU16(start + 5, @intCast(u16, func.inner.lambda.rFuncSigId));
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
             return self.initGenValue(dst, sema.AnyType, true);
         }
@@ -725,7 +734,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
         if (self.genGetResolvedSym(node.head.accessExpr.semaSymId)) |rsym| {
             const key = rsym.key.absResolvedSymKey;
             if (rsym.symT == .variable) {
-                if (self.compiler.vm.getVarSym(key.resolvedParentSymId, key.nameId)) |symId| {
+                if (self.compiler.vm.getVarSym(key.rParentSymId, key.nameId)) |symId| {
                     if (dstIsUsed) {
                         // Static variable.
                         try self.pushOptionalDebugSym(nodeId);       
@@ -737,8 +746,8 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                 }
             } else if (rsym.symT == .func) {
                 const localKey = sym.key.absLocalSymKey;
-                const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, localKey.nameId, rfsym.numParams);
+                const rfsym = self.compiler.semaResolvedFuncSyms.items[rsym.inner.func.rFuncSymId];
+                const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.rParentSymId, localKey.nameId, rfsym.rFuncSigId);
                 try self.buf.pushOp2(.staticFunc, @intCast(u8, rtSymId), dst);
                 return self.initGenValue(dst, sema.AnyType, true);
             }
@@ -1151,7 +1160,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     const sym = self.semaSyms.items[left.head.ident.semaSymId];
                     if (self.genGetResolvedSym(left.head.ident.semaSymId)) |rsym| {
                         const rightv = try self.genExpr(node.head.opAssignStmt.right, false);
-                        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+                        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.rParentSymId, sym.key.absLocalSymKey.nameId);
 
                         const tempLocal = try self.nextFreeTempLocal();
                         try self.pushOptionalDebugSym(nodeId);       
@@ -1180,7 +1189,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     const sym = self.semaSyms.items[left.head.ident.semaSymId];
                     if (self.genGetResolvedSym(left.head.ident.semaSymId)) |rsym| {
                         const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-                        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+                        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.rParentSymId, sym.key.absLocalSymKey.nameId);
                         try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
                     } else {
                         const name = sema.getName(self.compiler, sym.key.absLocalSymKey.nameId);
@@ -1251,7 +1260,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 const sym = self.semaSyms.items[left.head.ident.semaSymId];
                 if (self.genGetResolvedSym(left.head.ident.semaSymId)) |rsym| {
                     const rightv = try self.genRetainedTempExpr(node.head.left_right.right, false);
-                    const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+                    const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.rParentSymId, sym.key.absLocalSymKey.nameId);
                     try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), rightv.local);
                 } else {
                     const name = sema.getName(self.compiler, sym.key.absLocalSymKey.nameId);
@@ -1608,8 +1617,8 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .return_expr_stmt => {
             if (self.blocks.items.len == 1) {
                 var val: GenValue = undefined;
-                if (self.curBlock.resolvedFuncSymId != cy.NullId) {
-                    const retType = self.compiler.semaResolvedFuncSyms.items[self.curBlock.resolvedFuncSymId].retType;
+                if (self.curBlock.rFuncSymId != cy.NullId) {
+                    const retType = self.compiler.semaResolvedFuncSyms.items[self.curBlock.rFuncSymId].retType;
                     val = try self.genRetainedTempExpr2(node.head.child_head, retType, false);
                 } else {
                     val = try self.genRetainedTempExpr(node.head.child_head, false);
@@ -1882,7 +1891,9 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                 if (self.genGetResolvedSymId(callee.head.accessExpr.semaSymId)) |rsymId| {
                     const rsym = self.compiler.semaResolvedSyms.items[rsymId];
                     const sym = self.semaSyms.items[callee.head.accessExpr.semaSymId];
-                    if (self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams)) |funcSym| {
+
+                    const rFuncSigId = self.semaFuncSigs.items[sym.key.absLocalSymKey.funcSigId].rFuncSigId;
+                    if (self.genGetResolvedFuncSym(rsymId, rFuncSigId)) |funcSym| {
                         // Func sym.
                         var numArgs: u32 = undefined;
                         if (funcSym.declId != cy.NullId) {
@@ -1896,7 +1907,9 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
 
                         // var isStdCall = false;
                         const key = sym.key.absLocalSymKey;
-                        const symId = self.compiler.vm.getFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, key.nameId, key.numParams).?;
+
+                        const rParentSymId = rsym.key.absResolvedSymKey.rParentSymId;
+                        const symId = try self.compiler.vm.ensureFuncSym(rParentSymId, key.nameId, rFuncSigId);
                         if (discardTopExprReg) {
                             try self.pushDebugSym(nodeId);
                             try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
@@ -1948,8 +1961,10 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                 if (self.genGetResolvedSymId(callee.head.ident.semaSymId)) |rsymId| {
                     const sym = self.semaSyms.items[callee.head.ident.semaSymId];
                     const rsym = self.compiler.semaResolvedSyms.items[rsymId];
+
+                    const rFuncSigId = self.semaFuncSigs.items[sym.key.absLocalSymKey.funcSigId].rFuncSigId;
                     if (rsym.symT == .func) {
-                        const funcSym = self.genGetResolvedFuncSym(rsymId, sym.key.absLocalSymKey.numParams).?;
+                        const funcSym = self.genGetResolvedFuncSym(rsymId, rFuncSigId).?;
                         if (funcSym.declId != cy.NullId) {
                             const funcChunk = self.compiler.chunks.items[funcSym.chunkId];
                             const func = funcChunk.funcDecls[funcSym.declId];
@@ -2063,21 +2078,22 @@ fn genFuncValueCallExpr(self: *CompileChunk, node: cy.Node, callStartLocal: u8, 
     }
 }
 
-fn genFuncDecl(self: *CompileChunk, parentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !void {
+fn genFuncDecl(self: *CompileChunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !void {
     const node = self.nodes[nodeId];
     const func = self.funcDecls[node.head.func.decl_id];
-    const rsym = self.compiler.semaResolvedSyms.items[func.semaResolvedSymId];
+    const rsym = self.compiler.semaResolvedSyms.items[func.inner.staticFunc.semaResolvedSymId];
+    const rFuncSym = self.compiler.semaResolvedFuncSyms.items[func.inner.staticFunc.semaResolvedFuncSymId];
     const key = rsym.key.absResolvedSymKey;
     const numParams = @intCast(u8, func.params.end - func.params.start);
 
-    const symId = try self.compiler.vm.ensureFuncSym(parentSymId, key.nameId, numParams);
+    const symId = try self.compiler.vm.ensureFuncSym(rParentSymId, key.nameId, rFuncSym.rFuncSigId);
 
     const jumpPc = try self.pushEmptyJump();
 
     try self.pushBlock();
     try self.pushSemaBlock(func.semaBlockId);
     self.curBlock.frameLoc = nodeId;
-    self.curBlock.resolvedFuncSymId = func.semaResolvedFuncSymId;
+    self.curBlock.rFuncSymId = func.inner.staticFunc.semaResolvedFuncSymId;
 
     const jumpStackStart = self.blockJumpStack.items.len;
 
@@ -2093,6 +2109,7 @@ fn genFuncDecl(self: *CompileChunk, parentSymId: sema.ResolvedSymId, nodeId: cy.
     const sblock = sema.curBlock(self);
     const numLocals = @intCast(u32, self.curBlock.numLocals + self.curBlock.numTempLocals);
     const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
+    std.debug.assert(numCaptured == 0);
 
     self.patchJumpToCurrent(jumpPc);
 
@@ -2101,32 +2118,9 @@ fn genFuncDecl(self: *CompileChunk, parentSymId: sema.ResolvedSymId, nodeId: cy.
 
     self.popSemaBlock();
     self.popBlock();
-
-    if (numCaptured > 0) {
-        const operandStart = self.operandStack.items.len;
-        defer self.operandStack.items.len = operandStart;
-
-        // Push register operands to op.
-        for (sblock.params.items) |varId| {
-            const svar = self.vars.items[varId];
-            if (svar.isCaptured) {
-                const pId = self.capVarDescs.get(varId).?.user;
-                const pvar = &self.vars.items[pId];
-
-                if (svar.isBoxed and !pvar.isBoxed) {
-                    pvar.isBoxed = true;
-                    pvar.lifetimeRcCandidate = true;
-                }
-            }
-        }
-
-        const closure = try cy.heap.allocEmptyClosure(self.compiler.vm, opStart, numParams, @intCast(u8, numLocals), numCaptured);
-        const rtSym = cy.FuncSymbolEntry.initClosure(closure.asPointer(*cy.Closure));
-        self.compiler.vm.setFuncSym(symId, rtSym);
-    } else {
-        const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, numLocals), numParams);
-        self.compiler.vm.setFuncSym(symId, rtSym);
-    }
+    
+    const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, numLocals), numParams, rFuncSym.rFuncSigId);
+    self.compiler.vm.setFuncSym(symId, rtSym);
 }
 
 fn genCallArgs2(self: *CompileChunk, paramsChunk: *const CompileChunk, params: []const cy.FunctionParam, first: cy.NodeId) !u32 {
@@ -2167,7 +2161,7 @@ fn genStaticInitializerDeps(c: *CompileChunk, symId: sema.SymId) !void {
         for (deps) |dep| {
             const depSym = c.semaSyms.items[dep];
             // Only if it has a static initializer and hasn't been visited.
-            if (!c.semaSyms.items[dep].visited and sema.symHasStaticInitializer(c.compiler, &depSym)) {
+            if (!c.semaSyms.items[dep].visited and sema.symHasStaticInitializer(c, &depSym)) {
                 try genStaticInitializerDFS(c, dep);
             }
         }
@@ -2181,11 +2175,11 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) anyerror!void {
     sym.visited = true;
 
     // Check that the resolved sym hasn't already been visited for generation.
-    const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+    const rsym = self.compiler.semaResolvedSyms.items[sym.rSymId];
     if (rsym.genStaticInitVisited) {
         return;
     }
-    self.compiler.semaResolvedSyms.items[sym.resolvedSymId].genStaticInitVisited = true;
+    self.compiler.semaResolvedSyms.items[sym.rSymId].genStaticInitVisited = true;
 
     if (rsym.symT == .variable) {
         const declId = rsym.inner.variable.declId;
@@ -2201,13 +2195,14 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) anyerror!void {
         chunk.resetNextFreeTemp();
         const exprv = try chunk.genRetainedTempExpr(decl.head.varDecl.right, false);
 
-        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId);
+        const rtSymId = try self.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.rParentSymId, sym.key.absLocalSymKey.nameId);
         try self.buf.pushOp2(.setStaticVar, @intCast(u8, rtSymId), exprv.local);
     } else if (rsym.symT == .func) {
+        const rFuncSigId = self.semaFuncSigs.items[sym.key.absLocalSymKey.funcSigId].rFuncSigId;
         const key = sema.AbsResolvedFuncSymKey{
             .absResolvedFuncSymKey = .{
-                .resolvedSymId = sym.resolvedSymId,
-                .numParams = sym.key.absLocalSymKey.numParams,
+                .rSymId = sym.rSymId,
+                .rFuncSigId = rFuncSigId,
             },
         };
         const fsymId = self.compiler.semaResolvedFuncSymMap.get(key).?;
@@ -2224,7 +2219,7 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, symId: u32) anyerror!void {
         chunk.resetNextFreeTemp();
         const exprv = try chunk.genRetainedTempExpr(node.head.funcDeclInit.right, false);
 
-        const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, sym.key.absLocalSymKey.nameId, sym.key.absLocalSymKey.numParams);
+        const rtSymId = try self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.rParentSymId, sym.key.absLocalSymKey.nameId, rFuncSigId);
         try chunk.pushDebugSym(node.head.funcDeclInit.right);
         try self.buf.pushOp2(.setStaticFunc, @intCast(u8, rtSymId), exprv.local);
     } else {

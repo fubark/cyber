@@ -301,8 +301,10 @@ test "Imports." {
         \\try t.eq(a.varNum, 123)
     );
 
+    run.deinit();
+
     try std.os.chdir("../..");
-    _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
+    try evalPass(Config.initFileModules("./test/import_test.cy"), @embedFile("import_test.cy"));
 }
 
 test "Dump locals." {
@@ -318,9 +320,7 @@ test "Dump locals." {
 }
 
 test "core module" {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("core_test.cy"));
+    try evalPass(.{}, @embedFile("core_test.cy"));
 }
 
 test "os module" {
@@ -368,7 +368,8 @@ test "try value" {
     );
     try t.expectError(res, error.Panic);
 
-    _ = try run.eval(@embedFile("try_test.cy"));
+    run.deinit();
+    try evalPass(.{}, @embedFile("try_test.cy"));
 }
 
 test "Errors." {
@@ -1538,8 +1539,8 @@ test "Static functions." {
         \\foo(1)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Unsupported call signature: `foo(1 args)`.
-            \\A function with signature `foo(0 args)` exists.
+            \\panic: Unsupported call signature: `foo(any) any`.
+            \\A function with signature `foo() any` exists.
             \\
             \\main:3:1 main:
             \\foo(1)
@@ -1557,7 +1558,7 @@ test "Static functions." {
         \\foo(1, 2)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Unsupported call signature: `foo(2 args)`.
+            \\panic: Unsupported call signature: `foo(any, any) any`.
             \\There are multiple overloaded functions named `foo`
             \\
             \\main:5:1 main:
@@ -1644,9 +1645,7 @@ test "Static functions." {
         );
     }}.func);
 
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("static_func_test.cy"));
+    try evalPass(.{}, @embedFile("static_func_test.cy"));
 }
 
 test "Lambdas." {
@@ -2093,8 +2092,18 @@ fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!
         try cb(run, res);
     }  else {
         _ = res catch |err| {
-            if (err == error.Panic) {
-                try run.vm.printLastUserPanicError();
+            switch (err) {
+                error.Panic,
+                error.TokenError,
+                error.ParseError,
+                error.CompileError => {
+                    if (!cy.silentError) {
+                        const report = try run.vm.allocLastErrorReport();
+                        defer t.alloc.free(report);
+                        std.debug.print("{s}", .{report});
+                    }
+                },
+                else => {},
             }
             return err;
         };

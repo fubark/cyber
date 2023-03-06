@@ -46,7 +46,16 @@ pub const VMcompiler = struct {
     /// Resolved syms for functions only.
     /// The sym path and a signature is used as a key, since functions can be overloaded.
     semaResolvedFuncSyms: std.ArrayListUnmanaged(sema.ResolvedFuncSym),
-    semaResolvedFuncSymMap: std.HashMapUnmanaged(vm_.KeyU64, sema.ResolvedFuncSymId, vm_.KeyU64Context, 80),
+    semaResolvedFuncSymMap: std.HashMapUnmanaged(sema.AbsResolvedFuncSymKey, sema.ResolvedFuncSymId, vm_.KeyU64Context, 80),
+
+    /// Resolved signatures for functions.
+    semaResolvedFuncSigs: std.ArrayListUnmanaged(sema.ResolvedFuncSig),
+    semaResolvedFuncSigMap: std.HashMapUnmanaged([]const sema.ResolvedSymId, sema.ResolvedFuncSigId, U32SliceContext, 80),
+
+    /// Fast index to untyped func sig id by num params.
+    /// `NullId` indicates a missing func sig id.
+    /// TODO: If Cyber implements multiple return values, this would need to be a map.
+    semaResolvedUntypedFuncSigs: std.ArrayListUnmanaged(sema.ResolvedFuncSigId),
 
     /// Modules.
     modules: std.ArrayListUnmanaged(sema.Module),
@@ -63,6 +72,11 @@ pub const VMcompiler = struct {
 
     /// Imports are queued.
     importTasks: std.ArrayListUnmanaged(ImportTask),
+
+    /// Buffer for building func signatures.
+    tempTypes: std.ArrayListUnmanaged(sema.Type),
+    /// Reused for SymIds.
+    tempSyms: std.ArrayListUnmanaged(sema.ResolvedSymId),
 
     deinitedRtObjects: bool,
 
@@ -81,6 +95,9 @@ pub const VMcompiler = struct {
             .semaResolvedSymMap = .{},
             .semaResolvedFuncSyms = .{},
             .semaResolvedFuncSymMap = .{},
+            .semaResolvedFuncSigs = .{},
+            .semaResolvedFuncSigMap = .{},
+            .semaResolvedUntypedFuncSigs = .{},
             .modules = .{},
             .moduleMap = .{},
             .typeNames = .{},
@@ -88,6 +105,8 @@ pub const VMcompiler = struct {
             .importTasks = .{},
             .moduleLoaders = .{},
             .deinitedRtObjects = false,
+            .tempTypes = .{},
+            .tempSyms = .{},
         };
         try self.typeNames.put(self.alloc, "int", sema.IntegerType);
 
@@ -95,6 +114,8 @@ pub const VMcompiler = struct {
         try self.addModuleLoader("math", initModuleCompat("math", math_mod.initModule));
         try self.addModuleLoader("os", initModuleCompat("os", os_mod.initModule));
         try self.addModuleLoader("test", initModuleCompat("test", test_mod.initModule));
+
+        try self.reinit();    
     }
 
     pub fn deinitRtObjects(self: *VMcompiler) void {
@@ -190,13 +211,40 @@ pub const VMcompiler = struct {
             }
             self.moduleLoaders.deinit(self.alloc);
         }
+
+        if (reset) {
+            self.tempTypes.clearRetainingCapacity();
+            self.tempSyms.clearRetainingCapacity();
+        } else {
+            self.tempTypes.deinit(self.alloc);
+            self.tempSyms.deinit(self.alloc);
+        }
+
+        for (self.semaResolvedFuncSigs.items) |it| {
+            self.alloc.free(it.slice());
+        }
+        if (reset) {
+            self.semaResolvedFuncSigs.clearRetainingCapacity();
+            self.semaResolvedFuncSigMap.clearRetainingCapacity();
+            self.semaResolvedUntypedFuncSigs.clearRetainingCapacity();
+        } else {
+            self.semaResolvedFuncSigs.deinit(self.alloc);
+            self.semaResolvedFuncSigMap.deinit(self.alloc);
+            self.semaResolvedUntypedFuncSigs.deinit(self.alloc);
+        }
     }
 
-    pub fn resetCompiler(self: *VMcompiler) void {
-        self.deinit(true);
+    pub fn reinit(self: *VMcompiler) !void {
         self.deinitedRtObjects = false;
         self.lastErrNode = cy.NullId;
         self.lastErrChunk = cy.NullId;
+
+        var id = try sema.ensureNameSym(self, "any");
+        std.debug.assert(id == sema.NameAny);
+
+        // Add builtins types as resolved syms.
+        id = try sema.addResolvedBuiltinSym(self, .any, "any");
+        std.debug.assert(id == sema.SymBuiltinAny);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8) !ResultView {
@@ -301,7 +349,7 @@ pub const VMcompiler = struct {
             log.debug("resolving for chunk: {}", .{i});
             for (chunk.semaSyms.items, 0..) |sym, symId| {
                 // Only full symbol paths that are unresolved.
-                if (sym.used and sym.resolvedSymId == cy.NullId) {
+                if (sym.used and sym.rSymId == cy.NullId) {
                     try sema.resolveSym(chunk, @intCast(u32, symId));
                 }
             }
@@ -321,7 +369,7 @@ pub const VMcompiler = struct {
             for (chunk.semaSyms.items, 0..) |sym, i| {
                 const symId = @intCast(u32, i);
                 // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});
-                if (sym.used and sema.symHasStaticInitializer(self, &sym) and !sym.visited) {
+                if (sym.used and sema.symHasStaticInitializer(chunk, &sym) and !sym.visited) {
                     try gen.genStaticInitializerDFS(chunk, symId);
                 }
             }
@@ -780,28 +828,44 @@ pub const CompileChunk = struct {
     semaSubBlocks: std.ArrayListUnmanaged(sema.SubBlock),
     vars: std.ArrayListUnmanaged(sema.LocalVar),
     capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
+
     /// Local paths to syms.
     semaSyms: std.ArrayListUnmanaged(sema.Sym),
-    semaSymMap: std.HashMapUnmanaged(sema.AbsLocalSymKey, sema.SymId, vm_.KeyU96Context, 80),
+    semaSymMap: std.HashMapUnmanaged(sema.AbsLocalSymKey, sema.SymId, vm_.KeyU128Context, 80),
+
     /// Track first nodes that use the symbol for error reporting.
     semaSymFirstNodes: std.ArrayListUnmanaged(cy.NodeId),
+
     /// Mapping for local symbol aliases.
-    semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.SymRef),
+    semaSymToRef: std.AutoArrayHashMapUnmanaged(sema.NameSymId, sema.SymRef),
+
     /// Additional info for initializer symbols.
     semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.SymId, sema.InitializerSym),
+
+    /// Local func sigs.
+    semaFuncSigs: std.ArrayListUnmanaged(sema.FuncSig),
+    semaFuncSigMap: std.HashMapUnmanaged([]const sema.SymId, sema.FuncSigId, U32SliceContext, 80),
+    semaUntypedFuncSigs: std.ArrayListUnmanaged(sema.FuncSigId),
+
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     curSemaBlockId: sema.BlockId,
     curSemaSubBlockId: sema.SubBlockId,
+
     /// Which sema sym var is currently being analyzed for an assignment initializer.
     curSemaSymVar: u32,
+
     /// When looking at a var declaration, keep track of which symbols are already recorded as dependencies.
     semaVarDeclDeps: std.AutoHashMapUnmanaged(u32, void),
+
     /// Currently used to store lists of static var dependencies.
     bufU32: std.ArrayListUnmanaged(u32),
+
     /// The resolved sym id of this chunk.
     semaResolvedRootSymId: sema.ResolvedSymId,
+
     /// Current block stack.
     semaBlockStack: std.ArrayListUnmanaged(sema.BlockId),
+
     /// Main sema block id.
     mainSemaBlockId: sema.BlockId,
 
@@ -811,12 +875,16 @@ pub const CompileChunk = struct {
     blocks: std.ArrayListUnmanaged(GenBlock),
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
     subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
+
     /// Tracks which temp locals are reserved. They are skipped for temp local allocations.
     reservedTempLocalStack: std.ArrayListUnmanaged(ReservedTempLocal),
+
     operandStack: std.ArrayListUnmanaged(cy.OpData),
+
     /// Used to advance to the next saved sema sub block.
     nextSemaSubBlockId: u32,
     curBlock: *GenBlock,
+
     /// Shared code buffer.
     buf: *cy.ByteCodeBuffer,
 
@@ -875,6 +943,9 @@ pub const CompileChunk = struct {
             .semaResolvedRootSymId = cy.NullId,
             .semaBlockStack = .{},
             .mainSemaBlockId = cy.NullId,
+            .semaFuncSigs = .{},
+            .semaFuncSigMap = .{},
+            .semaUntypedFuncSigs = .{},
         };
         try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
         try new.parser.nodes.ensureTotalCapacityPrecise(c.alloc, 127);
@@ -914,6 +985,14 @@ pub const CompileChunk = struct {
         self.semaSymFirstNodes.deinit(self.alloc);
         self.semaSymToRef.deinit(self.alloc);
         self.semaInitializerSyms.deinit(self.alloc);
+
+        self.semaFuncSigMap.deinit(self.alloc);
+        for (self.semaFuncSigs.items) |sig| {
+            self.alloc.free(sig.sig);
+        }
+        self.semaFuncSigs.deinit(self.alloc);
+        self.semaUntypedFuncSigs.deinit(self.alloc);
+
         self.parser.deinit();
         if (self.srcOwned) {
             self.alloc.free(self.src);
@@ -1253,20 +1332,21 @@ pub const CompileChunk = struct {
     pub fn genEnsureRtFuncSym(self: *CompileChunk, symId: sema.SymId) !u32 {
         const sym = self.semaSyms.items[symId];
         const key = sym.key.absLocalSymKey;
-        if (sym.resolvedSymId != cy.NullId) {
-            const rsym = self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
-            return self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.resolvedParentSymId, key.nameId, key.numParams);
+        const rFuncSigId = self.semaFuncSigs.items[key.funcSigId].rFuncSigId;
+        if (sym.rSymId != cy.NullId) {
+            const rsym = self.compiler.semaResolvedSyms.items[sym.rSymId];
+            return self.compiler.vm.ensureFuncSym(rsym.key.absResolvedSymKey.rParentSymId, key.nameId, rFuncSigId);
         } else {
             // Undefined namespace is NullId-1 so it doesn't conflict with the root.
-            return self.compiler.vm.ensureFuncSym(cy.NullId-1, key.nameId, key.numParams);
+            return self.compiler.vm.ensureFuncSym(cy.NullId-1, key.nameId, rFuncSigId);
         }
     }
 
-    pub fn genGetResolvedFuncSym(self: *const CompileChunk, resolvedSymId: sema.ResolvedSymId, numParams: u32) ?sema.ResolvedFuncSym {
-        const key = vm_.KeyU64{
+    pub fn genGetResolvedFuncSym(self: *const CompileChunk, rSymId: sema.ResolvedSymId, rFuncSigId: sema.ResolvedFuncSigId) ?sema.ResolvedFuncSym {
+        const key = sema.AbsResolvedSymKey{
             .absResolvedFuncSymKey = .{
-                .resolvedSymId = resolvedSymId,
-                .numParams = numParams,
+                .rSymId = rSymId,
+                .rFuncSigId = rFuncSigId,
             },
         };
         if (self.compiler.semaResolvedFuncSymMap.get(key)) |id| {
@@ -1278,8 +1358,8 @@ pub const CompileChunk = struct {
 
     pub fn genGetResolvedSymId(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSymId {
         const sym = self.semaSyms.items[semaSymId];
-        if (sym.resolvedSymId != cy.NullId) {
-            return sym.resolvedSymId;
+        if (sym.rSymId != cy.NullId) {
+            return sym.rSymId;
         } else {
             return null;
         }
@@ -1288,8 +1368,8 @@ pub const CompileChunk = struct {
     pub fn genGetResolvedSym(self: *const CompileChunk, semaSymId: sema.SymId) ?sema.ResolvedSym {
         if (semaSymId != cy.NullId) {
             const sym = self.semaSyms.items[semaSymId];
-            if (sym.resolvedSymId != cy.NullId) {
-                return self.compiler.semaResolvedSyms.items[sym.resolvedSymId];
+            if (sym.rSymId != cy.NullId) {
+                return self.compiler.semaResolvedSyms.items[sym.rSymId];
             }
         }
         return null;
@@ -1554,7 +1634,7 @@ const GenBlock = struct {
     /// Does not include temp locals.
     numLocals: u32,
     frameLoc: cy.NodeId = cy.NullId,
-    resolvedFuncSymId: sema.ResolvedFuncSymId = cy.NullId,
+    rFuncSymId: sema.ResolvedFuncSymId = cy.NullId,
     endLocalsPc: u32,
 
     /// These are used for rvalues and function args.
@@ -1640,3 +1720,13 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMc
     }.initCompat;
 }
 
+pub const U32SliceContext = struct {
+    pub fn hash(_: @This(), key: []const u32) u64 {
+        var c = std.hash.Wyhash.init(0);
+        c.update(@ptrCast([*]const u8, key.ptr)[0..key.len*4]);
+        return c.final();
+    }
+    pub fn eql(_: @This(), a: []const u32, b: []const u32) bool {
+        return std.mem.eql(u32, a, b);
+    }
+};

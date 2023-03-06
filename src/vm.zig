@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const aarch64 = builtin.cpu.arch == .aarch64;
 const stdx = @import("stdx");
+const fatal = stdx.fatal;
 const t = stdx.testing;
 const tcc = @import("tcc");
 
@@ -278,7 +279,7 @@ pub const VM = struct {
 
         // Deinit compiler first since it depends on buffers from parser.
         if (reset) {
-            self.compiler.resetCompiler();
+            self.compiler.deinit(true);
         } else {
             self.compiler.deinit(false);
         }
@@ -438,6 +439,8 @@ pub const VM = struct {
 
         // Before reinit, everything in VM, VMcompiler should be cleared.
 
+        try self.compiler.reinit();
+
         // Core bindings.
         try @call(.never_inline, bindings.bindCore, .{self});
     }
@@ -498,7 +501,7 @@ pub const VM = struct {
             tt.endPrint("eval");
             if (TraceEnabled) {
                 if (!builtin.is_test or debug.atLeastTestDebugLevel()) {
-                    self.dumpInfo();
+                    self.dumpInfo() catch fatal();
                 }
             }
         }
@@ -525,7 +528,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn dumpInfo(self: *VM) void {
+    pub fn dumpInfo(self: *VM) !void {
         fmt.printStderr("stack size: {}\n", &.{v(self.stack.len)});
         fmt.printStderr("stack framePtr: {}\n", &.{v(framePtrOffset(self, self.framePtr))});
         fmt.printStderr("heap pages: {}\n", &.{v(self.heapPages.len)});
@@ -540,10 +543,11 @@ pub const VM = struct {
             while (iter.next()) |it| {
                 const key = it.key_ptr.*;
                 const name = sema.getName(&self.compiler, key.rtFuncSymKey.nameId);
-                if (key.rtFuncSymKey.numParams == cy.NullId) {
+                if (key.rtFuncSymKey.rFuncSigId == cy.NullId) {
                     fmt.printStderr("\t{}: {}\n", &.{v(name), v(it.value_ptr.*)});
                 } else {
-                    fmt.printStderr("\t{}({}): {}\n", &.{v(name), v(key.rtFuncSymKey.numParams), v(it.value_ptr.*)});
+                    const sigStr = try sema.getResolvedFuncSigTempStr(&self.compiler, key.rtFuncSymKey.rFuncSigId);
+                    fmt.printStderr("\t{}{}: {}\n", &.{v(name), v(sigStr), v(it.value_ptr.*)});
                 }
             }
         }
@@ -728,15 +732,15 @@ pub const VM = struct {
         return error.TooManyAttempts;
     }
 
-    pub fn ensureObjectType(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
+    pub fn ensureObjectType(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
         const res = try @call(.never_inline, self.structSignatures.getOrPut, .{self.alloc, .{
             .structKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
             },
         }});
         if (!res.found_existing) {
-            return self.addObjectTypeExt(resolvedParentId, nameId);
+            return self.addObjectTypeExt(rParentSymId, nameId);
         } else {
             return res.value_ptr.*;
         }
@@ -767,16 +771,16 @@ pub const VM = struct {
         return id;
     }
 
-    pub inline fn getObjectTypeId(self: *const VM, resolvedParentId: sema.ResolvedSymId, nameId: sema.NameSymId) ?TypeId {
+    pub inline fn getObjectTypeId(self: *const VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) ?TypeId {
         return self.structSignatures.get(.{
             .structKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
             },
         });
     }
 
-    pub fn addObjectTypeExt(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
+    pub fn addObjectTypeExt(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
         const name = sema.getName(&self.compiler, nameId);
         const s = Struct{
             .name = name,
@@ -786,7 +790,7 @@ pub const VM = struct {
         try self.structs.append(self.alloc, s);
         try self.structSignatures.put(self.alloc, .{
             .structKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
             },
         }, id);
@@ -798,31 +802,31 @@ pub const VM = struct {
         return self.addObjectTypeExt(cy.NullId, nameId);
     }
 
-    pub inline fn getFuncSym(self: *const VM, resolvedParentId: u32, nameId: u32, numParams: u32) ?SymbolId {
+    pub inline fn getFuncSym(self: *const VM, rParentSymId: u32, nameId: u32, rFuncSigId: sema.ResolvedFuncSigId) ?SymbolId {
         const key = AbsFuncSigKey{
             .rtFuncSymKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
-                .numParams = numParams,
+                .rFuncSigId = rFuncSigId,
             },
         };
         return self.funcSymSigs.get(key);
     }
 
-    pub inline fn getVarSym(self: *const VM, resolvedParentId: u32, nameId: u32) ?SymbolId {
-        const key = AbsVarSigKey{
+    pub inline fn getVarSym(self: *const VM, rParentSymId: u32, nameId: u32) ?SymbolId {
+        const key = RtVarSymKey{
             .rtVarSymKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
             }
         };
         return self.varSymSigs.get(key);
     }
 
-    pub fn ensureVarSym(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: u32) !SymbolId {
-        const key = KeyU64{
+    pub fn ensureVarSym(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: u32) !SymbolId {
+        const key = RtVarSymKey{
             .rtVarSymKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
             },
         };
@@ -837,22 +841,27 @@ pub const VM = struct {
         }
     }
     
-    pub fn ensureFuncSym(self: *VM, resolvedParentId: sema.ResolvedSymId, nameId: u32, numParams: u32) !SymbolId {
-        const key = KeyU96{
+    pub fn ensureFuncSym(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: u32, rFuncSigId: sema.ResolvedFuncSigId) !SymbolId {
+        const key = RtFuncSymKey{
             .rtFuncSymKey = .{
-                .resolvedParentSymId = resolvedParentId,
+                .rParentSymId = rParentSymId,
                 .nameId = nameId,
-                .numParams = numParams,
+                .rFuncSigId = rFuncSigId,
             },
         };
         const res = try self.funcSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.funcSyms.len);
+
+            // const rFuncSig = self.compiler.semaResolvedFuncSigs.items[rFuncSigId];
+            // const typedFlag: u16 = if (rFuncSig.isTyped) 1 << 15 else 0;
             try self.funcSyms.append(self.alloc, .{
                 .entryT = @enumToInt(FuncSymbolEntryType.none),
                 .innerExtra = .{
                     .none = .{
-                        .numParams = numParams,
+                        // .typedFlagNumParams = typedFlag | rFuncSig.numParams(),
+                        // .rFuncSigId = @intCast(u16, rFuncSigId),
+                        .rFuncSigId = rFuncSigId,
                     },
                 },
                 .inner = undefined,
@@ -1466,14 +1475,14 @@ pub const VM = struct {
             const key = chunk.semaSyms.items[symId].key.absLocalSymKey;
             const name = cy.sema.getName(&vm.compiler, key.nameId);
             var rpSymId: sema.ResolvedSymId = undefined;
-            if (key.localParentSymId == cy.NullId) {
+            if (key.parentSymId == cy.NullId) {
                 rpSymId = chunk.semaResolvedRootSymId;
             } else {
-                rpSymId = chunk.semaSyms.items[key.localParentSymId].resolvedSymId;
+                rpSymId = chunk.semaSyms.items[key.parentSymId].rSymId;
             }
             const rkey = sema.AbsResolvedSymKey{
                 .absResolvedSymKey = .{
-                    .resolvedParentSymId = rpSymId,
+                    .rParentSymId = rpSymId,
                     .nameId = key.nameId,
                 },
             };
@@ -1481,14 +1490,24 @@ pub const VM = struct {
                 const rsym = vm.compiler.semaResolvedSyms.items[rsymId];
                 if (rsym.symT == .func) {
                     const rtSym = vm.funcSyms.buf[rtSymId];
-                    if (rsym.inner.func.resolvedFuncSymId == cy.NullId) {
-                        return vm.panicFmt("Unsupported call signature: `{}({} args)`.\nThere are multiple overloaded functions named `{}`", &.{
-                            v(name), v(rtSym.innerExtra.none.numParams), v(name),
+                    if (rsym.inner.func.rFuncSymId == cy.NullId) {
+                        const sigStr = try sema.getResolvedFuncSigTempStr(&vm.compiler, rtSym.innerExtra.none.rFuncSigId);
+                        return vm.panicFmt("Unsupported call signature: `{}{}`.\nThere are multiple overloaded functions named `{}`", &.{
+                            v(name), v(sigStr), v(name),
                         });
                     } else {
-                        const rfSym = vm.compiler.semaResolvedFuncSyms.items[rsym.inner.func.resolvedFuncSymId];
-                        return vm.panicFmt("Unsupported call signature: `{}({} args)`.\nA function with signature `{}({} args)` exists.", &.{
-                            v(name), v(rtSym.innerExtra.none.numParams), v(name), v(rfSym.numParams),
+                        const rfSym = vm.compiler.semaResolvedFuncSyms.items[rsym.inner.func.rFuncSymId];
+
+                        vm.u8Buf.clearRetainingCapacity();
+                        const w = vm.u8Buf.writer(vm.alloc);
+                        cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, rtSym.innerExtra.none.rFuncSigId) catch fatal();
+                        const rtSigStr = vm.u8Buf.items();
+                        const start = vm.u8Buf.len;
+                        cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, rfSym.rFuncSigId) catch fatal();
+                        const existingSigStr = vm.u8Buf.buf[start..vm.u8Buf.len];
+
+                        return vm.panicFmt("Unsupported call signature: `{}{}`.\nA function with signature `{}{}` exists.", &.{
+                            v(name), v(rtSigStr), v(name), v(existingSigStr),
                         });
                     }
                 }
@@ -2450,10 +2469,18 @@ pub const FuncSymbolEntry = extern struct {
     innerExtra: extern union {
         nativeFunc1: extern struct {
             /// Used to wrap a native func as a function value.
-            numParams: u32,
+            typedFlagNumParams: u16,
+            rFuncSigId: u16,
+
+            pub fn numParams(self: @This()) u16 {
+                return self.typedFlagNumParams & ~(@as(u16, 1) << 15);
+            }
         },
         none: extern struct {
-            numParams: u32,
+            rFuncSigId: u32,
+        },
+        func: extern struct {
+            rFuncSigId: u32,
         },
     } = undefined,
     inner: extern union {
@@ -2468,12 +2495,14 @@ pub const FuncSymbolEntry = extern struct {
         closure: *cy.Closure,
     },
 
-    pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value, numParams: u32) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value, isTyped: bool, numParams: u32, rFuncSigId: sema.ResolvedFuncSigId) FuncSymbolEntry {
+        const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
             .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
             .innerExtra = .{
                 .nativeFunc1 = .{
-                    .numParams = numParams,
+                    .typedFlagNumParams = isTypedMask | @intCast(u16, numParams),
+                    .rFuncSigId = @intCast(u16, rFuncSigId),
                 }
             },
             .inner = .{
@@ -2482,9 +2511,14 @@ pub const FuncSymbolEntry = extern struct {
         };
     }
 
-    pub fn initFunc(pc: usize, numLocals: u16, numParams: u16) FuncSymbolEntry {
+    pub fn initFunc(pc: usize, numLocals: u16, numParams: u16, rFuncSigId: cy.sema.ResolvedFuncSigId) FuncSymbolEntry {
         return .{
             .entryT = @enumToInt(FuncSymbolEntryType.func),
+            .innerExtra = .{
+                .func = .{
+                    .rFuncSigId = rFuncSigId,
+                },
+            },
             .inner = .{
                 .func = .{
                     .pc = @intCast(u32, pc),
@@ -3645,9 +3679,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const funcPc = pcOffset(vm, pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const numLocals = pc[3].arg;
-                const dst = pc[4].arg;
-                pc += 5;
-                framePtr[dst] = try @call(.never_inline, cy.heap.allocLambda, .{vm, funcPc, numParams, numLocals});
+                const rFuncSigId = @ptrCast(*const align(1) u16, pc + 4).*;
+                const dst = pc[6].arg;
+                pc += 7;
+                framePtr[dst] = try @call(.never_inline, cy.heap.allocLambda, .{vm, funcPc, numParams, numLocals, rFuncSigId });
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -3659,11 +3694,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numParams = pc[2].arg;
                 const numCaptured = pc[3].arg;
                 const numLocals = pc[4].arg;
-                const dst = pc[5].arg;
-                const capturedVals = pc[6..6+numCaptured];
-                pc += 6 + numCaptured;
+                const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+                const dst = pc[7].arg;
+                const capturedVals = pc[8..8+numCaptured];
+                pc += 8 + numCaptured;
 
-                framePtr[dst] = try @call(.never_inline, cy.heap.allocClosure, .{vm, framePtr, funcPc, numParams, numLocals, capturedVals});
+                framePtr[dst] = try @call(.never_inline, cy.heap.allocClosure, .{vm, framePtr, funcPc, numParams, numLocals, rFuncSigId, capturedVals});
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -4586,6 +4622,8 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
 }
 
 const RelFuncSigKey = KeyU64;
+const RtFuncSymKey = KeyU96;
+const RtVarSymKey = KeyU64;
 
 pub const KeyU96 = extern union {
     val: extern struct {
@@ -4593,15 +4631,15 @@ pub const KeyU96 = extern union {
         b: u32,
     },
     absLocalSymKey: extern struct {
-        localParentSymId: u32,
-        nameId: u32,
+        parentSymId: sema.ResolvedSymId,
+        nameId: sema.NameSymId,
         numParams: u32,
     },
     rtFuncSymKey: extern struct {
         // TODO: Is it enough to just use the final resolved func sym id?
-        resolvedParentSymId: u32,
-        nameId: u32,
-        numParams: u32,
+        rParentSymId: sema.ResolvedSymId,
+        nameId: sema.NameSymId,
+        rFuncSigId: sema.ResolvedFuncSigId,
     },
 };
 
@@ -4617,31 +4655,55 @@ pub const KeyU96Context = struct {
     }
 };
 
+pub const KeyU128 = extern union {
+    val: extern struct {
+        left: u64,
+        right: u64,
+    },
+    absLocalSymKey: extern struct {
+        parentSymId: u32,
+        nameId: u32,
+        funcSigId: u32, 
+        dummy: u32 = 0, 
+    },
+};
+
+pub const KeyU128Context = struct {
+    pub fn hash(_: @This(), key: KeyU128) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.val)});
+        return hasher.final();
+    }
+    pub fn eql(_: @This(), a: KeyU128, b: KeyU128) bool {
+        return a.val.left == b.val.left and a.val.right == b.val.right;
+    }
+};
+
 pub const KeyU64 = extern union {
     val: u64,
     absResolvedSymKey: extern struct {
-        resolvedParentSymId: u32,
+        rParentSymId: u32,
         nameId: u32,
     },
     absResolvedFuncSymKey: extern struct {
-        resolvedSymId: sema.ResolvedSymId,
-        numParams: u32,
+        rSymId: sema.ResolvedSymId,
+        rFuncSigId: sema.ResolvedFuncSigId,
     },
     relModuleSymKey: extern struct {
-        nameId: u32,
-        numParams: u32,
+        nameId: sema.NameSymId,
+        rFuncSigId: sema.ResolvedFuncSigId,
     },
     rtVarSymKey: extern struct {
-        resolvedParentSymId: u32,
-        nameId: u32,
+        rParentSymId: sema.ResolvedSymId,
+        nameId: sema.NameSymId,
     },
     relFuncSigKey: extern struct {
-        nameId: u32,
+        nameId: sema.NameSymId,
         numParams: u32,
     },
     structKey: extern struct {
-        resolvedParentSymId: u32,
-        nameId: u32,
+        rParentSymId: sema.ResolvedSymId,
+        nameId: sema.NameSymId,
     },
 };
 
@@ -4761,16 +4823,19 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
         const obj = val.asHeapObject();
         switch (obj.common.structId) {
             cy.NativeFunc1S => {
-                const reqNumParams = getFuncSymSig(vm, symId);
-                if (reqNumParams != obj.nativeFunc1.numParams) {
+                const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
+                if (dstRFuncSigId != obj.nativeFunc1.rFuncSigId) {
                     return vm.panic("Assigning to static function with a different function signature.");
                 }
                 releaseFuncSymDep(vm, symId);
+
+                const rFuncSig = vm.compiler.semaResolvedFuncSigs.items[dstRFuncSigId];
                 vm.funcSyms.buf[symId] = .{
                     .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
                     .innerExtra = .{
                         .nativeFunc1 = .{
-                            .numParams = reqNumParams,
+                            .typedFlagNumParams = rFuncSig.numParams(),
+                            .rFuncSigId = @intCast(u16, dstRFuncSigId),
                         }
                     },
                     .inner = .{
@@ -4780,9 +4845,16 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 vm.funcSymDeps.put(vm.alloc, symId, val) catch stdx.fatal();
             },
             cy.LambdaS => {
-                const reqNumParams = getFuncSymSig(vm, symId);
-                if (reqNumParams != obj.lambda.numParams) {
-                    return vm.panic("Assigning to static function with a different function signature.");
+                const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
+                if (dstRFuncSigId != obj.lambda.rFuncSigId) {
+                    vm.u8Buf.clearRetainingCapacity();
+                    const w = vm.u8Buf.writer(vm.alloc);
+                    cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, dstRFuncSigId) catch fatal();
+                    const dstSig = vm.u8Buf.items();
+                    const start = vm.u8Buf.len;
+                    cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, @intCast(u32, obj.lambda.rFuncSigId)) catch fatal();
+                    const srcSig = vm.u8Buf.buf[start..vm.u8Buf.len];
+                    return vm.panicFmt("Assigning to static function `sig: {}` with a different function signature `sig: {}`.", &.{v(dstSig), v(srcSig)});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
@@ -4798,8 +4870,8 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 vm.funcSymDeps.put(vm.alloc, symId, val) catch stdx.fatal();
             },
             cy.ClosureS => {
-                const reqNumParams = getFuncSymSig(vm, symId);
-                if (reqNumParams != obj.closure.numParams) {
+                const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
+                if (dstRFuncSigId != obj.closure.rFuncSigId) {
                     return vm.panic("Assigning to static function with a different function signature.");
                 }
                 releaseFuncSymDep(vm, symId);
@@ -4820,19 +4892,19 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
     }
 }
 
-fn getFuncSymSig(vm: *const VM, symId: SymbolId) u32 {
+fn getResolvedFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.ResolvedFuncSigId {
     switch (@intToEnum(FuncSymbolEntryType, vm.funcSyms.buf[symId].entryT)) {
         .nativeFunc1 => {
-            return vm.funcSyms.buf[symId].innerExtra.nativeFunc1.numParams;
+            return vm.funcSyms.buf[symId].innerExtra.nativeFunc1.rFuncSigId;
         },
         .func => {
-            return vm.funcSyms.buf[symId].inner.func.numParams;
+            return vm.funcSyms.buf[symId].innerExtra.func.rFuncSigId;
         },
         .closure => {
-            return vm.funcSyms.buf[symId].inner.closure.numParams;
+            return @intCast(u32, vm.funcSyms.buf[symId].inner.closure.rFuncSigId);
         },
         .none => {
-            return vm.funcSyms.buf[symId].innerExtra.none.numParams;
+            return vm.funcSyms.buf[symId].innerExtra.none.rFuncSigId;
         },
     }
 }

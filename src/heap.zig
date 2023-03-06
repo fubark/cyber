@@ -183,6 +183,7 @@ pub const Closure = extern struct {
     /// Includes locals, captured vars, and return info. Does not include params.
     numLocals: u8,
     padding: u8,
+    rFuncSigId: u64,
     firstCapturedVal: Value,
 
     pub inline fn getCapturedValuesPtr(self: *Closure) [*]Value {
@@ -197,6 +198,8 @@ const Lambda = extern struct {
     numParams: u8,
     /// Includes locals and return info. Does not include params.
     numLocals: u8,
+    padding: u16 = 0,
+    rFuncSigId: u64,
 };
 
 /// 28 byte length can fit inside a Heap pool object.
@@ -335,6 +338,7 @@ const NativeFunc1 = extern struct {
     rc: u32,
     func: *const fn (*cy.UserVM, [*]const Value, u8) Value,
     numParams: u32,
+    rFuncSigId: u32,
     tccState: Value,
     hasTccState: bool,
 };
@@ -684,39 +688,9 @@ pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Val
     return Value.initPtr(obj);
 }
 
-pub fn allocEmptyClosure(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8, numCaptured: u8) !Value {
+pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16, capturedVals: []const cy.OpData) !Value {
     var obj: *HeapObject = undefined;
-    if (numCaptured <= 3) {
-        obj = try allocPoolObject(self);
-    } else {
-        const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 2 + numCaptured);
-        obj = @ptrCast(*HeapObject, objSlice.ptr);
-        if (cy.TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (cy.TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
-    }
-    obj.closure = .{
-        .structId = ClosureS,
-        .rc = 1,
-        .funcPc = @intCast(u32, funcPc),
-        .numParams = numParams,
-        .numLocals = numLocals,
-        .numCaptured = numCaptured,
-        .padding = undefined,
-        .firstCapturedVal = undefined,
-    };
-    const dst = obj.closure.getCapturedValuesPtr()[0..numCaptured];
-    std.mem.set(Value, dst, Value.None);
-    return Value.initPtr(obj);
-}
-
-pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, capturedVals: []const cy.OpData) !Value {
-    var obj: *HeapObject = undefined;
-    if (capturedVals.len <= 3) {
+    if (capturedVals.len <= 2) {
         obj = try allocPoolObject(self);
     } else {
         const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 2 + capturedVals.len);
@@ -737,6 +711,7 @@ pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: 
         .numLocals = numLocals,
         .numCaptured = @intCast(u8, capturedVals.len),
         .padding = undefined,
+        .rFuncSigId = rFuncSigId,
         .firstCapturedVal = undefined,
     };
     const dst = obj.closure.getCapturedValuesPtr();
@@ -746,7 +721,7 @@ pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: 
     return Value.initPtr(obj);
 }
 
-pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8) !Value {
+pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16) !Value {
     const obj = try allocPoolObject(self);
     obj.lambda = .{
         .structId = LambdaS,
@@ -754,6 +729,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8) !V
         .funcPc = @intCast(u32, funcPc),
         .numParams = numParams,
         .numLocals = numLocals,
+        .rFuncSigId = rFuncSigId,
     };
     return Value.initPtr(obj);
 }
@@ -1167,13 +1143,14 @@ pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, tccState: ?Value) !Value {
+pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, rFuncSigId: cy.sema.ResolvedFuncSigId, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
         .structId = NativeFunc1S,
         .rc = 1,
         .func = func,
         .numParams = numParams,
+        .rFuncSigId = rFuncSigId,
         .tccState = undefined,
         .hasTccState = false,
     };
@@ -1331,10 +1308,16 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
     const sym = self.funcSyms.buf[symId];
     switch (@intToEnum(cy.vm.FuncSymbolEntryType, sym.entryT)) {
         .nativeFunc1 => {
-            return allocNativeFunc1(self, sym.inner.nativeFunc1, sym.innerExtra.nativeFunc1.numParams, null);
+            const rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
+            const numParams = sym.innerExtra.nativeFunc1.numParams();
+            return allocNativeFunc1(self, sym.inner.nativeFunc1, numParams, rFuncSigId, null);
         },
         .func => {
-            return allocLambda(self, sym.inner.func.pc, @intCast(u8, sym.inner.func.numParams), @intCast(u8, sym.inner.func.numLocals));
+            return allocLambda(self, sym.inner.func.pc,
+                @intCast(u8, sym.inner.func.numParams),
+                @intCast(u8, sym.inner.func.numLocals),
+                @intCast(u16, sym.innerExtra.func.rFuncSigId)
+            );
         },
         .closure => {
             cy.arc.retainObject(self, @ptrCast(*HeapObject, sym.inner.closure));

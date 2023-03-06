@@ -176,7 +176,8 @@ export fn cyValueAllocMap(vm: *cy.UserVM) Value {
 }
 
 export fn cyValueAllocNativeFunc(vm: *cy.UserVM, func: c.CyFunc, numParams: u32) Value {
-    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(cy.NativeFuncPtr, func), numParams, null) catch fatal();
+    const rFuncSigId = vm.ensureUntypedFuncSig(numParams) catch fatal();
+    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(cy.NativeFuncPtr, func), numParams, rFuncSigId, null) catch fatal();
 }
 
 export fn cyValueTagLiteral(vm: *cy.UserVM, str: c.CStr) Value {

@@ -1041,7 +1041,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             const cargsv = try ivm.getField2(cfunc.decl, argsf);
             const cargs = cargsv.asPointer(*cy.CyList).items();
             const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
-            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), cyState) catch stdx.fatal();
+
+            const rFuncSigId = try vm.ensureUntypedFuncSig(@intCast(u32, cargs.len));
+            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), rFuncSigId, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
         }
         iter = ctx.symToCStructFields.iterator();
@@ -1056,7 +1058,9 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
 
             const symKey = vm.allocAstringConcat("ptrTo", typeName) catch stdx.fatal();
             const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
-            const funcVal = cy.heap.allocNativeFunc1(ivm, func, 1, cyState) catch stdx.fatal();
+
+            const rFuncSigId = try vm.ensureUntypedFuncSig(1);
+            const funcVal = cy.heap.allocNativeFunc1(ivm, func, 1, rFuncSigId, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
         }
         success = true;

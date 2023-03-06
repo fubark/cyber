@@ -34,6 +34,10 @@ pub const UserVM = struct {
         return @ptrCast(*const cy.VM, self);
     }
 
+    pub fn ensureUntypedFuncSig(self: *UserVM, numParams: u32) !cy.sema.ResolvedFuncSigId {
+        return cy.sema.ensureResolvedUntypedFuncSig(&self.internal().compiler, numParams);
+    }
+
     pub fn getUserData(self: *UserVM) ?*anyopaque {
         return self.internal().userData;
     }
@@ -97,8 +101,8 @@ pub const UserVM = struct {
         try cy.debug.printLastUserPanicError(self.constInternal());
     }
 
-    pub fn dumpInfo(self: *UserVM) void {
-        self.internal().dumpInfo();
+    pub fn dumpInfo(self: *UserVM) !void {
+        try self.internal().dumpInfo();
     }
 
     pub fn dumpStats(self: *UserVM) void {

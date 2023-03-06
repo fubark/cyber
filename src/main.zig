@@ -210,7 +210,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     };
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
-        vm.dumpInfo();
+        try vm.dumpInfo();
         if (TraceEnabled) {
             vm.dumpStats();
         }

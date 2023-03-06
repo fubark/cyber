@@ -336,6 +336,9 @@ pub const Parser = struct {
             .name = undefined,
             .params = stdx.IndexSlice(u32).init(@intCast(u32, self.func_params.items.len), @intCast(u32, self.func_params.items.len+1)),
             .return_type = null,
+            .inner = .{
+                .lambda = .{},
+            },
             .isStatic = false,
         };
 
@@ -374,6 +377,9 @@ pub const Parser = struct {
             .name = undefined,
             .params = stdx.IndexSlice(u32).init(0, 0),
             .return_type = null,
+            .inner = .{
+                .lambda = .{},
+            },
             .isStatic = false,
         };
 
@@ -405,6 +411,9 @@ pub const Parser = struct {
             .name = undefined,
             .params = undefined,
             .return_type = null,
+            .inner = .{
+                .lambda = .{},
+            },
             .isStatic = false,
         };
 
@@ -441,6 +450,9 @@ pub const Parser = struct {
             .name = cy.NullId,
             .params = undefined,
             .return_type = null,
+            .inner = .{
+                .lambda = .{},
+            },
             .isStatic = false,
         };
 
@@ -806,6 +818,9 @@ pub const Parser = struct {
             .name = undefined,
             .params = undefined,
             .return_type = null,
+            .inner = .{
+                .staticFunc = .{},
+            },
             .isStatic = true,
         };
 
@@ -3616,8 +3631,15 @@ pub const FuncDecl = struct {
     /// If the func decl has an initializer then this is repurposed to point to the decl's node id.
     semaBlockId: u32 = NullId,
 
-    semaResolvedSymId: u32 = NullId,
-    semaResolvedFuncSymId: u32 = NullId,
+    inner: extern union {
+        staticFunc: extern struct {
+            semaResolvedSymId: u32 = NullId,
+            semaResolvedFuncSymId: u32 = NullId,
+        },
+        lambda: extern struct {
+            rFuncSigId: u32 = NullId,
+        },
+    },
 
     /// Whether this is a static function.
     isStatic: bool,

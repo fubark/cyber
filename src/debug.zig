@@ -156,21 +156,14 @@ pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
 
 pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
-        if (indexOfDebugSym(vm, trace.allocPc)) |idx| {
-            const sym = vm.debugTable[idx];
-            const chunk = &vm.compiler.chunks.items[sym.file];
-            const node = chunk.nodes[sym.loc];
-            const token = chunk.tokens[node.start_token];
-            const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}", .{obj, trace.allocPc});
-            defer vm.alloc.free(msg);
-            try printUserError(vm, "DebugTrace", msg, sym.file, token.pos(), false);
-        } else {
-            log.debug("Missing debug sym for {}, pc: {}.", .{vm.ops[trace.allocPc].code, trace.allocPc});
-        }
+        const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}", .{obj, trace.allocPc});
+        defer vm.alloc.free(msg);
+        try printTraceAtPc(vm, trace.allocPc, msg);
+
         if (trace.freePc != cy.NullId) {
-            const msg = try std.fmt.allocPrint(vm.alloc, "Freed object: {*} at pc: {}", .{obj, trace.freePc});
-            defer vm.alloc.free(msg);
-            try printTraceAtPc(vm, trace.freePc, msg);
+            const msg2 = try std.fmt.allocPrint(vm.alloc, "Freed object: {*} at pc: {}", .{obj, trace.freePc});
+            defer vm.alloc.free(msg2);
+            try printTraceAtPc(vm, trace.freePc, msg2);
         }
     } else {
         log.debug("No trace for {*}.", .{obj});

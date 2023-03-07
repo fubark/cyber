@@ -3,6 +3,19 @@
 import t 'test'
 
 --|
+--| Parentheses.
+--|
+
+-- Parentheses at left of binary expression.
+try t.eq((2 + 3) * 4, 20)
+
+-- Parentheses at right of binary expression.
+try t.eq(2 * (3 + 4), 14)
+
+-- Nested parentheses.
+try t.eq(2 + ((3 + 4) / 7), 3)
+
+--|
 --| Precedence=5, Power, Divide, Modulus, Multiply
 --|
 

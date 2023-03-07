@@ -1005,38 +1005,11 @@ test "Integers." {
 }
 
 test "Numbers." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("number_test.cy"));
-}
-
-test "Parentheses" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Parentheses at left of binary expression.
-    var val = try run.eval(
-        \\(2 + 3) * 4
-    );
-    try t.eq(val.asF64toI32(), 20);
-
-    // Parentheses at right of binary expression.
-    val = try run.eval(
-        \\2 * (3 + 4)
-    );
-    try t.eq(val.asF64toI32(), 14);
-
-    // Nested parentheses.
-    val = try run.eval(
-        \\2 + ((3 + 4) / 7)
-    );
-    try t.eq(val.asF64toI32(), 3);
+    try evalPass(.{}, @embedFile("number_test.cy"));
 }
 
 test "Operator precedence." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("op_precedence_test.cy"));
+    try evalPass(.{}, @embedFile("op_precedence_test.cy"));
 }
 
 test "Comments" {

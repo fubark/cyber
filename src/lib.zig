@@ -361,6 +361,72 @@ test "cyValueGetType()" {
     try t.eq(c.cyValueGetTypeId(c.cyValueNumber(123)), cy.NumberT);
 }
 
+export fn cyListLen(list: Value) usize {
+    return list.asHeapObject().list.list.len;
+}
+
+export fn cyListCap(list: Value) usize {
+    return list.asHeapObject().list.list.cap;
+}
+
+export fn cyListGet(vm: *cy.UserVM, list: Value, idx: usize) Value {
+    const res = list.asHeapObject().list.list.ptr[idx];
+    vm.retain(res);
+    return res;
+}
+
+export fn cyListSet(vm: *cy.UserVM, list: Value, idx: usize, val: Value) void {
+    vm.retain(val);
+    vm.release(list.asHeapObject().list.list.ptr[idx]);
+    list.asHeapObject().list.list.ptr[idx] = val;
+}
+
+export fn cyListInsert(vm: *cy.UserVM, list: Value, idx: usize, val: Value) void {
+    vm.retain(val);
+    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.asHeapObject().list.list);
+    inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
+    inner.insertAssumeCapacity(idx, val);
+}
+
+export fn cyListAppend(vm: *cy.UserVM, list: Value, val: Value) void {
+    vm.retain(val);
+    return list.asHeapObject().list.append(vm.allocator(), val);
+}
+
+test "List ops." {
+    const vm = c.cyVmCreate();
+    defer c.cyVmDestroy(vm);
+
+    var list: c.CyValue = undefined;
+    _ = c.cyVmEval(vm, initCStr("[1, 2, 3]"), &list);
+
+    // Initial cap.
+    try t.eq(c.cyListLen(list), 3);
+    try t.eq(c.cyListCap(list), 3);
+
+    // Append.
+    c.cyListAppend(vm, list, c.cyValueNumber(4));
+    var res = c.cyListGet(vm, list, 3);
+    try t.eq(c.cyValueAsNumber(res), 4);
+    try t.eq(c.cyListLen(list), 4);
+    try t.eq(c.cyListCap(list), 12);
+
+    // Get.
+    res = c.cyListGet(vm, list, 1);
+    try t.eq(c.cyValueAsNumber(res), 2);
+
+    // Set.
+    c.cyListSet(vm, list, 1, c.cyValueNumber(100));
+    res = c.cyListGet(vm, list, 1);
+    try t.eq(c.cyValueAsNumber(res), 100);
+
+    // Insert.
+    c.cyListInsert(vm, list, 0, c.cyValueNumber(123));
+    res = c.cyListGet(vm, list, 0);
+    try t.eq(c.cyValueAsNumber(res), 123);
+    try t.eq(c.cyListLen(list), 5);
+}
+
 fn initCStr(str: [:0]const u8) c.CStr {
     return c.CStr{
         .charz = str.ptr,

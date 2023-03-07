@@ -96,6 +96,16 @@ line c
 '''
 ```
 
+The following escape sequences are supported:
+| Escape Sequence | Code | Description |
+| -- | -- | -- |
+| \a | 0x07 | Terminal bell. |
+| \b | 0x08 | Backspace. |
+| \e | 0x1b | Escape character. |
+| \n | 0x0a | Line feed character. |
+| \r | 0x0d | Carriage return character. |
+| \t | 0x09 | Horizontal tab character. |
+
 The boundary of each line can be set with a vertical line character. This makes it easier to see the whitespace.
 ```cy
 poem = "line a

@@ -247,15 +247,15 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.SymBuiltinAny);
     }
 
-    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8) !ResultView {
-        self.compileInner(srcUri, src) catch |err| {
+    pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {
+        self.compileInner(srcUri, src, config) catch |err| {
             if (err == error.TokenError) {
-                return ResultView{
+                return CompileResultView{
                     .buf = self.buf,
                     .err = .tokenize,
                 };
             } else if (err == error.ParseError) {
-                return ResultView{
+                return CompileResultView{
                     .buf = self.buf,
                     .err = .parse,
                 };
@@ -272,20 +272,20 @@ pub const VMcompiler = struct {
                         return err;
                     }
                 }
-                return ResultView{
+                return CompileResultView{
                     .buf = self.buf,
                     .err = .compile,
                 };
             }
         };
-        return ResultView{
+        return CompileResultView{
             .buf = self.buf,
             .err = null,
         };
     }
 
     /// Wrap compile so all errors can be handled in one place.
-    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8) !void {
+    fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !void {
         var finalSrcUri: []const u8 = undefined;
         if (!cy.isWasm and self.vm.config.enableFileModules) {
             // Ensure that `srcUri` is resolved.
@@ -363,35 +363,37 @@ pub const VMcompiler = struct {
             chunk.curBlock.numLocals = 0;
         }
 
-        // Once all symbols have been resolved, the static initializers are generated in DFS order.
-        for (self.chunks.items) |*chunk| {
-            log.debug("gen static initializer for chunk: {}", .{chunk.id});
-            for (chunk.semaSyms.items, 0..) |sym, i| {
-                const symId = @intCast(u32, i);
-                // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});
-                if (sym.used and sema.symHasStaticInitializer(chunk, &sym) and !sym.visited) {
-                    try gen.genStaticInitializerDFS(chunk, symId);
+        if (!config.skipCodegen) {
+            // Once all symbols have been resolved, the static initializers are generated in DFS order.
+            for (self.chunks.items) |*chunk| {
+                log.debug("gen static initializer for chunk: {}", .{chunk.id});
+                for (chunk.semaSyms.items, 0..) |sym, i| {
+                    const symId = @intCast(u32, i);
+                    // log.debug("{s} {} {}", .{sema.getSymName(self, &sym), sym.used, symId});
+                    if (sym.used and sema.symHasStaticInitializer(chunk, &sym) and !sym.visited) {
+                        try gen.genStaticInitializerDFS(chunk, symId);
+                    }
                 }
+                chunk.resetNextFreeTemp();
             }
-            chunk.resetNextFreeTemp();
-        }
 
-        for (self.chunks.items, 0..) |*chunk, i| {
-            log.debug("perform codegen for chunk: {}", .{i});
-            try self.performChunkCodegen(chunk.id);
-        }
+            for (self.chunks.items, 0..) |*chunk, i| {
+                log.debug("perform codegen for chunk: {}", .{i});
+                try self.performChunkCodegen(chunk.id);
+            }
 
-        // Merge inst and const buffers.
-        var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
-        if (self.buf.ops.capacity < reqLen) {
-            try self.buf.ops.ensureTotalCapacityPrecise(self.alloc, reqLen);
+            // Merge inst and const buffers.
+            var reqLen = self.buf.ops.items.len + self.buf.consts.items.len * @sizeOf(cy.Const) + @alignOf(cy.Const) - 1;
+            if (self.buf.ops.capacity < reqLen) {
+                try self.buf.ops.ensureTotalCapacityPrecise(self.alloc, reqLen);
+            }
+            const constAddr = std.mem.alignForward(@ptrToInt(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
+            const constDst = @intToPtr([*]cy.Const, constAddr)[0..self.buf.consts.items.len];
+            const constSrc = try self.buf.consts.toOwnedSlice(self.alloc);
+            std.mem.copy(cy.Const, constDst, constSrc);
+            self.alloc.free(constSrc);
+            self.buf.mconsts = constDst;
         }
-        const constAddr = std.mem.alignForward(@ptrToInt(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
-        const constDst = @intToPtr([*]cy.Const, constAddr)[0..self.buf.consts.items.len];
-        const constSrc = try self.buf.consts.toOwnedSlice(self.alloc);
-        std.mem.copy(cy.Const, constDst, constSrc);
-        self.alloc.free(constSrc);
-        self.buf.mconsts = constDst;
 
         // Final op address is known. Patch pc offsets.
         // for (self.vm.funcSyms.items()) |*sym| {
@@ -639,13 +641,13 @@ pub const VMcompiler = struct {
     }
 };
 
-const CompileErrorType = enum {
+pub const CompileErrorType = enum {
     tokenize,
     parse,
     compile,
 };
 
-pub const ResultView = struct {
+pub const CompileResultView = struct {
     buf: cy.ByteCodeBuffer,
     err: ?CompileErrorType,
 };
@@ -1729,4 +1731,8 @@ pub const U32SliceContext = struct {
     pub fn eql(_: @This(), a: []const u32, b: []const u32) bool {
         return std.mem.eql(u32, a, b);
     }
+};
+
+pub const CompileConfig = struct {
+    skipCodegen: bool = false,
 };

@@ -401,7 +401,7 @@ pub const VM = struct {
         self.deinited = true;
     }
 
-    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
+    pub fn validate(self: *VM, srcUri: []const u8, src: []const u8) !ValidateResult {
         try self.resetVM();
         self.config = .{
             .singleRun = false,
@@ -409,25 +409,50 @@ pub const VM = struct {
             .genAllDebugSyms = true,
         };
         var tt = stdx.debug.trace();
-        const res = try self.compiler.compile(srcUri, src);
+        const res = try self.compiler.compile(srcUri, src, .{ .skipCodegen = true });
         if (res.err) |err| {
             switch (err) {
                 .tokenize => {
                     self.lastError = error.TokenError;
-                    return error.TokenError;
                 },
                 .parse => {
                     self.lastError = error.ParseError;
-                    return error.ParseError;
                 },
                 .compile => {
                     self.lastError = error.CompileError;
-                    return error.CompileError;
+                },
+            }
+        }
+        tt.endPrint("validate");
+        return ValidateResult{
+            .err = res.err,
+        };
+    }
+
+    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.CompileResultView {
+        try self.resetVM();
+        self.config = .{
+            .singleRun = false,
+            .enableFileModules = true,
+            .genAllDebugSyms = true,
+        };
+        var tt = stdx.debug.trace();
+        const res = try self.compiler.compile(srcUri, src, .{});
+        if (res.err) |err| {
+            switch (err) {
+                .tokenize => {
+                    self.lastError = error.TokenError;
+                },
+                .parse => {
+                    self.lastError = error.ParseError;
+                },
+                .compile => {
+                    self.lastError = error.CompileError;
                 },
             }
         }
         tt.endPrint("compile");
-        return res.buf;
+        return res;
     }
 
     fn resetVM(self: *VM) !void {
@@ -449,7 +474,7 @@ pub const VM = struct {
         try self.resetVM();
         self.config = config;
         var tt = stdx.debug.trace();
-        const res = try self.compiler.compile(srcUri, src);
+        const res = try self.compiler.compile(srcUri, src, .{});
         if (res.err) |err| {
             switch (err) {
                 .tokenize => {
@@ -4955,3 +4980,7 @@ fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const 
         }
     }
 }
+
+pub const ValidateResult = struct {
+    err: ?cy.CompileErrorType,
+};

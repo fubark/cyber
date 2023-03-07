@@ -6,6 +6,7 @@ const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const Value = cy.Value;
 const t = stdx.testing;
+const log = stdx.log.scoped(.lib);
 
 const c = @cImport({
     @cInclude("cyber.h");
@@ -81,6 +82,41 @@ export fn cyVmEval(vm: *cy.UserVM, src: c.CStr, outVal: *cy.Value) c.CyResultCod
         }
     };
     return c.CY_Success;
+}
+
+export fn cyVmValidate(vm: *cy.UserVM, src: c.CStr) c.CyResultCode {
+    const res = vm.internal().validate("main", src.charz[0..src.len]) catch |err| {
+        log.debug("validate error: {}", .{err});
+        return c.CY_ErrorUnknown;
+    };
+    if (res.err) |err| {
+        switch (err) {
+            .tokenize => {
+                return c.CY_ErrorToken;
+            },
+            .parse => {
+                return c.CY_ErrorParse;
+            },
+            .compile => {
+                return c.CY_ErrorCompile;
+            },
+        }
+    }
+    return c.CY_Success;
+}
+
+test "cyVmValidate()" {
+    const vm = c.cyVmCreate();
+    defer c.cyVmDestroy(vm);
+
+    cy.silentError = true;
+    defer cy.silentError = false;
+
+    var res = c.cyVmValidate(vm, initCStr("1 + 2"));
+    try t.eq(res, c.CY_Success);
+
+    res = c.cyVmValidate(vm, initCStr("1 +"));
+    try t.eq(res, c.CY_ErrorParse);
 }
 
 var tempBuf: [1024]u8 align(8) = undefined;
@@ -250,30 +286,15 @@ test "cyValueAsTagLiteralId()" {
     const vm = c.cyVmCreate();
     defer c.cyVmDestroy(vm);
 
-    var zstr = try t.alloc.dupe(u8, "foo");
-    defer t.alloc.free(zstr);
-    var str = c.CStr{
-        .charz = zstr.ptr,
-        .len = zstr.len,
-    };
+    var str = initCStr("foo");
     var val = c.cyValueTagLiteral(vm, str);
     try t.eq(c.cyValueAsTagLiteralId(val), 0);
 
-    var zstr2 = try t.alloc.dupe(u8, "bar");
-    defer t.alloc.free(zstr2);
-    str = c.CStr{
-        .charz = zstr2.ptr,
-        .len = zstr2.len,
-    };
+    str = initCStr("bar");
     val = c.cyValueTagLiteral(vm, str);
     try t.eq(c.cyValueAsTagLiteralId(val), 1);
 
-    var zstr3 = try t.alloc.dupe(u8, "foo");
-    defer t.alloc.free(zstr3);
-    str = c.CStr{
-        .charz = zstr3.ptr,
-        .len = zstr3.len,
-    };
+    str = initCStr("foo");
     val = c.cyValueTagLiteral(vm, str);
     try t.eq(c.cyValueAsTagLiteralId(val), 0);
 }
@@ -338,4 +359,11 @@ export fn cyValueGetTypeId(val: Value) c.CyTypeId {
 
 test "cyValueGetType()" {
     try t.eq(c.cyValueGetTypeId(c.cyValueNumber(123)), cy.NumberT);
+}
+
+fn initCStr(str: [:0]const u8) c.CStr {
+    return c.CStr{
+        .charz = str.ptr,
+        .len = str.len,
+    };
 }

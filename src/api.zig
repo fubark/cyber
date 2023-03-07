@@ -137,7 +137,11 @@ pub const UserVM = struct {
         return cy.arc.checkMemory(self.internal());
     }
 
-    pub inline fn compile(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ByteCodeBuffer {
+    pub inline fn validate(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ValidateResult {
+        return self.internal().validate(srcUri, src);
+    }
+
+    pub inline fn compile(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.CompileResultView {
         return self.internal().compile(srcUri, src);
     }
 

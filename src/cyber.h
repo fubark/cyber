@@ -52,7 +52,7 @@ typedef enum {
 
 // Null terminated string, but also includes a length.
 typedef struct CStr {
-    char* charz;
+    const char* charz;
     size_t len;
 } CStr;
 #define cstr(X) (CStr){ X, strlen(X) }
@@ -66,6 +66,7 @@ typedef bool (*CyLoadModuleFunc)(CyUserVM* vm, CyModule* mod);
 CyUserVM* cyVmCreate();
 void cyVmDestroy(CyUserVM* vm);
 CyResultCode cyVmEval(CyUserVM* vm, CStr src, CyValue* outVal);
+CyResultCode cyVmValidate(CyUserVM* vm, CStr src);
 CStr cyVmGetLastErrorReport(CyUserVM* vm);
 void cyVmRelease(CyUserVM* vm, CyValue val);
 void cyVmRetain(CyUserVM* vm, CyValue val);

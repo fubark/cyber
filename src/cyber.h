@@ -48,7 +48,7 @@ typedef enum {
     CY_TypeDir,
     CY_TypeDirIter,
     CY_TypeSymbol,
-};
+} CyType;
 
 // Null terminated string, but also includes a length.
 typedef struct CStr {

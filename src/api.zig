@@ -138,11 +138,11 @@ pub const UserVM = struct {
     }
 
     pub inline fn validate(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ValidateResult {
-        return self.internal().validate(srcUri, src);
+        return self.internal().validate(srcUri, src, .{ .enableFileModules = true });
     }
 
     pub inline fn compile(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.CompileResultView {
-        return self.internal().compile(srcUri, src);
+        return self.internal().compile(srcUri, src, .{ .enableFileModules = true });
     }
 
     pub inline fn eval(self: *UserVM, srcUri: []const u8, src: []const u8, config: cy.EvalConfig) !Value {

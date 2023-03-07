@@ -26,6 +26,7 @@ pub const CompileChunk = vm_compiler.CompileChunk;
 pub const unescapeString = vm_compiler.unescapeString;
 pub const CompileResultView = vm_compiler.CompileResultView;
 pub const CompileConfig = vm_compiler.CompileConfig;
+pub const ValidateConfig = vm_compiler.ValidateConfig;
 pub const CompileErrorType = vm_compiler.CompileErrorType;
 
 pub const bindings = @import("builtins/bindings.zig");

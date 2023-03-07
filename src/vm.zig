@@ -401,39 +401,21 @@ pub const VM = struct {
         self.deinited = true;
     }
 
-    pub fn validate(self: *VM, srcUri: []const u8, src: []const u8) !ValidateResult {
-        try self.resetVM();
-        self.config = .{
-            .singleRun = false,
-            .enableFileModules = true,
-            .genAllDebugSyms = true,
-        };
-        var tt = stdx.debug.trace();
-        const res = try self.compiler.compile(srcUri, src, .{ .skipCodegen = true });
-        if (res.err) |err| {
-            switch (err) {
-                .tokenize => {
-                    self.lastError = error.TokenError;
-                },
-                .parse => {
-                    self.lastError = error.ParseError;
-                },
-                .compile => {
-                    self.lastError = error.CompileError;
-                },
-            }
-        }
-        tt.endPrint("validate");
+    pub fn validate(self: *VM, srcUri: []const u8, src: []const u8, config: cy.ValidateConfig) !ValidateResult {
+        const res = try self.compile(srcUri, src, .{
+            .enableFileModules = config.enableFileModules,
+            .skipCodegen = true,
+        });
         return ValidateResult{
             .err = res.err,
         };
     }
 
-    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8) !cy.CompileResultView {
+    pub fn compile(self: *VM, srcUri: []const u8, src: []const u8, config: cy.CompileConfig) !cy.CompileResultView {
         try self.resetVM();
         self.config = .{
             .singleRun = false,
-            .enableFileModules = true,
+            .enableFileModules = config.enableFileModules,
             .genAllDebugSyms = true,
         };
         var tt = stdx.debug.trace();

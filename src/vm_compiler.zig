@@ -1735,4 +1735,9 @@ pub const U32SliceContext = struct {
 
 pub const CompileConfig = struct {
     skipCodegen: bool = false,
+    enableFileModules: bool = false,
+};
+
+pub const ValidateConfig = struct {
+    enableFileModules: bool = false,
 };

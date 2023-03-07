@@ -85,7 +85,7 @@ export fn cyVmEval(vm: *cy.UserVM, src: c.CStr, outVal: *cy.Value) c.CyResultCod
 }
 
 export fn cyVmValidate(vm: *cy.UserVM, src: c.CStr) c.CyResultCode {
-    const res = vm.internal().validate("main", src.charz[0..src.len]) catch |err| {
+    const res = vm.internal().validate("main", src.charz[0..src.len], .{}) catch |err| {
         log.debug("validate error: {}", .{err});
         return c.CY_ErrorUnknown;
     };

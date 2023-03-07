@@ -7,7 +7,7 @@ typedef struct CyVM CyVM;
 typedef struct CyModule CyModule;
 typedef uint64_t CyValue;
 
-const uint32_t CY_NullId = UINT32_MAX;
+#define CY_NullId UINT32_MAX
 
 typedef enum {
     CY_Success = 0,

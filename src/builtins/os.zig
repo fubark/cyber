@@ -9,6 +9,7 @@ const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
+const fromUnsupportedError = bindings.fromUnsupportedError;
 
 const log = stdx.log.scoped(.os);
 
@@ -163,8 +164,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
             if (err == error.FileNotFound) {
                 return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
             } else {
-                fmt.printStderr("openDir {}", &.{fmt.v(err)});
-                return Value.None;
+                return fromUnsupportedError("openDir", err, @errorReturnTrace());
             }
         };
         fd = dir.dir.fd;
@@ -173,8 +173,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
             if (err == error.FileNotFound) {
                 return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
             } else {
-                fmt.printStderr("openDir {}", &.{fmt.v(err)});
-                return Value.None;
+                return fromUnsupportedError("openDir", err, @errorReturnTrace());
             }
         };
         fd = dir.fd;
@@ -188,8 +187,7 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     }
     const path = vm.valueToTempString(args[0]);
     std.fs.cwd().deleteDir(path) catch |err| {
-        fmt.printStderr("removeDir {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("removeDir", err, @errorReturnTrace());
     };
     return Value.True;
 }
@@ -214,8 +212,7 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     }
     const path = vm.valueToTempString(args[0]);
     std.fs.cwd().deleteFile(path) catch |err| {
-        fmt.printStderr("removeFile {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("removeFile", err, @errorReturnTrace());
     };
     return Value.True;
 }
@@ -226,8 +223,7 @@ fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     }
     const path = vm.valueToTempString(args[0]);
     std.fs.cwd().makeDir(path) catch |err| {
-        fmt.printStderr("createDir {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("createDir", err, @errorReturnTrace());
     };
     return Value.True;
 }
@@ -239,8 +235,7 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     const path = vm.valueToTempString(args[0]);
     const truncate = args[1].toBool();
     const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
-        fmt.printStderr("createFile {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("createFile", err, @errorReturnTrace());
     };
     return vm.allocFile(file.handle) catch fatal();
 }
@@ -264,8 +259,7 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
             if (err == error.FileNotFound) {
                 return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
             } else {
-                fmt.printStderr("openFile {}", &.{fmt.v(err)});
-                return Value.None;
+                return fromUnsupportedError("openFile", err, @errorReturnTrace());
             }
         };
         return vm.allocFile(file.handle) catch fatal();
@@ -408,8 +402,7 @@ pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return @call(.never_inline, doBindLib, .{vm, args, .{}}) catch |err| {
-        log.debug("{}", .{err});
-        stdx.fatal();
+        return fromUnsupportedError("bindLib", err, @errorReturnTrace());
     };
 }
 
@@ -427,8 +420,7 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
         config.genMap = true;
     }
     return @call(.never_inline, doBindLib, .{vm, args, config}) catch |err| {
-        log.debug("{}", .{err});
-        stdx.fatal();
+        return fromUnsupportedError("bindLib", err, @errorReturnTrace());
     };
 }
 

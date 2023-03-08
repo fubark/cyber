@@ -505,8 +505,8 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksectio
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
             const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch |err| {
-                log.debug("{}", .{err});
-                stdx.fatal();
+                _ = fromUnsupportedError("less", err, @errorReturnTrace());
+                return false;
             };
             return res.toBool();
         }
@@ -1950,8 +1950,7 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
 
     const file = obj.file.getStdFile();
     file.seekFromEnd(numBytes) catch |err| {
-        fmt.printStderr("seekFromEnd {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("seekFromEnd", err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -1964,8 +1963,7 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
 
     const file = obj.file.getStdFile();
     file.seekBy(numBytes) catch |err| {
-        fmt.printStderr("seekFromCur {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("seekFromCur", err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -1982,8 +1980,7 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     const file = obj.file.getStdFile();
     const unumBytes = @intCast(u32, numBytes);
     file.seekTo(unumBytes) catch |err| {
-        fmt.printStderr("seek {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("seek", err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -2004,8 +2001,7 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
 
     const file = obj.file.getStdFile();
     const numWritten = file.write(buf) catch |err| {
-        fmt.printStderr("read {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("write", err, @errorReturnTrace());
     };
 
     return Value.initF64(@intToFloat(f64, numWritten));
@@ -2029,8 +2025,7 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     tempBuf.ensureTotalCapacityPrecise(alloc, unumBytes) catch fatal();
 
     const numRead = file.read(tempBuf.buf[0..unumBytes]) catch |err| {
-        fmt.printStderr("read {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("read", err, @errorReturnTrace());
     };
     // Can return empty string when numRead == 0.
     return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
@@ -2052,8 +2047,7 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     while (true) {
         const buf = tempBuf.buf[tempBuf.len .. tempBuf.buf.len];
         const numRead = file.readAll(buf) catch |err| {
-            fmt.printStderr("readToEnd {}", &.{fmt.v(err)});
-            return Value.None;
+            return fromUnsupportedError("readToEnd", err, @errorReturnTrace());
         };
         tempBuf.len += numRead;
         if (numRead < buf.len) {
@@ -2072,8 +2066,7 @@ pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     defer vm.releaseObject(obj);
     const file = obj.file.getStdFile();
     const stat = file.stat() catch |err| {
-        fmt.printStderr("stat {}", &.{fmt.v(err)});
-        return Value.None;
+        return fromUnsupportedError("stat", err, @errorReturnTrace());
     };
 
     const map = vm.allocEmptyMap() catch fatal();
@@ -2105,8 +2098,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     if (iter.recursive) {
         const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
         const entryOpt = walker.next() catch |err| {
-            fmt.printStderr("next {}", &.{fmt.v(err)});
-            return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+            return fromUnsupportedError("next", err, @errorReturnTrace());
         };
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch fatal();
@@ -2128,8 +2120,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     } else {
         const stdIter = stdx.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
         const entryOpt = stdIter.next() catch |err| {
-            fmt.printStderr("next {}", &.{fmt.v(err)});
-            return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+            return fromUnsupportedError("next", err, @errorReturnTrace());
         };
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch fatal();
@@ -2259,4 +2250,17 @@ pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFun
         }
     };
     return S.wrapped;
+}
+
+/// In debug mode, the unsupported error's stack trace is dumped and program panics.
+/// In release mode, the error is logged and UnknownError is returned.
+pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
+    fmt.printStderr("{}: {}\n", &.{fmt.v(msg), fmt.v(err)});
+    if (builtin.mode == .Debug) {
+        if (!cy.silentError) {
+            std.debug.dumpStackTrace(trace.?.*);
+        }
+        fatal();
+    }
+    return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
 }

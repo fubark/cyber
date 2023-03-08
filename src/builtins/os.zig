@@ -187,7 +187,11 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     }
     const path = vm.valueToTempString(args[0]);
     std.fs.cwd().deleteDir(path) catch |err| {
-        return fromUnsupportedError("removeDir", err, @errorReturnTrace());
+        if (err == error.FileNotFound) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+        } else {
+            return fromUnsupportedError("removeDir", err, @errorReturnTrace());
+        }
     };
     return Value.True;
 }
@@ -212,7 +216,11 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     }
     const path = vm.valueToTempString(args[0]);
     std.fs.cwd().deleteFile(path) catch |err| {
-        return fromUnsupportedError("removeFile", err, @errorReturnTrace());
+        if (err == error.FileNotFound) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+        } else {
+            return fromUnsupportedError("removeFile", err, @errorReturnTrace());
+        }
     };
     return Value.True;
 }

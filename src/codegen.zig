@@ -484,7 +484,6 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
         const func = self.funcDecls[node.head.func.decl_id];
 
         try self.pushSemaBlock(func.semaBlockId);
-        try self.pushBlock();
         self.curBlock.frameLoc = nodeId;
 
         const jumpStackStart = self.blockJumpStack.items.len;
@@ -507,7 +506,6 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
         self.patchBlockJumps(jumpStackStart);
         self.blockJumpStack.items.len = jumpStackStart;
 
-        self.popBlock();
         self.popSemaBlock();
 
         if (numCaptured == 0) {
@@ -555,7 +553,6 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
 
         const func = self.funcDecls[node.head.func.decl_id];
         try self.pushSemaBlock(func.semaBlockId);
-        try self.pushBlock();
         const opStart = @intCast(u32, self.buf.ops.items.len);
 
         // Generate function body.
@@ -571,7 +568,6 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
         const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
         const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
 
-        self.popBlock();
         self.popSemaBlock();
 
         if (numCaptured == 0) {
@@ -1462,10 +1458,11 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, contPc);
 
-            try self.pushOptionalDebugSym(nodeId);
-            // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
-            try self.buf.pushOp1(.release, iterLocal);
             self.patchJumpToCurrent(skipBodyJump);
+
+            // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
+            try self.pushOptionalDebugSym(nodeId);
+            try self.buf.pushOp1(.release, iterLocal);
         },
         .for_range_stmt => {
             self.nextSemaSubBlock();
@@ -2090,7 +2087,6 @@ fn genFuncDecl(self: *CompileChunk, rParentSymId: sema.ResolvedSymId, nodeId: cy
 
     const jumpPc = try self.pushEmptyJump();
 
-    try self.pushBlock();
     try self.pushSemaBlock(func.semaBlockId);
     self.curBlock.frameLoc = nodeId;
     self.curBlock.rFuncSymId = func.inner.staticFunc.semaResolvedFuncSymId;
@@ -2117,7 +2113,6 @@ fn genFuncDecl(self: *CompileChunk, rParentSymId: sema.ResolvedSymId, nodeId: cy
     self.blockJumpStack.items.len = jumpStackStart;
 
     self.popSemaBlock();
-    self.popBlock();
     
     const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, numLocals), numParams, rFuncSym.rFuncSigId);
     self.compiler.vm.setFuncSym(symId, rtSym);
@@ -2295,7 +2290,6 @@ fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: 
 
     const jumpPc = try self.pushEmptyJump();
 
-    try self.pushBlock();
     try self.pushSemaBlock(func.semaBlockId);
 
     const opStart = @intCast(u32, self.buf.ops.items.len);
@@ -2309,7 +2303,6 @@ fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: 
     const numLocals = @intCast(u32, self.blockNumLocals() + 1 - numParams);
 
     self.popSemaBlock();
-    self.popBlock();
 
     self.patchJumpToCurrent(jumpPc);
 

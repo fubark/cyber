@@ -57,3 +57,10 @@ f = func (arr):
          return 1
    return 0
 try t.eq(f(list), 0)
+
+-- Empty iterator. Tests that iterator is cleaned up without entering body loop.
+list = []
+count = 0
+for list each it:
+   count += 1
+try t.eq(count, 0)

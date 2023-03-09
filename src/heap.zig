@@ -973,6 +973,9 @@ pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section)
     } else {
         const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Astring.BufOffset);
         obj = @ptrCast(*HeapObject, objSlice.ptr);
+        if (builtin.mode == .Debug) {
+            traceAlloc(self, obj);
+        }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }
@@ -1045,6 +1048,9 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
     } else {
         const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + Ustring.BufOffset);
         obj = @ptrCast(*HeapObject, objSlice.ptr);
+        if (builtin.mode == .Debug) {
+            traceAlloc(self, obj);
+        }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }
@@ -1102,6 +1108,9 @@ pub fn allocUnsetRawStringObject(self: *cy.VM, len: usize) linksection(cy.Sectio
     } else {
         const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), len + RawString.BufOffset);
         obj = @ptrCast(*HeapObject, objSlice.ptr);
+        if (builtin.mode == .Debug) {
+            traceAlloc(self, obj);
+        }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }

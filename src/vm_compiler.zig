@@ -357,7 +357,6 @@ pub const VMcompiler = struct {
             // Set up for genVarDecls.
             // All main blocks should be initialized since genVarDecls can alternate chunks.
             try chunk.pushSemaBlock(chunk.mainSemaBlockId);
-            try chunk.pushBlock();
             chunk.buf = &self.buf;
             // Temp locals can start at 0 for initializers codegen.
             chunk.curBlock.numLocals = 0;
@@ -1011,20 +1010,21 @@ pub const CompileChunk = struct {
     }
 
     pub fn pushSemaBlock(self: *CompileChunk, id: sema.BlockId) !void {
+        // Codegen block should be pushed first so nextSemaSubBlock can use it.
+        try self.pushBlock();
+
         try self.semaBlockStack.append(self.alloc, id);
         self.curSemaBlockId = id;
         self.nextSemaSubBlockId = self.semaBlocks.items[id].firstSubBlockId;
         self.nextSemaSubBlock();
     }
 
-    pub fn prevSemaSubBlock(self: *CompileChunk) void {
-        self.curSemaSubBlockId = sema.curSubBlock(self).prevSubBlockId;
-    }
-
     pub fn popSemaBlock(self: *CompileChunk) void {
         self.semaBlockStack.items.len -= 1;
         self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
         self.prevSemaSubBlock();
+
+        self.popBlock();
     }
 
     pub fn reserveIfTempLocal(self: *CompileChunk, local: LocalId) !void {
@@ -1565,6 +1565,10 @@ pub const CompileChunk = struct {
             svar.vtype = varAndType.vtype;
             svar.genIsDefined = true;
         }
+    }
+
+    pub fn prevSemaSubBlock(self: *CompileChunk) void {
+        self.curSemaSubBlockId = sema.curSubBlock(self).prevSubBlockId;
     }
 
     pub fn unescapeString(self: *CompileChunk, literal: []const u8) ![]const u8 {

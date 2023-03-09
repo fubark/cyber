@@ -399,6 +399,7 @@ pub const Dir = extern struct {
     padding: usize = 0,
     fd: if (cy.hasStdFiles) std.os.fd_t else u32,
     iterable: bool,
+    closed: bool,
 
     pub fn getStdDir(self: *const Dir) std.fs.Dir {
         return std.fs.Dir{
@@ -412,6 +413,14 @@ pub const Dir = extern struct {
                 .fd = self.fd,
             },
         };
+    }
+
+    pub fn close(self: *Dir) void {
+        if (!self.closed) {
+            var dir = self.getStdDir();
+            dir.close();
+            self.closed = true;
+        }
     }
 };
 
@@ -1206,6 +1215,7 @@ pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.St
         .rc = 1,
         .fd = fd,
         .iterable = iterable,
+        .closed = false,
     };
     return Value.initPtr(obj);
 }
@@ -1465,8 +1475,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         },
         DirT => {
             if (cy.hasStdFiles) {
-                var dir = obj.dir.getStdDir();
-                dir.close();   
+                obj.dir.close();
             }
             freePoolObject(vm, obj);
         },

@@ -234,6 +234,7 @@ for map each k, v:
 #### object File
 | Method | Summary |
 | -- | -- |
+| `close() none` | Closes the file handle. File ops invoked afterwards will return `error(#Closed)`. |
 | `read(n number) rawstring` | Reads at most `n` bytes as a `rawstring`. `n` must be at least 1. A result with length 0 indicates the end of file was reached. |
 | `readToEnd() rawstring` | Reads to the end of the file and returns the content as a `rawstring`. |
 | `seek(pos number) none` | Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid. |

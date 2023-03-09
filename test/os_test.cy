@@ -63,6 +63,12 @@ file = os.openFile('test/assets/file.txt', #read)
 try t.eq(file.readToEnd(), rawstring('foobar'))
 try t.eq(file.readToEnd(), rawstring(''))
 
+-- File.close()
+file = os.openFile('test/assets/file.txt', #read)
+file.close()
+res = file.stat()
+try t.eq(res, error(#Closed))
+
 -- File.seek()
 file = os.openFile('test/assets/file.txt', #read)
 try t.eq(file.seek(-1), error(#InvalidArgument))

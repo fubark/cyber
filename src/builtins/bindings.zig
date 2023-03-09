@@ -50,6 +50,7 @@ pub const TagLit = enum {
     InvalidChar,
     StreamTooLong,
     NotAllowed,
+    Closed,
     UnknownError,
 
     running,
@@ -95,6 +96,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const append = try self.ensureMethodSymKey("append", 1);
     const byteAt = try self.ensureMethodSymKey("byteAt", 1);
     const charAt = try self.ensureMethodSymKey("charAt", 1);
+    const close = try self.ensureMethodSymKey("close", 0);
     const codeAt = try self.ensureMethodSymKey("codeAt", 1);
     const concat = try self.ensureMethodSymKey("concat", 1);
     const endsWith = try self.ensureMethodSymKey("endsWith", 1);
@@ -369,6 +371,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addObjectType("File");
     std.debug.assert(id == cy.FileT);
     if (cy.hasStdFiles) {
+        try self.addMethodSym(cy.FileT, close, cy.MethodSym.initNativeFunc1(fileClose));
         try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(fileIterator));
         try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(fileNext));
         try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(fileRead));
@@ -381,6 +384,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(fileStreamLines1));
         try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(fileWrite));
     } else {
+        try self.addMethodSym(cy.FileT, close, cy.MethodSym.initNativeFunc1(objNop0));
         try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(objNop0));
         try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
         try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(objNop1));
@@ -449,6 +453,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "InvalidChar", .InvalidChar);
     try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
     try ensureTagLitSym(self, "NotAllowed", .NotAllowed);
+    try ensureTagLitSym(self, "Closed", .Closed);
     try ensureTagLitSym(self, "UnknownError", .UnknownError);
 
     try ensureTagLitSym(self, "running", .running);
@@ -1943,6 +1948,10 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
+
     const numBytes = @floatToInt(i32, args[0].toF64());
     if (numBytes > 0) {
         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
@@ -1959,6 +1968,10 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
+
     const numBytes = @floatToInt(i32, args[0].toF64());
 
     const file = obj.file.getStdFile();
@@ -1971,6 +1984,10 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
 pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
+
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
 
     const numBytes = @floatToInt(i32, args[0].toF64());
     if (numBytes < 0) {
@@ -1992,6 +2009,10 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
         vm.release(args[0]);
     }
 
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
+
     var buf: []const u8 = undefined;
     if (args[0].isRawString()) {
         buf = args[0].asRawString();
@@ -2007,9 +2028,20 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
     return Value.initF64(@intToFloat(f64, numWritten));
 }
 
+pub fn fileClose(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
+    defer vm.releaseObject(obj);
+    obj.file.close();
+    return Value.None;
+}
+
 pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
+
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
 
     const numBytes = @floatToInt(i32, args[0].toF64());
     if (numBytes <= 0) {
@@ -2034,6 +2066,11 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
 pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
+
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
+
     const file = obj.file.getStdFile();
 
     const alloc = vm.allocator();
@@ -2064,6 +2101,11 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
 pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
+
+    if (obj.file.closed) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+    }
+
     const file = obj.file.getStdFile();
     const stat = file.stat() catch |err| {
         return fromUnsupportedError("stat", err, @errorReturnTrace());

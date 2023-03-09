@@ -4404,12 +4404,21 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32
     const relPc = pcOffset(vm, pc);
     if (debug.getDebugSym(vm, relPc)) |sym| {
         const chunk = vm.compiler.chunks.items[sym.file];
-        const callExpr = chunk.nodes[sym.loc];
-        const numParams = callExpr.head.callExpr.getNumArgs(chunk.nodes);
-        const name = vm.methodSymExtras.buf[rtSymId].getName();
-        return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, {} args) is unsupported.", &.{
-             v(name), v(vm.structs.buf[typeId].name), v(name), v(numParams),
-        });
+        const node = chunk.nodes[sym.loc];
+        if (node.node_t == .callExpr) {
+            const numParams = node.head.callExpr.getNumArgs(chunk.nodes);
+            const name = vm.methodSymExtras.buf[rtSymId].getName();
+            return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, {} args) is unsupported.", &.{
+                 v(name), v(vm.structs.buf[typeId].name), v(name), v(numParams),
+            });
+        } else {
+            // Debug node is from:
+            // `for [iterable]:`
+            const name = vm.methodSymExtras.buf[rtSymId].getName();
+            return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, 0 args) is unsupported.", &.{
+                 v(name), v(vm.structs.buf[typeId].name), v(name),
+            });
+        }
     } else {
         return vm.panicFmt("Missing debug sym at {}", &.{v(pcOffset(vm, pc))});
     }

@@ -1360,6 +1360,21 @@ test "For optional." {
 }
 
 test "For iterator." {
+    // Iterable does not have iterator().
+    try eval(.{ .silent = true },
+        \\for 123 each i:
+        \\  print i
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: `iterator` is either missing in `number` or the call signature: iterator(self, 0 args) is unsupported.
+            \\
+            \\main:1:5 main:
+            \\for 123 each i:
+            \\    ^
+            \\
+        );
+    }}.func);
+
     try evalPass(.{}, @embedFile("for_iter_test.cy"));
 }
 

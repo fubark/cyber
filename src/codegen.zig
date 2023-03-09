@@ -1415,22 +1415,18 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             _ = try self.genRetainedExprTo(node.head.for_iter_stmt.iterable, iterLocal + 4, false);
             if (pairIter) {
-                try self.pushDebugSym(node.head.for_iter_stmt.iterable);
-                try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.pairIteratorObjSym));
+                try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.pairIteratorObjSym), node.head.for_iter_stmt.iterable);
             } else {
-                try self.pushDebugSym(node.head.for_iter_stmt.iterable);
-                try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.iteratorObjSym));
+                try pushCallObjSym(self, iterLocal, 1, 1, @intCast(u8, self.compiler.vm.iteratorObjSym), node.head.for_iter_stmt.iterable);
             }
 
             try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
             if (pairIter) {
-                try self.pushDebugSym(node.head.for_iter_stmt.iterable);
-                try pushCallObjSym(self, iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym));
+                try pushCallObjSym(self, iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym), node.head.for_iter_stmt.iterable);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
             } else {
-                try self.pushDebugSym(node.head.for_iter_stmt.iterable);
-                try pushCallObjSym(self, iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym));
+                try pushCallObjSym(self, iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym), node.head.for_iter_stmt.iterable);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
             }
 
@@ -1446,11 +1442,11 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const contPc = self.buf.ops.items.len;
             try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
             if (pairIter) {
-                try pushCallObjSym(self, iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym));
+                try pushCallObjSym(self, iterLocal + 1, 1, 2, @intCast(u8, self.compiler.vm.nextPairObjSym), node.head.for_iter_stmt.iterable);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
             } else {
-                try pushCallObjSym(self, iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym));
+                try pushCallObjSym(self, iterLocal + 1, 1, 1, @intCast(u8, self.compiler.vm.nextObjSym), node.head.for_iter_stmt.iterable);
                 try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
             }
 
@@ -2035,12 +2031,10 @@ fn genCallObjSym(self: *CompileChunk, callStartLocal: u8, leftId: cy.NodeId, ide
     _ = try self.genRetainedTempExpr(leftId, false);
 
     if (dstIsUsed) {
-        try self.pushDebugSym(debugNodeId);
-        try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId));
+        try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, methodId), debugNodeId);
         return GenValue.initTempValue(callStartLocal, sema.AnyType, false);
     } else {
-        try self.pushDebugSym(debugNodeId);
-        try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId));
+        try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, methodId), debugNodeId);
         return GenValue.initTempValue(callStartLocal, sema.AnyType, true);
     }
 }
@@ -2462,6 +2456,7 @@ fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
     stdx.fatal();
 }
 
-fn pushCallObjSym(chunk: *cy.CompileChunk, startLocal: u8, numArgs: u8, numRet: u8, symId: u8) !void {
+fn pushCallObjSym(chunk: *cy.CompileChunk, startLocal: u8, numArgs: u8, numRet: u8, symId: u8, nodeId: cy.NodeId) !void {
+    try chunk.pushDebugSym(nodeId);
     try chunk.buf.pushOpSlice(.callObjSym, &.{ startLocal, numArgs, numRet, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
 }

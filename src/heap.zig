@@ -482,11 +482,7 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
     const ptr = self.heapFreeHead.?;
     defer {
         if (builtin.mode == .Debug) {
-            // log.debug("alloc {*} {}", .{ptr, cy.pcOffset(self, self.debugPc)});
-            self.objectTraceMap.put(self.alloc, ptr, .{
-                .allocPc = self.debugPc,
-                .freePc = cy.NullId,
-            }) catch stdx.fatal();
+            traceAlloc(self, ptr);
         }
     }
     if (ptr.freeSpan.len == 1) {
@@ -1222,6 +1218,9 @@ pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.St
 
 pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy.StdSection) !Value {
     const objSlice = try self.alloc.alignedAlloc(u8, @alignOf(HeapObject), @sizeOf(cy.DirIterator));
+    if (builtin.mode == .Debug) {
+        traceAlloc(self, @ptrCast(*HeapObject, objSlice.ptr));
+    }
     const obj = @ptrCast(*cy.DirIterator, objSlice.ptr);
     obj.* = .{
         .structId = DirIteratorT,
@@ -1252,6 +1251,9 @@ pub fn allocObject(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
     // First slot holds the structId and rc.
     const objSlice = try self.alloc.alignedAlloc(Value, @alignOf(HeapObject), 1 + fields.len);
     const obj = @ptrCast(*Object, objSlice.ptr);
+    if (builtin.mode == .Debug) {
+        traceAlloc(self, @ptrCast(*HeapObject, obj));
+    }
     obj.* = .{
         .structId = sid,
         .rc = 1,
@@ -1527,6 +1529,14 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             log.debug("Missing object trace {*}", .{obj});
         }
     }
+}
+
+fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
+    // log.debug("alloc {*} {}", .{ptr, cy.pcOffset(self, self.debugPc)});
+    vm.objectTraceMap.put(vm.alloc, ptr, .{
+        .allocPc = vm.debugPc,
+        .freePc = cy.NullId,
+    }) catch stdx.fatal();
 }
 
 test "Internals." {

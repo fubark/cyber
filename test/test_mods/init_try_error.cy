@@ -1,1 +1,1 @@
-export var foo = try error(#boom)
+export var foo: try error(#boom)

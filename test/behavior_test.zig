@@ -97,8 +97,8 @@ test "User parse errors." {
     // Test parse error on first line.
     var val = run.evalExt(.{ .silent = true },
         \\var
-        \\var a = 123
-        \\var b = 234
+        \\var a: 123
+        \\var b: 234
     );
     try run.expectErrorReport(val, error.ParseError,
         \\ParseError: Expected local name identifier.
@@ -111,9 +111,9 @@ test "User parse errors." {
 
     // Test parse error on middle line.
     val = run.evalExt(.{ .silent = true },
-        \\var a = 123
+        \\var a: 123
         \\var
-        \\var b = 234
+        \\var b: 234
     );
     try run.expectErrorReport(val, error.ParseError,
         \\ParseError: Expected local name identifier.
@@ -126,8 +126,8 @@ test "User parse errors." {
 
     // Test parse error on last line.
     val = run.evalExt(.{ .silent = true },
-        \\var a = 123
-        \\var b = 234
+        \\var a: 123
+        \\var b: 234
         \\var
     );
     try run.expectErrorReport(val, error.ParseError,
@@ -199,7 +199,7 @@ test "Import http spec." {
     try run.resetEnv();
     client = http.MockHttpClient.init();
     client.retBody =
-        \\export var foo = 123
+        \\export var foo: 123
         ;
     run.vm.internal().httpClient = client.iface();
     _ = try run.evalExtNoReset(Config.initFileModules("./test/import_test.cy"),
@@ -790,7 +790,7 @@ test "Stack trace unwinding." {
         .name = "main",
         .chunkId = 1,
         .line = 0,
-        .col = 17,
+        .col = 16,
         .lineStartPos = 0,
     });
 
@@ -807,7 +807,7 @@ test "Stack trace unwinding." {
         .name = "main",
         .chunkId = 1,
         .line = 0,
-        .col = 17,
+        .col = 16,
         .lineStartPos = 0,
     });
 }
@@ -1152,7 +1152,7 @@ test "Static variable declaration." {
     // Capturing a local variable in a static var initializer is not allowed.
     var res = run.evalExt(.{ .silent = true },
         \\b = 123
-        \\var a = b
+        \\var a: b
     );
     try t.expectError(res, error.CompileError);
     try t.eqStr(run.vm.getCompileErrorMsg(), "The declaration of static variable `a` can not reference the local variable `b`.");
@@ -1160,21 +1160,21 @@ test "Static variable declaration." {
     // Declaration with a circular reference.
     _ = try run.eval(
         \\import t 'test'
-        \\var a = number(b) + 123
-        \\var b = a
+        \\var a: number(b) + 123
+        \\var b: a
         \\try t.eq(b, none)
         \\try t.eq(a, 123)
         \\-- Reference self.
-        \\var c = c 
+        \\var c: c 
         \\try t.eq(c, none)
     );
 
     // Declaration that depends on another.
     _ = try run.eval(
         \\import t 'test'
-        \\var a = 123
-        \\var b = a + 321
-        \\var c = a + b
+        \\var a: 123
+        \\var b: a + 321
+        \\var c: a + b
         \\try t.eq(a, 123) 
         \\try t.eq(b, 444) 
         \\try t.eq(c, 567) 
@@ -1183,9 +1183,9 @@ test "Static variable declaration." {
     // Depends on and declared before another.
     _ = try run.eval(
         \\import t 'test'
-        \\var c = a + b
-        \\var b = a + 321
-        \\var a = 123
+        \\var c: a + b
+        \\var b: a + 321
+        \\var a: 123
         \\try t.eq(a, 123) 
         \\try t.eq(b, 444) 
         \\try t.eq(c, 567) 
@@ -1193,7 +1193,7 @@ test "Static variable declaration." {
 
     // Declaration for an existing alias symbol.
     res = run.evalExt(.{ .silent = true },
-        \\var print = 123
+        \\var print: 123
     );
     try t.expectError(res, error.CompileError);
     const err = try run.vm.allocLastUserCompileError();
@@ -1201,7 +1201,7 @@ test "Static variable declaration." {
         \\CompileError: The symbol `print` was already declared.
         \\
         \\main:1:5:
-        \\var print = 123
+        \\var print: 123
         \\    ^
         \\
     );
@@ -1215,7 +1215,7 @@ test "Static variable assignment." {
 
     // Assigning to a implicit static var alias is not allowed.
     var res = run.evalExt(.{ .silent = true },
-        \\var a = 1
+        \\var a: 1
         \\func foo():
         \\  -- Implicitly references static var.
         \\  print a
@@ -1913,7 +1913,20 @@ const VMrunner = struct {
                 cy.silentError = false;
             }
         }
-        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
+        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules, .reload = true }) catch |err| {
+            switch (err) {
+                error.Panic,
+                error.TokenError,
+                error.ParseError,
+                error.CompileError => {
+                    if (!cy.silentError) {
+                        const report = try self.vm.allocLastErrorReport();
+                        defer t.alloc.free(report);
+                        std.debug.print("{s}", .{report});
+                    }
+                },
+                else => {},
+            }
             return err;
         };
     }

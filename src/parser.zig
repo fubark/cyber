@@ -1610,8 +1610,8 @@ pub const Parser = struct {
                 } else return self.reportParseError("Expected local name identifier.", &.{});
 
                 token = self.peekToken();
-                if (token.tag() != .equal) {
-                    return self.reportParseError("Expected `=` after local variable name.", &.{});
+                if (token.tag() != .colon) {
+                    return self.reportParseError("Expected `:` after local variable name.", &.{});
                 }
                 self.advanceToken();
 

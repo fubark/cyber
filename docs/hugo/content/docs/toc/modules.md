@@ -29,11 +29,11 @@ print a.foo
 
 -- foo.cy
 import 'bar.cy'
-export var foo = 123
+export var foo: 123
 print foo         -- Statement is ignored.
 
 -- bar.cy
-export var bar = 321
+export var bar: 321
 print bar         -- Statement is ignored.
 ```
 You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
@@ -69,7 +69,7 @@ Use the `export` prefix in front of static declarations to indicate that it shou
 export func foo():
     print 123
 
-export var bar = 234
+export var bar: 234
 ```
 
 ## Builtin Modules.

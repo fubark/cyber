@@ -1,1 +1,1 @@
-export var foo = panic(#boom)
+export var foo: panic(#boom)

@@ -107,7 +107,7 @@ test "ARC for static variable declarations." {
     // Static variable is freed on vm end.
     _ = try run.eval(
         \\import t 'test'
-        \\var a = [123]
+        \\var a: [123]
         \\try t.eq(a[0], 123)
     );
     run.deinit();

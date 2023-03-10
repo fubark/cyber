@@ -10,7 +10,7 @@ for list each it:
 try t.eq(sum, 6)
 
 -- From static iterable.
-var sList = [1, 2, 3]
+var sList: [1, 2, 3]
 sum = 0
 for sList each it:
    sum += it

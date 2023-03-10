@@ -1,14 +1,14 @@
-export var varNum = 123
-export var varList = [1, 2, 3]
-export var varMap = { a: 1, b: 2, c: 3 }
-export var varFunc = func():
+export var varNum: 123
+export var varList: [1, 2, 3]
+export var varMap: { a: 1, b: 2, c: 3 }
+export var varFunc: func():
     return 345
-export var varFunc1 = func(a):
+export var varFunc1: func(a):
     return a + 1
-export var varFunc2 = func(a, b):
+export var varFunc2: func(a, b):
     return a + b
 
-var varNoExport = 123
+var varNoExport: 123
 
 export func fn():
     return 234
@@ -25,18 +25,18 @@ panic(#ExecutedModuleMain)
 
 export func declAssign(val) = number
 
-export var initOnce = incInitOnce(initOnceCount)
-var initOnceCount = 0
+export var initOnce: incInitOnce(initOnceCount)
+var initOnceCount: 0
 func incInitOnce(cur):
     static initOnceCount
     initOnceCount = cur + 1
     return initOnceCount
 
 -- Tests dependency generation, so set resulting symbol's natural order before the dependency.
-export var varDepRes = varDep
-var varDep = 123
+export var varDepRes: varDep
+var varDep: 123
 export func funcDepRes() = funcDep
-var funcDep = func ():
+var funcDep: func ():
     return 123
 
 export func sameFuncName():

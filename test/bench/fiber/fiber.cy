@@ -1,4 +1,4 @@
-var count = 0
+var count: 0
 
 func inc():
     static count

@@ -2,7 +2,7 @@
 
 import t 'test'
 
-var a = 123
+var a: 123
 
 -- Assignment to a static variable.
 a = 234
@@ -50,7 +50,7 @@ f = func():
     try t.eq(b, 234)
 try f()
 try t.eq(b, 234)
-var b = 123
+var b: 123
 
 -- Operator assignment to a static variable.
 a = 123

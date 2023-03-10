@@ -50,13 +50,13 @@ try t.eq(foo6('123'), 123)
 
 -- Static func initializer assigns function value.
 func foo7() = foo7dep
-var foo7dep = func ():
+var foo7dep: func ():
     return 123
 try t.eq(foo7(), 123)
 
 -- Static func initializer assigns closure value.
 func foo8() = foo8dep()
-var foo8dep = func ():
+var foo8dep: func ():
     local = 123
     return func():
         return local

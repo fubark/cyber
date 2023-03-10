@@ -3,7 +3,7 @@ import t 'test'
 object Node:
   value
 
-var snode = Node{ value: 123 }
+var snode: Node{ value: 123 }
 
 -- Initialization.
 n = Node{ value: 123 }

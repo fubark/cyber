@@ -24,11 +24,11 @@ print a.foo
 
 -- foo.cy
 import &#39;bar.cy&#39;
-export var foo = 123
+export var foo: 123
 print foo         -- Statement is ignored.
 
 -- bar.cy
-export var bar = 321
+export var bar: 321
 print bar         -- Statement is ignored.
 </code></pre><p>You can have circular imports in Cyber. In the following example, <code>main.cy</code> and <code>foo.cy</code> import each other without any problems.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- main.cy
 import foo &#39;foo.cy&#39;
@@ -52,7 +52,7 @@ print cos(pi)
 <a class=anchor href=#exporting>#</a></h2><p>Use the <code>export</code> prefix in front of static declarations to indicate that it should be exported when the script&rsquo;s module is loaded.</p><pre tabindex=0><code class=language-cy data-lang=cy>export func foo():
     print 123
 
-export var bar = 234
+export var bar: 234
 </code></pre><h2 id=builtin-modules>Builtin Modules.
 <a class=anchor href=#builtin-modules>#</a></h2><p>Cyber currently contains the builtin modules:</p><ul><li><a href=#core-module>core</a>: Cyber related functions and commonly used utilities.</li><li><a href=#math-module>math</a>: Math constants and functions.</li><li><a href=#os-module>os</a>: System level functions.</li><li><a href=#test-module>test</a>: Utilities for testing.</li></ul><h3 id=core-module>Core Module.
 <a class=anchor href=#core-module>#</a></h3><p>The core module contains functions related to Cyber and common utilities. It is automatically imported into each script&rsquo;s namespace.</p><p>Sample usage:</p><pre tabindex=0><code class=language-cy data-lang=cy>print &#39;hello&#39;

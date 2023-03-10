@@ -62,42 +62,40 @@ foo()        -- &#39;123&#39;
 </code></pre><h3 id=static-variables>Static Variables.
 <a class=anchor href=#static-variables>#</a></h3><p>Unlike local variables, static variables are always available until the end of the script.
 When declared in the main block, they act as global variables and are visible from anywhere in the script without being captured by a closure.
-You can declare static variables with the <code>var</code> keyword.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+You can declare static variables with the <code>var</code> keyword.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
 func foo():
     print a     -- &#39;123&#39;
-</code></pre><p>Cyber&rsquo;s static variable declaration can be a source of confusion if you&rsquo;re coming from a language that uses <code>var</code> as a local variable.
-As a rule of thumb, static declarations in Cyber always begin with a keyword that describes what it is: <code>var</code>, <code>func</code>, <code>object</code>, <code>module</code>, <code>import</code>.
-Local variables are declared by the first assignment statement in a block.</p><p>Since assignment statements prefer to write to a variable in it&rsquo;s local block, the <code>static</code> keyword is used to select a static variable instead.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+</code></pre><p>The initializer comes after a colon instead of an assignment operator when declaring a static variable.</p><p>Since assignment statements prefer to write to a variable in it&rsquo;s local block, the <code>static</code> keyword is used to select a static variable instead.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
 func foo():
     static a = 234
 foo()
 print a         -- &#39;234&#39;
-</code></pre><p>Static variables can also be exported from the current script. You can read more about exports and <a href=#modules>Modules</a>.</p><pre tabindex=0><code class=language-cy data-lang=cy>export var a = 123
+</code></pre><p>Static variables can also be exported from the current script. You can read more about exports and <a href=#modules>Modules</a>.</p><pre tabindex=0><code class=language-cy data-lang=cy>export var a: 123
 </code></pre><p>When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.</p><pre tabindex=0><code class=language-cy data-lang=cy>func add(a):
-    var sum = 0
+    var sum: 0
     sum += a
     return sum
 print add(5)     -- &#39;5&#39;
 print add(5)     -- &#39;10&#39;
 </code></pre><p>Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 123
-var b = a     -- Compile error, initializer can not reference a local variable.
+var b: a      -- Compile error, initializer can not reference a local variable.
 </code></pre><p>However, you can reassign any value to them with an assignment statement.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 123
-var b = 0
+var b: 0
 b = a         -- Reassigning can reference a local variable.
 </code></pre><p>Static variable initializers have a natural order based on when it was encountered by the compiler.
 In the case of <a href=/cyber/docs/toc/modules/#importing>imported</a> variables, the order of the import would affect this order.
-The following would print &lsquo;123&rsquo; before &lsquo;234&rsquo;</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = print(123)
-var b = print(234)
-</code></pre><p>When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes <code>b</code> before <code>a</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = b + 321
-var b = 123
+The following would print &lsquo;123&rsquo; before &lsquo;234&rsquo;</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: print(123)
+var b: print(234)
+</code></pre><p>When the initializers reference other static variables, those child references are initialized first in DFS order and supersede the natural ordering. The following initializes <code>b</code> before <code>a</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: b + 321
+var b: 123
 print a        -- &#39;444&#39;
 </code></pre><p>Circular references in initializers are allowed.
 When initialization encounters a reference that creates this circular dependency, that reference evaluates to <code>none</code> at that moment.
 In the following, <code>a</code> attempts to initialize first because of its natural ordering. Since <code>b</code> is a dependency, it supersedes the natural ordering.
-When <code>b</code> is found to reference an already visited <code>a</code> (causing the circular dependency), it evaluatues to <code>a</code>&rsquo;s current value which is <code>none</code>. At the end of initialization, both <code>a</code> and <code>b</code> have the value <code>none</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = b
-var b = a
+When <code>b</code> is found to reference an already visited <code>a</code> (causing the circular dependency), it evaluatues to <code>a</code>&rsquo;s current value which is <code>none</code>. At the end of initialization, both <code>a</code> and <code>b</code> have the value <code>none</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: b
+var b: a
 </code></pre><p>Sometimes, you may want to initialize a static variable by executing multiple statements in order.
-For this use case, you can use a declaration block.</p><pre tabindex=0><code class=language-cy data-lang=cy>var myImage =:
+For this use case, you can use a declaration block.</p><pre tabindex=0><code class=language-cy data-lang=cy>var myImage:
     img = loadImage(&#39;me.png&#39;)
     img.resize(100, 100)
     img.filter(#blur, 5)

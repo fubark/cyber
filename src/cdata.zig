@@ -16,6 +16,22 @@ pub const EncodeListContext = struct {
     fn indent(self: *EncodeListContext) !void {
         try self.writer.writeByteNTimes(' ', self.cur_indent * 4);
     }
+
+    pub fn encodeList(self: *EncodeListContext, val: anytype, cb: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
+        try self.indent();
+        _ = try self.writer.write("[\n");
+
+        var list_ctx = EncodeListContext{
+            .writer = self.writer,
+            .tmp_buf = self.tmp_buf,
+            .cur_indent = self.cur_indent + 1,
+            .user_ctx = self.user_ctx,
+        };
+        try cb(&list_ctx, val);
+
+        try self.indent();
+        _ = try self.writer.write("]\n");
+    }
     
     pub fn encodeMap(self: *EncodeListContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
@@ -32,8 +48,27 @@ pub const EncodeListContext = struct {
         try self.indent();
         _ = try self.writer.write("}\n");
     }
+
+    pub fn encodeBool(self: *EncodeListContext, b: bool) !void {
+        try self.indent();
+        try Common.encodeBool(self.writer, b);
+        _ = try self.writer.write("\n");
+    }
+
+    pub fn encodeNumber(self: *EncodeListContext, f: f64) !void {
+        try self.indent();
+        try Common.encodeNumber(self.writer, f);
+        _ = try self.writer.write("\n");
+    }
+
+    pub fn encodeString(self: *EncodeListContext, str: []const u8) !void {
+        try self.indent();
+        try Common.encodeString(self.tmp_buf, self.writer, str);
+        _ = try self.writer.write("\n");
+    }
 };
 
+/// TODO: Rename to EncodeRootContext
 pub const EncodeValueContext = struct {
     writer: std.ArrayListUnmanaged(u8).Writer,
     tmp_buf: *std.ArrayList(u8),
@@ -44,7 +79,22 @@ pub const EncodeValueContext = struct {
         try self.writer.writeByteNTimes(' ', self.cur_indent * 4);
     }
 
-    pub fn encodeAsMap(self: *EncodeValueContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeList(self: *EncodeValueContext, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
+        _ = try self.writer.print("[\n", .{});
+
+        var list_ctx = EncodeListContext{
+            .writer = self.writer,
+            .tmp_buf = self.tmp_buf,
+            .cur_indent = self.cur_indent + 1,
+            .user_ctx = self.user_ctx,
+        };
+        try encode_list(&list_ctx, val);
+
+        try self.indent();
+        _ = try self.writer.write("]");
+    }
+
+    pub fn encodeMap(self: *EncodeValueContext, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
         _ = try self.writer.write("{\n");
 
         var map_ctx = EncodeMapContext{
@@ -57,6 +107,18 @@ pub const EncodeValueContext = struct {
 
         try self.indent();
         _ = try self.writer.write("}");
+    }
+
+    pub fn encodeBool(self: *EncodeValueContext, b: bool) !void {
+        try Common.encodeBool(self.writer, b);
+    }
+
+    pub fn encodeNumber(self: *EncodeValueContext, f: f64) !void {
+        try Common.encodeNumber(self.writer, f);
+    }
+
+    pub fn encodeString(self: *EncodeValueContext, str: []const u8) !void {
+        try Common.encodeString(self.tmp_buf, self.writer, str);
     }
 };
 
@@ -92,7 +154,7 @@ pub const EncodeMapContext = struct {
         _ = try self.writer.write("]\n");
     }
 
-    pub fn encodeAsList(self: *EncodeMapContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeList(self: *EncodeMapContext, key: []const u8, val: anytype, encode_list: fn (*EncodeListContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: [\n", .{key});
 
@@ -108,7 +170,7 @@ pub const EncodeMapContext = struct {
         _ = try self.writer.write("]\n");
     }
 
-    pub fn encodeAsMap(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
+    pub fn encodeMap(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: {{\n", .{key});
 
@@ -124,7 +186,7 @@ pub const EncodeMapContext = struct {
         _ = try self.writer.write("}\n");
     }
 
-    pub fn encodeAsMap2(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, anytype) anyerror!void) !void {
+    pub fn encodeMap2(self: *EncodeMapContext, key: []const u8, val: anytype, encode_map: fn (*EncodeMapContext, anytype) anyerror!void) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{ key });
 
@@ -151,7 +213,22 @@ pub const EncodeMapContext = struct {
     pub fn encodeString(self: *EncodeMapContext, key: []const u8, val: []const u8) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
-        try self.encodeString_(val);
+        try Common.encodeString(self.tmp_buf, self.writer, val);
+        _ = try self.writer.write("\n");
+    }
+
+    pub fn encodeNumber(self: *EncodeMapContext, key: []const u8, f: f64) !void {
+        try self.indent();
+        _ = try self.writer.print("{s}: ", .{key});
+        try Common.encodeNumber(self.writer, f);
+        _ = try self.writer.write("\n");
+    }
+
+    pub fn encodeBool(self: *EncodeMapContext, key: []const u8, b: bool) !void {
+        try self.indent();
+        _ = try self.writer.print("{s}: ", .{key});
+        try Common.encodeBool(self.writer, b);
+        _ = try self.writer.write("\n");
     }
 
     pub fn encodeAnyToMap(self: *EncodeMapContext, key: anytype, val: anytype, encode_map: fn (*EncodeMapContext, @TypeOf(val)) anyerror!void) !void {
@@ -187,18 +264,8 @@ pub const EncodeMapContext = struct {
 
     pub fn encodeAnyToString(self: *EncodeMapContext, key: anytype, val: []const u8) !void {
         try self.encodeAnyKey_(key);
-        try self.encodeString_(val);
-    }
-
-    fn encodeString_(self:* EncodeMapContext, str: []const u8) !void {
-        self.tmp_buf.clearRetainingCapacity();
-        if (std.mem.indexOfScalar(u8, str, '\n') == null) {
-            _ = replaceIntoList(u8, str, "'", "\\'", self.tmp_buf);
-            _ = try self.writer.print("'{s}'\n", .{self.tmp_buf.items});
-        } else {
-            _ = replaceIntoList(u8, str, "`", "\\`", self.tmp_buf);
-            _ = try self.writer.print("`{s}`\n", .{self.tmp_buf.items});
-        }
+        try Common.encodeString(self.tmp_buf, self.writer, val);
+        _ = try self.writer.write("\n");
     }
 
     pub fn encodeAnyToValue(self: *EncodeMapContext, key: anytype, val: anytype) !void {
@@ -216,6 +283,31 @@ pub const EncodeMapContext = struct {
             else => {
                 @compileError("unsupported: " ++ @typeName(T));
             },
+        }
+    }
+};
+
+const Common = struct {
+    fn encodeString(tmpBuf: *std.ArrayList(u8), writer: anytype, str: []const u8) !void {
+        tmpBuf.clearRetainingCapacity();
+        if (std.mem.indexOfScalar(u8, str, '\n') == null) {
+            _ = replaceIntoList(u8, str, "'", "\\'", tmpBuf);
+            _ = try writer.print("'{s}'", .{tmpBuf.items});
+        } else {
+            _ = replaceIntoList(u8, str, "`", "\\`", tmpBuf);
+            _ = try writer.print("`{s}`", .{tmpBuf.items});
+        }
+    }
+
+    fn encodeBool(writer: anytype, b: bool) !void {
+        _ = try writer.print("{}", .{b});
+    }
+
+    fn encodeNumber(writer: anytype, f: f64) !void {
+        if (cy.Value.floatCanBeInteger(f)) {
+            try writer.print("{d:.0}", .{f});
+        } else {
+            try writer.print("{d}", .{f});
         }
     }
 };
@@ -451,6 +543,7 @@ const ValueType = enum {
     map,
     string,
     number,
+    boolean,
 };
 
 pub const DecodeValueIR = struct {
@@ -465,6 +558,8 @@ pub const DecodeValueIR = struct {
             .map_literal => return .map,
             .string => return .string,
             .number => return .number,
+            .true_literal => return .boolean,
+            .false_literal => return .boolean,
             else => stdx.panicFmt("unsupported {}", .{node.node_t}),
         }
     }
@@ -492,6 +587,17 @@ pub const DecodeValueIR = struct {
         const node = self.res.nodes.items[self.exprId];
         const token_s = self.res.getTokenString(node.start_token);
         return try std.fmt.parseFloat(f64, token_s);
+    }
+
+    pub fn asBool(self: DecodeValueIR) bool {
+        const node = self.res.nodes.items[self.exprId];
+        if (node.node_t == .true_literal) {
+            return true;
+        } else if (node.node_t == .false_literal) {
+            return false;
+        } else {
+            stdx.panicFmt("Unsupported type: {}", .{node.node_t});
+        }
     }
 };
 
@@ -530,7 +636,7 @@ test "encode" {
         fn encodeRoot(ctx: *EncodeMapContext, val: TestRoot) !void {
             try ctx.encodeString("name", val.name);
             try ctx.encodeSlice("list", val.list, encodeValue);
-            try ctx.encodeAsMap("map", val.map, encodeMap);
+            try ctx.encodeMap("map", val.map, encodeMap);
         }
         fn encodeMap(ctx: *EncodeMapContext, val: []const TestMapItem) !void {
             for (val) |it| {
@@ -543,9 +649,9 @@ test "encode" {
         fn encodeValue(ctx: *EncodeValueContext, val: anytype) !void {
             const T = @TypeOf(val);
             if (T == TestRoot) {
-                try ctx.encodeAsMap(val, encodeRoot);
+                try ctx.encodeMap(val, encodeRoot);
             } else if (T == TestListItem) {
-                try ctx.encodeAsMap(val, encodeItem);
+                try ctx.encodeMap(val, encodeItem);
             } else {
                 stdx.panicFmt("unsupported: {s}", .{@typeName(T)});
             }

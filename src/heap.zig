@@ -165,6 +165,10 @@ pub const Map = extern struct {
         /// Although @offsetOf(Map, "inner") returns 8 in that case &map.inner returns the same address as &map.
         padding: u32 = 0,
     },
+
+    pub fn map(self: *Map) *MapInner {
+        return stdx.ptrAlignCast(*MapInner, &self.inner);
+    }
 };
 
 pub const MapIterator = extern struct {

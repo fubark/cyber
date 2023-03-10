@@ -119,6 +119,7 @@ print contents
 | `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
 | `readLine() rawstring` | Deprecated: Use `getInput` instead. |
 | `string(val any) string` | Converts a value to a string. | 
+| `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeid(val any) number` | Returns the type id of the value. | 
 | `valtag(any) #taglit` | Returns the value's type as a tag literal. |
 | `writeFile(path string, contents string) none` | Writes a string value to a file. | 

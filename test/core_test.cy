@@ -58,6 +58,25 @@ try t.eq(number(100.1), 100.1)
 try t.eq(number('100'), 100)
 try t.eq(number('100.1'), 100.1)
 
+-- parseCyon()
+val = parseCyon('123')
+try t.eq(val, 123)
+val = parseCyon('"foo"')
+try t.eq(val, 'foo')
+val = parseCyon('true')
+try t.eq(val, true)
+val = parseCyon('false')
+try t.eq(val, false)
+val = parseCyon('[]')
+try t.eqList(val, [])
+val = parseCyon('[1, 2, 3]')
+try t.eqList(val, [1, 2, 3])
+val = parseCyon('\{\}')
+try t.eq(val.size(), 0)
+val = parseCyon('\{ a: 123 \}')
+try t.eq(val.size(), 1)
+try t.eq(val['a'], 123)
+
 -- string()
 str = 'abcd'
 try t.eq(string(str), 'abcd')
@@ -72,6 +91,30 @@ try t.eq(string(123.00000123), '123.00000123')
 try t.eq(string(int(123)), '123')
 try t.eq(string(error(#foo)), 'error#foo')
 try t.eq(string(#foo), '#foo')
+
+-- toCyon()
+cyon = toCyon(123)
+try t.eq(cyon, '123')
+cyon = toCyon('foo')
+try t.eq(cyon, "'foo'")
+cyon = toCyon(true)
+try t.eq(cyon, 'true')
+cyon = toCyon(false)
+try t.eq(cyon, 'false')
+cyon = toCyon([])
+try t.eq(cyon, '[]')
+cyon = toCyon([1, 2, 3])
+try t.eq(cyon, "[
+    1
+    2
+    3
+]")
+cyon = toCyon({})
+try t.eq(cyon, "\{\}")
+cyon = toCyon({ a: 123 })
+try t.eq(cyon, "\{
+    a: 123
+\}")
 
 -- typeid()
 try t.eq(typeid(none), 0)

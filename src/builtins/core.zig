@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
+const fatal = stdx.fatal;
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
@@ -66,6 +67,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
     try mod.setNativeFunc(self, "string", 1, string);
+    try mod.setNativeFunc(self, "toCyon", 1, toCyon);
     try mod.setNativeFunc(self, "typeid", 1, typeid);
     try mod.setNativeFunc(self, "valtag", 1, valtag);
     if (cy.hasStdFiles) {
@@ -315,8 +317,108 @@ pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return vm.returnPanic(str);
 }
 
-pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    _ = nargs;
+pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const S = struct {
+        fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) !void {
+            const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+            var iter = val.asHeapObject().map.map().iterator();
+            while (iter.next()) |e| {
+                const key = uservm.valueToTempString(e.key);
+                switch (e.value.getUserTag()) {
+                    .number => {
+                        try ctx.encodeNumber(key, e.value.asF64());
+                    },
+                    .string => {
+                        const keyDupe = try uservm.allocator().dupe(u8, key);
+                        defer uservm.allocator().free(keyDupe);
+                        const str = uservm.valueToTempString(e.value);
+                        try ctx.encodeString(keyDupe, str);
+                    },
+                    .boolean => {
+                        try ctx.encodeBool(key, e.value.asBool());
+                    },
+                    .map => {
+                        try ctx.encodeMap(key, e.value, encodeMap);
+                    },
+                    .list => {
+                        try ctx.encodeList(key, e.value, encodeList);
+                    },
+                    else => {},
+                }
+            }
+        }
+        fn encodeList(ctx: *cy.EncodeListContext, val: cy.Value) !void {
+            const items = val.asHeapObject().list.items();
+            for (items) |it| {
+                switch (it.getUserTag()) {
+                    .number => {
+                        try ctx.encodeNumber(it.asF64());
+                    },
+                    .string => {
+                        const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+                        const str = uservm.valueToTempString(it);
+                        try ctx.encodeString(str);
+                    },
+                    .boolean => {
+                        try ctx.encodeBool(it.asBool());
+                    },
+                    .map => {
+                        try ctx.encodeMap(it, encodeMap);
+                    },
+                    .list => {
+                        try ctx.encodeList(it, encodeList);
+                    },
+                    else => {},
+                }
+            }
+        }
+        fn encodeRoot(ctx: *cy.EncodeValueContext, val: anytype) !void {
+            const T = @TypeOf(val);
+            if (T == Value) {
+                switch (val.getUserTag()) {
+                    .number => {
+                        try ctx.encodeNumber(val.asF64());
+                    },
+                    .string => {
+                        const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+                        const str = uservm.valueToTempString(val);
+                        try ctx.encodeString(str);
+                    },
+                    .boolean => {
+                        try ctx.encodeBool(val.asBool());
+                    },
+                    .list => {
+                        if (val.asHeapObject().list.items().len == 0) {
+                            _ = try ctx.writer.write("[]");
+                        } else {
+                            try ctx.encodeList(val, encodeList);
+                        }
+                    },
+                    .map => {
+                        if (val.asHeapObject().map.inner.size == 0) {
+                            _ = try ctx.writer.write("{}");
+                        } else {
+                            try ctx.encodeMap(val, encodeMap);
+                        }
+                    },
+                    else => {},
+                }
+            } else {
+                stdx.panicFmt("unsupported: {s}", .{@typeName(T)});
+            }
+        }
+    };
+    const root = args[0];
+    defer vm.release(root);
+
+    const alloc = vm.allocator();
+
+    const cyon = cy.encodeCyon(alloc, vm, root, S.encodeRoot) catch fatal();
+    defer alloc.free(cyon);
+    return vm.allocStringInfer(cyon) catch fatal();
+}
+
+pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = vm.valueAsString(args[0]);
     defer vm.release(args[0]);
     
@@ -361,6 +463,9 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
         },
         .number => {
             return Value.initF64(try val.asF64());
+        },
+        .boolean => {
+            return Value.initBool(val.asBool());
         },
     }
 }

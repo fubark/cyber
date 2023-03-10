@@ -146,16 +146,16 @@ pub const Const = bytecode.Const;
 pub const DebugSym = bytecode.DebugSym;
 pub const getInstLenAt = bytecode.getInstLenAt;
 
-const cdata = @import("cdata.zig");
-pub const encodeCyon = cdata.encode;
-pub const decodeCyonMap = cdata.decodeMap;
-pub const decodeCyon = cdata.decode;
-pub const EncodeValueContext = cdata.EncodeValueContext;
-pub const EncodeMapContext = cdata.EncodeMapContext;
-pub const EncodeListContext = cdata.EncodeListContext;
-pub const DecodeMapIR = cdata.DecodeMapIR;
-pub const DecodeListIR = cdata.DecodeListIR;
-pub const DecodeValueIR = cdata.DecodeValueIR;
+const cyon = @import("cyon.zig");
+pub const encodeCyon = cyon.encode;
+pub const decodeCyonMap = cyon.decodeMap;
+pub const decodeCyon = cyon.decode;
+pub const EncodeValueContext = cyon.EncodeValueContext;
+pub const EncodeMapContext = cyon.EncodeMapContext;
+pub const EncodeListContext = cyon.EncodeListContext;
+pub const DecodeMapIR = cyon.DecodeMapIR;
+pub const DecodeListIR = cyon.DecodeListIR;
+pub const DecodeValueIR = cyon.DecodeValueIR;
 
 /// Sections don't work on macOS arm64 builds but they are needed for the build.
 pub const HotSection = if (builtin.os.tag == .macos) "__TEXT,.eval" else ".eval";

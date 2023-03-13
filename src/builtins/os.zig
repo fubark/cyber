@@ -33,7 +33,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     try vm.addFieldSym(CFuncT, id, 1);
     id = try vm.ensureFieldSym("ret");
     try vm.addFieldSym(CFuncT, id, 2);
-    try mod.setObject(self, "CFunc", CFuncT);
+    try mod.setObject(self, "CFunc", CFuncT, cy.NullId);
 
     nameId = try cy.sema.ensureNameSym(self, "CStruct");
     CStructT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId);
@@ -42,7 +42,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     try vm.addFieldSym(CStructT, id, 0);
     id = try vm.ensureFieldSym("type");
     try vm.addFieldSym(CStructT, id, 1);
-    try mod.setObject(self, "CStruct", CStructT);
+    try mod.setObject(self, "CStruct", CStructT, cy.NullId);
 
     // Variables.
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));

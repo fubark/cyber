@@ -454,7 +454,7 @@ pub fn buildStackTrace(self: *cy.VM, fromPanic: bool) !void {
         } else {
             const chunk = self.compiler.chunks.items[sym.file];
             const frameNode = chunk.nodes[sym.frameLoc];
-            const func = chunk.funcDecls[frameNode.head.func.decl_id];
+            const func = chunk.semaFuncDecls.items[frameNode.head.func.semaDeclId];
             const name = func.getName(&chunk);
 
             const node = chunk.nodes[sym.loc];
@@ -488,7 +488,7 @@ pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
     if (sym.frameLoc != cy.NullId) {
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.frameLoc];
-        return node.head.func.genEndLocalsPc;
+        return chunk.semaFuncDecls.items[node.head.func.semaDeclId].genEndLocalsPc;
     } else {
         // Located in the main block.
         const chunk = vm.compiler.chunks.items[0];
@@ -502,7 +502,7 @@ pub fn debugSymToEndLocalsPc(vm: *const cy.VM, sym: cy.DebugSym) u32 {
     if (sym.frameLoc != cy.NullId) {
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.frameLoc];
-        return node.head.func.genEndLocalsPc;
+        return chunk.semaFuncDecls.items[node.head.func.semaDeclId].genEndLocalsPc;
     } else {
         // Located in the main block.
         const chunk = vm.compiler.chunks.items[0];
@@ -556,7 +556,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
             try chunk.dumpLocals(sblock);
         } else {
             const funcNode = chunk.nodes[sym.frameLoc];
-            const funcDecl = chunk.funcDecls[funcNode.head.func.decl_id];
+            const funcDecl = chunk.semaFuncDecls.items[funcNode.head.func.semaDeclId];
             const funcName = funcDecl.getName(&chunk);
             if (funcName.len == 0) {
                 fmt.printStderr("Block: lambda()\n", &.{});

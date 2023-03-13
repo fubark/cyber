@@ -11,6 +11,46 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Typed function params." {
+    // Can't resolve param type.
+    try eval(.{ .silent = true },
+        \\func foo(a Vec2):
+        \\  pass
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Could not find type symbol `Vec2`.
+            \\
+            \\main:1:12:
+            \\func foo(a Vec2):
+            \\           ^
+            \\
+        );
+    }}.func);
+}
+
+test "Typed function calls." {
+    // Calling static function with different type.
+    try eval(.{ .silent = true },
+        \\func foo(a number):
+        \\  return a + 3
+        \\foo(none)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(any) any`.
+            \\Only `func foo(number) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(none)
+            \\^
+            \\
+        );
+    }}.func);
+}
+
+test "Typed recursive function." {
+    try evalPass(.{}, @embedFile("typed_rec_func_test.cy"));
+}
+
 test "Multiple evals persisting state." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -141,11 +181,12 @@ test "User parse errors." {
 }
 
 test "Type specifiers." {
-    try evalPass(.{}, @embedFile("typespec_test.cy"));
+    try evalPass(Config.initFileModules("./test/typespec_test.cy"), @embedFile("typespec_test.cy"));
 }
 
 test "Type alias." {
-    try evalPass(Config.initFileModules("./test/atype_test.cy"), @embedFile("atype_test.cy"));
+    // TODO: Rename to typealias_test.cy
+    try evalPass(Config.initFileModules("./test/atype_test.cy").withDebug(), @embedFile("atype_test.cy"));
 }
 
 test "Import http spec." {
@@ -223,29 +264,37 @@ test "Imports." {
     try t.expect(std.mem.startsWith(u8, errMsg, "Import path does not exist:"));
     try t.expect(std.mem.indexOf(u8, errMsg, "test/test_mods/missing.cy") != null);
 
-    // Using unexported func symbol.
-    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
-        \\import a 'test_mods/a.cy'
-        \\b = a.barNoExport
-    );
-    try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `barNoExport`");
+    // TODO: Not needed for @hidden
+    // // Using unexported func symbol.
+    // res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
+    //     \\import a 'test_mods/a.cy'
+    //     \\b = a.barNoExport
+    // );
+    // try t.expectError(res, error.CompileError);
+    // try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `barNoExport`");
 
-    // Using unexported var symbol.
-    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
-        \\import a 'test_mods/a.cy'
-        \\b = a.varNoExport
-    );
-    try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
+    // TODO: Not needed for @hidden
+    // // Using unexported var symbol.
+    // res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
+    //     \\import a 'test_mods/a.cy'
+    //     \\b = a.varNoExport
+    // );
+    // try t.expectError(res, error.CompileError);
+    // try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
 
     // Using missing symbol.
     res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/a.cy'
         \\b = a.missing
     );
-    try t.expectError(res, error.CompileError);
-    try t.eqStr(run.vm.getCompileErrorMsg(), "Missing symbol: `missing`");
+    try run.expectErrorReport(res, error.CompileError,
+        \\CompileError: Missing symbol: `missing`
+        \\
+        \\@AbsPath(test/import_test.cy):2:7:
+        \\b = a.missing
+        \\      ^
+        \\
+    );
 
     // Failed to set func from another module
     res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
@@ -253,9 +302,7 @@ test "Imports." {
         \\import t 'test'
         \\try t.eq(valtag(a.foo), #function)
     );
-    try t.expectError(res, error.Panic);
-    const err = try run.vm.allocLastUserPanicError();
-    try eqUserError(t.alloc, err,
+    try run.expectErrorReport(res, error.Panic,
         \\panic: Assigning to static function with a different function signature.
         \\
         \\@AbsPath(test/test_mods/init_func_error.cy):1:21 main:
@@ -778,7 +825,7 @@ test "Stack trace unwinding." {
     });
 
     // panic from another module.
-    res = run.evalExt(.{ .silent = false, .uri = "./test/main.cy" },
+    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
         \\import a 'test_mods/init_panic_error.cy'
         \\import t 'test'
         \\try t.eq(a.foo, 123)
@@ -795,7 +842,7 @@ test "Stack trace unwinding." {
     });
 
     // `try` panic from another module.
-    res = run.evalExt(.{ .silent = false, .uri = "./test/main.cy" },
+    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
         \\import a 'test_mods/init_try_error.cy'
         \\import t 'test'
         \\try t.eq(a.foo, 123)
@@ -1123,7 +1170,7 @@ test "Undefined variable references." {
         \\try t.eq(a, 123)
     );
     try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Missing symbol `a`
+        \\CompileError: Missing symbol: `a`
         \\
         \\main:2:10:
         \\try t.eq(a, 123)
@@ -1135,10 +1182,10 @@ test "Undefined variable references." {
     res = run.evalExt(.{ .silent = true },
         \\a()
     );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: Missing function symbol `a`.
+    try run.expectErrorReport(res, error.CompileError,
+        \\CompileError: Can not find compatible function signature for `a() any`.
         \\
-        \\main:1:1 main:
+        \\main:1:1:
         \\a()
         \\^
         \\
@@ -1231,7 +1278,9 @@ test "Static variable assignment." {
         \\
     );
 
-    _ = try run.eval(@embedFile("staticvar_assign_test.cy"));
+    run.deinit();
+
+    _ = try evalPass(.{}, @embedFile("staticvar_assign_test.cy"));
 }
 
 test "Local variable declaration." {
@@ -1241,17 +1290,19 @@ test "Local variable declaration." {
 }
 
 test "Local variable assignment." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("localvar_assign_test.cy"));
+    try evalPass(.{}, @embedFile("localvar_assign_test.cy"));
 
     // Initializing an object in a branch will auto generate initializers at the start of
     // the function. This test sets freed object values along the undefined stack space.
     // If the initializers were generated, the release on `a` would succeed.
     // If not `a` would refer to a freed object value and fail the release op.
-    try run.resetEnv();
-    run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
-    var val = try run.evalNoReset(
+    try evalPass(.{
+        .preEval = struct {
+            fn func(run: *VMrunner) void {
+                run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+            }
+        }.func,
+    },
         \\object S:
         \\  value
         \\if false:
@@ -1259,9 +1310,13 @@ test "Local variable assignment." {
     );
 
     // Same test in method scope.
-    try run.resetEnv();
-    run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
-    val = try run.evalNoReset(
+    try evalPass(.{
+        .preEval = struct {
+            fn func(run: *VMrunner) void {
+                run.vm.fillUndefinedStackSpace(cy.Value.initPtr(null));
+            }
+        }.func,
+    },
         \\object S:
         \\  value
         \\  func foo(self):
@@ -1487,10 +1542,7 @@ test "Function recursion." {
 }
 
 test "Function overloading." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    _ = try run.eval(
+    try evalPass(.{},
         \\import t 'test'
         \\func foo():
         \\    return 2 + 2
@@ -1510,10 +1562,10 @@ test "Static functions." {
     try eval(.{ .silent = true },
         \\foo(1)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Missing function symbol `foo`.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
             \\
-            \\main:1:1 main:
+            \\main:1:1:
             \\foo(1)
             \\^
             \\
@@ -1526,11 +1578,11 @@ test "Static functions." {
         \\  return 1
         \\foo(1)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Unsupported call signature: `foo(any) any`.
-            \\A function with signature `foo() any` exists.
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo() any` exists for the symbol `foo`.
             \\
-            \\main:3:1 main:
+            \\main:3:1:
             \\foo(1)
             \\^
             \\
@@ -1545,11 +1597,11 @@ test "Static functions." {
         \\  return n
         \\foo(1, 2)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Unsupported call signature: `foo(any, any) any`.
-            \\There are multiple overloaded functions named `foo`
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number, number) any`.
+            \\There are multiple overloaded functions named `foo`.
             \\
-            \\main:5:1 main:
+            \\main:5:1:
             \\foo(1, 2)
             \\^
             \\
@@ -1885,8 +1937,7 @@ const VMrunner = struct {
                 report = try self.vm.allocLastUserParseError();
             },
         }
-        defer t.alloc.free(report);
-        try t.eqStr(report, expReport);
+        try eqUserError(t.alloc, report, expReport);
     }
 
     fn evalExt(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
@@ -1900,6 +1951,19 @@ const VMrunner = struct {
         }
         try self.resetEnv();    
         return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
+            switch (err) {
+                error.Panic,
+                error.TokenError,
+                error.ParseError,
+                error.CompileError => {
+                    if (!cy.silentError) {
+                        const report = try self.vm.allocLastErrorReport();
+                        defer t.alloc.free(report);
+                        std.debug.print("{s}", .{report});
+                    }
+                },
+                else => {},
+            }
             return err;
         };
     }
@@ -2007,6 +2071,8 @@ const Config = struct {
 
     checkGlobalRc: bool = true,
 
+    preEval: ?*const fn (run: *VMrunner) void = null,
+
     debug: bool = false,
 
     fn withSilent(self: Config) Config {
@@ -2081,6 +2147,10 @@ fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!
             cy.verbose = false;
             t.setLogLevel(.warn);
         }
+    }
+
+    if (config.preEval) |preEval| {
+        preEval(run);
     }
 
     const res = run.vm.eval(config.uri, src, .{ 

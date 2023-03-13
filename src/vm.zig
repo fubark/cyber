@@ -731,7 +731,7 @@ pub const VM = struct {
             const next = math_mod.rand.next();
             std.mem.copy(u8, name[0..baseName.len], baseName);
             _ = std.fmt.formatIntBuf(name[baseName.len..], next, 16, .lower, .{ .width = 16, .fill = '0'});
-            if (!self.compiler.semaNameSymMap.contains(name)) {
+            if (!self.compiler.sema.nameSymMap.contains(name)) {
                 const nameId = try cy.sema.ensureNameSymExt(&self.compiler, name, true);
                 return try self.ensureObjectType(cy.NullId, nameId);
             }
@@ -860,7 +860,7 @@ pub const VM = struct {
         if (!res.found_existing) {
             const id = @intCast(u32, self.funcSyms.len);
 
-            // const rFuncSig = self.compiler.semaResolvedFuncSigs.items[rFuncSigId];
+            // const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
             // const typedFlag: u16 = if (rFuncSig.isTyped) 1 << 15 else 0;
             try self.funcSyms.append(self.alloc, .{
                 .entryT = @enumToInt(FuncSymbolEntryType.none),
@@ -1471,57 +1471,45 @@ pub const VM = struct {
             const chunk = vm.compiler.chunks.items[sym.file];
             const callExpr = chunk.nodes[sym.loc];
             const callee = chunk.nodes[callExpr.head.callExpr.callee];
-            var symId: cy.sema.SymId = undefined;
+            var crSymId: sema.CompactResolvedSymId = undefined;
             if (callee.node_t == .accessExpr) {
-                symId = callee.head.accessExpr.semaSymId;
+                crSymId = @bitCast(sema.CompactResolvedSymId, callee.head.accessExpr.sema_crSymId);
             } else if (callee.node_t == .ident) {
-                symId = callee.head.ident.semaSymId;
+                crSymId = @bitCast(sema.CompactResolvedSymId, callee.head.ident.sema_crSymId);
             } else {
                 return vm.panic("Failed to generate error report.");
             }
-            const key = chunk.semaSyms.items[symId].key.absLocalSymKey;
-            const name = cy.sema.getName(&vm.compiler, key.nameId);
-            var rpSymId: sema.ResolvedSymId = undefined;
-            if (key.parentSymId == cy.NullId) {
-                rpSymId = chunk.semaResolvedRootSymId;
-            } else {
-                rpSymId = chunk.semaSyms.items[key.parentSymId].rSymId;
-            }
-            const rkey = sema.AbsResolvedSymKey{
-                .absResolvedSymKey = .{
-                    .rParentSymId = rpSymId,
-                    .nameId = key.nameId,
-                },
-            };
-            if (vm.compiler.semaResolvedSymMap.get(rkey)) |rsymId| {
-                const rsym = vm.compiler.semaResolvedSyms.items[rsymId];
-                if (rsym.symT == .func) {
-                    const rtSym = vm.funcSyms.buf[rtSymId];
-                    if (rsym.inner.func.rFuncSymId == cy.NullId) {
-                        const sigStr = try sema.getResolvedFuncSigTempStr(&vm.compiler, rtSym.innerExtra.none.rFuncSigId);
-                        return vm.panicFmt("Unsupported call signature: `{}{}`.\nThere are multiple overloaded functions named `{}`", &.{
-                            v(name), v(sigStr), v(name),
-                        });
-                    } else {
-                        const rfSym = vm.compiler.semaResolvedFuncSyms.items[rsym.inner.func.rFuncSymId];
+            const rFuncSymId = crSymId.id;
 
-                        vm.u8Buf.clearRetainingCapacity();
-                        const w = vm.u8Buf.writer(vm.alloc);
-                        cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, rtSym.innerExtra.none.rFuncSigId) catch fatal();
-                        const rtSigStr = vm.u8Buf.items();
-                        const start = vm.u8Buf.len;
-                        cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, rfSym.rFuncSigId) catch fatal();
-                        const existingSigStr = vm.u8Buf.buf[start..vm.u8Buf.len];
+            const rFuncSym = chunk.compiler.sema.resolvedFuncSyms.items[rFuncSymId];
+            const funcChunk = &vm.compiler.chunks.items[rFuncSym.chunkId];
+            const func = funcChunk.semaFuncDecls.items[rFuncSym.declId];
 
-                        return vm.panicFmt("Unsupported call signature: `{}{}`.\nA function with signature `{}{}` exists.", &.{
-                            v(name), v(rtSigStr), v(name), v(existingSigStr),
-                        });
-                    }
+            const name = func.getName(funcChunk);
+            const rSym = chunk.compiler.sema.resolvedSyms.items[func.rSymId];
+
+            if (rSym.symT == .func) {
+                const rtSym = vm.funcSyms.buf[rtSymId];
+                if (rSym.inner.func.rFuncSymId == cy.NullId) {
+                    const sigStr = try sema.getResolvedFuncSigTempStr(&vm.compiler, rtSym.innerExtra.none.rFuncSigId);
+                    return vm.panicFmt("Unsupported call signature: `{}{}`.\nThere are multiple overloaded functions named `{}`", &.{
+                        v(name), v(sigStr), v(name),
+                    });
+                } else {
+                    const rFuncSym_ = vm.compiler.sema.getResolvedFuncSym(rSym.inner.func.rFuncSymId);
+
+                    vm.u8Buf.clearRetainingCapacity();
+                    const w = vm.u8Buf.writer(vm.alloc);
+                    cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, rtSym.innerExtra.none.rFuncSigId) catch fatal();
+                    const rtSigStr = vm.u8Buf.items();
+                    const start = vm.u8Buf.len;
+                    cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, rFuncSym_.getResolvedFuncSigId()) catch fatal();
+                    const existingSigStr = vm.u8Buf.buf[start..vm.u8Buf.len];
+
+                    return vm.panicFmt("Unsupported call signature: `{}{}`.\nOnly `func {}{}` exists for the symbol `{}`.", &.{
+                        v(name), v(rtSigStr), v(name), v(existingSigStr), v(name),
+                    });
                 }
-            } else {
-                return vm.panicFmt("Missing function symbol `{}`.", &.{
-                    v(name),
-                });
             }
             return vm.panic("Failed to generate error report.");
         } else {
@@ -4705,6 +4693,10 @@ pub const KeyU64 = extern union {
         rSymId: sema.ResolvedSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
     },
+    relLocalSymKey: extern struct {
+        nameId: sema.NameSymId,
+        rFuncSigId: sema.ResolvedFuncSigId,
+    },
     relModuleSymKey: extern struct {
         nameId: sema.NameSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
@@ -4845,7 +4837,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 }
                 releaseFuncSymDep(vm, symId);
 
-                const rFuncSig = vm.compiler.semaResolvedFuncSigs.items[dstRFuncSigId];
+                const rFuncSig = vm.compiler.sema.resolvedFuncSigs.items[dstRFuncSigId];
                 vm.funcSyms.buf[symId] = .{
                     .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
                     .innerExtra = .{
@@ -4870,7 +4862,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                     const start = vm.u8Buf.len;
                     cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, @intCast(u32, obj.lambda.rFuncSigId)) catch fatal();
                     const srcSig = vm.u8Buf.buf[start..vm.u8Buf.len];
-                    return vm.panicFmt("Assigning to static function `sig: {}` with a different function signature `sig: {}`.", &.{v(dstSig), v(srcSig)});
+                    return vm.panicFmt("Assigning to static function `func {}` with a different function signature `func {}`.", &.{v(dstSig), v(srcSig)});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{

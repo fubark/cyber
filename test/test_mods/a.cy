@@ -51,3 +51,6 @@ export object Vec2:
 
     func new(x, y):
         return Vec2{ x: x, y: y }
+
+export object Bar:
+    a number

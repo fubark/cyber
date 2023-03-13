@@ -10,8 +10,6 @@ pub const Node = parser.Node;
 pub const NodeType = parser.NodeType;
 pub const NodeId = parser.NodeId;
 pub const BinaryExprOp = parser.BinaryExprOp;
-pub const FuncDecl = parser.FuncDecl;
-pub const FunctionParam = parser.FunctionParam;
 pub const Token = parser.Token;
 pub const Tokenizer = parser.Tokenizer;
 pub const TokenizeState = parser.TokenizeState;
@@ -203,6 +201,11 @@ pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 const std = @import("std");
 pub const NullId = std.math.maxInt(u32);
 pub const NullU8 = std.math.maxInt(u8);
+
+/// Document that a id type can contain NullId.
+pub fn Nullable(comptime T: type) type {
+    return T;
+}
 
 pub const NativeObjFuncPtr = *const fn (*UserVM, Value, [*]const Value, u8) Value;
 pub const NativeObjFunc2Ptr = *const fn (*UserVM, Value, [*]const Value, u8) ValuePair;

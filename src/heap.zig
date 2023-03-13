@@ -1295,6 +1295,9 @@ pub fn allocEmptyObject(self: *cy.VM, sid: cy.TypeId, numFields: u32) !Value {
         .rc = 1,
         .firstValue = undefined,
     };
+    if (builtin.mode == .Debug) {
+        traceAlloc(self, @ptrCast(*HeapObject, obj));
+    }
     if (cy.TraceEnabled) {
         self.trace.numRetains += 1;
         self.trace.numRetainAttempts += 1;
@@ -1357,6 +1360,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         if (cy.verbose) {
             log.debug("free {}", .{obj.getUserTag()});
         }   
+        if (vm.objectTraceMap.getPtr(obj)) |trace| {
+            trace.freePc = vm.debugPc;
+        } else {
+            log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
+        }
     }
     switch (obj.retainedCommon.structId) {
         ListS => {
@@ -1534,13 +1542,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 vm.alloc.free(slice);
             }
         },
-    }
-    if (builtin.mode == .Debug) {
-        if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = vm.debugPc;
-        } else {
-            log.debug("Missing object trace {*}", .{obj});
-        }
     }
 }
 

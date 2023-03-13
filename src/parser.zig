@@ -6,7 +6,9 @@ const fatal = stdx.fatal;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const Nullable = cy.Nullable;
 
+const TokenId = u32;
 pub const NodeId = u32;
 const NullId = cy.NullId;
 const log = stdx.log.scoped(.parser);
@@ -77,11 +79,9 @@ pub const Parser = struct {
     last_err_pos: u32,
     block_stack: std.ArrayListUnmanaged(BlockState),
     cur_indent: u32,
-    func_params: std.ArrayListUnmanaged(FunctionParam),
-    func_decls: std.ArrayListUnmanaged(FuncDecl),
 
-    /// Use the parser pass to record var declarations.
-    varDecls: std.ArrayListUnmanaged(NodeId),
+    /// Use the parser pass to record static declarations.
+    staticDecls: std.ArrayListUnmanaged(StaticDecl),
 
     // TODO: This should be implemented by user callbacks.
     /// @name arg.
@@ -90,6 +90,8 @@ pub const Parser = struct {
     deps: std.StringHashMapUnmanaged(NodeId),
 
     tokenizeOpts: TokenizeOptions,
+
+    inObjectDecl: bool,
 
     /// For custom functions.
     user: struct {
@@ -115,13 +117,12 @@ pub const Parser = struct {
             .last_err_pos = 0,
             .block_stack = .{},
             .cur_indent = 0,
-            .func_params = .{},
-            .func_decls = .{},
             .name = "",
             .deps = .{},
             .user = undefined,
             .tokenizeOpts = .{},
-            .varDecls = .{},
+            .staticDecls = .{},
+            .inObjectDecl = false,
         };
     }
 
@@ -130,10 +131,8 @@ pub const Parser = struct {
         self.nodes.deinit(self.alloc);
         self.alloc.free(self.last_err);
         self.block_stack.deinit(self.alloc);
-        self.func_params.deinit(self.alloc);
-        self.func_decls.deinit(self.alloc);
         self.deps.deinit(self.alloc);
-        self.varDecls.deinit(self.alloc);
+        self.staticDecls.deinit(self.alloc);
     }
 
     fn dumpTokensToCurrent(self: *Parser) void {
@@ -170,8 +169,6 @@ pub const Parser = struct {
                 .err_msg = self.last_err,
                 .root_id = NullId,
                 .nodes = &self.nodes,
-                .func_decls = &self.func_decls,
-                .func_params = self.func_params.items,
                 .tokens = &.{},
                 .src = self.src,
                 .name = self.name,
@@ -191,8 +188,6 @@ pub const Parser = struct {
                 .err_msg = self.last_err,
                 .root_id = NullId,
                 .nodes = &self.nodes,
-                .func_decls = &self.func_decls,
-                .func_params = self.func_params.items,
                 .tokens = &.{},
                 .src = self.src,
                 .name = self.name,
@@ -207,8 +202,6 @@ pub const Parser = struct {
             .nodes = &self.nodes,
             .tokens = self.tokens.items,
             .src = self.src,
-            .func_decls = &self.func_decls,
-            .func_params = self.func_params.items,
             .name = self.name,
             .deps = &self.deps,
         };
@@ -218,8 +211,6 @@ pub const Parser = struct {
         self.next_pos = 0;
         self.nodes.clearRetainingCapacity();
         self.block_stack.clearRetainingCapacity();
-        self.func_decls.clearRetainingCapacity();
-        self.func_params.clearRetainingCapacity();
         self.cur_indent = 0;
 
         const root_id = try self.pushNode(.root, 0);
@@ -332,37 +323,34 @@ pub const Parser = struct {
         // Assumes first token is `=>`.
         self.advanceToken();
 
-        var decl = FuncDecl{
-            .name = undefined,
-            .params = stdx.IndexSlice(u32).init(@intCast(u32, self.func_params.items.len), @intCast(u32, self.func_params.items.len+1)),
-            .return_type = null,
-            .inner = .{
-                .lambda = .{},
-            },
-            .isStatic = false,
-        };
-
-        const param = self.nodes.items[paramIdent];
-        const token = self.tokens.items[param.start_token];
-        const name = IndexSlice.init(token.pos(), token.data.end_pos);
-        try self.func_params.append(self.alloc, .{
-            .name = name,
-            .typeSpec = cy.NullId,
-        });
-
         // Parse body expr.
-        const body_expr = (try self.parseExpr(.{})) orelse {
+        const expr = (try self.parseExpr(.{})) orelse {
             return self.reportParseError("Expected lambda body expression.", &.{});
         };
-        
-        const decl_id = @intCast(u32, self.func_decls.items.len);
-        try self.func_decls.append(self.alloc, decl);
+
+        const identPos = self.nodes.items[paramIdent].start_token;
+        const param = try self.pushNode(.funcParam, identPos);
+        self.nodes.items[param].head = .{
+            .funcParam = .{
+                .name = paramIdent,
+                .typeSpecHead = NullId,
+            },
+        };
+
+        const header = try self.pushNode(.funcHeader, start);
+        self.nodes.items[header].head = .{
+            .funcHeader = .{
+                .name = cy.NullId,
+                .paramHead = param,
+                .ret = cy.NullId,
+            },
+        };
 
         const id = try self.pushNode(.lambda_expr, start);
         self.nodes.items[id].head = .{
             .func = .{
-                .decl_id = decl_id,
-                .body_head = body_expr,
+                .header = header,
+                .bodyHead = expr,
             },
         };
         return id;
@@ -373,29 +361,25 @@ pub const Parser = struct {
         // Assumes first token is `=>`.
         self.advanceToken();
 
-        var decl = FuncDecl{
-            .name = undefined,
-            .params = stdx.IndexSlice(u32).init(0, 0),
-            .return_type = null,
-            .inner = .{
-                .lambda = .{},
-            },
-            .isStatic = false,
-        };
-
         // Parse body expr.
-        const body_expr = (try self.parseExpr(.{})) orelse {
+        const expr = (try self.parseExpr(.{})) orelse {
             return self.reportParseError("Expected lambda body expression.", &.{});
         };
         
-        const decl_id = @intCast(u32, self.func_decls.items.len);
-        try self.func_decls.append(self.alloc, decl);
+        const header = try self.pushNode(.funcHeader, start);
+        self.nodes.items[header].head = .{
+            .funcHeader = .{
+                .name = cy.NullId,
+                .paramHead = cy.NullId,
+                .ret = cy.NullId,
+            },
+        };
 
         const id = try self.pushNode(.lambda_expr, start);
         self.nodes.items[id].head = .{
             .func = .{
-                .decl_id = decl_id,
-                .body_head = body_expr,
+                .header = header,
+                .bodyHead = expr,
             },
         };
         return id;
@@ -407,18 +391,8 @@ pub const Parser = struct {
         // Assume first token is `func`.
         self.advanceToken();
 
-        var decl = FuncDecl{
-            .name = undefined,
-            .params = undefined,
-            .return_type = null,
-            .inner = .{
-                .lambda = .{},
-            },
-            .isStatic = false,
-        };
-
-        decl.params = try self.parseFunctionParams();
-        decl.return_type = self.parseFunctionReturn();
+        const paramHead = try self.parseFuncParams();
+        const ret = try self.parseFuncReturn();
 
         if (self.peekToken().tag() == .colon) {
             self.advanceToken();
@@ -429,15 +403,21 @@ pub const Parser = struct {
         try self.pushBlock();
         const firstChild = try self.parseSingleOrIndentedBodyStmts();
         self.popBlock();
-            
-        const decl_id = @intCast(u32, self.func_decls.items.len);
-        try self.func_decls.append(self.alloc, decl);
+
+        const header = try self.pushNode(.funcHeader, start);
+        self.nodes.items[header].head = .{
+            .funcHeader = .{
+                .name = cy.NullId,
+                .paramHead = paramHead orelse cy.NullId,
+                .ret = ret orelse cy.NullId,
+            },
+        };
 
         const id = try self.pushNode(.lambda_multi, start);
         self.nodes.items[id].head = .{
             .func = .{
-                .decl_id = decl_id,
-                .body_head = firstChild,
+                .header = header,
+                .bodyHead = firstChild,
             },
         };
         return id;
@@ -446,17 +426,8 @@ pub const Parser = struct {
     fn parseLambdaFunction(self: *Parser) !NodeId {
         const start = self.next_pos;
 
-        var decl = FuncDecl{
-            .name = cy.NullId,
-            .params = undefined,
-            .return_type = null,
-            .inner = .{
-                .lambda = .{},
-            },
-            .isStatic = false,
-        };
-
-        decl.params = try self.parseFunctionParams();
+        const paramHead = try self.parseFuncParams();
+        const ret = try self.parseFuncReturn();
 
         var token = self.peekToken();
         if (token.tag() != .equal_greater) {
@@ -465,24 +436,30 @@ pub const Parser = struct {
         self.advanceToken();
 
         // Parse body expr.
-        const body_expr = (try self.parseExpr(.{})) orelse {
+        const expr = (try self.parseExpr(.{})) orelse {
             return self.reportParseError("Expected lambda body expression.", &.{});
         };
-        
-        const decl_id = @intCast(u32, self.func_decls.items.len);
-        try self.func_decls.append(self.alloc, decl);
 
+        const header = try self.pushNode(.funcHeader, start);
+        self.nodes.items[header].head = .{
+            .funcHeader = .{
+                .name = cy.NullId,
+                .paramHead = paramHead orelse cy.NullId,
+                .ret = ret orelse cy.NullId,
+            },
+        };
+        
         const id = try self.pushNode(.lambda_expr, start);
         self.nodes.items[id].head = .{
             .func = .{
-                .decl_id = decl_id,
-                .body_head = body_expr,
+                .header = header,
+                .bodyHead = expr,
             },
         };
         return id;
     }
 
-    fn parseFunctionParams(self: *Parser) !IndexSlice {
+    fn parseFuncParams(self: *Parser) !?NodeId {
         var token = self.peekToken();
         if (token.tag() != .left_paren) {
             return self.reportParseError("Expected open parenthesis.", &.{});
@@ -490,22 +467,22 @@ pub const Parser = struct {
         self.advanceToken();
 
         // Parse params.
-        const param_start = @intCast(u32, self.func_params.items.len);
-        outer: {
-            token = self.peekToken();
-            if (token.tag() == .ident) {
-                self.advanceToken();
-                const name = IndexSlice.init(token.pos(), token.data.end_pos);
+        token = self.peekToken();
+        if (token.tag() == .ident) {
+            var start = self.next_pos;
+            var name = try self.pushIdentNode(start);
 
-                const typeSpec = (try self.parseOptTypeSpec()) orelse cy.NullId;
-                try self.func_params.append(self.alloc, .{
+            self.advanceToken();
+            var typeSpecHead = (try self.parseOptTypeSpec()) orelse cy.NullId;
+
+            const paramHead = try self.pushNode(.funcParam, start);
+            self.nodes.items[paramHead].head = .{
+                .funcParam = .{
                     .name = name,
-                    .typeSpec = typeSpec,
-                });
-            } else if (token.tag() == .right_paren) {
-                self.advanceToken();
-                break :outer;
-            } else return self.reportParseError("Unexpected token in function param list.", &.{});
+                    .typeSpecHead = typeSpecHead,
+                },
+            };
+            var last = paramHead;
             while (true) {
                 token = self.peekToken();
                 switch (token.tag()) {
@@ -520,31 +497,63 @@ pub const Parser = struct {
                 }
 
                 token = self.peekToken();
+                start = self.next_pos;
                 if (token.tag() != .ident) {
                     return self.reportParseError("Expected param identifier.", &.{});
                 }
-                self.advanceToken();
-                const name = IndexSlice.init(token.pos(), token.data.end_pos);
 
-                const typeSpec = (try self.parseOptTypeSpec()) orelse cy.NullId;
-                try self.func_params.append(self.alloc, .{
-                    .name = name,
-                    .typeSpec = typeSpec,
-                });
+                name = try self.pushIdentNode(start);
+                self.advanceToken();
+
+                typeSpecHead = (try self.parseOptTypeSpec()) orelse cy.NullId;
+
+                const param = try self.pushNode(.funcParam, start);
+                self.nodes.items[param].head = .{
+                    .funcParam = .{
+                        .name = name,
+                        .typeSpecHead = typeSpecHead,
+                    },
+                };
+                self.nodes.items[last].next = param;
+                last = param;
             }
-        }
-        return IndexSlice.init(param_start, @intCast(u32, self.func_params.items.len));
+            return paramHead;
+        } else if (token.tag() == .right_paren) {
+            self.advanceToken();
+            return null;
+        } else return self.reportParseError("Unexpected token in function param list.", &.{});
     }
 
-    fn parseFunctionReturn(self: *Parser) ?IndexSlice {
+    fn parseFuncReturn(self: *Parser) !?NodeId {
+        return self.parseOptTypeSpec();
+    }
+
+    fn parseOptTypeSpec(self: *Parser) !?NodeId {
         var token = self.peekToken();
         if (token.tag() == .ident) {
-            const return_type = IndexSlice.init(token.pos(), token.data.end_pos);
+            const head = try self.pushIdentNode(self.next_pos);
+            var last = head;
             self.advanceToken();
-            return return_type;
-        } else {
-            return null;
+
+            while (true) {
+                token = self.peekToken();
+                if (token.tag() == .dot) {
+                    self.advanceToken();
+                    if (self.peekToken().tag() == .ident) {
+                        const ident = try self.pushIdentNode(self.next_pos);
+                        self.nodes.items[last].next = ident;
+                        last = ident;
+                        self.advanceToken();
+                        continue;
+                    } else {
+                        return self.reportParseError("Expected ident.", &.{});
+                    }
+                }
+                break;
+            }
+            return head;
         }
+        return null;
     }
 
     fn parseTagMember(self: *Parser) !?NodeId {
@@ -570,43 +579,6 @@ pub const Parser = struct {
         } else return null;
     }
 
-    fn parseOptTypeSpec(self: *Parser) !?NodeId {
-        const start = self.next_pos;
-
-        var token = self.peekToken();
-        if (token.tag() == .ident) {
-            const head = try self.pushIdentNode(self.next_pos);
-            var last = head;
-            self.advanceToken();
-
-            while (true) {
-                token = self.peekToken();
-                if (token.tag() == .dot) {
-                    self.advanceToken();
-                    if (self.peekToken().tag() == .ident) {
-                        const ident = try self.pushIdentNode(self.next_pos);
-                        self.nodes.items[last].next = ident;
-                        last = ident;
-                        self.advanceToken();
-                        continue;
-                    } else {
-                        return self.reportParseError("Expected ident.", &.{});
-                    }
-                }
-                break;
-            }
-
-            const res = try self.pushNode(.typeSpec, start);
-            self.nodes.items[res].head = .{
-                .typeSpec = .{
-                    .head = head,
-                },
-            };
-            return res;
-        }
-        return null;
-    }
-
     fn parseObjectField(self: *Parser) !?NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
@@ -614,13 +586,13 @@ pub const Parser = struct {
             const name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
-            if (try self.parseOptTypeSpec()) |typeSpec| {
+            if (try self.parseOptTypeSpec()) |typeSpecHead| {
                 try self.consumeNewLineOrEnd();
                 const field = try self.pushNode(.objectField, start);
                 self.nodes.items[field].head = .{
                     .objectField = .{
                         .name = name,
-                        .typeSpec = typeSpec,
+                        .typeSpecHead = typeSpecHead,
                     },
                 };
                 return field;
@@ -631,7 +603,7 @@ pub const Parser = struct {
             self.nodes.items[field].head = .{
                 .objectField = .{
                     .name = name,
-                    .typeSpec = NullId,
+                    .typeSpecHead = NullId,
                 },
             };
             return field;
@@ -652,16 +624,25 @@ pub const Parser = struct {
         } else return self.reportParseError("Expected type alias name identifier.", &.{});
 
         // TODO: Only allow single term expr.
-        const expr = (try self.parseExpr(.{})) orelse {
-            return self.reportParseError("Expected type alias expression.", &.{});
+        var typeSpecHead = (try self.parseOptTypeSpec()) orelse {
+            return self.reportParseError("Expected type specifier.", &.{});
         };
+
         const id = try self.pushNode(.typeAliasDecl, start);
         self.nodes.items[id].head = .{
             .typeAliasDecl = .{
                 .name = name,
-                .expr = expr,
+                .typeSpecHead = typeSpecHead,
             },
         };
+
+        try self.staticDecls.append(self.alloc, .{
+            .declT = .typeAlias,
+            .inner = .{
+                .typeAlias = id,
+            },
+        });
+
         return id;
     }
 
@@ -720,6 +701,9 @@ pub const Parser = struct {
     }
 
     fn parseObjectDecl(self: *Parser) !NodeId {
+        self.inObjectDecl = true;
+        defer self.inObjectDecl = false;
+
         const start = self.next_pos;
         // Assumes first token is the `type` keyword.
         self.advanceToken();
@@ -765,6 +749,13 @@ pub const Parser = struct {
                             .funcsHead = NullId,
                         },
                     };
+
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .object,
+                        .inner = .{
+                            .object = id,
+                        },
+                    });
                     return id;
                 } else {
                     return self.reportParseError("Unexpected indentation.", &.{});
@@ -774,7 +765,7 @@ pub const Parser = struct {
 
         token = self.peekToken();
         if (token.tag() == .func_k) {
-            var firstFunc = try self.parseFunctionDecl();
+            var firstFunc = try self.parseFuncDecl();
             var lastFunc = firstFunc;
 
             while (true) {
@@ -783,7 +774,7 @@ pub const Parser = struct {
                 if (indent == reqIndent) {
                     token = self.peekToken();
                     if (token.tag() == .func_k) {
-                        const id = try self.parseFunctionDecl();
+                        const id = try self.parseFuncDecl();
                         self.nodes.items[lastFunc].next = id;
                         lastFunc = id;
                     } else return self.reportParseError("Unexpected token.", &.{});
@@ -803,100 +794,105 @@ pub const Parser = struct {
                     .funcsHead = firstFunc,
                 },
             };
+            try self.staticDecls.append(self.alloc, .{
+                .declT = .object,
+                .inner = .{
+                    .object = id,
+                },
+            });
             return id;
         } else {
             return self.reportParseError("Unexpected token.", &.{});
         }
     }
 
-    fn parseFunctionDecl(self: *Parser) !NodeId {
+    fn parseFuncDecl(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `func` keyword.
         self.advanceToken();
 
-        var decl = FuncDecl{
-            .name = undefined,
-            .params = undefined,
-            .return_type = null,
-            .inner = .{
-                .staticFunc = .{},
-            },
-            .isStatic = true,
-        };
-
         // Parse function name.
         var token = self.peekToken();
         const left_pos = self.next_pos;
-        if (token.tag() == .ident) {
-            decl.name = try self.pushIdentNode(self.next_pos);
-            self.advanceToken();
-        } else return self.reportParseError("Expected function name identifier.", &.{});
+        _ = left_pos;
+        if (token.tag() != .ident) {
+            return self.reportParseError("Expected function name identifier.", &.{});
+        }
+        const name = try self.pushIdentNode(self.next_pos);
+        self.advanceToken();
 
         token = self.peekToken();
-        if (token.tag() == .dot) {
-            // Parse lambda assign decl.
-            var left = try self.pushIdentNode(left_pos);
-            self.advanceToken();
-            while (true) {
-                token = self.peekToken();
-                if (token.tag() == .ident) {
-                    const ident = try self.pushIdentNode(self.next_pos);
-                    const expr = try self.pushNode(.accessExpr, left_pos);
-                    self.nodes.items[expr].head = .{
-                        .accessExpr = .{
-                            .left = left,
-                            .right = ident,
-                        },
-                    };
-                    left = expr;
-                } else {
-                    return self.reportParseError("Expected ident.", &.{});
-                }
+        // if (token.tag() == .dot) {
+        //     // Parse lambda assign decl.
+        //     var left = try self.pushIdentNode(left_pos);
+        //     self.advanceToken();
+        //     while (true) {
+        //         token = self.peekToken();
+        //         if (token.tag() == .ident) {
+        //             const ident = try self.pushIdentNode(self.next_pos);
+        //             const expr = try self.pushNode(.accessExpr, left_pos);
+        //             self.nodes.items[expr].head = .{
+        //                 .accessExpr = .{
+        //                     .left = left,
+        //                     .right = ident,
+        //                 },
+        //             };
+        //             left = expr;
+        //         } else {
+        //             return self.reportParseError("Expected ident.", &.{});
+        //         }
 
-                self.advanceToken();
-                token = self.peekToken();
-                if (token.tag() == .left_paren) {
-                    break;
-                } else if (token.tag() == .dot) {
-                    continue;
-                } else {
-                    return self.reportParseError("Expected open paren.", &.{});
-                }
-            }
+        //         self.advanceToken();
+        //         token = self.peekToken();
+        //         if (token.tag() == .left_paren) {
+        //             break;
+        //         } else if (token.tag() == .dot) {
+        //             continue;
+        //         } else {
+        //             return self.reportParseError("Expected open paren.", &.{});
+        //         }
+        //     }
 
-            decl.params = try self.parseFunctionParams();
-            decl.return_type = self.parseFunctionReturn();
+        //     const paramHead = try self.parseFunctionParams();
+        //     const ret = try self.parseFunctionReturn();
 
-            token = self.peekToken();
-            if (token.tag() == .colon) {
-                self.advanceToken();
-            } else {
-                return self.reportParseError("Expected colon.", &.{});
-            }
+        //     token = self.peekToken();
+        //     if (token.tag() == .colon) {
+        //         self.advanceToken();
+        //     } else {
+        //         return self.reportParseError("Expected colon.", &.{});
+        //     }
 
-            try self.pushBlock();
-            defer self.popBlock();
-            const first_stmt = try self.parseIndentedBodyStatements();
+        //     try self.pushBlock();
+        //     defer self.popBlock();
+        //     const first_stmt = try self.parseIndentedBodyStatements();
 
-            const decl_id = @intCast(u32, self.func_decls.items.len);
-            try self.func_decls.append(self.alloc, decl);
+        //     const header = try self.pushNode(.funcHeader, start);
+        //     self.nodes.items[header].head = .{
+        //         .funcHeader = .{
+        //             .name = name,
+        //             .paramHead = paramHead,
+        //             .ret = ret,
+        //         },
+        //     };
 
-            const id = try self.pushNode(.lambda_assign_decl, start);
-            self.nodes.items[id].head = .{
-                .lambda_assign_decl = .{
-                    .decl_id = decl_id,
-                    .body_head = first_stmt,
-                    .assign_expr = left,
-                },
-            };
-            return id;
-        } else if (token.tag() == .left_paren) {
-            decl.params = try self.parseFunctionParams();
-            decl.return_type = self.parseFunctionReturn();
+        //     const id = try self.pushNode(.lambda_assign_decl, start);
+        //     self.nodes.items[id].head = .{
+        //         .lambda_assign_decl = .{
+        //             .body_head = first_stmt,
+        //             .assign_expr = left,
+        //         },
+        //     };
+        //     return id;
+        // } else if (token.tag() == .left_paren) {
+        if (token.tag() == .left_paren) {
+            const paramHead = try self.parseFuncParams();
+            const ret = try self.parseFuncReturn();
 
-            const name = decl.getNameFromParser(self);
+            const nameToken = self.tokens.items[self.nodes.items[name].start_token];
+            const nameStr = self.src[nameToken.pos()..nameToken.data.end_pos];
             const block = &self.block_stack.items[self.block_stack.items.len-1];
-            try block.vars.put(self.alloc, name, {});
+            try block.vars.put(self.alloc, nameStr, {});
 
             token = self.peekToken();
             if (token.tag() == .colon) {
@@ -905,17 +901,32 @@ pub const Parser = struct {
                 try self.pushBlock();
                 const firstChild = try self.parseSingleOrIndentedBodyStmts();
                 self.popBlock();
-                
-                const decl_id = @intCast(u32, self.func_decls.items.len);
-                try self.func_decls.append(self.alloc, decl);
+
+                const header = try self.pushNode(.funcHeader, start);
+                self.nodes.items[header].head = .{
+                    .funcHeader = .{
+                        .name = name,
+                        .paramHead = paramHead orelse cy.NullId,
+                        .ret = ret orelse cy.NullId,
+                    },
+                };
 
                 const id = try self.pushNode(.funcDecl, start);
                 self.nodes.items[id].head = .{
                     .func = .{
-                        .decl_id = decl_id,
-                        .body_head = firstChild,
+                        .header = header,
+                        .bodyHead = firstChild,
                     },
                 };
+
+                if (!self.inObjectDecl) {
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .func,
+                        .inner = .{
+                            .func = id,
+                        },
+                    });
+                }
                 return id;
             } else if (token.tag() == .equal) {
                 self.advanceToken();
@@ -924,16 +935,32 @@ pub const Parser = struct {
                     return self.reportParseError("Expected right expression for assignment statement.", &.{});
                 };
 
-                const declId = @intCast(u32, self.func_decls.items.len);
-                try self.func_decls.append(self.alloc, decl);
+                const header = try self.pushNode(.funcHeader, start);
+                self.nodes.items[header].head = .{
+                    .funcHeader = .{
+                        .name = name,
+                        .paramHead = paramHead orelse cy.NullId,
+                        .ret = ret orelse cy.NullId,
+                    },
+                };
 
                 const id = try self.pushNode(.funcDeclInit, start);
                 self.nodes.items[id].head = .{
-                    .funcDeclInit = .{
-                        .declId = declId,
-                        .right = right,
+                    .func = .{
+                        .header = header,
+                        .bodyHead = right,
                     },
                 };
+
+                if (!self.inObjectDecl) {
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .funcInit,
+                        .inner = .{
+                            .funcInit = id,
+                        },
+                    });
+                }
+
                 return id;
             } else {
                 return self.reportParseError("Expected colon or an assignment equal operator.", &.{});
@@ -1127,6 +1154,13 @@ pub const Parser = struct {
                         .right = fromId,
                     },
                 };
+
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = .import,
+                    .inner = .{
+                        .import = import,
+                    }
+                });
                 return import;
             } else {
                 return self.reportParseError("Expected from identifier to be a string. {}", &.{fmt.v(from.node_t)});
@@ -1535,7 +1569,7 @@ pub const Parser = struct {
                 return try self.parseTypeAliasDecl();
             },
             .func_k => {
-                return try self.parseFunctionDecl();
+                return try self.parseFuncDecl();
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -1636,7 +1670,12 @@ pub const Parser = struct {
                         .right = right,
                     },
                 };
-                try self.varDecls.append(self.alloc, decl);
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = .variable,
+                    .inner = .{
+                        .variable = decl,
+                    }
+                });
                 return decl;
             },
             .capture_k => {
@@ -3277,11 +3316,12 @@ pub const NodeType = enum {
     label_decl,
     funcDecl,
     funcDeclInit,
+    funcHeader,
+    funcParam,
     objectDecl,
     objectField,
     objectInit,
     typeAliasDecl,
-    typeSpec,
     tagDecl,
     tagMember,
     tagInit,
@@ -3371,7 +3411,7 @@ pub const Node = struct {
             left: NodeId,
             right: NodeId,
             /// Symbol id of a var or func. NullId if it does not point to a symbol.
-            semaSymId: u32 = NullId,
+            sema_crSymId: cy.sema.CompactResolvedSymId = cy.sema.CompactResolvedSymId.initNull(),
         },
         callExpr: struct {
             callee: NodeId,
@@ -3390,7 +3430,7 @@ pub const Node = struct {
         },
         ident: struct {
             semaVarId: u32 = NullId,
-            semaSymId: u32 = NullId,
+            sema_crSymId: cy.sema.CompactResolvedSymId = cy.sema.CompactResolvedSymId.initNull(),
         },
         unary: struct {
             child: NodeId,
@@ -3409,35 +3449,39 @@ pub const Node = struct {
             expr: NodeId,
         },
         func: struct {
-            decl_id: FuncDeclId,
-            body_head: NodeId,
-            genEndLocalsPc: u32 = NullId,
+            header: NodeId,
+            bodyHead: NodeId,
+            semaDeclId: cy.sema.FuncDeclId = NullId,
         },
-        funcDeclInit: struct {
-            declId: FuncDeclId,
-            right: NodeId,
-            semaSymId: u32 = cy.NullId,
+        funcHeader: struct {
+            /// Can be NullId for lambdas.
+            name: Nullable(NodeId),
+            paramHead: Nullable(NodeId),
+            ret: Nullable(NodeId),
+        },
+        funcParam: struct {
+            name: NodeId,
+            /// Type spec consists of ident nodes linked by `next`.
+            typeSpecHead: Nullable(NodeId),
         },
         lambda_assign_decl: struct {
-            decl_id: FuncDeclId,
+            decl_id: cy.sema.FuncDeclId,
             body_head: NodeId,
             assign_expr: NodeId,
         },
         typeAliasDecl: struct {
             name: NodeId,
-            expr: NodeId,
-        },
-        typeSpec: struct {
-            head: NodeId,
+            typeSpecHead: NodeId,
         },
         objectInit: struct {
             name: NodeId,
             initializer: NodeId,
-            semaSymId: u32 = cy.NullId,
+            sema_rSymId: Nullable(cy.sema.ResolvedSymId) = cy.NullId,
         },
         objectField: struct {
             name: NodeId,
-            typeSpec: NodeId,
+            /// Type spec consists of ident nodes linked by `next`.
+            typeSpecHead: Nullable(NodeId),
         },
         objectDecl: struct {
             // `name` is an ident token with a semaSymId.
@@ -3448,7 +3492,7 @@ pub const Node = struct {
         varDecl: struct {
             left: NodeId,
             right: NodeId,
-            semaSymId: u32 = cy.NullId,
+            sema_rSymId: cy.sema.ResolvedSymId = cy.NullId,
         },
         tagMember: struct {
             name: NodeId,
@@ -3521,10 +3565,6 @@ pub const Result = struct {
             try deps.put(alloc, new_src[offset..offset+dep.len], entry.value_ptr.*);
         }
 
-        const func_decls_arr = try view.func_decls.clone(alloc);
-        const func_decls = try alloc.create(std.ArrayListUnmanaged(FuncDecl));
-        func_decls.* = func_decls_arr;
-
         return Result{
             .inner = .{
                 .has_error = view.has_error,
@@ -3533,8 +3573,6 @@ pub const Result = struct {
                 .nodes = nodes,
                 .src = new_src,
                 .tokens = try alloc.dupe(Token, view.tokens),
-                .func_decls = func_decls,
-                .func_params = try alloc.dupe(FunctionParam, view.func_params),
                 .name = try alloc.dupe(u8, view.name),
                 .deps = deps,
             },
@@ -3567,8 +3605,6 @@ pub const ResultView = struct {
     nodes: *std.ArrayListUnmanaged(Node),
     tokens: []const Token,
     src: []const u8,
-    func_decls: *std.ArrayListUnmanaged(FuncDecl),
-    func_params: []const FunctionParam,
 
     name: []const u8,
     deps: *std.StringHashMapUnmanaged(NodeId),
@@ -3583,7 +3619,7 @@ pub const ResultView = struct {
         return try Result.init(alloc, self);
     }
 
-    pub fn pushNode(self: ResultView, alloc: std.mem.Allocator, node_t: NodeType, start: u32) NodeId {
+    pub fn pushNode(self: ResultView, alloc: std.mem.Allocator, node_t: NodeType, start: TokenId) NodeId {
         return pushNodeToList(alloc, self.nodes, node_t, start);
     }
 
@@ -3608,66 +3644,6 @@ pub const ResultView = struct {
             return stmt_id;
         } else return null;
     }
-};
-
-const StructDeclId = u32;
-pub const StructDecl = struct {
-    name: IndexSlice,
-    fields: IndexSlice,
-    funcs: IndexSlice,
-    methods: IndexSlice,
-};
-
-const FuncDeclId = u32;
-
-/// TODO: Should be moved to sema.
-pub const FuncDecl = struct {
-    /// Can be NullId.
-    name: NodeId,
-    params: IndexSlice,
-    return_type: ?IndexSlice,
-
-    /// Sema block is attached to func decl so it can be accessed from anywhere with the node id.
-    /// If the func decl has an initializer then this is repurposed to point to the decl's node id.
-    semaBlockId: u32 = NullId,
-
-    inner: extern union {
-        staticFunc: extern struct {
-            semaResolvedSymId: u32 = NullId,
-            semaResolvedFuncSymId: u32 = NullId,
-        },
-        lambda: extern struct {
-            rFuncSigId: u32 = NullId,
-        },
-    },
-
-    /// Whether this is a static function.
-    isStatic: bool,
-
-    pub fn getName(self: *const FuncDecl, chunk: *const cy.CompileChunk) []const u8 {
-        if (self.name == cy.NullId) {
-            return "";
-        } else {
-            const node = chunk.nodes[self.name];
-            const token = chunk.tokens[node.start_token];
-            return chunk.src[token.pos()..token.data.end_pos];
-        }
-    }
-
-    pub fn getNameFromParser(self: *const FuncDecl, parser: *const Parser) []const u8 {
-        if (self.name == cy.NullId) {
-            return "";
-        } else {
-            const node = parser.nodes.items[self.name];
-            const token = parser.tokens.items[node.start_token];
-            return parser.src[token.pos()..token.data.end_pos];
-        }
-    }
-};
-
-pub const FunctionParam = struct {
-    name: IndexSlice,
-    typeSpec: NodeId,
 };
 
 fn toBinExprOp(op: OperatorType) BinaryExprOp {
@@ -4566,6 +4542,27 @@ const TokenizeOptions = struct {
 const ParseExprOptions = struct {
     returnLeftAssignExpr: bool = false,
     outIsAssignStmt: *bool = undefined,
+};
+
+const StaticDeclType = enum {
+    variable,
+    typeAlias,
+    func,
+    funcInit,
+    import,
+    object,
+};
+
+const StaticDecl = struct {
+    declT: StaticDeclType,
+    inner: extern union {
+        variable: NodeId,
+        typeAlias: NodeId,
+        func: NodeId,
+        funcInit: NodeId,
+        import: NodeId,
+        object: NodeId,
+    },
 };
 
 test "Internals." {

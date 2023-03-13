@@ -1,4 +1,8 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
+import a 'test_mods/a.cy'
+
+object Bar:
+    b number
 
 object Foo:
     field Bar     -- Allowed after field ident.

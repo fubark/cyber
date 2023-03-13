@@ -239,15 +239,17 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
     const rc = getGlobalRC(vm);
     if (rc != 0) {
         std.debug.print("{} unreleased refcount\n", .{rc});
-        var buf: [128]u8 = undefined;
 
-        var iter = vm.objectTraceMap.iterator();
-        while (iter.next()) |it| {
-            const trace = it.value_ptr.*;
-            if (trace.freePc == cy.NullId) {
-                const typeName = vm.structs.buf[it.key_ptr.*.retainedCommon.structId].name;
-                const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.retainedCommon.rc, trace.allocPc });
-                try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
+        if (builtin.mode == .Debug) {
+            var buf: [128]u8 = undefined;
+            var iter = vm.objectTraceMap.iterator();
+            while (iter.next()) |it| {
+                const trace = it.value_ptr.*;
+                if (trace.freePc == cy.NullId) {
+                    const typeName = vm.structs.buf[it.key_ptr.*.retainedCommon.structId].name;
+                    const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.retainedCommon.rc, trace.allocPc });
+                    try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
+                }
             }
         }
 

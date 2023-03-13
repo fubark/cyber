@@ -13,6 +13,7 @@
 /test/assets/write.txt
 /exts/vscode/cyber-0.0.1.vsix
 /examples/libfoo.so
+/examples/foo.o
 /examples/web-playground/cyber.wasm
 /cyber.s
 /scratch.zig

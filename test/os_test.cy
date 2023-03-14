@@ -7,6 +7,12 @@ if os.system != 'windows':
     os.unsetEnv('testfoo')
     try t.eq(os.getEnv('testfoo'), none)
 
+-- access()
+res = os.access('test/assets/missing.txt', #read)
+try t.eq(res, error(#FileNotFound))
+res = os.access('test/assets/file.txt', #read)
+try t.eq(res, true)
+
 -- createDir()
 os.removeDir('test/assets/tempdir')
 try t.eq(os.createDir('test/assets/tempdir'), true)

@@ -51,6 +51,7 @@ pub const TagLit = enum {
     StreamTooLong,
     NotAllowed,
     Closed,
+    PermissionDenied,
     UnknownError,
 
     running,
@@ -454,6 +455,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
     try ensureTagLitSym(self, "NotAllowed", .NotAllowed);
     try ensureTagLitSym(self, "Closed", .Closed);
+    try ensureTagLitSym(self, "PermissionDenied", .PermissionDenied);
     try ensureTagLitSym(self, "UnknownError", .UnknownError);
 
     try ensureTagLitSym(self, "running", .running);

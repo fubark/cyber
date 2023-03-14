@@ -208,6 +208,7 @@ for map each k, v:
 
 | Function | Summary |
 | -- | -- |
+| `access(path string, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
 | `args() list<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
 | `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
 | `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 

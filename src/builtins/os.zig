@@ -74,6 +74,11 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     }
 
     // Functions.
+    if (cy.isWasm) {
+        try mod.setNativeFunc(self, "access", 2, bindings.nop1);
+    } else {
+        try mod.setNativeFunc(self, "access", 2, access);
+    }
     try mod.setNativeFunc(self, "args", 0, osArgs);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
@@ -246,6 +251,35 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
         return fromUnsupportedError("createFile", err, @errorReturnTrace());
     };
     return vm.allocFile(file.handle) catch fatal();
+}
+
+pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const path = vm.valueToTempRawString(args[0]);
+    defer vm.release(args[0]);
+
+    if (!args[1].isTagLiteral()) {
+        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+    }
+
+    const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
+    const zmode: std.fs.File.OpenMode = switch (mode) {
+        .read => .read_only,
+        .write => .write_only,
+        .readWrite => .read_write,
+        else => {
+            return Value.None;
+        }
+    };
+    std.fs.cwd().access(path, .{ .mode = zmode }) catch |err| {
+        if (err == error.FileNotFound) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+        } else if (err == error.PermissionDenied) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.PermissionDenied));
+        } else {
+            return fromUnsupportedError("access", err, @errorReturnTrace());
+        }
+    };
+    return Value.True;
 }
 
 fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

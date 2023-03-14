@@ -138,6 +138,10 @@ pre code.hljs {
     background-color: var(--accent-bg);
     color: var(--text);
 }
+.hljs-type {
+    color: #919aff;
+    font-weight: normal;
+}
 .hljs-keyword {
     color: var(--accent-light);
     font-weight: normal;

@@ -774,17 +774,9 @@ pub const CompileChunk = struct {
     vars: std.ArrayListUnmanaged(sema.LocalVar),
     capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
 
-    /// Local paths to syms.
-    semaSyms: std.ArrayListUnmanaged(sema.Sym),
-    semaSymMap: std.HashMapUnmanaged(sema.AbsLocalSymKey, sema.SymId, vm_.KeyU128Context, 80),
-
     /// List of func decls.
     /// They are resolved after data types.
     semaFuncDecls: std.ArrayListUnmanaged(sema.FuncDecl),
-
-    /// Track first nodes that use the symbol for error reporting.
-    /// TODO: Remove.
-    semaSymFirstNodes: std.ArrayListUnmanaged(cy.NodeId),
 
     /// Additional info for initializer symbols.
     semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.CompactResolvedSymId, sema.InitializerSym),
@@ -857,9 +849,6 @@ pub const CompileChunk = struct {
             .tokens = undefined,
             .semaBlocks = .{},
             .semaSubBlocks = .{},
-            .semaSyms = .{},
-            .semaSymMap = .{},
-            .semaSymFirstNodes = .{},
             .semaInitializerSyms = .{},
             .vars = .{},
             .capVarDescs = .{},
@@ -921,9 +910,6 @@ pub const CompileChunk = struct {
         self.vars.deinit(self.alloc);
         self.capVarDescs.deinit(self.alloc);
 
-        self.semaSyms.deinit(self.alloc);
-        self.semaSymMap.deinit(self.alloc);
-        self.semaSymFirstNodes.deinit(self.alloc);
         self.semaInitializerSyms.deinit(self.alloc);
 
         self.parser.deinit();

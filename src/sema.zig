@@ -355,32 +355,6 @@ pub const Name = struct {
     }
 };
 
-pub const SymId = u32;
-
-/// Represents a sema symbol in the current module. It can be an intermediate sym in a sym path or a sym leaf.
-/// Since module namespaces use the same accessor operator as local variables, a symbol doesn't always get resolved post sema.
-pub const Sym = struct {
-    /// key.parentId points to the parent sym in the current module.
-    /// If key.parentId == cy.NullId, then this sym is at the root of the module.
-    key: AbsLocalSymKey,
-
-    /// After the sema pass, the rSymId will be updated.
-    /// If `rSymId` is cy.NullId at codegen pass, this sym is undefined.
-    rSymId: ResolvedSymId = cy.NullId,
-
-    /// Whether this sym is used in the script.
-    /// TODO: This might not be necessary once resolving syms ends up using the parent path symbol.
-    used: bool,
-
-    /// Used for static vars to track whether it has already generated code for the initializer
-    /// in a DFS traversal of its dependencies.
-    visited: bool,
-
-    inline fn isFuncSym(self: *const Sym) bool {
-        return self.key.absLocalSymKey.numParams != cy.NullId;
-    }
-};
-
 pub fn getName(c: *const cy.VMcompiler, nameId: NameSymId) []const u8 {
     const name = c.sema.nameSyms.items[nameId];
     return name.ptr[0..name.len];
@@ -395,13 +369,6 @@ pub fn symHasStaticInitializer(c: *const cy.CompileChunk, crSymId: CompactResolv
         if (rsym.symT == .variable) {
             return rsym.inner.variable.declId != cy.NullId;
         }
-    }
-    return false;
-}
-
-pub fn isResolvedVarSym(c: *const cy.VMcompiler, sym: *const Sym) bool {
-    if (sym.rSymId != cy.NullId) {
-        return c.sema.resolvedSyms.items[sym.rSymId].symT == .variable;
     }
     return false;
 }
@@ -819,7 +786,6 @@ pub const AbsSymSigKey = vm_.KeyU64;
 pub const AbsResolvedSymKey = vm_.KeyU64;
 pub const AbsResolvedFuncSymKey = vm_.KeyU64;
 pub const AbsSymSigKeyContext = cy.AbsFuncSigKeyContext;
-pub const AbsLocalSymKey = vm_.KeyU128;
 
 pub fn semaStmts(self: *cy.CompileChunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
     var cur_id = head;
@@ -2119,41 +2085,6 @@ fn referenceSym(c: *cy.CompileChunk, rSymId: CompactResolvedSymId, trackDep: boo
     }
 }
 
-// fn referenceSym(c: *cy.CompileChunk, parentId: ?SymId, name: []const u8, funcSigId: ?FuncSigId, nodeId: cy.NodeId, trackDep: bool) !SymId {
-//     const nameId = try ensureNameSym(c.compiler, name);
-//     const symId = try ensureSym(c, parentId, nameId, funcSigId);
-    
-//     // Mark as used so it is compiled.
-//     c.semaSyms.items[symId].used = true;
-
-//     // Link a node to this sym for error reporting.
-//     linkNodeToSym(c, nodeId, symId);
-
-//     if (trackDep) {
-//         if (c.curSemaSymVar != cy.NullId) {
-//             // Record this symbol as a dependency.
-//             const res = try c.semaInitializerSyms.getOrPut(c.alloc, c.curSemaSymVar);
-//             if (res.found_existing) {
-//                 const depRes = try c.semaVarDeclDeps.getOrPut(c.alloc, symId);
-//                 if (!depRes.found_existing) {
-//                     try c.bufU32.append(c.alloc, symId);
-//                     res.value_ptr.*.depsEnd = @intCast(u32, c.bufU32.items.len);
-//                     depRes.value_ptr.* = {};
-//                 }
-//             } else {
-//                 const start = @intCast(u32, c.bufU32.items.len);
-//                 try c.bufU32.append(c.alloc, symId);
-//                 res.value_ptr.* = .{
-//                     .depsStart = start,
-//                     .depsEnd = @intCast(u32, c.bufU32.items.len),
-//                 };
-//             }
-//         }
-//     }
-
-//     return symId;
-// }
-
 const VarLookupStrategy = enum {
     /// Look upwards for a parent local. If no such local exists, assume a static var.
     read,
@@ -2592,161 +2523,6 @@ pub const CompactResolvedSymId = packed struct {
     }
 };
 
-// /// If the sym is unresolved, sym is resolved starting with its parents.
-// /// If the sym can not be resolved, a compile error is returned.
-// /// The fullpath type sym resolves with preference towards builtin types. (so it doesn't resolve to syms in module's namespace, eg. core.int)
-// pub fn mustGetOrResolveTypeSymDFS(chunk: *cy.CompileChunk, symId: SymId) !ResolvedSymId {
-//     var sym = chunk.semaSyms.items[symId];
-//     if (sym.rSymId != cy.NullId) {
-//         return sym.rSymId;
-//     } else {
-//         if (sym.key.absLocalSymKey.parentSymId != cy.NullId) {
-//             _ = try mustGetOrResolveSymDFS(chunk, sym.key.absLocalSymKey.parentSymId);
-//         } 
-//         try resolveTypeSym(chunk, symId);
-//         sym = chunk.semaSyms.items[symId];
-//         if (sym.rSymId != cy.NullId) {
-//             return sym.rSymId;
-//         } else {
-//             const name = getName(chunk.compiler, sym.key.absLocalSymKey.nameId);
-//             return chunk.reportError("Can not resolve the sym `{}`.", &.{v(name)});
-//         }
-//     }
-// }
-
-// fn mustGetOrResolveSymDFS(chunk: *cy.CompileChunk, symId: SymId) !ResolvedSymId {
-//     var sym = chunk.semaSyms.items[symId];
-//     if (sym.rSymId != cy.NullId) {
-//         return sym.rSymId;
-//     } else {
-//         if (sym.key.absLocalSymKey.parentSymId != cy.NullId) {
-//             _ = try mustGetOrResolveSymDFS(chunk, sym.key.absLocalSymKey.parentSymId);
-//         } 
-//         try resolveSym(chunk, symId);
-//         sym = chunk.semaSyms.items[symId];
-//         if (sym.rSymId != cy.NullId) {
-//             return sym.rSymId;
-//         } else {
-//             const name = getName(chunk.compiler, sym.key.absLocalSymKey.nameId);
-//             return chunk.reportError("Can not resolve the sym `{}`.", &.{v(name)});
-//         }
-//     }
-// }
-
-// pub fn resolveTypeSym(self: *cy.CompileChunk, symId: SymId) anyerror!void {
-//     const sym = &self.semaSyms.items[symId];
-//     log.debug("resolving {} {}.{s}, sig: {}", .{symId, sym.key.absLocalSymKey.parentSymId, getSymName(self.compiler, sym), sym.key.absLocalSymKey.funcSigId});
-//     defer {
-//         if (sym.rSymId != cy.NullId) {
-//             const rsym = self.compiler.sema.resolvedSyms.items[sym.rSymId];
-//             const key = rsym.key.absResolvedSymKey;
-//             log.debug("resolved id: {}, rParentSymId: {}, type: {}", .{sym.rSymId, key.rParentSymId, rsym.symT});
-//         }
-//     }
-//     const nameId = sym.key.absLocalSymKey.nameId;
-
-//     std.debug.assert(sym.key.absLocalSymKey.funcSigId == cy.NullId);
-
-//     const lastNodeId = self.curNodeId;
-//     defer self.curNodeId = lastNodeId;
-
-//     const firstNodeId = self.semaSymFirstNodes.items[symId];
-//     self.curNodeId = firstNodeId;
-//     errdefer {
-//         if (builtin.mode == .Debug) {
-//             if (firstNodeId == cy.NullId) {
-//                 // Builtin type syms don't have any attribution but they shouldn't get any errors either.
-//                 stdx.panicFmt("No source attribution for local sym {s}.", .{getSymName(self.compiler, sym)});
-//             }
-//         }
-//     }
-
-//     if (sym.key.absLocalSymKey.parentSymId == cy.NullId) {
-//         log.debug("no parent", .{});
-//         var key = AbsResolvedSymKey{
-//             .absResolvedSymKey = .{
-//                 .rParentSymId = self.semaResolvedRootSymId,
-//                 .nameId = nameId,
-//             },
-//         };
-//         // First check for a local declared symbol.
-//         if (try getAndCheckResolvedTypeSym(self, key, firstNodeId)) |rsymId| {
-//             sym.rSymId = rsymId;
-//             return;
-//         }
-
-//         // Check alias map. eg. Imported modules, module members.
-//         if (self.semaSymToRef.get(nameId)) |ref| {
-//             switch (ref.refT) {
-//                 .moduleMember => {
-//                     const modId = ref.inner.moduleMember.modId;
-//                     if (try getVisibleResolvedTypeSymFromModule(self, modId, nameId, firstNodeId)) |resolvedId| {
-//                         sym.rSymId = resolvedId;
-//                         return;
-//                     }
-//                     if (try resolveTypeSymFromModule(self, modId, nameId, firstNodeId)) |resolvedId| {
-//                         sym.rSymId = resolvedId;
-//                         return;
-//                     }
-//                 },
-//                 // .sym => {
-//                 //     if (self.semaSyms.items[ref.inner.sym.symId].rSymId != cy.NullId) {
-//                 //         sym.rSymId = self.semaSyms.items[ref.inner.sym.symId].rSymId;
-//                 //         return;
-//                 //     } else {
-//                 //         const name = getName(self.compiler, nameId);
-//                 //         return self.reportError("Type alias `{}` can not point to an unresolved symbol.", &.{v(name)});
-//                 //     }
-//                 // },
-//                 else => {},
-//             }
-//         }
-
-//         // Check builtin type.
-//         if (nameId < BuiltinTypeTags.len) {
-//             sym.rSymId = @intCast(ResolvedSymId, nameId);
-//             return;
-//         }
-//     } else {
-//         // Has parent symbol.
-        
-//         const psym = self.semaSyms.items[sym.key.absLocalSymKey.parentSymId];
-//         if (psym.rSymId == cy.NullId) {
-//             // If the parent isn't resolved, this sym won't be resolved either.
-//             return;
-//         }
-
-//         var key = AbsResolvedSymKey{
-//             .absResolvedSymKey = .{
-//                 .rParentSymId = psym.rSymId,
-//                 .nameId = sym.key.absLocalSymKey.nameId,
-//             },
-//         };
-//         // First check for a local declared symbol.
-//         if (try getAndCheckResolvedTypeSym(self, key, firstNodeId)) |rsymId| {
-//             if (isResolvedSymVisibleFromMod(self.compiler, rsymId, self.modId)) {
-//                 sym.rSymId = rsymId;
-//                 return;
-//             } else {
-//                 const name = getName(self.compiler, nameId);
-//                 return self.reportErrorAt("Symbol is not exported: `{}`", &.{v(name)}, firstNodeId);
-//             }
-//         }
-
-//         const rpsym = self.compiler.sema.resolvedSyms.items[psym.rSymId];
-//         if (rpsym.symT == .module) {
-//             const modId = rpsym.inner.module.id;
-//             if (try resolveTypeSymFromModule(self, modId, nameId, firstNodeId)) |resolvedId| {
-//                 sym.rSymId = resolvedId;
-//                 return;
-//             } else {
-//                 const name = getName(self.compiler, nameId);
-//                 return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, firstNodeId);
-//             }
-//         }
-//     }
-// }
-
 /// Whether a constrained function signature is compatible with a resolved signature.
 fn isResolvedFuncSigCompat(chunk: *cy.CompileChunk, rFuncSigId: ResolvedFuncSigId, sig: []const Type) !bool {
     const rFuncSig = chunk.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
@@ -2995,8 +2771,7 @@ fn resolveDistinctLocalSym(chunk: *cy.CompileChunk, lkey: RelLocalSymKey) !Resol
 
 /// TODO: This should perform type checking.
 fn getOrResolveDistinctSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId) !?ResolvedSymResult {
-    // const name_ = getName(chunk.compiler, nameId);
-    // log.debug("getOrResolveDistinctSym {s}", .{name_});
+    log.debug("getDistinctSym {}.{s}", .{rParentSymId, getName(chunk.compiler, nameId)} );
     var key: vm_.KeyU64 = undefined;
     if (rParentSymId == chunk.semaResolvedRootSymId) {
         // Faster check against local syms.
@@ -3083,6 +2858,7 @@ fn getOrResolveDistinctSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId,
 /// Assumes rParentSymId is not null.
 fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId, sig: []const Type) !?CompactResolvedSymId {
     const rFuncSigId = try ensureResolvedFuncSigTypes(chunk.compiler, sig);
+    log.debug("getFuncCallSym {}.{s}, sig: {s}", .{rParentSymId, getName(chunk.compiler, nameId), try getResolvedFuncSigTempStr(chunk.compiler, rFuncSigId)} );
 
     // TODO: Cache lookup by rSymId and rFuncSigId.
 
@@ -3189,138 +2965,6 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
         return chunk.reportError("Can not find compatible function signature for `{}{}`.", &.{v(name), v(sigStr)});
     }
 }
-
-// pub fn resolveSym(self: *cy.CompileChunk, symId: SymId) anyerror!void {
-//     const sym = &self.semaSyms.items[symId];
-//     log.debug("resolving {} {}.{s}, sig: {}", .{symId, sym.key.absLocalSymKey.parentSymId, getSymName(self.compiler, sym), sym.key.absLocalSymKey.funcSigId});
-//     defer {
-//         if (sym.rSymId != cy.NullId) {
-//             const rsym = self.compiler.sema.resolvedSyms.items[sym.rSymId];
-//             const key = rsym.key.absResolvedSymKey;
-//             log.debug("resolved id: {}, rParentSymId: {}, type: {}", .{sym.rSymId, key.rParentSymId, rsym.symT});
-//         }
-//     }
-//     const nameId = sym.key.absLocalSymKey.nameId;
-
-//     // Get resolved func sig id.
-//     var rFuncSigId: ResolvedFuncSigId = undefined;
-//     if (sym.key.absLocalSymKey.funcSigId == cy.NullId) {
-//         rFuncSigId = cy.NullId;
-//     } else {
-//         // TODO: Should this fail if func sig is not already resolved?
-//         rFuncSigId = try getOrResolveFuncSig(self, sym.key.absLocalSymKey.funcSigId);
-//         // const str = try getResolvedFuncSigTempStr(self.compiler, rFuncSigId);
-//         // log.debug("rFuncSig {s}, {}", .{str, funcSig.sig.len});
-//     }
-
-//     const lastNodeId = self.curNodeId;
-//     defer self.curNodeId = lastNodeId;
-
-//     const firstNodeId = self.semaSymFirstNodes.items[symId];
-//     self.curNodeId = firstNodeId;
-//     errdefer {
-//         if (builtin.mode == .Debug) {
-//             if (firstNodeId == cy.NullId) {
-//                 // Builtin type syms don't have any attribution but they shouldn't get any errors either.
-//                 stdx.panicFmt("No source attribution for local sym {s} {}.", .{getSymName(self.compiler, sym), rFuncSigId});
-//             }
-//         }
-//     }
-
-//     if (sym.key.absLocalSymKey.parentSymId == cy.NullId) {
-//         log.debug("no parent", .{});
-//         var key = AbsResolvedSymKey{
-//             .absResolvedSymKey = .{
-//                 .rParentSymId = self.semaResolvedRootSymId,
-//                 .nameId = nameId,
-//             },
-//         };
-//         // First check for a local declared symbol.
-//         if (try getAndCheckResolvedSymBySig(self, key, rFuncSigId, firstNodeId)) |rsymId| {
-//             sym.rSymId = rsymId;
-//             return;
-//         }
-
-//         // Check alias map. eg. Imported modules, module members.
-//         if (self.semaSymToRef.get(nameId)) |ref| {
-//             switch (ref.refT) {
-//                 .moduleMember => {
-//                     const modId = ref.inner.moduleMember.modId;
-//                     if (try getVisibleResolvedSymFromModule(self, modId, nameId, rFuncSigId, firstNodeId)) |resolvedId| {
-//                         sym.rSymId = resolvedId;
-//                         return;
-//                     }
-//                     if (try resolveSymFromModule(self, modId, nameId, rFuncSigId, firstNodeId)) |resolvedId| {
-//                         sym.rSymId = resolvedId;
-//                         return;
-//                     }
-//                 },
-//                 .module => {
-//                     const modId = ref.inner.module;
-//                     sym.rSymId = self.compiler.modules.items[modId].resolvedRootSymId;
-//                     return;
-//                 },
-//                 .sym => {
-//                     if (self.semaSyms.items[ref.inner.sym.symId].rSymId != cy.NullId) {
-//                         sym.rSymId = self.semaSyms.items[ref.inner.sym.symId].rSymId;
-//                         return;
-//                     } else {
-//                         const name = getName(self.compiler, nameId);
-//                         return self.reportError("Type alias `{}` can not point to an unresolved symbol.", &.{v(name)});
-//                     }
-//                 },
-//                 // else => {
-//                 //     return self.reportError("Unsupported {}", &.{fmt.v(ref.refT)});
-//                 // }
-//             }
-//         }
-
-//         // Check builtin type.
-//         if (nameId < BuiltinTypeTags.len) {
-//             log.debug("xxx resolved builtin", .{});
-//             const typeT = BuiltinTypeTags[nameId];
-//             sym.rSymId = getResolvedSymForType(typeT);
-//             return;
-//         }
-//     } else {
-//         // Has parent symbol.
-        
-//         const psym = self.semaSyms.items[sym.key.absLocalSymKey.parentSymId];
-//         if (psym.rSymId == cy.NullId) {
-//             // If the parent isn't resolved, this sym won't be resolved either.
-//             return;
-//         }
-
-//         var key = AbsResolvedSymKey{
-//             .absResolvedSymKey = .{
-//                 .rParentSymId = psym.rSymId,
-//                 .nameId = sym.key.absLocalSymKey.nameId,
-//             },
-//         };
-//         // First check for a local declared symbol.
-//         if (try getAndCheckResolvedSymBySig(self, key, rFuncSigId, firstNodeId)) |rsymId| {
-//             if (isResolvedSymVisibleFromMod(self.compiler, rsymId, self.modId)) {
-//                 sym.rSymId = rsymId;
-//                 return;
-//             } else {
-//                 const name = getName(self.compiler, nameId);
-//                 return self.reportErrorAt("Symbol is not exported: `{}`", &.{v(name)}, firstNodeId);
-//             }
-//         }
-
-//         const rpsym = self.compiler.sema.resolvedSyms.items[psym.rSymId];
-//         if (rpsym.symT == .module) {
-//             const modId = rpsym.inner.module.id;
-//             if (try resolveSymFromModule(self, modId, nameId, rFuncSigId, firstNodeId)) |resolvedId| {
-//                 sym.rSymId = resolvedId;
-//                 return;
-//             } else {
-//                 const name = getName(self.compiler, nameId);
-//                 return self.reportErrorAt("Missing symbol: `{}`", &.{v(name)}, firstNodeId);
-//             }
-//         }
-//     }
-// }
 
 fn isResolvedSymVisibleFromMod(c: *cy.VMcompiler, id: ResolvedSymId, modId: ModuleId) bool {
     const rsym = c.sema.resolvedSyms.items[id];
@@ -3618,12 +3262,6 @@ pub fn ensureNameSymExt(c: *cy.VMcompiler, name: []const u8, dupe: bool) !NameSy
     }
 }
 
-pub fn linkNodeToSym(c: *cy.CompileChunk, nodeId: cy.NodeId, symId: SymId) void {
-    if (c.semaSymFirstNodes.items[symId] == cy.NullId) {
-        c.semaSymFirstNodes.items[symId] = nodeId;
-    }
-}
-
 /// TODO: This should also return true for local function symbols.
 fn hasResolvedSym(self: *const cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId) bool {
     const key = AbsResolvedSymKey{
@@ -3634,33 +3272,6 @@ fn hasResolvedSym(self: *const cy.CompileChunk, rParentSymId: ResolvedSymId, nam
     };
     return self.compiler.sema.resolvedSymMap.contains(key);
 }
-
-// pub fn ensureSym(c: *cy.CompileChunk, parentId: ?SymId, nameId: NameSymId, optFuncSigId: ?FuncSigId) !SymId {
-//     var key = AbsLocalSymKey{
-//         .absLocalSymKey = .{
-//             .parentSymId = parentId orelse cy.NullId,
-//             .nameId = nameId,
-//             .funcSigId = optFuncSigId orelse cy.NullId,
-//         },
-//     };
-//     const res = try c.semaSymMap.getOrPut(c.alloc, key);
-//     if (res.found_existing) {
-//         return res.value_ptr.*;
-//     } else {
-//         const id = @intCast(u32, c.semaSyms.items.len);
-//         try c.semaSyms.append(c.alloc, .{
-//             .key = key,
-//             .used = false,
-//             .visited = false,
-//         });
-//         if (nameId == NameAny) {
-//             c.semaSyms.items[id].rSymId = ResolvedSymAny;
-//         }
-//         try c.semaSymFirstNodes.append(c.alloc, cy.NullId);
-//         res.value_ptr.* = id;
-//         return id;
-//     }
-// }
 
 pub fn getVarName(self: *cy.VMcompiler, varId: LocalVarId) []const u8 {
     if (builtin.mode == .Debug) {
@@ -4553,7 +4164,6 @@ pub const U32SliceContext = struct {
 test "Internals." {
     try t.eq(@sizeOf(Type), 8);
     try t.eq(@sizeOf(LocalVar), 40);
-    try t.eq(@sizeOf(Sym), 24);
     try t.eq(@sizeOf(ResolvedFuncSym), 32);
     try t.eq(@sizeOf(ResolvedSym), 24);
     try t.eq(@sizeOf(Name), 16);

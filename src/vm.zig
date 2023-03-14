@@ -4634,11 +4634,6 @@ pub const KeyU96 = extern union {
         a: u64,
         b: u32,
     },
-    absLocalSymKey: extern struct {
-        parentSymId: sema.ResolvedSymId,
-        nameId: sema.NameSymId,
-        numParams: u32,
-    },
     rtFuncSymKey: extern struct {
         // TODO: Is it enough to just use the final resolved func sym id?
         rParentSymId: sema.ResolvedSymId,
@@ -4656,30 +4651,6 @@ pub const KeyU96Context = struct {
     }
     pub fn eql(_: @This(), a: KeyU96, b: KeyU96) bool {
         return a.val.a == b.val.a and a.val.b == b.val.b;
-    }
-};
-
-pub const KeyU128 = extern union {
-    val: extern struct {
-        left: u64,
-        right: u64,
-    },
-    absLocalSymKey: extern struct {
-        parentSymId: u32,
-        nameId: u32,
-        funcSigId: u32, 
-        dummy: u32 = 0, 
-    },
-};
-
-pub const KeyU128Context = struct {
-    pub fn hash(_: @This(), key: KeyU128) u64 {
-        var hasher = std.hash.Wyhash.init(0);
-        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.val)});
-        return hasher.final();
-    }
-    pub fn eql(_: @This(), a: KeyU128, b: KeyU128) bool {
-        return a.val.left == b.val.left and a.val.right == b.val.right;
     }
 };
 

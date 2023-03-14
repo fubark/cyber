@@ -186,7 +186,7 @@ test "Type specifiers." {
 
 test "Type alias." {
     // TODO: Rename to typealias_test.cy
-    try evalPass(Config.initFileModules("./test/atype_test.cy").withDebug(), @embedFile("atype_test.cy"));
+    try evalPass(Config.initFileModules("./test/atype_test.cy"), @embedFile("atype_test.cy"));
 }
 
 test "Import http spec." {

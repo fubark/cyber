@@ -1,10 +1,74 @@
-<!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content=" Gradual Typing. # "><meta name=theme-color content="#FFFFFF"><meta name=color-scheme content="light dark"><meta property="og:title" content="Gradual Typing"><meta property="og:description" content=" Gradual Typing. # "><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/gradual-typing/"><meta property="article:section" content="docs"><title>Gradual Typing | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png type=image/x-icon><link rel=stylesheet href=/cyber/book.min.4b35fed0bea034bbc19c89c71e14b73fb9c68cfcc586b9382adfb9b7b103ba06.css integrity="sha256-SzX+0L6gNLvBnInHHhS3P7nGjPzFhrk4Kt+5t7EDugY=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
+<!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Gradual Typing. # Dynamic typing reduces the amount of friction when writing code. However, the additional freedom can result in more runtime errors. Cyber also supports static typing which provides compile-time guarantees to prevent runtime errors. Static typing also makes it easier to maintain and refactor your code.
+Dynamic typing. # A variable with the any type can hold any value. It can only be copied to destinations that also accept the any type."><meta name=theme-color content="#FFFFFF"><meta name=color-scheme content="light dark"><meta property="og:title" content="Gradual Typing"><meta property="og:description" content="Gradual Typing. # Dynamic typing reduces the amount of friction when writing code. However, the additional freedom can result in more runtime errors. Cyber also supports static typing which provides compile-time guarantees to prevent runtime errors. Static typing also makes it easier to maintain and refactor your code.
+Dynamic typing. # A variable with the any type can hold any value. It can only be copied to destinations that also accept the any type."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/gradual-typing/"><meta property="article:section" content="docs"><title>Gradual Typing | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png type=image/x-icon><link rel=stylesheet href=/cyber/book.min.4b35fed0bea034bbc19c89c71e14b73fb9c68cfcc586b9382adfb9b7b103ba06.css integrity="sha256-SzX+0L6gNLvBnInHHhS3P7nGjPzFhrk4Kt+5t7EDugY=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
 <script defer src=/cyber/en.search.min.6a878aae49016c76d526d0e74bfcbc56abc5c53573a59f87568efd87394cac5f.js integrity="sha256-aoeKrkkBbHbVJtDnS/y8VqvFxTVzpZ+HVo79hzlMrF8=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/gradual-typing/ class=active>Gradual Typing</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>Gradual Typing</strong>
-<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents></nav></aside></header><article class=markdown><h1 id=gradual-typing>Gradual Typing.
-<a class=anchor href=#gradual-typing>#</a></h1></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/gradual-typing.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
-<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
-<script>hljs.registerLanguage("cy",function(){return{keywords:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","tagtype","object","break","continue","match","export","pass","or","and","not","is","static","capture","true","false","none","try","catch","recover","compt"],contains:[{scope:"string",begin:"'",end:"'"},hljs.COMMENT("--",`
+<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#dynamic-typing>Dynamic typing.</a></li><li><a href=#compile-time-dynamic-typing>Compile-time dynamic typing.</a></li><li><a href=#default-types>Default types.</a></li><li><a href=#static-typing>Static typing.</a></li><li><a href=#type-aliases>Type aliases.</a></li><li><a href=#runtime-type-checking>Runtime type checking.</a></li></ul></nav></aside></header><article class=markdown><h1 id=gradual-typing>Gradual Typing.
+<a class=anchor href=#gradual-typing>#</a></h1><p>Dynamic typing reduces the amount of friction when writing code.
+However, the additional freedom can result in more runtime errors.
+Cyber also supports static typing which provides compile-time guarantees to prevent runtime errors. Static typing also makes it easier to maintain and refactor your code.</p><h2 id=dynamic-typing>Dynamic typing.
+<a class=anchor href=#dynamic-typing>#</a></h2><p>A variable with the <code>any</code> type can hold any value. It can only be copied to destinations that also accept the <code>any</code> type. An <code>any</code> value can be used as the callee for a function call or the receiver for a method call. It can be used with any operators.</p><h2 id=compile-time-dynamic-typing>Compile-time dynamic typing.
+<a class=anchor href=#compile-time-dynamic-typing>#</a></h2><p>Cyber introduces the concept of compile-time dynamic typing. This allows a local variable to gain additional compile-time features while using it as a dynamic value. It can prevent inevitable runtime errors and avoid unnecessary type conversions.</p><p>Local variables declared without a type specifier start off with the type of their initializer. In the following, <code>a</code> is implicity declared as a <code>number</code> at compile-time because number literals default to the <code>number</code> type.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 123
+</code></pre><p>The type can change at compile-time from another assignment.
+If <code>a</code> is then assigned to a string literal, <code>a</code> from that point on becomes the <code>string</code> type at compile-time.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 123
+foo(a)           -- Valid call expression.
+a = &#39;hello&#39;
+foo(a)           -- CompileError. Expected `number` argument, got `string`.
+
+func foo(n number):
+    pass
+</code></pre><p>The type of <code>a</code> can also change in branches. However, after the branch block, <code>a</code> will have a merged type determined by the types assigned to <code>a</code> from the two branched code paths. Currently, the <code>any</code> type is used if the types from the two branches differ. At the end of the following <code>if</code> block, <code>a</code> assumes the <code>any</code> type after merging the <code>number</code> and <code>string</code> types.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 123
+if a &gt; 20:
+    a = &#39;hello&#39;
+    foo(a)       -- Valid call expression. `foo` can be called without type casting.
+
+foo(a)           -- CompileError. Expected `string` argument, got `any`.
+
+func foo(s string):
+    pass
+</code></pre><h2 id=default-types>Default types.
+<a class=anchor href=#default-types>#</a></h2><p>Static variables without a type specifier will always default to the <code>any</code> type. In the following, <code>a</code> is compiled with the <code>any</code> type despite being initialized to a number literal.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
+a = &#39;hello&#39;
+</code></pre><p>Function parameters without a type specifier will default to the <code>any</code> type. The return type also defaults to <code>any</code>. In the following, both <code>a</code> and <code>b</code> have the <code>any</code> type despite being only used for arithmetic.</p><pre tabindex=0><code class=language-cy data-lang=cy>func add(a, b):
+    return a + b
+
+print add(3, 4) 
+</code></pre><h2 id=static-typing>Static typing.
+<a class=anchor href=#static-typing>#</a></h2><p>In Cyber, types can be optionally declared with variables, parameters, and return values.
+The following builtin types are available in every namespace: <code>bool</code>, <code>number</code>, <code>int</code>, <code>string</code>, <code>list</code>, <code>map</code>, <code>error</code>, <code>fiber</code>, <code>any</code>.</p><p>An object declaration creates a new type.</p><pre tabindex=0><code class=language-cy data-lang=cy>object Student:    -- Creates a new type named `Student`
+    name string
+    age int
+    gpa number
+</code></pre><p>When a type specifier follows a variable name, it declares the variable with the type. Any operation afterwards that violates the type constraint will result in a compile error.</p><pre tabindex=0><code class=language-cy data-lang=cy>a number = 123
+a = &#39;hello&#39;        -- CompileError. Type mismatch.
+</code></pre><p>Parameter and return type specifiers in a function signature follows the same syntax.</p><pre tabindex=0><code class=language-cy data-lang=cy>func mul(a number, b number) number:
+    return a * b
+
+print mul(3, 4)
+print mul(3, &#39;4&#39;)  -- CompileError. Function signature mismatch.
+</code></pre><p>Type specifiers must be resolved at compile-time.</p><pre tabindex=0><code class=language-cy data-lang=cy>object Foo:
+    a number
+    b string
+    c Bar          -- CompileError. Bar is not declared.
+</code></pre><p>Circular type references are allowed.</p><pre tabindex=0><code class=language-cy data-lang=cy>object Node:
+    val any
+    next Node      -- Valid type specifier.
+</code></pre><h2 id=type-aliases>Type aliases.
+<a class=anchor href=#type-aliases>#</a></h2><p>The <code>atype</code> keyword can be used to create a type alias. This creates a new type symbol for an existing data type.</p><pre tabindex=0><code class=language-cy data-lang=cy>import util &#39;./util.cy&#39;
+
+atype Vec3 util.Vec3
+
+v = Vec3{ x: 3, y: 4, z: 5 }
+</code></pre><h2 id=runtime-type-checking>Runtime type checking.
+<a class=anchor href=#runtime-type-checking>#</a></h2><p>Since Cyber allows invoking <code>any</code> function values, the callee&rsquo;s function signature is not always known at compile-time. To ensure type safety in this situation, type checking is done at runtime and with no additional overhead compared to calling an untyped function.</p><pre tabindex=0><code class=language-cy data-lang=cy>op any = add
+print op(1, 2)           -- &#39;3&#39;
+print op(1, &#39;2&#39;)         -- Panic. Function signature mismatch.
+
+func add(a number, b number) number:
+    return a + b
+</code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/gradual-typing.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
+<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#dynamic-typing>Dynamic typing.</a></li><li><a href=#compile-time-dynamic-typing>Compile-time dynamic typing.</a></li><li><a href=#default-types>Default types.</a></li><li><a href=#static-typing>Static typing.</a></li><li><a href=#type-aliases>Type aliases.</a></li><li><a href=#runtime-type-checking>Runtime type checking.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
+<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","tagtype","object","break","continue","match","export","pass","or","and","not","is","static","capture","true","false","none","try","catch","recover","compt"],type:["number","string","bool","any","int"]},contains:[{scope:"string",begin:"'",end:"'"},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

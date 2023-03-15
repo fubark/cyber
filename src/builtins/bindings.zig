@@ -129,6 +129,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const slice = try self.ensureMethodSymKey("slice", 2);
     const sliceAt = try self.ensureMethodSymKey("sliceAt", 1);
     const sort = try self.ensureMethodSymKey("sort", 1);
+    const split = try self.ensureMethodSymKey("split", 1);
     const startsWith = try self.ensureMethodSymKey("startsWith", 1);
     const stat = try self.ensureMethodSymKey("stat", 0);
     const status = try self.ensureMethodSymKey("status", 0);
@@ -174,6 +175,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticAstringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticAstring)));
 
@@ -201,6 +203,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticUstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticUstring)));
 
@@ -274,6 +277,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.AstringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.astring)));
     try self.addMethodSym(cy.AstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.astring)));
     try self.addMethodSym(cy.AstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.astring)));
+    try self.addMethodSym(cy.AstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.astring)));
     try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.astring)));
     try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.astring)));
 
@@ -301,6 +305,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.UstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.ustring)));
     try self.addMethodSym(cy.UstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.ustring)));
     try self.addMethodSym(cy.UstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.ustring)));
+    try self.addMethodSym(cy.UstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.ustring)));
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.ustring)));
     try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.ustring)));
 
@@ -328,6 +333,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StringSliceT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.slice)));
     try self.addMethodSym(cy.StringSliceT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.slice)));
     try self.addMethodSym(cy.StringSliceT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.slice)));
+    try self.addMethodSym(cy.StringSliceT, split, cy.MethodSym.initNativeFunc1(stringSplit(.slice)));
     try self.addMethodSym(cy.StringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.slice)));
     try self.addMethodSym(cy.StringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.slice)));
 
@@ -357,6 +363,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.rawstring)));
     try self.addMethodSym(cy.RawStringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.rawstring)));
     try self.addMethodSym(cy.RawStringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.rawstring)));
     try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawstring)));
     try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
     try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawstring)));
@@ -388,6 +395,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringSliceT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, split, cy.MethodSym.initNativeFunc1(stringSplit(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, toString, cy.MethodSym.initNativeFunc1(rawStringSliceToString));
     try self.addMethodSym(cy.RawStringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawSlice)));
@@ -1315,6 +1323,73 @@ inline fn getStringSlice(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringO
             return obj.rawstringSlice.getConstSlice();
         },
     }
+}
+
+fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+            }
+            const str = getStringSlice(T, vm, obj);
+            const delim = vm.valueToTempString(args[0]);
+
+            const res = vm.allocEmptyList() catch fatal();
+            if (delim.len == 0) {
+                return res;
+            }
+            const list = res.asHeapObject();
+
+            var iter = std.mem.split(u8, str, delim);
+            while (iter.next()) |part| {
+                switch (T) {
+                    .rawstring,
+                    .rawSlice => {
+                        vm.retainObject(obj);
+                        const slice = vm.allocRawStringSlice(part, obj) catch fatal();
+                        list.list.append(vm.allocator(), slice);
+                    },
+                    .staticAstring => {
+                        const offset = @intCast(u32, @ptrToInt(part.ptr) - @ptrToInt(str.ptr));
+                        const partv = Value.initStaticAstring(obj.start + offset, @intCast(u15, part.len));
+                        list.list.append(vm.allocator(), partv);
+                    },
+                    .astring => {
+                        vm.retainObject(obj);
+                        const partv = vm.allocAstringSlice(part, obj) catch fatal();
+                        list.list.append(vm.allocator(), partv);
+                    },
+                    .staticUstring => {
+                        const runeLen = @intCast(u32, cy.string.utf8Len(part));
+                        const partv = vm.allocUstringSlice(part, runeLen, null) catch fatal();
+                        list.list.append(vm.allocator(), partv);
+                    },
+                    .ustring => {
+                        vm.retainObject(obj);
+                        const runeLen = @intCast(u32, cy.string.utf8Len(part));
+                        const partv = vm.allocUstringSlice(part, runeLen, obj) catch fatal();
+                        list.list.append(vm.allocator(), partv);
+                    },
+                    .slice => {
+                        if (obj.stringSlice.isAstring()) {
+                            vm.retainObject(obj);
+                            const partv = vm.allocAstringSlice(part, obj) catch fatal();
+                            list.list.append(vm.allocator(), partv);
+                        } else {
+                            const runeLen = @intCast(u32, cy.string.utf8Len(part));
+                            vm.retainObject(obj);
+                            const partv = vm.allocUstringSlice(part, runeLen, obj) catch fatal();
+                            list.list.append(vm.allocator(), partv);
+                        }
+                    }
+                }
+            }
+            return res;
+        }
+    };
+    return S.inner;
 }
 
 fn stringReplace(comptime T: cy.StringType) cy.NativeObjFuncPtr {

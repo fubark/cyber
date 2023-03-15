@@ -292,6 +292,21 @@ pub fn validateUtf8(s: []const u8) linksection(cy.Section) ?usize {
     return charLen;
 }
 
+/// Assumes valid UTF-8 sequence.
+pub fn utf8Len(s: []const u8) linksection(cy.Section) usize {
+    var len: usize = 0;
+    var i: usize = 0;
+    while (i < s.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return stdx.fatal();
+        if (i + cp_len == s.len) {
+            return len;
+        }
+        i += cp_len;
+        len += 1;
+    }
+    return len;
+}
+
 pub fn utf8CharSliceAt(str: []const u8, idx: usize) linksection(cy.Section) ?[]const u8 {
     const cp_len = std.unicode.utf8ByteSequenceLength(str[idx]) catch return null;
     if (idx + cp_len > str.len) {

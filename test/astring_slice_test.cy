@@ -132,6 +132,13 @@ try t.eq(str.sliceAt(3), 'x')
 try t.eq(str.sliceAt(5), 'z')
 try t.eq(str.sliceAt(6), error(#OutOfBounds))
 
+-- split()
+res = string('abc,ab,a')[0..].split(',')
+try t.eq(res.len(), 3)
+try t.eq(res[0], 'abc')
+try t.eq(res[1], 'ab')
+try t.eq(res[2], 'a')
+
 -- startsWith()
 try t.eq(str.startsWith('abc'), true)
 try t.eq(str.startsWith('bc'), false)

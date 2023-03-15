@@ -121,6 +121,13 @@ try t.eq(str.sliceAt(3).isAscii(), false)
 try t.eq(str.sliceAt(7), '🐶')
 try t.eq(str.sliceAt(8), error(#OutOfBounds))
 
+-- split()
+res = 'abc,🐶ab,a'.split(',')
+try t.eq(res.len(), 3)
+try t.eq(res[0], 'abc')
+try t.eq(res[1], '🐶ab')
+try t.eq(res[2], 'a')
+
 -- startsWith()
 try t.eq(str.startsWith('abc🦊'), true)
 try t.eq(str.startsWith('bc🦊'), false)

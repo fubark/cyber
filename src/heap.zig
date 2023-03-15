@@ -249,6 +249,8 @@ const Ustring = extern struct {
     }
 };
 
+/// One data structure for astring/ustring slice it can fit into a pool object
+/// and use the same layout.
 const StringSlice = extern struct {
     structId: cy.TypeId,
     rc: u32,

@@ -143,6 +143,13 @@ try t.eq(str.sliceAt(10), '🐶')
 try t.eq(str.sliceAt(13), error(#InvalidRune))
 try t.eq(str.sliceAt(14), error(#OutOfBounds))
 
+-- split()
+res = rawstring('abc,🐶ab,a')[0..].split(',')
+try t.eq(res.len(), 3)
+try t.eq(res[0], rawstring('abc'))
+try t.eq(res[1], rawstring('🐶ab'))
+try t.eq(res[2], rawstring('a'))
+
 -- startsWith()
 try t.eq(str.startsWith('abc🦊'), true)
 try t.eq(str.startsWith('bc🦊'), false)

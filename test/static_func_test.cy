@@ -27,8 +27,8 @@ try t.eq(bar(), 5)
 try t.eq(bar(2), error(#InvalidSignature))
 
 -- Static function binding wrapped in value.
-bar = asciiCode
-try t.eq(bar('a'), 97)
+bar = string
+try t.eq(bar(10), '10')
 
 -- Wrong number of arugments when invoking wrapped native func.
 try t.eq(bar('a', 123), error(#InvalidSignature))

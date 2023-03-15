@@ -93,12 +93,8 @@ print contents
 | Function | Summary |
 | ------------- | ----- |
 | `arrayFill(val any, n number) list` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
-| `asciiCode(val any) number` | Converts the first character of a string to an ASCII code number. | 
 | `bool(val any) bool` | Converts a value to either `true` or `false`. | 
-| `bindLib(path string, decls [](CFunc\|CStruct)) map` | Deprecated: Use `os.bindLib` instead. | 
-| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Deprecated: Use `os.bindLib` instead. | 
 | `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
-| `char(val any) number` | Deprecated: Use `asciiCode` instead. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
 | `exit(status number) noreturn` | Exits the program with a status code. | 
@@ -117,7 +113,6 @@ print contents
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
 | `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
 | `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
-| `readLine() rawstring` | Deprecated: Use `getInput` instead. |
 | `string(val any) string` | Converts a value to a string. | 
 | `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeid(val any) number` | Returns the type id of the value. | 

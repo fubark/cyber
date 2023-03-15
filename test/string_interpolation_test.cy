@@ -7,8 +7,8 @@ try t.eq('Hello {a} {b}', 'Hello World 123')
 
 -- Unescape.
 str = '\n\tHello {a} {b}'
-try t.eq(str.codeAt(0), 10)
-try t.eq(str.codeAt(1), 9)
+try t.eq(str.runeAt(0), 10)
+try t.eq(str.runeAt(1), 9)
 
 -- Using double quotes.
 try t.eq("Hello {a} {b}", 'Hello World 123')

@@ -12,9 +12,6 @@ a = arrayFill([], 2)
 try t.eq(a.len(), 2)
 try t.eq(a[0] == a[1], false)
 
--- asciiCode()
-try t.eq(asciiCode('a'), 97)
-
 -- copy()
 try t.eq(copy(123), 123)
 object S:

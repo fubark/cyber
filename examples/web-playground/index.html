@@ -55,7 +55,7 @@ while fiber.status() != #done:
 print '{res} {count}'`,
             slices: `str = 'abc aabbcc acb aabb c'
 cur = 0
-for str[cur..].indexChar('c') as i:
+for str[cur..].findRune(0u'c') as i:
     print 'Found char at {cur + i}.'
     cur += i + 1`,
             objects: `object Node:

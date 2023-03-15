@@ -1138,33 +1138,33 @@ pub const VM = struct {
                 cy.AstringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.astring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringSliceAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 cy.UstringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.ustring.charLen) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringSliceAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 cy.StringSliceT => {
                     if (obj.stringSlice.isAstring()) {
                         const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.len) + @floatToInt(i32, index.toF64()));
                         retainObject(self, obj);
-                        return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     } else {
                         const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.uCharLen) + @floatToInt(i32, index.toF64()));
                         retainObject(self, obj);
-                        return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     }
                 },
                 cy.RawStringT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringSliceAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 cy.RawStringSliceT => {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstringSlice.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    return bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 else => {
                     return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
@@ -1177,12 +1177,12 @@ pub const VM = struct {
                 switch (left.getTag()) {
                     cy.StaticAstringT => {
                         const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     cy.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
                         const idx = @intToFloat(f64, @intCast(i32, cy.string.getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        return bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     else => {
                         return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
@@ -1215,23 +1215,23 @@ pub const VM = struct {
                 },
                 cy.AstringT => {
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    return bindings.stringSliceAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 cy.UstringT => {
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    return bindings.stringSliceAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 cy.StringSliceT => {
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    return bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 cy.RawStringT => {
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    return bindings.stringSliceAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 cy.RawStringSliceT => {
                     retainObject(self, obj);
-                    return bindings.stringCharAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    return bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 else => {
                     return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
@@ -1242,8 +1242,8 @@ pub const VM = struct {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 switch (left.getTag()) {
-                    cy.StaticAstringT => return bindings.stringCharAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
-                    cy.StaticUstringT => return bindings.stringCharAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
+                    cy.StaticAstringT => return bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
+                    cy.StaticUstringT => return bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
                     else => {
                         return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
                     },

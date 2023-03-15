@@ -83,6 +83,7 @@ pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 }
 
 pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("asciiCode", "0.2", "Use UTF-8 rune notation or string.runeAt(0) instead.", &.{});
     defer vm.release(args[0]);
     const str = vm.valueToTempString(args[0]);
     if (str.len > 0) {

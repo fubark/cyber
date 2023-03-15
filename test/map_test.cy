@@ -68,7 +68,7 @@ sum = 0
 codeSum = 0
 for m each k, v:
   sum += v
-  codeSum += asciiCode(k)
+  codeSum += k.runeAt(0)
 try t.eq(sum, 9)
 try t.eq(codeSum, 294)
 
@@ -90,9 +90,9 @@ for m each k, n:
   innerSum = 0
   for m each kk, nn:
     innerSum += nn
-    codeSum += asciiCode(kk)
+    codeSum += kk.runeAt(0)
   res += n * innerSum
-  codeSum += asciiCode(k)
+  codeSum += k.runeAt(0)
 try t.eq(res, 36)
 try t.eq(codeSum, 294 * 4)
 
@@ -102,7 +102,7 @@ sum = 0
 codeSum = 0
 for m each k, v:
   sum += v[0]
-  codeSum += asciiCode(k)
+  codeSum += k.runeAt(0)
 try t.eq(sum, 9)
 try t.eq(codeSum, 294)
 

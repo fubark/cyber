@@ -55,7 +55,7 @@ print(fib(30))
 Big numbers will be supported in a future version of Cyber.
 
 ## Strings.
-The `string` type represents a sequence of UTF-8 characters. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
+The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as a `number`. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](#string-buffer).
 
@@ -114,14 +114,14 @@ poem = "line a
        |     indented further"
 ```
 
-Using the index operator will return the UTF-8 character at the given character index. This is equivalent to calling the method `charAt()`.
+Using the index operator will return the UTF-8 rune at the given index as a slice. This is equivalent to calling the method `sliceAt()`.
 ```cy
 str = 'abcd'
 print str[1]     -- "b"
 print str[-1]    -- "d"
 ```
 
-Using the slice index operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the character length of the string.
+Using the slice index operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.
 ```cy
 str = 'abcxyz'
 sub = str[0..3]
@@ -131,32 +131,30 @@ print str[1..]   -- "bcxyz"
 
 -- One way to use slices is to continue a string operation.
 str = 'abcabcabc'
-i = str.indexChar('c')
+i = str.findRune(0u'c')
 print(i)                            -- "2"
 i += 1
-print(i + str[i..].indexChar('c'))  -- "5"
+print(i + str[i..].findRune(0u'c'))  -- "5"
 ```
 
 ### object string
 | Method | Summary |
 | ------------- | ----- |
-| `append(str string) string` | Deprecated: Use `concat()`. | 
-| `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string.  | 
-| `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`. | 
 | `concat(str string) string` | Returns a new string that concats this string and `str`. | 
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
-| `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
-| `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
-| `indexCharSet(set string) number?` | Returns the first index of any UTF-8 character in `set` or `none` if not found. | 
-| `indexCode(needle number) number?` | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
+| `find(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
+| `findAnyRune(set string) number?` | Returns the first index of any UTF-8 rune in `set` or `none` if not found. | 
+| `findRune(needle number) number?` | Returns the first index of UTF-8 rune `needle` in the string or `none` if not found. | 
 | `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
-| `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
-| `len() number` | Returns the number of UTF-8 characters in the string. | 
+| `isAscii() bool` | Returns whether the string contains all ASCII runes. | 
+| `len() number` | Returns the number of UTF-8 runes in the string. | 
 | `less(str string) bool` | Returns whether this string is lexicographically before `str`. |
 | `lower() string` | Returns this string in lowercase. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 | `repeat(n number) string` | Returns a new string with this string repeated `n` times. | 
+| `runeAt(idx number) number` | Returns the UTF-8 rune at index `idx`. | 
 | `slice(start number, end number) string` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
+| `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string.  | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `upper() string` | Returns this string in uppercase. | 
 
@@ -177,42 +175,40 @@ str = 'Scoreboard: \{ Bob \} {points}'
 String templates can not contain nested string templates.
 
 ### rawstring.
-A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 characters.
+A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 runes.
 
-Using the index operator will return the UTF-8 character starting at the given byte index. If the index does not begin a valid UTF-8 character, `error(#InvalidChar)` is returned. This is equivalent to calling the method `charAt()`.
+Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, `error(#InvalidRune)` is returned. This is equivalent to calling the method `sliceAt()`.
 ```cy
 str = rawstring('abcd').insertByte(1, 255)
 print str[0]     -- "a"
-print str[1]     -- error(#InvalidChar)
+print str[1]     -- error(#InvalidRune)
 print str[-1]    -- "d"
 ```
 
 ### object rawstring
 | Method | Summary |
 | ------------- | ----- |
-| `append(str string) string` | Deprecated: Use `concat()`. | 
 | `byteAt(idx number) number` | Returns the byte value (0-255) at the given index `idx`. | 
-| `charAt(idx number) string` | Returns the UTF-8 character at index `idx` as a single character string. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
-| `codeAt(idx number) number` | Returns the codepoint of the UTF-8 character at index `idx`. If the index does not begin a UTF-8 character, `error(#InvalidChar)` is returned. | 
 | `concat(str string) string` | Returns a new string that concats this string and `str`. | 
 | `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
-| `index(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
-| `indexChar(needle string) number?` | Returns the first index of UTF-8 character `needle` in the string or `none` if not found. | 
-| `indexCharSet(set string) number?` | Returns the first index of any UTF-8 character in `set` or `none` if not found. |
-| `indexCode(needle number) number?` | Returns the first index of UTF-8 codepoint `needle` in the string or `none` if not found. | 
+| `find(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
+| `findAnyRune(set string) number?` | Returns the first index of any UTF-8 rune in `set` or `none` if not found. |
+| `findRune(needle number) number?` | Returns the first index of UTF-8 rune `needle` in the string or `none` if not found. | 
 | `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
 | `insertByte(idx number, byte number) string` | Returns a new string with `byte` inserted at index `idx`. | 
-| `isAscii() bool` | Returns whether the string contains all ASCII characters. | 
+| `isAscii() bool` | Returns whether the string contains all ASCII runes. | 
 | `len() number` | Returns the number of bytes in the string. | 
 | `less(str rawstring) bool` | Returns whether this rawstring is lexicographically before `str`. |
 | `lower() string` | Returns this string in lowercase. | 
 | `repeat(n number) rawstring` | Returns a new rawstring with this rawstring repeated `n` times. | 
 | `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+| `runeAt(idx number) number` | Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
 | `slice(start number, end number) rawstring` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
+| `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `toString() string` | Deprecated: Use `utf8()`. | 
 | `upper() string` | Returns this string in uppercase. | 
-| `utf8() string` | Returns a valid UTF-8 string or returns `error(#InvalidChar)`. | 
+| `utf8() string` | Returns a valid UTF-8 string or returns `error(#InvalidRune)`. | 
 
 ## Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.

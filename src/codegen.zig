@@ -840,16 +840,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
         },
         .nonDecInt => {
             if (dstIsUsed) {
-                const literal = self.getNodeTokenString(node);
-                var val: u64 = undefined;
-                if (literal[1] == 'x') {
-                    val = try std.fmt.parseInt(u64, literal[2..], 16);
-                } else if (literal[1] == 'o') {
-                    val = try std.fmt.parseInt(u64, literal[2..], 8);
-                } else if (literal[1] == 'b') {
-                    val = try std.fmt.parseInt(u64, literal[2..], 2);
-                }
-                const fval = @intToFloat(f64, val);
+                const fval = node.head.nonDecInt.semaNumberVal;
                 if (requestedType.typeT == .int) {
                     return try genConstInt(self, fval, dst);
                 } else {

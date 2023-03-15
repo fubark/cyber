@@ -2856,7 +2856,7 @@ pub const Parser = struct {
                             return try self.parseNoParenCallExpression(left_id);
                         },
                         else => {
-                            return self.reportParseError("Unsupported shorthand caller {}", &.{v(left.node_t)});
+                            return self.reportParseError("Unexpected token: {}", &.{v(next.token_t)});
                         }
                     }
                 }
@@ -3543,6 +3543,9 @@ pub const Node = struct {
         stringTemplate: struct {
             partsHead: NodeId,
         },
+        nonDecInt: struct {
+            semaNumberVal: f64,
+        } align (4) ,
     },
 };
 
@@ -4525,6 +4528,47 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         }
                         try p.pushNonDecimalIntegerToken(start, p.next_pos);
                         return;
+                    } else if (ch == 'u') {
+                        // UTF-8 codepoint literal (rune).
+                        advanceChar(p);
+                        if (isAtEndChar(p)) {
+                            return p.reportTokenError("Expected UTF-8 rune.", &.{});
+                        }
+                        ch = peekChar(p);
+                        if (ch != '\'') {
+                            return p.reportTokenError("Expected single quote.", &.{});
+                        }
+                        advanceChar(p);
+                        while (true) {
+                            if (isAtEndChar(p)) {
+                                return p.reportTokenError("Expected UTF-8 rune.", &.{});
+                            }
+                            ch = peekChar(p);
+                            if (ch == '\\') {
+                                advanceChar(p);
+                                if (isAtEndChar(p)) {
+                                    return p.reportTokenError("Expected single quote or backslash.", &.{});
+                                }
+                                ch = peekChar(p);
+                                if (ch != '\'' and ch != '\\') {
+                                    return p.reportTokenError("Expected single quote or backslash.", &.{});
+                                } else {
+                                    advanceChar(p);
+                                }
+                            } else {
+                                advanceChar(p);
+                                if (ch == '\'') {
+                                    break;
+                                }
+                            }
+                        }
+                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                        return;
+                    } else {
+                        if (std.ascii.isAlphabetic(ch)) {
+                            const char: []const u8 = &[_]u8{ ch };
+                            return p.reportTokenError("Unsupported integer notation: {}", &.{v(char)});
+                        }
                     }
                 }
                 try p.pushNumberToken(start, p.next_pos);

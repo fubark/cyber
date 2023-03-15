@@ -984,10 +984,7 @@ test "boolean" {
 // }
 
 test "Statements." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    _ = try run.eval(
+    try evalPass(.{},
         \\import t 'test'
         \\
         \\-- Expressions are allowed to wrap to the next line.
@@ -998,22 +995,43 @@ test "Statements." {
     );
 
     // Invalid single line block.
-    var val = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\if true: foo = 123 foo = 234
-    );
-    try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Unsupported shorthand caller number");
-    val = run.evalExt(.{ .silent = true },
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Unexpected token: ident
+            \\
+            \\main:1:20:
+            \\if true: foo = 123 foo = 234
+            \\                   ^
+            \\
+        );
+    }}.func);
+    try eval(.{ .silent = true },
         \\if true: foo = 123: foo = 234
-    );
-    try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Expected end of line or file. Got colon.");
-    val = run.evalExt(.{ .silent = true },
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected end of line or file. Got colon.
+            \\
+            \\main:1:19:
+            \\if true: foo = 123: foo = 234
+            \\                  ^
+            \\
+        );
+    }}.func);
+    try eval(.{ .silent = true },
         \\if true: foo = 123
         \\  foo = 234
-    );
-    try t.expectError(val, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Unexpected indentation.");
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Unexpected indentation.
+            \\
+            \\main:2:3:
+            \\  foo = 234
+            \\  ^
+            \\
+        );
+    }}.func);
 }
 
 test "Indentation." {
@@ -1052,6 +1070,76 @@ test "Integers." {
 }
 
 test "Numbers." {
+    // Unsupported integer notation.
+    try eval(.{ .silent = true },
+        \\a = 0z000
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.TokenError,
+            \\ParseError: Unsupported integer notation: z
+            \\
+            \\main:1:6:
+            \\a = 0z000
+            \\     ^
+            \\
+        );
+    }}.func);
+
+    // Empty char is not allowed.
+    try eval(.{ .silent = true },
+        \\a = 0u''
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Invalid UTF-8 Rune.
+            \\
+            \\main:1:5:
+            \\a = 0u''
+            \\    ^
+            \\
+        );
+    }}.func);
+
+    // Can't use escape char other than single quote or backslash.
+    try eval(.{ .silent = true },
+        \\a = 0u'\a'
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.TokenError,
+            \\ParseError: Expected single quote or backslash.
+            \\
+            \\main:1:9:
+            \\a = 0u'\a'
+            \\        ^
+            \\
+        );
+    }}.func);
+
+    // More than one rune in literal. 
+    try eval(.{ .silent = true },
+        \\a = 0u'🦊a'
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Invalid UTF-8 Rune.
+            \\
+            \\main:1:5:
+            \\a = 0u'🦊a'
+            \\    ^
+            \\
+        );
+    }}.func);
+
+    // More than one rune in literal. (Grapheme cluster)
+    try eval(.{ .silent = true },
+        \\a = 0u'👨‍👨‍👦‍👦'
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Invalid UTF-8 Rune.
+            \\
+            \\main:1:5:
+            \\a = 0u'👨‍👨‍👦‍👦'
+            \\    ^
+            \\
+        );
+    }}.func);
+
     try evalPass(.{}, @embedFile("number_test.cy"));
 }
 
@@ -1925,18 +2013,7 @@ const VMrunner = struct {
 
     fn expectErrorReport(self: *VMrunner, val: anytype, expErr: UserError, expReport: []const u8) !void {
         try t.expectError(val, expErr);
-        var report: []const u8 = undefined;
-        switch (expErr) {
-            error.Panic => {
-                report = try self.vm.allocLastUserPanicError();
-            },
-            error.CompileError => {
-                report = try self.vm.allocLastUserCompileError();
-            },
-            error.ParseError => {
-                report = try self.vm.allocLastUserParseError();
-            },
-        }
+        const report = try self.vm.allocLastErrorReport();
         try eqUserError(t.alloc, report, expReport);
     }
 
@@ -2125,7 +2202,7 @@ fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !
     try t.eqStr(act, exp.items);
 }
 
-const UserError = error{Panic, CompileError, ParseError};
+const UserError = error{Panic, CompileError, TokenError, ParseError};
 
 /// TODO: Refactor to use eval.
 fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!cy.Value) anyerror!void) !void {

@@ -40,6 +40,7 @@ a = 123.0e4
 a = 0xFF     -- hex.
 a = 0o17     -- octal.
 a = 0b1010   -- binary.
+a = 0u'🐶'   -- UTF-8 rune.
 ```
 
 The `int` type is a 32-bit integer and has limited support and you can only declare them in function param and return types.

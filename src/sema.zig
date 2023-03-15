@@ -1464,7 +1464,36 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
                 val = try std.fmt.parseInt(u64, literal[2..], 8);
             } else if (literal[1] == 'b') {
                 val = try std.fmt.parseInt(u64, literal[2..], 2);
+            } else if (literal[1] == 'u') {
+                var start: usize = 3;
+                if (literal[3] == '\\') {
+                    start = 4;
+                }
+                const len = std.unicode.utf8ByteSequenceLength(literal[start]) catch {
+                    return c.reportError("Invalid UTF-8 Rune.", &.{});
+                };
+                if (start == 3) {
+                    if (literal.len != @as(usize, 4) + len) {
+                        return c.reportError("Invalid UTF-8 Rune.", &.{});
+                    }
+                } else {
+                    if (literal.len != @as(usize, 5) + len) {
+                        return c.reportError("Invalid UTF-8 Rune.", &.{});
+                    }
+                }
+                const cp = std.unicode.utf8Decode(literal[start..start+len]) catch {
+                    return c.reportError("Invalid UTF-8 Rune.", &.{});
+                };
+                val = cp;
+            } else {
+                const char: []const u8 = &[_]u8{literal[1]};
+                return c.reportError("Unsupported integer notation: {}", &.{v(char)});
             }
+            c.nodes[nodeId].head = .{
+                .nonDecInt = .{
+                    .semaNumberVal = @intToFloat(f64, val),
+                },
+            };
             if (std.math.cast(i32, val) != null) {
                 return NumberOrRequestIntegerType;
             }

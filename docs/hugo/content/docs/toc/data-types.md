@@ -155,6 +155,7 @@ print(i + str[i..].findRune(0u'c'))  -- "5"
 | `runeAt(idx number) number` | Returns the UTF-8 rune at index `idx`. | 
 | `slice(start number, end number) string` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
 | `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string.  | 
+| `split(delim string) list` | Returns a list of UTF-8 strings split at occurrences of `delim`.  | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `upper() string` | Returns this string in uppercase. | 
 
@@ -205,6 +206,7 @@ print str[-1]    -- "d"
 | `runeAt(idx number) number` | Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
 | `slice(start number, end number) rawstring` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
 | `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
+| `split(delim string) list` | Returns a list of rawstrings split at occurrences of `delim`.  | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
 | `toString() string` | Deprecated: Use `utf8()`. | 
 | `upper() string` | Returns this string in uppercase. | 

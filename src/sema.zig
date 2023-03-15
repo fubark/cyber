@@ -475,7 +475,11 @@ pub const Module = struct {
     absSpec: []const u8,
 
     pub fn setNativeFunc(self: *Module, c: *cy.VMcompiler, name: []const u8, numParams: u32, func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value) !void {
-        const nameId = try ensureNameSym(c, name);
+        return self.setNativeFuncExt(c, name, false, numParams, func);
+    }
+
+    pub fn setNativeFuncExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, numParams: u32, func: *const fn (*cy.UserVM, [*]const cy.Value, u8) cy.Value) !void {
+        const nameId = try ensureNameSymExt(c, name, dupeName);
 
         // AnyType for params and return.
         const rFuncSigId = try ensureResolvedUntypedFuncSig(c, numParams);
@@ -563,7 +567,11 @@ pub const Module = struct {
     }
 
     pub fn setVar(self: *Module, c: *cy.VMcompiler, name: []const u8, val: cy.Value) !void {
-        const nameId = try ensureNameSym(c, name);
+        try self.setVarExt(c, name, false, val);
+    }
+
+    pub fn setVarExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, val: cy.Value) !void {
+        const nameId = try ensureNameSymExt(c, name, dupeName);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,

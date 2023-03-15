@@ -51,6 +51,66 @@ test "Typed recursive function." {
     try evalPass(.{}, @embedFile("typed_rec_func_test.cy"));
 }
 
+
+test "Custom modules." {
+    const run = VMrunner.create();
+    defer run.destroy();
+
+    var count: usize = 0;
+    run.vm.setUserData(&count);
+
+    const S = struct {
+        fn test1(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
+            const count_ = stdx.ptrAlignCast(*usize, vm.getUserData());
+            count_.* += 1;
+            return cy.Value.None;
+        }
+        fn test2(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
+            const count_ = stdx.ptrAlignCast(*usize, vm.getUserData());
+            count_.* += 2;
+            return cy.Value.None;
+        }
+        fn test3(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
+            const count_ = stdx.ptrAlignCast(*usize, vm.getUserData());
+            count_.* += 3;
+            return cy.Value.None;
+        }
+    };
+
+    try run.vm.addModuleLoader("mod1", struct {
+        fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
+            mod.setNativeFunc(&vm.internal().compiler, "test", 0, S.test1) catch fatal();
+            mod.setNativeFunc(&vm.internal().compiler, "test2", 0, S.test2) catch fatal();
+            return true;
+        }
+    }.loader);
+
+    try run.vm.addModuleLoader("mod2", struct {
+        fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
+            mod.setNativeFunc(&vm.internal().compiler, "test", 0, S.test3) catch fatal();
+            return true;
+        }
+    }.loader);
+
+    _ = try run.evalExtNoReset(.{},
+        \\import m 'mod1'
+        \\import n 'mod2'
+        \\m.test()
+        \\m.test2()
+        \\n.test()
+    );
+
+    _ = try run.evalExtNoReset(.{},
+        \\import m 'mod1'
+        \\import n 'mod2'
+        \\m.test()
+        \\m.test2()
+        \\n.test()
+    );
+
+    try t.eq(count, 12);
+}
+
 test "Multiple evals persisting state." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -62,7 +122,6 @@ test "Multiple evals persisting state." {
     try run.vm.addModuleLoader("core", struct {
         fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
             const g = stdx.ptrAlignCast(*cy.Value, vm.getUserData()).*;
-            // vm.retain(g);
             mod.setVar(&vm.internal().compiler, "g", g) catch fatal();
             return true;
         }

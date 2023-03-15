@@ -208,7 +208,6 @@ print str[-1]    -- "d"
 | `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
 | `split(delim string) list` | Returns a list of rawstrings split at occurrences of `delim`.  | 
 | `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
-| `toString() string` | Deprecated: Use `utf8()`. | 
 | `upper() string` | Returns this string in uppercase. | 
 | `utf8() string` | Returns a valid UTF-8 string or returns `error(#InvalidRune)`. | 
 
@@ -262,7 +261,6 @@ list.remove(1)
 ### object list
 | Method | Summary |
 | ------------- | ----- |
-| `add(val any) none` | Deprecated: Use `append()`. |
 | `append(val any) none` | Appends a value to the end of the list. |
 | `concat(val any) none` | Concats the elements of another list to the end of this list. |
 | `insert(idx number, val any) none` | Inserts a value at index `idx`. |

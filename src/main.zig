@@ -246,5 +246,5 @@ fn help() void {
 }
 
 fn version() void {
-    std.debug.print("Cyber {s} build-{s}-{s}\n", .{build_options.version, build_options.build, build_options.commit});
+    std.debug.print("{s}\n", .{build_options.full_version});
 }

@@ -231,6 +231,7 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     build_options.addOption([]const u8, "commit", commitTag);
     build_options.addOption(cy_config.Engine, "cyEngine", .vm);
     build_options.addOption(bool, "trace", trace);
+    build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     build_options.addOption(bool, "fastArm64",
         step.target.getCpuArch() == .aarch64 and step.optimize != .Debug and fastArm64);
     // build_options.addOption(bool, "trace", true);

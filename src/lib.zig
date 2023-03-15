@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const fatal = stdx.fatal;
@@ -425,6 +426,42 @@ test "List ops." {
     res = c.cyListGet(vm, list, 0);
     try t.eq(c.cyValueAsNumber(res), 123);
     try t.eq(c.cyListLen(list), 5);
+}
+
+export fn cyGetFullVersion() c.CStr {
+    return initCStr(build_options.full_version.ptr[0..build_options.full_version.len :0]);
+}
+
+test "cyGetFullVersion()" {
+    const str = c.cyGetFullVersion();
+    try t.eqStr(str.charz[0..str.len], build_options.full_version);
+}
+
+export fn cyGetVersion() c.CStr {
+    return initCStr(build_options.version.ptr[0..build_options.version.len :0]);
+}
+
+test "cyGetVersion()" {
+    const str = c.cyGetVersion();
+    try t.eqStr(str.charz[0..str.len], build_options.version);
+}
+
+export fn cyGetBuild() c.CStr {
+    return initCStr(build_options.build.ptr[0..build_options.build.len :0]);
+}
+
+test "cyGetBuild()" {
+    const str = c.cyGetBuild();
+    try t.eqStr(str.charz[0..str.len], build_options.build);
+}
+
+export fn cyGetCommit() c.CStr {
+    return initCStr(build_options.build.ptr[0..build_options.build.len :0]);
+}
+
+test "cyGetCommit()" {
+    const str = c.cyGetCommit();
+    try t.eqStr(str.charz[0..str.len], build_options.commit);
 }
 
 fn initCStr(str: [:0]const u8) c.CStr {

@@ -62,6 +62,12 @@ typedef uint32_t CyTypeId;
 typedef CyValue (*CyFunc)(CyVM* vm, CyValue* args, uint8_t nargs);
 typedef bool (*CyLoadModuleFunc)(CyVM* vm, CyModule* mod);
 
+// Top level.
+CStr cyGetFullVersion();
+CStr cyGetVersion();
+CStr cyGetBuild();
+CStr cyGetCommit();
+
 // VM.
 CyVM* cyVmCreate();
 void cyVmDestroy(CyVM* vm);

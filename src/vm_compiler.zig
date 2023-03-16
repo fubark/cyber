@@ -152,6 +152,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameInt);
         id = try sema.ensureNameSym(self, "taglit");
         std.debug.assert(id == sema.NameTagLiteral);
+        id = try sema.ensureNameSym(self, "list");
+        std.debug.assert(id == sema.NameList);
 
         // Add builtins types as resolved syms.
         id = try sema.addResolvedBuiltinSym(self, .any, "any");

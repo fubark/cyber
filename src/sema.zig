@@ -4017,6 +4017,7 @@ pub const NameAny = 0;
 pub const NameNumber = 1;
 pub const NameInt = 2;
 pub const NameTagLiteral = 3;
+pub const NameList = 4;
 
 /// Names are reserved to index into `BuiltinTypeTags`.
 const BuiltinTypeTags = [_]TypeTag{
@@ -4024,6 +4025,7 @@ const BuiltinTypeTags = [_]TypeTag{
     .number,
     .int,
     .tagLiteral,
+    .list,
 };
 
 const bt = BuiltinTypeSymIds;
@@ -4044,6 +4046,7 @@ const BuiltinTypes = [_]Type{
     NumberType,
     IntegerType,
     TagLiteralType,
+    ListType,
 };
 
 pub const FuncDeclId = u32;

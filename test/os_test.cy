@@ -13,6 +13,10 @@ try t.eq(res, error(#FileNotFound))
 res = os.access('test/assets/file.txt', #read)
 try t.eq(res, true)
 
+-- args()
+res = os.args()
+try t.eq(res.len() > 0, true)
+
 -- createDir()
 os.removeDir('test/assets/tempdir')
 try t.eq(os.createDir('test/assets/tempdir'), true)

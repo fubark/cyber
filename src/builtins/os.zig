@@ -80,7 +80,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     } else {
         try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral, bt.Any}, access);
     }
-    try mod.setNativeFunc(self, "args", 0, osArgs);
+    try mod.setNativeTypedFunc(self, "args", &.{bt.List}, osArgs);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
         try mod.setNativeFunc(self, "bindLib", 3, bindings.nop3);
@@ -257,10 +257,6 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
-
-    if (!args[1].isTagLiteral()) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
-    }
 
     const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
     const zmode: std.fs.File.OpenMode = switch (mode) {

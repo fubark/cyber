@@ -103,6 +103,7 @@ print contents
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
+| `list(val any) list` | Casts value to a `list`. Panics if value is not a `list`. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
 | `opaque(val any) pointer` | Converts a value to an opaque pointer value. This is usually used with FFI. | 

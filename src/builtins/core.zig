@@ -50,7 +50,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try mod.setNativeFunc(self, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
-    try mod.setNativeTypedFunc(self, "list", &.{ bt.Any, bt.List }, list);
+    try mod.setNativeTypedFunc(self, "List", &.{ bt.Any, bt.List }, List);
     try mod.setNativeFunc(self, "must", 1, must);
     try mod.setNativeFunc(self, "number", 1, number);
     try mod.setNativeFunc(self, "opaque", 1, coreOpaque);
@@ -529,12 +529,12 @@ pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return getInput(vm, args, nargs);
 }
 
-fn list(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn List(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (args[0].isList()) {
         return args[0];
     } else {
         vm.release(args[0]);
-        return vm.returnPanic("Not a list.");
+        return vm.returnPanic("Not a List.");
     }
 }
 

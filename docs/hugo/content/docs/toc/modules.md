@@ -92,7 +92,7 @@ print contents
 
 | Function | Summary |
 | ------------- | ----- |
-| `arrayFill(val any, n number) list` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
+| `arrayFill(val any, n number) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | `bool(val any) bool` | Converts a value to either `true` or `false`. | 
 | `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
@@ -103,7 +103,7 @@ print contents
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
-| `list(val any) list` | Casts value to a `list`. Panics if value is not a `list`. | 
+| `List(val any) List` | Casts value to a `list`. Panics if value is not a `list`. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
 | `opaque(val any) pointer` | Converts a value to an opaque pointer value. This is usually used with FFI. | 
@@ -206,7 +206,7 @@ for map each k, v:
 | Function | Summary |
 | -- | -- |
 | `access(path string, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
-| `args() list<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
+| `args() List<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
 | `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
 | `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 
 | `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |

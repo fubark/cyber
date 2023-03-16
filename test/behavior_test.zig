@@ -14,13 +14,13 @@ const log = stdx.log.scoped(.behavior_test);
 test "Typed list." {
     // Wrong param type.
     try eval(.{ .silent = true },
-        \\func foo(a list):
+        \\func foo(a List):
         \\  pass
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not find compatible function signature for `foo(number) any`.
-            \\Only `func foo(list) any` exists for the symbol `foo`.
+            \\Only `func foo(List) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
             \\foo(123)
@@ -32,7 +32,7 @@ test "Typed list." {
     try evalPass(.{},
         \\import t 'test'
         \\
-        \\func foo(a list):
+        \\func foo(a List):
         \\  return a[0] == 123
         \\
         \\-- Literal.
@@ -44,7 +44,7 @@ test "Typed list." {
         \\
         \\-- Cast erased type.
         \\tag = t.erase([123])
-        \\try t.eq(foo(list(tag)), true)
+        \\try t.eq(foo(List(tag)), true)
     );
 }
 
@@ -533,13 +533,13 @@ test "core module" {
 
     // list cast fails.
     try eval(.{ .silent = true },
-        \\list(123)
+        \\List(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Not a list.
+            \\panic: Not a List.
             \\
             \\main:1:1 main:
-            \\list(123)
+            \\List(123)
             \\^
             \\
         );

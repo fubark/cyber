@@ -51,7 +51,6 @@ test "Typed recursive function." {
     try evalPass(.{}, @embedFile("typed_rec_func_test.cy"));
 }
 
-
 test "Custom modules." {
     const run = VMrunner.create();
     defer run.destroy();
@@ -79,26 +78,40 @@ test "Custom modules." {
 
     try run.vm.addModuleLoader("mod1", struct {
         fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
-            mod.setNativeFunc(&vm.internal().compiler, "test", 0, S.test1) catch fatal();
-            mod.setNativeFunc(&vm.internal().compiler, "test2", 0, S.test2) catch fatal();
+            // Test dangling pointer.
+            const s1 = allocString("test");
+            const s2 = allocString("test2");
+            defer t.alloc.free(s1);
+            defer t.alloc.free(s2);
+            mod.setNativeFuncExt(&vm.internal().compiler, s1, true, 0, S.test1) catch fatal();
+            mod.setNativeFuncExt(&vm.internal().compiler, s2, true, 0, S.test2) catch fatal();
             return true;
         }
     }.loader);
 
     try run.vm.addModuleLoader("mod2", struct {
         fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
-            mod.setNativeFunc(&vm.internal().compiler, "test", 0, S.test3) catch fatal();
+            // Test dangling pointer.
+            const s1 = allocString("test");
+            defer t.alloc.free(s1);
+            mod.setNativeFuncExt(&vm.internal().compiler, s1, true, 0, S.test3) catch fatal();
             return true;
         }
     }.loader);
 
-    _ = try run.evalExtNoReset(.{},
+    const src1 = try t.alloc.dupe(u8, 
         \\import m 'mod1'
         \\import n 'mod2'
         \\m.test()
         \\m.test2()
         \\n.test()
     );
+    _ = try run.evalExtNoReset(.{},
+        src1
+    );
+
+    // Test dangling pointer.
+    t.alloc.free(src1);
 
     _ = try run.evalExtNoReset(.{},
         \\import m 'mod1'
@@ -109,6 +122,10 @@ test "Custom modules." {
     );
 
     try t.eq(count, 12);
+}
+
+fn allocString(str: []const u8) []const u8 {
+    return t.alloc.dupe(u8, str) catch @panic("");
 }
 
 test "Multiple evals persisting state." {

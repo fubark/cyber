@@ -3287,6 +3287,7 @@ pub fn ensureNameSymExt(c: *cy.VMcompiler, name: []const u8, dupe: bool) !NameSy
                 .len = @intCast(u32, new.len),
                 .owned = true,
             });
+            res.key_ptr.* = new;
         } else {
             try c.sema.nameSyms.append(c.alloc, .{
                 .ptr = name.ptr,

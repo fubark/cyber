@@ -456,7 +456,7 @@ test "cyGetBuild()" {
 }
 
 export fn cyGetCommit() c.CStr {
-    return initCStr(build_options.build.ptr[0..build_options.build.len :0]);
+    return initCStr(build_options.commit.ptr[0..build_options.commit.len :0]);
 }
 
 test "cyGetCommit()" {

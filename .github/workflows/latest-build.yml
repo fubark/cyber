@@ -133,24 +133,28 @@ jobs:
         uses: actions/github-script@v5
         with:
           script: |
-            core.exportVariable('COMMIT', context.sha.substring(0, 7))
-
-      - name: Get version.
-        if: env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12'
-        run: |
-          version=$(zig build version)
-          echo "SHORT_VERSION=$version" >> $GITHUB_ENV
-          git fetch --all --tags
-          echo "BUILD=$(git rev-list --count $version..$GITHUB_SHA)" >> $GITHUB_ENV
-
-      - name: Get version. (windows)
-        if: env.BUILD_HOST == 'windows-2022'
-        shell: bash
-        run: |
-          version=$(zig build version)
-          echo "SHORT_VERSION=$version" >> $env:GITHUB_ENV
-          git fetch --all --tags
-          echo "BUILD=$(git rev-list --count $version..$GITHUB_SHA)" >> $env:GITHUB_ENV
+            async function execCmd(name, args) {
+              const opts = {};
+              let out = '';
+              let err = '';
+              opts.listeners = {
+                stdout: (data) => {
+                  out += data.toString();
+                },
+                stderr: (data) => {
+                  process.stderr.write(data.toString());
+                }
+              };
+              // opt.cwd = './lib';
+              await exec.exec(name, args, opts);
+              return out;
+            }
+            const version = await execCmd('zig', ['build', 'version']);
+            core.exportVariable('SHORT_VERSION', version);
+            await execCmd('git', ['fetch', '--all', '--tags']);
+            const build = await execCmd('git', ['rev-list', '--count', `${version}..${context.sha}`])
+            core.exportVariable('BUILD', build);
+            core.exportVariable('COMMIT', context.sha.substring(0, 7));
 
       - name: Cache.
         #if: env.BUILD_TARGET != 'x86_64-windows-gnu'

@@ -11,6 +11,7 @@ const fmt = @import("../fmt.zig");
 const os_mod = @import("os.zig");
 const http = @import("../http.zig");
 const cache = @import("../cache.zig");
+const bt = cy.sema.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.core);
 
@@ -67,6 +68,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
     try mod.setNativeFunc(self, "string", 1, string);
+    try mod.setNativeTypedFunc(self, "taglit", &.{ bt.Any, bt.TagLiteral }, taglit);
     try mod.setNativeFunc(self, "toCyon", 1, toCyon);
     try mod.setNativeFunc(self, "typeid", 1, typeid);
     try mod.setNativeFunc(self, "valtag", 1, valtag);
@@ -524,6 +526,15 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("readLine", "0.1", "Use getInput() instead.", &.{});
     return getInput(vm, args, nargs);
+}
+
+fn taglit(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    if (args[0].isTagLiteral()) {
+        return args[0];
+    } else {
+        vm.release(args[0]);
+        return vm.returnPanic("Not a tag literal.");
+    }
 }
 
 pub fn string(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

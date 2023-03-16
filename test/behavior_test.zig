@@ -11,6 +11,43 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Typed taglit." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a taglit):
+        \\  pass
+        \\foo(123)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo(taglit) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(123)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a taglit):
+        \\  return a == #sometag
+        \\
+        \\-- Literal.
+        \\try t.eq(foo(#sometag), true)
+        \\
+        \\-- From var.
+        \\tag = #sometag
+        \\try t.eq(foo(tag), true)
+        \\
+        \\-- Cast erased type.
+        \\tag = t.erase(#sometag)
+        \\try t.eq(foo(taglit(tag)), true)
+    );
+}
+
 test "Typed function params." {
     // Can't resolve param type.
     try eval(.{ .silent = true },
@@ -1348,6 +1385,7 @@ test "Undefined variable references." {
     );
     try run.expectErrorReport(res, error.CompileError,
         \\CompileError: Can not find compatible function signature for `a() any`.
+        \\`a` does not exist.
         \\
         \\main:1:1:
         \\a()
@@ -1728,6 +1766,7 @@ test "Static functions." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\`foo` does not exist.
             \\
             \\main:1:1:
             \\foo(1)

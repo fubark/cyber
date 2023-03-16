@@ -10,6 +10,7 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 const fromUnsupportedError = bindings.fromUnsupportedError;
+const bt = cy.sema.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.os);
 
@@ -75,9 +76,9 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
 
     // Functions.
     if (cy.isWasm) {
-        try mod.setNativeFunc(self, "access", 2, bindings.nop1);
+        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral, bt.Any}, bindings.nop1);
     } else {
-        try mod.setNativeFunc(self, "access", 2, access);
+        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral, bt.Any}, access);
     }
     try mod.setNativeFunc(self, "args", 0, osArgs);
     if (cy.isWasm) {

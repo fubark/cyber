@@ -114,6 +114,7 @@ print contents
 | `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
 | `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
 | `string(val any) string` | Converts a value to a string. | 
+| `taglit(val any) taglit` | Casts value to a `taglit`. Panics if value is not a `taglit`. | 
 | `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeid(val any) number` | Returns the type id of the value. | 
 | `valtag(any) #taglit` | Returns the value's type as a tag literal. |

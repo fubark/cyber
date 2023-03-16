@@ -7,12 +7,22 @@ const TagLit = @import("bindings.zig").TagLit;
 const vm_ = @import("../vm.zig");
 const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
+const bt = cy.sema.BuiltinTypeSymIds;
 const v = fmt.v;
 
 pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     try mod.setNativeFunc(c, "eq", 2, eq);
     try mod.setNativeFunc(c, "eqList", 2, eqList);
     try mod.setNativeFunc(c, "eqNear", 2, eqNear);
+    if (builtin.is_test) {
+        // Only available for zig test, until `any` local type specifier is implemented.
+        try mod.setNativeTypedFunc(c, "erase", &.{bt.Any, bt.Any}, erase);
+    }
+}
+
+/// Simply returns the value so the caller get's an erased `any` type.
+fn erase(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    return args[0];
 }
 
 fn getComparableTag(val: Value) cy.ValueUserTag {

@@ -13,6 +13,7 @@ const core_mod = @import("builtins/core.zig");
 const math_mod = @import("builtins/math.zig");
 const os_mod = @import("builtins/os.zig");
 const test_mod = @import("builtins/test.zig");
+const bt = sema.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.vm_compiler);
 
@@ -154,21 +155,21 @@ pub const VMcompiler = struct {
 
         // Add builtins types as resolved syms.
         id = try sema.addResolvedBuiltinSym(self, .any, "any");
-        std.debug.assert(id == sema.ResolvedSymAny);
+        std.debug.assert(id == bt.Any);
         id = try sema.addResolvedBuiltinSym(self, .int, "number");
-        std.debug.assert(id == sema.ResolvedSymNumber);
+        std.debug.assert(id == bt.Number);
         id = try sema.addResolvedBuiltinSym(self, .int, "int");
-        std.debug.assert(id == sema.ResolvedSymInt);
+        std.debug.assert(id == bt.Int);
         id = try sema.addResolvedBuiltinSym(self, .int, "taglit");
-        std.debug.assert(id == sema.ResolvedSymTagLiteral);
+        std.debug.assert(id == bt.TagLiteral);
         id = try sema.addResolvedBuiltinSym(self, .list, "list");
-        std.debug.assert(id == sema.ResolvedSymList);
+        std.debug.assert(id == bt.List);
         id = try sema.addResolvedBuiltinSym(self, .boolean, "boolean");
-        std.debug.assert(id == sema.ResolvedSymBoolean);
+        std.debug.assert(id == bt.Boolean);
         id = try sema.addResolvedBuiltinSym(self, .string, "string");
-        std.debug.assert(id == sema.ResolvedSymString);
+        std.debug.assert(id == bt.String);
         id = try sema.addResolvedBuiltinSym(self, .map, "map");
-        std.debug.assert(id == sema.ResolvedSymMap);
+        std.debug.assert(id == bt.Map);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

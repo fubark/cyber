@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 jobs:  
   build:
-    name: PR Build host=${{ matrix.config.host }} target=${{ matrix.config.target }} mode=${{ matrix.config.mode }}
+    name: PR Build host=${{ matrix.config.host }} cmd=${{ matrix.config.cmd }} target=${{ matrix.config.target }} mode=${{ matrix.config.mode }}
     runs-on: ${{ matrix.config.host }}
     strategy:
       fail-fast: false
@@ -50,6 +50,18 @@ jobs:
             cmd: lib
           - host: windows-2022
             target: x86_64-windows-gnu
+            mode: release
+            cmd: lib
+          - host: ubuntu-22.04
+            target: x86_64-linux-gnu
+            mode: release
+            cmd: lib
+          - host: macos-12
+            target: x86_64-macos.12-none
+            mode: release
+            cmd: lib
+          - host: macos-12
+            target: aarch64-macos.12-none
             mode: release
             cmd: lib
     env:

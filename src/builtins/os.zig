@@ -93,8 +93,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try setFunc("dirName", &.{ bt.Any }, bt.Any, bindings.nop1);
         try setFunc("exePath", &.{}, bt.String, bindings.nop0);
         try setFunc("free", &.{bt.Pointer}, bt.None, bindings.nop1);
-        try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
+        try setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
+        try setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
         try setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
     } else {
         try setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
@@ -107,41 +107,41 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try setFunc("exePath", &.{}, bt.String, exePath);
         try setFunc("free", &.{bt.Pointer}, bt.None, free);
         if (builtin.os.tag == .windows) {
-            try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
-            try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
+            try setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
+            try setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
         } else {
-            try mod.setNativeFunc(self, "getEnv", 1, getEnv);
-            try mod.setNativeFunc(self, "getEnvAll", 0, getEnvAll);
+            try setFunc("getEnv", &.{ bt.Any }, bt.Any, getEnv);
+            try setFunc("getEnvAll", &.{}, bt.Map, getEnvAll);
         }
         try setFunc("malloc", &.{bt.Number}, bt.Pointer, malloc);
     }
-    try mod.setNativeFunc(self, "milliTime", 0, milliTime);
+    try setFunc("milliTime", &.{}, bt.Number, milliTime);
     if (cy.isWasm) {
-        try mod.setNativeFunc(self, "openDir", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "openDir", 2, bindings.nop2);
-        try mod.setNativeFunc(self, "openFile", 2, bindings.nop2);
-        try mod.setNativeFunc(self, "removeDir", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "removeFile", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "realPath", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "setEnv", 2, bindings.nop2);
+        try setFunc("openDir", &.{bt.Any}, bt.Any, bindings.nop1);
+        try setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
+        try setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop2);
+        try setFunc("realPath", &.{bt.Any}, bt.Any, bindings.nop1);
+        try setFunc("removeDir", &.{bt.Any}, bt.Any, bindings.nop1);
+        try setFunc("removeFile", &.{bt.Any}, bt.Any, bindings.nop1);
+        try setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, bindings.nop2);
     } else {
-        try mod.setNativeFunc(self, "openDir", 1, openDir);
-        try mod.setNativeFunc(self, "openDir", 2, openDir2);
-        try mod.setNativeFunc(self, "openFile", 2, openFile);
-        try mod.setNativeFunc(self, "removeDir", 1, removeDir);
-        try mod.setNativeFunc(self, "removeFile", 1, removeFile);
-        try mod.setNativeFunc(self, "realPath", 1, realPath);
+        try setFunc("openDir", &.{bt.Any}, bt.Any, openDir);
+        try setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, openDir2);
+        try setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, openFile);
+        try setFunc("realPath", &.{bt.Any}, bt.Any, realPath);
+        try setFunc("removeDir", &.{bt.Any}, bt.Any, removeDir);
+        try setFunc("removeFile", &.{bt.Any}, bt.Any, removeFile);
         if (builtin.os.tag == .windows) {
-            try mod.setNativeFunc(self, "setEnv", 2, bindings.nop2);
+            try setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, bindings.nop2);
         } else {
-            try mod.setNativeFunc(self, "setEnv", 2, setEnv);
+            try setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, setEnv);
         }
     }
-    try mod.setNativeFunc(self, "sleep", 1, sleep);
+    try setFunc("sleep", &.{bt.Number}, bt.None, sleep);
     if (cy.isWasm or builtin.os.tag == .windows) {
-        try mod.setNativeFunc(self, "unsetEnv", 1, bindings.nop1);
+        try setFunc("unsetEnv", &.{bt.Any}, bt.None, bindings.nop1);
     } else {
-        try mod.setNativeFunc(self, "unsetEnv", 1, unsetEnv);
+        try setFunc("unsetEnv", &.{bt.Any}, bt.None, unsetEnv);
     }
 }
 
@@ -161,11 +161,9 @@ fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSe
 }
 
 fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const path = vm.valueToTempString(args[0]);
-    const iterable = args[1].toBool();
+    defer vm.release(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
+    const iterable = args[1].asBool();
     var fd: std.os.fd_t = undefined;
     if (iterable) {
         const dir = std.fs.cwd().openIterableDir(path, .{}) catch |err| {
@@ -190,10 +188,8 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 }
 
 fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const path = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteDir(path) catch |err| {
         if (err == error.FileNotFound) {
             return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
@@ -225,10 +221,8 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 }
 
 fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const path = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteFile(path) catch |err| {
         if (err == error.FileNotFound) {
             return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
@@ -284,31 +278,25 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const path = vm.valueToTempString(args[0]);
-    if (args[1].isTagLiteral()) {
-        const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
-        const zmode: std.fs.File.OpenMode = switch (mode) {
-            .read => .read_only,
-            .write => .write_only,
-            .readWrite => .read_write,
-            else => {
-                return Value.None;
-            }
-        };
-        const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
-            if (err == error.FileNotFound) {
-                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
-            } else {
-                return fromUnsupportedError("openFile", err, @errorReturnTrace());
-            }
-        };
-        return vm.allocFile(file.handle) catch fatal();
-    } else {
-        return Value.None;
-    }
+    defer vm.release(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
+    const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
+    const zmode: std.fs.File.OpenMode = switch (mode) {
+        .read => .read_only,
+        .write => .write_only,
+        .readWrite => .read_write,
+        else => {
+            return Value.None;
+        }
+    };
+    const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
+        if (err == error.FileNotFound) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+        } else {
+            return fromUnsupportedError("openFile", err, @errorReturnTrace());
+        }
+    };
+    return vm.allocFile(file.handle) catch fatal();
 }
 
 fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -339,7 +327,7 @@ pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 }
 
 pub fn getEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const key = vm.valueToTempString(args[0]);
+    const key = vm.valueToTempRawString(args[0]);
     const res = std.os.getenv(key) orelse return Value.None;
     return vm.allocStringInfer(res) catch stdx.fatal();
 }
@@ -386,21 +374,22 @@ pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const path = vm.valueToTempString(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
-    const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch stdx.fatal();
+    const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch |err| {
+        return fromUnsupportedError("realPath", err, @errorReturnTrace());
+    };
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString.
     return vm.allocStringInfer(res) catch stdx.fatal();
 }
 
 pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const key = vm.valueToString(args[0]) catch stdx.fatal();
-    defer vm.allocator().free(key);
+    const key = vm.valueToTempRawString(args[0]);
     const keyz = std.cstr.addNullByte(vm.allocator(), key) catch stdx.fatal();
     defer vm.allocator().free(keyz);
 
-    const value = vm.valueToTempString(args[1]);
+    const value = vm.valueToTempRawString(args[1]);
     const valuez = std.cstr.addNullByte(vm.allocator(), value) catch stdx.fatal();
     defer vm.allocator().free(valuez);
     _ = setenv(keyz, valuez, 1);
@@ -411,10 +400,10 @@ pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c
 pub fn sleep(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     if (builtin.os.tag == .windows) {
-        const ms = @floatToInt(u32, args[0].toF64());
+        const ms = @floatToInt(u32, args[0].asF64());
         std.os.windows.kernel32.Sleep(ms);
     } else {
-        const ms = args[0].toF64();
+        const ms = args[0].asF64();
         const secs = @floatToInt(u64, @divFloor(ms, 1000));
         const nsecs = @floatToInt(u64, 1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
         if (cy.isWasm) {
@@ -429,7 +418,7 @@ pub fn sleep(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 extern fn hostSleep(secs: u64, nsecs: u64) void;
 
 pub fn unsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const key = vm.valueToTempString(args[0]);
+    const key = vm.valueToTempRawString(args[0]);
     const keyz = std.cstr.addNullByte(vm.allocator(), key) catch stdx.fatal();
     defer vm.allocator().free(keyz);
     _ = unsetenv(keyz);
@@ -672,7 +661,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
             lib.* = try dlopen("");
         }
     } else {
-        lib.* = dlopen(vm.valueToTempString(path)) catch |err| {
+        lib.* = dlopen(vm.valueToTempRawString(path)) catch |err| {
             if (err == error.FileNotFound) {
                 return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
             } else {

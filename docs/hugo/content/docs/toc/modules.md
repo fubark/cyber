@@ -206,30 +206,30 @@ for map each k, v:
 
 | Function | Summary |
 | -- | -- |
-| `access(path string, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
+| `access(path any, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
 | `args() List<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
-| `bindLib(path string, decls [](CFunc\|CStruct)) Object \| Map` | Calls `bindLib(path, decls, {})`. | 
-| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) Object \| Map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a `Map` is returned instead with C-functions binded as function values. | 
+| `bindLib(path any, decls [](CFunc\|CStruct)) Object \| Map` | Calls `bindLib(path, decls, {})`. | 
+| `bindLib(path any, decls [](CFunc\|CStruct), config: BindLibConfig) Object \| Map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a `Map` is returned instead with C-functions binded as function values. | 
 | `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |
-| `createDir(path string) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
-| `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
+| `createDir(path any) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
+| `createFile(path any, truncate boolean) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cwd() string` | Returns the current working directory. |
-| `dirName(string) string \| none` | Returns the given path with its last component removed. |
+| `dirName(path any) string \| none` | Returns the given path with its last component removed. |
 | `exePath() string` | Returns the current executable's path. |
 | `free(ptr pointer) none` | Frees the memory located at `ptr`. |
-| `getEnv(string) string` | Returns an environment value by key. |
+| `getEnv(key any) string \| none` | Returns an environment value by key. |
 | `getEnvAll() Map` | Returns all environment entries as a `Map`. |
 | `malloc(size number) pointer` | Allocates `size` bytes of memory and returns a pointer. |
 | `milliTime() number` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
-| `openFile(path string, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
-| `openDir(path string) Dir \| error` | Invokes `openDir(path, false)`. |
-| `openDir(path string, iterable bool) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |
-| `realPath(path string) string` | Returns the absolute path of the given path. |
-| `removeDir(path string) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
-| `removeFile(path string) true \| error` | Removes the file at `path`. Returns `true` if successful. |
-| `setEnv(key string, value string) none` | Sets an environment value by key. |
+| `openDir(path any) Dir \| error` | Invokes `openDir(path, false)`. |
+| `openDir(path any, iterable boolean) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |
+| `openFile(path any, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
+| `realPath(path any) string \| error` | Returns the absolute path of the given path. |
+| `removeDir(path any) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
+| `removeFile(path any) true \| error` | Removes the file at `path`. Returns `true` if successful. |
+| `setEnv(key any, value any) none` | Sets an environment value by key. |
 | `sleep(ms number) none` | Pauses the current thread for given milliseconds. |
-| `unsetEnv(string) none` | Removes an environment value by key. |
+| `unsetEnv(key any) none` | Removes an environment value by key. |
 
 #### `type File`
 | Method | Summary |

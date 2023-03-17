@@ -17,6 +17,10 @@ const log = stdx.log.scoped(.core);
 
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try mod.syms.ensureTotalCapacity(self.alloc, 13);
+
+    bindings.ModuleBuilder.withModule(self, mod);
+    const setFunc = bindings.ModuleBuilder.setFunc;
+
     try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);
     try mod.setNativeFunc(self, "asciiCode", 1, asciiCode);
     if (cy.isWasm) {
@@ -27,6 +31,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
     }
     try mod.setNativeFunc(self, "bool", 1, coreBool);
+    try setFunc("boolean", &.{ bt.Any }, bt.Boolean, boolean);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "cacheUrl", 1, bindings.nop1);
     } else {
@@ -50,8 +55,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try mod.setNativeFunc(self, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
-    try mod.setNativeTypedFunc(self, "List", &.{ bt.Any }, bt.List, List);
-    try mod.setNativeTypedFunc(self, "Map", &.{ bt.Any }, bt.Map, Map);
+    try setFunc("List", &.{ bt.Any }, bt.List, List);
+    try setFunc("Map", &.{ bt.Any }, bt.Map, Map);
     try mod.setNativeFunc(self, "must", 1, must);
     try mod.setNativeFunc(self, "number", 1, number);
     try mod.setNativeFunc(self, "opaque", 1, coreOpaque);
@@ -70,7 +75,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
     try mod.setNativeFunc(self, "string", 1, string);
-    try mod.setNativeTypedFunc(self, "taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
+    try setFunc("taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
     try mod.setNativeFunc(self, "toCyon", 1, toCyon);
     try mod.setNativeFunc(self, "typeid", 1, typeid);
     try mod.setNativeFunc(self, "valtag", 1, valtag);
@@ -143,7 +148,12 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(c
     return os_mod.bindLibExt(vm, args, nargs);
 }
 
-pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
+    fmt.printDeprecated("bool", "0.2", "Use boolean() instead.", &.{});
+    return boolean(vm, args, nargs);
+}
+
+pub fn boolean(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
     return Value.initBool(args[0].toBool());
 }

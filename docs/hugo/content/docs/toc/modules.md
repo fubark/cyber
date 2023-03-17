@@ -93,7 +93,7 @@ print contents
 | Function | Summary |
 | ------------- | ----- |
 | `arrayFill(val any, n number) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
-| `bool(val any) bool` | Converts a value to either `true` or `false`. | 
+| `boolean(val any) boolean` | Converts a value to either `true` or `false`. | 
 | `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
@@ -103,7 +103,8 @@ print contents
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
-| `List(val any) List` | Casts value to a `list`. Panics if value is not a `list`. | 
+| `List(val any) List` | Casts value to a `List`. Panics if value is not a `List`. | 
+| `Map(val any) Map` | Casts value to a `Map`. Panics if value is not a `Map`. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
 | `opaque(val any) pointer` | Converts a value to an opaque pointer value. This is usually used with FFI. | 

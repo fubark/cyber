@@ -2438,3 +2438,17 @@ pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin
     }
     return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
 }
+
+pub const ModuleBuilder = struct {
+    var mod_: *cy.Module = undefined;
+    var compiler_: *cy.VMcompiler = undefined;
+
+    pub fn withModule(c: *cy.VMcompiler, mod: *cy.Module) void {
+        compiler_ = c;
+        mod_ = mod;
+    }
+
+    pub fn setFunc(name: []const u8, params: []const cy.sema.ResolvedSymId, ret: cy.sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {
+        try mod_.setNativeTypedFunc(compiler_, name, params, ret, ptr);
+    }
+};

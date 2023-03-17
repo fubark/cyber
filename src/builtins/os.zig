@@ -21,7 +21,9 @@ pub var CStructT: cy.TypeId = undefined;
 
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     const vm = self.vm;
-    const wrapErrorFunc = bindings.wrapErrorFunc;
+
+    bindings.ModuleBuilder.withModule(self, mod);
+    const setFunc = bindings.ModuleBuilder.setFunc;
 
     // Object Types.
     var id: u32 = undefined;
@@ -76,17 +78,17 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
 
     // Functions.
     if (cy.isWasm) {
-        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop1);
+        try setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop1);
     } else {
-        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral}, bt.Any, access);
+        try setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, access);
     }
     try mod.setNativeTypedFunc(self, "args", &.{}, bt.List, osArgs);
     if (cy.isWasm) {
-        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
-        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
-        try mod.setNativeFunc(self, "copyFile", 2, bindings.nop2);
-        try mod.setNativeFunc(self, "createDir", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "createFile", 2, bindings.nop2);
+        try setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
+        try setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
+        try setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
+        try setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
+        try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
         try mod.setNativeFunc(self, "cwd", 0, bindings.nop0);
         try mod.setNativeFunc(self, "dirName", 1, bindings.nop1);
         try mod.setNativeFunc(self, "exePath", 0, bindings.nop0);
@@ -95,11 +97,11 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
         try mod.setNativeFunc(self, "malloc", 1, bindings.nop1);
     } else {
-        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
-        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
-        try mod.setNativeFunc(self, "copyFile", 2, wrapErrorFunc("copyFile", copyFile));
-        try mod.setNativeFunc(self, "createDir", 1, createDir);
-        try mod.setNativeFunc(self, "createFile", 2, createFile);
+        try setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
+        try setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
+        try setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
+        try setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
+        try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);
         try mod.setNativeFunc(self, "cwd", 0, cwd);
         try mod.setNativeFunc(self, "dirName", 1, dirName);
         try mod.setNativeFunc(self, "exePath", 0, exePath);
@@ -202,17 +204,23 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return Value.True;
 }
 
-fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) !Value {
+fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer {
         vm.release(args[0]);
         vm.release(args[1]);
     }
     const src = vm.valueToTempRawString(args[0]);
     const alloc = vm.allocator();
-    const srcDupe = try alloc.dupe(u8, src);
+    const srcDupe = alloc.dupe(u8, src) catch fatal();
     defer alloc.free(srcDupe);
     const dst = vm.valueToTempRawString(args[1]);
-    try std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{});
+    std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+        } else {
+            return fromUnsupportedError("copyFile", err, @errorReturnTrace());
+        }
+    };
     return Value.True;
 }
 
@@ -232,10 +240,8 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 }
 
 fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const path = vm.valueToTempString(args[0]);
+    defer vm.release(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().makeDir(path) catch |err| {
         return fromUnsupportedError("createDir", err, @errorReturnTrace());
     };
@@ -243,11 +249,9 @@ fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 }
 
 fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-    }
-    const path = vm.valueToTempString(args[0]);
-    const truncate = args[1].toBool();
+    defer vm.release(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
+    const truncate = args[1].asBool();
     const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
         return fromUnsupportedError("createFile", err, @errorReturnTrace());
     };

@@ -4025,15 +4025,17 @@ pub const ResolvedFuncSig = struct {
 };
 
 pub const NameAny = 0;
-pub const NameNumber = 1;
-pub const NameInt = 2;
-pub const NameTagLiteral = 3;
-pub const NameList = 4;
-pub const NameMap = 5;
+pub const NameBoolean = 1;
+pub const NameNumber = 2;
+pub const NameInt = 3;
+pub const NameTagLiteral = 4;
+pub const NameList = 5;
+pub const NameMap = 6;
 
 /// Names are reserved to index into `BuiltinTypeTags`.
 const BuiltinTypeTags = [_]TypeTag{
     .any,
+    .boolean,
     .number,
     .int,
     .tagLiteral,
@@ -4044,18 +4046,19 @@ const BuiltinTypeTags = [_]TypeTag{
 const bt = BuiltinTypeSymIds;
 pub const BuiltinTypeSymIds = struct {
     pub const Any: ResolvedSymId = 0;
-    pub const Number: ResolvedSymId = 1;
-    pub const Int: ResolvedSymId = 2;
-    pub const TagLiteral: ResolvedSymId = 3;
-    pub const List: ResolvedSymId = 4;
-    pub const Map: ResolvedSymId = 5;
-    pub const Boolean: ResolvedSymId = 6;
+    pub const Boolean: ResolvedSymId = 1;
+    pub const Number: ResolvedSymId = 2;
+    pub const Int: ResolvedSymId = 3;
+    pub const TagLiteral: ResolvedSymId = 4;
+    pub const List: ResolvedSymId = 5;
+    pub const Map: ResolvedSymId = 6;
     pub const String: ResolvedSymId = 7;
 };
 
 /// Resolved syms are reserved to index into `BuiltinTypes`.
 const BuiltinTypes = [_]Type{
     AnyType,
+    BoolType,
     NumberType,
     IntegerType,
     TagLiteralType,

@@ -43,7 +43,7 @@ typedef enum {
     CY_TypeBox,
     CY_TypeNativeFunc1,
     CY_TypeTccState,
-    CY_TypeOpaquePtr,
+    CY_TypePointer,
     CY_TypeFile,
     CY_TypeDir,
     CY_TypeDirIter,
@@ -100,7 +100,7 @@ CyValue cyValueGetOrAllocUstring(CyVM* vm, CStr str, uint32_t charLen);
 CyValue cyValueAllocList(CyVM* vm);
 CyValue cyValueAllocMap(CyVM* vm);
 CyValue cyValueAllocNativeFunc(CyVM* vm, CyFunc func, uint32_t numParams);
-CyValue cyValueAllocOpaquePtr(CyVM* vm, void* ptr);
+CyValue cyValueAllocPointer(CyVM* vm, void* ptr);
 CyValue cyValueTagLiteral(CyVM* vm, CStr str);
 
 // Values.

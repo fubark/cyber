@@ -230,16 +230,16 @@ test "cyValueAllocNativeFunc()" {
     try t.eq(c.cyValueGetTypeId(val), cy.NativeFunc1S);
 }
 
-export fn cyValueAllocOpaquePtr(vm: *cy.UserVM, ptr: ?*anyopaque) Value {
-    return cy.heap.allocOpaquePtr(vm.internal(), ptr) catch fatal();
+export fn cyValueAllocPointer(vm: *cy.UserVM, ptr: ?*anyopaque) Value {
+    return cy.heap.allocPointer(vm.internal(), ptr) catch fatal();
 }
 
-test "cyValueAllocOpaquePtr()" {
+test "cyValueAllocPointer()" {
     const vm = c.cyVmCreate();
     defer c.cyVmDestroy(vm);
 
-    const val = c.cyValueAllocOpaquePtr(vm, @intToPtr(?*anyopaque, 123));
-    try t.eq(c.cyValueGetTypeId(val), cy.OpaquePtrS);
+    const val = c.cyValueAllocPointer(vm, @intToPtr(?*anyopaque, 123));
+    try t.eq(c.cyValueGetTypeId(val), cy.PointerT);
 }
 
 export fn cyValueAsNumber(val: Value) f64 {
@@ -347,7 +347,7 @@ test "Constants." {
     try t.eq(c.CY_TypeBox, cy.BoxS);
     try t.eq(c.CY_TypeNativeFunc1, cy.NativeFunc1S);
     try t.eq(c.CY_TypeTccState, cy.TccStateS);
-    try t.eq(c.CY_TypeOpaquePtr, cy.OpaquePtrS);
+    try t.eq(c.CY_TypePointer, cy.PointerT);
     try t.eq(c.CY_TypeFile, cy.FileT);
     try t.eq(c.CY_TypeDir, cy.DirT);
     try t.eq(c.CY_TypeDirIter, cy.DirIteratorT);

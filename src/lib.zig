@@ -8,6 +8,7 @@ const cy = @import("cyber.zig");
 const Value = cy.Value;
 const t = stdx.testing;
 const log = stdx.log.scoped(.lib);
+const bt = cy.sema.BuiltinTypeSymIds;
 
 const c = @cImport({
     @cInclude("cyber.h");
@@ -153,7 +154,7 @@ export fn cyVmSetModuleFunc(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, numP
 
 export fn cyVmSetModuleVar(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, val: c.CyValue) void {
     const symName = cname.charz[0..cname.len];
-    mod.setVarExt(&vm.internal().compiler, symName, true, @bitCast(cy.Value, val)) catch fatal();
+    mod.setVarExt(&vm.internal().compiler, symName, true, bt.Any, @bitCast(cy.Value, val)) catch fatal();
 }
 
 export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {

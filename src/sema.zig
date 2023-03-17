@@ -2431,7 +2431,11 @@ fn getTypeForResolvedValueSym(chunk: *cy.CompileChunk, crSymId: CompactResolvedS
         return AnyType;
     } else {
         const rSym = chunk.compiler.sema.getResolvedSym(crSymId.id);
-        return getTypeForResolvedTypeSym(chunk, rSym.inner.variable.rTypeSymId);
+        if (rSym.symT == .variable) {
+            return getTypeForResolvedTypeSym(chunk, rSym.inner.variable.rTypeSymId);
+        } else {
+            return AnyType;
+        }
     }
 }
 

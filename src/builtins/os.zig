@@ -76,11 +76,11 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
 
     // Functions.
     if (cy.isWasm) {
-        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral, bt.Any}, bindings.nop1);
+        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop1);
     } else {
-        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral, bt.Any}, access);
+        try mod.setNativeTypedFunc(self, "access", &.{bt.Any, bt.TagLiteral}, bt.Any, access);
     }
-    try mod.setNativeTypedFunc(self, "args", &.{bt.List}, osArgs);
+    try mod.setNativeTypedFunc(self, "args", &.{}, bt.List, osArgs);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
         try mod.setNativeFunc(self, "bindLib", 3, bindings.nop3);

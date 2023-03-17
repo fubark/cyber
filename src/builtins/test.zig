@@ -16,7 +16,7 @@ pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection
     try mod.setNativeFunc(c, "eqNear", 2, eqNear);
     if (builtin.is_test) {
         // Only available for zig test, until `any` local type specifier is implemented.
-        try mod.setNativeTypedFunc(c, "erase", &.{bt.Any, bt.Any}, erase);
+        try mod.setNativeTypedFunc(c, "erase", &.{bt.Any}, bt.Any, erase);
     }
 }
 

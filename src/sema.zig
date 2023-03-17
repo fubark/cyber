@@ -475,16 +475,16 @@ pub const Module = struct {
     absSpec: []const u8,
 
     pub fn setNativeTypedFunc(self: *Module, c: *cy.VMcompiler, name: []const u8,
-        sig: []const ResolvedSymId, func: cy.NativeFuncPtr) !void {
-        return self.setNativeTypedFuncExt(c, name, false, sig, func);
+        sig: []const ResolvedSymId, retSymId: ResolvedSymId, func: cy.NativeFuncPtr) !void {
+        return self.setNativeTypedFuncExt(c, name, false, sig, retSymId, func);
     } 
 
     pub fn setNativeTypedFuncExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool,
-        sig: []const ResolvedSymId, func: cy.NativeFuncPtr) !void {
+        sig: []const ResolvedSymId, retSymId: ResolvedSymId, func: cy.NativeFuncPtr) !void {
         const nameId = try ensureNameSymExt(c, name, dupeName);
 
         // AnyType for params and return.
-        const rFuncSigId = try ensureResolvedFuncSig(c, sig);
+        const rFuncSigId = try ensureResolvedFuncSig(c, sig, retSymId);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
@@ -1768,10 +1768,10 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
                 if (callee.node_t == .accessExpr) {
                     _ = try semaExpr(c, callee.head.accessExpr.left, false);
 
-                    const callSigStart = c.compiler.typeStack.items.len;
-                    defer c.compiler.typeStack.items.len = callSigStart;
-                    const callSigEnd = try pushCallArgsAndReturn(c, node.head.callExpr.arg_head, bt.Any);
-                    const callSig = c.compiler.typeStack.items[callSigStart..callSigEnd];
+                    const callArgStart = c.compiler.typeStack.items.len;
+                    defer c.compiler.typeStack.items.len = callArgStart;
+                    const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
+                    const reqRet = try getTypeForResolvedSym(c, bt.Any);
 
                     const left = c.nodes[callee.head.accessExpr.left];
                     var crLeftSym = CompactResolvedSymId.initNull();
@@ -1786,7 +1786,7 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
                             const name = c.getNodeTokenString(right);
                             const nameId = try ensureNameSym(c.compiler, name);
 
-                            if (try getOrResolveSymForFuncCall(c, crLeftSym.id, nameId, callSig)) |callRes| {
+                            if (try getOrResolveSymForFuncCall(c, crLeftSym.id, nameId, callArgs, reqRet)) |callRes| {
                                 try referenceSym(c, callRes.crSymId, true);
                                 c.nodes[node.head.callExpr.callee].head.accessExpr.sema_crSymId = callRes.crSymId;
                             }
@@ -1808,14 +1808,14 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
                         }
                         return AnyType;
                     } else {
-                        const callSigStart = c.compiler.typeStack.items.len;
-                        defer c.compiler.typeStack.items.len = callSigStart;
-                        const callSigEnd = try pushCallArgsAndReturn(c, node.head.callExpr.arg_head, bt.Any);
-                        const callSig = c.compiler.typeStack.items[callSigStart..callSigEnd];
+                        const callArgStart = c.compiler.typeStack.items.len;
+                        defer c.compiler.typeStack.items.len = callArgStart;
+                        const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
+                        const reqRet = try getTypeForResolvedSym(c, bt.Any);
 
                         const nameId = try ensureNameSym(c.compiler, name);
                         c.curNodeId = node.head.callExpr.callee;
-                        if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callSig)) |callRes| {
+                        if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs, reqRet)) |callRes| {
                             try referenceSym(c, callRes.crSymId, true);
                             c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
                             return callRes.retType;
@@ -1965,20 +1965,16 @@ fn appendFuncDecl(chunk: *cy.CompileChunk, nodeId: cy.NodeId, isStatic: bool) !F
     decl.numParams = numParams;
 
     // Get return type.
+    var retSymId: ResolvedSymId = undefined;
     if (header.head.funcHeader.ret != cy.NullId) {
-        const rTypeSymId = try getOrResolveTypeSymFromSpecNode(chunk, header.head.funcHeader.ret);
-        try chunk.compiler.tempSyms.append(chunk.alloc, rTypeSymId);
+        retSymId = try getOrResolveTypeSymFromSpecNode(chunk, header.head.funcHeader.ret);
     } else {
-        try chunk.compiler.tempSyms.append(chunk.alloc, bt.Any);
+        retSymId = bt.Any;
     }
 
     // Resolve func signature.
-    decl.rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, chunk.compiler.tempSyms.items);
-
-    if (header.head.funcHeader.ret != cy.NullId) {
-        const rFuncSig = chunk.compiler.sema.resolvedFuncSigs.items[decl.rFuncSigId];
-        decl.rRetTypeSymId = rFuncSig.sigPtr[rFuncSig.sigLen-1];
-    }
+    decl.rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, chunk.compiler.tempSyms.items, retSymId);
+    decl.rRetTypeSymId = retSymId;
 
     const declId = @intCast(u32, chunk.semaFuncDecls.items.len);
     try chunk.semaFuncDecls.append(chunk.alloc, decl);
@@ -2013,7 +2009,7 @@ fn pushMethodParamVars(c: *cy.CompileChunk, func: *const FuncDecl) !void {
 
     if (func.numParams > 1) {
         const rFuncSig = c.compiler.sema.resolvedFuncSigs.items[func.rFuncSigId];
-        const params = rFuncSig.slice()[1..func.numParams];
+        const params = rFuncSig.params()[1..];
 
         // Skip the first param node.
         var curNode = func.paramHead;
@@ -2043,7 +2039,7 @@ fn appendFuncParamVars(chunk: *cy.CompileChunk, func: *const FuncDecl) !void {
 
     if (func.numParams > 0) {
         const rFuncSig = chunk.compiler.sema.resolvedFuncSigs.items[func.rFuncSigId];
-        const params = rFuncSig.slice()[0..func.numParams];
+        const params = rFuncSig.params();
         var curNode = func.paramHead;
         for (params) |rParamSymId| {
             const param = chunk.nodes[curNode];
@@ -2449,11 +2445,11 @@ pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: TypeTag, literal: []const
 
 fn addResolvedUntypedFuncSig(c: *cy.VMcompiler, numParams: u32) !ResolvedFuncSigId {
     // AnyType for params and return.
-    try c.tempTypes.resize(c.alloc, numParams + 1);
+    try c.tempTypes.resize(c.alloc, numParams);
     for (c.tempTypes.items) |*stype| {
         stype.* = AnyType;
     }
-    return ensureResolvedFuncSigTypes(c, c.tempTypes.items);
+    return ensureResolvedFuncSigTypes(c, c.tempTypes.items, AnyType);
 }
 
 pub fn ensureResolvedUntypedFuncSig(c: *cy.VMcompiler, numParams: u32) !ResolvedFuncSigId {
@@ -2475,37 +2471,51 @@ pub fn ensureResolvedUntypedFuncSig(c: *cy.VMcompiler, numParams: u32) !Resolved
     return rFuncSigId;
 }
 
-fn ensureResolvedFuncSigTypes(c: *cy.VMcompiler, types: []const Type) !ResolvedFuncSigId {
-    try c.tempSyms.resize(c.alloc, types.len);
-    for (types, 0..) |type_, i| {
-        const rsymId = getResolvedSymForType(type_);
-        c.tempSyms.items[i] = rsymId;
+fn ensureResolvedFuncSigTypes(c: *cy.VMcompiler, params: []const Type, ret: Type) !ResolvedFuncSigId {
+    try c.tempSyms.resize(c.alloc, params.len);
+    for (params, 0..) |param, i| {
+        const rSymId = getResolvedSymForType(param);
+        c.tempSyms.items[i] = rSymId;
     }
-    return ensureResolvedFuncSig(c, c.tempSyms.items);
+    const retSymId = getResolvedSymForType(ret);
+    return ensureResolvedFuncSig(c, c.tempSyms.items, retSymId);
 }
 
-fn ensureResolvedFuncSig(c: *cy.VMcompiler, sig: []const ResolvedSymId) !ResolvedFuncSigId {
-    const res = try c.sema.resolvedFuncSigMap.getOrPut(c.alloc, sig);
+fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const ResolvedSymId, ret: ResolvedSymId) !ResolvedFuncSigId {
+    const res = try c.sema.resolvedFuncSigMap.getOrPut(c.alloc, .{
+        .paramPtr = params.ptr,
+        .paramLen = @intCast(u32, params.len),
+        .retSymId = ret,
+    });
     if (res.found_existing) {
         return res.value_ptr.*;
     } else {
         const id = @intCast(u32, c.sema.resolvedFuncSigs.items.len);
-        const new = try c.alloc.dupe(ResolvedSymId, sig);
+        const new = try c.alloc.dupe(ResolvedSymId, params);
         var isTyped = false;
-        for (sig) |rSymId| {
-            const rSym = c.sema.resolvedSyms.items[rSymId];
+        for (params) |rSymId| {
+            const rSym = c.sema.getResolvedSym(rSymId);
             if (rSym.symT != .builtinType or rSym.inner.builtinType.typeT != @enumToInt(TypeTag.any)) {
                 isTyped = true;
                 break;
             }
         }
+        const rRetSym = c.sema.getResolvedSym(ret);
+        if (rRetSym.symT != .builtinType or rRetSym.inner.builtinType.typeT != @enumToInt(TypeTag.any)) {
+            isTyped = true;
+        }
         try c.sema.resolvedFuncSigs.append(c.alloc, .{
-            .sigPtr = new.ptr,
-            .sigLen = @intCast(u32, new.len),
+            .paramPtr = new.ptr,
+            .paramLen = @intCast(u16, new.len),
+            .retSymId = ret,
             .isTyped = isTyped,
         });
         res.value_ptr.* = id;
-        res.key_ptr.* = new;
+        res.key_ptr.* = .{
+            .paramPtr = new.ptr,
+            .paramLen = @intCast(u32, new.len),
+            .retSymId = ret,
+        };
         return id;
     }
 }
@@ -2530,13 +2540,13 @@ pub fn writeResolvedFuncSigStr(c: *cy.VMcompiler, w: anytype, rFuncSigId: Resolv
     const rFuncSig = c.sema.resolvedFuncSigs.items[rFuncSigId];
     try w.writeAll("(");
 
-    if (rFuncSig.sigLen > 1) {
-        var rParamSym = c.sema.resolvedSyms.items[rFuncSig.sigPtr[0]];
+    if (rFuncSig.numParams() > 0) {
+        var rParamSym = c.sema.getResolvedSym(rFuncSig.paramPtr[0]);
         var name = getName(c, rParamSym.key.absResolvedSymKey.nameId);
         try w.writeAll(name);
 
-        if (rFuncSig.sigLen > 2) {
-            for (rFuncSig.sigPtr[1..rFuncSig.sigLen-1]) |rParamSymId| {
+        if (rFuncSig.numParams() > 1) {
+            for (rFuncSig.params()[1..]) |rParamSymId| {
                 try w.writeAll(", ");
                 rParamSym = c.sema.resolvedSyms.items[rParamSymId];
                 name = getName(c, rParamSym.key.absResolvedSymKey.nameId);
@@ -2546,7 +2556,7 @@ pub fn writeResolvedFuncSigStr(c: *cy.VMcompiler, w: anytype, rFuncSigId: Resolv
     }
     try w.writeAll(") ");
 
-    var rRetSym = c.sema.resolvedSyms.items[rFuncSig.sigPtr[rFuncSig.sigLen-1]];
+    var rRetSym = c.sema.resolvedSyms.items[rFuncSig.retSymId];
     var name = getName(c, rRetSym.key.absResolvedSymKey.nameId);
     try w.writeAll(name);
 }
@@ -2583,24 +2593,24 @@ pub const CompactResolvedSymId = packed struct {
 };
 
 /// Whether a constrained function signature is compatible with a resolved signature.
-fn isResolvedFuncSigCompat(chunk: *cy.CompileChunk, rFuncSigId: ResolvedFuncSigId, sig: []const Type) !bool {
+fn isResolvedFuncSigCompat(chunk: *cy.CompileChunk, rFuncSigId: ResolvedFuncSigId, args: []const Type, ret: Type) !bool {
     const rFuncSig = chunk.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
     // const sigStr = try getResolvedFuncSigTempStr(chunk.compiler, rFuncSigId);
     // log.debug("matching against: {s}", .{sigStr});
 
-    // First check signature length.
-    if (sig.len != rFuncSig.sigLen) {
+    // First check params length.
+    if (args.len != rFuncSig.paramLen) {
         return false;
     }
 
     // Check each param type. Attempt to satisfy constraints.
-    for (sig[0..sig.len-1], 0..) |srcT, i| {
-        const targetT = try getTypeForResolvedSym(chunk, rFuncSig.sigPtr[i]);
-        if (targetT.typeT == srcT.typeT) {
+    for (args, 0..) |argT, i| {
+        const targetT = try getTypeForResolvedSym(chunk, rFuncSig.paramPtr[i]);
+        if (targetT.typeT == argT.typeT) {
             continue;
         }
         if (targetT.typeT == .int) {
-            if (srcT.typeT == .number and srcT.inner.number.canRequestInteger) {
+            if (argT.typeT == .number and argT.inner.number.canRequestInteger) {
                 continue;
             } else {
                 return false;
@@ -2613,16 +2623,15 @@ fn isResolvedFuncSigCompat(chunk: *cy.CompileChunk, rFuncSigId: ResolvedFuncSigI
         }
     }
 
-    const retT = sig[sig.len-1];
-    const targetRetT = try getTypeForResolvedSym(chunk, rFuncSig.sigPtr[sig.len-1]);
-    if (targetRetT.typeT == retT.typeT) {
+    const targetRetT = try getTypeForResolvedSym(chunk, rFuncSig.retSymId);
+    if (targetRetT.typeT == ret.typeT) {
         return true;
     }
-    if (retT.typeT == .any) {
+    if (ret.typeT == .any) {
         return true;
     }
     if (targetRetT.typeT == .int) {
-        return retT.typeT == .number and retT.inner.number.canRequestInteger;
+        return ret.typeT == .number and ret.inner.number.canRequestInteger;
     }
     return true;
 }
@@ -2659,7 +2668,7 @@ fn findDistinctModuleSym(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameS
 }
 
 /// Finds the first function that matches the constrained signature.
-fn findModuleSymForFuncCall(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSymId, sig: []const Type) !?ResolvedFuncSigId {
+fn findModuleSymForFuncCall(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSymId, args: []const Type, ret: Type) !?ResolvedFuncSigId {
     const relKey = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
@@ -2673,7 +2682,7 @@ fn findModuleSymForFuncCall(chunk: *cy.CompileChunk, modId: ModuleId, nameId: Na
             .symToManyFuncs => {
                 var optNode: ?*ModuleFuncNode = modSym.inner.symToManyFuncs.head;
                 while (optNode) |node| {
-                    if (try isResolvedFuncSigCompat(chunk, node.rFuncSigId, sig)) {
+                    if (try isResolvedFuncSigCompat(chunk, node.rFuncSigId, args, ret)) {
                         return node.rFuncSigId;
                     }
                     optNode = node.next;
@@ -2681,7 +2690,7 @@ fn findModuleSymForFuncCall(chunk: *cy.CompileChunk, modId: ModuleId, nameId: Na
             },
             .symToOneFunc => {
                 const rFuncSigId = modSym.inner.symToOneFunc.rFuncSigId;
-                if (try isResolvedFuncSigCompat(chunk, rFuncSigId, sig)) {
+                if (try isResolvedFuncSigCompat(chunk, rFuncSigId, args, ret)) {
                     return rFuncSigId;
                 }
             },
@@ -2922,8 +2931,8 @@ const FuncCallSymResult = struct {
 /// Assumes rParentSymId is not null.
 /// Returns CompileError if the symbol exists but can't be used for a function call.
 /// Returns null if the symbol is missing but can still be used as an accessor.
-fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId, sig: []const Type) !?FuncCallSymResult {
-    const rFuncSigId = try ensureResolvedFuncSigTypes(chunk.compiler, sig);
+fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId, args: []const Type, ret: Type) !?FuncCallSymResult {
+    const rFuncSigId = try ensureResolvedFuncSigTypes(chunk.compiler, args, ret);
     log.debug("getFuncCallSym {}.{s}, sig: {s}", .{rParentSymId, getName(chunk.compiler, nameId), try getResolvedFuncSigTempStr(chunk.compiler, rFuncSigId)} );
 
     // TODO: Cache lookup by rSymId and rFuncSigId.
@@ -2993,7 +3002,7 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
         return null;
     }
 
-    if (try findModuleSymForFuncCall(chunk, modId, nameId, sig)) |mod_rFuncSigId| {
+    if (try findModuleSymForFuncCall(chunk, modId, nameId, args, ret)) |mod_rFuncSigId| {
         if (rSymId != cy.NullId) {
             key = AbsResolvedFuncSymKey{
                 .absResolvedFuncSymKey = .{
@@ -3978,7 +3987,8 @@ fn endFuncSymBlock(self: *cy.CompileChunk, numParams: u32) !void {
     try endBlock(self);
 }
 
-fn pushCallArgsAndReturn(chunk: *cy.CompileChunk, argHead: cy.NodeId, rRetTypeSymId: ResolvedSymId) !usize {
+fn pushCallArgs(chunk: *cy.CompileChunk, argHead: cy.NodeId) ![]const Type {
+    const start = chunk.compiler.typeStack.items.len;
     var nodeId = argHead;
     while (nodeId != cy.NullId) {
         const arg = chunk.nodes[nodeId];
@@ -3986,30 +3996,31 @@ fn pushCallArgsAndReturn(chunk: *cy.CompileChunk, argHead: cy.NodeId, rRetTypeSy
         try chunk.compiler.typeStack.append(chunk.alloc, argT);
         nodeId = arg.next;
     }
-
-    // Return type.
-    try chunk.compiler.typeStack.append(chunk.alloc, try getTypeForResolvedSym(chunk, rRetTypeSymId));
-    return chunk.compiler.typeStack.items.len;
+    return chunk.compiler.typeStack.items[start..];
 }
 
 pub const ResolvedFuncSigId = u32;
 pub const ResolvedFuncSig = struct {
     /// Last elem is the return type sym.
-    sigPtr: [*]const ResolvedSymId,
-    sigLen: u32,
-
+    paramPtr: [*]const ResolvedSymId,
+    retSymId: ResolvedSymId,
+    paramLen: u16,
     isTyped: bool,
 
-    pub fn slice(self: ResolvedFuncSig) []const ResolvedSymId {
-        return self.sigPtr[0..self.sigLen];
+    pub fn params(self: ResolvedFuncSig) []const ResolvedSymId {
+        return self.paramPtr[0..self.paramLen];
     }
 
     pub fn numParams(self: ResolvedFuncSig) u8 {
-        return @intCast(u8, self.sigLen - 1);
+        return @intCast(u8, self.paramLen);
     }
 
     pub fn getRetTypeSymId(self: ResolvedFuncSig) ResolvedSymId {
-        return self.sigPtr[self.sigLen-1];
+        return self.retSymId;
+    }
+
+    pub fn deinit(self: *ResolvedFuncSig, alloc: std.mem.Allocator) void {
+        alloc.free(self.params());
     }
 };
 
@@ -4139,6 +4150,12 @@ pub const FuncDecl = struct {
     }
 };
 
+const ResolvedFuncSigKey = struct {
+    paramPtr: [*]const ResolvedSymId,
+    paramLen: u32,
+    retSymId: ResolvedSymId,
+};
+
 pub const Model = struct {
     /// Unique name syms.
     nameSyms: std.ArrayListUnmanaged(Name),
@@ -4158,7 +4175,7 @@ pub const Model = struct {
 
     /// Resolved signatures for functions.
     resolvedFuncSigs: std.ArrayListUnmanaged(ResolvedFuncSig),
-    resolvedFuncSigMap: std.HashMapUnmanaged([]const ResolvedSymId, ResolvedFuncSigId, U32SliceContext, 80),
+    resolvedFuncSigMap: std.HashMapUnmanaged(ResolvedFuncSigKey, ResolvedFuncSigId, ResolvedFuncSigKeyContext, 80),
 
     /// Fast index to untyped func sig id by num params.
     /// `NullId` indicates a missing func sig id.
@@ -4223,8 +4240,8 @@ pub const Model = struct {
             self.nameSymMap.deinit(alloc);
         }
 
-        for (self.resolvedFuncSigs.items) |it| {
-            alloc.free(it.slice());
+        for (self.resolvedFuncSigs.items) |*it| {
+            it.deinit(alloc);
         }
         if (reset) {
             self.resolvedFuncSigs.clearRetainingCapacity();
@@ -4266,6 +4283,18 @@ pub const Model = struct {
     }
 };
 
+pub const ResolvedFuncSigKeyContext = struct {
+    pub fn hash(_: @This(), key: ResolvedFuncSigKey) u64 {
+        var c = std.hash.Wyhash.init(0);
+        c.update(@ptrCast([*]const u8, key.paramPtr)[0..key.paramLen*4]);
+        c.update(std.mem.asBytes(&key.retSymId));
+        return c.final();
+    }
+    pub fn eql(_: @This(), a: ResolvedFuncSigKey, b: ResolvedFuncSigKey) bool {
+        return std.mem.eql(u32, a.paramPtr[0..a.paramLen], b.paramPtr[0..a.paramLen]);
+    }
+};
+
 pub const U32SliceContext = struct {
     pub fn hash(_: @This(), key: []const u32) u64 {
         var c = std.hash.Wyhash.init(0);
@@ -4281,6 +4310,7 @@ test "Internals." {
     try t.eq(@sizeOf(Type), 8);
     try t.eq(@sizeOf(LocalVar), 40);
     try t.eq(@sizeOf(ResolvedFuncSym), 32);
+    try t.eq(@sizeOf(ResolvedFuncSig), 16);
     try t.eq(@sizeOf(ResolvedSym), 24);
     try t.eq(@sizeOf(Name), 16);
     try t.eq(@sizeOf(ModuleFuncNode), 16);

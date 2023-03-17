@@ -2080,12 +2080,12 @@ fn genFuncDecl(self: *CompileChunk, rParentSymId: sema.ResolvedSymId, nodeId: cy
 }
 
 fn genCallArgs2(self: *CompileChunk, rFuncSig: sema.ResolvedFuncSig, first: cy.NodeId) !u32 {
-    const sig = rFuncSig.slice();
+    const params = rFuncSig.params();
     var numArgs: u32 = 0;
     var argId = first;
     while (argId != cy.NullId) : (numArgs += 1) {
         const arg = self.nodes[argId];
-        const rParamTypeSymId = sig[numArgs];
+        const rParamTypeSymId = params[numArgs];
         const reqType = try sema.getTypeForResolvedSym(self, rParamTypeSymId);
         _ = try self.genRetainedTempExpr2(argId, reqType, false);
         argId = arg.next;

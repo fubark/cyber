@@ -50,7 +50,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try mod.setNativeFunc(self, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
-    try mod.setNativeTypedFunc(self, "List", &.{ bt.Any, bt.List }, List);
+    try mod.setNativeTypedFunc(self, "List", &.{ bt.Any }, bt.List, List);
     try mod.setNativeFunc(self, "must", 1, must);
     try mod.setNativeFunc(self, "number", 1, number);
     try mod.setNativeFunc(self, "opaque", 1, coreOpaque);
@@ -69,7 +69,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
     try mod.setNativeFunc(self, "string", 1, string);
-    try mod.setNativeTypedFunc(self, "taglit", &.{ bt.Any, bt.TagLiteral }, taglit);
+    try mod.setNativeTypedFunc(self, "taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
     try mod.setNativeFunc(self, "toCyon", 1, toCyon);
     try mod.setNativeFunc(self, "typeid", 1, typeid);
     try mod.setNativeFunc(self, "valtag", 1, valtag);

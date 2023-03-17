@@ -45,7 +45,7 @@ func foo5(): return 2 + 2
 try t.eq(foo5(), 4)
 
 -- Static func initializer assigns static function value.
-func foo6(val) = number
+func foo6(val) number = number
 try t.eq(foo6('123'), 123)
 
 -- Static func initializer assigns function value.

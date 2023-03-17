@@ -106,7 +106,7 @@ print contents
 | `List(val any) List` | Casts value to a `List`. Panics if value is not a `List`. | 
 | `Map(val any) Map` | Casts value to a `Map`. Panics if value is not a `Map`. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
-| `number(val any) number` | Converts a value to a number. | 
+| `number(val any) number` | Casts or converts the value to a `number`. Panics if type conversion fails. | 
 | `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
 | `pointer(val any) pointer` | Converts a `number` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 

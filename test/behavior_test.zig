@@ -11,6 +11,43 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Typed number." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a number):
+        \\  pass
+        \\foo(true)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(boolean) any`.
+            \\Only `func foo(number) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(true)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a number):
+        \\  return a == 123
+        \\
+        \\-- Literal.
+        \\try t.eq(foo(123), true)
+        \\        
+        \\-- From var.
+        \\n = 123
+        \\try t.eq(foo(n), true)
+        \\
+        \\-- Cast erased type.
+        \\n = t.erase(123)
+        \\try t.eq(foo(number(n)), true)
+    );
+}
+
 test "Typed none." {
     // Wrong param type.
     try eval(.{ .silent = true },
@@ -1652,10 +1689,12 @@ test "Static variable declaration." {
     // Declaration with a circular reference.
     _ = try run.eval(
         \\import t 'test'
-        \\var a: number(b) + 123
+        \\
+        \\var a: b
         \\var b: a
         \\try t.eq(b, none)
-        \\try t.eq(a, 123)
+        \\try t.eq(a, none)
+        \\
         \\-- Reference self.
         \\var c: c 
         \\try t.eq(c, none)

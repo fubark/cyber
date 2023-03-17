@@ -58,7 +58,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try setFunc("List", &.{ bt.Any }, bt.List, List);
     try setFunc("Map", &.{ bt.Any }, bt.Map, Map);
     try mod.setNativeFunc(self, "must", 1, must);
-    try mod.setNativeFunc(self, "number", 1, number);
+    try setFunc("number", &.{ bt.Any }, bt.Number, number);
     try setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
     try mod.setNativeFunc(self, "panic", 1, panic);
     try mod.setNativeFunc(self, "parseCyon", 1, parseCyon);
@@ -306,6 +306,7 @@ pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     switch (val.getUserTag()) {
         .number => return val,
         .string => {
+            defer vm.release(val);
             const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
                 return Value.initI32(0);
             };
@@ -314,7 +315,10 @@ pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .tag => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
         .tagLiteral => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
         .int => return Value.initF64(@intToFloat(f64, val.asInteger())),
-        else => return Value.initF64(0),
+        else => {
+            vm.release(val);
+            return vm.returnPanic("Not a type that can be converted to `number`.");
+        }
     }
 }
 

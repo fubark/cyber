@@ -137,7 +137,7 @@ i += 1
 print(i + str[i..].findRune(0u'c'))  -- "5"
 ```
 
-### object string
+### `type string`
 | Method | Summary |
 | ------------- | ----- |
 | `concat(str string) string` | Returns a new string that concats this string and `str`. | 
@@ -186,7 +186,7 @@ print str[1]     -- error(#InvalidRune)
 print str[-1]    -- "d"
 ```
 
-### object rawstring
+### `type rawstring`
 | Method | Summary |
 | ------------- | ----- |
 | `byteAt(idx number) number` | Returns the byte value (0-255) at the given index `idx`. | 
@@ -258,7 +258,7 @@ for list each it:
 list.remove(1)
 ```
 
-### object List
+### `type List`
 | Method | Summary |
 | ------------- | ----- |
 | `append(val any) none` | Appends a value to the end of the list. |
@@ -323,7 +323,7 @@ for map each val, key:
     print '{key} -> {value}'
 ```
 
-### object Map
+### `type Map`
 | Method | Summary |
 | ------------- | ----- |
 | `iterator() Iterator<any>` | Returns a new iterator over the map elements. |

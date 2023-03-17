@@ -146,6 +146,7 @@ pre code.hljs {
     color: var(--accent-light);
     font-weight: normal;
 }
+.hljs-tagliteral,
 .hljs-number,
 .hljs-string {
     color: rgb(120, 206, 120);

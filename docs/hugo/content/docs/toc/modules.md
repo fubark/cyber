@@ -231,7 +231,7 @@ for map each k, v:
 | `sleep(ms number) none` | Pauses the current thread for given milliseconds. |
 | `unsetEnv(string) none` | Removes an environment value by key. |
 
-#### object File
+#### `type File`
 | Method | Summary |
 | -- | -- |
 | `close() none` | Closes the file handle. File ops invoked afterwards will return `error(#Closed)`. |
@@ -245,20 +245,20 @@ for map each k, v:
 | `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 | `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
 
-#### object Dir
+#### `type Dir`
 | Method | Summary |
 | -- | -- |
 | `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
 | `stat() Map` | Returns info about the file as a `Map`. |
 | `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
 
-#### Map: DirEntry
+#### `map DirEntry`
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
-#### Map: DirWalkEntry
+#### `map DirWalkEntry`
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |

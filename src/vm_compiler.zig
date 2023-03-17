@@ -154,6 +154,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameTagLiteral);
         id = try sema.ensureNameSym(self, "List");
         std.debug.assert(id == sema.NameList);
+        id = try sema.ensureNameSym(self, "Map");
+        std.debug.assert(id == sema.NameMap);
 
         // Add builtins types as resolved syms.
         id = try sema.addResolvedBuiltinSym(self, .any, "any");
@@ -166,12 +168,12 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.TagLiteral);
         id = try sema.addResolvedBuiltinSym(self, .list, "List");
         std.debug.assert(id == bt.List);
+        id = try sema.addResolvedBuiltinSym(self, .map, "Map");
+        std.debug.assert(id == bt.Map);
         id = try sema.addResolvedBuiltinSym(self, .boolean, "boolean");
         std.debug.assert(id == bt.Boolean);
         id = try sema.addResolvedBuiltinSym(self, .string, "string");
         std.debug.assert(id == bt.String);
-        id = try sema.addResolvedBuiltinSym(self, .map, "map");
-        std.debug.assert(id == bt.Map);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

@@ -153,6 +153,10 @@ pub const Value = packed union {
         return !self.isNone();
     }
 
+    pub inline fn isMap(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().common.structId == cy.MapS;
+    }
+
     pub inline fn isList(self: *const Value) bool {
         return self.isPointer() and self.asHeapObject().common.structId == cy.ListS;
     }

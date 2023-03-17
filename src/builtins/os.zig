@@ -82,8 +82,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     }
     try mod.setNativeTypedFunc(self, "args", &.{}, bt.List, osArgs);
     if (cy.isWasm) {
-        try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
-        try mod.setNativeFunc(self, "bindLib", 3, bindings.nop3);
+        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
+        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
         try mod.setNativeFunc(self, "copyFile", 2, bindings.nop2);
         try mod.setNativeFunc(self, "createDir", 1, bindings.nop1);
         try mod.setNativeFunc(self, "createFile", 2, bindings.nop2);
@@ -95,8 +95,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
         try mod.setNativeFunc(self, "malloc", 1, bindings.nop1);
     } else {
-        try mod.setNativeFunc(self, "bindLib", 2, bindLib);
-        try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
+        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
+        try mod.setNativeTypedFunc(self, "bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
         try mod.setNativeFunc(self, "copyFile", 2, wrapErrorFunc("copyFile", copyFile));
         try mod.setNativeFunc(self, "createDir", 1, createDir);
         try mod.setNativeFunc(self, "createFile", 2, createFile);
@@ -447,7 +447,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
 pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     var configV = args[2];
-    const ivm = @ptrCast(*cy.VM, vm);
+    const ivm = vm.internal();
     const genMapV = vm.allocAstring("genMap") catch stdx.fatal();
     defer {
         vm.release(args[2]);

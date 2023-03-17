@@ -4029,6 +4029,7 @@ pub const NameNumber = 1;
 pub const NameInt = 2;
 pub const NameTagLiteral = 3;
 pub const NameList = 4;
+pub const NameMap = 5;
 
 /// Names are reserved to index into `BuiltinTypeTags`.
 const BuiltinTypeTags = [_]TypeTag{
@@ -4037,6 +4038,7 @@ const BuiltinTypeTags = [_]TypeTag{
     .int,
     .tagLiteral,
     .list,
+    .map,
 };
 
 const bt = BuiltinTypeSymIds;
@@ -4046,9 +4048,9 @@ pub const BuiltinTypeSymIds = struct {
     pub const Int: ResolvedSymId = 2;
     pub const TagLiteral: ResolvedSymId = 3;
     pub const List: ResolvedSymId = 4;
-    pub const Boolean: ResolvedSymId = 5;
-    pub const String: ResolvedSymId = 6;
-    pub const Map: ResolvedSymId = 7;
+    pub const Map: ResolvedSymId = 5;
+    pub const Boolean: ResolvedSymId = 6;
+    pub const String: ResolvedSymId = 7;
 };
 
 /// Resolved syms are reserved to index into `BuiltinTypes`.
@@ -4058,6 +4060,7 @@ const BuiltinTypes = [_]Type{
     IntegerType,
     TagLiteralType,
     ListType,
+    MapType,
 };
 
 pub const FuncDeclId = u32;

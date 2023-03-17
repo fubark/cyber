@@ -323,7 +323,7 @@ for map each val, key:
     print '{key} -> {value}'
 ```
 
-### object map
+### object Map
 | Method | Summary |
 | ------------- | ----- |
 | `iterator() Iterator<any>` | Returns a new iterator over the map elements. |

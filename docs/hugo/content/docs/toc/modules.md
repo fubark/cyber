@@ -96,7 +96,7 @@ print contents
 | `bool(val any) bool` | Converts a value to either `true` or `false`. | 
 | `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
-| `execCmd(args []string) map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
+| `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
 | `exit(status number) noreturn` | Exits the program with a status code. | 
 | `error(any) error` | Create an error from a tag or tag literal. | 
 | `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
@@ -207,8 +207,8 @@ for map each k, v:
 | -- | -- |
 | `access(path string, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
 | `args() List<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
-| `bindLib(path string, decls [](CFunc\|CStruct)) map` | Calls `bindLib(path, decls, {})`. | 
-| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a map is returned instead with C-functions binded as function values. | 
+| `bindLib(path string, decls [](CFunc\|CStruct)) Object \| Map` | Calls `bindLib(path, decls, {})`. | 
+| `bindLib(path string, decls [](CFunc\|CStruct), config: BindLibConfig) Object \| Map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a `Map` is returned instead with C-functions binded as function values. | 
 | `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |
 | `createDir(path string) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
 | `createFile(path string, truncate bool) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
@@ -217,7 +217,7 @@ for map each k, v:
 | `exePath() string` | Returns the current executable's path. |
 | `free(ptr pointer) none` | Frees the memory located at `ptr`. |
 | `getEnv(string) string` | Returns an environment value by key. |
-| `getEnvAll() map` | Returns all environment entries as a map. |
+| `getEnvAll() Map` | Returns all environment entries as a `Map`. |
 | `malloc(size number) pointer` | Allocates `size` bytes of memory and returns a pointer. |
 | `milliTime() number` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
 | `openFile(path string, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
@@ -239,7 +239,7 @@ for map each k, v:
 | `seek(pos number) none` | Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid. |
 | `seekFromCur(pos number) none` | Seeks the read/write position by `pos` bytes from the current position. |
 | `seekFromEnd(pos number) none` | Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid. |
-| `stat() map` | Returns info about the file as a map. |
+| `stat() Map` | Returns info about the file as a `Map`. |
 | `streamLines() Iterable<rawstring>` | Equivalent to `streamLines(4096)`. |
 | `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
 | `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
@@ -248,16 +248,16 @@ for map each k, v:
 | Method | Summary |
 | -- | -- |
 | `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
-| `stat() map` | Returns info about the file as a map. |
+| `stat() Map` | Returns info about the file as a `Map`. |
 | `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
 
-#### map DirEntry
+#### Map: DirEntry
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
-#### map DirWalkEntry
+#### Map: DirWalkEntry
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |

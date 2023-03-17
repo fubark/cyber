@@ -11,7 +11,44 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
-test "Typed list." {
+test "Typed Map." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a Map):
+        \\  pass
+        \\foo(123)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo(Map) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(123)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a Map):
+        \\  return a['a'] == 123
+        \\
+        \\-- Literal.
+        \\try t.eq(foo({ a: 123 }), true)
+        \\
+        \\-- From var.
+        \\map = { a: 123 }
+        \\try t.eq(foo(map), true)
+        \\
+        \\-- Cast erased type.
+        \\map = t.erase({ a: 123 })
+        \\try t.eq(foo(Map(map)), true)
+    );
+}
+
+test "Typed List." {
     // Wrong param type.
     try eval(.{ .silent = true },
         \\func foo(a List):
@@ -39,12 +76,12 @@ test "Typed list." {
         \\try t.eq(foo([123]), true)
         \\
         \\-- From var.
-        \\tag = [123]
-        \\try t.eq(foo(tag), true)
+        \\list = [123]
+        \\try t.eq(foo(list), true)
         \\
         \\-- Cast erased type.
-        \\tag = t.erase([123])
-        \\try t.eq(foo(List(tag)), true)
+        \\list = t.erase([123])
+        \\try t.eq(foo(List(list)), true)
     );
 }
 

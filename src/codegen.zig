@@ -2086,7 +2086,7 @@ fn genCallArgs2(self: *CompileChunk, rFuncSig: sema.ResolvedFuncSig, first: cy.N
     while (argId != cy.NullId) : (numArgs += 1) {
         const arg = self.nodes[argId];
         const rParamTypeSymId = params[numArgs];
-        const reqType = try sema.getTypeForResolvedSym(self, rParamTypeSymId);
+        const reqType = try sema.getTypeForResolvedTypeSym(self, rParamTypeSymId);
         _ = try self.genRetainedTempExpr2(argId, reqType, false);
         argId = arg.next;
     }

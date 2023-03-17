@@ -395,7 +395,9 @@ pub const VM = struct {
         }
 
         if (!reset) {
-            self.stdHttpClient.deinit();
+            if (!cy.isWasm) {
+                self.stdHttpClient.deinit();
+            }
         }
 
         self.deinited = true;

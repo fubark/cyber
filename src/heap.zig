@@ -30,7 +30,7 @@ pub const FiberS: cy.TypeId = 20;
 pub const BoxS: cy.TypeId = 21;
 pub const NativeFunc1S: cy.TypeId = 22;
 pub const TccStateS: cy.TypeId = 23;
-pub const OpaquePtrS: cy.TypeId = 24;
+pub const PointerT: cy.TypeId = 24;
 pub const FileT: cy.TypeId = 25;
 pub const DirT: cy.TypeId = 26;
 pub const DirIteratorT: cy.TypeId = 27;
@@ -76,7 +76,7 @@ pub const HeapObject = extern union {
     tccState: if (cy.hasJit) TccState else void,
     file: if (cy.hasStdFiles) File else void,
     dir: if (cy.hasStdFiles) Dir else void,
-    opaquePtr: OpaquePtr,
+    pointer: Pointer,
     symbol: Symbol,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
@@ -91,7 +91,7 @@ pub const HeapObject = extern union {
             cy.FiberS => return .fiber,
             cy.NativeFunc1S => return .nativeFunc,
             cy.TccStateS => return .tccState,
-            cy.OpaquePtrS => return .opaquePtr,
+            cy.PointerT => return .pointer,
             cy.FileT => return .file,
             cy.DirT => return .dir,
             cy.DirIteratorT => return .dirIter,
@@ -430,7 +430,7 @@ pub const Dir = extern struct {
     }
 };
 
-pub const OpaquePtr = extern struct {
+pub const Pointer = extern struct {
     structId: cy.TypeId,
     rc: u32,
     ptr: ?*anyopaque,
@@ -1192,10 +1192,10 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) links
     return Value.initPtr(obj);
 }
 
-pub fn allocOpaquePtr(self: *cy.VM, ptr: ?*anyopaque) !Value {
+pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
     const obj = try allocPoolObject(self);
-    obj.opaquePtr = .{
-        .structId = OpaquePtrS,
+    obj.pointer = .{
+        .structId = PointerT,
         .rc = 1,
         .ptr = ptr,
     };
@@ -1486,7 +1486,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 unreachable;
             }
         },
-        OpaquePtrS => {
+        PointerT => {
             freePoolObject(vm, obj);
         },
         FileT => {

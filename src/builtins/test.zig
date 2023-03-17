@@ -70,9 +70,9 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .opaquePtr => {
-                const actPtr = act.asPointer(*cy.OpaquePtr).ptr;
-                const expPtr = exp.asPointer(*cy.OpaquePtr).ptr;
+            .pointer => {
+                const actPtr = act.asPointer(*cy.Pointer).ptr;
+                const expPtr = exp.asPointer(*cy.Pointer).ptr;
                 if (actPtr == expPtr) {
                     return true;
                 } else {

@@ -493,7 +493,7 @@ pub const Parser = struct {
                         self.advanceToken();
                         break;
                     },
-                    else => return self.reportParseError("Unexpected token in function param list.", &.{}),
+                    else => return self.reportParseError("Unexpected token {} in function param list.", &.{v(token.tag())}),
                 }
 
                 token = self.peekToken();
@@ -552,6 +552,10 @@ pub const Parser = struct {
                 break;
             }
             return head;
+        } else if (token.tag() == .none_k) {
+            const id = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+            return id;
         }
         return null;
     }
@@ -3119,6 +3123,16 @@ pub const Parser = struct {
         });
     }
 
+    inline fn pushKeywordToken(self: *Parser, token_t: TokenType, startPos: u32, endPos: u32) !void {
+        try self.tokens.append(self.alloc, .{
+            .token_t = token_t,
+            .start_pos = @intCast(u26, startPos),
+            .data = .{
+                .end_pos = endPos,
+            },
+        });
+    }
+
     /// When n=0, this is equivalent to peekToken.
     inline fn peekTokenAhead(self: Parser, n: u32) Token {
         if (self.next_pos + n < self.tokens.items.len) {
@@ -4361,7 +4375,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             while (true) {
                 if (isAtEndChar(p)) {
                     if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                        try p.pushToken(token_t, start);
+                        try p.pushKeywordToken(token_t, start, p.next_pos);
                     } else {
                         try p.pushIdentToken(start, p.next_pos);
                     }
@@ -4378,7 +4392,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             while (true) {
                 if (isAtEndChar(p)) {
                     if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                        try p.pushToken(token_t, start);
+                        try p.pushKeywordToken(token_t, start, p.next_pos);
                     } else {
                         try p.pushIdentToken(start, p.next_pos);
                     }
@@ -4394,7 +4408,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     continue;
                 }
                 if (keywords.get(getSubStrFrom(p, start))) |token_t| {
-                    try p.pushToken(token_t, start);
+                    try p.pushKeywordToken(token_t, start, p.next_pos);
                 } else {
                     try p.pushIdentToken(start, p.next_pos);
                 }

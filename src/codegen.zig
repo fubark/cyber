@@ -2179,7 +2179,7 @@ pub fn genStaticInitializerDFS(self: *CompileChunk, crSymId: sema.CompactResolve
 
 fn genNone(self: *CompileChunk, dst: LocalId) !GenValue {
     try self.buf.pushOp1(.none, dst);
-    return self.initGenValue(dst, sema.AnyType, false);
+    return self.initGenValue(dst, sema.NoneType, false);
 }
 
 fn genExprStmt(self: *CompileChunk, stmtId: cy.NodeId, retainEscapeTop: bool, comptime discardTopExprReg: bool) !LocalId {

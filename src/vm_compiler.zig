@@ -160,13 +160,17 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameList);
         id = try sema.ensureNameSym(self, "Map");
         std.debug.assert(id == sema.NameMap);
+        id = try sema.ensureNameSym(self, "pointer");
+        std.debug.assert(id == sema.NamePointer);
+        id = try sema.ensureNameSym(self, "none");
+        std.debug.assert(id == sema.NameNone);
 
         // Add builtins types as resolved syms.
         id = try sema.addResolvedBuiltinSym(self, .any, "any");
         std.debug.assert(id == bt.Any);
         id = try sema.addResolvedBuiltinSym(self, .boolean, "boolean");
         std.debug.assert(id == bt.Boolean);
-        id = try sema.addResolvedBuiltinSym(self, .int, "number");
+        id = try sema.addResolvedBuiltinSym(self, .number, "number");
         std.debug.assert(id == bt.Number);
         id = try sema.addResolvedBuiltinSym(self, .int, "int");
         std.debug.assert(id == bt.Int);
@@ -178,6 +182,10 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.List);
         id = try sema.addResolvedBuiltinSym(self, .map, "Map");
         std.debug.assert(id == bt.Map);
+        id = try sema.addResolvedBuiltinSym(self, .pointer, "pointer");
+        std.debug.assert(id == bt.Pointer);
+        id = try sema.addResolvedBuiltinSym(self, .none, "none");
+        std.debug.assert(id == bt.None);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

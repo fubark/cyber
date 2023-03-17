@@ -59,9 +59,10 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try setFunc("Map", &.{ bt.Any }, bt.Map, Map);
     try mod.setNativeFunc(self, "must", 1, must);
     try mod.setNativeFunc(self, "number", 1, number);
-    try mod.setNativeFunc(self, "opaque", 1, coreOpaque);
+    try setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
     try mod.setNativeFunc(self, "panic", 1, panic);
     try mod.setNativeFunc(self, "parseCyon", 1, parseCyon);
+    try setFunc("pointer", &.{ bt.Any }, bt.Pointer, pointer);
     try mod.setNativeFunc(self, "print", 1, print);
     try mod.setNativeFunc(self, "prints", 1, prints);
     try mod.setNativeFunc(self, "rawstring", 1, rawstring);
@@ -318,12 +319,19 @@ pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = nargs;
+    fmt.printDeprecated("opaque", "0.1", "Use pointer() instead.", &.{});
+    return pointer(vm, args, nargs);
+}
+
+pub fn pointer(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    if (val.isNumber()) {
-        return cy.heap.allocOpaquePtr(@ptrCast(*cy.VM, vm), @intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch stdx.fatal();
+    if (val.isPointerT()) {
+        return val;
+    } else if (val.isNumber()) {
+        return cy.heap.allocPointer(vm.internal(), @intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch fatal();
     } else {
-        stdx.panicFmt("Unsupported conversion", .{});
+        vm.release(val);
+        return vm.returnPanic("Not a `pointer`.");
     }
 }
 
@@ -602,7 +610,7 @@ pub fn valtag(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .lambda => return Value.initTagLiteral(@enumToInt(TagLit.function)),
         .none => return Value.initTagLiteral(@enumToInt(TagLit.none)),
         .symbol => return Value.initTagLiteral(@enumToInt(TagLit.symbol)),
-        .opaquePtr => return Value.initTagLiteral(@enumToInt(TagLit.pointer)),
+        .pointer => return Value.initTagLiteral(@enumToInt(TagLit.pointer)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }

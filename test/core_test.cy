@@ -74,6 +74,10 @@ val = parseCyon('\{ a: 123 \}')
 try t.eq(val.size(), 1)
 try t.eq(val['a'], 123)
 
+-- pointer()
+ptr = pointer(0xDEADBEEF)
+try t.eq(ptr.value(), 3735928559)
+
 -- string()
 str = 'abcd'
 try t.eq(string(str), 'abcd')
@@ -129,7 +133,7 @@ try t.eq(typeid({}), 11)
 -- valtag()
 try t.eq(valtag(123), #number)
 try t.eq(valtag('abc'), #string)
-try t.eq(valtag(opaque(0)), #pointer)
+try t.eq(valtag(pointer(0)), #pointer)
 
 -- writeFile() rawstring
 if os.system != 'wasm':

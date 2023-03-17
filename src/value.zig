@@ -153,14 +153,6 @@ pub const Value = packed union {
         return !self.isNone();
     }
 
-    pub inline fn isMap(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().common.structId == cy.MapS;
-    }
-
-    pub inline fn isList(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().common.structId == cy.ListS;
-    }
-
     pub inline fn isRawString(self: *const Value) bool {
         if (!self.isPointer()) {
             return false;
@@ -248,10 +240,19 @@ pub const Value = packed union {
     }
 
     pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
-        if (isPointer(self)) {
-            return self.asHeapObject().common.structId == typeId;
-        }
-        return false;
+        return isPointer(self) and self.asHeapObject().common.structId == typeId;
+    }
+
+    pub inline fn isPointerT(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().common.structId == cy.PointerT;
+    }
+
+    pub inline fn isMap(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().common.structId == cy.MapS;
+    }
+
+    pub inline fn isList(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().common.structId == cy.ListS;
     }
 
     pub inline fn asRawString(self: *const Value) []const u8 {
@@ -452,7 +453,7 @@ pub const Value = packed union {
                     cy.BoxS => return .box,
                     cy.NativeFunc1S => return .nativeFunc,
                     cy.TccStateS => return .tccState,
-                    cy.OpaquePtrS => return .opaquePtr,
+                    cy.PointerT => return .pointer,
                     cy.FileT => return .file,
                     cy.DirT => return .dir,
                     cy.DirIteratorT => return .dirIter,
@@ -493,7 +494,7 @@ pub const ValueUserTag = enum {
     box,
     nativeFunc,
     tccState,
-    opaquePtr,
+    pointer,
     tag,
     tagLiteral,
     errorVal,
@@ -559,8 +560,8 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
             cy.TccStateS => {
                 fmt.panic("Unsupported copy tcc state.", &.{});
             },
-            cy.OpaquePtrS => {
-                fmt.panic("Unsupported copy opaque ptr.", &.{});
+            cy.PointerT => {
+                fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
                 const numFields = @ptrCast(*const cy.VM, vm).structs.buf[obj.common.structId].numFields;

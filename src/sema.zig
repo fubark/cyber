@@ -23,6 +23,8 @@ const TypeTag = enum {
     box,
     tag,
     tagLiteral,
+    pointer,
+    none,
 
     /// Type from a resolved type sym.
     rsym,
@@ -64,6 +66,16 @@ pub const Type = struct {
 pub const UndefinedType = Type{
     .typeT = .undefined,
     .rcCandidate = false,
+};
+
+pub const NoneType = Type{
+    .typeT = .none,
+    .rcCandidate = false,
+};
+
+pub const PointerType = Type{
+    .typeT = .pointer,
+    .rcCandidate = true,
 };
 
 pub const AnyType = Type{
@@ -1440,7 +1452,7 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
             return BoolType;
         },
         .none => {
-            return AnyType;
+            return NoneType;
         },
         .arr_literal => {
             var expr_id = node.head.child_head;
@@ -1801,6 +1813,7 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
                             if (try getOrResolveSymForFuncCall(c, crLeftSym.id, nameId, callArgs, reqRet)) |callRes| {
                                 try referenceSym(c, callRes.crSymId, true);
                                 c.nodes[node.head.callExpr.callee].head.accessExpr.sema_crSymId = callRes.crSymId;
+                                return callRes.retType;
                             }
                         }
                     }
@@ -2425,6 +2438,8 @@ pub fn getResolvedSymForType(type_: Type) ResolvedSymId {
         .string => bt.String,
         .map => bt.Map,
         .tag => bt.Any, // TODO: Handle tagtype.
+        .pointer => bt.Pointer,
+        .none => bt.None,
         .rsym => type_.inner.rsym.rSymId,
         else => stdx.panicFmt("Unsupported type {}", .{type_.typeT}),
     };
@@ -4043,6 +4058,8 @@ pub const NameString = 4;
 pub const NameTagLiteral = 5;
 pub const NameList = 6;
 pub const NameMap = 7;
+pub const NamePointer = 8;
+pub const NameNone = 9;
 
 /// Names are reserved to index into `BuiltinTypeTags`.
 const BuiltinTypeTags = [_]TypeTag{
@@ -4054,6 +4071,8 @@ const BuiltinTypeTags = [_]TypeTag{
     .tagLiteral,
     .list,
     .map,
+    .pointer,
+    .none,
 };
 
 const bt = BuiltinTypeSymIds;
@@ -4066,6 +4085,8 @@ pub const BuiltinTypeSymIds = struct {
     pub const TagLiteral: ResolvedSymId = 5;
     pub const List: ResolvedSymId = 6;
     pub const Map: ResolvedSymId = 7;
+    pub const Pointer: ResolvedSymId = 8;
+    pub const None: ResolvedSymId = 9;
 };
 
 /// Resolved syms are reserved to index into `BuiltinTypes`.
@@ -4078,6 +4099,8 @@ const BuiltinTypes = [_]Type{
     TagLiteralType,
     ListType,
     MapType,
+    PointerType,
+    NoneType,
 };
 
 pub const FuncDeclId = u32;

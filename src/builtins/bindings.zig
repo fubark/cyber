@@ -138,6 +138,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const toString = try self.ensureMethodSymKey("toString", 0);
     const upper = try self.ensureMethodSymKey("upper", 0);
     const utf8 = try self.ensureMethodSymKey("utf8", 0);
+    const value = try self.ensureMethodSymKey("value", 0);
     const walk = try self.ensureMethodSymKey("walk", 0);
     const write = try self.ensureMethodSymKey("write", 1);
     
@@ -414,8 +415,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addObjectType("TccState");
     std.debug.assert(id == cy.TccStateS);
 
-    id = try self.addObjectType("OpaquePtr");
-    std.debug.assert(id == cy.OpaquePtrS);
+    id = try self.addObjectType("pointer");
+    std.debug.assert(id == cy.PointerT);
+    try self.addMethodSym(cy.PointerT, value, cy.MethodSym.initNativeFunc1(pointerValue));
 
     id = try self.addObjectType("File");
     std.debug.assert(id == cy.FileT);
@@ -831,6 +833,12 @@ fn listLen(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy
 //     vm.releaseObject(obj);
 //     return Value.None;
 // }
+
+fn pointerValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
+    const obj = recv.asHeapObject();
+    defer vm.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, @ptrToInt(obj.pointer.ptr)));
+}
 
 fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     const obj = recv.asHeapObject();
@@ -2372,26 +2380,26 @@ pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     }
 }
 
-pub fn nop0(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return Value.None;
+pub fn nop0(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    return vm.returnPanic("Unsupported.");
 }
 
 pub fn nop1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     vm.release(args[0]);
-    return Value.None;
+    return vm.returnPanic("Unsupported.");
 }
 
 pub fn nop2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     vm.release(args[0]);
     vm.release(args[1]);
-    return Value.None;
+    return vm.returnPanic("Unsupported.");
 }
 
 pub fn nop3(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     vm.release(args[0]);
     vm.release(args[1]);
     vm.release(args[2]);
-    return Value.None;
+    return vm.returnPanic("Unsupported.");
 }
 
 pub fn objNop0(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {

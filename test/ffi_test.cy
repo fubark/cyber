@@ -23,7 +23,7 @@ object MyObject:
   a number
   b number
   c string
-  d bool
+  d boolean
 
 lib = try os.bindLib(libPath, [
   os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
@@ -93,7 +93,7 @@ try t.eq(lib.testCharPtrZ(rawstring('foo')), rawstring('foo'))
 try t.eq(lib.testDupeCharPtrZ('foo'), rawstring('foo'))
 
 -- testPtr
-try t.eq(lib.testPtr(opaque(123)), opaque(123))
+try t.eq(lib.testPtr(pointer(123)), pointer(123))
 
 -- void return and no args.
 try t.eq(lib.testVoid(), none)

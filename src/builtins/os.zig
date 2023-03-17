@@ -90,12 +90,12 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
         try setFunc("cwd", &.{}, bt.String, bindings.nop0);
-        try mod.setNativeFunc(self, "dirName", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "exePath", 0, bindings.nop0);
-        try mod.setNativeFunc(self, "free", 1, bindings.nop1);
+        try setFunc("dirName", &.{ bt.Any }, bt.Any, bindings.nop1);
+        try setFunc("exePath", &.{}, bt.String, bindings.nop0);
+        try setFunc("free", &.{bt.Pointer}, bt.None, bindings.nop1);
         try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
         try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
-        try mod.setNativeFunc(self, "malloc", 1, bindings.nop1);
+        try setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
     } else {
         try setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
         try setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
@@ -103,9 +103,9 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
         try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);
         try setFunc("cwd", &.{}, bt.String, cwd);
-        try mod.setNativeFunc(self, "dirName", 1, dirName);
-        try mod.setNativeFunc(self, "exePath", 0, exePath);
-        try mod.setNativeFunc(self, "free", 1, osFree);
+        try setFunc("dirName", &.{ bt.Any }, bt.Any, dirName);
+        try setFunc("exePath", &.{}, bt.String, exePath);
+        try setFunc("free", &.{bt.Pointer}, bt.None, free);
         if (builtin.os.tag == .windows) {
             try mod.setNativeFunc(self, "getEnv", 1, bindings.nop1);
             try mod.setNativeFunc(self, "getEnvAll", 0, bindings.nop0);
@@ -113,7 +113,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
             try mod.setNativeFunc(self, "getEnv", 1, getEnv);
             try mod.setNativeFunc(self, "getEnvAll", 0, getEnvAll);
         }
-        try mod.setNativeFunc(self, "malloc", 1, malloc);
+        try setFunc("malloc", &.{bt.Number}, bt.Pointer, malloc);
     }
     try mod.setNativeFunc(self, "milliTime", 0, milliTime);
     if (cy.isWasm) {
@@ -358,23 +358,17 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return map;
 }
 
-pub fn osFree(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn free(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
-    if (args[0].isObjectType(cy.OpaquePtrS)) {
-        const ptr = args[0].asHeapObject().opaquePtr.ptr;
-        std.c.free(ptr);
-        return Value.None;
-    } else {
-        log.debug("Expected opaque ptr.", .{});
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
-    }
+    const ptr = args[0].asHeapObject().pointer.ptr;
+    std.c.free(ptr);
+    return Value.None;
 }
 
 pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
-    const size = @floatToInt(usize, args[0].toF64());
+    const size = @floatToInt(usize, args[0].asF64());
     const ptr = std.c.malloc(size);
-    return cy.heap.allocOpaquePtr(vm.internal(), ptr) catch stdx.fatal();
+    return cy.heap.allocPointer(vm.internal(), ptr) catch stdx.fatal();
 }
 
 pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -638,7 +632,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
                     try w.print("icyFromCStr(vm, {s})", .{cval});
                 },
                 .voidPtr => {
-                    try w.print("icyAllocOpaquePtr(vm, {s})", .{cval});
+                    try w.print("icyAllocCyPointer(vm, {s})", .{cval});
                 },
                 .void => {
                     try w.print("0x7FFC000000000000", .{});
@@ -767,7 +761,7 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
         \\extern void icyRelease(UserVM*, uint64_t);
         \\extern void* icyGetPtr(uint64_t);
         \\extern uint64_t icyAllocObject(UserVM*, uint32_t);
-        \\extern uint64_t icyAllocOpaquePtr(UserVM*, void*);
+        \\extern uint64_t icyAllocCyPointer(UserVM*, void*);
         // \\extern int printf(char* fmt, ...);
         \\
     , .{});
@@ -1036,10 +1030,10 @@ fn doBindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value
     // _ = tcc.tcc_add_symbol(state, "breakpoint", breakpoint);
     _ = tcc.tcc_add_symbol(state, "icyFromCStr", fromCStr);
     _ = tcc.tcc_add_symbol(state, "icyToCStr", toCStr);
-    _ = tcc.tcc_add_symbol(state, "icyFree", free);
+    _ = tcc.tcc_add_symbol(state, "icyFree", cFree);
     _ = tcc.tcc_add_symbol(state, "icyRelease", cRelease);
     _ = tcc.tcc_add_symbol(state, "icyGetPtr", cGetPtr);
-    _ = tcc.tcc_add_symbol(state, "icyAllocOpaquePtr", cAllocOpaquePtr);
+    _ = tcc.tcc_add_symbol(state, "icyAllocCyPointer", cAllocCyPointer);
     _ = tcc.tcc_add_symbol(state, "icyAllocObject", cAllocObject);
     if (builtin.cpu.arch == .aarch64) {
         _ = tcc.tcc_add_symbol(state, "memmove", memmove);
@@ -1167,7 +1161,7 @@ fn toCStr(vm: *cy.UserVM, val: Value) callconv(.C) [*]const u8 {
     return dupe;
 }
 
-fn free(ptr: ?*anyopaque) callconv(.C) void {
+fn cFree(ptr: ?*anyopaque) callconv(.C) void {
     std.c.free(ptr);
 }
 
@@ -1176,11 +1170,11 @@ fn cRelease(vm: *cy.UserVM, val: Value) callconv(.C) void {
 }
 
 fn cGetPtr(val: Value) callconv(.C) ?*anyopaque {
-    return val.asPointer(*cy.OpaquePtr).ptr;
+    return val.asPointer(*cy.Pointer).ptr;
 }
 
-fn cAllocOpaquePtr(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
-    return cy.heap.allocOpaquePtr(vm.internal(), ptr) catch stdx.fatal();
+fn cAllocCyPointer(vm: *cy.UserVM, ptr: ?*anyopaque) callconv(.C) Value {
+    return cy.heap.allocPointer(vm.internal(), ptr) catch stdx.fatal();
 }
 
 fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {

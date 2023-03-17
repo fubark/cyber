@@ -11,6 +11,73 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Typed none." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a none):
+        \\  pass
+        \\foo(123)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo(none) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(123)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a none):
+        \\  return a == none
+        \\
+        \\-- Literal.
+        \\try t.eq(foo(none), true)
+        \\        
+        \\-- From var.
+        \\n = none
+        \\try t.eq(foo(n), true)
+    );
+}
+
+test "Typed pointer." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a pointer):
+        \\  pass
+        \\foo(123)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo(pointer) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(123)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a pointer):
+        \\  return a.value() == 123
+        \\
+        \\-- From var.
+        \\ptr = pointer(123)
+        \\try t.eq(foo(ptr), true)
+        \\
+        \\-- Cast erased type.
+        \\ptr = t.erase(pointer(123))
+        \\try t.eq(foo(pointer(ptr)), true)
+    );
+}
+
 test "Typed string." {
     // Wrong param type.
     try eval(.{ .silent = true },
@@ -221,7 +288,7 @@ test "Typed function calls." {
         \\foo(none)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(any) any`.
+            \\CompileError: Can not find compatible function signature for `foo(none) any`.
             \\Only `func foo(number) any` exists for the symbol `foo`.
             \\
             \\main:3:1:

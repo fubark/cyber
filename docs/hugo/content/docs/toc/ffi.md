@@ -103,3 +103,15 @@ lib = os.bindLib('mylib.so', [
 ptr = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
 res = lib.ptrToMyObject(ptr)
 ```
+
+## Pointers
+A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. A new pointer can be created with the builtin `pointer`.
+```cy
+ptr = pointer(0xDEADBEEF)
+print ptr.value()     --'3735928559'
+```
+
+### `type pointer`
+| Method | Summary |
+| ------------- | ----- |
+| `value() number` | Returns the memory address as a `number`. |

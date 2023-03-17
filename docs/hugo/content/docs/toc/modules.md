@@ -107,9 +107,9 @@ print contents
 | `Map(val any) Map` | Casts value to a `Map`. Panics if value is not a `Map`. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Converts a value to a number. | 
-| `opaque(val any) pointer` | Converts a value to an opaque pointer value. This is usually used with FFI. | 
 | `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
+| `pointer(val any) pointer` | Converts a `number` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 

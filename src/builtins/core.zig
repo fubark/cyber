@@ -74,7 +74,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readFile", 1, bindings.nop1);
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
-    try mod.setNativeFunc(self, "string", 1, string);
+    try setFunc("string", &.{bt.Any}, bt.String, string);
     try setFunc("taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
     try mod.setNativeFunc(self, "toCyon", 1, toCyon);
     try mod.setNativeFunc(self, "typeid", 1, typeid);
@@ -569,10 +569,10 @@ fn taglit(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub fn string(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    defer vm.release(args[0]);
     if (val.isString()) {
-        return val;
+        return val; 
     } else {
+        defer vm.release(val);
         const str = vm.valueToTempString(val);
         return vm.allocStringInfer(str) catch stdx.fatal();
     }

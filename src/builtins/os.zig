@@ -89,7 +89,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
         try setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
-        try mod.setNativeFunc(self, "cwd", 0, bindings.nop0);
+        try setFunc("cwd", &.{}, bt.String, bindings.nop0);
         try mod.setNativeFunc(self, "dirName", 1, bindings.nop1);
         try mod.setNativeFunc(self, "exePath", 0, bindings.nop0);
         try mod.setNativeFunc(self, "free", 1, bindings.nop1);
@@ -102,7 +102,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
         try setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
         try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);
-        try mod.setNativeFunc(self, "cwd", 0, cwd);
+        try setFunc("cwd", &.{}, bt.String, cwd);
         try mod.setNativeFunc(self, "dirName", 1, dirName);
         try mod.setNativeFunc(self, "exePath", 0, exePath);
         try mod.setNativeFunc(self, "free", 1, osFree);

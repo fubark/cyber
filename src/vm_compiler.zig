@@ -152,6 +152,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameNumber);
         id = try sema.ensureNameSym(self, "int");
         std.debug.assert(id == sema.NameInt);
+        id = try sema.ensureNameSym(self, "string");
+        std.debug.assert(id == sema.NameString);
         id = try sema.ensureNameSym(self, "taglit");
         std.debug.assert(id == sema.NameTagLiteral);
         id = try sema.ensureNameSym(self, "List");
@@ -168,14 +170,14 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Number);
         id = try sema.addResolvedBuiltinSym(self, .int, "int");
         std.debug.assert(id == bt.Int);
+        id = try sema.addResolvedBuiltinSym(self, .string, "string");
+        std.debug.assert(id == bt.String);
         id = try sema.addResolvedBuiltinSym(self, .int, "taglit");
         std.debug.assert(id == bt.TagLiteral);
         id = try sema.addResolvedBuiltinSym(self, .list, "List");
         std.debug.assert(id == bt.List);
         id = try sema.addResolvedBuiltinSym(self, .map, "Map");
         std.debug.assert(id == bt.Map);
-        id = try sema.addResolvedBuiltinSym(self, .string, "string");
-        std.debug.assert(id == bt.String);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

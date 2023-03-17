@@ -11,6 +11,43 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Typed string." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a string):
+        \\  pass
+        \\foo(123)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo(string) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(123)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a string):
+        \\  return a == 'true'
+        \\
+        \\-- Literal.
+        \\try t.eq(foo('true'), true)
+        \\
+        \\-- From var.
+        \\str = 'true'
+        \\try t.eq(foo(str), true)
+        \\
+        \\-- Cast erased type.
+        \\str = t.erase('true')
+        \\try t.eq(foo(string(str)), true)
+    );
+}
+
 test "Typed boolean." {
     // Wrong param type.
     try eval(.{ .silent = true },

@@ -20,7 +20,6 @@ const TypeTag = enum {
     map,
     fiber,
     string,
-    staticString,
     box,
     tag,
     tagLiteral,
@@ -43,6 +42,9 @@ pub const Type = struct {
         },
         rsym: packed struct {
             rSymId: ResolvedSymId,
+        },
+        string: packed struct {
+            isStaticString: bool,
         },
     } = undefined,
 
@@ -102,13 +104,23 @@ const NumberOrRequestIntegerType = Type{
 };
 
 pub const StaticStringType = Type{
-    .typeT = .staticString,
+    .typeT = .string,
     .rcCandidate = false,
+    .inner = .{
+        .string = .{
+            .isStaticString = true,
+        }
+    },
 };
 
 pub const StringType = Type{
     .typeT = .string,
     .rcCandidate = true,
+    .inner = .{
+        .string = .{
+            .isStaticString = false,
+        }
+    },
 };
 
 pub const FiberType = Type{
@@ -2410,7 +2422,6 @@ pub fn getResolvedSymForType(type_: Type) ResolvedSymId {
         .tagLiteral => bt.TagLiteral,
         .list => bt.List,
         .boolean => bt.Boolean,
-        .staticString => bt.String,
         .string => bt.String,
         .map => bt.Map,
         .tag => bt.Any, // TODO: Handle tagtype.
@@ -4028,9 +4039,10 @@ pub const NameAny = 0;
 pub const NameBoolean = 1;
 pub const NameNumber = 2;
 pub const NameInt = 3;
-pub const NameTagLiteral = 4;
-pub const NameList = 5;
-pub const NameMap = 6;
+pub const NameString = 4;
+pub const NameTagLiteral = 5;
+pub const NameList = 6;
+pub const NameMap = 7;
 
 /// Names are reserved to index into `BuiltinTypeTags`.
 const BuiltinTypeTags = [_]TypeTag{
@@ -4038,6 +4050,7 @@ const BuiltinTypeTags = [_]TypeTag{
     .boolean,
     .number,
     .int,
+    .string,
     .tagLiteral,
     .list,
     .map,
@@ -4049,10 +4062,10 @@ pub const BuiltinTypeSymIds = struct {
     pub const Boolean: ResolvedSymId = 1;
     pub const Number: ResolvedSymId = 2;
     pub const Int: ResolvedSymId = 3;
-    pub const TagLiteral: ResolvedSymId = 4;
-    pub const List: ResolvedSymId = 5;
-    pub const Map: ResolvedSymId = 6;
-    pub const String: ResolvedSymId = 7;
+    pub const String: ResolvedSymId = 4;
+    pub const TagLiteral: ResolvedSymId = 5;
+    pub const List: ResolvedSymId = 6;
+    pub const Map: ResolvedSymId = 7;
 };
 
 /// Resolved syms are reserved to index into `BuiltinTypes`.
@@ -4061,6 +4074,7 @@ const BuiltinTypes = [_]Type{
     BoolType,
     NumberType,
     IntegerType,
+    StringType,
     TagLiteralType,
     ListType,
     MapType,

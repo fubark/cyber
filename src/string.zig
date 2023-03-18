@@ -784,6 +784,14 @@ fn getLineEndCpu(buf: []const u8) linksection(cy.StdSection) ?usize {
     return null;
 }
 
+test "getLineEndCpu()" {
+    const str = "abcxyz\nfoobar\rdeadbeef\r\nzzz";
+    try t.eq(getLineEndCpu(str).?, 7);
+    try t.eq(getLineEndCpu(str[7..]).?, 7);
+    try t.eq(getLineEndCpu(str[14..]).?, 10);
+    try t.eq(getLineEndCpu(str[24..]), null);
+}
+
 pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         const MaskInt = std.meta.Int(.unsigned, VecSize);
@@ -796,7 +804,7 @@ pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
             const lfHits = @bitCast(MaskInt, vbuf == lfNeedle);
             const crHits = @bitCast(MaskInt, vbuf == crNeedle);
             const bitIdx = @ctz(lfHits | crHits);
-            if (bitIdx < VecSize) {
+            if (bitIdx > 0) {
                 // Found.
                 const res = i + bitIdx;
                 if (buf[res] == '\n') {

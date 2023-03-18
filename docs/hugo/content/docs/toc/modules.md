@@ -244,7 +244,7 @@ for map each k, v:
 | `seekFromEnd(pos number) none` | Seeks the read/write position by `pos` bytes from the end. Positive `pos` is invalid. |
 | `stat() Map` | Returns info about the file as a `Map`. |
 | `streamLines() Iterable<rawstring>` | Equivalent to `streamLines(4096)`. |
-| `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. |
+| `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. If `\r` is found at the end of the read buffer, the line is returned instead of waiting to see if the next read has a connecting `\n`. |
 | `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
 
 #### `type Dir`

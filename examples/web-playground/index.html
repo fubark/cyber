@@ -235,10 +235,11 @@ evalJS('alert("circle area: {area(10)}")')
                 } else {
                     cy.cyVmGetLastErrorReport(buf, vm);
                     const ptr = getUint32(buf);
-                    console.error(getStringZ(ptr));
+                    addErrorLine(getStringZ(ptr));
                 }
                 cy.cyVmFree(vm, str.ptr, str.cap);
                 cy.cyVmFree(vm, buf, 1024);
+                cy.cyVmDestroy(vm);
             })
         }
         load(examples['hello'])

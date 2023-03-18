@@ -62,7 +62,63 @@ print(i)                            -- &#34;2&#34;
 i += 1
 print(i + str[i..].findRune(0u&#39;c&#39;))  -- &#34;5&#34;
 </code></pre><h3 id=type-string><code>type string</code>
-<a class=anchor href=#type-string>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>concat(str string) string</code></td><td>Returns a new string that concats this string and <code>str</code>.</td></tr><tr><td><code>endsWith(suffix string) bool</code></td><td>Returns whether the string ends with <code>suffix</code>.</td></tr><tr><td><code>find(needle string) number?</code></td><td>Returns the first index of substring <code>needle</code> in the string or <code>none</code> if not found.</td></tr><tr><td><code>findAnyRune(set string) number?</code></td><td>Returns the first index of any UTF-8 rune in <code>set</code> or <code>none</code> if not found.</td></tr><tr><td><code>findRune(needle number) number?</code></td><td>Returns the first index of UTF-8 rune <code>needle</code> in the string or <code>none</code> if not found.</td></tr><tr><td><code>insert(idx number, str string) string</code></td><td>Returns a new string with <code>str</code> inserted at index <code>idx</code>.</td></tr><tr><td><code>isAscii() bool</code></td><td>Returns whether the string contains all ASCII runes.</td></tr><tr><td><code>len() number</code></td><td>Returns the number of UTF-8 runes in the string.</td></tr><tr><td><code>less(str string) bool</code></td><td>Returns whether this string is lexicographically before <code>str</code>.</td></tr><tr><td><code>lower() string</code></td><td>Returns this string in lowercase.</td></tr><tr><td><code>replace(needle string, replacement string) string</code></td><td>Returns a new string with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</td></tr><tr><td><code>repeat(n number) string</code></td><td>Returns a new string with this string repeated <code>n</code> times.</td></tr><tr><td><code>runeAt(idx number) number</code></td><td>Returns the UTF-8 rune at index <code>idx</code>.</td></tr><tr><td><code>slice(start number, end number) string</code></td><td>Returns a slice into this string from <code>start</code> to <code>end</code> (exclusive) indexes. This is equivalent to using the slice index operator <code>[start..end]</code>.</td></tr><tr><td><code>sliceAt(idx number) string</code></td><td>Returns the UTF-8 rune at index <code>idx</code> as a single rune string.</td></tr><tr><td><code>split(delim string) List</code></td><td>Returns a list of UTF-8 strings split at occurrences of <code>delim</code>.</td></tr><tr><td><code>startsWith(prefix string) bool</code></td><td>Returns whether the string starts with <code>prefix</code>.</td></tr><tr><td><code>upper() string</code></td><td>Returns this string in uppercase.</td></tr></tbody></table><h3 id=string-interpolation>String Interpolation.
+<a class=anchor href=#type-string>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>func concat(self, str string) string
+-- Returns a new string that concats this string and `str`.
+
+func endsWith(self, suffix string) bool
+-- Returns whether the string ends with `suffix`.
+
+func find(self, needle string) number?
+-- Returns the first index of substring `needle` in the string or `none` if not found.
+
+func findAnyRune(self, set string) number?
+-- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
+
+func findRune(self, needle number) number?
+-- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+
+func insert(self, idx number, str string) string
+-- Returns a new string with `str` inserted at index `idx`.
+
+func isAscii(self) bool
+-- Returns whether the string contains all ASCII runes.
+
+func len(self) number
+-- Returns the number of UTF-8 runes in the string.
+
+func less(self, str string) bool
+-- Returns whether this string is lexicographically before `str`.
+
+func lower(self) string
+-- Returns this string in lowercase.
+
+func replace(self, needle string, replacement string) string
+-- Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+
+func repeat(self, n number) string
+-- Returns a new string with this string repeated `n` times.
+
+func runeAt(self, idx number) number
+-- Returns the UTF-8 rune at index `idx`.
+
+func slice(self, start number, end number) string
+-- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
+
+func sliceAt(self, idx number) string
+-- Returns the UTF-8 rune at index `idx` as a single rune string.
+
+func split(self, delim string) List
+-- Returns a list of UTF-8 strings split at occurrences of `delim`.
+
+func startsWith(self, prefix string) bool
+-- Returns whether the string starts with `prefix`.
+
+func trim(self, mode taglit, trimRunes any) string
+-- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
+
+func upper(self) string
+-- Returns this string in uppercase.
+</code></pre><h3 id=string-interpolation>String Interpolation.
 <a class=anchor href=#string-interpolation>#</a></h3><p>You can embed expressions into string templates using braces.</p><pre tabindex=0><code class=language-cy data-lang=cy>name = &#39;Bob&#39;
 points = 123
 str = &#39;Scoreboard: {name} {points}&#39;
@@ -74,7 +130,72 @@ print str[0]     -- &#34;a&#34;
 print str[1]     -- error(#InvalidRune)
 print str[-1]    -- &#34;d&#34;
 </code></pre><h3 id=type-rawstring><code>type rawstring</code>
-<a class=anchor href=#type-rawstring>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>byteAt(idx number) number</code></td><td>Returns the byte value (0-255) at the given index <code>idx</code>.</td></tr><tr><td><code>concat(str string) string</code></td><td>Returns a new string that concats this string and <code>str</code>.</td></tr><tr><td><code>endsWith(suffix string) bool</code></td><td>Returns whether the string ends with <code>suffix</code>.</td></tr><tr><td><code>find(needle string) number?</code></td><td>Returns the first index of substring <code>needle</code> in the string or <code>none</code> if not found.</td></tr><tr><td><code>findAnyRune(set string) number?</code></td><td>Returns the first index of any UTF-8 rune in <code>set</code> or <code>none</code> if not found.</td></tr><tr><td><code>findRune(needle number) number?</code></td><td>Returns the first index of UTF-8 rune <code>needle</code> in the string or <code>none</code> if not found.</td></tr><tr><td><code>insert(idx number, str string) string</code></td><td>Returns a new string with <code>str</code> inserted at index <code>idx</code>.</td></tr><tr><td><code>insertByte(idx number, byte number) string</code></td><td>Returns a new string with <code>byte</code> inserted at index <code>idx</code>.</td></tr><tr><td><code>isAscii() bool</code></td><td>Returns whether the string contains all ASCII runes.</td></tr><tr><td><code>len() number</code></td><td>Returns the number of bytes in the string.</td></tr><tr><td><code>less(str rawstring) bool</code></td><td>Returns whether this rawstring is lexicographically before <code>str</code>.</td></tr><tr><td><code>lower() string</code></td><td>Returns this string in lowercase.</td></tr><tr><td><code>repeat(n number) rawstring</code></td><td>Returns a new rawstring with this rawstring repeated <code>n</code> times.</td></tr><tr><td><code>replace(needle string, replacement string) string</code></td><td>Returns a new string with all occurrences of <code>needle</code> replaced with <code>replacement</code>.</td></tr><tr><td><code>runeAt(idx number) number</code></td><td>Returns the UTF-8 rune at index <code>idx</code>. If the index does not begin a UTF-8 rune, <code>error(#InvalidRune)</code> is returned.</td></tr><tr><td><code>slice(start number, end number) rawstring</code></td><td>Returns a slice into this string from <code>start</code> to <code>end</code> (exclusive) indexes. This is equivalent to using the slice index operator <code>[start..end]</code>.</td></tr><tr><td><code>sliceAt(idx number) string</code></td><td>Returns the UTF-8 rune at index <code>idx</code> as a single rune string. If the index does not begin a UTF-8 rune, <code>error(#InvalidRune)</code> is returned.</td></tr><tr><td><code>split(delim string) List</code></td><td>Returns a list of rawstrings split at occurrences of <code>delim</code>.</td></tr><tr><td><code>startsWith(prefix string) bool</code></td><td>Returns whether the string starts with <code>prefix</code>.</td></tr><tr><td><code>upper() string</code></td><td>Returns this string in uppercase.</td></tr><tr><td><code>utf8() string</code></td><td>Returns a valid UTF-8 string or returns <code>error(#InvalidRune)</code>.</td></tr></tbody></table><h2 id=lists>Lists.
+<a class=anchor href=#type-rawstring>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>func byteAt(self, idx number) number
+-- Returns the byte value (0-255) at the given index `idx`.
+
+func concat(self, str string) string
+-- Returns a new string that concats this string and `str`.
+
+func endsWith(self, suffix string) bool
+-- Returns whether the string ends with `suffix`.
+
+func find(self, needle string) number?
+-- Returns the first index of substring `needle` in the string or `none` if not found.
+
+func findAnyRune(self, set string) number?
+-- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
+
+func findRune(self, needle number) number?
+-- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+
+func insert(self, idx number, str string) string
+-- Returns a new string with `str` inserted at index `idx`.
+
+func insertByte(self, idx number, byte number) string
+-- Returns a new string with `byte` inserted at index `idx`.
+
+func isAscii(self) bool
+-- Returns whether the string contains all ASCII runes.
+
+func len(self) number
+-- Returns the number of bytes in the string.
+
+func less(self, str rawstring) bool
+-- Returns whether this rawstring is lexicographically before `str`.
+
+func lower(self) string
+-- Returns this string in lowercase.
+
+func repeat(self, n number) rawstring
+-- Returns a new rawstring with this rawstring repeated `n` times.
+
+func replace(self, needle string, replacement string) string
+-- Returns a new string with all occurrences of `needle` replaced with `replacement`.
+
+func runeAt(self, idx number) number
+-- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+
+func slice(self, start number, end number) rawstring
+-- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
+
+func sliceAt(self, idx number) string
+-- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+
+func split(self, delim string) List
+-- Returns a list of rawstrings split at occurrences of `delim`.
+
+func startsWith(self, prefix string) bool
+-- Returns whether the string starts with `prefix`.
+
+func upper(self) string
+-- Returns this string in uppercase.
+
+func trim(self, mode taglit, trimRunes any) rawstring
+-- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
+
+func utf8(self) string
+-- Returns a valid UTF-8 string or returns `error(#InvalidRune)`.
+</code></pre><h2 id=lists>Lists.
 <a class=anchor href=#lists>#</a></h2><p>Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Construct a new list.
 list = [1, 2, 3]
 
@@ -199,5 +320,5 @@ print(color == #red)         -- &#39;true&#39;
 print number(color)          -- &#39;123&#39; or some arbitrary id.
 </code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/data-types.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
 <span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a></li><li><a href=#strings>Strings.</a><ul><li><a href=#type-string><code>type string</code></a></li><li><a href=#string-interpolation>String Interpolation.</a></li><li><a href=#rawstring>rawstring.</a></li><li><a href=#type-rawstring><code>type rawstring</code></a></li></ul></li><li><a href=#lists>Lists.</a><ul><li><a href=#type-list><code>type List</code></a></li></ul></li><li><a href=#maps>Maps.</a><ul><li><a href=#type-map><code>type Map</code></a></li></ul></li><li><a href=#objects>Objects.</a></li><li><a href=#tags>Tags.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
-<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","tagtype","object","break","continue","match","export","pass","or","and","not","is","static","capture","true","false","none","try","catch","recover","compt","atype"],type:["number","string","bool","any","int"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"tagliteral",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
+<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","tagtype","object","break","continue","match","export","pass","or","and","not","is","static","capture","true","false","none","try","catch","recover","compt","atype"],type:["number","string","bool","any","int","List","Map","rawstring","taglit"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"tagliteral",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

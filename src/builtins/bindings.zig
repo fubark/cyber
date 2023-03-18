@@ -40,6 +40,10 @@ pub const TagLit = enum {
     little,
     big,
 
+    left,
+    right,
+    ends,
+
     AssertError,
     FileNotFound,
     MissingSymbol,
@@ -136,6 +140,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const streamLines = try self.ensureMethodSymKey("streamLines", 0);
     const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
     const toString = try self.ensureMethodSymKey("toString", 0);
+    const trim = try self.ensureMethodSymKey("trim", 2);
     const upper = try self.ensureMethodSymKey("upper", 0);
     const utf8 = try self.ensureMethodSymKey("utf8", 0);
     const value = try self.ensureMethodSymKey("value", 0);
@@ -178,6 +183,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticAstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticAstring)));
+    try self.addMethodSym(cy.StaticAstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.staticAstring)));
     try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticAstring)));
 
     id = try self.addObjectType("string"); // Astring and Ustring share the same string user type.
@@ -206,6 +212,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StaticUstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticUstring)));
+    try self.addMethodSym(cy.StaticUstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.staticUstring)));
     try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticUstring)));
 
     id = try self.addObjectType("tag");
@@ -280,6 +287,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.AstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.astring)));
     try self.addMethodSym(cy.AstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.astring)));
     try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.astring)));
+    try self.addMethodSym(cy.AstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.astring)));
     try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.astring)));
 
     id = try self.addObjectType("string");
@@ -308,6 +316,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.UstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.ustring)));
     try self.addMethodSym(cy.UstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.ustring)));
     try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.ustring)));
+    try self.addMethodSym(cy.UstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.ustring)));
     try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.ustring)));
 
     id = try self.addObjectType("string");
@@ -336,6 +345,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.StringSliceT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.slice)));
     try self.addMethodSym(cy.StringSliceT, split, cy.MethodSym.initNativeFunc1(stringSplit(.slice)));
     try self.addMethodSym(cy.StringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.slice)));
+    try self.addMethodSym(cy.StringSliceT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.slice)));
     try self.addMethodSym(cy.StringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.slice)));
 
     id = try self.addObjectType("rawstring");
@@ -368,6 +378,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawstring)));
     try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
     try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawstring)));
+    try self.addMethodSym(cy.RawStringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.rawstring)));
     try self.addMethodSym(cy.RawStringT, utf8, cy.MethodSym.initNativeFunc1(rawStringUtf8));
 
     id = try self.addObjectType("rawstring");
@@ -400,6 +411,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try self.addMethodSym(cy.RawStringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, toString, cy.MethodSym.initNativeFunc1(rawStringSliceToString));
     try self.addMethodSym(cy.RawStringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawSlice)));
+    try self.addMethodSym(cy.RawStringSliceT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.rawSlice)));
     try self.addMethodSym(cy.RawStringSliceT, utf8, cy.MethodSym.initNativeFunc1(rawStringSliceUtf8));
 
     id = try self.addObjectType("Fiber");
@@ -493,6 +505,10 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     try ensureTagLitSym(self, "little", .little);
     try ensureTagLitSym(self, "big", .big);
+
+    try ensureTagLitSym(self, "left", .left);
+    try ensureTagLitSym(self, "right", .right);
+    try ensureTagLitSym(self, "ends", .ends);
 
     try ensureTagLitSym(self, "AssertError", .AssertError);
     try ensureTagLitSym(self, "FileNotFound", .FileNotFound);
@@ -1395,6 +1411,47 @@ fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             }
             return res;
+        }
+    };
+    return S.inner;
+}
+
+fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+    const S = struct {
+        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, recv);
+            defer {
+                releaseStringObject(T, vm, obj);
+                vm.release(args[0]);
+                vm.release(args[1]);
+            }
+
+            const str = getStringSlice(T, vm, obj);
+
+            if (!args[0].isTagLiteral()) {
+                return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+            }
+            const trimRunes = vm.valueToTempString(args[1]);
+
+            var res: []const u8 = undefined;
+            const mode = @intToEnum(TagLit, args[0].asTagLiteralId());
+            switch (mode) {
+                .left => res = std.mem.trimLeft(u8, str, trimRunes),
+                .right => res = std.mem.trimRight(u8, str, trimRunes),
+                .ends => res = std.mem.trim(u8, str, trimRunes),
+                else => {
+                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+                }
+            }
+
+            if (isAstringObject(T, obj)) {
+                return vm.allocAstring(res) catch fatal();
+            } else if (isUstringObject(T, obj)) {
+                const runeLen = @intCast(u32, cy.string.utf8Len(res));
+                return vm.allocUstring(res, runeLen) catch fatal();
+            } else if (isRawStringObject(T)) {
+                return vm.allocRawString(res) catch fatal();
+            } else fatal();
         }
     };
     return S.inner;

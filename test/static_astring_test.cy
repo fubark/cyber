@@ -190,5 +190,10 @@ try t.eq(res[2], 'a')
 try t.eq(str.startsWith('abc'), true)
 try t.eq(str.startsWith('bc'), false)
 
+-- trim()
+try t.eq(str.trim(#left, 'a'), 'bcxyz')
+try t.eq(str.trim(#right, 'z'), 'abcxy')
+try t.eq(str.trim(#ends, 'az'), 'bcxy')
+
 -- upper()
 try t.eq(str.upper(), 'ABCXYZ')

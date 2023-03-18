@@ -56,11 +56,17 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     }
     if (cy.hasStdFiles) {
         if (builtin.os.tag != .windows) {
-            const stdin = try cy.heap.allocFile(self.vm, std.os.STDIN_FILENO);
+            const stdin = try cy.heap.allocFile(self.vm, std.io.getStdIn().handle);
             try mod.setVar(self, "stdin", stdin);
+            const stdout = try cy.heap.allocFile(self.vm, std.io.getStdOut().handle);
+            try mod.setVar(self, "stdout", stdout);
+            const stderr = try cy.heap.allocFile(self.vm, std.io.getStdErr().handle);
+            try mod.setVar(self, "stderr", stderr);
         } else {
             // TODO: Use std.os.windows.STD_INPUT_HANDLE
             try mod.setVar(self, "stdin", Value.None);
+            try mod.setVar(self, "stdout", Value.None);
+            try mod.setVar(self, "stderr", Value.None);
         }
     } else {
         try mod.setVar(self, "stdin", Value.None);
@@ -152,6 +158,14 @@ pub fn deinitModule(c: *cy.VMcompiler, mod: cy.Module) !void {
             const stdin = (try mod.getVarVal(c, "stdin")).?;
             stdin.asHeapObject().file.closed = true;
             cy.arc.release(c.vm, stdin);
+
+            const stdout = (try mod.getVarVal(c, "stdout")).?;
+            stdout.asHeapObject().file.closed = true;
+            cy.arc.release(c.vm, stdout);
+
+            const stderr = (try mod.getVarVal(c, "stderr")).?;
+            stderr.asHeapObject().file.closed = true;
+            cy.arc.release(c.vm, stderr);
         }
     }
 }

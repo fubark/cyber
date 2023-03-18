@@ -200,7 +200,9 @@ for map each k, v:
 | -- | -- | -- |
 | cpu | string | The current cpu arch's tag name. |
 | endian | #little, #big | The current arch's endianness. |
+| stderr | File | Standard error file descriptor. |
 | stdin | File | Standard input file descriptor. |
+| stdout | File | Standard output file descriptor. |
 | system | string | The current operating system's tag name. |
 | vecBitSize | number | Default SIMD vector bit size. |
 

@@ -132,6 +132,7 @@ pre {
 
 pre code.hljs {
     padding: 0px;
+    white-space: pre-wrap;
 }
 
 .hljs {

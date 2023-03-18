@@ -3,6 +3,10 @@ languageCode = 'en-us'
 title = 'Cyber Docs v0.2'
 theme = 'hugo-book'
 
+# Allow html
+#[markup.goldmark.renderer]
+#unsafe = true
+
 [menu]
 [[menu.before]]
   name = "Homepage"

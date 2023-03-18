@@ -138,26 +138,64 @@ print(i + str[i..].findRune(0u'c'))  -- "5"
 ```
 
 ### `type string`
-| Method | Summary |
-| ------------- | ----- |
-| `concat(str string) string` | Returns a new string that concats this string and `str`. | 
-| `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
-| `find(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
-| `findAnyRune(set string) number?` | Returns the first index of any UTF-8 rune in `set` or `none` if not found. | 
-| `findRune(needle number) number?` | Returns the first index of UTF-8 rune `needle` in the string or `none` if not found. | 
-| `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
-| `isAscii() bool` | Returns whether the string contains all ASCII runes. | 
-| `len() number` | Returns the number of UTF-8 runes in the string. | 
-| `less(str string) bool` | Returns whether this string is lexicographically before `str`. |
-| `lower() string` | Returns this string in lowercase. | 
-| `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
-| `repeat(n number) string` | Returns a new string with this string repeated `n` times. | 
-| `runeAt(idx number) number` | Returns the UTF-8 rune at index `idx`. | 
-| `slice(start number, end number) string` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
-| `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string.  | 
-| `split(delim string) List` | Returns a list of UTF-8 strings split at occurrences of `delim`.  | 
-| `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
-| `upper() string` | Returns this string in uppercase. | 
+```cy
+func concat(self, str string) string
+-- Returns a new string that concats this string and `str`.
+
+func endsWith(self, suffix string) bool
+-- Returns whether the string ends with `suffix`.
+
+func find(self, needle string) number?
+-- Returns the first index of substring `needle` in the string or `none` if not found.
+
+func findAnyRune(self, set string) number?
+-- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
+
+func findRune(self, needle number) number?
+-- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+
+func insert(self, idx number, str string) string
+-- Returns a new string with `str` inserted at index `idx`.
+
+func isAscii(self) bool
+-- Returns whether the string contains all ASCII runes.
+
+func len(self) number
+-- Returns the number of UTF-8 runes in the string.
+
+func less(self, str string) bool
+-- Returns whether this string is lexicographically before `str`.
+
+func lower(self) string
+-- Returns this string in lowercase.
+
+func replace(self, needle string, replacement string) string
+-- Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
+
+func repeat(self, n number) string
+-- Returns a new string with this string repeated `n` times.
+
+func runeAt(self, idx number) number
+-- Returns the UTF-8 rune at index `idx`.
+
+func slice(self, start number, end number) string
+-- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
+
+func sliceAt(self, idx number) string
+-- Returns the UTF-8 rune at index `idx` as a single rune string.
+
+func split(self, delim string) List
+-- Returns a list of UTF-8 strings split at occurrences of `delim`.
+
+func startsWith(self, prefix string) bool
+-- Returns whether the string starts with `prefix`.
+
+func trim(self, mode taglit, trimRunes any) string
+-- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
+
+func upper(self) string
+-- Returns this string in uppercase.
+```
 
 ### String Interpolation.
 
@@ -187,29 +225,73 @@ print str[-1]    -- "d"
 ```
 
 ### `type rawstring`
-| Method | Summary |
-| ------------- | ----- |
-| `byteAt(idx number) number` | Returns the byte value (0-255) at the given index `idx`. | 
-| `concat(str string) string` | Returns a new string that concats this string and `str`. | 
-| `endsWith(suffix string) bool` | Returns whether the string ends with `suffix`. | 
-| `find(needle string) number?` | Returns the first index of substring `needle` in the string or `none` if not found. | 
-| `findAnyRune(set string) number?` | Returns the first index of any UTF-8 rune in `set` or `none` if not found. |
-| `findRune(needle number) number?` | Returns the first index of UTF-8 rune `needle` in the string or `none` if not found. | 
-| `insert(idx number, str string) string` | Returns a new string with `str` inserted at index `idx`. |
-| `insertByte(idx number, byte number) string` | Returns a new string with `byte` inserted at index `idx`. | 
-| `isAscii() bool` | Returns whether the string contains all ASCII runes. | 
-| `len() number` | Returns the number of bytes in the string. | 
-| `less(str rawstring) bool` | Returns whether this rawstring is lexicographically before `str`. |
-| `lower() string` | Returns this string in lowercase. | 
-| `repeat(n number) rawstring` | Returns a new rawstring with this rawstring repeated `n` times. | 
-| `replace(needle string, replacement string) string` | Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
-| `runeAt(idx number) number` | Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
-| `slice(start number, end number) rawstring` | Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`. | 
-| `sliceAt(idx number) string` | Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned. | 
-| `split(delim string) List` | Returns a list of rawstrings split at occurrences of `delim`.  | 
-| `startsWith(prefix string) bool` | Returns whether the string starts with `prefix`. | 
-| `upper() string` | Returns this string in uppercase. | 
-| `utf8() string` | Returns a valid UTF-8 string or returns `error(#InvalidRune)`. | 
+```cy
+func byteAt(self, idx number) number
+-- Returns the byte value (0-255) at the given index `idx`.
+
+func concat(self, str string) string
+-- Returns a new string that concats this string and `str`.
+
+func endsWith(self, suffix string) bool
+-- Returns whether the string ends with `suffix`.
+
+func find(self, needle string) number?
+-- Returns the first index of substring `needle` in the string or `none` if not found.
+
+func findAnyRune(self, set string) number?
+-- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
+
+func findRune(self, needle number) number?
+-- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
+
+func insert(self, idx number, str string) string
+-- Returns a new string with `str` inserted at index `idx`.
+
+func insertByte(self, idx number, byte number) string
+-- Returns a new string with `byte` inserted at index `idx`.
+
+func isAscii(self) bool
+-- Returns whether the string contains all ASCII runes.
+
+func len(self) number
+-- Returns the number of bytes in the string.
+
+func less(self, str rawstring) bool
+-- Returns whether this rawstring is lexicographically before `str`.
+
+func lower(self) string
+-- Returns this string in lowercase.
+
+func repeat(self, n number) rawstring
+-- Returns a new rawstring with this rawstring repeated `n` times.
+
+func replace(self, needle string, replacement string) string
+-- Returns a new string with all occurrences of `needle` replaced with `replacement`.
+
+func runeAt(self, idx number) number
+-- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+
+func slice(self, start number, end number) rawstring
+-- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
+
+func sliceAt(self, idx number) string
+-- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+
+func split(self, delim string) List
+-- Returns a list of rawstrings split at occurrences of `delim`.
+
+func startsWith(self, prefix string) bool
+-- Returns whether the string starts with `prefix`.
+
+func upper(self) string
+-- Returns this string in uppercase.
+
+func trim(self, mode taglit, trimRunes any) rawstring
+-- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
+
+func utf8(self) string
+-- Returns a valid UTF-8 string or returns `error(#InvalidRune)`.
+```
 
 ## Lists.
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.

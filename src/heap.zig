@@ -4,6 +4,8 @@
 
 const cy = @import("cyber.zig");
 const Value = cy.Value;
+const mi = @import("mimalloc");
+const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const std = @import("std");
@@ -12,6 +14,72 @@ const tcc = @import("tcc");
 const log = stdx.log.scoped(.heap);
 const NullId = std.math.maxInt(u32);
 const NullU8 = std.math.maxInt(u8);
+
+/// Use mimalloc for fast builds.
+const UseMimalloc = builtin.mode == .ReleaseFast and !cy.isWasm;
+
+var gpa: std.heap.GeneralPurposeAllocator(.{
+    .enable_memory_limit = false,
+    .stack_trace_frames = if (builtin.mode == .Debug) 10 else 0,
+}) = .{};
+var miAlloc: mi.Allocator = undefined;
+var initedAllocator = false;
+
+fn initAllocator() void {
+    defer initedAllocator = true;
+    if (build_options.useMalloc) {
+        return;
+    } else {
+        if (UseMimalloc) {
+            miAlloc.init();
+        } else {
+            return;
+        }
+    }
+    // var traceAlloc: stdx.heap.TraceAllocator = undefined;
+    // traceAlloc.init(miAlloc.allocator());
+    // traceAlloc.init(child);
+    // defer traceAlloc.dump();
+    // const alloc = traceAlloc.allocator();
+}
+
+pub fn getAllocator() std.mem.Allocator {
+    if (!initedAllocator) {
+        initAllocator();
+    }
+    if (build_options.useMalloc) {
+        return std.heap.c_allocator;
+    } else {
+        if (UseMimalloc) {
+            return miAlloc.allocator();
+        } else {
+            if (cy.isWasm) {
+                return std.heap.wasm_allocator;
+            } else {
+                return gpa.allocator();
+            }
+        }
+    }
+}
+
+pub fn deinitAllocator() void {
+    if (builtin.mode == .Debug) {
+        if (build_options.useMalloc) {
+            return;
+        } else {
+            if (UseMimalloc) {
+                miAlloc.deinit();
+            } else {
+                if (cy.isWasm) {
+                    return;
+                } else {
+                    _ = gpa.deinit();
+                }
+            }
+        }
+        initedAllocator = false;
+    }
+}
 
 /// Reserved object types known at comptime.
 /// Starts at 9 since primitive types go up to 8.

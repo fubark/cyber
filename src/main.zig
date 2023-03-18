@@ -1,21 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
-const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.main);
 const build_options = @import("build_options");
 const TraceEnabled = build_options.trace;
 const fmt = @import("fmt.zig");
-
-/// Use mimalloc for fast builds.
-const UseMimalloc = builtin.mode == .ReleaseFast;
-
-var gpa: std.heap.GeneralPurposeAllocator(.{
-    .enable_memory_limit = false,
-    .stack_trace_frames = if (builtin.mode == .Debug) 10 else 0,
-}) = .{};
-var miAlloc: mi.Allocator = undefined;
 
 var verbose = false;
 var reload = false;
@@ -35,25 +25,8 @@ pub fn main() !void {
         }
     }
 
-    if (UseMimalloc) {
-        miAlloc.init();
-    }
-    const alloc = if (UseMimalloc) miAlloc.allocator() else gpa.allocator();
-    defer {
-        if (builtin.mode == .Debug) {
-            if (UseMimalloc) {
-                miAlloc.deinit();
-            } else {
-                _ = gpa.deinit();
-            }
-        }
-    }
-
-    // var traceAlloc: stdx.heap.TraceAllocator = undefined;
-    // traceAlloc.init(miAlloc.allocator());
-    // traceAlloc.init(child);
-    // defer traceAlloc.dump();
-    // const alloc = traceAlloc.allocator();
+    const alloc = cy.heap.getAllocator();
+    defer cy.heap.deinitAllocator();
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);

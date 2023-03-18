@@ -14,28 +14,8 @@ const c = @cImport({
     @cInclude("cyber.h");
 });
 
-/// Use mimalloc for fast builds.
-const UseMimalloc = builtin.mode == .ReleaseFast and false;
-
-var gpa: std.heap.GeneralPurposeAllocator(.{
-    .enable_memory_limit = false,
-    .stack_trace_frames = if (builtin.mode == .Debug) 10 else 0,
-}) = .{};
-var miAlloc: mi.Allocator = undefined;
-
 export fn cyVmCreate() *cy.UserVM {
-    var alloc: std.mem.Allocator = undefined;
-    if (UseMimalloc) {
-        miAlloc.init();
-        alloc = miAlloc.allocator();
-    } else {
-        if (cy.isWasm) {
-            alloc = std.heap.wasm_allocator;
-        } else {
-            alloc = gpa.allocator();
-        }
-    }
-
+    const alloc = cy.heap.getAllocator();
     const vm = cy.getUserVM();
     vm.init(alloc) catch fatal();
     if (cy.isWasm) {
@@ -122,11 +102,6 @@ test "cyVmValidate()" {
 }
 
 var tempBuf: [1024]u8 align(8) = undefined;
-
-// comptime {
-//     if (cy.isWasm) {
-//     }
-// }
 
 export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
     const report = vm.allocLastErrorReport() catch fatal();

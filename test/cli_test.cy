@@ -1,42 +1,62 @@
 import os 'os'
 import t 'test'
 
+if os.system == 'windows':
+  printCmd = 'Write-Output'
+else:
+  printCmd = 'printf'
+
 -- core.getInput() returns error.EndOfStream
-try runPipeInput('printf "abc"', "
+try runPipeInput('{printCmd} "abc"', "
 import t 'test'
-try t.eq(getInput(), error(#EndOfStream))
+import os 'os'
+if os.system == 'windows':
+  try t.eq(getInput().utf8(), 'abc\\r')
+  try t.eq(getInput(), error(#EndOfStream))
+else:
+  try t.eq(getInput(), error(#EndOfStream))
 ")
 
 -- core.getInput() returns user input before new line.
-try runPipeInput('printf "abc\n"', "
+try runPipeInput('{printCmd} "abc\n"', "
 import t 'test'
 try t.eq(getInput().utf8(), 'abc')
 ")
 
 -- os.stdin.streamLines()
-try runPipeInput('printf "abc\nfoo\r\nbar"', "
+try runPipeInput('{printCmd} "abc\nfoo\r\nbar"', "
 import os 'os'
 import t 'test'
 lines = []
 for os.stdin.streamLines() each line:
-  lines.add(line)
+  lines.append(line)
 try t.eq(lines.len(), 3)
 try t.eq(lines[0].utf8(), 'abc\\n')
 try t.eq(lines[1].utf8(), 'foo\\r\\n')
-try t.eq(lines[2].utf8(), 'bar')
+if os.system == 'windows':
+  try t.eq(lines[2].utf8(), 'bar\\r\\n')
+else:
+  try t.eq(lines[2].utf8(), 'bar')
 ")
 
 -- os.stdin.streamLines() with small buffer size to test string building.
-try runPipeInput('printf "abcxyz\nfoobar\r\ndeadbeef"', "
+try runPipeInput('{printCmd} "abcxyz\nfoobar\r\ndeadbeef"', "
 import os 'os'
 import t 'test'
 lines = []
 for os.stdin.streamLines(4) each line:
-  lines.add(line)
-try t.eq(lines.len(), 3)
-try t.eq(lines[0].utf8(), 'abcxyz\\n')
-try t.eq(lines[1].utf8(), 'foobar\\r\\n')
-try t.eq(lines[2].utf8(), 'deadbeef')
+  lines.append(line)
+if os.system == 'windows':
+  try t.eq(lines.len(), 4)
+  try t.eq(lines[0].utf8(), 'abcxyz\\n')
+  try t.eq(lines[1].utf8(), 'foobar\\r\\n')
+  try t.eq(lines[2].utf8(), 'deadbeef\\r')
+  try t.eq(lines[3].utf8(), '\\n')
+else:
+  try t.eq(lines.len(), 3)
+  try t.eq(lines[0].utf8(), 'abcxyz\\n')
+  try t.eq(lines[1].utf8(), 'foobar\\r\\n')
+  try t.eq(lines[2].utf8(), 'deadbeef')
 ")
 
 try runArgs(['123', 'foobar'], "
@@ -85,7 +105,10 @@ func runExpectOut(src, expOut):
 func runPipeInput(cmd, src):
     writeFile('temp.cy', src)
     cyber = os.exePath()
-    res = execCmd([ '/bin/bash', '-c', '{cmd} | {cyber} temp.cy' ])
+    if os.system == 'windows':
+      res = try execCmd([ 'powershell', '-c', '{cmd} | {cyber} temp.cy' ])
+    else:
+      res = try execCmd([ '/bin/bash', '-c', '{cmd} | {cyber} temp.cy' ])
     if res.exited != 0:
         print res.out
         print res.err

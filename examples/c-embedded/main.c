@@ -5,7 +5,7 @@
 // zig cc main.c -I src -lcyber -L <Path to cyber.dll/so/dylib> -o main.exe
 
 int main() {
-    CyUserVM* vm = cyVmCreate();
+    CyVM* vm = cyVmCreate();
     CStr src = cstr(
         "a = 2\n"
         "print a"

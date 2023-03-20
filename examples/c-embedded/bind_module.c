@@ -5,13 +5,13 @@
 // Compile this program with a C compiler. `zig cc` is used here as an example.
 // zig cc bind_module.c -I src -lcyber -L <Path to cyber.dll/so/dylib> -o main.exe
 
-bool loadCore(CyUserVM* vm, CyModule* mod);
-bool loadMyMod(CyUserVM* vm, CyModule* mod);
-CyValue print(CyUserVM* vm, CyValue* args, uint8_t nargs);
-CyValue add(CyUserVM* vm, CyValue* args, uint8_t nargs);
+bool loadCore(CyVM* vm, CyModule* mod);
+bool loadMyMod(CyVM* vm, CyModule* mod);
+CyValue print(CyVM* vm, CyValue* args, uint8_t nargs);
+CyValue add(CyVM* vm, CyValue* args, uint8_t nargs);
 
 int main() {
-    CyUserVM* vm = cyVmCreate();
+    CyVM* vm = cyVmCreate();
 
     // Add syms to the default module (Loaded into each script's namespace).
     cyVmAddModuleLoader(vm, cstr("core"), loadCore);
@@ -40,7 +40,7 @@ int main() {
     return 0;
 }
 
-bool loadMyMod(CyUserVM* vm, CyModule* mod) {
+bool loadMyMod(CyVM* vm, CyModule* mod) {
     cyVmSetModuleFunc(vm, mod, cstr("add"), 2, add);
 
     CyValue str = cyValueGetOrAllocStringInfer(vm, cstr("hello world"));
@@ -48,7 +48,7 @@ bool loadMyMod(CyUserVM* vm, CyModule* mod) {
     return true;
 }
 
-bool loadCore(CyUserVM* vm, CyModule* mod) {
+bool loadCore(CyVM* vm, CyModule* mod) {
     cyVmSetModuleFunc(vm, mod, cstr("add"), 2, add);
 
     // Override core.print.
@@ -57,13 +57,13 @@ bool loadCore(CyUserVM* vm, CyModule* mod) {
     return true;
 }
 
-CyValue add(CyUserVM* vm, CyValue* args, uint8_t nargs) {
-    double left = cyValueAsDouble(args[0]);
-    double right = cyValueAsDouble(args[1]);
+CyValue add(CyVM* vm, CyValue* args, uint8_t nargs) {
+    double left = cyValueAsNumber(args[0]);
+    double right = cyValueAsNumber(args[1]);
     return cyValueNumber(left + right);
 }
 
-CyValue print(CyUserVM* vm, CyValue* args, uint8_t nargs) {
+CyValue print(CyVM* vm, CyValue* args, uint8_t nargs) {
     CStr str = cyValueToTempRawString(vm, args[0]);
     printf("Overrided print: %s\n", str.charz);
     cyVmRelease(vm, args[0]);

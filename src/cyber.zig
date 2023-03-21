@@ -181,7 +181,7 @@ pub fn forceSectionDeps() !void {
 }
 
 /// Whether to print verbose logs.
-pub var verbose = false;
+pub export var verbose = false;
 
 /// Compile errors are not printed.
 pub var silentError = false;

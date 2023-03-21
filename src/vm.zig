@@ -7,6 +7,7 @@ const fatal = stdx.fatal;
 const t = stdx.testing;
 const tcc = @import("tcc");
 
+const vmc = @import("vm_c.zig");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
@@ -44,9 +45,6 @@ pub fn getUserVM() *UserVM {
 
 pub const VM = struct {
     alloc: std.mem.Allocator,
-    compiler: cy.VMcompiler,
-
-    /// [Eval context]
 
     /// Program counter. Pointer to the current instruction data in `ops`.
     pc: [*]cy.OpData,
@@ -153,6 +151,8 @@ pub const VM = struct {
 
     /// User data ptr. Useful for embedders.
     userData: ?*anyopaque,
+
+    compiler: cy.VMcompiler,
 
     lastError: ?error{TokenError, ParseError, CompileError, Panic},
 
@@ -2375,8 +2375,14 @@ test "Internals." {
     try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 24);
 
-
     try t.eq(@sizeOf(KeyU64), 8);
+
+    // Check Zig/C structs.
+    try t.eq(@offsetOf(VM, "alloc"), @offsetOf(vmc.VM, "alloc"));
+    try t.eq(@offsetOf(VM, "pc"), @offsetOf(vmc.VM, "curPc"));
+    try t.eq(@offsetOf(VM, "framePtr"), @offsetOf(vmc.VM, "curStack"));
+    try t.eq(@offsetOf(VM, "stack"), @offsetOf(vmc.VM, "stackPtr"));
+    try t.eq(@offsetOf(VM, "stackEndPtr"), @offsetOf(vmc.VM, "stackEndPtr"));
 }
 
 const MethodSymType = enum {
@@ -2579,20 +2585,32 @@ const Root = @This();
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
 pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
-    while (true) {
-        @call(.always_inline, evalLoop, .{vm}) catch |err| {
-            if (err == error.StackOverflow) {
-                log.debug("grow stack", .{});
-                try @call(.never_inline, vm.growStackAuto, .{});
-                continue;
-            } else if (err == error.End) {
-                return;
-            } else if (err == error.Panic) {
-                try @call(.never_inline, debug.buildStackTrace, .{vm, true});
+    if (comptime build_options.engine == .zig) {
+        while (true) {
+            @call(.always_inline, evalLoop, .{vm}) catch |err| {
+                if (err == error.StackOverflow) {
+                    log.debug("grow stack", .{});
+                    try @call(.never_inline, vm.growStackAuto, .{});
+                    continue;
+                } else if (err == error.End) {
+                    return;
+                } else if (err == error.Panic) {
+                    try @call(.never_inline, debug.buildStackTrace, .{vm, true});
+                    return error.Panic;
+                } else return err;
+            };
+            return;
+        }
+    } else if (comptime build_options.engine == .c) {
+        while (true) {
+            const res = vmc.execBytecode(@ptrCast(*vmc.VM, vm));
+            if (res != vmc.EXEC_RESULT_SUCCESS) {
                 return error.Panic;
-            } else return err;
-        };
-        return;
+            }
+            return;
+        }
+    } else {
+        @compileError("Unsupported engine.");
     }
 }
 
@@ -4940,3 +4958,34 @@ fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const 
 pub const ValidateResult = struct {
     err: ?cy.CompileErrorType,
 };
+
+export fn zFatal() void {
+    stdx.fatal();
+}
+
+export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
+    return @tagName(@intToEnum(cy.OpCode, code));
+}
+
+export fn zCallSym(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.CallSymResult {
+    const res = @call(.always_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, reqNumRetVals)}) catch {
+        stdx.fatal();
+    };
+    return .{
+        .pc = @ptrCast([*c]u8, res.pc),
+        .stack = @ptrCast([*c]u64, res.framePtr),
+    };
+}
+
+export fn zDumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) void {
+    dumpEvalOp(vm, pc) catch stdx.fatal();
+}
+
+export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+    cy.heap.freeObject(vm, obj);
+} 
+
+export fn zEnd(vm: *cy.VM, pc: [*]const cy.OpData) void {
+    vm.endLocal = pc[1].arg;
+    vm.curFiber.pc = @intCast(u32, pcOffset(vm, pc + 2));
+}

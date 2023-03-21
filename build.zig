@@ -1,18 +1,15 @@
 const std = @import("std");
-const cy_config = @import("src/config.zig");
+const config = @import("src/config.zig");
 const mimalloc = @import("lib/mimalloc/lib.zig");
 const tcc = @import("lib/tcc/lib.zig");
 
 // FIND: v0.2
 const Version = "0.2";
 
-const Options = struct {
-    linkMimalloc: bool = false,
-};
-
 var stdx: *std.build.Module = undefined;
 var fastArm64: bool = undefined;
 var useMalloc: bool = undefined;
+var engine: config.Engine = .zig;
 
 pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
@@ -24,7 +21,7 @@ pub fn build(b: *std.build.Builder) !void {
     useMalloc = b.option(bool, "use-malloc", "Use C allocator.") orelse false;
 
     stdx = b.createModule(.{
-        .source_file = .{ .path = srcPath() ++ "/src/stdx/stdx.zig" },
+        .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
     });
 
     {
@@ -46,6 +43,9 @@ pub fn build(b: *std.build.Builder) !void {
         exe.rdynamic = true;
 
         try addBuildOptions(b, exe, false);
+        if (engine == .c) {
+            try buildCVM(exe);
+        }
         // exe.emit_asm = .emit;
 
         // exe.linkLibC();
@@ -70,7 +70,7 @@ pub fn build(b: *std.build.Builder) !void {
             lib.strip = true;
         }
         lib.setOutputDir("zig-out/lib");
-        lib.addIncludePath(srcPath() ++ "/src");
+        lib.addIncludePath(thisDir() ++ "/src");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         // lib.addRPath(".");
@@ -93,7 +93,7 @@ pub fn build(b: *std.build.Builder) !void {
             });
         } else {
             lib.addAnonymousModule("tcc", .{
-                .source_file = .{ .path = srcPath() ++ "/src/nopkg.zig" },
+                .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
             });
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
             lib.stack_protector = false;
@@ -113,7 +113,7 @@ pub fn build(b: *std.build.Builder) !void {
         }
         lib.setOutputDir("zig-out/test");
         lib.setMainPkgPath(".");
-        lib.addIncludePath(srcPath() ++ "/src");
+        lib.addIncludePath(thisDir() ++ "/src");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         // lib.addRPath(".");
@@ -136,7 +136,7 @@ pub fn build(b: *std.build.Builder) !void {
             });
         } else {
             lib.addAnonymousModule("tcc", .{
-                .source_file = .{ .path = srcPath() ++ "/src/nopkg.zig" },
+                .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
             });
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
             lib.stack_protector = false;
@@ -152,10 +152,15 @@ pub fn build(b: *std.build.Builder) !void {
         });
         step.setMainPkgPath(".");
         step.setFilter(testFilter);
+        step.addIncludePath(thisDir() ++ "/src");
 
         try addBuildOptions(b, step, false);
         step.addModule("stdx", stdx);
         step.rdynamic = true;
+
+        if (engine == .c) {
+            try buildCVM(step);
+        }
 
         tcc.addModule(step);
         tcc.buildAndLink(step, .{
@@ -176,7 +181,7 @@ pub fn build(b: *std.build.Builder) !void {
             .optimize = optimize,
         });
         step.setMainPkgPath(".");
-        step.addIncludePath(srcPath() ++ "/src");
+        step.addIncludePath(thisDir() ++ "/src");
         step.setFilter(testFilter);
 
         try addBuildOptions(b, step, false);
@@ -208,8 +213,9 @@ pub fn build(b: *std.build.Builder) !void {
     b.step("version", "Get the short version.").dependOn(&printStep.step);
 }
 
-const Config = struct {
+const Options = struct {
     selinux: bool = false,
+    linkMimalloc: bool = false,
 };
 
 fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace: bool) !void {
@@ -232,7 +238,7 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     build_options.addOption([]const u8, "build", buildTag);
     build_options.addOption([]const u8, "commit", commitTag);
     build_options.addOption(bool, "useMalloc", useMalloc);
-    build_options.addOption(cy_config.Engine, "cyEngine", .vm);
+    build_options.addOption(config.Engine, "engine", engine);
     build_options.addOption(bool, "trace", trace);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     build_options.addOption(bool, "fastArm64",
@@ -242,29 +248,33 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     step.addOptions("build_options", build_options);
 }
 
-fn addTraceTest(b: *std.build.Builder, optimize: std.builtin.OptimizeMode, target: std.zig.CrossTarget, config: Config) !*std.build.LibExeObjStep {
+fn addTraceTest(b: *std.build.Builder, optimize: std.builtin.OptimizeMode, target: std.zig.CrossTarget, opts: Options) !*std.build.LibExeObjStep {
     const step = b.addTest(.{
         .root_source_file = .{ .path = "./test/trace_test.zig" },
         .optimize = optimize,
         .target = target,
     });
     step.setMainPkgPath(".");
+    step.addIncludePath(thisDir() ++ "/src");
     try addBuildOptions(b, step, true);
     step.addModule("stdx", stdx);
 
     tcc.addModule(step);
     tcc.buildAndLink(step, .{
-        .selinux = config.selinux,
+        .selinux = opts.selinux,
     });
+    if (engine == .c) {
+        try buildCVM(step);
+    }
     return step;
 }
 
 const stdxPkg = std.build.Pkg{
     .name = "stdx",
-    .source = .{ .path = srcPath() ++ "/src/stdx/stdx.zig" },
+    .source = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
 };
 
-inline fn srcPath() []const u8 {
+inline fn thisDir() []const u8 {
     return comptime std.fs.path.dirname(@src().file) orelse unreachable;
 }
 
@@ -286,3 +296,14 @@ pub const PrintStep = struct {
         std.io.getStdOut().writer().writeAll(self.str) catch unreachable;
     }
 };
+
+pub fn buildCVM(step: *std.build.CompileStep) !void {
+    const b = step.builder;
+    var cflags = std.ArrayList([]const u8).init(b.allocator);
+    if (step.optimize == .Debug) {
+        try cflags.append("-DDEBUG=1");
+    }
+    try cflags.append("-DCGOTO=1");
+    step.addIncludePath(thisDir() ++ "/src");
+    step.addCSourceFile(thisDir() ++ "/src/vm.c", cflags.items);
+}

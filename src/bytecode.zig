@@ -7,6 +7,7 @@ const log = stdx.log.scoped(.bytecode);
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
 const v = fmt.v;
+const vmc = @import("vm_c.zig");
 
 /// Holds vm instructions.
 pub const ByteCodeBuffer = struct {
@@ -648,170 +649,170 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
 
 pub const OpCode = enum(u8) {
     /// Copies a constant value from `consts` to a dst local.
-    constOp,
+    constOp = vmc.CodeConstOp,
     /// Sets an immediate i8 value as a number to a dst local.
-    constI8,
+    constI8 = vmc.CodeConstI8,
     /// Sets an immediate i8 value as an integer to a dst local.
-    constI8Int,
+    constI8Int = vmc.CodeConstI8Int,
     /// Add first two locals and stores result to a dst local.
-    add,
+    add = vmc.CodeAdd,
     // addNumber,
     /// Subtracts second local from first local and stores result to a dst local.
-    sub,
+    sub = vmc.CodeSub,
     /// Push boolean onto register stack.
-    true,
-    false,
+    true = vmc.CodeTrue,
+    false = vmc.CodeFalse,
     /// Sets the `none` value to a dst local.
-    none,
+    none = vmc.CodeNone,
     /// Pops top register, performs not, and pushes result onto stack.
-    not,
+    not = vmc.CodeNot,
     /// Copies a local from src to dst.
-    copy,
-    copyReleaseDst,
+    copy = vmc.CodeCopy,
+    copyReleaseDst = vmc.CodeCopyReleaseDst,
 
     /// [leftLocal] [indexLocal] [rightLocal]
-    setIndex,
+    setIndex = vmc.CodeSetIndex,
     /// setIndex in addition to a release on leftLocal.
-    setIndexRelease,
+    setIndexRelease = vmc.CodeSetIndexRelease,
 
-    copyRetainSrc,
+    copyRetainSrc = vmc.CodeCopyRetainSrc,
 
     /// [leftLocal] [indexLocal] Retains the result of an index operation.
-    index,
+    index = vmc.CodeIndex,
 
     /// [leftLocal] [indexLocal] Retains the result of a reverse index operation.
-    reverseIndex,
+    reverseIndex = vmc.CodeReverseIndex,
 
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
-    list,
+    list = vmc.CodeList,
     /// First operand points the first entry value and also the dst local. Second operand contains the number of elements.
     /// Const key indexes follow the size operand.
-    map,
-    mapEmpty,
-    slice,
+    map = vmc.CodeMap,
+    mapEmpty = vmc.CodeMapEmpty,
+    slice = vmc.CodeSlice,
     /// Pops top register, if value evals to false, jumps the pc forward by an offset.
-    jumpNotCond,
-    jumpCond,
+    jumpNotCond = vmc.CodeJumpNotCond,
+    jumpCond = vmc.CodeJumpCond,
     /// Jumps the pc by an 16-bit integer offset.
-    jump,
+    jump = vmc.CodeJump,
 
-    release,
-    releaseN,
-    callObjSym,
-    callObjNativeFuncIC,
-    callObjFuncIC,
-    callSym,
-    callFuncIC,
-    callNativeFuncIC,
-    ret1,
-    ret0,
+    release = vmc.CodeRelease,
+    releaseN = vmc.CodeReleaseN,
+    callObjSym = vmc.CodeCallObjSym,
+    callObjNativeFuncIC = vmc.CodeCallObjNativeFuncIC,
+    callObjFuncIC = vmc.CodeCallObjFuncIC,
+    callSym = vmc.CodeCallSym,
+    callFuncIC = vmc.CodeCallFuncIC,
+    callNativeFuncIC = vmc.CodeCallNativeFuncIC,
+    ret1 = vmc.CodeRet1,
+    ret0 = vmc.CodeRet0,
 
     /// Calls a lambda and ensures 0 return values.
     /// [calleeLocal] [numArgs]
-    call0,
+    call0 = vmc.CodeCall0,
 
     /// Calls a lambda and ensures 1 return value.
     /// [calleeLocal] [numArgs]
-    call1,
+    call1 = vmc.CodeCall1,
 
-    field,
-    fieldIC,
-    fieldRetain,
-    fieldRetainIC,
-    fieldRelease,
-    lambda,
-    closure,
-    compare,
-    less,
+    field = vmc.CodeField,
+    fieldIC = vmc.CodeFieldIC,
+    fieldRetain = vmc.CodeFieldRetain,
+    fieldRetainIC = vmc.CodeFieldRetainIC,
+    fieldRelease = vmc.CodeFieldRelease,
+    lambda = vmc.CodeLambda,
+    closure = vmc.CodeClosure,
+    compare = vmc.CodeCompare,
+    less = vmc.CodeLess,
     // lessNumber,
-    greater,
-    lessEqual,
-    greaterEqual,
+    greater = vmc.CodeGreater,
+    lessEqual = vmc.CodeLessEqual,
+    greaterEqual = vmc.CodeGreaterEqual,
 
     /// Multiplies first two locals and stores result to a dst local.
-    mul,
+    mul = vmc.CodeMul,
     /// Divides second local from first local and stores result to a dst local.
-    div,
+    div = vmc.CodeDiv,
     /// Raises first local's power to the value of the second local and stores result to a dst local.
-    pow,
+    pow = vmc.CodePow,
     /// Perform modulus on the two locals and stores result to a dst local.
-    mod,
+    mod = vmc.CodeMod,
 
-    compareNot,
+    compareNot = vmc.CodeCompareNot,
 
     /// [startLocal] [exprCount] [dst] [..string consts]
-    stringTemplate,
-    neg,
-    setInitN,
-    objectSmall,
-    object,
-    setField,
-    setFieldRelease,
-    setFieldReleaseIC,
-    coinit,
-    coyield,
-    coresume,
-    coreturn,
-    retain,
-    copyRetainRelease,
+    stringTemplate = vmc.CodeStringTemplate,
+    neg = vmc.CodeNeg,
+    setInitN = vmc.CodeSetInitN,
+    objectSmall = vmc.CodeObjectSmall,
+    object = vmc.CodeObject,
+    setField = vmc.CodeSetField,
+    setFieldRelease = vmc.CodeSetFieldRelease,
+    setFieldReleaseIC = vmc.CodeSetFieldReleaseIC,
+    coinit = vmc.CodeCoinit,
+    coyield = vmc.CodeCoyield,
+    coresume = vmc.CodeCoresume,
+    coreturn = vmc.CodeCoreturn,
+    retain = vmc.CodeRetain,
+    copyRetainRelease = vmc.CodeCopyRetainRelease,
 
     /// Lifts a source local to a box object and stores the result in `dstLocal`.
     /// The source local is also retained.
     /// [srcLocal] [dstLocal]
-    box,
+    box = vmc.CodeBox,
 
-    setBoxValue,
-    setBoxValueRelease,
-    boxValue,
-    boxValueRetain,
-    tag,
-    tagLiteral,
+    setBoxValue = vmc.CodeSetBoxValue,
+    setBoxValueRelease = vmc.CodeSetBoxValueRelease,
+    boxValue = vmc.CodeBoxValue,
+    boxValueRetain = vmc.CodeBoxValueRetain,
+    tag = vmc.CodeTag,
+    tagLiteral = vmc.CodeTagLiteral,
 
     /// Copies a non error value to a local or jumps to end of the function.
     /// [srcLocal] [dstLocal] [jumpOffset: u16]
-    tryValue,
+    tryValue = vmc.CodeTryValue,
 
-    bitwiseAnd,
-    bitwiseOr,
-    bitwiseXor,
-    bitwiseNot,
-    bitwiseLeftShift,
-    bitwiseRightShift,
-    jumpNotNone,
-    addInt,
-    subInt,
-    lessInt,
-    forRangeInit,
-    forRange,
-    forRangeReverse,
+    bitwiseAnd = vmc.CodeBitwiseAnd,
+    bitwiseOr = vmc.CodeBitwiseOr,
+    bitwiseXor = vmc.CodeBitwiseXor,
+    bitwiseNot = vmc.CodeBitwiseNot,
+    bitwiseLeftShift = vmc.CodeBitwiseLeftShift,
+    bitwiseRightShift = vmc.CodeBitwiseRightShift,
+    jumpNotNone = vmc.CodeJumpNotNone,
+    addInt = vmc.CodeAddInt,
+    subInt = vmc.CodeSubInt,
+    lessInt = vmc.CodeLessInt,
+    forRangeInit = vmc.CodeForRangeInit,
+    forRange = vmc.CodeForRange,
+    forRangeReverse = vmc.CodeForRangeReverse,
 
     /// Performs an eq comparison with a sequence of locals.
     /// The pc then jumps with the offset of the matching local, otherwise the offset from the end is used.
     /// [exprLocal] [numCases] [case1Local] [case1Jump] ... [elseJump]
-    match,
+    match = vmc.CodeMatch,
 
     /// Wraps a static function in a function value.
     /// [symId] [dstLocal]
-    staticFunc,
+    staticFunc = vmc.CodeStaticFunc,
 
     /// Copies and retains a static variable to a destination local.
     /// [symId] [dstLocal]
-    staticVar,
+    staticVar = vmc.CodeStaticVar,
 
     /// Copies a local register to a static variable.
     /// [symId] [local]
-    setStaticVar,
+    setStaticVar = vmc.CodeSetStaticVar,
 
     /// Copies a local register to a static function.
     /// [symId] [local]
-    setStaticFunc,
+    setStaticFunc = vmc.CodeSetStaticFunc,
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]
-    sym,
+    sym = vmc.CodeSym,
 
     /// Indicates the end of the main script.
-    end,
+    end = vmc.CodeEnd,
 };
 
 test "Internals." {

@@ -34,6 +34,7 @@ pub fn build(b: *std.build.Builder) !void {
         if (exe.optimize != .Debug) {
             exe.strip = true;
         }
+        exe.addIncludePath(thisDir() ++ "/src");
         exe.setOutputDir("zig-out/cyber");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.

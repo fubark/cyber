@@ -296,6 +296,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         \\extern uint64_t icyAllocObject(UserVM*, uint32_t);
         \\extern uint64_t icyAllocCyPointer(UserVM*, void*);
         // \\extern int printf(char* fmt, ...);
+        // \\extern void exit(int code);
         \\
     , .{});
 
@@ -418,6 +419,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     }
     // _ = tcc.tcc_add_symbol(state, "__floatundisf", __floatundisf);
     // _ = tcc.tcc_add_symbol(state, "printf", std.c.printf);
+    // _ = tcc.tcc_add_symbol(state, "exit", std.c.exit);
     // _ = tcc.tcc_add_symbol(state, "breakpoint", breakpoint);
     _ = tcc.tcc_add_symbol(state, "icyFromCStr", fromCStr);
     _ = tcc.tcc_add_symbol(state, "icyToCStr", toCStr);

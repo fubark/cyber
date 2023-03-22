@@ -2383,6 +2383,15 @@ test "Internals." {
     try t.eq(@offsetOf(VM, "framePtr"), @offsetOf(vmc.VM, "curStack"));
     try t.eq(@offsetOf(VM, "stack"), @offsetOf(vmc.VM, "stackPtr"));
     try t.eq(@offsetOf(VM, "stackEndPtr"), @offsetOf(vmc.VM, "stackEndPtr"));
+    try t.eq(@offsetOf(VM, "ops"), @offsetOf(vmc.VM, "instPtr"));
+    try t.eq(@offsetOf(VM, "consts"), @offsetOf(vmc.VM, "constPtr"));
+    try t.eq(@offsetOf(VM, "strBuf"), @offsetOf(vmc.VM, "strBufPtr"));
+    try t.eq(@offsetOf(VM, "strInterns"), @offsetOf(vmc.VM, "strInterns"));
+    try t.eq(@offsetOf(VM, "heapPages"), @offsetOf(vmc.VM, "heapPages"));
+    try t.eq(@offsetOf(VM, "heapFreeHead"), @offsetOf(vmc.VM, "heapFreeHead"));
+    if (cy.TrackGlobalRC) {
+        try t.eq(@offsetOf(VM, "refCounts"), @offsetOf(vmc.VM, "refCounts"));
+    }
 }
 
 const MethodSymType = enum {
@@ -2604,7 +2613,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
     } else if (comptime build_options.engine == .c) {
         while (true) {
             const res = vmc.execBytecode(@ptrCast(*vmc.VM, vm));
-            if (res != vmc.EXEC_RESULT_SUCCESS) {
+            if (res != vmc.RES_CODE_SUCCESS) {
                 return error.Panic;
             }
             return;
@@ -4988,4 +4997,77 @@ export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
 export fn zEnd(vm: *cy.VM, pc: [*]const cy.OpData) void {
     vm.endLocal = pc[1].arg;
     vm.curFiber.pc = @intCast(u32, pcOffset(vm, pc + 2));
+}
+
+export fn zAllocList(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
+    const list = cy.heap.allocList(vm, elemStart[0..nElems]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(vmc.Value, list),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zOtherToF64(val: Value) f64 {
+    return val.otherToF64();
+}
+
+export fn zEvalAddFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) vmc.ValueResult {
+    const val = evalAddFallback(vm, left, right) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(vmc.Value, val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zEvalSubFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) vmc.ValueResult {
+    const val = evalMinusFallback(vm, left, right) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(vmc.Value, val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: cy.TypeId, symId: u8, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
+    if (vm.getCallObjSym(typeId, symId)) |sym| {
+        const res = @call(.never_inline, vm.callSymEntry, .{pc, stack, sym, recv, typeId, startLocal, numArgs, numRet }) catch {
+            return .{
+                .pc = undefined,
+                .stack = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        };
+        return .{
+            .pc = @ptrCast([*c]u8, res.pc),
+            .stack = @ptrCast([*c]u64, res.framePtr),
+            .code = vmc.RES_CODE_SUCCESS,
+        };
+    } else {
+        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, symId, startLocal, numArgs, numRet}) catch {
+            return .{
+                .pc = undefined,
+                .stack = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        };
+        return .{
+            .pc = @ptrCast([*c]u8, res.pc),
+            .stack = @ptrCast([*c]u64, res.framePtr),
+            .code = vmc.RES_CODE_SUCCESS,
+        };
+    }
 }

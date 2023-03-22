@@ -7,6 +7,7 @@ const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
 const cy = @import("cyber.zig");
 const fmt = @import("fmt.zig");
+const vmc = @import("vm_c.zig");
 
 /// Most significant bit.
 const SignMask: u64 = 1 << 63;
@@ -43,15 +44,15 @@ pub const TagStaticUstring: TagId = 4;
 pub const TagUserTag: TagId = 5;
 pub const TagUserTagLiteral: TagId = 6;
 pub const TagInteger: TagId = 7;
-pub const NoneT: u32 = TagNone;
-pub const BooleanT: u32 = TagBoolean;
-pub const ErrorT: u32 = TagError;
-pub const StaticAstringT: u32 = TagStaticAstring; // ASCII string.
-pub const StaticUstringT: u32 = TagStaticUstring; // UTF8 string.
-pub const UserTagT: u32 = TagUserTag;
-pub const UserTagLiteralT: u32 = TagUserTagLiteral;
-pub const IntegerT: u32 = TagInteger;
-pub const NumberT: u32 = 8;
+pub const NoneT: u32 = vmc.TYPE_NONE;
+pub const BooleanT: u32 = vmc.TYPE_BOOLEAN;
+pub const ErrorT: u32 = vmc.TYPE_ERROR;
+pub const StaticAstringT: u32 = vmc.TYPE_STATIC_ASTRING; // ASCII string.
+pub const StaticUstringT: u32 = vmc.TYPE_STATIC_USTRING; // UTF8 string.
+pub const UserTagT: u32 = vmc.TYPE_TAG;
+pub const UserTagLiteralT: u32 = vmc.TYPE_TAGLIT;
+pub const IntegerT: u32 = vmc.TYPE_INTEGER;
+pub const NumberT: u32 = vmc.TYPE_NUMBER;
 
 pub const StaticUstringHeader = struct {
     charLen: u32,
@@ -122,7 +123,7 @@ pub const Value = packed union {
         }
     }
 
-    fn otherToF64(self: *const Value) linksection(cy.HotSection) f64 {
+    pub fn otherToF64(self: *const Value) linksection(cy.HotSection) f64 {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
             if (obj.common.structId == cy.AstringT) {
@@ -610,4 +611,10 @@ test "Internals." {
     try t.eq(NoneMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
     try t.eq(PointerMask, 0xFFFC000000000000);
+
+    // Check Zig/C struct compat.
+    try t.eq(@sizeOf(Value), @sizeOf(vmc.Value));
+    const retInfoT = std.meta.fieldInfo(Value, .retInfo).type;
+    try t.eq(@offsetOf(retInfoT, "numRetVals"), 0);
+    try t.eq(@offsetOf(retInfoT, "retFlag"), 1);
 }

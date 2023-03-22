@@ -9,16 +9,20 @@ const Version = "0.2";
 var stdx: *std.build.Module = undefined;
 var fastArm64: bool = undefined;
 var useMalloc: bool = undefined;
+var selinux: bool = undefined;
 var engine: config.Engine = .zig;
+var testFilter: ?[]const u8 = undefined;
 
 pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
+    selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     fastArm64 = b.option(bool, "fast-arm64", "Experimental: Computed gotos for arm64.") orelse false;
-    const testFilter = b.option([]const u8, "test-filter", "Test filter.");
+    testFilter = b.option([]const u8, "test-filter", "Test filter.");
     useMalloc = b.option(bool, "use-malloc", "Use C allocator.") orelse false;
+
+    const opts = getDefaultOptions(target, optimize);
 
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
@@ -43,9 +47,9 @@ pub fn build(b: *std.build.Builder) !void {
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
 
-        try addBuildOptions(b, exe, false);
+        try addBuildOptions(b, exe, opts);
         if (engine == .c) {
-            try buildCVM(exe);
+            try buildCVM(exe, opts);
         }
         // exe.emit_asm = .emit;
 
@@ -80,7 +84,7 @@ pub fn build(b: *std.build.Builder) !void {
         // Also needed to export symbols in wasm lib.
         lib.rdynamic = true;
 
-        try addBuildOptions(b, lib, false);
+        try addBuildOptions(b, lib, opts);
 
         // lib.linkLibC();
         lib.addModule("stdx", stdx);
@@ -123,7 +127,7 @@ pub fn build(b: *std.build.Builder) !void {
         // Also needed to export symbols in wasm lib.
         lib.rdynamic = true;
 
-        try addBuildOptions(b, lib, false);
+        try addBuildOptions(b, lib, opts);
 
         // lib.linkLibC();
         lib.addModule("stdx", stdx);
@@ -155,22 +159,20 @@ pub fn build(b: *std.build.Builder) !void {
         step.setFilter(testFilter);
         step.addIncludePath(thisDir() ++ "/src");
 
-        try addBuildOptions(b, step, false);
+        try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
         step.rdynamic = true;
 
         if (engine == .c) {
-            try buildCVM(step);
+            try buildCVM(step, opts);
         }
 
         tcc.addModule(step);
         tcc.buildAndLink(step, .{
-            .selinux = selinux,
+            .selinux = opts.selinux,
         });
 
-        const traceTest = try addTraceTest(b, optimize, target, .{
-            .selinux = selinux,
-        });
+        const traceTest = try addTraceTest(b, opts);
         traceTest.step.dependOn(&step.step);
         b.step("test", "Run tests.").dependOn(&traceTest.step);
     }
@@ -185,27 +187,23 @@ pub fn build(b: *std.build.Builder) !void {
         step.addIncludePath(thisDir() ++ "/src");
         step.setFilter(testFilter);
 
-        try addBuildOptions(b, step, false);
+        try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
         step.rdynamic = true;
 
         tcc.addModule(step);
         tcc.buildAndLink(step, .{
-            .selinux = selinux,
+            .selinux = opts.selinux,
         });
 
-        const traceTest = try addTraceTest(b, optimize, target, .{
-            .selinux = selinux,
-        });
+        const traceTest = try addTraceTest(b, opts);
         traceTest.step.dependOn(&step.step);
         b.step("test-lib", "Run tests.").dependOn(&traceTest.step);
     }
 
     {
         // Just trace test.
-        const traceTest = try addTraceTest(b, optimize, target, .{
-            .selinux = selinux,
-        });
+        const traceTest = try addTraceTest(b, opts);
         b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
     }
 
@@ -215,11 +213,25 @@ pub fn build(b: *std.build.Builder) !void {
 }
 
 const Options = struct {
-    selinux: bool = false,
+    selinux: bool,
     linkMimalloc: bool = false,
+    trackGlobalRc: bool,
+    trace: bool,
+    target: std.zig.CrossTarget,
+    optimize: std.builtin.OptimizeMode,
 };
 
-fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace: bool) !void {
+fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.OptimizeMode) Options {
+    return .{
+        .selinux = selinux,
+        .trackGlobalRc = optimize != .ReleaseFast,
+        .trace = false,
+        .target = target,
+        .optimize = optimize,
+    };
+}
+
+fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: Options) !void {
     const buildTag = std.process.getEnvVarOwned(b.allocator, "BUILD") catch |err| b: {
         if (err == error.EnvironmentVariableNotFound) {
             break :b "local";
@@ -240,7 +252,8 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     build_options.addOption([]const u8, "commit", commitTag);
     build_options.addOption(bool, "useMalloc", useMalloc);
     build_options.addOption(config.Engine, "engine", engine);
-    build_options.addOption(bool, "trace", trace);
+    build_options.addOption(bool, "trace", opts.trace);
+    build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     build_options.addOption(bool, "fastArm64",
         step.target.getCpuArch() == .aarch64 and step.optimize != .Debug and fastArm64);
@@ -249,15 +262,19 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, trace:
     step.addOptions("build_options", build_options);
 }
 
-fn addTraceTest(b: *std.build.Builder, optimize: std.builtin.OptimizeMode, target: std.zig.CrossTarget, opts: Options) !*std.build.LibExeObjStep {
+fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep {
     const step = b.addTest(.{
         .root_source_file = .{ .path = "./test/trace_test.zig" },
-        .optimize = optimize,
-        .target = target,
+        .optimize = opts.optimize,
+        .target = opts.target,
     });
+    step.setFilter(testFilter);
     step.setMainPkgPath(".");
     step.addIncludePath(thisDir() ++ "/src");
-    try addBuildOptions(b, step, true);
+
+    var newOpts = opts;
+    newOpts.trace = true;
+    try addBuildOptions(b, step, newOpts);
     step.addModule("stdx", stdx);
 
     tcc.addModule(step);
@@ -265,7 +282,7 @@ fn addTraceTest(b: *std.build.Builder, optimize: std.builtin.OptimizeMode, targe
         .selinux = opts.selinux,
     });
     if (engine == .c) {
-        try buildCVM(step);
+        try buildCVM(step, newOpts);
     }
     return step;
 }
@@ -298,13 +315,16 @@ pub const PrintStep = struct {
     }
 };
 
-pub fn buildCVM(step: *std.build.CompileStep) !void {
+pub fn buildCVM(step: *std.build.CompileStep, opts: Options) !void {
     const b = step.builder;
     var cflags = std.ArrayList([]const u8).init(b.allocator);
     if (step.optimize == .Debug) {
         try cflags.append("-DDEBUG=1");
     }
     try cflags.append("-DCGOTO=1");
+    if (opts.trackGlobalRc) {
+        try cflags.append("-DTRACK_GLOBAL_RC=1");
+    }
     step.addIncludePath(thisDir() ++ "/src");
     step.addCSourceFile(thisDir() ++ "/src/vm.c", cflags.items);
 }

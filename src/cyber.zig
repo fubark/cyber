@@ -195,8 +195,9 @@ pub const isWasm = builtin.cpu.arch.isWasm();
 pub const hasJit = !isWasm;
 pub const hasStdFiles = !isWasm;
 
-pub const TraceEnabled = @import("build_options").trace;
-pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
+const build_options = @import("build_options");
+pub const TraceEnabled = build_options.trace;
+pub const TrackGlobalRC = build_options.trackGlobalRC;
 
 const std = @import("std");
 pub const NullId = std.math.maxInt(u32);

@@ -2063,23 +2063,6 @@ pub const VM = struct {
     }
 };
 
-fn evalGreaterOrEqual(left: cy.Value, right: cy.Value) cy.Value {
-    return Value.initBool(left.toF64() >= right.toF64());
-}
-
-fn evalGreater(left: cy.Value, right: cy.Value) cy.Value {
-    return Value.initBool(left.toF64() > right.toF64());
-}
-
-fn evalLessOrEqual(left: cy.Value, right: cy.Value) cy.Value {
-    return Value.initBool(left.toF64() <= right.toF64());
-}
-
-fn evalLessFallback(left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
-    @setCold(true);
-    return Value.initBool(left.toF64() < right.toF64());
-}
-
 pub const StringType = enum {
     staticAstring,
     staticUstring,
@@ -2874,10 +2857,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
-                    Value.initBool(left.asF64() < right.asF64())
-                else
-                    @call(.never_inline, evalLessFallback, .{left, right});
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initBool(left.asF64() < right.asF64());
+                } else {
+                    return panicExpectedNumber(vm);
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -2897,11 +2881,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpGreater:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initBool(left.asF64() > right.asF64());
+                } else {
+                    return panicExpectedNumber(vm);
+                }
                 pc += 4;
-                framePtr[dstLocal] = evalGreater(srcLeft, srcRight);
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -2909,11 +2896,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpLessEqual:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initBool(left.asF64() <= right.asF64());
+                } else {
+                    return panicExpectedNumber(vm);
+                }
                 pc += 4;
-                framePtr[dstLocal] = evalLessOrEqual(srcLeft, srcRight);
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },
@@ -2921,11 +2911,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpGreaterEqual:"::);
                 }
-                const srcLeft = framePtr[pc[1].arg];
-                const srcRight = framePtr[pc[2].arg];
-                const dstLocal = pc[3].arg;
+                const left = framePtr[pc[1].arg];
+                const right = framePtr[pc[2].arg];
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initBool(left.asF64() >= right.asF64());
+                } else {
+                    return panicExpectedNumber(vm);
+                }
                 pc += 4;
-                framePtr[dstLocal] = evalGreaterOrEqual(srcLeft, srcRight);
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
             },

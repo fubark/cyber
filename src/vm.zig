@@ -97,10 +97,6 @@ pub const VM = struct {
     /// Structs.
     structs: cy.List(Struct),
     structSignatures: std.HashMapUnmanaged(StructKey, TypeId, KeyU64Context, 80),
-    iteratorObjSym: SymbolId,
-    pairIteratorObjSym: SymbolId,
-    nextObjSym: SymbolId,
-    nextPairObjSym: SymbolId,
 
     /// Tag types.
     tagTypes: cy.List(TagType),
@@ -122,6 +118,11 @@ pub const VM = struct {
 
     curFiber: *cy.Fiber,
     mainFiber: cy.Fiber,
+
+    iteratorObjSym: SymbolId,
+    pairIteratorObjSym: SymbolId,
+    nextObjSym: SymbolId,
+    nextPairObjSym: SymbolId,
 
     /// Local to be returned back to eval caller.
     /// 255 indicates no return value.
@@ -918,7 +919,8 @@ pub const VM = struct {
             try self.fieldSyms.append(self.alloc, .{
                 .mruTypeId = cy.NullId,
                 .mruOffset = undefined,
-                .name = name,
+                .namePtr = name.ptr,
+                .nameLen = @intCast(u16, name.len),
             });
             res.value_ptr.* = id;
             return id;
@@ -1354,7 +1356,8 @@ pub const VM = struct {
             if (offset != cy.NullU8) {
                 return obj.object.getValue(offset);
             } else {
-                return self.getFieldFallback(obj, self.fieldSyms.buf[symId].name);
+                const sym = self.fieldSyms.buf[symId];
+                return self.getFieldFallback(obj, sym.namePtr[0..sym.nameLen]);
             }
         } else {
             return self.getFieldMissingSymbolError();
@@ -1368,7 +1371,8 @@ pub const VM = struct {
             if (offset != cy.NullU8) {
                 return obj.object.getValue(offset);
             } else {
-                return self.getFieldFallback(obj, self.fieldSyms.buf[symId].name);
+                const sym = self.fieldSyms.buf[symId];
+                return self.getFieldFallback(obj, sym.namePtr[0..sym.nameLen]);
             }
         } else {
             return self.getFieldMissingSymbolError();
@@ -2241,11 +2245,7 @@ const TagLitSym = struct {
     nameOwned: bool,
 };
 
-const FieldSymbolMap = struct {
-    mruTypeId: TypeId,
-    mruOffset: u16,
-    name: []const u8,
-};
+const FieldSymbolMap = vmc.FieldSymbolMap;
 
 test "Internals." {
     try t.eq(@alignOf(VM), 8);
@@ -2262,7 +2262,7 @@ test "Internals." {
     try t.eq(@sizeOf(RelFuncSigKey), 8);
 
     try t.eq(@sizeOf(Struct), 24);
-    try t.eq(@sizeOf(FieldSymbolMap), 24);
+    try t.eq(@sizeOf(FieldSymbolMap), 16);
 
     try t.eq(@sizeOf(KeyU64), 8);
 
@@ -2281,6 +2281,31 @@ test "Internals." {
     if (cy.TrackGlobalRC) {
         try t.eq(@offsetOf(VM, "refCounts"), @offsetOf(vmc.VM, "refCounts"));
     }
+    try t.eq(@offsetOf(VM, "methodSyms"), @offsetOf(vmc.VM, "methodSyms"));
+    try t.eq(@offsetOf(VM, "methodTable"), @offsetOf(vmc.VM, "methodTable"));
+    try t.eq(@offsetOf(VM, "methodSymSigs"), @offsetOf(vmc.VM, "methodSymSigs"));
+    try t.eq(@offsetOf(VM, "funcSyms"), @offsetOf(vmc.VM, "funcSyms"));
+    try t.eq(@offsetOf(VM, "funcSymSigs"), @offsetOf(vmc.VM, "funcSymSigs"));
+    try t.eq(@offsetOf(VM, "funcSymDetails"), @offsetOf(vmc.VM, "funcSymDetails"));
+    try t.eq(@offsetOf(VM, "varSyms"), @offsetOf(vmc.VM, "varSyms"));
+    try t.eq(@offsetOf(VM, "varSymSigs"), @offsetOf(vmc.VM, "varSymSigs"));
+    try t.eq(@offsetOf(VM, "fieldSyms"), @offsetOf(vmc.VM, "fieldSyms"));
+    try t.eq(@offsetOf(VM, "fieldTable"), @offsetOf(vmc.VM, "fieldTable"));
+    try t.eq(@offsetOf(VM, "fieldSymSignatures"), @offsetOf(vmc.VM, "fieldSymSignatures"));
+    try t.eq(@offsetOf(VM, "structs"), @offsetOf(vmc.VM, "structs"));
+    try t.eq(@offsetOf(VM, "structSignatures"), @offsetOf(vmc.VM, "structSignatures"));
+    try t.eq(@offsetOf(VM, "tagTypes"), @offsetOf(vmc.VM, "tagTypes"));
+    try t.eq(@offsetOf(VM, "tagTypeSignatures"), @offsetOf(vmc.VM, "tagTypeSignatures"));
+    try t.eq(@offsetOf(VM, "tagLitSyms"), @offsetOf(vmc.VM, "tagLitSyms"));
+    try t.eq(@offsetOf(VM, "tagLitSymSignatures"), @offsetOf(vmc.VM, "tagLitSymSignatures"));
+    try t.eq(@offsetOf(VM, "u8Buf"), @offsetOf(vmc.VM, "u8Buf"));
+    try t.eq(@offsetOf(VM, "u8Buf2"), @offsetOf(vmc.VM, "u8Buf2"));
+    try t.eq(@offsetOf(VM, "stackTrace"), @offsetOf(vmc.VM, "stackTrace"));
+    try t.eq(@offsetOf(VM, "funcSymDeps"), @offsetOf(vmc.VM, "funcSymDeps"));
+    try t.eq(@offsetOf(VM, "methodSymExtras"), @offsetOf(vmc.VM, "methodSymExtras"));
+    try t.eq(@offsetOf(VM, "debugTable"), @offsetOf(vmc.VM, "debugTablePtr"));
+    try t.eq(@offsetOf(VM, "curFiber"), @offsetOf(vmc.VM, "curFiber"));
+    try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
 }
 
 const MethodSymType = enum {
@@ -3518,7 +3543,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
-                    const offset = gvm.getFieldOffset(obj, symId);
+                    const offset = vm.getFieldOffset(obj, symId);
                     if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
@@ -3526,7 +3551,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData{ .arg = offset };
                     } else {
-                        framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                        const sym = vm.fieldSyms.buf[symId];
+                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.namePtr[0..sym.nameLen]});
                     }
                     pc += 7;
                     if (useGoto) { gotoNext(pc, jumpTablePtr); }
@@ -3553,7 +3579,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
                         pc[6] = cy.OpData { .arg = offset };
                     } else {
-                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, vm.fieldSyms.buf[symId].name});
+                        const sym = vm.fieldSyms.buf[symId];
+                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.namePtr[0..sym.nameLen]});
                     }
                     retain(vm, framePtr[dst]);
                     pc += 7;
@@ -4907,7 +4934,7 @@ export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
     return @tagName(@intToEnum(cy.OpCode, code));
 }
 
-export fn zCallSym(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.CallSymResult {
+export fn zCallSym(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.PcStackResult {
     const res = @call(.always_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, reqNumRetVals)}) catch {
         stdx.fatal();
     };
@@ -4975,4 +5002,58 @@ export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value
             .code = vmc.RES_CODE_SUCCESS,
         };
     }
+}
+
+export fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, initialStackSize: u8) vmc.ValueResult {
+    const fiber = cy.fiber.allocFiber(vm, pc, args[0..nargs], initialStackSize) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(vmc.Value, fiber),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) vmc.PcStackResult {
+    const res = cy.fiber.pushFiber(vm, curFiberEndPc, curStack, fiber, parentDstLocal);
+    return .{
+        .pc = @ptrCast([*c]u8, res.pc),
+        .stack = @ptrCast([*c]u64, res.framePtr),
+    };
+}
+
+export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) vmc.PcStackResult {
+    const res = cy.fiber.popFiber(vm, curFiberEndPc, curStack, retValue);
+    return .{
+        .pc = @ptrCast([*c]u8, res.pc),
+        .stack = @ptrCast([*c]u64, res.framePtr),
+    };
+}
+
+export fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Value, nfields: u8) vmc.ValueResult {
+    const res = cy.heap.allocObjectSmall(vm, typeId, fields[0..nfields]) catch {
+        return .{
+            .val = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .val = @bitCast(vmc.Value, res),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zGetFieldOffsetFromTable(vm: *VM, typeId: TypeId, symId: SymbolId) u8 {
+    return vm.getFieldOffsetFromTable(typeId, symId);
+}
+
+export fn zEvalCompare(vm: *VM, left: Value, right: Value) vmc.Value {
+    return @bitCast(vmc.Value, evalCompare(vm, left, right));
+}
+
+export fn zEvalCompareNot(vm: *VM, left: Value, right: Value) vmc.Value {
+    return @bitCast(vmc.Value, evalCompareNot(vm, left, right));
 }

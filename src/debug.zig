@@ -693,7 +693,8 @@ const DumpContext = struct {
             },
             .fieldRetain => {
                 const symId = pc[3].arg;
-                const name = self.vm.fieldSyms.buf[symId].name;
+                const sym = self.vm.fieldSyms.buf[symId];
+                const name = sym.namePtr[0..sym.nameLen];
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
             },
             else => {},

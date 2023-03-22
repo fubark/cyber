@@ -17,6 +17,8 @@
 #define NONE_MASK (TAGGED_VALUE_MASK | ((uint64_t)TAG_NONE << 32))
 #define POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
 #define ERROR_MASK = (TAGGED_VALUE_MASK | ((uint64_t)TAG_ERROR << 32);
+#define NULL_U32 UINT32_MAX
+#define NULL_U8 UINT8_MAX
 
 // Construct value.
 #define VALUE_INTEGER(n) (INTEGER_MASK | n)
@@ -31,6 +33,7 @@
 #define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & ~POINTER_MASK))
 #define VALUE_AS_INTEGER(v) ((int32_t)(v & 0xffffffff))
 #define VALUE_AS_NUMBER(v) ((ValueUnion){ .u = v }.d)
+#define VALUE_AS_NUMBER_TO_INT(v) ((int32_t)VALUE_AS_NUMBER(v))
 #define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
 #define VALUE_IS_POINTER(v) ((v & POINTER_MASK) == POINTER_MASK)
@@ -40,6 +43,14 @@
 #define VALUE_IS_NUMBER(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_BOTH_NUMBERS(v1, v2) (VALUE_IS_NUMBER(v1) && VALUE_IS_NUMBER(v2))
 #define VALUE_GET_TAG(v) (((uint32_t)(v >> 32)) & TAG_MASK)
+
+static inline Value objectGetField(Object* obj, uint8_t idx) {
+    return (&obj->firstValue)[idx];
+}
+
+static inline Value* objectGetFieldPtr(Object* obj, uint8_t idx) {
+    return (&obj->firstValue) + idx;
+}
 
 static inline void release(VM* vm, Value val) {
     // if (cy.TraceEnabled) {
@@ -69,6 +80,30 @@ static inline void release(VM* vm, Value val) {
         if (obj->retainedCommon.rc == 0) {
             zFreeObject(vm, obj);
         }
+    }
+}
+
+static inline void releaseObject(VM* vm, HeapObject* obj) {
+    // if (builtin.mode == .Debug or builtin.is_test) {
+    //     if (obj.retainedCommon.structId == cy.NullId) {
+    //         stdx.panic("object already freed.");
+    //     }
+    // }
+    obj->retainedCommon.rc -= 1;
+    // if (builtin.mode == .Debug) {
+    //     if (cy.verbose) {
+    //         log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+    //     }
+    // }
+#if TRACK_GLOBAL_RC
+        vm->refCounts -= 1;
+#endif
+    // if (cy.TraceEnabled) {
+    //     vm.trace.numReleases += 1;
+    //     vm.trace.numReleaseAttempts += 1;
+    // }
+    if (obj->retainedCommon.rc == 0) {
+        zFreeObject(vm, obj);
     }
 }
 
@@ -117,9 +152,27 @@ static inline TypeId getTypeId(Value val) {
     }
 }
 
+static inline uint32_t pcOffset(VM* vm, Inst* pc) {
+    return (uintptr_t)pc - (uintptr_t)vm->instPtr;
+}
+
+static inline uint32_t stackOffset(VM* vm, Value* stack) {
+    return ((uintptr_t)stack - (uintptr_t)vm->stackPtr) >> 3;
+}
+
+static inline uint8_t getFieldOffset(VM* vm, HeapObject* obj, uint32_t symId) {
+    FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.bufPtr) + symId;
+    if (obj->retainedCommon.typeId == symMap->mruTypeId) {
+        return (uint8_t)symMap->mruOffset;
+    } else {
+        return zGetFieldOffsetFromTable(vm, obj->retainedCommon.typeId, symId);
+    }
+}
+
 ResultCode execBytecode(VM* vm) {
     #define READ_I16(offset) ((int16_t)(pc[offset] | ((uint16_t)pc[offset + 1] << 8)))
     #define READ_U16(offset) (pc[offset] | ((uint16_t)pc[offset + 1] << 8))
+    #define WRITE_U16(offset, u) pc[offset] = u & 0xff; pc[offset+1] = u >> 8
     #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 8) | ((uint64_t)pc[offset+2] << 16) | ((uint64_t)pc[offset+3] << 24) | ((uint64_t)pc[offset+4] << 32) | ((uint64_t)pc[offset+5] << 40))
 #if DEBUG    
     #define PRE_NEXT() \
@@ -266,30 +319,22 @@ beginSwitch:
         Value right = stack[pc[2]];
         if (VALUE_BOTH_NUMBERS(left, right)) {
             stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) + VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
         } else {
-            ValueResult res = zEvalAddFallback(vm, left, right);
-            if (res.code != RES_CODE_SUCCESS) {
-                return res.code;
-            }
-            stack[pc[3]] = res.val;
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
         }
-        pc += 4;
-        NEXT();
     }
     CASE(Sub): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
         if (VALUE_BOTH_NUMBERS(left, right)) {
             stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) - VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
         } else {
-            ValueResult res = zEvalSubFallback(vm, left, right);
-            if (res.code != RES_CODE_SUCCESS) {
-                return res.code;
-            }
-            stack[pc[3]] = res.val;
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
         }
-        pc += 4;
-        NEXT();
     }
     CASE(True):
         stack[pc[1]] = VALUE_TRUE;
@@ -369,9 +414,15 @@ beginSwitch:
         release(vm, stack[pc[1]]);
         pc += 2;
         NEXT();
-    CASE(ReleaseN):
-        printf("Unsupported %s\n", zOpCodeName(*pc));
-        zFatal();
+    CASE(ReleaseN): {
+        uint8_t numLocals = pc[1];
+        uint8_t i;
+        for (i = 2; i < 2 + numLocals; i += 1) {
+            release(vm, stack[pc[i]]);
+        }
+        pc += 2 + numLocals;
+        NEXT();
+    }
     CASE(CallObjSym): {
         uint8_t startLocal = pc[1];
         uint8_t numArgs = pc[2];
@@ -430,15 +481,39 @@ beginSwitch:
         pc[0] = CodeCallObjSym;
         NEXT();
     }
-    CASE(CallObjFuncIC):
-        printf("Unsupported %s\n", zOpCodeName(*pc));
-        zFatal();
+    CASE(CallObjFuncIC): {
+        uint8_t startLocal = pc[1];
+        uint8_t numArgs = pc[2];
+        uint8_t recv = stack[startLocal + numArgs + 4 - 1];
+        TypeId typeId = getTypeId(recv);
+
+        TypeId cachedTypeId = READ_U16(12);
+        if (typeId == cachedTypeId) {
+            uint8_t numLocals = pc[5];
+            if (stack + startLocal + numLocals >= vm->stackEndPtr) {
+                // return error.StackOverflow;
+                zFatal();
+            }
+            Value retFramePtr = (uintptr_t)stack;
+            stack += startLocal;
+            *(uint8_t*)(stack + 1) = pc[3];
+            *((uint8_t*)(stack + 1) + 1) = 0;
+            stack[2] = (uintptr_t)(pc + 14);
+            stack[3] = retFramePtr;
+            pc = (Inst*)READ_U48(6);
+            NEXT();
+        }
+
+        // Deoptimize.
+        pc[0] = CodeCallObjSym;
+        NEXT();
+    }
     CASE(CallSym): {
         uint8_t startLocal = pc[1];
         uint8_t numArgs = pc[2];
         uint8_t numRet = pc[3];
         uint8_t symId = pc[4];
-        CallSymResult res = zCallSym(vm, pc, stack, symId, startLocal, numArgs, numRet);
+        PcStackResult res = zCallSym(vm, pc, stack, symId, startLocal, numArgs, numRet);
         pc = res.pc;
         stack = res.stack;
         NEXT();
@@ -519,26 +594,246 @@ beginSwitch:
             }
         }
     }
-    CASE(Ret0):
+    CASE(Ret0): {
+        uint8_t reqNumArgs = *(uint8_t*)(stack + 1);
+        bool retFlag = ((*((uint8_t*)(stack + 1) + 1)) & 0x1 > 0);
+        if (reqNumArgs == 0) {
+            pc = (Inst*)stack[2];
+            stack = (Value*)stack[3];
+            if (!retFlag) {
+                NEXT();
+            } else {
+                return RES_CODE_SUCCESS;
+            }
+        } else {
+            switch (reqNumArgs) {
+                case 0:
+                    zFatal();
+                case 1:
+                    stack[0] = VALUE_NONE;
+                    break;
+                default:
+                    zFatal();
+            }
+            pc = (Inst*)stack[2];
+            stack = (Value*)stack[3];
+            if (!retFlag) {
+                NEXT();
+            } else {
+                return RES_CODE_SUCCESS;
+            }
+        }
+    }
     CASE(Call0):
     CASE(Call1):
-    CASE(Field):
-    CASE(FieldIC):
-    CASE(FieldRetain):
-    CASE(FieldRetainIC):
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
+    CASE(Field): {
+        uint8_t left = pc[1];
+        uint8_t dst = pc[2];
+        uint8_t symId = pc[3];
+        Value recv = stack[left];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            uint8_t offset = getFieldOffset(vm, obj, symId);
+            if (offset != NULL_U8) {
+                stack[dst] = objectGetField((Object*)obj, offset);
+                pc[0] = CodeFieldIC;
+                WRITE_U16(4, obj->retainedCommon.typeId);
+                pc[6] = offset;
+            } else {
+                // framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
+                return RES_CODE_UNKNOWN;
+            }
+            pc += 7;
+            NEXT();
+        } else {
+            // return vm.getFieldMissingSymbolError();
+            return RES_CODE_UNKNOWN;
+        }
+    }
+    CASE(FieldIC): {
+        Value recv = stack[pc[1]];
+        uint8_t dst = pc[2];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            if (obj->retainedCommon.typeId == READ_U16(4)) {
+                stack[dst] = objectGetField(obj, pc[6]);
+                pc += 7;
+                NEXT();
+            }
+        } else {
+            // return vm.getFieldMissingSymbolError();
+            return RES_CODE_UNKNOWN;
+        }
+        // Deoptimize.
+        pc[0] = CodeField;
+        // stack[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
+        // pc += 7;
+        NEXT();
+    }
+    CASE(FieldRetain): {
+        Value recv = stack[pc[1]];
+        uint8_t dst = pc[2];
+        uint8_t symId = pc[3];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            uint8_t offset = getFieldOffset(vm, obj, symId);
+            if (offset != NULL_U8) {
+                stack[dst] = objectGetField(obj, offset);
+
+                pc[0] = CodeFieldRetainIC;
+                WRITE_U16(4, obj->retainedCommon.typeId);
+                pc[6] = offset;
+            } else {
+                // stack[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, vm.fieldSyms.buf[symId].name});
+                return RES_CODE_UNKNOWN;
+            }
+            retain(vm, stack[dst]);
+            pc += 7;
+            NEXT();
+        } else {
+            // return vm.getFieldMissingSymbolError();
+            return RES_CODE_UNKNOWN;
+        }
+    }
+    CASE(FieldRetainIC): {
+        Value recv = stack[pc[1]];
+        uint8_t dst = pc[2];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            if (obj->retainedCommon.typeId == READ_U16(4)) {
+                stack[dst] = objectGetField(obj, pc[6]);
+                retain(vm, stack[dst]);
+                pc += 7;
+                NEXT();
+            }
+        } else {
+            // return vm.getFieldMissingSymbolError();
+            return RES_CODE_UNKNOWN;
+        }
+        // Deoptimize.
+        pc[0] = CodeFieldRetain;
+        // framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
+        // retain(vm, framePtr[dst]);
+        // pc += 7;
+        NEXT();
+    }
     CASE(FieldRelease):
     CASE(Lambda):
     CASE(Closure):
-    CASE(Compare):
-    CASE(Less):
-    CASE(Greater):
-    CASE(LessEqual):
-    CASE(GreaterEqual):
-    CASE(Mul):
-    CASE(Div):
-    CASE(Pow):
-    CASE(Mod):
-    CASE(CompareNot):
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
+    CASE(Compare): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (left == right) {
+            stack[pc[3]] = VALUE_TRUE;
+        } else {
+            stack[pc[3]] = zEvalCompare(vm, left, right);
+        }
+        pc += 4;
+        NEXT();
+    }
+    CASE(Less): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) < VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(Greater): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) > VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(LessEqual): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) <= VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(GreaterEqual): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) >= VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(Mul): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) * VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(Div): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) / VALUE_AS_NUMBER(right));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(Pow): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_NUMBER(pow(VALUE_AS_NUMBER(left), VALUE_AS_NUMBER(right)));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(Mod): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            stack[pc[3]] = VALUE_NUMBER(fmod(VALUE_AS_NUMBER(left), VALUE_AS_NUMBER(right)));
+            pc += 4;
+            NEXT();
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+    }
+    CASE(CompareNot): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (left == right) {
+            stack[pc[3]] = VALUE_FALSE;
+        } else {
+            stack[pc[3]] = zEvalCompareNot(vm, left, right);
+        }
+        pc += 4;
+        NEXT();
+    }
     CASE(StringTemplate):
     CASE(Neg):
         printf("Unsupported %s\n", zOpCodeName(*pc));
@@ -547,20 +842,126 @@ beginSwitch:
         uint8_t numLocals = pc[1];
         uint8_t i;
         for (i = 2; i < 2 + numLocals; i += 1) {
-            stack[i] = VALUE_NONE;
+            stack[pc[i]] = VALUE_NONE;
         }
         pc += 2 + numLocals;
         NEXT();
     }
-    CASE(ObjectSmall):
+    CASE(ObjectSmall): {
+        uint8_t sid = pc[1];
+        uint8_t startLocal = pc[2];
+        uint8_t numFields = pc[3];
+        ValueResult res = zAllocObjectSmall(vm, sid, stack + startLocal, numFields);
+        if (res.code != RES_CODE_SUCCESS) {
+            return res.code;
+        }
+        stack[pc[4]] = res.val;
+        pc += 5;
+        NEXT();
+    }
     CASE(Object):
     CASE(SetField):
-    CASE(SetFieldRelease):
-    CASE(SetFieldReleaseIC):
-    CASE(Coinit):
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
+    CASE(SetFieldRelease): {
+        Value recv = stack[pc[1]];
+        Value val = stack[pc[2]];
+        uint8_t symId = pc[3];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            uint8_t offset = getFieldOffset(vm, obj, symId);
+            if (offset != NULL_U8) {
+                Value* lastValue = objectGetFieldPtr(obj, offset);
+                release(vm, *lastValue);
+                *lastValue = val;
+
+                pc[0] = CodeSetFieldReleaseIC;
+                WRITE_U16(4, obj->retainedCommon.typeId);
+                pc[6] = offset;
+                pc += 7;
+                NEXT();
+            } else {
+                // return vm.getFieldMissingSymbolError();
+                return RES_CODE_UNKNOWN;
+            }
+        } else {
+            // return vm.setFieldNotObjectError();
+            return RES_CODE_UNKNOWN;
+        }
+    }
+    CASE(SetFieldReleaseIC): {
+        Value recv = stack[pc[1]];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            if (obj->retainedCommon.typeId == READ_U16(4)) {
+                Value* lastValue = objectGetFieldPtr(obj, pc[6]);
+                release(vm, *lastValue);
+                *lastValue = stack[pc[2]];
+                pc += 7;
+                NEXT();
+            }
+        } else {
+            // return vm.getFieldMissingSymbolError();
+            return RES_CODE_UNKNOWN;
+        }
+        // Deoptimize.
+        pc[0] = CodeSetFieldRelease;
+        // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
+        // try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
+        // pc += 7;
+        NEXT();
+    }
+    CASE(Coinit): {
+        uint8_t startArgsLocal = pc[1];
+        uint8_t numArgs = pc[2];
+        uint8_t jump = pc[3];
+        uint8_t initialStackSize = pc[4];
+        uint8_t dst = pc[5];
+
+        ValueResult res = zAllocFiber(vm, pcOffset(vm, pc + 6), stack + startArgsLocal, numArgs, initialStackSize);
+        if (res.code != RES_CODE_SUCCESS) {
+            return res.code;
+        }
+        stack[dst] = res.val;
+        pc += jump;
+        NEXT();
+    }
     CASE(Coyield):
-    CASE(Coresume):
+        if (vm->curFiber != &vm->mainFiber) {
+            PcStackResult res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_NONE);
+            pc = res.pc;
+            stack = res.stack;
+        } else {
+            pc += 3;
+        }
+        NEXT();
+    CASE(Coresume): {
+        Value fiber = stack[pc[1]];
+        if (VALUE_IS_POINTER(fiber)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(fiber);
+            if (obj->retainedCommon.typeId == TYPE_FIBER) {
+                if ((Fiber*)obj != vm->curFiber) {
+                    if (obj->fiber.pc != NULL_U32) {
+                        PcStackResult res = zPushFiber(vm, pcOffset(vm, pc + 3), stack, (Fiber*)obj, pc[2]);
+                        pc = res.pc;
+                        stack = res.stack;
+                        NEXT();
+                    }
+                }
+            }
+            releaseObject(vm, obj);
+        }
+        pc += 3;
+        NEXT();
+    }
     CASE(Coreturn):
+        pc += 1;
+        if (vm->curFiber != &vm->mainFiber) {
+            PcStackResult res = zPopFiber(vm, NULL_U32, stack, stack[1]);
+            pc = res.pc;
+            stack = res.stack;
+        }
+        NEXT();
     CASE(Retain):
     CASE(CopyRetainRelease):
     CASE(Box):
@@ -571,14 +972,79 @@ beginSwitch:
     CASE(Tag):
     CASE(TagLiteral):
     CASE(TryValue):
-    CASE(BitwiseAnd):
-    CASE(BitwiseOr):
-    CASE(BitwiseXor):
-    CASE(BitwiseNot):
-    CASE(BitwiseLeftShift):
-    CASE(BitwiseRightShift):
         printf("Unsupported %s\n", zOpCodeName(*pc));
         zFatal();
+    CASE(BitwiseAnd): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            int32_t res = VALUE_AS_NUMBER_TO_INT(left) & VALUE_AS_NUMBER_TO_INT(right);
+            stack[pc[3]] = VALUE_NUMBER((double)res);
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+        pc += 4;
+        NEXT();
+    }
+    CASE(BitwiseOr): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            int32_t res = VALUE_AS_NUMBER_TO_INT(left) | VALUE_AS_NUMBER_TO_INT(right);
+            stack[pc[3]] = VALUE_NUMBER((double)res);
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+        pc += 4;
+        NEXT();
+    }
+    CASE(BitwiseXor): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            int32_t res = VALUE_AS_NUMBER_TO_INT(left) ^ VALUE_AS_NUMBER_TO_INT(right);
+            stack[pc[3]] = VALUE_NUMBER((double)res);
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+        pc += 4;
+        NEXT();
+    }
+    CASE(BitwiseNot): {
+        Value val = stack[pc[1]];
+        if (VALUE_IS_NUMBER(val)) {
+            int32_t res = ~VALUE_AS_NUMBER_TO_INT(val);
+            stack[pc[2]] = VALUE_NUMBER((double)res);
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+        pc += 3;
+        NEXT();
+    }
+    CASE(BitwiseLeftShift): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            int32_t res = VALUE_AS_NUMBER_TO_INT(left) << VALUE_AS_NUMBER_TO_INT(right);
+            stack[pc[3]] = VALUE_NUMBER((double)res);
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+        pc += 4;
+        NEXT();
+    }
+    CASE(BitwiseRightShift): {
+        Value left = stack[pc[1]];
+        Value right = stack[pc[2]];
+        if (VALUE_BOTH_NUMBERS(left, right)) {
+            int32_t res = VALUE_AS_NUMBER_TO_INT(left) >> VALUE_AS_NUMBER_TO_INT(right);
+            stack[pc[3]] = VALUE_NUMBER((double)res);
+        } else {
+            return RES_CODE_PANIC_EXPECTED_NUMBER;
+        }
+        pc += 4;
+        NEXT();
+    }
     CASE(JumpNotNone): {
         int16_t offset = READ_I16(1);
         if (!VALUE_IS_NONE(stack[pc[3]])) {
@@ -649,8 +1115,24 @@ beginSwitch:
     CASE(ForRangeReverse):
     CASE(Match):
     CASE(StaticFunc):
-    CASE(StaticVar):
-    CASE(SetStaticVar):
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
+    CASE(StaticVar): {
+        uint8_t symId = pc[1];
+        Value sym = *(Value*)(vm->varSyms.bufPtr + symId);
+        retain(vm, sym);
+        stack[pc[2]] = sym;
+        pc += 3;
+        NEXT();
+    }
+    CASE(SetStaticVar): {
+        uint8_t symId = pc[1];
+        Value prev = *(Value*)(vm->varSyms.bufPtr + symId);
+        *(Value*)(vm->varSyms.bufPtr + symId) = stack[pc[2]];
+        release(vm, prev);
+        pc += 3;
+        NEXT();
+    }
     CASE(SetStaticFunc):
     CASE(Sym):
         printf("Unsupported %s\n", zOpCodeName(*pc));

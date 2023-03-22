@@ -141,11 +141,29 @@ typedef uint64_t Const;
 
 typedef uint32_t TypeId;
 
+typedef struct Fiber {
+    TypeId typeId;
+    uint32_t rc;
+    struct Fiber* prevFiber;
+    Value* stackPtr;
+    uint32_t stackLen;
+    uint32_t pc;
+    uint64_t extra;
+} Fiber;
+
+typedef struct Object {
+    TypeId typeId;
+    uint32_t rc;
+    Value firstValue;
+} Object;
+
 typedef union HeapObject {
     struct {
         uint32_t typeId;
         uint32_t rc;
     } retainedCommon;
+    Fiber fiber;
+    Object object;
 } HeapObject;
 
 typedef struct ZAllocator {
@@ -164,6 +182,25 @@ typedef struct ZCyList {
     size_t bufLen;
     size_t len;
 } ZCyList;
+
+typedef struct StackTrace {
+    void* framePtr;
+    size_t frameLen;
+} StackTrace;
+
+typedef struct DebugSym {
+    uint32_t pc;
+    uint32_t loc;
+    uint32_t frameLoc;
+    uint32_t file;
+} DebugSym;
+
+typedef struct FieldSymbolMap {
+    uint32_t mruTypeId;
+    uint16_t mruOffset;
+    uint16_t nameLen;
+    const char* namePtr;
+} FieldSymbolMap;
 
 typedef struct VM {
     ZAllocator alloc;
@@ -193,10 +230,49 @@ typedef struct VM {
 #if TRACK_GLOBAL_RC
     size_t refCounts;
 #endif
+
+    ZCyList methodSyms;
+    ZHashMap methodTable;
+
+    ZHashMap methodSymSigs;
+
+    ZCyList funcSyms;
+    ZHashMap funcSymSigs;
+    ZCyList funcSymDetails;
+
+    ZCyList varSyms;
+    ZHashMap varSymSigs;
+
+    ZCyList fieldSyms;
+    ZHashMap fieldTable;
+    ZHashMap fieldSymSignatures;
+
+    ZCyList structs;
+    ZHashMap structSignatures;
+
+    ZCyList tagTypes;
+    ZHashMap tagTypeSignatures;
+
+    ZCyList tagLitSyms;
+    ZHashMap tagLitSymSignatures;
+
+    ZCyList u8Buf;
+    ZCyList u8Buf2;
+
+    StackTrace stackTrace;
+
+    ZHashMap funcSymDeps;
+    ZCyList methodSymExtras;
+    DebugSym* debugTablePtr;
+    size_t debugTableLen;
+
+    Fiber* curFiber;
+    Fiber mainFiber;
 } VM;
 
 typedef enum {
     RES_CODE_SUCCESS = 0,
+    RES_CODE_PANIC_EXPECTED_NUMBER,
     RES_CODE_UNKNOWN,
 } ResultCode;
 
@@ -211,10 +287,10 @@ typedef struct CallObjSymResult {
     ResultCode code;
 } CallObjSymResult;
 
-typedef struct CallSymResult {
+typedef struct PcStackResult {
     Inst* pc;
     Value* stack;
-} CallSymResult;
+} PcStackResult;
 
 typedef Value (*FuncPtr)(VM* vm, Value* args, uint8_t nargs);
 typedef Value (*MethodPtr)(VM* vm, Value recv, Value* args, uint8_t nargs);
@@ -225,13 +301,18 @@ ResultCode execBytecode(VM* vm);
 // Calling into Zig.
 void zFatal();
 char* zOpCodeName(OpCode code);
-CallSymResult zCallSym(VM* vm, Inst* pc, Value* stack, uint8_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
+PcStackResult zCallSym(VM* vm, Inst* pc, Value* stack, uint8_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
 void zDumpEvalOp(VM* vm, Inst* pc);
 extern bool verbose;
 void zFreeObject(VM* vm, HeapObject* obj);
 void zEnd(VM* vm, Inst* pc);
 ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
-ValueResult zEvalAddFallback(VM* vm, Value left, Value right);
-ValueResult zEvalSubFallback(VM* vm, Value left, Value right);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t numRet);
+ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t initialStackSize);
+PcStackResult zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
+PcStackResult zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
+ValueResult zAllocObjectSmall(VM* vm, TypeId typeId, Value* fields, uint8_t nfields);
+uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
+Value zEvalCompare(VM* vm, Value left, Value right);
+Value zEvalCompareNot(VM* vm, Value left, Value right);

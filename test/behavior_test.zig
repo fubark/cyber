@@ -2268,7 +2268,7 @@ test "Arithmetic operators." {
         \\a = 'foo' + 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Cannot convert `string` to number.
+            \\panic: Expected number operand.
             \\
             \\main:1:6 main:
             \\a = 'foo' + 123
@@ -2282,7 +2282,7 @@ test "Arithmetic operators." {
         \\a = 'foo' - 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Cannot convert `string` to number.
+            \\panic: Expected number operand.
             \\
             \\main:1:6 main:
             \\a = 'foo' - 123
@@ -2296,7 +2296,7 @@ test "Arithmetic operators." {
         \\a = 'foo' * 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Cannot convert `string` to number.
+            \\panic: Expected number operand.
             \\
             \\main:1:6 main:
             \\a = 'foo' * 123
@@ -2310,7 +2310,7 @@ test "Arithmetic operators." {
         \\a = 'foo' / 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Cannot convert `string` to number.
+            \\panic: Expected number operand.
             \\
             \\main:1:6 main:
             \\a = 'foo' / 123
@@ -2324,7 +2324,7 @@ test "Arithmetic operators." {
         \\a = 'foo' % 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Cannot convert `string` to number.
+            \\panic: Expected number operand.
             \\
             \\main:1:6 main:
             \\a = 'foo' % 123
@@ -2338,7 +2338,7 @@ test "Arithmetic operators." {
         \\a = 'foo' ^ 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Cannot convert `string` to number.
+            \\panic: Expected number operand.
             \\
             \\main:1:6 main:
             \\a = 'foo' ^ 123

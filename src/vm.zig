@@ -2063,72 +2063,6 @@ pub const VM = struct {
     }
 };
 
-fn evalBitwiseOr(left: Value, right: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asF64toI32() | @floatToInt(i32, right.toF64()));
-       return Value.initF64(f);
-    } else {
-        log.debug("unsupported", .{});
-        unreachable;
-    }
-}
-
-fn evalBitwiseXor(left: Value, right: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asF64toI32() ^ @floatToInt(i32, right.toF64()));
-       return Value.initF64(f);
-    } else {
-        log.debug("unsupported", .{});
-        unreachable;
-    }
-}
-
-fn evalBitwiseAnd(left: Value, right: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asF64toI32() & @floatToInt(i32, right.toF64()));
-       return Value.initF64(f);
-    } else {
-        log.debug("unsupported", .{});
-        unreachable;
-    }
-}
-
-fn evalBitwiseLeftShift(left: Value, right: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asF64toI32() << @floatToInt(u5, right.toF64()));
-       return Value.initF64(f);
-    } else {
-        log.debug("unsupported", .{});
-        unreachable;
-    }
-}
-
-fn evalBitwiseRightShift(left: Value, right: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (left.isNumber()) {
-       const f = @intToFloat(f64, left.asF64toI32() >> @floatToInt(u5, right.toF64()));
-       return Value.initF64(f);
-    } else {
-        log.debug("unsupported", .{});
-        unreachable;
-    }
-}
-
-fn evalBitwiseNot(val: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (val.isNumber()) {
-       const f = @intToFloat(f64, ~val.asF64toI32());
-       return Value.initF64(f);
-    } else {
-        log.debug("unsupported", .{});
-        unreachable;
-    }
-}
-
 fn evalGreaterOrEqual(left: cy.Value, right: cy.Value) cy.Value {
     return Value.initBool(left.toF64() >= right.toF64());
 }
@@ -2220,39 +2154,6 @@ fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSecti
     return Value.False;
 }
 
-fn evalMinusFallback(vm: *VM, left: Value, right: Value) linksection(cy.HotSection) !Value {
-    @setCold(true);
-    return Value.initF64(try toF64OrPanic(vm, left) - try toF64OrPanic(vm, right));
-}
-
-fn evalPower(vm: *VM, left: cy.Value, right: cy.Value) !cy.Value {
-    if (Value.bothNumbers(left, right)) {
-        return Value.initF64(std.math.pow(f64, left.asF64(), right.asF64()));
-    } else {
-        return Value.initF64(std.math.pow(f64, try toF64OrPanic(vm, left), try toF64OrPanic(vm, right)));
-    }
-}
-
-fn evalDivideFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) !cy.Value {
-    @setCold(true);
-    return Value.initF64(try toF64OrPanic(vm, left) / try toF64OrPanic(vm, right));
-}
-
-fn evalModFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) !cy.Value {
-    @setCold(true);
-    return Value.initF64(std.math.mod(f64, try toF64OrPanic(vm, left), try toF64OrPanic(vm, right)) catch std.math.nan_f64);
-}
-
-fn evalMultiplyFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) !cy.Value {
-    @setCold(true);
-    return Value.initF64(try toF64OrPanic(vm, left) * try toF64OrPanic(vm, right));
-}
-
-fn evalAddFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) !cy.Value {
-    @setCold(true);
-    return Value.initF64(try toF64OrPanic(vm, left) + try toF64OrPanic(vm, right));
-}
-
 fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
     if (val.isNumber()) {
         return val.asF64();
@@ -2261,6 +2162,11 @@ fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
     } else {
         return @call(.never_inline, panicConvertNumberError, .{vm, val});
     }
+}
+
+fn panicExpectedNumber(vm: *cy.VM) error{Panic, OutOfMemory} {
+    @setCold(true);
+    return vm.panic("Expected number operand.");
 }
 
 fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
@@ -2919,7 +2825,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (Value.bothNumbers(left, right)) {
                     framePtr[pc[3].arg] = Value.initF64(left.asF64() + right.asF64());
                 } else {
-                    framePtr[pc[3].arg] = try @call(.never_inline, evalAddFallback, .{ vm, left, right });
+                    return panicExpectedNumber(vm);
                 }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
@@ -2942,9 +2848,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = if (Value.bothNumbers(left, right))
-                    Value.initF64(left.asF64() - right.asF64())
-                else try @call(.never_inline, evalMinusFallback, .{vm, left, right});
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initF64(left.asF64() - right.asF64());
+                } else {
+                    return panicExpectedNumber(vm);
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -3310,9 +3218,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
-                const typeId: u32 = if (recv.isPointer())
-                    recv.asHeapObject().common.structId
-                else recv.getPrimitiveTypeId();
+                const typeId = recv.getTypeId();
 
                 const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
                 if (typeId == cachedStruct) {
@@ -3343,9 +3249,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
-                const typeId = if (recv.isPointer()) 
-                    recv.asHeapObject().common.structId
-                else recv.getPrimitiveTypeId();
+                const typeId = recv.getTypeId();
 
                 const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
                 if (typeId == cachedStruct) {
@@ -3840,7 +3744,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (Value.bothNumbers(left, right)) {
                     framePtr[pc[3].arg] = Value.initF64(left.asF64() * right.asF64());
                 } else {
-                    framePtr[pc[3].arg] = try @call(.never_inline, evalMultiplyFallback, .{ vm, left, right });
+                    return panicExpectedNumber(vm);
                 }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
@@ -3855,7 +3759,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (Value.bothNumbers(left, right)) {
                     framePtr[pc[3].arg] = Value.initF64(left.asF64() / right.asF64());
                 } else {
-                    framePtr[pc[3].arg] = try @call(.never_inline, evalDivideFallback, .{ vm, left, right });
+                    return panicExpectedNumber(vm);
                 }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
@@ -3870,7 +3774,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (Value.bothNumbers(left, right)) {
                     framePtr[pc[3].arg] = Value.initF64(std.math.mod(f64, left.asF64(), right.asF64()) catch std.math.nan_f64);
                 } else {
-                    framePtr[pc[3].arg] = try @call(.never_inline, evalModFallback, .{ vm, left, right });
+                    return panicExpectedNumber(vm);
                 }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
@@ -3882,7 +3786,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = try @call(.never_inline, evalPower, .{ vm, left, right });
+                if (Value.bothNumbers(left, right)) {
+                    framePtr[pc[3].arg] = Value.initF64(std.math.pow(f64, left.asF64(), right.asF64()));
+                } else {
+                    return panicExpectedNumber(vm);
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -4028,7 +3936,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseAnd, .{left, right});
+                if (Value.bothNumbers(left, right)) {
+                    const f = @intToFloat(f64, left.asF64toI32() & right.asF64toI32());
+                    framePtr[pc[3].arg] = Value.initF64(f);
+                } else {
+                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -4039,7 +3952,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseOr, .{left, right});
+                if (Value.bothNumbers(left, right)) {
+                    const f = @intToFloat(f64, left.asF64toI32() | right.asF64toI32());
+                    framePtr[pc[3].arg] = Value.initF64(f);
+                } else {
+                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -4050,7 +3968,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseXor, .{left, right});
+                if (Value.bothNumbers(left, right)) {
+                    const f = @intToFloat(f64, left.asF64toI32() ^ right.asF64toI32());
+                    framePtr[pc[3].arg] = Value.initF64(f);
+                } else {
+                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -4060,7 +3983,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpBitwiseNot:"::);
                 }
                 const val = framePtr[pc[1].arg];
-                framePtr[pc[2].arg] = @call(.never_inline, evalBitwiseNot, .{val});
+                if (val.isNumber()) {
+                    const f = @intToFloat(f64, ~val.asF64toI32());
+                    framePtr[pc[2].arg] = Value.initF64(f);
+                } else {
+                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                }
                 pc += 3;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -4071,7 +3999,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseLeftShift, .{left, right});
+                if (Value.bothNumbers(left, right)) {
+                    const f = @intToFloat(f64, left.asF64toI32() << @intCast(u5, right.asF64toI32()));
+                    framePtr[pc[3].arg] = Value.initF64(f);
+                } else {
+                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -4082,7 +4015,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = @call(.never_inline, evalBitwiseRightShift, .{left, right});
+                if (Value.bothNumbers(left, right)) {
+                    const f = @intToFloat(f64, left.asF64toI32() >> @intCast(u5, right.asF64toI32()));
+                    framePtr[pc[3].arg] = Value.initF64(f);
+                } else {
+                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                }
                 pc += 4;
                 if (useGoto) { gotoNext(pc, jumpTablePtr); }
                 continue;
@@ -5014,32 +4952,6 @@ export fn zAllocList(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.Valu
 
 export fn zOtherToF64(val: Value) f64 {
     return val.otherToF64();
-}
-
-export fn zEvalAddFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) vmc.ValueResult {
-    const val = evalAddFallback(vm, left, right) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(vmc.Value, val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
-export fn zEvalSubFallback(vm: *cy.VM, left: cy.Value, right: cy.Value) vmc.ValueResult {
-    const val = evalMinusFallback(vm, left, right) catch {
-        return .{
-            .val = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
-    };
-    return .{
-        .val = @bitCast(vmc.Value, val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
 }
 
 export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: cy.TypeId, symId: u8, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {

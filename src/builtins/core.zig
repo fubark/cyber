@@ -20,75 +20,75 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
 
     const b = bindings.ModuleBuilder.init(self, mod);
 
-    try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);
-    try mod.setNativeFunc(self, "asciiCode", 1, asciiCode);
+    try b.setFunc("arrayFill", &.{bt.Any, bt.Number}, bt.List, arrayFill);
+    try b.setFunc("asciiCode", &.{bt.Any}, bt.Any, asciiCode);
     if (cy.isWasm) {
-        try mod.setNativeFunc(self, "bindLib", 2, bindings.nop2);
-        try mod.setNativeFunc(self, "bindLib", 3, bindings.nop3);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
     } else {
-        try mod.setNativeFunc(self, "bindLib", 2, bindLib);
-        try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
     }
-    try mod.setNativeFunc(self, "bool", 1, coreBool);
+    try b.setFunc("bool", &.{ bt.Any }, bt.Boolean, coreBool);
     try b.setFunc("boolean", &.{ bt.Any }, bt.Boolean, boolean);
     if (cy.isWasm) {
-        try mod.setNativeFunc(self, "cacheUrl", 1, bindings.nop1);
+        try b.setFunc("cacheUrl", &.{ bt.Any }, bt.Any, bindings.nop1);
     } else {
-        try mod.setNativeFunc(self, "cacheUrl", 1, cacheUrl);
+        try b.setFunc("cacheUrl", &.{ bt.Any }, bt.Any, cacheUrl);
     }
-    try mod.setNativeFunc(self, "char", 1, char);
-    try mod.setNativeFunc(self, "copy", 1, copy);
-    try mod.setNativeFunc(self, "error", 1, coreError);
+    try b.setFunc("char", &.{bt.Any}, bt.Any, char);
+    try b.setFunc("copy", &.{bt.Any}, bt.Any, copy);
+    try b.setFunc("error", &.{bt.TagLiteral}, bt.Error, coreError);
     if (cy.isWasm) {
-        try mod.setNativeFunc(self, "evalJS", 1, evalJS);
-        try mod.setNativeFunc(self, "execCmd", 1, bindings.nop1);
+        try b.setFunc("evalJS", &.{bt.Any}, bt.None, evalJS);
+        try b.setFunc("execCmd", &.{bt.List}, bt.Any, bindings.nop1);
     } else {
-        try mod.setNativeFunc(self, "execCmd", 1, execCmd);
+        try b.setFunc("execCmd", &.{bt.List}, bt.Any, execCmd);
     }
-    try mod.setNativeFunc(self, "exit", 1, exit);
-    try mod.setNativeFunc(self, "fetchUrl", 1, fetchUrl);
+    try b.setFunc("exit", &.{bt.Number}, bt.None, exit);
+    try b.setFunc("fetchUrl", &.{bt.Any}, bt.Any, fetchUrl);
     if (cy.hasStdFiles) {
-        try mod.setNativeFunc(self, "getInput", 0, getInput);
+        try b.setFunc("getInput", &.{}, bt.Any, getInput);
     } else {
-        try mod.setNativeFunc(self, "getInput", 0, bindings.nop0);
+        try b.setFunc("getInput", &.{}, bt.Any, bindings.nop0);
     }
-    try mod.setNativeFunc(self, "int", 1, int);
+    try b.setFunc("int", &.{bt.Any}, bt.Integer, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try b.setFunc("List", &.{ bt.Any }, bt.List, List);
     try b.setFunc("Map", &.{ bt.Any }, bt.Map, Map);
-    try mod.setNativeFunc(self, "must", 1, must);
+    try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
     try b.setFunc("number", &.{ bt.Any }, bt.Number, number);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
-    try mod.setNativeFunc(self, "panic", 1, panic);
-    try mod.setNativeFunc(self, "parseCyon", 1, parseCyon);
+    try b.setFunc("panic", &.{ bt.Any }, bt.None, panic);
+    try b.setFunc("parseCyon", &.{ bt.Any }, bt.Any, parseCyon);
     try b.setFunc("pointer", &.{ bt.Any }, bt.Pointer, pointer);
-    try mod.setNativeFunc(self, "print", 1, print);
-    try mod.setNativeFunc(self, "prints", 1, prints);
-    try mod.setNativeFunc(self, "rawstring", 1, rawstring);
+    try b.setFunc("print", &.{bt.Any}, bt.None, print);
+    try b.setFunc("prints", &.{bt.Any}, bt.None, prints);
+    try b.setFunc("rawstring", &.{bt.Any}, bt.Rawstring, rawstring);
     if (cy.hasStdFiles) {
-        try mod.setNativeFunc(self, "readAll", 0, readAll);
-        try mod.setNativeFunc(self, "readFile", 1, readFile);
-        try mod.setNativeFunc(self, "readLine", 0, readLine);
+        try b.setFunc("readAll", &.{}, bt.Any, readAll);
+        try b.setFunc("readFile", &.{ bt.Any }, bt.Any, readFile);
+        try b.setFunc("readLine", &.{}, bt.Any, readLine);
     } else {
-        try mod.setNativeFunc(self, "readAll", 0, bindings.nop0);
-        try mod.setNativeFunc(self, "readFile", 1, bindings.nop1);
-        try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
+        try b.setFunc("readAll", &.{}, bt.Any, bindings.nop0);
+        try b.setFunc("readFile", &.{ bt.Any }, bt.Any, bindings.nop1);
+        try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
     try b.setFunc("string", &.{bt.Any}, bt.String, string);
     try b.setFunc("taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
-    try mod.setNativeFunc(self, "toCyon", 1, toCyon);
-    try mod.setNativeFunc(self, "typeid", 1, typeid);
-    try mod.setNativeFunc(self, "valtag", 1, valtag);
+    try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
+    try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
+    try b.setFunc("valtag", &.{ bt.Any }, bt.TagLiteral, valtag);
     if (cy.hasStdFiles) {
-        try mod.setNativeFunc(self, "writeFile", 2, writeFile);
+        try b.setFunc("writeFile", &.{ bt.Any, bt.Any }, bt.Any, writeFile);
     } else {
-        try mod.setNativeFunc(self, "writeFile", 2, bindings.nop2);
+        try b.setFunc("writeFile", &.{ bt.Any, bt.Any }, bt.Any, bindings.nop2);
     }
 }
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
-    return vm.allocListFill(args[0], @floatToInt(u32, args[1].toF64())) catch stdx.fatal();
+    return vm.allocListFill(args[0], @floatToInt(u32, args[1].asF64())) catch stdx.fatal();
 }
 
 pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -235,7 +235,7 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 }
 
 pub fn exit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const status = @floatToInt(u8, args[0].toF64());
+    const status = @floatToInt(u8, args[0].asF64());
     std.os.exit(status);
 }
 
@@ -539,7 +539,7 @@ pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
-    const path = vm.valueToTempString(args[0]);
+    const path = vm.valueToTempRawString(args[0]);
     const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch stdx.fatal();
     defer vm.allocator().free(content);
     // TODO: Use allocOwnedString.
@@ -623,20 +623,16 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
         vm.release(args[0]);
         vm.release(args[1]);
     }
-    const path = vm.valueToString(args[0]) catch stdx.fatal();
-    defer vm.allocator().free(path);
-    var content: []const u8 = undefined;
-    if (args[1].isRawString()) {
-        content = args[1].asRawString();
-    } else {
-        content = vm.valueToTempString(args[1]);
-    }
+    const path = vm.valueToTempRawString(args[0]);
+    const pathDupe = vm.allocator().dupe(u8, path) catch fatal();
+    defer vm.allocator().free(pathDupe);
+    const content = vm.valueToTempRawString(args[1]);
     std.fs.cwd().writeFile(path, content) catch stdx.fatal();
     return Value.None;
 }
 
 pub fn rawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const str = vm.valueToTempString(args[0]);
+    const str = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
     return vm.allocRawString(str) catch stdx.fatal();
 }

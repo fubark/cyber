@@ -20,11 +20,13 @@ const TypeTag = enum {
     map,
     fiber,
     string,
+    rawstring,
     box,
     tag,
     tagLiteral,
     pointer,
     none,
+    err,
 
     /// Type from a resolved type sym.
     rsym,
@@ -135,6 +137,11 @@ pub const StringType = Type{
     },
 };
 
+pub const RawstringType = Type{
+    .typeT = .rawstring,
+    .rcCandidate = true,
+};
+
 pub const FiberType = Type{
     .typeT = .fiber,
     .rcCandidate = true,
@@ -147,6 +154,11 @@ pub const ListType = Type{
 
 pub const TagLiteralType = Type{
     .typeT = .tagLiteral,
+    .rcCandidate = false,
+};
+
+pub const ErrorType = Type{
+    .typeT = .err,
     .rcCandidate = false,
 };
 
@@ -2459,15 +2471,17 @@ pub fn getResolvedSymForType(type_: Type) ResolvedSymId {
     return switch (type_.typeT) {
         .any => bt.Any,
         .number => bt.Number,
-        .int => bt.Int,
+        .int => bt.Integer,
         .tagLiteral => bt.TagLiteral,
         .list => bt.List,
         .boolean => bt.Boolean,
         .string => bt.String,
+        .rawstring => bt.Rawstring,
         .map => bt.Map,
         .tag => bt.Any, // TODO: Handle tagtype.
         .pointer => bt.Pointer,
         .none => bt.None,
+        .err => bt.Error,
         .rsym => type_.inner.rsym.rSymId,
         else => stdx.panicFmt("Unsupported type {}", .{type_.typeT}),
     };
@@ -4087,11 +4101,13 @@ pub const NameBoolean = 1;
 pub const NameNumber = 2;
 pub const NameInt = 3;
 pub const NameString = 4;
-pub const NameTagLiteral = 5;
-pub const NameList = 6;
-pub const NameMap = 7;
-pub const NamePointer = 8;
-pub const NameNone = 9;
+pub const NameRawstring = 5;
+pub const NameTagLiteral = 6;
+pub const NameList = 7;
+pub const NameMap = 8;
+pub const NamePointer = 9;
+pub const NameNone = 10;
+pub const NameError = 11;
 
 /// Names are reserved to index into `BuiltinTypeTags`.
 const BuiltinTypeTags = [_]TypeTag{
@@ -4100,11 +4116,13 @@ const BuiltinTypeTags = [_]TypeTag{
     .number,
     .int,
     .string,
+    .rawstring,
     .tagLiteral,
     .list,
     .map,
     .pointer,
     .none,
+    .err,
 };
 
 const bt = BuiltinTypeSymIds;
@@ -4112,13 +4130,15 @@ pub const BuiltinTypeSymIds = struct {
     pub const Any: ResolvedSymId = 0;
     pub const Boolean: ResolvedSymId = 1;
     pub const Number: ResolvedSymId = 2;
-    pub const Int: ResolvedSymId = 3;
+    pub const Integer: ResolvedSymId = 3;
     pub const String: ResolvedSymId = 4;
-    pub const TagLiteral: ResolvedSymId = 5;
-    pub const List: ResolvedSymId = 6;
-    pub const Map: ResolvedSymId = 7;
-    pub const Pointer: ResolvedSymId = 8;
-    pub const None: ResolvedSymId = 9;
+    pub const Rawstring: ResolvedSymId = 5;
+    pub const TagLiteral: ResolvedSymId = 6;
+    pub const List: ResolvedSymId = 7;
+    pub const Map: ResolvedSymId = 8;
+    pub const Pointer: ResolvedSymId = 9;
+    pub const None: ResolvedSymId = 10;
+    pub const Error: ResolvedSymId = 11;
 };
 
 /// Resolved syms are reserved to index into `BuiltinTypes`.
@@ -4128,11 +4148,13 @@ const BuiltinTypes = [_]Type{
     NumberType,
     IntegerType,
     StringType,
+    RawstringType,
     TagLiteralType,
     ListType,
     MapType,
     PointerType,
     NoneType,
+    ErrorType,
 };
 
 pub const FuncDeclId = u32;

@@ -154,6 +154,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameInt);
         id = try sema.ensureNameSym(self, "string");
         std.debug.assert(id == sema.NameString);
+        id = try sema.ensureNameSym(self, "rawstring");
+        std.debug.assert(id == sema.NameRawstring);
         id = try sema.ensureNameSym(self, "taglit");
         std.debug.assert(id == sema.NameTagLiteral);
         id = try sema.ensureNameSym(self, "List");
@@ -164,6 +166,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NamePointer);
         id = try sema.ensureNameSym(self, "none");
         std.debug.assert(id == sema.NameNone);
+        id = try sema.ensureNameSym(self, "error");
+        std.debug.assert(id == sema.NameError);
 
         // Add builtins types as resolved syms.
         id = try sema.addResolvedBuiltinSym(self, .any, "any");
@@ -173,9 +177,11 @@ pub const VMcompiler = struct {
         id = try sema.addResolvedBuiltinSym(self, .number, "number");
         std.debug.assert(id == bt.Number);
         id = try sema.addResolvedBuiltinSym(self, .int, "int");
-        std.debug.assert(id == bt.Int);
+        std.debug.assert(id == bt.Integer);
         id = try sema.addResolvedBuiltinSym(self, .string, "string");
         std.debug.assert(id == bt.String);
+        id = try sema.addResolvedBuiltinSym(self, .rawstring, "rawstring");
+        std.debug.assert(id == bt.Rawstring);
         id = try sema.addResolvedBuiltinSym(self, .int, "taglit");
         std.debug.assert(id == bt.TagLiteral);
         id = try sema.addResolvedBuiltinSym(self, .list, "List");
@@ -186,6 +192,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Pointer);
         id = try sema.addResolvedBuiltinSym(self, .none, "none");
         std.debug.assert(id == bt.None);
+        id = try sema.addResolvedBuiltinSym(self, .err, "error");
+        std.debug.assert(id == bt.Error);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

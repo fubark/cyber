@@ -18,8 +18,7 @@ const log = stdx.log.scoped(.core);
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try mod.syms.ensureTotalCapacity(self.alloc, 13);
 
-    bindings.ModuleBuilder.withModule(self, mod);
-    const setFunc = bindings.ModuleBuilder.setFunc;
+    const b = bindings.ModuleBuilder.init(self, mod);
 
     try mod.setNativeFunc(self, "arrayFill", 2, arrayFill);
     try mod.setNativeFunc(self, "asciiCode", 1, asciiCode);
@@ -31,7 +30,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "bindLib", 3, bindLibExt);
     }
     try mod.setNativeFunc(self, "bool", 1, coreBool);
-    try setFunc("boolean", &.{ bt.Any }, bt.Boolean, boolean);
+    try b.setFunc("boolean", &.{ bt.Any }, bt.Boolean, boolean);
     if (cy.isWasm) {
         try mod.setNativeFunc(self, "cacheUrl", 1, bindings.nop1);
     } else {
@@ -55,14 +54,14 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try mod.setNativeFunc(self, "int", 1, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
-    try setFunc("List", &.{ bt.Any }, bt.List, List);
-    try setFunc("Map", &.{ bt.Any }, bt.Map, Map);
+    try b.setFunc("List", &.{ bt.Any }, bt.List, List);
+    try b.setFunc("Map", &.{ bt.Any }, bt.Map, Map);
     try mod.setNativeFunc(self, "must", 1, must);
-    try setFunc("number", &.{ bt.Any }, bt.Number, number);
-    try setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
+    try b.setFunc("number", &.{ bt.Any }, bt.Number, number);
+    try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
     try mod.setNativeFunc(self, "panic", 1, panic);
     try mod.setNativeFunc(self, "parseCyon", 1, parseCyon);
-    try setFunc("pointer", &.{ bt.Any }, bt.Pointer, pointer);
+    try b.setFunc("pointer", &.{ bt.Any }, bt.Pointer, pointer);
     try mod.setNativeFunc(self, "print", 1, print);
     try mod.setNativeFunc(self, "prints", 1, prints);
     try mod.setNativeFunc(self, "rawstring", 1, rawstring);
@@ -75,8 +74,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try mod.setNativeFunc(self, "readFile", 1, bindings.nop1);
         try mod.setNativeFunc(self, "readLine", 0, bindings.nop0);
     }
-    try setFunc("string", &.{bt.Any}, bt.String, string);
-    try setFunc("taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
+    try b.setFunc("string", &.{bt.Any}, bt.String, string);
+    try b.setFunc("taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
     try mod.setNativeFunc(self, "toCyon", 1, toCyon);
     try mod.setNativeFunc(self, "typeid", 1, typeid);
     try mod.setNativeFunc(self, "valtag", 1, valtag);

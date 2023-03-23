@@ -37,48 +37,47 @@ pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) !void {
     // Square root of 2; approximately 1.414.
     try mod.setTypedVar(c, "sqrt2", bt.Number, Value.initF64(std.math.sqrt2));
 
-    cy.bindings.ModuleBuilder.withModule(c, mod);
-    const setFunc = cy.bindings.ModuleBuilder.setFunc;
+    const b = cy.bindings.ModuleBuilder.init(c, mod);
 
     const num1: []const cy.sema.ResolvedSymId = &.{bt.Number};
     const num2: []const cy.sema.ResolvedSymId = &.{bt.Number, bt.Number};
 
-    try setFunc("abs",    num1, bt.Number, abs);
-    try setFunc("acos",   num1, bt.Number, acos);
-    try setFunc("acosh",  num1, bt.Number, acosh);
-    try setFunc("asin",   num1, bt.Number, asin);
-    try setFunc("asinh",  num1, bt.Number, asinh);
-    try setFunc("atan",   num1, bt.Number, atan);
-    try setFunc("atan2",  num2, bt.Number, atan2);
-    try setFunc("atanh",  num1, bt.Number, atanh);
-    try setFunc("cbrt",   num1, bt.Number, cbrt);
-    try setFunc("ceil",   num1, bt.Number, ceil);
-    try setFunc("clz32",  num1, bt.Number, clz32);
-    try setFunc("cos",    num1, bt.Number, cos);
-    try setFunc("cosh",   num1, bt.Number, cosh);
-    try setFunc("exp",    num1, bt.Number, exp);
-    try setFunc("expm1",  num1, bt.Number, expm1);
-    try setFunc("floor",  num1, bt.Number, floor);
-    try setFunc("hypot",  num2, bt.Number, hypot);
-    try setFunc("isNaN",  num1, bt.Number, isNaN);
-    try setFunc("ln",     num1, bt.Number, ln);
-    try setFunc("log",    num2, bt.Number, log);
-    try setFunc("log10",  num1, bt.Number, log10);
-    try setFunc("log1p",  num1, bt.Number, log1p);
-    try setFunc("log2",   num1, bt.Number, log2);
-    try setFunc("max",    num2, bt.Number, max);
-    try setFunc("min",    num2, bt.Number, min);
-    try setFunc("mul32",  num2, bt.Number, mul32);
-    try setFunc("pow",    num2, bt.Number, pow);
-    try setFunc("random", &.{}, bt.Number, random);
-    try setFunc("round",  num1, bt.Number, round);
-    try setFunc("sign",   num1, bt.Number, sign);
-    try setFunc("sin",    num1, bt.Number, sin);
-    try setFunc("sinh",   num1, bt.Number, sinh);
-    try setFunc("sqrt",   num1, bt.Number, sqrt);
-    try setFunc("tan",    num1, bt.Number, tan);
-    try setFunc("tanh",   num1, bt.Number, tanh);
-    try setFunc("trunc",  num1, bt.Number, trunc);
+    try b.setFunc("abs",    num1, bt.Number, abs);
+    try b.setFunc("acos",   num1, bt.Number, acos);
+    try b.setFunc("acosh",  num1, bt.Number, acosh);
+    try b.setFunc("asin",   num1, bt.Number, asin);
+    try b.setFunc("asinh",  num1, bt.Number, asinh);
+    try b.setFunc("atan",   num1, bt.Number, atan);
+    try b.setFunc("atan2",  num2, bt.Number, atan2);
+    try b.setFunc("atanh",  num1, bt.Number, atanh);
+    try b.setFunc("cbrt",   num1, bt.Number, cbrt);
+    try b.setFunc("ceil",   num1, bt.Number, ceil);
+    try b.setFunc("clz32",  num1, bt.Number, clz32);
+    try b.setFunc("cos",    num1, bt.Number, cos);
+    try b.setFunc("cosh",   num1, bt.Number, cosh);
+    try b.setFunc("exp",    num1, bt.Number, exp);
+    try b.setFunc("expm1",  num1, bt.Number, expm1);
+    try b.setFunc("floor",  num1, bt.Number, floor);
+    try b.setFunc("hypot",  num2, bt.Number, hypot);
+    try b.setFunc("isNaN",  num1, bt.Number, isNaN);
+    try b.setFunc("ln",     num1, bt.Number, ln);
+    try b.setFunc("log",    num2, bt.Number, log);
+    try b.setFunc("log10",  num1, bt.Number, log10);
+    try b.setFunc("log1p",  num1, bt.Number, log1p);
+    try b.setFunc("log2",   num1, bt.Number, log2);
+    try b.setFunc("max",    num2, bt.Number, max);
+    try b.setFunc("min",    num2, bt.Number, min);
+    try b.setFunc("mul32",  num2, bt.Number, mul32);
+    try b.setFunc("pow",    num2, bt.Number, pow);
+    try b.setFunc("random", &.{}, bt.Number, random);
+    try b.setFunc("round",  num1, bt.Number, round);
+    try b.setFunc("sign",   num1, bt.Number, sign);
+    try b.setFunc("sin",    num1, bt.Number, sin);
+    try b.setFunc("sinh",   num1, bt.Number, sinh);
+    try b.setFunc("sqrt",   num1, bt.Number, sqrt);
+    try b.setFunc("tan",    num1, bt.Number, tan);
+    try b.setFunc("tanh",   num1, bt.Number, tanh);
+    try b.setFunc("trunc",  num1, bt.Number, trunc);
 }
 
 /// Returns the absolute value of x.

@@ -2505,15 +2505,17 @@ pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin
 }
 
 pub const ModuleBuilder = struct {
-    var mod_: *cy.Module = undefined;
-    var compiler_: *cy.VMcompiler = undefined;
+    mod: *cy.Module,
+    compiler: *cy.VMcompiler,
 
-    pub fn withModule(c: *cy.VMcompiler, mod: *cy.Module) void {
-        compiler_ = c;
-        mod_ = mod;
+    pub fn init(c: *cy.VMcompiler, mod: *cy.Module) ModuleBuilder {
+        return .{
+            .mod = mod,
+            .compiler = c,
+        };
     }
 
-    pub fn setFunc(name: []const u8, params: []const cy.sema.ResolvedSymId, ret: cy.sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {
-        try mod_.setNativeTypedFunc(compiler_, name, params, ret, ptr);
+    pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const cy.sema.ResolvedSymId, ret: cy.sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {
+        try self.mod.setNativeTypedFunc(self.compiler, name, params, ret, ptr);
     }
 };

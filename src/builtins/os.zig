@@ -20,8 +20,7 @@ pub var CStructT: cy.TypeId = undefined;
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     const vm = self.vm;
 
-    bindings.ModuleBuilder.withModule(self, mod);
-    const setFunc = bindings.ModuleBuilder.setFunc;
+    const b = bindings.ModuleBuilder.init(self, mod);
 
     // Object Types.
     var id: u32 = undefined;
@@ -77,70 +76,70 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
 
     // Functions.
     if (cy.isWasm) {
-        try setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop1);
+        try b.setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop1);
     } else {
-        try setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, access);
+        try b.setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, access);
     }
     try mod.setNativeTypedFunc(self, "args", &.{}, bt.List, osArgs);
     if (cy.isWasm) {
-        try setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
-        try setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
-        try setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
-        try setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
-        try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
-        try setFunc("cwd", &.{}, bt.String, bindings.nop0);
-        try setFunc("dirName", &.{ bt.Any }, bt.Any, bindings.nop1);
-        try setFunc("exePath", &.{}, bt.String, bindings.nop0);
-        try setFunc("free", &.{bt.Pointer}, bt.None, bindings.nop1);
-        try setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
-        try setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
-        try setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
+        try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
+        try b.setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
+        try b.setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
+        try b.setFunc("cwd", &.{}, bt.String, bindings.nop0);
+        try b.setFunc("dirName", &.{ bt.Any }, bt.Any, bindings.nop1);
+        try b.setFunc("exePath", &.{}, bt.String, bindings.nop0);
+        try b.setFunc("free", &.{bt.Pointer}, bt.None, bindings.nop1);
+        try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
+        try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
+        try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
     } else {
-        try setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
-        try setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
-        try setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
-        try setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
-        try setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);
-        try setFunc("cwd", &.{}, bt.String, cwd);
-        try setFunc("dirName", &.{ bt.Any }, bt.Any, dirName);
-        try setFunc("exePath", &.{}, bt.String, exePath);
-        try setFunc("free", &.{bt.Pointer}, bt.None, free);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
+        try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
+        try b.setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
+        try b.setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);
+        try b.setFunc("cwd", &.{}, bt.String, cwd);
+        try b.setFunc("dirName", &.{ bt.Any }, bt.Any, dirName);
+        try b.setFunc("exePath", &.{}, bt.String, exePath);
+        try b.setFunc("free", &.{bt.Pointer}, bt.None, free);
         if (builtin.os.tag == .windows) {
-            try setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
-            try setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
+            try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
+            try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
         } else {
-            try setFunc("getEnv", &.{ bt.Any }, bt.Any, getEnv);
-            try setFunc("getEnvAll", &.{}, bt.Map, getEnvAll);
+            try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, getEnv);
+            try b.setFunc("getEnvAll", &.{}, bt.Map, getEnvAll);
         }
-        try setFunc("malloc", &.{bt.Number}, bt.Pointer, malloc);
+        try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, malloc);
     }
-    try setFunc("milliTime", &.{}, bt.Number, milliTime);
+    try b.setFunc("milliTime", &.{}, bt.Number, milliTime);
     if (cy.isWasm) {
-        try setFunc("openDir", &.{bt.Any}, bt.Any, bindings.nop1);
-        try setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
-        try setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop2);
-        try setFunc("realPath", &.{bt.Any}, bt.Any, bindings.nop1);
-        try setFunc("removeDir", &.{bt.Any}, bt.Any, bindings.nop1);
-        try setFunc("removeFile", &.{bt.Any}, bt.Any, bindings.nop1);
-        try setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, bindings.nop2);
+        try b.setFunc("openDir", &.{bt.Any}, bt.Any, bindings.nop1);
+        try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
+        try b.setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop2);
+        try b.setFunc("realPath", &.{bt.Any}, bt.Any, bindings.nop1);
+        try b.setFunc("removeDir", &.{bt.Any}, bt.Any, bindings.nop1);
+        try b.setFunc("removeFile", &.{bt.Any}, bt.Any, bindings.nop1);
+        try b.setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, bindings.nop2);
     } else {
-        try setFunc("openDir", &.{bt.Any}, bt.Any, openDir);
-        try setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, openDir2);
-        try setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, openFile);
-        try setFunc("realPath", &.{bt.Any}, bt.Any, realPath);
-        try setFunc("removeDir", &.{bt.Any}, bt.Any, removeDir);
-        try setFunc("removeFile", &.{bt.Any}, bt.Any, removeFile);
+        try b.setFunc("openDir", &.{bt.Any}, bt.Any, openDir);
+        try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, openDir2);
+        try b.setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, openFile);
+        try b.setFunc("realPath", &.{bt.Any}, bt.Any, realPath);
+        try b.setFunc("removeDir", &.{bt.Any}, bt.Any, removeDir);
+        try b.setFunc("removeFile", &.{bt.Any}, bt.Any, removeFile);
         if (builtin.os.tag == .windows) {
-            try setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, bindings.nop2);
+            try b.setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, bindings.nop2);
         } else {
-            try setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, setEnv);
+            try b.setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, setEnv);
         }
     }
-    try setFunc("sleep", &.{bt.Number}, bt.None, sleep);
+    try b.setFunc("sleep", &.{bt.Number}, bt.None, sleep);
     if (cy.isWasm or builtin.os.tag == .windows) {
-        try setFunc("unsetEnv", &.{bt.Any}, bt.None, bindings.nop1);
+        try b.setFunc("unsetEnv", &.{bt.Any}, bt.None, bindings.nop1);
     } else {
-        try setFunc("unsetEnv", &.{bt.Any}, bt.None, unsetEnv);
+        try b.setFunc("unsetEnv", &.{bt.Any}, bt.None, unsetEnv);
     }
 }
 

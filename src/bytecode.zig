@@ -335,8 +335,8 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             fmt.printStderr("{} {} offset={}", &.{v(pcOffset), v(code), v(jump)});
         },
         .jumpNotCond => {
-            const jump = @ptrCast(*const align(1) u16, pc + 1).*;
-            fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
+            const jump = @ptrCast(*const align(1) u16, pc + 2).*;
+            fmt.printStderr("{} {} cond={}, offset={}}", &.{v(pcOffset), v(code), v(pc[1].arg), v(jump)});
         },
         .jumpNotNone => {
             const jump = @ptrCast(*const align(1) i16, pc + 1).*;

@@ -2496,6 +2496,10 @@ pub const TraceInfo = struct {
     numForceReleases: u32,
     numRetainCycles: u32,
     numRetainCycleRoots: u32,
+
+    pub fn deinit(self: *TraceInfo, alloc: std.mem.Allocator) void {
+        alloc.free(self.opCounts);
+    }
 };
 
 pub const OpCount = struct {
@@ -2760,15 +2764,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpJumpNotCond:"::);
                 }
-                const jump = @ptrCast(*const align(1) u16, pc + 1).*;
-                const cond = framePtr[pc[3].arg];
+                const cond = framePtr[pc[1].arg];
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
                 } else b: {
                     break :b cond.assumeNotBoolToBool();
                 };
                 if (!condVal) {
-                    pc += jump;
+                    pc += @ptrCast(*const align(1) u16, pc + 2).*;
                 } else {
                     pc += 4;
                 }

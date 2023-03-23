@@ -159,6 +159,12 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
+    defer {
+        if (TraceEnabled) {
+            trace.deinit(alloc);
+        }
+    }
+
     _ = vm.eval(path, src, .{
         .singleRun = builtin.mode == .ReleaseFast,
         .enableFileModules = true,

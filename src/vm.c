@@ -394,15 +394,15 @@ beginSwitch:
         printf("Unsupported %s\n", zOpCodeName(*pc));
         zFatal();
     CASE(JumpNotCond): {
-        uint16_t jump = READ_U16(1);
-        Value cond = stack[pc[3]];
+        Value cond = stack[pc[1]];
         bool condVal = VALUE_IS_BOOLEAN(cond) ? VALUE_AS_BOOLEAN(cond) : VALUE_ASSUME_NOT_BOOL_TO_BOOL(cond);
         if (!condVal) {
-            pc += jump;
+            pc += READ_U16(2);
+            NEXT();
         } else {
             pc += 4;
+            NEXT();
         }
-        NEXT();
     }
     CASE(JumpCond):
         printf("Unsupported %s\n", zOpCodeName(*pc));
@@ -565,7 +565,7 @@ beginSwitch:
     }
     CASE(Ret1): {
         uint8_t reqNumArgs = *(uint8_t*)(stack + 1);
-        bool retFlag = ((*((uint8_t*)(stack + 1) + 1)) & 0x1 > 0);
+        bool retFlag = ((*((uint8_t*)(stack + 1) + 1)) & 0x1) > 0;
         if (reqNumArgs == 1) {
             pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
@@ -596,7 +596,7 @@ beginSwitch:
     }
     CASE(Ret0): {
         uint8_t reqNumArgs = *(uint8_t*)(stack + 1);
-        bool retFlag = ((*((uint8_t*)(stack + 1) + 1)) & 0x1 > 0);
+        bool retFlag = ((*((uint8_t*)(stack + 1) + 1)) & 0x1) > 0;
         if (reqNumArgs == 0) {
             pc = (Inst*)stack[2];
             stack = (Value*)stack[3];
@@ -658,19 +658,20 @@ beginSwitch:
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             if (obj->retainedCommon.typeId == READ_U16(4)) {
-                stack[dst] = objectGetField(obj, pc[6]);
+                stack[dst] = objectGetField((Object*)obj, pc[6]);
                 pc += 7;
+                NEXT();
+            } else {
+                // Deoptimize.
+                pc[0] = CodeField;
+                // stack[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
+                // pc += 7;
                 NEXT();
             }
         } else {
             // return vm.getFieldMissingSymbolError();
             return RES_CODE_UNKNOWN;
         }
-        // Deoptimize.
-        pc[0] = CodeField;
-        // stack[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
-        // pc += 7;
-        NEXT();
     }
     CASE(FieldRetain): {
         Value recv = stack[pc[1]];
@@ -680,7 +681,7 @@ beginSwitch:
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             uint8_t offset = getFieldOffset(vm, obj, symId);
             if (offset != NULL_U8) {
-                stack[dst] = objectGetField(obj, offset);
+                stack[dst] = objectGetField((Object*)obj, offset);
 
                 pc[0] = CodeFieldRetainIC;
                 WRITE_U16(4, obj->retainedCommon.typeId);
@@ -703,7 +704,7 @@ beginSwitch:
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             if (obj->retainedCommon.typeId == READ_U16(4)) {
-                stack[dst] = objectGetField(obj, pc[6]);
+                stack[dst] = objectGetField((Object*)obj, pc[6]);
                 retain(vm, stack[dst]);
                 pc += 7;
                 NEXT();
@@ -871,7 +872,7 @@ beginSwitch:
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             uint8_t offset = getFieldOffset(vm, obj, symId);
             if (offset != NULL_U8) {
-                Value* lastValue = objectGetFieldPtr(obj, offset);
+                Value* lastValue = objectGetFieldPtr((Object*)obj, offset);
                 release(vm, *lastValue);
                 *lastValue = val;
 
@@ -894,22 +895,23 @@ beginSwitch:
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             if (obj->retainedCommon.typeId == READ_U16(4)) {
-                Value* lastValue = objectGetFieldPtr(obj, pc[6]);
+                Value* lastValue = objectGetFieldPtr((Object*)obj, pc[6]);
                 release(vm, *lastValue);
                 *lastValue = stack[pc[2]];
                 pc += 7;
+                NEXT();
+            } else {
+                // Deoptimize.
+                pc[0] = CodeSetFieldRelease;
+                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
+                // try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
+                // pc += 7;
                 NEXT();
             }
         } else {
             // return vm.getFieldMissingSymbolError();
             return RES_CODE_UNKNOWN;
         }
-        // Deoptimize.
-        pc[0] = CodeSetFieldRelease;
-        // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-        // try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
-        // pc += 7;
-        NEXT();
     }
     CASE(Coinit): {
         uint8_t startArgsLocal = pc[1];

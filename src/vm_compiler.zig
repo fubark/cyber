@@ -1363,7 +1363,7 @@ pub const CompileChunk = struct {
 
     pub fn pushEmptyJumpNotCond(self: *CompileChunk, condLocal: LocalId) !u32 {
         const start = @intCast(u32, self.buf.ops.items.len);
-        try self.buf.pushOp3(.jumpNotCond, 0, 0, condLocal);
+        try self.buf.pushOp3(.jumpNotCond, condLocal, 0, 0);
         return start;
     }
 
@@ -1391,7 +1391,19 @@ pub const CompileChunk = struct {
         return start;
     }
 
-    pub fn patchJumpToCurrent(self: *CompileChunk, jumpPc: u32) void {
+    pub fn patchJumpToCurPc(self: *CompileChunk, jumpPc: u32) void {
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+    }
+
+    pub fn patchJumpCondToCurPc(self: *CompileChunk, jumpPc: u32) void {
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+    }
+
+    pub fn patchJumpNotCondToCurPc(self: *CompileChunk, jumpPc: u32) void {
+        self.buf.setOpArgU16(jumpPc + 2, @intCast(u16, self.buf.ops.items.len - jumpPc));
+    }
+
+    pub fn patchJumpNotNoneToCurPc(self: *CompileChunk, jumpPc: u32) void {
         self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
     }
 

@@ -438,7 +438,7 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             }
 
             const rightv = try self.genExprTo(right, dst, retain, !dstIsUsed);
-            self.patchJumpToCurrent(jumpPc);
+            self.patchJumpNotCondToCurPc(jumpPc);
 
             if (leftv.vtype.typeT == rightv.vtype.typeT) {
                 return self.initGenValue(dst, leftv.vtype, retain and leftv.vtype.rcCandidate);
@@ -459,7 +459,7 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             }
 
             const rightv = try self.genExprTo(right, dst, retain, !dstIsUsed);
-            self.patchJumpToCurrent(jumpPc);
+            self.patchJumpCondToCurPc(jumpPc);
 
             if (leftv.vtype.typeT == rightv.vtype.typeT) {
                 return self.initGenValue(dst, leftv.vtype, retain and leftv.vtype.rcCandidate);
@@ -489,7 +489,7 @@ fn genLambdaMulti(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime
         try genStatements(self, node.head.func.bodyHead, false);
 
         try self.genBlockEnding();
-        self.patchJumpToCurrent(jumpPc);
+        self.patchJumpToCurPc(jumpPc);
 
         const sblock = sema.curBlock(self);
         const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
@@ -553,7 +553,7 @@ fn genLambdaExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime 
         _ = try self.genRetainedExprTo(node.head.func.bodyHead, 0, false);
         try self.endLocals();
         try self.buf.pushOp(.ret1);
-        self.patchJumpToCurrent(jumpPc);
+        self.patchJumpToCurPc(jumpPc);
 
         const sblock = sema.curBlock(self);
         const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
@@ -1310,12 +1310,12 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             const skipSkipJump = try self.pushEmptyJumpNotNone(optLocal);
             const skipBodyJump = try self.pushEmptyJump();
-            self.patchJumpToCurrent(skipSkipJump);
+            self.patchJumpNotNoneToCurPc(skipSkipJump);
 
             try genStatements(self, node.head.forOptStmt.bodyHead, false);
             try self.pushJumpBackTo(topPc);
 
-            self.patchJumpToCurrent(skipBodyJump);
+            self.patchJumpToCurPc(skipBodyJump);
 
             self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
             self.prevSemaSubBlock();
@@ -1335,7 +1335,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             try genStatements(self, node.head.whileCondStmt.bodyHead, false);
             try self.pushJumpBackTo(topPc);
 
-            self.patchJumpToCurrent(jumpPc);
+            self.patchJumpNotCondToCurPc(jumpPc);
 
             self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, topPc);
             self.prevSemaSubBlock();
@@ -1413,7 +1413,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             const skipSkipJump = try self.pushEmptyJumpNotNone(if (pairIter) keyVar.local else valVar.local);
             const skipBodyJump = try self.pushEmptyJump();
-            self.patchJumpToCurrent(skipSkipJump);
+            self.patchJumpNotNoneToCurPc(skipSkipJump);
 
             const bodyPc = self.buf.ops.items.len;
             const jumpStackSave = @intCast(u32, self.subBlockJumpStack.items.len);
@@ -1435,7 +1435,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             self.patchForBlockJumps(jumpStackSave, self.buf.ops.items.len, contPc);
 
-            self.patchJumpToCurrent(skipBodyJump);
+            self.patchJumpToCurPc(skipBodyJump);
 
             // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
             try self.pushOptionalDebugSym(nodeId);
@@ -1534,7 +1534,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     const pc = try self.pushEmptyJump();
                     try self.subBlockJumpStack.append(self.alloc, .{ .jumpT = .subBlockBreak, .pc = pc });
 
-                    self.patchJumpToCurrent(lastCondJump);
+                    self.patchJumpNotCondToCurPc(lastCondJump);
 
                     const elseClause = self.nodes[elseClauseId];
                     if (elseClause.head.else_clause.cond == cy.NullId) {
@@ -1558,11 +1558,11 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 }
 
                 if (!endsWithElse) {
-                    self.patchJumpToCurrent(lastCondJump);
+                    self.patchJumpNotCondToCurPc(lastCondJump);
                 }
                 jumpsStart = self.patchSubBlockBreakJumps(jumpsStart, self.buf.ops.items.len);
             } else {
-                self.patchJumpToCurrent(lastCondJump);
+                self.patchJumpNotCondToCurPc(lastCondJump);
             }
         },
         .importStmt => {
@@ -1802,7 +1802,7 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool,
 
     var truev = try self.genExprTo(node.head.if_expr.body_expr, dst, retain, false);
     const jumpPc = try self.pushEmptyJump();
-    self.patchJumpToCurrent(jumpNotPc);
+    self.patchJumpNotCondToCurPc(jumpNotPc);
 
     self.computeNextTempLocalFrom(startTempLocal);
 
@@ -1816,7 +1816,7 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool,
         }
     }
 
-    self.patchJumpToCurrent(jumpPc);
+    self.patchJumpToCurPc(jumpPc);
 
     if (truev.vtype.typeT != falsev.vtype.typeT) {
         return self.initGenValue(dst, sema.AnyType, retain);
@@ -2068,7 +2068,7 @@ fn genFuncDecl(self: *CompileChunk, rParentSymId: sema.ResolvedSymId, nodeId: cy
     const numCaptured = @intCast(u8, sblock.params.items.len - func.numParams);
     std.debug.assert(numCaptured == 0);
 
-    self.patchJumpToCurrent(jumpPc);
+    self.patchJumpToCurPc(jumpPc);
 
     self.patchBlockJumps(jumpStackStart);
     self.blockJumpStack.items.len = jumpStackStart;
@@ -2258,7 +2258,7 @@ fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: 
 
     self.popSemaBlock();
 
-    self.patchJumpToCurrent(jumpPc);
+    self.patchJumpToCurPc(jumpPc);
 
     const sym = cy.MethodSym.initFuncOffset(opStart, numLocals);
     try self.compiler.vm.addMethodSym(structId, methodId, sym);

@@ -6,6 +6,8 @@ const fatal = stdx.fatal;
 const builtin = @import("builtin");
 
 const cy = @import("../cyber.zig");
+const sema = cy.sema;
+const bt = cy.types.BuiltinTypeSymIds;
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
@@ -93,395 +95,292 @@ const Section = cy.Section;
 pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
 
-    self.iteratorObjSym = try self.ensureMethodSymKey("iterator", 0);
-    self.nextObjSym = try self.ensureMethodSymKey("next", 0);
-    self.pairIteratorObjSym = try self.ensureMethodSymKey("pairIterator", 0);
-    self.nextPairObjSym = try self.ensureMethodSymKey("nextPair", 0);
-    const add = try self.ensureMethodSymKey("add", 1);
-    const append = try self.ensureMethodSymKey("append", 1);
-    const byteAt = try self.ensureMethodSymKey("byteAt", 1);
-    const charAt = try self.ensureMethodSymKey("charAt", 1);
-    const close = try self.ensureMethodSymKey("close", 0);
-    const codeAt = try self.ensureMethodSymKey("codeAt", 1);
-    const concat = try self.ensureMethodSymKey("concat", 1);
-    const endsWith = try self.ensureMethodSymKey("endsWith", 1);
-    const find = try self.ensureMethodSymKey("find", 1);
-    const findAnyRune = try self.ensureMethodSymKey("findAnyRune", 1);
-    const findRune = try self.ensureMethodSymKey("findRune", 1);
-    const index = try self.ensureMethodSymKey("index", 1);
-    const indexChar = try self.ensureMethodSymKey("indexChar", 1);
-    const indexCharSet = try self.ensureMethodSymKey("indexCharSet", 1);
-    const indexCode = try self.ensureMethodSymKey("indexCode", 1);
-    const insert = try self.ensureMethodSymKey("insert", 2);
-    const insertByte = try self.ensureMethodSymKey("insertByte", 2);
-    const isAscii = try self.ensureMethodSymKey("isAscii", 0);
-    const joinString = try self.ensureMethodSymKey("joinString", 1);
-    const len = try self.ensureMethodSymKey("len", 0);
-    const less = try self.ensureMethodSymKey("less", 1);
-    const lower = try self.ensureMethodSymKey("lower", 0);
-    const read = try self.ensureMethodSymKey("read", 1);
-    const readToEnd = try self.ensureMethodSymKey("readToEnd", 0);
-    const remove = try self.ensureMethodSymKey("remove", 1);
-    const repeat = try self.ensureMethodSymKey("repeat", 1);
-    const replace = try self.ensureMethodSymKey("replace", 2);
-    const resize = try self.ensureMethodSymKey("resize", 1);
-    const runeAt = try self.ensureMethodSymKey("runeAt", 1);
-    const seek = try self.ensureMethodSymKey("seek", 1);
-    const seekFromCur = try self.ensureMethodSymKey("seekFromCur", 1);
-    const seekFromEnd = try self.ensureMethodSymKey("seekFromEnd", 1);
-    const size = try self.ensureMethodSymKey("size", 0);
-    const slice = try self.ensureMethodSymKey("slice", 2);
-    const sliceAt = try self.ensureMethodSymKey("sliceAt", 1);
-    const sort = try self.ensureMethodSymKey("sort", 1);
-    const split = try self.ensureMethodSymKey("split", 1);
-    const startsWith = try self.ensureMethodSymKey("startsWith", 1);
-    const stat = try self.ensureMethodSymKey("stat", 0);
-    const status = try self.ensureMethodSymKey("status", 0);
-    const streamLines = try self.ensureMethodSymKey("streamLines", 0);
-    const streamLines1 = try self.ensureMethodSymKey("streamLines", 1);
-    const toString = try self.ensureMethodSymKey("toString", 0);
-    const trim = try self.ensureMethodSymKey("trim", 2);
-    const upper = try self.ensureMethodSymKey("upper", 0);
-    const utf8 = try self.ensureMethodSymKey("utf8", 0);
-    const value = try self.ensureMethodSymKey("value", 0);
-    const walk = try self.ensureMethodSymKey("walk", 0);
-    const write = try self.ensureMethodSymKey("write", 1);
+    const b = ModuleBuilder.init(&self.compiler, undefined);
+
+    self.iteratorObjSym = try b.ensureMethodSym("iterator", 0);
+    self.nextObjSym = try b.ensureMethodSym("next", 0);
+    self.pairIteratorObjSym = try b.ensureMethodSym("pairIterator", 0);
+    self.nextPairObjSym = try b.ensureMethodSym("nextPair", 0);
+
+    // Common string methods.
+    const add = try b.ensureMethodSym("add", 1);
+    const append = try b.ensureMethodSym("append", 1);
+    const byteAt = try b.ensureMethodSym("byteAt", 1);
+    const charAt = try b.ensureMethodSym("charAt", 1);
+    const close = try b.ensureMethodSym("close", 0);
+    const codeAt = try b.ensureMethodSym("codeAt", 1);
+    const concat = try b.ensureMethodSym("concat", 1);
+    const endsWith = try b.ensureMethodSym("endsWith", 1);
+    const find = try b.ensureMethodSym("find", 1);
+    const findAnyRune = try b.ensureMethodSym("findAnyRune", 1);
+    const findRune = try b.ensureMethodSym("findRune", 1);
+    const index = try b.ensureMethodSym("index", 1);
+    const indexChar = try b.ensureMethodSym("indexChar", 1);
+    const indexCharSet = try b.ensureMethodSym("indexCharSet", 1);
+    const indexCode = try b.ensureMethodSym("indexCode", 1);
+    const insert = try b.ensureMethodSym("insert", 2);
+    const insertByte = try b.ensureMethodSym("insertByte", 2);
+    const isAscii = try b.ensureMethodSym("isAscii", 0);
+    const joinString = try b.ensureMethodSym("joinString", 1);
+    const len = try b.ensureMethodSym("len", 0);
+    const less = try b.ensureMethodSym("less", 1);
+    const lower = try b.ensureMethodSym("lower", 0);
+    const read = try b.ensureMethodSym("read", 1);
+    const readToEnd = try b.ensureMethodSym("readToEnd", 0);
+    const remove = try b.ensureMethodSym("remove", 1);
+    const repeat = try b.ensureMethodSym("repeat", 1);
+    const replace = try b.ensureMethodSym("replace", 2);
+    const resize = try b.ensureMethodSym("resize", 1);
+    const runeAt = try b.ensureMethodSym("runeAt", 1);
+    const seek = try b.ensureMethodSym("seek", 1);
+    const seekFromCur = try b.ensureMethodSym("seekFromCur", 1);
+    const seekFromEnd = try b.ensureMethodSym("seekFromEnd", 1);
+    const size = try b.ensureMethodSym("size", 0);
+    const slice = try b.ensureMethodSym("slice", 2);
+    const sliceAt = try b.ensureMethodSym("sliceAt", 1);
+    const sort = try b.ensureMethodSym("sort", 1);
+    const split = try b.ensureMethodSym("split", 1);
+    const startsWith = try b.ensureMethodSym("startsWith", 1);
+    const stat = try b.ensureMethodSym("stat", 0);
+    const status = try b.ensureMethodSym("status", 0);
+    const streamLines = try b.ensureMethodSym("streamLines", 0);
+    const streamLines1 = try b.ensureMethodSym("streamLines", 1);
+    const toString = try b.ensureMethodSym("toString", 0);
+    const trim = try b.ensureMethodSym("trim", 2);
+    const upper = try b.ensureMethodSym("upper", 0);
+    const utf8 = try b.ensureMethodSym("utf8", 0);
+    const value = try b.ensureMethodSym("value", 0);
+    const walk = try b.ensureMethodSym("walk", 0);
+    const write = try b.ensureMethodSym("write", 1);
     
     // Init compile time builtins.
 
     // Primitive types.
-    var id = try self.addObjectType("none");
+    var id = try self.addBuiltinType("none");
     std.debug.assert(id == cy.NoneT);
-    id = try self.addObjectType("boolean");
+    id = try self.addBuiltinType("boolean");
     std.debug.assert(id == cy.BooleanT);
-    id = try self.addObjectType("error");
+    id = try self.addBuiltinType("error");
     std.debug.assert(id == cy.ErrorT);
 
-    id = try self.addObjectType("string");
+    id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.StaticAstringT);
-    try self.addMethodSym(cy.StaticAstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, find, cy.MethodSym.initNativeFunc1(stringFind(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.staticAstring)));
-    try self.addMethodSym(cy.StaticAstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticAstring)));
 
-    id = try self.addObjectType("string"); // Astring and Ustring share the same string user type.
+    // Astring and Ustring share the same string user type.
+    id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.StaticUstringT);
-    try self.addMethodSym(cy.StaticUstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, find, cy.MethodSym.initNativeFunc1(stringFind(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.staticUstring)));
-    try self.addMethodSym(cy.StaticUstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.staticUstring)));
 
-    id = try self.addObjectType("tag");
+    id = try self.addBuiltinType("tag");
     std.debug.assert(id == cy.UserTagT);
-    id = try self.addObjectType("tagliteral");
+    id = try self.addBuiltinType("tagliteral");
     std.debug.assert(id == cy.UserTagLiteralT);
-    id = try self.addObjectType("integer");
+    id = try self.addBuiltinType("integer");
     std.debug.assert(id == cy.IntegerT);
-    id = try self.addObjectType("number");
+    id = try self.addBuiltinType("number");
     std.debug.assert(id == cy.NumberT);
 
-    id = try self.addObjectType("List");
+    id = try self.addBuiltinType("List");
     std.debug.assert(id == cy.ListS);
-    try self.addMethodSym(cy.ListS, add, cy.MethodSym.initNativeFunc1(listAdd));
-    try self.addMethodSym(cy.ListS, append, cy.MethodSym.initNativeFunc1(listAppend));
-    try self.addMethodSym(cy.ListS, concat, cy.MethodSym.initNativeFunc1(listConcat));
-    try self.addMethodSym(cy.ListS, insert, cy.MethodSym.initNativeFunc1(listInsert));
-    try self.addMethodSym(cy.ListS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
-    try self.addMethodSym(cy.ListS, joinString, cy.MethodSym.initNativeFunc1(listJoinString));
-    try self.addMethodSym(cy.ListS, len, cy.MethodSym.initNativeFunc1(listLen));
-    try self.addMethodSym(cy.ListS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(listIterator));
-    try self.addMethodSym(cy.ListS, remove, cy.MethodSym.initNativeFunc1(listRemove));
-    try self.addMethodSym(cy.ListS, resize, cy.MethodSym.initNativeFunc1(listResize));
-    try self.addMethodSym(cy.ListS, sort, cy.MethodSym.initNativeFunc1(listSort));
 
-    id = try self.addObjectType("ListIterator");
+    try b.addMethod(cy.ListS, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
+    try b.addMethod(cy.ListS, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
+    try b.addMethod(cy.ListS, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
+    try b.addMethod(cy.ListS, insert, &.{bt.Any, bt.Number, bt.Any}, bt.Any, listInsert);
+    try b.addMethod(cy.ListS, self.iteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
+    try b.addMethod(cy.ListS, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
+    try b.addMethod(cy.ListS, len, &.{bt.Any}, bt.Number, listLen);
+    try b.addMethod(cy.ListS, self.pairIteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
+    try b.addMethod(cy.ListS, remove, &.{bt.Any, bt.Number}, bt.Any, listRemove);
+    try b.addMethod(cy.ListS, resize, &.{bt.Any, bt.Number}, bt.Any, listResize);
+    try b.addMethod(cy.ListS, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
+
+    id = try self.addBuiltinType("ListIterator");
     std.debug.assert(id == cy.ListIteratorT);
-    try self.addMethodSym(cy.ListIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(listIteratorNext));
-    try self.addMethodSym(cy.ListIteratorT, self.nextPairObjSym, cy.MethodSym.initNativeFunc2(listIteratorNextPair));
+    try b.addMethod(cy.ListIteratorT, self.nextObjSym, &.{bt.Any}, bt.Any, listIteratorNext);
+    try b.addMethod2(cy.ListIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, listIteratorNextPair);
 
-    id = try self.addObjectType("Map");
+    id = try self.addBuiltinType("Map");
     std.debug.assert(id == cy.MapS);
-    try self.addMethodSym(cy.MapS, remove, cy.MethodSym.initNativeFunc1(mapRemove));
-    try self.addMethodSym(cy.MapS, size, cy.MethodSym.initNativeFunc1(mapSize));
-    try self.addMethodSym(cy.MapS, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(mapIterator));
-    try self.addMethodSym(cy.MapS, self.pairIteratorObjSym, cy.MethodSym.initNativeFunc1(mapIterator));
+    try b.addMethod(cy.MapS, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
+    try b.addMethod(cy.MapS, size,                    &.{ bt.Any }, bt.Number, mapSize);
+    try b.addMethod(cy.MapS, self.iteratorObjSym,     &.{ bt.Any }, bt.Any, mapIterator);
+    try b.addMethod(cy.MapS, self.pairIteratorObjSym, &.{ bt.Any }, bt.Any, mapIterator);
 
-    id = try self.addObjectType("MapIterator");
+    id = try self.addBuiltinType("MapIterator");
     std.debug.assert(id == cy.MapIteratorT);
-    try self.addMethodSym(cy.MapIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(mapIteratorNext));
-    try self.addMethodSym(cy.MapIteratorT, self.nextPairObjSym, cy.MethodSym.initNativeFunc2(mapIteratorNextPair));
+    try b.addMethod(cy.MapIteratorT, self.nextObjSym,     &.{bt.Any}, bt.Any, mapIteratorNext);
+    try b.addMethod2(cy.MapIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, mapIteratorNextPair);
 
-    id = try self.addObjectType("Closure");
+    id = try self.addBuiltinType("Closure");
     std.debug.assert(id == cy.ClosureS);
 
-    id = try self.addObjectType("Lambda");
+    id = try self.addBuiltinType("Lambda");
     std.debug.assert(id == cy.LambdaS);
 
-    id = try self.addObjectType("string");
+    id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.AstringT);
-    try self.addMethodSym(cy.AstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.astring)));
-    try self.addMethodSym(cy.AstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.astring)));
-    try self.addMethodSym(cy.AstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.astring)));
-    try self.addMethodSym(cy.AstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.astring)));
-    try self.addMethodSym(cy.AstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.astring)));
-    try self.addMethodSym(cy.AstringT, find, cy.MethodSym.initNativeFunc1(stringFind(.astring)));
-    try self.addMethodSym(cy.AstringT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.astring)));
-    try self.addMethodSym(cy.AstringT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.astring)));
-    try self.addMethodSym(cy.AstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.astring)));
-    try self.addMethodSym(cy.AstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.astring)));
-    try self.addMethodSym(cy.AstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.astring)));
-    try self.addMethodSym(cy.AstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.astring)));
-    try self.addMethodSym(cy.AstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.astring)));
-    try self.addMethodSym(cy.AstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.astring)));
-    try self.addMethodSym(cy.AstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.astring)));
-    try self.addMethodSym(cy.AstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.astring)));
-    try self.addMethodSym(cy.AstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.astring)));
-    try self.addMethodSym(cy.AstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.astring)));
-    try self.addMethodSym(cy.AstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.astring)));
-    try self.addMethodSym(cy.AstringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.astring)));
-    try self.addMethodSym(cy.AstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.astring)));
-    try self.addMethodSym(cy.AstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.astring)));
-    try self.addMethodSym(cy.AstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.astring)));
-    try self.addMethodSym(cy.AstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.astring)));
-    try self.addMethodSym(cy.AstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.astring)));
-    try self.addMethodSym(cy.AstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.astring)));
 
-    id = try self.addObjectType("string");
+    id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.UstringT);
-    try self.addMethodSym(cy.UstringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.ustring)));
-    try self.addMethodSym(cy.UstringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.ustring)));
-    try self.addMethodSym(cy.UstringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.ustring)));
-    try self.addMethodSym(cy.UstringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.ustring)));
-    try self.addMethodSym(cy.UstringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.ustring)));
-    try self.addMethodSym(cy.UstringT, find, cy.MethodSym.initNativeFunc1(stringFind(.ustring)));
-    try self.addMethodSym(cy.UstringT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.ustring)));
-    try self.addMethodSym(cy.UstringT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.ustring)));
-    try self.addMethodSym(cy.UstringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.ustring)));
-    try self.addMethodSym(cy.UstringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.ustring)));
-    try self.addMethodSym(cy.UstringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.ustring)));
-    try self.addMethodSym(cy.UstringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.ustring)));
-    try self.addMethodSym(cy.UstringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.ustring)));
-    try self.addMethodSym(cy.UstringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.ustring)));
-    try self.addMethodSym(cy.UstringT, len, cy.MethodSym.initNativeFunc1(stringLen(.ustring)));
-    try self.addMethodSym(cy.UstringT, less, cy.MethodSym.initNativeFunc1(stringLess(.ustring)));
-    try self.addMethodSym(cy.UstringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.ustring)));
-    try self.addMethodSym(cy.UstringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.ustring)));
-    try self.addMethodSym(cy.UstringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.ustring)));
-    try self.addMethodSym(cy.UstringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.ustring)));
-    try self.addMethodSym(cy.UstringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.ustring)));
-    try self.addMethodSym(cy.UstringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.ustring)));
-    try self.addMethodSym(cy.UstringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.ustring)));
-    try self.addMethodSym(cy.UstringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.ustring)));
-    try self.addMethodSym(cy.UstringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.ustring)));
-    try self.addMethodSym(cy.UstringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.ustring)));
 
-    id = try self.addObjectType("string");
+    id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.StringSliceT);
-    try self.addMethodSym(cy.StringSliceT, append, cy.MethodSym.initNativeFunc1(stringAppend(.slice)));
-    try self.addMethodSym(cy.StringSliceT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.slice)));
-    try self.addMethodSym(cy.StringSliceT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.slice)));
-    try self.addMethodSym(cy.StringSliceT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.slice)));
-    try self.addMethodSym(cy.StringSliceT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.slice)));
-    try self.addMethodSym(cy.StringSliceT, find, cy.MethodSym.initNativeFunc1(stringFind(.slice)));
-    try self.addMethodSym(cy.StringSliceT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.slice)));
-    try self.addMethodSym(cy.StringSliceT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.slice)));
-    try self.addMethodSym(cy.StringSliceT, index, cy.MethodSym.initNativeFunc1(stringIndex(.slice)));
-    try self.addMethodSym(cy.StringSliceT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.slice)));
-    try self.addMethodSym(cy.StringSliceT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.slice)));
-    try self.addMethodSym(cy.StringSliceT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.slice)));
-    try self.addMethodSym(cy.StringSliceT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.slice)));
-    try self.addMethodSym(cy.StringSliceT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.slice)));
-    try self.addMethodSym(cy.StringSliceT, len, cy.MethodSym.initNativeFunc1(stringLen(.slice)));
-    try self.addMethodSym(cy.StringSliceT, less, cy.MethodSym.initNativeFunc1(stringLess(.slice)));
-    try self.addMethodSym(cy.StringSliceT, lower, cy.MethodSym.initNativeFunc1(stringLower(.slice)));
-    try self.addMethodSym(cy.StringSliceT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.slice)));
-    try self.addMethodSym(cy.StringSliceT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.slice)));
-    try self.addMethodSym(cy.StringSliceT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.slice)));
-    try self.addMethodSym(cy.StringSliceT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.slice)));
-    try self.addMethodSym(cy.StringSliceT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.slice)));
-    try self.addMethodSym(cy.StringSliceT, split, cy.MethodSym.initNativeFunc1(stringSplit(.slice)));
-    try self.addMethodSym(cy.StringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.slice)));
-    try self.addMethodSym(cy.StringSliceT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.slice)));
-    try self.addMethodSym(cy.StringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.slice)));
 
-    id = try self.addObjectType("rawstring");
+    const StringTypes = &[_]cy.TypeId{ cy.StaticAstringT, cy.StaticUstringT, cy.AstringT, cy.UstringT, cy.StringSliceT };
+    inline for (StringTypes) |typeId| {
+        const tag: cy.StringType = switch (typeId) {
+            cy.StaticAstringT => .staticAstring,
+            cy.StaticUstringT => .staticUstring,
+            cy.AstringT => .astring,
+            cy.UstringT => .ustring,
+            cy.StringSliceT => .slice,
+            else => unreachable,
+        };
+        try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.String, stringAppend(tag));
+        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCharAt(tag));
+        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCodeAt(tag));
+        try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.String, stringConcat(tag));
+        try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
+        try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
+        try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
+        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Number }, bt.Any, stringFindRune(tag));
+        try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
+        try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
+        try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
+        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Number }, bt.Any, stringIndexCode(tag));
+        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Number, bt.Any }, bt.String, stringInsert(tag));
+        try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
+        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Number, stringLen(tag));
+        try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
+        try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.String, stringLower(tag));
+        try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.String, stringReplace(tag));
+        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Number }, bt.Any, stringRepeat(tag));
+        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringRuneAt(tag));
+        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Number, bt.Number }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Number }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
+        try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
+        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.TagLiteral, bt.Any }, bt.Any, stringTrim(tag));
+        try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.String, stringUpper(tag));
+    }
+
+    id = try self.addBuiltinType("rawstring");
     std.debug.assert(id == cy.RawStringT);
-    try self.addMethodSym(cy.RawStringT, append, cy.MethodSym.initNativeFunc1(stringAppend(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, byteAt, cy.MethodSym.initNativeFunc1(rawStringByteAt));
-    try self.addMethodSym(cy.RawStringT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, find, cy.MethodSym.initNativeFunc1(stringFind(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, index, cy.MethodSym.initNativeFunc1(stringIndex(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, insertByte, cy.MethodSym.initNativeFunc1(rawStringInsertByte));
-    try self.addMethodSym(cy.RawStringT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, len, cy.MethodSym.initNativeFunc1(stringLen(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, less, cy.MethodSym.initNativeFunc1(stringLess(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, lower, cy.MethodSym.initNativeFunc1(stringLower(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, split, cy.MethodSym.initNativeFunc1(stringSplit(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, toString, cy.MethodSym.initNativeFunc1(rawStringToString));
-    try self.addMethodSym(cy.RawStringT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.rawstring)));
-    try self.addMethodSym(cy.RawStringT, utf8, cy.MethodSym.initNativeFunc1(rawStringUtf8));
 
-    id = try self.addObjectType("rawstring");
+    id = try self.addBuiltinType("rawstring");
     std.debug.assert(id == cy.RawStringSliceT);
-    try self.addMethodSym(cy.RawStringSliceT, append, cy.MethodSym.initNativeFunc1(stringAppend(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, byteAt, cy.MethodSym.initNativeFunc1(rawStringSliceByteAt));
-    try self.addMethodSym(cy.RawStringSliceT, charAt, cy.MethodSym.initNativeFunc1(stringCharAt(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, codeAt, cy.MethodSym.initNativeFunc1(stringCodeAt(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, concat, cy.MethodSym.initNativeFunc1(stringConcat(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, endsWith, cy.MethodSym.initNativeFunc1(stringEndsWith(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, find, cy.MethodSym.initNativeFunc1(stringFind(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, findAnyRune, cy.MethodSym.initNativeFunc1(stringFindAnyRune(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, findRune, cy.MethodSym.initNativeFunc1(stringFindRune(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, index, cy.MethodSym.initNativeFunc1(stringIndex(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, indexChar, cy.MethodSym.initNativeFunc1(stringIndexChar(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, indexCharSet, cy.MethodSym.initNativeFunc1(stringIndexCharSet(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, indexCode, cy.MethodSym.initNativeFunc1(stringIndexCode(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, insert, cy.MethodSym.initNativeFunc1(stringInsert(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, insertByte, cy.MethodSym.initNativeFunc1(rawStringSliceInsertByte));
-    try self.addMethodSym(cy.RawStringSliceT, isAscii, cy.MethodSym.initNativeFunc1(stringIsAscii(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, len, cy.MethodSym.initNativeFunc1(stringLen(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, less, cy.MethodSym.initNativeFunc1(stringLess(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, lower, cy.MethodSym.initNativeFunc1(stringLower(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, repeat, cy.MethodSym.initNativeFunc1(stringRepeat(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, replace, cy.MethodSym.initNativeFunc1(stringReplace(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, runeAt, cy.MethodSym.initNativeFunc1(stringRuneAt(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, slice, cy.MethodSym.initNativeFunc1(stringSlice(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, sliceAt, cy.MethodSym.initNativeFunc1(stringSliceAt(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, split, cy.MethodSym.initNativeFunc1(stringSplit(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, startsWith, cy.MethodSym.initNativeFunc1(stringStartsWith(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, toString, cy.MethodSym.initNativeFunc1(rawStringSliceToString));
-    try self.addMethodSym(cy.RawStringSliceT, upper, cy.MethodSym.initNativeFunc1(stringUpper(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, trim, cy.MethodSym.initNativeFunc1(stringTrim(.rawSlice)));
-    try self.addMethodSym(cy.RawStringSliceT, utf8, cy.MethodSym.initNativeFunc1(rawStringSliceUtf8));
 
-    id = try self.addObjectType("Fiber");
+    const RawStringTypes = &[_]cy.TypeId{ cy.RawStringT, cy.RawStringSliceT };
+    inline for (RawStringTypes) |typeId| {
+        const tag = switch (typeId) {
+            cy.RawStringT => .rawstring,
+            cy.RawStringSliceT => .rawSlice,
+            else => unreachable,
+        };
+        try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringAppend(tag));
+        try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Number }, bt.Any,
+            if (tag == .rawstring) rawStringByteAt else rawStringSliceByteAt);
+        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCharAt(tag));
+        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCodeAt(tag));
+        try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringConcat(tag));
+        try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
+        try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
+        try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
+        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Number }, bt.Any, stringFindRune(tag));
+        try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
+        try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
+        try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
+        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Number }, bt.Any, stringIndexCode(tag));
+        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Number, bt.Any }, bt.Any, stringInsert(tag));
+        try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Number, bt.Number }, bt.Any,
+            if (tag == .rawstring) rawStringInsertByte else rawStringSliceInsertByte);
+        try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
+        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Number, stringLen(tag));
+        try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
+        try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.Rawstring, stringLower(tag));
+        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Number }, bt.Any, stringRepeat(tag));
+        try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.Rawstring, stringReplace(tag));
+        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringRuneAt(tag));
+        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Number, bt.Number }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Number }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
+        try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
+        try b.addMethod(typeId, toString,     &.{ bt.Any }, bt.Any,
+            if (tag == .rawstring) rawStringToString else rawStringSliceToString);
+        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.TagLiteral, bt.Any }, bt.Any, stringTrim(tag));
+        try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.Rawstring, stringUpper(tag));
+        try b.addMethod(typeId, utf8,         &.{ bt.Any }, bt.Any,
+            if (tag == .rawstring) rawStringUtf8 else rawStringSliceUtf8);
+    }
+
+    id = try self.addBuiltinType("Fiber");
     std.debug.assert(id == cy.FiberS);
-    try self.addMethodSym(cy.FiberS, status, cy.MethodSym.initNativeFunc1(fiberStatus));
+    try b.addMethod(cy.FiberS, status, &.{ bt.Any }, bt.TagLiteral, fiberStatus);
 
-    id = try self.addObjectType("Box");
+    id = try self.addBuiltinType("Box");
     std.debug.assert(id == cy.BoxS);
 
-    id = try self.addObjectType("NativeFunc1");
+    id = try self.addBuiltinType("NativeFunc1");
     std.debug.assert(id == cy.NativeFunc1S);
 
-    id = try self.addObjectType("TccState");
+    id = try self.addBuiltinType("TccState");
     std.debug.assert(id == cy.TccStateS);
 
-    id = try self.addObjectType("pointer");
+    id = try self.addBuiltinType("pointer");
     std.debug.assert(id == cy.PointerT);
-    try self.addMethodSym(cy.PointerT, value, cy.MethodSym.initNativeFunc1(pointerValue));
+    try b.addMethod(cy.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
 
-    id = try self.addObjectType("File");
+    id = try self.addBuiltinType("File");
     std.debug.assert(id == cy.FileT);
     if (cy.hasStdFiles) {
-        try self.addMethodSym(cy.FileT, close, cy.MethodSym.initNativeFunc1(fileClose));
-        try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(fileIterator));
-        try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(fileNext));
-        try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(fileRead));
-        try self.addMethodSym(cy.FileT, readToEnd, cy.MethodSym.initNativeFunc1(fileReadToEnd));
-        try self.addMethodSym(cy.FileT, seek, cy.MethodSym.initNativeFunc1(fileSeek));
-        try self.addMethodSym(cy.FileT, seekFromCur, cy.MethodSym.initNativeFunc1(fileSeekFromCur));
-        try self.addMethodSym(cy.FileT, seekFromEnd, cy.MethodSym.initNativeFunc1(fileSeekFromEnd));
-        try self.addMethodSym(cy.FileT, stat, cy.MethodSym.initNativeFunc1(fileStat));
-        try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(fileStreamLines));
-        try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(fileStreamLines1));
-        try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(fileWrite));
+        try b.addMethod(cy.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
+        try b.addMethod(cy.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, fileIterator);
+        try b.addMethod(cy.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, fileNext);
+        try b.addMethod(cy.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, fileRead);
+        try b.addMethod(cy.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
+        try b.addMethod(cy.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, fileSeek);
+        try b.addMethod(cy.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromCur);
+        try b.addMethod(cy.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromEnd);
+        try b.addMethod(cy.FileT, stat,                &.{ bt.Any }, bt.Any, fileStat);
+        try b.addMethod(cy.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
+        try b.addMethod(cy.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
+        try b.addMethod(cy.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
     } else {
-        try self.addMethodSym(cy.FileT, close, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.FileT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.FileT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.FileT, read, cy.MethodSym.initNativeFunc1(objNop1));
-        try self.addMethodSym(cy.FileT, readToEnd, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.FileT, seek, cy.MethodSym.initNativeFunc1(objNop1));
-        try self.addMethodSym(cy.FileT, seekFromCur, cy.MethodSym.initNativeFunc1(objNop1));
-        try self.addMethodSym(cy.FileT, seekFromEnd, cy.MethodSym.initNativeFunc1(objNop1));
-        try self.addMethodSym(cy.FileT, stat, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.FileT, streamLines, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.FileT, streamLines1, cy.MethodSym.initNativeFunc1(objNop1));
-        try self.addMethodSym(cy.FileT, write, cy.MethodSym.initNativeFunc1(objNop1));
+        try b.addMethod(cy.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
+        try b.addMethod(cy.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(cy.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(cy.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(cy.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
+        try b.addMethod(cy.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(cy.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(cy.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(cy.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(cy.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(cy.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(cy.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
     }
 
-    id = try self.addObjectType("Dir");
+    id = try self.addBuiltinType("Dir");
     std.debug.assert(id == cy.DirT);
     if (cy.hasStdFiles) {
-        try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(dirIterator));
-        try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(fileStat));
-        try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(dirWalk));
+        try b.addMethod(cy.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, dirIterator);
+        try b.addMethod(cy.DirT, stat,                &.{ bt.Any }, bt.Any, fileStat);
+        try b.addMethod(cy.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
     } else {
-        try self.addMethodSym(cy.DirT, self.iteratorObjSym, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.DirT, stat, cy.MethodSym.initNativeFunc1(objNop0));
-        try self.addMethodSym(cy.DirT, walk, cy.MethodSym.initNativeFunc1(objNop0));
+        try b.addMethod(cy.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(cy.DirT, stat,                &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(cy.DirT, walk,                &.{ bt.Any }, bt.Any, objNop0);
     }
 
-    id = try self.addObjectType("DirIterator");
+    id = try self.addBuiltinType("DirIterator");
     std.debug.assert(id == cy.DirIteratorT);
     if (cy.hasStdFiles) {
-        try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(dirIteratorNext));
+        try b.addMethod(cy.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, dirIteratorNext);
     } else {
-        try self.addMethodSym(cy.DirIteratorT, self.nextObjSym, cy.MethodSym.initNativeFunc1(objNop0));
+        try b.addMethod(cy.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
     }
 
-    id = try self.addObjectType("Symbol");
+    id = try self.addBuiltinType("Symbol");
     std.debug.assert(id == cy.SymbolT);
 
     try ensureTagLitSym(self, "bool", .bool);
@@ -589,7 +488,7 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksectio
 }
 
 fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index = @floatToInt(i64, args[0].toF64());
+    const index = @floatToInt(i64, args[0].asF64());
     const list = recv.asHeapObject();
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
@@ -602,7 +501,7 @@ fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
 }
 
 fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index = @floatToInt(i64, args[0].toF64());
+    const index = @floatToInt(i64, args[0].asF64());
     const value = args[1];
     const list = recv.asHeapObject();
     defer vm.releaseObject(list);
@@ -701,12 +600,10 @@ fn listConcat(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
         vm.releaseObject(obj);
         vm.release(args[0]);
     }
-    if (args[0].isList()) {
-        const list = args[0].asHeapObject();
-        for (list.list.items()) |it| {
-            vm.retain(it);
-            obj.list.append(vm.allocator(), it);
-        }
+    const list = args[0].asHeapObject();
+    for (list.list.items()) |it| {
+        vm.retain(it);
+        obj.list.append(vm.allocator(), it);
     }
     return Value.None;
 }
@@ -752,7 +649,7 @@ fn listIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
 fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const list = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size = @floatToInt(u32, args[0].toF64());
+    const size = @floatToInt(u32, args[0].asF64());
     if (inner.len < size) {
         const oldLen = inner.len;
         inner.resize(vm.allocator(), size) catch stdx.fatal();
@@ -812,9 +709,12 @@ fn mapSize(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy
 
 fn mapRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
+    defer {
+        vm.releaseObject(obj);
+        vm.release(args[0]);
+    }
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(@ptrCast(*cy.VM, vm), args[0]);
-    vm.releaseObject(obj);
     return Value.None;
 }
 
@@ -1068,12 +968,9 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
+            defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
-            const idx = @floatToInt(i32, args[0].toF64());
+            const idx = @floatToInt(i32, args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
                     return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
@@ -1109,11 +1006,11 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 }
 
 fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
-    const index = @floatToInt(i64, indexv.toF64());
+    const index = @floatToInt(i64, indexv.asF64());
     if (index < 0 or index > str.len) {
         return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
     } 
-    const byte = @floatToInt(u8, val.toF64());
+    const byte = @floatToInt(u8, val.asF64());
     const new = vm.allocUnsetRawStringObject(str.len + 1) catch stdx.fatal();
     const buf = new.rawstring.getSlice();
     const uidx = @intCast(u32, index);
@@ -1125,22 +1022,14 @@ fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val
 
 fn rawStringInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
+    defer vm.releaseObject(obj);
     const str = obj.rawstring.getConstSlice();
     return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
 
 fn rawStringSliceInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
+    defer vm.releaseObject(obj);
     const str = obj.rawstringSlice.getConstSlice();
     return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
@@ -1190,7 +1079,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             }
             const str = getStringSlice(T, vm, obj);
 
-            const n = @floatToInt(i32, args[0].toF64());
+            const n = @floatToInt(i32, args[0].asF64());
             if (n < 0) {
                 return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
             }
@@ -1422,15 +1311,10 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
                 vm.release(args[1]);
             }
 
             const str = getStringSlice(T, vm, obj);
-
-            if (!args[0].isTagLiteral()) {
-                return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
-            }
             const trimRunes = vm.valueToTempString(args[1]);
 
             var res: []const u8 = undefined;
@@ -1546,19 +1430,15 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-                vm.release(args[1]);
-            }
+            defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
 
             if (isAstringObject(T, obj)) {
-                var start = @floatToInt(i32, args[0].toF64());
+                var start = @floatToInt(i32, args[0].asF64());
                 if (start < 0) {
                     start = @intCast(i32, str.len) + start;
                 }
-                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].toF64());
+                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].asF64());
                 if (end < 0) {
                     end = @intCast(i32, str.len) + end;
                 }
@@ -1576,11 +1456,11 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
-                var start = @floatToInt(i32, args[0].toF64());
+                var start = @floatToInt(i32, args[0].asF64());
                 if (start < 0) {
                     start = @intCast(i32, charLen) + start;
                 }
-                var end = if (args[1].isNone()) @intCast(i32, charLen) else @floatToInt(i32, args[1].toF64());
+                var end = if (args[1].isNone()) @intCast(i32, charLen) else @floatToInt(i32, args[1].asF64());
                 if (end < 0) {
                     end = @intCast(i32, charLen) + end;
                 }
@@ -1602,11 +1482,11 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, obj) catch fatal();
                 }
             } else if (isRawStringObject(T)) {
-                var start = @floatToInt(i32, args[0].toF64());
+                var start = @floatToInt(i32, args[0].asF64());
                 if (start < 0) {
                     start = @intCast(i32, str.len) + start;
                 }
-                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].toF64());
+                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].asF64());
                 if (end < 0) {
                     end = @intCast(i32, str.len) + end;
                 }
@@ -1669,11 +1549,10 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const obj = getStringObject(T, recv);
             defer {
                 releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
                 vm.release(args[1]);
             }
             const str = getStringSlice(T, vm, obj);
-            const idx = @floatToInt(i32, args[0].toF64());
+            const idx = @floatToInt(i32, args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx > str.len) {
                     return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
@@ -1839,7 +1718,7 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
 fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    const idx = @floatToInt(i32, args[0].toF64());
+    const idx = @floatToInt(i32, args[0].asF64());
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
         return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
     }
@@ -1851,7 +1730,7 @@ fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
 fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    const idx = @floatToInt(i32, args[0].toF64());
+    const idx = @floatToInt(i32, args[0].asF64());
     if (idx < 0 or idx >= obj.rawstring.len) {
         return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
     }
@@ -1882,9 +1761,7 @@ fn stringIsAscii(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 return Value.False;
             } else {
                 const obj = getStringObject(T, recv);
-                defer {
-                    releaseStringObject(T, vm, obj);
-                }
+                defer releaseStringObject(T, vm, obj);
                 if (isAstringObject(T, obj)) {
                     return Value.True;
                 } else if (isUstringObject(T, obj)) {
@@ -2017,12 +1894,9 @@ fn stringFindRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
+            defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
-            const needle = @floatToInt(i32, args[0].toF64());
+            const needle = @floatToInt(i32, args[0].asF64());
 
             if (needle > 0) {
                 const code = @intCast(u21, needle);
@@ -2090,7 +1964,7 @@ pub fn fileStreamLines(vm: *cy.UserVM, recv: Value, _: [*]const Value, nargs: u8
 pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
     const obj = recv.asHeapObject();
-    const bufSize = @floatToInt(u32, args[0].toF64());
+    const bufSize = @floatToInt(u32, args[0].asF64());
     var createReadBuf = true;
     if (obj.file.hasReadBuf) {
         if (bufSize != obj.file.readBufCap) {
@@ -2149,7 +2023,7 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
         return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
     }
 
-    const numBytes = @floatToInt(i32, args[0].toF64());
+    const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes > 0) {
         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
     }
@@ -2169,7 +2043,7 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
         return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
     }
 
-    const numBytes = @floatToInt(i32, args[0].toF64());
+    const numBytes = @floatToInt(i32, args[0].asF64());
 
     const file = obj.file.getStdFile();
     file.seekBy(numBytes) catch |err| {
@@ -2186,7 +2060,7 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
         return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
     }
 
-    const numBytes = @floatToInt(i32, args[0].toF64());
+    const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes < 0) {
         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
     }
@@ -2210,13 +2084,7 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
         return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
     }
 
-    var buf: []const u8 = undefined;
-    if (args[0].isRawString()) {
-        buf = args[0].asRawString();
-    } else {
-        buf = vm.valueToTempString(args[0]);
-    }
-
+    var buf = vm.valueToTempRawString(args[0]);
     const file = obj.file.getStdFile();
     const numWritten = file.write(buf) catch |err| {
         return fromUnsupportedError("write", err, @errorReturnTrace());
@@ -2240,7 +2108,7 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
         return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
     }
 
-    const numBytes = @floatToInt(i32, args[0].toF64());
+    const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes <= 0) {
         return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
     }
@@ -2462,14 +2330,14 @@ pub fn nop3(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 pub fn objNop0(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     vm.releaseObject(obj);
-    return Value.None;
+    return vm.returnPanic("Unsupported.");
 }
 
 pub fn objNop1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     vm.releaseObject(obj);
     vm.release(args[0]);
-    return Value.None;
+    return vm.returnPanic("Unsupported.");
 }
 
 pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFunc) cy.NativeFuncPtr {
@@ -2507,15 +2375,31 @@ pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin
 pub const ModuleBuilder = struct {
     mod: *cy.Module,
     compiler: *cy.VMcompiler,
+    vm: *cy.VM,
 
     pub fn init(c: *cy.VMcompiler, mod: *cy.Module) ModuleBuilder {
         return .{
             .mod = mod,
             .compiler = c,
+            .vm = c.vm,
         };
     }
 
-    pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const cy.sema.ResolvedSymId, ret: cy.sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {
+    pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {
         try self.mod.setNativeTypedFunc(self.compiler, name, params, ret, ptr);
+    }
+
+    pub fn ensureMethodSym(self: *const ModuleBuilder, name: []const u8, numParams: u32) !u32 {
+        return self.vm.ensureMethodSym(name, numParams);
+    }
+
+    pub fn addMethod(self: *const ModuleBuilder, typeId: cy.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
+        const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
+        try self.vm.addMethodSym(typeId, symId, cy.MethodSym.initNativeFunc1(rFuncSigId, ptr));
+    }
+
+    pub fn addMethod2(self: *const ModuleBuilder, typeId: cy.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
+        const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
+        try self.vm.addMethodSym(typeId, symId, cy.MethodSym.initNativeFunc2(rFuncSigId, ptr));
     }
 };

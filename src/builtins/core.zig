@@ -11,7 +11,7 @@ const fmt = @import("../fmt.zig");
 const os_mod = @import("os.zig");
 const http = @import("../http.zig");
 const cache = @import("../cache.zig");
-const bt = cy.sema.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.core);
 

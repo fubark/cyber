@@ -8,7 +8,7 @@ const cy = @import("cyber.zig");
 const Value = cy.Value;
 const t = stdx.testing;
 const log = stdx.log.scoped(.lib);
-const bt = cy.sema.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypeSymIds;
 
 const c = @cImport({
     @cInclude("cyber.h");

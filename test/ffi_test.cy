@@ -70,7 +70,7 @@ try t.eq(res.d, true)
 -- Return struct ptr and convert to Cyber object.
 ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: 'foo', d: true})
 try t.eq(valtag(ptr), #pointer)
-res = lib.ptrToMyObject(ptr)
+res = lib.ptrToMyObject(pointer(ptr))
 try t.eq(res.a, 123)
 try t.eq(res.b, 10)
 try t.eq(res.c, rawstring('foo'))

@@ -3445,6 +3445,7 @@ pub const Node = struct {
         ident: struct {
             semaVarId: u32 = NullId,
             sema_crSymId: cy.sema.CompactResolvedSymId = cy.sema.CompactResolvedSymId.initNull(),
+            semaMethodSigId: cy.sema.ResolvedFuncSigId = NullId,
         },
         unary: struct {
             child: NodeId,

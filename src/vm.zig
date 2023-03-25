@@ -11,7 +11,8 @@ const vmc = @import("vm_c.zig");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
-const sema = @import("sema.zig");
+const sema = cy.sema;
+const types = cy.types;
 const bindings = @import("builtins/bindings.zig");
 const math_mod = @import("builtins/math.zig");
 const Value = cy.Value;
@@ -76,10 +77,10 @@ pub const VM = struct {
     /// A `SymbolId` indexes into `methodSyms`. If the `mruStructId` matches it uses `mruSym`.
     /// Otherwise, the sym is looked up from the hashmap `methodTable`.
     methodSyms: cy.List(MethodSym),
-    methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, MethodSym),
+    methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, MethodEntry),
 
     /// Maps a method signature to a symbol id in `methodSyms`.
-    methodSymSigs: std.HashMapUnmanaged(RelFuncSigKey, SymbolId, KeyU64Context, 80),
+    methodSymSigs: std.HashMapUnmanaged(RtMethodSymKey, SymbolId, KeyU64Context, 80),
 
     /// Regular function symbol table.
     funcSyms: cy.List(FuncSymbolEntry),
@@ -734,15 +735,21 @@ pub const VM = struct {
             const next = math_mod.rand.next();
             std.mem.copy(u8, name[0..baseName.len], baseName);
             _ = std.fmt.formatIntBuf(name[baseName.len..], next, 16, .lower, .{ .width = 16, .fill = '0'});
-            if (!self.compiler.sema.nameSymMap.contains(name)) {
-                const nameId = try cy.sema.ensureNameSymExt(&self.compiler, name, true);
-                return try self.ensureObjectType(cy.NullId, nameId);
+            const nameId = try cy.sema.ensureNameSymExt(&self.compiler, name, true);
+            const key = StructKey{
+                .structKey = .{
+                    .rParentSymId = cy.NullId,
+                    .nameId = nameId,
+                },
+            };
+            if (!self.structSignatures.contains(key)) {
+                return try self.addObjectTypeExt(cy.NullId, nameId, baseName, cy.NullId);
             }
         }
         return error.TooManyAttempts;
     }
 
-    pub fn ensureObjectType(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
+    pub fn ensureObjectType(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId, rSymId: sema.ResolvedSymId) !TypeId {
         const res = try @call(.never_inline, self.structSignatures.getOrPut, .{self.alloc, .{
             .structKey = .{
                 .rParentSymId = rParentSymId,
@@ -750,21 +757,22 @@ pub const VM = struct {
             },
         }});
         if (!res.found_existing) {
-            return self.addObjectTypeExt(rParentSymId, nameId);
+            const name = sema.getName(&self.compiler, nameId);
+            return self.addObjectTypeExt(rParentSymId, nameId, name, rSymId);
         } else {
             return res.value_ptr.*;
         }
     }
 
-    pub fn getStructFieldIdx(self: *const VM, sid: TypeId, propName: []const u8) ?u32 {
+    pub fn getStructFieldIdx(self: *const VM, typeId: TypeId, propName: []const u8) ?u32 {
         const fieldId = self.fieldSymSignatures.get(propName) orelse return null;
         const entry = &self.fieldSyms.buf[fieldId];
 
-        if (entry.mruTypeId == sid) {
+        if (entry.mruTypeId == typeId) {
             return entry.mruOffset;
         } else {
-            const offset = self.fieldTable.get(.{ .structId = sid, .symId = fieldId }) orelse return null;
-            entry.mruTypeId = sid;
+            const offset = self.fieldTable.get(.{ .typeId = typeId, .symId = fieldId }) orelse return null;
+            entry.mruTypeId = typeId;
             entry.mruOffset = offset;
             return offset;
         }
@@ -790,11 +798,12 @@ pub const VM = struct {
         });
     }
 
-    pub fn addObjectTypeExt(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) !TypeId {
-        const name = sema.getName(&self.compiler, nameId);
+    /// Can provide a different display name.
+    pub fn addObjectTypeExt(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId, name: []const u8, rTypeSymId: sema.ResolvedSymId) !TypeId {
         const s = Struct{
             .name = name,
             .numFields = 0,
+            .rTypeSymId = rTypeSymId,
         };
         const id = @intCast(u32, self.structs.len);
         try self.structs.append(self.alloc, s);
@@ -807,9 +816,9 @@ pub const VM = struct {
         return id;
     }
 
-    pub fn addObjectType(self: *VM, name: []const u8) !TypeId {
+    pub fn addBuiltinType(self: *VM, name: []const u8) !TypeId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
-        return self.addObjectTypeExt(cy.NullId, nameId);
+        return self.addObjectTypeExt(cy.NullId, nameId, name, cy.NullId);
     }
 
     pub inline fn getFuncSym(self: *const VM, rParentSymId: u32, nameId: u32, rFuncSigId: sema.ResolvedFuncSigId) ?SymbolId {
@@ -937,14 +946,14 @@ pub const VM = struct {
         return false;
     }
 
-    pub fn ensureMethodSymKey(self: *VM, name: []const u8, numParams: u32) !SymbolId {
-        return self.ensureMethodSymKey2(name, numParams, false);
+    pub fn ensureMethodSym(self: *VM, name: []const u8, numParams: u32) !SymbolId {
+        return self.ensureMethodSym2(name, numParams, false);
     }
 
-    pub fn ensureMethodSymKey2(self: *VM, name: []const u8, numParams: u32, dupeName: bool) !SymbolId {
+    pub fn ensureMethodSym2(self: *VM, name: []const u8, numParams: u32, dupeName: bool) !SymbolId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
-        const key = RelFuncSigKey{
-            .relFuncSigKey = .{
+        const key = RtMethodSymKey{
+            .rtMethodSymKey = .{
                 .nameId = nameId,
                 .numParams = numParams,
             },
@@ -955,7 +964,8 @@ pub const VM = struct {
 
             try self.methodSyms.append(self.alloc, .{
                 .entryT = undefined,
-                .mruStructId = cy.NullId,
+                .mruTypeId = cy.NullId,
+                .rFuncSigId = cy.NullId,
                 .inner = undefined,
             });
             var newName = name;
@@ -979,14 +989,14 @@ pub const VM = struct {
         if (sym.mruTypeId != cy.NullId) {
             // Add prev mru if it doesn't exist in hashmap.
             const prev = ObjectSymKey{
-                .structId = sym.mruTypeId,
+                .typeId = sym.mruTypeId,
                 .symId = symId,
             };
             if (!self.fieldTable.contains(prev)) {
                 try self.fieldTable.putNoClobber(self.alloc, prev, sym.mruOffset);
             }
             const key = ObjectSymKey{
-                .structId = sid,
+                .typeId = sid,
                 .symId = symId,
             };
             try self.fieldTable.putNoClobber(self.alloc, key, offset);
@@ -1018,28 +1028,38 @@ pub const VM = struct {
 
     pub fn addMethodSym(self: *VM, id: TypeId, symId: SymbolId, entry: MethodSym) !void {
         const sym = &self.methodSyms.buf[symId];
-        if (sym.mruStructId != cy.NullId) {
+        if (sym.mruTypeId != cy.NullId) {
             const prev = ObjectSymKey{
-                .structId = sym.mruStructId,
+                .typeId = sym.mruTypeId,
                 .symId = symId,
             };
             if (!self.methodTable.contains(prev)) {
-                try self.methodTable.putNoClobber(self.alloc, prev, sym.*);
+                try self.methodTable.putNoClobber(self.alloc, prev, .{
+                    .entryT = sym.entryT,
+                    .rFuncSigId = sym.rFuncSigId,
+                    .inner = sym.inner,
+                });
             }
             const key = ObjectSymKey{
-                .structId = id,
+                .typeId = id,
                 .symId = symId,
             };
-            try self.methodTable.putNoClobber(self.alloc, key, entry);
+            try self.methodTable.putNoClobber(self.alloc, key, .{
+                .entryT = entry.entryT,
+                .rFuncSigId = entry.rFuncSigId,
+                .inner = entry.inner,
+            });
             sym.* = .{
                 .entryT = entry.entryT,
-                .mruStructId = id,
+                .mruTypeId = id,
+                .rFuncSigId = entry.rFuncSigId,
                 .inner = entry.inner,
             };
         } else {
             sym.* = .{
                 .entryT = entry.entryT,
-                .mruStructId = id,
+                .mruTypeId = id,
+                .rFuncSigId = entry.rFuncSigId,
                 .inner = entry.inner,
             };
         }
@@ -1312,10 +1332,10 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    fn getFieldOffsetFromTable(self: *VM, sid: TypeId, symId: SymbolId) u8 {
-        if (self.fieldTable.get(.{ .structId = sid, .symId = symId })) |offset| {
+    fn getFieldOffsetFromTable(self: *VM, typeId: TypeId, symId: SymbolId) u8 {
+        if (self.fieldTable.get(.{ .typeId = typeId, .symId = symId })) |offset| {
             const sym = &self.fieldSyms.buf[symId];
-            sym.mruTypeId = sid;
+            sym.mruTypeId = typeId;
             sym.mruOffset = offset;
             return @intCast(u8, offset);
         } else {
@@ -1532,13 +1552,13 @@ pub const VM = struct {
 
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callObjFuncIC };
-                pc[5] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
-                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(self.toPc(sym.inner.func.pc)));
-                @ptrCast(*align(1) u16, pc + 12).* = @intCast(u16, typeId);
+                pc[7] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
+                @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(self.toPc(sym.inner.func.pc)));
+                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
                 
                 const newFramePtr = framePtr + startLocal;
                 newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true);
-                newFramePtr[2] = Value{ .retPcPtr = pc + 14 };
+                newFramePtr[2] = Value{ .retPcPtr = pc + 16 };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return PcFramePtr{
                     .pc = self.toPc(sym.inner.func.pc),
@@ -1548,8 +1568,8 @@ pub const VM = struct {
             .nativeFunc1 => {
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callObjNativeFuncIC };
-                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
-                @ptrCast(*align(1) u16, pc + 12).* = @intCast(u16, typeId);
+                @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
 
                 self.framePtr = framePtr;
                 const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
@@ -1570,7 +1590,7 @@ pub const VM = struct {
                     }
                 }
                 return PcFramePtr{
-                    .pc = pc + 14,
+                    .pc = pc + 16,
                     .framePtr = framePtr,
                 };
             },
@@ -1599,7 +1619,7 @@ pub const VM = struct {
                     }
                 }
                 return PcFramePtr{
-                    .pc = pc + 14,
+                    .pc = pc + 16,
                     .framePtr = framePtr,
                 };
             },
@@ -1610,26 +1630,40 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSymFromTable(self: *VM, sid: TypeId, symId: SymbolId) ?MethodSym {
-        if (self.methodTable.get(.{ .structId = sid, .symId = symId })) |entry| {
-            const sym = &self.methodSyms.buf[symId];
-            sym.* = .{
-                .entryT = entry.entryT,
-                .mruStructId = sid,
-                .inner = entry.inner,
-            };
-            return entry;
-        } else {
-            return null;
+    fn getCallObjSymFallback(self: *VM, typeId: TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) ?MethodSym {
+        const sym = self.methodSyms.buf[symId];
+        if (sym.mruTypeId == typeId) {
+            // Types match, but function signatures don't. Try to fit type constraints.
+            if (types.isFuncSigCompat(&self.compiler, rFuncSigId, sym.rFuncSigId)) {
+                return sym;
+            }
         }
+        // Lookup from table.
+        return getCallObjSymFromTable(self, typeId, symId, rFuncSigId);
     }
 
-    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(cy.HotSection) ?MethodSym {
+    fn getCallObjSymFromTable(self: *VM, typeId: TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) ?MethodSym {
+        if (self.methodTable.get(.{ .typeId = typeId, .symId = symId })) |entry| {
+            if (types.isFuncSigCompat(&self.compiler, rFuncSigId, entry.rFuncSigId)) {
+                const sym = &self.methodSyms.buf[symId];
+                sym.* = .{
+                    .entryT = entry.entryT,
+                    .mruTypeId = typeId,
+                    .rFuncSigId = entry.rFuncSigId,
+                    .inner = entry.inner,
+                };
+                return sym.*;
+            }
+        }
+        return null;
+    }
+
+    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) linksection(cy.HotSection) ?MethodSym {
         const entry = self.methodSyms.buf[symId];
-        if (entry.mruStructId == typeId) {
+        if (entry.mruTypeId == typeId and entry.rFuncSigId == rFuncSigId) {
             return entry;
         } else {
-            return @call(.never_inline, self.getCallObjSymFromTable, .{typeId, symId});
+            return @call(.never_inline, self.getCallObjSymFallback, .{typeId, symId, rFuncSigId});
         }
     }
 
@@ -2250,7 +2284,7 @@ const FieldSymbolMap = vmc.FieldSymbolMap;
 test "Internals." {
     try t.eq(@alignOf(VM), 8);
     try t.eq(@alignOf(MethodSym), 8);
-    try t.eq(@sizeOf(MethodSym), 16);
+    try t.eq(@sizeOf(MethodSym), 24);
 
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
     var funcSymEntry: FuncSymbolEntry = undefined;
@@ -2314,30 +2348,43 @@ const MethodSymType = enum {
     nativeFunc2,
 };
 
+/// Stored in `methodTable`.
+const MethodEntry = struct {
+    entryT: MethodSymType,
+
+    /// The full signature of the function.
+    rFuncSigId: u32,
+
+    inner: MethodInner,
+};
+
+const MethodInner = packed union {
+    nativeFunc1: cy.NativeObjFuncPtr,
+    nativeFunc2: cy.NativeObjFunc2Ptr,
+    func: packed struct {
+        pc: u32,
+        /// Includes function params, locals, and return info slot.
+        numLocals: u32,
+    },
+};
+
 /// Keeping this small is better for function calls.
 /// Secondary symbol data should be moved to `methodSymExtras`.
 pub const MethodSym = struct {
     entryT: MethodSymType,
     /// Most recent sym used is cached avoid hashmap lookup. 
-    mruStructId: TypeId,
-    inner: packed union {
-        nativeFunc1: cy.NativeObjFuncPtr,
-        nativeFunc2: cy.NativeObjFunc2Ptr,
-        func: packed struct {
-            // pc: packed union {
-            //     ptr: [*]const cy.OpData,
-            //     offset: usize,
-            // },
-            pc: u32,
-            /// Includes function params, locals, and return info slot.
-            numLocals: u32,
-        },
-    },
+    mruTypeId: TypeId,
 
-    pub fn initFuncOffset(pc: usize, numLocals: u32) MethodSym {
+    /// The full signature of the function.
+    rFuncSigId: u32,
+
+    inner: MethodInner,
+
+    pub fn initFuncOffset(rFuncSigId: sema.ResolvedFuncSigId, pc: usize, numLocals: u32) MethodSym {
         return .{
             .entryT = .func,
-            .mruStructId = undefined,
+            .mruTypeId = undefined,
+            .rFuncSigId = rFuncSigId,
             .inner = .{
                 .func = .{
                     .pc = @intCast(u32, pc),
@@ -2347,20 +2394,22 @@ pub const MethodSym = struct {
         };
     }
 
-    pub fn initNativeFunc1(func: cy.NativeObjFuncPtr) MethodSym {
+    pub fn initNativeFunc1(rFuncSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
         return .{
             .entryT = .nativeFunc1,
-            .mruStructId = undefined,
+            .mruTypeId = undefined,
+            .rFuncSigId = rFuncSigId,
             .inner = .{
                 .nativeFunc1 = func,
             },
         };
     }
 
-    pub fn initNativeFunc2(func: cy.NativeObjFunc2Ptr) MethodSym {
+    pub fn initNativeFunc2(rFuncSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr) MethodSym {
         return .{
             .entryT = .nativeFunc2,
-            .mruStructId = undefined,
+            .mruTypeId = undefined,
+            .rFuncSigId = rFuncSigId,
             .inner = .{
                 .nativeFunc2 = func,
             },
@@ -2478,6 +2527,7 @@ pub const TypeId = u32;
 const Struct = struct {
     name: []const u8,
     numFields: u32,
+    rTypeSymId: sema.ResolvedSymId,
 };
 
 // const StructSymbol = struct {
@@ -2542,7 +2592,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
 }
 
 /// Generate assembly labels to find sections easier.
-const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and true;
+const GenLabels = builtin.mode != .Debug and !builtin.cpu.arch.isWasm() and false;
 
 fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, OutOfBounds, NoDebugSym, End}!void {
     if (GenLabels) {
@@ -2572,7 +2622,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             vm.debugPc = pcOffset(vm, pc);
         }
         if (GenLabels) {
-            _ = asm volatile ("LOpBase:"::);
+            // _ = asm volatile ("LOpBase:"::);
         }
         switch (pc[0].code) {
             .none => {
@@ -3104,9 +3154,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
 
-                const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
+                const cachedStruct = @ptrCast(*align (1) u16, pc + 14).*;
                 if (typeId == cachedStruct) {
-                    const numLocals = pc[5].arg;
+                    const numLocals = pc[7].arg;
                     if (@ptrToInt(framePtr + startLocal + numLocals) >= @ptrToInt(vm.stackEndPtr)) {
                         return error.StackOverflow;
                     }
@@ -3114,10 +3164,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr += startLocal;
                     @ptrCast([*]u8, framePtr + 1)[0] = pc[3].arg;
                     @ptrCast([*]u8, framePtr + 1)[1] = 0;
-                    framePtr[2] = Value{ .retPcPtr = pc + 14 };
+                    framePtr[2] = Value{ .retPcPtr = pc + 16 };
                     framePtr[3] = retFramePtr;
-                    pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
-                    if (useGoto) { gotoNext(pc, jumpTablePtr); }
+                    pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 8).*));
                     continue;
                 }
 
@@ -3134,11 +3183,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
 
-                const cachedStruct = @ptrCast(*align (1) u16, pc + 12).*;
+                const cachedStruct = @ptrCast(*align (1) u16, pc + 14).*;
                 if (typeId == cachedStruct) {
                     // const newFramePtr = framePtr + startLocal;
                     vm.framePtr = framePtr;
-                    const func = @intToPtr(cy.NativeObjFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 6).*));
+                    const func = @intToPtr(cy.NativeObjFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 8).*));
                     const res = func(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
                     if (res.isPanic()) {
                         return error.Panic;
@@ -3157,7 +3206,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                             },
                         }
                     }
-                    pc += 14;
+                    pc += 16;
                     // In the future, we might allow native functions to change the pc and framePtr.
                     // pc = vm.pc;
                     // framePtr = vm.framePtr;
@@ -3868,18 +3917,20 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
+
                 const numRet = pc[3].arg;
                 const symId = pc[4].arg;
+                const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
 
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
 
-                if (vm.getCallObjSym(typeId, symId)) |sym| {
+                if (vm.getCallObjSym(typeId, symId, rFuncSigId)) |sym| {
                     const res = try @call(.never_inline, vm.callSymEntry, .{pc, framePtr, sym, recv, typeId, startLocal, numArgs, numRet });
                     pc = res.pc;
                     framePtr = res.framePtr;
                 } else {
-                    const res = try @call(.never_inline, callObjSymFallback, .{vm, pc, framePtr, recv, typeId, symId, startLocal, numArgs, numRet});
+                    const res = try @call(.never_inline, callObjSymFallback, .{vm, pc, framePtr, recv, typeId, symId, rFuncSigId, startLocal, numArgs, numRet});
                     pc = res.pc;
                     framePtr = res.framePtr;
                 }
@@ -4035,7 +4086,7 @@ pub const EvalError = error{
 };
 
 const ObjectSymKey = struct {
-    structId: TypeId,
+    typeId: TypeId,
     symId: SymbolId,
 };
 
@@ -4170,7 +4221,56 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
     }
 }
 
-fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32, rtSymId: SymbolId) !Value {
+/// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
+fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: TypeId, rtSymId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) !Value {
+    const name = vm.methodSymExtras.buf[rtSymId].getName();
+    const methodSym = vm.methodSyms.buf[rtSymId];
+    if (methodSym.mruTypeId == typeId) {
+        const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
+        const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, methodSym.rFuncSigId);
+        defer {
+            vm.alloc.free(sigStr);
+            vm.alloc.free(existingSigStr);
+        }
+        return vm.panicFmt(
+            \\Can not find compatible function for `{}{}` in `{}`.
+            \\Only `func {}{}` exists for the symbol `{}`.
+            , &.{
+                v(name), v(sigStr), v(vm.structs.buf[typeId].name),
+                v(name), v(existingSigStr), v(name),
+            },
+        );
+    } else {
+        const key = ObjectSymKey{
+            .typeId = typeId,
+            .symId = rtSymId,
+        };
+        if (vm.methodTable.get(key)) |entry| {
+            const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
+            const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, entry.rFuncSigId);
+            defer {
+                vm.alloc.free(sigStr);
+                vm.alloc.free(existingSigStr);
+            }
+            return vm.panicFmt(
+                \\Can not find compatible function for `{}{}` in `{}`.
+                \\Only `func {}{}` exists for the symbol `{}`.
+                , &.{
+                    v(name), v(sigStr), v(vm.structs.buf[typeId].name),
+                    v(name), v(existingSigStr), v(name),
+                },
+            );
+        } else {
+            const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
+            defer vm.alloc.free(sigStr);
+            return vm.panicFmt("`func {}{}` can not be found in `{}`.", &.{
+                 v(name), v(sigStr), v(vm.structs.buf[typeId].name), 
+            });
+        }
+    }
+}
+
+fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32, rtSymId: SymbolId, rFuncSigId: u16) !Value {
     @setCold(true);
     // Map fallback is no longer supported since cleanup of recv is not auto generated by the compiler.
     // In the future, this may invoke the exact method signature or call a custom overloaded function.
@@ -4193,11 +4293,7 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.loc];
         if (node.node_t == .callExpr) {
-            const numParams = node.head.callExpr.getNumArgs(chunk.nodes);
-            const name = vm.methodSymExtras.buf[rtSymId].getName();
-            return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, {} args) is unsupported.", &.{
-                 v(name), v(vm.structs.buf[typeId].name), v(name), v(numParams),
-            });
+            return try panicIncompatibleFuncSig(vm, typeId, rtSymId, rFuncSigId);
         } else {
             // Debug node is from:
             // `for [iterable]:`
@@ -4212,10 +4308,10 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32
 }
 
 /// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value, typeId: u32, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.Section) !PcFramePtr {
+fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value, typeId: u32, symId: SymbolId, rFuncSigId: u16, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.Section) !PcFramePtr {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
-    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, symId);
+    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, symId, rFuncSigId);
 
     retain(vm, func);
     cy.arc.releaseObject(vm, recv.asHeapObject());
@@ -4426,6 +4522,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
 
 const RelFuncSigKey = KeyU64;
 const RtFuncSymKey = KeyU96;
+const RtMethodSymKey = KeyU64;
 const RtVarSymKey = KeyU64;
 
 pub const KeyU96 = extern union {
@@ -4466,6 +4563,13 @@ pub const KeyU64 = extern union {
     relLocalSymKey: extern struct {
         nameId: sema.NameSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
+    },
+    rtMethodSymKey: extern struct {
+        nameId: sema.NameSymId,
+        /// Method syms are keyed by numParams since an exact signature
+        /// can miss a compatible typed function.
+        /// numParams does not include the self param to match callObjSym's numParams.
+        numParams: u32,
     },
     relModuleSymKey: extern struct {
         nameId: sema.NameSymId,
@@ -4786,8 +4890,8 @@ export fn zOtherToF64(val: Value) f64 {
     return val.otherToF64();
 }
 
-export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: cy.TypeId, symId: u8, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
-    if (vm.getCallObjSym(typeId, symId)) |sym| {
+export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: cy.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
+    if (vm.getCallObjSym(typeId, symId, rFuncSigId)) |sym| {
         const res = @call(.never_inline, vm.callSymEntry, .{pc, stack, sym, recv, typeId, startLocal, numArgs, numRet }) catch {
             return .{
                 .pc = undefined,
@@ -4801,7 +4905,7 @@ export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value
             .code = vmc.RES_CODE_SUCCESS,
         };
     } else {
-        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, symId, startLocal, numArgs, numRet}) catch {
+        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, symId, rFuncSigId, startLocal, numArgs, numRet}) catch {
             return .{
                 .pc = undefined,
                 .stack = undefined,

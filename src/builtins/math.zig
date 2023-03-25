@@ -1,7 +1,7 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
-const bt = cy.sema.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypeSymIds;
 
 pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) !void {
     // Euler's number and the base of natural logarithms; approximately 2.718.

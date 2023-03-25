@@ -7,16 +7,19 @@ const TagLit = @import("bindings.zig").TagLit;
 const vm_ = @import("../vm.zig");
 const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
-const bt = cy.sema.BuiltinTypeSymIds;
+const bindings = @import("bindings.zig");
+const bt = cy.types.BuiltinTypeSymIds;
 const v = fmt.v;
 
 pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
-    try mod.setNativeFunc(c, "eq", 2, eq);
-    try mod.setNativeFunc(c, "eqList", 2, eqList);
-    try mod.setNativeFunc(c, "eqNear", 2, eqNear);
+    const b = bindings.ModuleBuilder.init(c, mod);
+
+    try b.setFunc("eq", &.{bt.Any, bt.Any}, bt.Any, eq);
+    try b.setFunc("eqList", &.{bt.Any, bt.Any}, bt.Any, eqList);
+    try b.setFunc("eqNear", &.{bt.Any, bt.Any}, bt.Any, eqNear);
     if (builtin.is_test) {
         // Only available for zig test, until `any` local type specifier is implemented.
-        try mod.setNativeTypedFunc(c, "erase", &.{bt.Any}, bt.Any, erase);
+        try b.setFunc("erase", &.{bt.Any}, bt.Any, erase);
     }
 }
 

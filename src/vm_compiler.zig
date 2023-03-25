@@ -7,13 +7,14 @@ const fmt = @import("fmt.zig");
 const v = fmt.v;
 const vm_ = @import("vm.zig");
 const sema = cy.sema;
+const types = cy.types;
+const bt = types.BuiltinTypeSymIds;
 const gen = cy.codegen;
 const cache = @import("cache.zig");
 const core_mod = @import("builtins/core.zig");
 const math_mod = @import("builtins/math.zig");
 const os_mod = @import("builtins/os.zig");
 const test_mod = @import("builtins/test.zig");
-const bt = sema.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.vm_compiler);
 
@@ -48,10 +49,10 @@ pub const VMcompiler = struct {
     importTasks: std.ArrayListUnmanaged(ImportTask),
 
     /// Stack for building func signatures. (eg. for nested func calls)
-    typeStack: std.ArrayListUnmanaged(sema.Type),
+    typeStack: std.ArrayListUnmanaged(types.Type),
 
     /// Buffer for building func signatures.
-    tempTypes: std.ArrayListUnmanaged(sema.Type),
+    tempTypes: std.ArrayListUnmanaged(types.Type),
 
     /// Reused for SymIds.
     tempSyms: std.ArrayListUnmanaged(sema.ResolvedSymId),
@@ -1000,7 +1001,7 @@ pub const CompileChunk = struct {
         return local >= self.curBlock.numLocals;
     }
 
-    pub fn initGenValue(self: *const CompileChunk, local: LocalId, vtype: sema.Type, retained: bool) gen.GenValue {
+    pub fn initGenValue(self: *const CompileChunk, local: LocalId, vtype: types.Type, retained: bool) gen.GenValue {
         if (self.isTempLocal(local)) {
             return gen.GenValue.initTempValue(local, vtype, retained);
         } else {
@@ -1065,12 +1066,12 @@ pub const CompileChunk = struct {
 
     pub fn genExpr(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
         self.curNodeId = nodeId;
-        return self.genExpr2(nodeId, sema.AnyType, discardTopExprReg);
+        return self.genExpr2(nodeId, types.AnyType, discardTopExprReg);
     }
 
     /// If the expression is a user local, the local is returned.
     /// Otherwise, the expression is allocated a temp local on the stack.
-    fn genExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+    fn genExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: types.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
         const dst = try self.userLocalOrNextTempLocal(nodeId);
         const res = try gen.genExprTo2(self, nodeId, dst, requiredType, false, !discardTopExprReg);
         try self.genEnsureRequiredType(res, requiredType);
@@ -1078,10 +1079,10 @@ pub const CompileChunk = struct {
     }
 
     pub fn genExprTo(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retainEscapeTop: bool, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
-        return gen.genExprTo2(self, nodeId, dst, sema.AnyType, retainEscapeTop, !discardTopExprReg);
+        return gen.genExprTo2(self, nodeId, dst, types.AnyType, retainEscapeTop, !discardTopExprReg);
     }
 
-    fn genEnsureRequiredType(self: *CompileChunk, genValue: gen.GenValue, requiredType: sema.Type) !void {
+    fn genEnsureRequiredType(self: *CompileChunk, genValue: gen.GenValue, requiredType: types.Type) !void {
         if (requiredType.typeT != .any) {
             if (genValue.vtype.typeT != requiredType.typeT) {
                 return self.reportError("Type {} can not be auto converted to required type {}", &.{fmt.v(genValue.vtype.typeT), fmt.v(requiredType.typeT)});
@@ -1090,13 +1091,13 @@ pub const CompileChunk = struct {
     }
 
     pub fn genExprPreferLocalOrReplaceableDest(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
-        return self.genExprPreferLocalOrReplaceableDest2(sema.AnyType, nodeId, dst, usedDst, discardTopExprReg);
+        return self.genExprPreferLocalOrReplaceableDest2(types.AnyType, nodeId, dst, usedDst, discardTopExprReg);
     }
 
     /// Prefers a local.
     /// Then prefers unused dest if the dest can be replaced without ARC release.
     /// Otherwise, a temp is used.
-    pub fn genExprPreferLocalOrReplaceableDest2(self: *CompileChunk, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
+    pub fn genExprPreferLocalOrReplaceableDest2(self: *CompileChunk, requestedType: types.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
         const node = self.nodes[nodeId];
         if (node.node_t == .ident) {
             if (self.genGetVar(node.head.ident.semaVarId)) |svar| {
@@ -1128,12 +1129,12 @@ pub const CompileChunk = struct {
     }
 
     pub fn genExprToDestOrTempLocal(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
-        return self.genExprToDestOrTempLocal2(sema.AnyType, nodeId, dst, usedDst, discardTopExprReg);
+        return self.genExprToDestOrTempLocal2(types.AnyType, nodeId, dst, usedDst, discardTopExprReg);
     }
 
     /// Attempts to gen expression to the destination if it can avoid a retain op.
     /// Otherwise, it is copied to a temp.
-    pub fn genExprToDestOrTempLocal2(self: *CompileChunk, requestedType: sema.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
+    pub fn genExprToDestOrTempLocal2(self: *CompileChunk, requestedType: types.Type, nodeId: cy.NodeId, dst: LocalId, usedDst: *bool, comptime discardTopExprReg: bool) !gen.GenValue {
         const node = self.nodes[nodeId];
         if (genWillAlwaysRetainNode(self, node) or usedDst.*) {
             const finalDst = try self.userLocalOrNextTempLocal(nodeId);
@@ -1151,11 +1152,11 @@ pub const CompileChunk = struct {
     }
 
     pub fn genRetainedTempExpr(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !gen.GenValue {
-        return self.genRetainedTempExpr2(nodeId, sema.AnyType, discardTopExprReg);
+        return self.genRetainedTempExpr2(nodeId, types.AnyType, discardTopExprReg);
     }
 
     /// Ensures that the expr value is retained and ends up in the next temp local.
-    pub fn genRetainedTempExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: sema.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
+    pub fn genRetainedTempExpr2(self: *CompileChunk, nodeId: cy.NodeId, requiredType: types.Type, comptime discardTopExprReg: bool) anyerror!gen.GenValue {
         const dst = try self.nextFreeTempLocal();
         // ARC temps released at the end of this expr,
         // so the next free temp is guaranteed to be after dst.

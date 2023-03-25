@@ -18,6 +18,8 @@ pub const TokenType = parser.TokenType;
 pub const sema = @import("sema.zig");
 pub const Module = sema.Module;
 
+pub const types = @import("types.zig");
+
 const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
 pub const CompileChunk = vm_compiler.CompileChunk;

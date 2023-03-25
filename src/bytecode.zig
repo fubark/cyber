@@ -248,7 +248,8 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const numArgs = pc[2].arg;
             const numRet = pc[3].arg;
             const symId = pc[4].arg;
-            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
+            const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}, rFuncSigId={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId), v(rFuncSigId)});
         },
         .callSym => {
             const startLocal = pc[1].arg;
@@ -639,7 +640,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .callObjSym,
         .callObjNativeFuncIC,
         .callObjFuncIC => {
-            return 14;
+            return 16;
         },
         else => {
             stdx.panicFmt("unsupported {}", .{pc[0].code});

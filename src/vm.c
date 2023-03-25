@@ -428,11 +428,12 @@ beginSwitch:
         uint8_t numArgs = pc[2];
         uint8_t numRet = pc[3];
         uint8_t symId = pc[4];
+        uint16_t rFuncSigId = READ_U16(5);
 
         Value recv = stack[startLocal + numArgs + 4 - 1];
         TypeId typeId = getTypeId(recv);
 
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, symId, startLocal, numArgs, numRet);
+        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, symId, rFuncSigId, startLocal, numArgs, numRet);
         if (res.code != RES_CODE_SUCCESS) {
             return res.code;
         }
@@ -446,11 +447,11 @@ beginSwitch:
         Value recv = stack[startLocal + numArgs + 4 - 1];
         TypeId typeId = getTypeId(recv);
 
-        TypeId cachedTypeId = READ_U16(12);
+        TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
             // const newFramePtr = framePtr + startLocal;
             vm->curStack = stack;
-            MethodPtr fn = (MethodPtr)READ_U48(6);
+            MethodPtr fn = (MethodPtr)READ_U48(8);
             Value res = fn(vm, recv, stack + startLocal + 4, numArgs);
             // if (VALUE_IS_PANIC(res)) {
             //     return error.Panic;
@@ -470,7 +471,7 @@ beginSwitch:
                         zFatal();
                 }
             }
-            pc += 14;
+            pc += 16;
             // In the future, we might allow native functions to change the pc and framePtr.
             // pc = vm.pc;
             // framePtr = vm.framePtr;
@@ -487,9 +488,9 @@ beginSwitch:
         uint8_t recv = stack[startLocal + numArgs + 4 - 1];
         TypeId typeId = getTypeId(recv);
 
-        TypeId cachedTypeId = READ_U16(12);
+        TypeId cachedTypeId = READ_U16(14);
         if (typeId == cachedTypeId) {
-            uint8_t numLocals = pc[5];
+            uint8_t numLocals = pc[7];
             if (stack + startLocal + numLocals >= vm->stackEndPtr) {
                 // return error.StackOverflow;
                 zFatal();
@@ -498,9 +499,9 @@ beginSwitch:
             stack += startLocal;
             *(uint8_t*)(stack + 1) = pc[3];
             *((uint8_t*)(stack + 1) + 1) = 0;
-            stack[2] = (uintptr_t)(pc + 14);
+            stack[2] = (uintptr_t)(pc + 16);
             stack[3] = retFramePtr;
-            pc = (Inst*)READ_U48(6);
+            pc = (Inst*)READ_U48(8);
             NEXT();
         }
 

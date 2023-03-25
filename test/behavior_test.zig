@@ -11,6 +11,49 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Typed object." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\object Foo:
+        \\  a number
+        \\func foo(a Foo):
+        \\  pass
+        \\foo(123)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\Only `func foo(Foo) any` exists for the symbol `foo`.
+            \\
+            \\main:5:1:
+            \\foo(123)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\object Foo:
+        \\  a number
+        \\
+        \\func foo(a Foo):
+        \\  return a.a == 123
+        \\
+        \\-- Literal.
+        \\try t.eq(foo(Foo{a: 123}), true)
+        \\        
+        \\-- From var.
+        \\o = Foo{a: 123}
+        \\try t.eq(foo(o), true)
+        \\
+        // TODO: Implement casting syntax.
+        // \\-- Cast erased type.
+        // \\n = t.erase(Foo{a: 123})
+        // \\try t.eq(foo(number(n)), true)
+    );
+}
+
 test "Typed number." {
     // Wrong param type.
     try eval(.{ .silent = true },
@@ -909,6 +952,59 @@ test "FFI." {
     };
     _ = S;
 
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\import os 'os'
+        \\if os.system == 'macos':
+        \\  -- rdynamic doesn't work atm for MacOS.
+        \\  libPath = 'test/macos_lib.dylib'
+        \\else os.system == 'windows':
+        \\  libPath = 'test/win_lib.dll'
+        \\else:
+        \\  libPath = none
+        \\
+        \\lib = try os.bindLib(libPath, [
+        \\  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+        \\])
+        \\lib.testAdd(123, '321')
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not find compatible function for `testAdd(any, number, string) any` in `BindLib`.
+            \\Only `func testAdd(any, number, number) number` exists for the symbol `testAdd`.
+            \\
+            \\main:13:1 main:
+            \\lib.testAdd(123, '321')
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Wrong num params.
+    try eval(.{ .silent = true },
+        \\import os 'os'
+        \\if os.system == 'macos':
+        \\  -- rdynamic doesn't work atm for MacOS.
+        \\  libPath = 'test/macos_lib.dylib'
+        \\else os.system == 'windows':
+        \\  libPath = 'test/win_lib.dll'
+        \\else:
+        \\  libPath = none
+        \\
+        \\lib = try os.bindLib(libPath, [
+        \\  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+        \\])
+        \\lib.testAdd(123, 234, 345)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: `func testAdd(any, number, number, number) any` can not be found in `BindLib`.
+            \\
+            \\main:13:1 main:
+            \\lib.testAdd(123, 234, 345)
+            \\^
+            \\
+        );
+    }}.func);
+
     try evalPass(.{}, @embedFile("ffi_test.cy"));
 }
 
@@ -1010,7 +1106,7 @@ test "Objects." {
         \\o.foo()
     );
     try run.expectErrorReport(res, error.Panic,
-        \\panic: `foo` is either missing in `S` or the call signature: foo(self, 0 args) is unsupported.
+        \\panic: `func foo(any) any` can not be found in `S`.
         \\
         \\main:4:1 main:
         \\o.foo()
@@ -1028,7 +1124,7 @@ test "Objects." {
         \\o.foo(234)
     );
     try run.expectErrorReport(res, error.Panic,
-        \\panic: `foo` is either missing in `S` or the call signature: foo(self, 1 args) is unsupported.
+        \\panic: `func foo(any, number) any` can not be found in `S`.
         \\
         \\main:6:1 main:
         \\o.foo(234)

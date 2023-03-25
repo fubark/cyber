@@ -9,7 +9,7 @@ const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 const fromUnsupportedError = bindings.fromUnsupportedError;
-const bt = cy.sema.BuiltinTypeSymIds;
+const bt = cy.types.BuiltinTypeSymIds;
 const ffi = @import("os_ffi.zig");
 
 const log = stdx.log.scoped(.os);
@@ -24,8 +24,9 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
 
     // Object Types.
     var id: u32 = undefined;
+    var rSymId = try cy.sema.resolveObjectSym(self, mod.resolvedRootSymId, "CFunc", mod.id);
     var nameId = try cy.sema.ensureNameSym(self, "CFunc");
-    CFuncT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId);
+    CFuncT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId, "CFunc", rSymId);
     vm.structs.buf[CFuncT].numFields = 3;
     id = try vm.ensureFieldSym("sym");
     try vm.addFieldSym(CFuncT, id, 0);
@@ -35,8 +36,9 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     try vm.addFieldSym(CFuncT, id, 2);
     try mod.setObject(self, "CFunc", CFuncT, cy.NullId);
 
+    rSymId = try cy.sema.resolveObjectSym(self, mod.resolvedRootSymId, "CStruct", mod.id);
     nameId = try cy.sema.ensureNameSym(self, "CStruct");
-    CStructT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId);
+    CStructT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId, "CStruct", rSymId);
     vm.structs.buf[CStructT].numFields = 2;
     id = try vm.ensureFieldSym("fields");
     try vm.addFieldSym(CStructT, id, 0);

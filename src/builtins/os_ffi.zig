@@ -7,6 +7,8 @@ const Value = cy.Value;
 const bindings = @import("bindings.zig");
 const TagLit = bindings.TagLit;
 const os = @import("os.zig");
+const sema = cy.sema;
+const bt = cy.types.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.ffi);
 
@@ -65,6 +67,51 @@ const Context = struct {
         }
     }
 };
+
+fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
+    const tag = val.asTagLiteralId();
+    switch (@intToEnum(TagLit, tag)) {
+        .bool => return bt.Boolean,
+        .char => return bt.Number,
+        .uchar => return bt.Number,
+        .short => return bt.Number,
+        .ushort => return bt.Number,
+        .int => return bt.Number,
+        .uint => return bt.Number,
+        .long => return bt.Number,
+        .ulong => return bt.Number,
+        .usize => return bt.Number,
+        .float => return bt.Number,
+        .double => return bt.Number,
+        .charPtrZ => return bt.Any,
+        .dupeCharPtrZ => return bt.Any,
+        .voidPtr => return bt.Pointer,
+        .void => return bt.None,
+        else => stdx.panicFmt("Unsupported param type: {s}", .{ ivm.getTagLitName(tag) }),
+    }
+}
+
+fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
+    const tag = val.asTagLiteralId();
+    switch (@intToEnum(TagLit, tag)) {
+        .bool => return bt.Boolean,
+        .char => return bt.Number,
+        .uchar => return bt.Number,
+        .short => return bt.Number,
+        .ushort => return bt.Number,
+        .int => return bt.Number,
+        .uint => return bt.Number,
+        .long => return bt.Number,
+        .ulong => return bt.Number,
+        .usize => return bt.Number,
+        .float => return bt.Number,
+        .double => return bt.Number,
+        .charPtrZ => return bt.Rawstring,
+        .voidPtr => return bt.Pointer,
+        .void => return bt.None,
+        else => stdx.panicFmt("Unsupported return type: {s}", .{ ivm.getTagLitName(tag) }),
+    }
+}
 
 fn toCType(ivm: *cy.VM, val: Value) []const u8 {
     const tag = val.asTagLiteralId();
@@ -226,6 +273,9 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
     const decls = args[1].asPointer(*cy.CyList);
 
+    const argsf = try ivm.ensureFieldSym("args");
+    const retf = try ivm.ensureFieldSym("ret");
+
     // Check that symbols exist and build the model.
     const symF = try ivm.ensureFieldSym("sym");
     const fieldsF = try ivm.ensureFieldSym("fields");
@@ -236,9 +286,44 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const symz = try std.cstr.addNullByte(alloc, sym);
             defer alloc.free(symz);
             if (lib.lookup(*anyopaque, symz)) |ptr| {
+                // Build function signature.
+                ivm.compiler.tempSyms.clearRetainingCapacity();
+                if (!ctx.config.genMap) {
+                    // Self param.
+                    try ivm.compiler.tempSyms.append(ctx.alloc, bt.Any);
+                }
+
+                const ret = try ivm.getField(decl, retf);
+                var retTypeSymId: sema.ResolvedSymId = undefined;
+                if (ret.isObjectType(cy.SymbolT)) {
+                    const objType = ret.asPointer(*cy.heap.Symbol);
+                    const rtType = ivm.structs.buf[objType.symId];
+                    retTypeSymId = rtType.rTypeSymId;
+                } else {
+                    retTypeSymId = toResolvedReturnTypeSymId(ivm, ret);
+                }
+
+                const cargsv = try ivm.getField(decl, argsf);
+                const cargs = cargsv.asPointer(*cy.CyList).items();
+
+                if (cargs.len > 0) {
+                    for (cargs) |carg| {
+                        if (carg.isObjectType(cy.SymbolT)) {
+                            const objType = carg.asPointer(*cy.heap.Symbol);
+
+                            const rtType = ivm.structs.buf[objType.symId];
+                            try ivm.compiler.tempSyms.append(ctx.alloc, rtType.rTypeSymId);
+                        } else {
+                            try ivm.compiler.tempSyms.append(ctx.alloc, toResolvedParamTypeSymId(ivm, carg));
+                        }
+                    }
+                }
+
+                const rFuncSigId = try sema.ensureResolvedFuncSig(&ivm.compiler, ivm.compiler.tempSyms.items, retTypeSymId);
                 try cfuncs.append(alloc, .{
                     .decl = decl,
                     .symPtr = ptr,
+                    .rFuncSigId = rFuncSigId,
                 });
             } else {
                 log.debug("Missing sym: '{s}'", .{sym});
@@ -393,7 +478,6 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
     // Begin func binding generation.
 
-    const argsf = try ivm.ensureFieldSym("args");
     for (cfuncs.items) |cfunc| {
         try genCFunc(&ctx, vm, w, cfunc);
     }
@@ -508,24 +592,25 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
             const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
 
-            const methodSym = try ivm.ensureMethodSymKey(sym, @intCast(u32, cargs.len));
-            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
+            const methodSym = try ivm.ensureMethodSym(sym, @intCast(u32, cargs.len));
+            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(cfunc.rFuncSigId, func) });
         }
         iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
             const objSymId = e.key_ptr.*;
-            const typeName = ivm.structs.buf[objSymId].name;
-            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{typeName, 0});
+            const rtType = ivm.structs.buf[objSymId];
+            const symGen = try std.fmt.allocPrint(alloc, "cyPtrTo{s}{u}", .{rtType.name, 0});
             defer alloc.free(symGen);
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
                 stdx.panic("Failed to get symbol.");
             };
             const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
 
-            const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{typeName});
+            const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{rtType.name});
             defer alloc.free(methodName);
-            const methodSym = try ivm.ensureMethodSymKey2(methodName, 1, true);
-            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(func) });
+            const methodSym = try ivm.ensureMethodSym2(methodName, 1, true);
+            const rFuncSigId = try sema.ensureResolvedFuncSig(&ivm.compiler, &.{ bt.Any, bt.Pointer }, rtType.rTypeSymId);
+            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(rFuncSigId, func) });
         }
         success = true;
         return try vm.allocObjectSmall(sid, &.{cyState});
@@ -535,6 +620,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 const CFuncData = struct {
     decl: Value,
     symPtr: *anyopaque,
+    rFuncSigId: cy.sema.ResolvedFuncSigId,
 };
 
 fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {

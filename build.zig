@@ -7,7 +7,6 @@ const tcc = @import("lib/tcc/lib.zig");
 const Version = "0.2";
 
 var stdx: *std.build.Module = undefined;
-var fastArm64: bool = undefined;
 var useMalloc: bool = undefined;
 var selinux: bool = undefined;
 var engine: config.Engine = .zig;
@@ -18,7 +17,6 @@ pub fn build(b: *std.build.Builder) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
-    fastArm64 = b.option(bool, "fast-arm64", "Experimental: Computed gotos for arm64.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
     useMalloc = b.option(bool, "use-malloc", "Use C allocator.") orelse false;
 
@@ -255,8 +253,6 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: 
     build_options.addOption(bool, "trace", opts.trace);
     build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
-    build_options.addOption(bool, "fastArm64",
-        step.target.getCpuArch() == .aarch64 and step.optimize != .Debug and fastArm64);
     // build_options.addOption(bool, "trace", true);
 
     step.addOptions("build_options", build_options);

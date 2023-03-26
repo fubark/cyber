@@ -33,6 +33,9 @@ running = true
 while running:
     -- Keep looping until `running` is false.
     pass
+</code></pre><p>You can use the optional <code>while</code> loop to continue the loop until the expression evaluates to the <code>none</code> value. The unwrapped optional value is copied to the variable declared after <code>some</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>iter = dir.walk()
+while iter.next() some entry:
+    print entry.name
 </code></pre><p><code>for</code> loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator <code>..</code> is replaced with <code>..=</code>, the target number is inclusive. The range can be given a custom step.</p><pre tabindex=0><code class=language-cy data-lang=cy>for 0..100 each i:
     print i    -- 0, 1, 2, ... , 99
 
@@ -71,9 +74,6 @@ for map each k, v:
 -- Iterate on just keys.
 for map each k, _:
     print k
-</code></pre><p>If you have an iterator already, you can use the optional <code>for</code> loop to continue executing an expression until it is the <code>none</code> value. Adding an <code>as</code> clause will save the expression&rsquo;s value to the given variable.</p><pre tabindex=0><code class=language-cy data-lang=cy>iter = dir.walk()
-for iter.next() as entry:
-    print entry.name
 </code></pre><p>You can exit a loop using <code>break</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>for 0..10 each i:
     if i == 4:
         break

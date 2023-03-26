@@ -103,8 +103,6 @@ print contents
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
-| `List(val any) List` | Casts value to a `List`. Panics if value is not a `List`. | 
-| `Map(val any) Map` | Casts value to a `Map`. Panics if value is not a `Map`. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Casts or converts the value to a `number`. Panics if type conversion fails. | 
 | `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
@@ -116,7 +114,6 @@ print contents
 | `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
 | `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
 | `string(val any) string` | Converts a value to a string. | 
-| `taglit(val any) taglit` | Casts value to a `taglit`. Panics if value is not a `taglit`. | 
 | `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeid(val any) number` | Returns the type id of the value. | 
 | `valtag(any) #taglit` | Returns the value's type as a tag literal. |

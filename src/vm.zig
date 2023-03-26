@@ -3822,6 +3822,45 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     }
                 }
             },
+            .cast => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCast:"::);
+                }
+                const val = framePtr[pc[1].arg];
+                const expTypeId = @ptrCast(*const align(1) u16, pc + 2).*;
+                if (val.getTypeId() == expTypeId) {
+                    framePtr[pc[4].arg] = val;
+                    pc += 5;
+                    continue;
+                } else {
+                    return @call(.never_inline, panicCastError, .{ vm, val, expTypeId });
+                }
+            },
+            .castAbstract => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCastAbstract:"::);
+                }
+                const val = framePtr[pc[1].arg];
+                const expTypeSymId = @ptrCast(*const align(1) u16, pc + 2).*;
+                if (expTypeSymId == cy.types.BuiltinTypeSymIds.Any) {
+                    framePtr[pc[4].arg] = val;
+                    pc += 5;
+                    continue;
+                } else if (expTypeSymId == cy.types.BuiltinTypeSymIds.String) {
+                    if (val.isString()) {
+                        framePtr[pc[4].arg] = val;
+                        pc += 5;
+                        continue;
+                    }
+                } else if (expTypeSymId == cy.types.BuiltinTypeSymIds.Rawstring) {
+                    if (val.isRawString()) {
+                        framePtr[pc[4].arg] = val;
+                        pc += 5;
+                        continue;
+                    }
+                }
+                return @call(.never_inline, panicCastAbstractError, .{ vm, val, expTypeSymId });
+            },
             .bitwiseAnd => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpBitwiseAnd:"::);
@@ -4219,6 +4258,20 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
     } else {
         stdx.panic("not a function");
     }
+}
+
+fn panicCastAbstractError(vm: *cy.VM, val: Value, expTypeSymId: cy.sema.ResolvedSymId) !void {
+    const sym = vm.compiler.sema.getResolvedSym(expTypeSymId);
+    const name = cy.sema.getName(&vm.compiler, sym.key.absResolvedSymKey.nameId);
+    return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
+         v(vm.structs.buf[val.getTypeId()].name), v(name), 
+    });
+}
+
+fn panicCastError(vm: *cy.VM, val: Value, expTypeId: cy.TypeId) !void {
+    return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
+         v(vm.structs.buf[val.getTypeId()].name), v(vm.structs.buf[expTypeId].name), 
+    });
 }
 
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.

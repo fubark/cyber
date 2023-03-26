@@ -172,7 +172,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("tag");
     std.debug.assert(id == cy.UserTagT);
-    id = try self.addBuiltinType("tagliteral");
+    id = try self.addBuiltinType("taglit");
     std.debug.assert(id == cy.UserTagLiteralT);
     id = try self.addBuiltinType("integer");
     std.debug.assert(id == cy.IntegerT);

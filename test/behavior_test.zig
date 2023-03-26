@@ -11,6 +11,68 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+test "Type casting." {
+    // Failed to cast to exact type at runtime.
+    try eval(.{ .silent = true },
+        \\a = 123
+        \\print(a as pointer)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not cast `number` to `pointer`.
+            \\
+            \\main:2:9 main:
+            \\print(a as pointer)
+            \\        ^
+            \\
+        );
+    }}.func);
+
+    // taglist cast fails.
+    try eval(.{ .silent = true },
+        \\123 as taglit
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not cast `number` to `taglit`.
+            \\
+            \\main:1:5 main:
+            \\123 as taglit
+            \\    ^
+            \\
+        );
+    }}.func);
+
+    // list cast fails.
+    try eval(.{ .silent = true },
+        \\123 as List
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not cast `number` to `List`.
+            \\
+            \\main:1:5 main:
+            \\123 as List
+            \\    ^
+            \\
+        );
+    }}.func);
+
+    // Failed to cast to abstract type at runtime.
+    try eval(.{ .silent = true },
+        \\a = 123
+        \\print(a as string)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not cast `number` to `string`.
+            \\
+            \\main:2:9 main:
+            \\print(a as string)
+            \\        ^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{}, @embedFile("typecast_test.cy"));
+}
+
 test "Typed object." {
     // Wrong param type.
     try eval(.{ .silent = true },
@@ -265,7 +327,7 @@ test "Typed Map." {
         \\
         \\-- Cast erased type.
         \\map = t.erase({ a: 123 })
-        \\try t.eq(foo(Map(map)), true)
+        \\try t.eq(foo(map as Map), true)
     );
 }
 
@@ -302,7 +364,7 @@ test "Typed List." {
         \\
         \\-- Cast erased type.
         \\list = t.erase([123])
-        \\try t.eq(foo(List(list)), true)
+        \\try t.eq(foo(list as List), true)
     );
 }
 
@@ -339,7 +401,7 @@ test "Typed taglit." {
         \\
         \\-- Cast erased type.
         \\tag = t.erase(#sometag)
-        \\try t.eq(foo(taglit(tag)), true)
+        \\try t.eq(foo(tag as taglit), true)
     );
 }
 
@@ -775,34 +837,6 @@ test "Dump locals." {
 }
 
 test "core module" {
-    // taglist cast fails.
-    try eval(.{ .silent = true },
-        \\taglit(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Not a tag literal.
-            \\
-            \\main:1:1 main:
-            \\taglit(123)
-            \\^
-            \\
-        );
-    }}.func);
-
-    // list cast fails.
-    try eval(.{ .silent = true },
-        \\List(123)
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.Panic,
-            \\panic: Not a List.
-            \\
-            \\main:1:1 main:
-            \\List(123)
-            \\^
-            \\
-        );
-    }}.func);
-
     try evalPass(.{}, @embedFile("core_test.cy"));
 }
 

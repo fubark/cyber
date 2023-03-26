@@ -112,6 +112,22 @@ atype Vec3 util.Vec3
 v = Vec3{ x: 3, y: 4, z: 5 }
 ```
 
+## Type casting.
+The `as` keyword can be used to cast a value to a specific type. Casting lets the compiler know what the expected type is and does not perform any conversions.
+If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
+If the cast fails at runtime, a panic is returned.
+```cy
+print('123' as number)    -- CompileError. Can not cast `string` to `number`.
+
+erased any = 123
+add(1, erased as number)  -- Success.
+
+print(erased as string)   -- Panic. Can not cast `number` to `string`.
+
+func add(a number, b number):
+    return a + b
+```
+
 ## Runtime type checking.
 Since Cyber allows invoking `any` function values, the callee's function signature is not always known at compile-time. To ensure type safety in this situation, type checking is done at runtime and with no additional overhead compared to calling an untyped function.
 ```cy

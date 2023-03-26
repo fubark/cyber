@@ -78,6 +78,8 @@ typedef enum {
     CodeTag,
     CodeTagLiteral,
     CodeTryValue,
+    CodeCast,
+    CodeCastAbstract,
     CodeBitwiseAnd,
     CodeBitwiseOr,
     CodeBitwiseXor,

@@ -144,9 +144,29 @@ pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: 
     return false;
 }
 
-/// Type -> ResolvedSymId
-pub fn typeToResolvedSym(type_: Type) ResolvedSymId {
-    return switch (type_.typeT) {
+pub fn typeTagToExactTypeId(tag: TypeTag) ?cy.TypeId {
+    return switch (tag) {
+        .any => null,
+        .number => cy.NumberT,
+        .int => cy.IntegerT,
+        .tagLiteral => cy.UserTagLiteralT,
+        .list => cy.ListS,
+        .boolean => cy.BooleanT,
+
+        // There are multiple string types.
+        .string => null,
+        .rawstring => null,
+
+        .map => cy.MapS,
+        .pointer => cy.PointerT,
+        .none => cy.NoneT,
+        .err => cy.ErrorT,
+        else => stdx.panicFmt("Unsupported type {}", .{tag}),
+    };
+}
+
+pub fn typeTagToResolvedSym(tag: TypeTag) ResolvedSymId {
+    return switch (tag) {
         .any => bt.Any,
         .number => bt.Number,
         .int => bt.Integer,
@@ -160,9 +180,17 @@ pub fn typeToResolvedSym(type_: Type) ResolvedSymId {
         .pointer => bt.Pointer,
         .none => bt.None,
         .err => bt.Error,
-        .rsym => type_.inner.rsym.rSymId,
-        else => stdx.panicFmt("Unsupported type {}", .{type_.typeT}),
+        else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };
+}
+
+/// Type -> ResolvedSymId
+pub fn typeToResolvedSym(type_: Type) ResolvedSymId {
+    if (type_.typeT == .rsym) {
+        return type_.inner.rsym.rSymId;
+    } else {
+        return typeTagToResolvedSym(type_.typeT);
+    }
 }
 
 /// ResolvedSymId -> Type

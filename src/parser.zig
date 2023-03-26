@@ -2745,6 +2745,23 @@ pub const Parser = struct {
         }
     }
 
+    fn parseBinExpr(self: *Parser, left: NodeId, op: BinaryExprOp) !NodeId {
+        const opStart = self.next_pos;
+        // Assumes current token is the operator.
+        self.advanceToken();
+
+        const right = try self.parseRightExpression(op);
+        const expr = try self.pushNode(.binExpr, opStart);
+        self.nodes.items[expr].head = .{
+            .binExpr = .{
+                .left = left,
+                .right = right,
+                .op = op,
+            },
+        };
+        return expr;
+    }
+
     /// An error can be returned during the expr parsing.
     /// If null is returned instead, no token begins an expression
     /// and the caller can assume next_pos did not change. Instead of reporting
@@ -2791,47 +2808,30 @@ pub const Parser = struct {
                         },
                         else => {},
                     }
-                    // BinaryExpression.
                     const bin_op = toBinExprOp(op_t);
-                    const opTokenStart = self.next_pos;
+                    left_id = try self.parseBinExpr(left_id, bin_op);
+                },
+                .as_k => {
+                    const opStart = self.next_pos;
                     self.advanceToken();
-                    const right_id = try self.parseRightExpression(bin_op);
 
-                    const bin_expr = try self.pushNode(.binExpr, opTokenStart);
-                    self.nodes.items[bin_expr].head = .{
-                        .binExpr = .{
-                            .left = left_id,
-                            .right = right_id,
-                            .op = bin_op,
+                    const typeSpecHead = (try self.parseOptTypeSpec()) orelse {
+                        return self.reportParseError("Expected type specifier.", &.{});
+                    };
+                    const expr = try self.pushNode(.castExpr, opStart);
+                    self.nodes.items[expr].head = .{
+                        .castExpr = .{
+                            .expr = left_id,
+                            .typeSpecHead = typeSpecHead,
                         },
                     };
-                    left_id = bin_expr;
+                    left_id = expr;
                 },
                 .and_k => {
-                    self.advanceToken();
-                    const right_id = try self.parseRightExpression(.and_op);
-                    const bin_expr = try self.pushNode(.binExpr, start);
-                    self.nodes.items[bin_expr].head = .{
-                        .binExpr = .{
-                            .left = left_id,
-                            .right = right_id,
-                            .op = .and_op,
-                        },
-                    };
-                    left_id = bin_expr;
+                    left_id = try self.parseBinExpr(left_id, .and_op);
                 },
                 .or_k => {
-                    self.advanceToken();
-                    const right_id = try self.parseRightExpression(.or_op);
-                    const bin_expr = try self.pushNode(.binExpr, start);
-                    self.nodes.items[bin_expr].head = .{
-                        .binExpr = .{
-                            .left = left_id,
-                            .right = right_id,
-                            .op = .or_op,
-                        },
-                    };
-                    left_id = bin_expr;
+                    left_id = try self.parseBinExpr(left_id, .or_op);
                 },
                 .is_k => {
                     self.advanceToken();
@@ -3371,6 +3371,7 @@ pub const NodeType = enum {
     caseBlock,
     matchBlock,
     elseCase,
+    castExpr,
 };
 
 pub const BinaryExprOp = enum {
@@ -3409,6 +3410,11 @@ pub const Node = struct {
     next: NodeId,
     /// Fixed size. TODO: Rename to `data`.
     head: union {
+        castExpr: struct {
+            expr: NodeId,
+            typeSpecHead: NodeId,
+            semaTypeSymId: cy.sema.ResolvedSymId = cy.NullId,
+        },
         binExpr: struct {
             left: NodeId,
             right: NodeId,

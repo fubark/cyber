@@ -600,6 +600,8 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             const numEntries = pc[2].arg;
             return 4 + numEntries;
         },
+        .cast,
+        .castAbstract,
         .slice,
         .object,
         .objectSmall,
@@ -812,12 +814,15 @@ pub const OpCode = enum(u8) {
     /// [symType] [symId] [dst]
     sym = vmc.CodeSym,
 
+    cast = vmc.CodeCast,
+    castAbstract = vmc.CodeCastAbstract,
+
     /// Indicates the end of the main script.
     end = vmc.CodeEnd,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 94);
+    try t.eq(std.enums.values(OpCode).len, 96);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

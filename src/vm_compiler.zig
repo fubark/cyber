@@ -183,7 +183,7 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.String);
         id = try sema.addResolvedBuiltinSym(self, .rawstring, "rawstring");
         std.debug.assert(id == bt.Rawstring);
-        id = try sema.addResolvedBuiltinSym(self, .int, "taglit");
+        id = try sema.addResolvedBuiltinSym(self, .tagLiteral, "taglit");
         std.debug.assert(id == bt.TagLiteral);
         id = try sema.addResolvedBuiltinSym(self, .list, "List");
         std.debug.assert(id == bt.List);
@@ -1084,7 +1084,13 @@ pub const CompileChunk = struct {
 
     fn genEnsureRequiredType(self: *CompileChunk, genValue: gen.GenValue, requiredType: types.Type) !void {
         if (requiredType.typeT != .any) {
-            if (genValue.vtype.typeT != requiredType.typeT) {
+            if (genValue.vtype.typeT == requiredType.typeT) {
+                return;
+            }
+
+            const reqTypeSymId = types.typeToResolvedSym(requiredType);
+            const typeSymId = types.typeToResolvedSym(genValue.vtype);
+            if (typeSymId != reqTypeSymId) {
                 return self.reportError("Type {} can not be auto converted to required type {}", &.{fmt.v(genValue.vtype.typeT), fmt.v(requiredType.typeT)});
             }
         }

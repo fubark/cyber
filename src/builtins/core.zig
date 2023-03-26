@@ -54,8 +54,6 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try b.setFunc("int", &.{bt.Any}, bt.Integer, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
-    try b.setFunc("List", &.{ bt.Any }, bt.List, List);
-    try b.setFunc("Map", &.{ bt.Any }, bt.Map, Map);
     try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
     try b.setFunc("number", &.{ bt.Any }, bt.Number, number);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
@@ -75,7 +73,6 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
     try b.setFunc("string", &.{bt.Any}, bt.String, string);
-    try b.setFunc("taglit", &.{ bt.Any }, bt.TagLiteral, taglit);
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
     try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
     try b.setFunc("valtag", &.{ bt.Any }, bt.TagLiteral, valtag);
@@ -549,33 +546,6 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("readLine", "0.1", "Use getInput() instead.", &.{});
     return getInput(vm, args, nargs);
-}
-
-fn List(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    if (args[0].isList()) {
-        return args[0];
-    } else {
-        vm.release(args[0]);
-        return vm.returnPanic("Not a List.");
-    }
-}
-
-fn Map(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    if (args[0].isMap()) {
-        return args[0];
-    } else {
-        vm.release(args[0]);
-        return vm.returnPanic("Not a Map.");
-    }
-}
-
-fn taglit(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    if (args[0].isTagLiteral()) {
-        return args[0];
-    } else {
-        vm.release(args[0]);
-        return vm.returnPanic("Not a tag literal.");
-    }
 }
 
 pub fn string(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {

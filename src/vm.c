@@ -260,6 +260,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Tag),
         JENTRY(TagLiteral),
         JENTRY(TryValue),
+        JENTRY(Cast),
+        JENTRY(CastAbstract),
         JENTRY(BitwiseAnd),
         JENTRY(BitwiseOr),
         JENTRY(BitwiseXor),
@@ -975,6 +977,8 @@ beginSwitch:
     CASE(Tag):
     CASE(TagLiteral):
     CASE(TryValue):
+    CASE(Cast):
+    CASE(CastAbstract):
         printf("Unsupported %s\n", zOpCodeName(*pc));
         zFatal();
     CASE(BitwiseAnd): {

@@ -952,6 +952,41 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
 
             return self.initGenValue(dst, types.AnyType, retain);
         },
+        .castExpr => {
+            var child: GenValue = undefined;
+            if (retain) {
+                child = try self.genRetainedTempExpr(node.head.castExpr.expr, false);
+            } else {
+                child = try self.genExpr(node.head.castExpr.expr, false);
+            }
+
+            const tSymId = node.head.castExpr.semaTypeSymId;
+
+            const tSym = self.compiler.sema.getResolvedSym(tSymId);
+            if (tSym.symT == .object) {
+                const typeId = tSym.getObjectTypeId(self.compiler.vm).?;
+                try self.pushDebugSym(nodeId);
+                const pc = self.buf.ops.items.len;
+                try self.buf.pushOpSlice(.cast, &.{ child.local, 0, 0, dst });
+                self.buf.setOpArgU16(pc + 2, @intCast(u16, typeId));
+            } else if (tSym.symT == .builtinType) {
+                const tag = @intToEnum(types.TypeTag, tSym.inner.builtinType.typeT);
+                if (types.typeTagToExactTypeId(tag)) |typeId| {
+                    try self.pushDebugSym(nodeId);
+                    const pc = self.buf.ops.items.len;
+                    try self.buf.pushOpSlice(.cast, &.{ child.local, 0, 0, dst });
+                    self.buf.setOpArgU16(pc + 2, @intCast(u16, typeId));
+                } else {
+                    // Cast to abstract type.
+                    try self.pushDebugSym(nodeId);
+                    const pc = self.buf.ops.items.len;
+                    try self.buf.pushOpSlice(.castAbstract, &.{ child.local, 0, 0, dst });
+                    self.buf.setOpArgU16(pc + 2, @intCast(u16, tSymId));
+                }
+            }
+            const type_ = types.initResolvedSymType(tSymId);
+            return self.initGenValue(dst, type_, retain);
+        },
         .unary_expr => {
             const op = node.head.unary.op;
             switch (op) {

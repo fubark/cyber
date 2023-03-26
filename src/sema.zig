@@ -1513,6 +1513,13 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
         .group => {
             return semaExpr(c, node.head.child_head, discardTopExprReg);
         },
+        .castExpr => {
+            _ = try semaExpr(c, node.head.castExpr.expr, discardTopExprReg);
+            const rTypeSymId = try getOrResolveTypeSymFromSpecNode(c, node.head.castExpr.typeSpecHead);
+            c.nodes[nodeId].head.castExpr.semaTypeSymId = rTypeSymId;
+            
+            return types.initResolvedSymType(rTypeSymId);
+        },
         .binExpr => {
             const left = node.head.binExpr.left;
             const right = node.head.binExpr.right;

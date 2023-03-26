@@ -292,9 +292,13 @@ fn genMapInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime dst
     }
 }
 
-fn genPushBinOp(self: *CompileChunk, code: cy.OpCode, left: cy.NodeId, right: cy.NodeId, vtype: types.Type, dst: LocalId, comptime discardTopExprReg: bool) !GenValue {
+fn genPushBinOp(self: *CompileChunk, code: cy.OpCode, nodeId: cy.NodeId, vtype: types.Type, dst: LocalId, comptime discardTopExprReg: bool) !GenValue {
     const startTempLocal = self.curBlock.firstFreeTempLocal;
     defer self.computeNextTempLocalFrom(startTempLocal);
+
+    const node = self.nodes[nodeId];
+    const left = node.head.binExpr.left;
+    const right = node.head.binExpr.right;
 
     var usedDstAsTemp = !self.canUseLocalAsTemp(dst);
     const leftv = try self.genExprToDestOrTempLocal(left, dst, &usedDstAsTemp, discardTopExprReg);
@@ -305,7 +309,7 @@ fn genPushBinOp(self: *CompileChunk, code: cy.OpCode, left: cy.NodeId, right: cy
             .pow,
             .div,
             .mul => {
-                try self.pushDebugSym(left);
+                try self.pushDebugSym(nodeId);
             },
             else => {},
         }
@@ -327,16 +331,16 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
     const op = node.head.binExpr.op;
     switch (op) {
         .slash => {
-            return genPushBinOp(self, .div, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .div, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .percent => {
-            return genPushBinOp(self, .mod, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .mod, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .caret => {
-            return genPushBinOp(self, .pow, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .pow, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .star => {
-            return genPushBinOp(self, .mul, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .mul, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .plus => {
             const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -375,10 +379,10 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
             } else return GenValue.initNoValue();
         },
         .equal_equal => {
-            return genPushBinOp(self, .compare, left, right, types.BoolType, dst, !dstIsUsed);
+            return genPushBinOp(self, .compare, nodeId, types.BoolType, dst, !dstIsUsed);
         },
         .bang_equal => {
-            return genPushBinOp(self, .compareNot, left, right, types.BoolType, dst, !dstIsUsed);
+            return genPushBinOp(self, .compareNot, nodeId, types.BoolType, dst, !dstIsUsed);
         },
         .less => {
             const startTempLocal = self.curBlock.firstFreeTempLocal;
@@ -399,34 +403,34 @@ fn genBinExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requestedTyp
                     try self.buf.pushOp3(.lessInt, leftv.local, rightv.local, dst);
                     return self.initGenValue(dst, types.BoolType, false);
                 }
-
+                try self.pushDebugSym(nodeId);
                 try self.buf.pushOp3(.less, leftv.local, rightv.local, dst);
                 return self.initGenValue(dst, types.BoolType, false);
             } else return GenValue.initNoValue();
         },
         .less_equal => {
-            return genPushBinOp(self, .lessEqual, left, right, types.BoolType, dst, !dstIsUsed);
+            return genPushBinOp(self, .lessEqual, nodeId, types.BoolType, dst, !dstIsUsed);
         },
         .greater => {
-            return genPushBinOp(self, .greater, left, right, types.BoolType, dst, !dstIsUsed);
+            return genPushBinOp(self, .greater, nodeId, types.BoolType, dst, !dstIsUsed);
         },
         .greater_equal => {
-            return genPushBinOp(self, .greaterEqual, left, right, types.BoolType, dst, !dstIsUsed);
+            return genPushBinOp(self, .greaterEqual, nodeId, types.BoolType, dst, !dstIsUsed);
         },
         .bitwiseAnd => {
-            return genPushBinOp(self, .bitwiseAnd, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .bitwiseAnd, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .bitwiseOr => {
-            return genPushBinOp(self, .bitwiseOr, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .bitwiseOr, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .bitwiseXor => {
-            return genPushBinOp(self, .bitwiseXor, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .bitwiseXor, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .bitwiseLeftShift => {
-            return genPushBinOp(self, .bitwiseLeftShift, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .bitwiseLeftShift, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .bitwiseRightShift => {
-            return genPushBinOp(self, .bitwiseRightShift, left, right, types.NumberType, dst, !dstIsUsed);
+            return genPushBinOp(self, .bitwiseRightShift, nodeId, types.NumberType, dst, !dstIsUsed);
         },
         .and_op => {
             const startTempLocal = self.curBlock.firstFreeTempLocal;

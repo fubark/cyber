@@ -2119,56 +2119,67 @@ pub const Parser = struct {
 
         // Check if next token is an operator with higher precedence.
         var token = self.peekToken();
-        if (token.tag() == .operator) {
-            const op_prec = getBinOpPrecedence(left_op);
-            const right_op = toBinExprOp(token.data.operator_t);
-            const right_op_prec = getBinOpPrecedence(right_op);
-            if (right_op_prec > op_prec) {
-                // Continue parsing right.
-                _ = self.consumeToken();
-                start = self.next_pos;
-                const right_id = try self.parseRightExpression(right_op);
 
-                const binExpr = try self.pushNode(.binExpr, start);
-                self.nodes.items[binExpr].head = .{
-                    .binExpr = .{
-                        .left = expr_id,
-                        .right = right_id,
-                        .op = right_op,
-                    },
-                };
+        var rightOp: BinaryExprOp = undefined;
+        switch (token.tag()) {
+            .operator => rightOp = toBinExprOp(token.data.operator_t),
+            .and_k => rightOp = .and_op,
+            .or_k => rightOp = .or_op,
+            else => return expr_id,
+        }
 
-                // Before returning the expr, perform left recursion if the op prec greater than the starting op.
-                // eg. a + b * c * d
-                //         ^ parseRightExpression starts here
-                // Returns ((b * c) * d).
-                // eg. a < b * c - d
-                //         ^ parseRightExpression starts here
-                // Returns ((b * c) - d).
-                var left = binExpr;
-                while (true) {
-                    token = self.peekToken();
-                    if (token.tag() == .operator) {
-                        const right2_op = toBinExprOp(token.data.operator_t);
-                        const right2_op_prec = getBinOpPrecedence(right2_op);
-                        if (right2_op_prec > op_prec) {
-                            self.advanceToken();
-                            const rightExpr = try self.parseRightExpression(right_op);
-                            const newBinExpr = try self.pushNode(.binExpr, start);
-                            self.nodes.items[newBinExpr].head = .{
-                                .binExpr = .{
-                                    .left = left,
-                                    .right = rightExpr,
-                                    .op = right2_op,
-                                },
-                            };
-                            left = newBinExpr;
-                            continue;
-                        }
-                    }
-                    break;
+        const op_prec = getBinOpPrecedence(left_op);
+        const right_op_prec = getBinOpPrecedence(rightOp);
+        if (right_op_prec > op_prec) {
+            // Continue parsing right.
+            _ = self.consumeToken();
+            start = self.next_pos;
+            const right_id = try self.parseRightExpression(rightOp);
+
+            const binExpr = try self.pushNode(.binExpr, start);
+            self.nodes.items[binExpr].head = .{
+                .binExpr = .{
+                    .left = expr_id,
+                    .right = right_id,
+                    .op = rightOp,
+                },
+            };
+
+            // Before returning the expr, perform left recursion if the op prec greater than the starting op.
+            // eg. a + b * c * d
+            //         ^ parseRightExpression starts here
+            // Returns ((b * c) * d).
+            // eg. a < b * c - d
+            //         ^ parseRightExpression starts here
+            // Returns ((b * c) - d).
+            var left = binExpr;
+            while (true) {
+                token = self.peekToken();
+
+                var rightOp2: BinaryExprOp = undefined;
+                switch (token.tag()) {
+                    .operator => rightOp2 = toBinExprOp(token.data.operator_t),
+                    .and_k => rightOp2 = .and_op,
+                    .or_k => rightOp2 = .or_op,
+                    else => return left,
                 }
-                return left;
+                const right2_op_prec = getBinOpPrecedence(rightOp2);
+                if (right2_op_prec > op_prec) {
+                    self.advanceToken();
+                    const rightExpr = try self.parseRightExpression(rightOp);
+                    const newBinExpr = try self.pushNode(.binExpr, start);
+                    self.nodes.items[newBinExpr].head = .{
+                        .binExpr = .{
+                            .left = left,
+                            .right = rightExpr,
+                            .op = rightOp2,
+                        },
+                    };
+                    left = newBinExpr;
+                    continue;
+                } else {
+                    return left;
+                }
             }
         }
         return expr_id;
@@ -2780,10 +2791,11 @@ pub const Parser = struct {
                     }
                     // BinaryExpression.
                     const bin_op = toBinExprOp(op_t);
+                    const opTokenStart = self.next_pos;
                     self.advanceToken();
                     const right_id = try self.parseRightExpression(bin_op);
 
-                    const bin_expr = try self.pushNode(.binExpr, start);
+                    const bin_expr = try self.pushNode(.binExpr, opTokenStart);
                     self.nodes.items[bin_expr].head = .{
                         .binExpr = .{
                             .left = left_id,
@@ -2801,7 +2813,7 @@ pub const Parser = struct {
                         .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .op = BinaryExprOp.and_op,
+                            .op = .and_op,
                         },
                     };
                     left_id = bin_expr;
@@ -2814,7 +2826,7 @@ pub const Parser = struct {
                         .binExpr = .{
                             .left = left_id,
                             .right = right_id,
-                            .op = BinaryExprOp.or_op,
+                            .op = .or_op,
                         },
                     };
                     left_id = bin_expr;
@@ -3378,6 +3390,7 @@ pub const BinaryExprOp = enum {
     equal_equal,
     and_op,
     or_op,
+    cast,
     dummy,
 };
 
@@ -3690,22 +3703,28 @@ fn toBinExprOp(op: OperatorType) BinaryExprOp {
 
 pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
     switch (op) {
+        .bitwiseLeftShift,
+        .bitwiseRightShift => return 9,
+
+        .bitwiseAnd => return 8,
+
+        .bitwiseXor,
+        .bitwiseOr => return 7,
+
         .caret => return 6,
+
         .slash,
         .percent,
         .star => {
             return 5;
         },
+
         .minus,
         .plus => {
             return 4;
         },
 
-        .bitwiseLeftShift,
-        .bitwiseRightShift => return 3,
-
-        .bitwiseAnd,
-        .bitwiseOr => return 2,
+        .cast => return 3,
 
         .greater,
         .greater_equal,
@@ -3713,13 +3732,13 @@ pub fn getBinOpPrecedence(op: BinaryExprOp) u8 {
         .less_equal,
         .bang_equal,
         .equal_equal => {
-            return 1;
+            return 2;
         },
 
-        .or_op,
-        .and_op => {
-            return 0;
-        },
+        .and_op => return 1,
+
+        .or_op => return 0,
+
         else => return 0,
     }
 }

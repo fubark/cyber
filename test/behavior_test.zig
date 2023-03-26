@@ -2333,25 +2333,8 @@ test "access expression" {
     try t.eq(val.asF64toI32(), 5);
 }
 
-test "Math" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Infinity.
-    var val = try run.eval(
-        \\1 / 0
-    );
-    try run.valueIsF64(val, std.math.inf_f64);
-
-    // NaN.
-    val = try run.eval(
-        \\0 * (1 / 0)
-    );
-    try t.expect(val.isNumber());
-    try t.expect(std.math.isNan(val.asF64()));
-
-    // Math module.
-    _ = try run.eval(@embedFile("math_test.cy"));
+test "Math module." {
+    try evalPass(.{}, @embedFile("math_test.cy"));
 }
 
 test "Bitwise operators." {
@@ -2359,6 +2342,23 @@ test "Bitwise operators." {
 }
 
 test "Arithmetic operators." {
+    // Infinity.
+    try eval(.{},
+        \\1 / 0
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        const val = try res;
+        try run.valueIsF64(val, std.math.inf_f64);
+    }}.func);
+
+    // NaN.
+    try eval(.{},
+        \\0 * (1 / 0)
+    , struct { fn func(_: *VMrunner, res: EvalResult) !void {
+        const val = try res;
+        try t.expect(val.isNumber());
+        try t.expect(std.math.isNan(val.asF64()));
+    }}.func);
+
     // Can only add numbers.
     try eval(.{ .silent = true },
         \\a = 'foo' + 123
@@ -2366,9 +2366,9 @@ test "Arithmetic operators." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:6 main:
+            \\main:1:11 main:
             \\a = 'foo' + 123
-            \\     ^
+            \\          ^
             \\
         );
     }}.func);
@@ -2380,9 +2380,9 @@ test "Arithmetic operators." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:6 main:
+            \\main:1:11 main:
             \\a = 'foo' - 123
-            \\     ^
+            \\          ^
             \\
         );
     }}.func);
@@ -2394,9 +2394,9 @@ test "Arithmetic operators." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:6 main:
+            \\main:1:11 main:
             \\a = 'foo' * 123
-            \\     ^
+            \\          ^
             \\
         );
     }}.func);
@@ -2408,9 +2408,9 @@ test "Arithmetic operators." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:6 main:
+            \\main:1:11 main:
             \\a = 'foo' / 123
-            \\     ^
+            \\          ^
             \\
         );
     }}.func);
@@ -2422,9 +2422,9 @@ test "Arithmetic operators." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:6 main:
+            \\main:1:11 main:
             \\a = 'foo' % 123
-            \\     ^
+            \\          ^
             \\
         );
     }}.func);
@@ -2436,9 +2436,9 @@ test "Arithmetic operators." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:6 main:
+            \\main:1:11 main:
             \\a = 'foo' ^ 123
-            \\     ^
+            \\          ^
             \\
         );
     }}.func);
@@ -2464,7 +2464,7 @@ const VMrunner = struct {
     fn init(self: *VMrunner) !void {
         self.* = .{
             .vm = cy.getUserVM(),
-            .trace = undefined,
+            .trace = .{},
         };
         self.vm.init(t.alloc) catch fatal();
         self.vm.setTrace(&self.trace);
@@ -2472,6 +2472,7 @@ const VMrunner = struct {
 
     fn deinit(self: *VMrunner) void {
         self.vm.deinit();
+        self.trace.deinit(t.alloc);
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
             stdx.panicFmt("{} unreleased refcount from previous eval", .{rc});

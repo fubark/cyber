@@ -2538,14 +2538,14 @@ pub const SymbolId = u32;
 
 pub const TraceInfo = struct {
     opCounts: []OpCount = &.{},
-    totalOpCounts: u32,
-    numRetains: u32,
-    numRetainAttempts: u32,
-    numReleases: u32,
-    numReleaseAttempts: u32,
-    numForceReleases: u32,
-    numRetainCycles: u32,
-    numRetainCycleRoots: u32,
+    totalOpCounts: u32 = 0,
+    numRetains: u32 = 0,
+    numRetainAttempts: u32 = 0,
+    numReleases: u32 = 0,
+    numReleaseAttempts: u32 = 0,
+    numForceReleases: u32 = 0,
+    numRetainCycles: u32 = 0,
+    numRetainCycleRoots: u32 = 0,
 
     pub fn deinit(self: *TraceInfo, alloc: std.mem.Allocator) void {
         alloc.free(self.opCounts);

@@ -16,7 +16,41 @@ try t.eq(2 * (3 + 4), 14)
 try t.eq(2 + ((3 + 4) / 7), 3)
 
 --|
---| Precedence=5, Power, Divide, Modulus, Multiply
+--| Precedence=9, Bitwise shift
+--|
+
+-- Bitwise shift before bitwise and.
+try t.eq(2 & 1 << 1, 2)
+
+-- Bitwise shift before bitwise or.
+try t.eq(1 | 1 << 1, 3)
+
+--|
+--| Precedence=8, Bitwise and
+--|
+
+-- Bitwise and before bitwise or.
+try t.eq(8 | 1 & 1, 9)
+
+--|
+--| Precedence=7, Bitwise or, xor
+--|
+
+-- Bitwise or before power.
+try t.eq(3 ^ 2 | 1, 27)
+
+--|
+--| Precedence=6, Power
+--|
+
+-- Power before multiplication.
+try t.eq(2 * 3 ^ 2, 18)
+
+-- Power before addition.
+try t.eq(2 + 3 ^ 2, 11)
+
+--|
+--| Precedence=5, Divide, Modulus, Multiply
 --|
 
 -- Multiply before subtract, then subtract before greater comparison.
@@ -28,14 +62,8 @@ try t.eq(2 + 3 * 4, 14)
 -- Division before addition.
 try t.eq(2 + 4 / 4, 3)
 
--- Power before addition.
-try t.eq(2 + 3 ^ 2, 11)
-
 -- Modulus before comparison.
 try t.eq(5 == 21 % 16, true)
-
--- Power before multiplication.
-try t.eq(2 * 3 ^ 2, 18)
 
 --|
 --| Precedence=4, Add, Subtract
@@ -45,11 +73,15 @@ try t.eq(2 * 3 ^ 2, 18)
 try t.eq(5 == 2 + 3, true)
 
 --|
---| Precendence=3, Bitwise shift
+--| Precedence=2, Logical and.
 --|
 
--- Bitwise shift before bitwise or.
-try t.eq(1 | 1 << 1, 3)
+-- Logical and before or.
+try t.eq(true or true and false, true)
+
+--|
+--| Other tests.
+--|
 
 -- Variables and parenthesis.
 time = 50

@@ -191,6 +191,21 @@ There are currently `35` keywords in Cyber. This list categorizes them and shows
 - Metaprogramming: `compt`
 
 ## Operators.
+Cyber supports the following operators. They are ordered from highest to lowest precedence.
+|Operator|Description|
+|--|--|
+| `<<` `>>` | Bitwise left shift, right shift. |
+| `&` | Bitwise and. |
+| `\|` `\|\|` | Bitwise or, exclusive or. |
+| `^` | Power. |
+| `/` `%` `*` | Division, modulus, multiplication. |
+| `+` `-` | Addition, subtraction. |
+| `as` | Type casting. |
+| `>` `>=` `<` `<=` `!=` `==` | Greater, greater or equal, less, less or equal, not equals, equals. |
+| `and` | Logical and. |
+| `or` | Logical or. |
+
+### Arithmetic Operators.
 Cyber supports the following arithmetic operators. To understand how these operators affect the number type, see [Numbers]({{<relref "/docs/toc/data-types#numbers">}}).
 ```cy
 1 + 2     -- Addition, evaluates to 3.

@@ -73,7 +73,7 @@ try t.eq(5 == 21 % 16, true)
 try t.eq(5 == 2 + 3, true)
 
 --|
---| Precedence=2, Logical and.
+--| Precedence=1, Logical and.
 --|
 
 -- Logical and before or.

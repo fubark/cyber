@@ -1296,7 +1296,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
         .funcDecl => {
             try genFuncDecl(self, self.semaResolvedRootSymId, nodeId);
         },
-        .forOptStmt => {
+        .whileOptStmt => {
             self.nextSemaSubBlock();
 
             const topPc = @intCast(u32, self.buf.ops.items.len);
@@ -1304,14 +1304,14 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             defer self.subBlockJumpStack.items.len = jumpStackSave;
 
             var optLocal: LocalId = undefined;
-            if (node.head.forOptStmt.as != cy.NullId) {
-                const as = self.nodes[node.head.forOptStmt.as];
-                optLocal = self.genGetVar(as.head.ident.semaVarId).?.local;
+            if (node.head.whileOptStmt.some != cy.NullId) {
+                const some = self.nodes[node.head.whileOptStmt.some];
+                optLocal = self.genGetVar(some.head.ident.semaVarId).?.local;
                 // Since this variable is used in the loop, it is considered defined before codegen.
-                self.vars.items[as.head.ident.semaVarId].genIsDefined = true;
-                try genSetVarToExpr(self, node.head.forOptStmt.as, node.head.forOptStmt.opt, false);
+                self.vars.items[some.head.ident.semaVarId].genIsDefined = true;
+                try genSetVarToExpr(self, node.head.whileOptStmt.some, node.head.whileOptStmt.opt, false);
             } else {
-                const optv = try self.genExpr(node.head.forOptStmt.opt, false);
+                const optv = try self.genExpr(node.head.whileOptStmt.opt, false);
                 optLocal = optv.local;
             }
 
@@ -1319,7 +1319,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             const skipBodyJump = try self.pushEmptyJump();
             self.patchJumpNotNoneToCurPc(skipSkipJump);
 
-            try genStatements(self, node.head.forOptStmt.bodyHead, false);
+            try genStatements(self, node.head.whileOptStmt.bodyHead, false);
             try self.pushJumpBackTo(topPc);
 
             self.patchJumpToCurPc(skipBodyJump);
@@ -1374,23 +1374,29 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             self.nextSemaSubBlock();
             defer self.prevSemaSubBlock();
 
-            const eachClause = self.nodes[node.head.for_iter_stmt.eachClause];
+            const hasEach = node.head.for_iter_stmt.eachClause != cy.NullId;
 
+            var valIdent: cy.Node = undefined;
+            var valVar: sema.LocalVar = undefined;
             var keyVar: sema.LocalVar = undefined;
             var keyIdent: cy.Node = undefined;
             var pairIter = false;
-            if (eachClause.head.eachClause.key != cy.NullId) {
-                keyIdent = self.nodes[eachClause.head.eachClause.key];
-                keyVar = self.genGetVar(keyIdent.head.ident.semaVarId).?;
-                pairIter = true;
-            }
-            const valIdent = self.nodes[eachClause.head.eachClause.value];
-            const valVar = self.genGetVar(valIdent.head.ident.semaVarId).?;
 
-            // At this point the temp var is loosely defined.
-            self.vars.items[valIdent.head.ident.semaVarId].genIsDefined = true;
-            if (pairIter) {
-                self.vars.items[keyIdent.head.ident.semaVarId].genIsDefined = true;
+            if (hasEach) {
+                const eachClause = self.nodes[node.head.for_iter_stmt.eachClause];
+                if (eachClause.head.eachClause.key != cy.NullId) {
+                    keyIdent = self.nodes[eachClause.head.eachClause.key];
+                    keyVar = self.genGetVar(keyIdent.head.ident.semaVarId).?;
+                    pairIter = true;
+                }
+                valIdent = self.nodes[eachClause.head.eachClause.value];
+                valVar = self.genGetVar(valIdent.head.ident.semaVarId).?;
+
+                // At this point the temp var is loosely defined.
+                self.vars.items[valIdent.head.ident.semaVarId].genIsDefined = true;
+                if (pairIter) {
+                    self.vars.items[keyIdent.head.ident.semaVarId].genIsDefined = true;
+                }
             }
 
             // Loop needs to reserve temp locals.
@@ -1419,13 +1425,17 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 try pushCallObjSym(self, iterLocal + 1, 1, 2,
                     @intCast(u8, self.compiler.vm.nextPairObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+                if (hasEach) {
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+                }
             } else {
                 try pushCallObjSym(self, iterLocal + 1, 1, 1,
                     @intCast(u8, self.compiler.vm.nextObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+                if (hasEach) {
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+                }
             }
 
             const skipSkipJump = try self.pushEmptyJumpNotNone(if (pairIter) keyVar.local else valVar.local);
@@ -1438,18 +1448,23 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             try genStatements(self, node.head.for_iter_stmt.body_head, false);
 
             const contPc = self.buf.ops.items.len;
+
             try self.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
             if (pairIter) {
                 try pushCallObjSym(self, iterLocal + 1, 1, 2,
                     @intCast(u8, self.compiler.vm.nextPairObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+                if (hasEach) {
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+                }
             } else {
                 try pushCallObjSym(self, iterLocal + 1, 1, 1,
                     @intCast(u8, self.compiler.vm.nextObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
-                try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+                if (hasEach) {
+                    try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+                }
             }
 
             try self.pushJumpBackNotNone(bodyPc, if (pairIter) keyVar.local else valVar.local);

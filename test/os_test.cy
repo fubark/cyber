@@ -115,7 +115,7 @@ try t.eq(readFile('test/assets/write.txt'), rawstring('foobarabcxyz'))
 dir = os.openDir('test/assets/dir', true)
 iter = dir.iterator()
 entries = []
-for iter.next() as n:
+while iter.next() some n:
     entries.append(n)
 try t.eq(entries.len(), 3)
 entries.sort((a, b) => a.name.less(b.name))
@@ -130,7 +130,7 @@ try t.eq(entries[2].type, #file)
 dir = os.openDir('test/assets/dir', true)
 iter = dir.walk()
 entries = []
-for iter.next() as n:
+while iter.next() some n:
     entries.append(n)
 try t.eq(entries.len(), 4)
 entries.sort((a, b) => a.path.less(b.path))

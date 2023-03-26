@@ -868,16 +868,16 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             try endIterSubBlock(c);
         },
-        .forOptStmt => {
+        .whileOptStmt => {
             try pushIterSubBlock(c);
 
-            const optt = try semaExpr(c, node.head.forOptStmt.opt, false);
-            if (node.head.forOptStmt.as != cy.NullId) {
-                _ = try ensureLocalBodyVar(c, node.head.forOptStmt.as, types.AnyType);
-                _ = try assignVar(c, node.head.forOptStmt.as, optt, .assign);
+            const optt = try semaExpr(c, node.head.whileOptStmt.opt, false);
+            if (node.head.whileOptStmt.some != cy.NullId) {
+                _ = try ensureLocalBodyVar(c, node.head.whileOptStmt.some, types.AnyType);
+                _ = try assignVar(c, node.head.whileOptStmt.some, optt, .assign);
             }
 
-            try semaStmts(c, node.head.forOptStmt.bodyHead, false);
+            try semaStmts(c, node.head.whileOptStmt.bodyHead, false);
 
             try endIterSubBlock(c);
         },
@@ -891,13 +891,15 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             _ = try semaExpr(c, node.head.for_iter_stmt.iterable, false);
 
-            const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
-            if (eachClause.head.eachClause.key != cy.NullId) {
-                const keyv = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, types.AnyType);
-                c.vars.items[keyv].genInitializer = true;
+            if (node.head.for_iter_stmt.eachClause != cy.NullId) {
+                const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
+                if (eachClause.head.eachClause.key != cy.NullId) {
+                    const keyv = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, types.AnyType);
+                    c.vars.items[keyv].genInitializer = true;
+                }
+                const valv = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, types.AnyType);
+                c.vars.items[valv].genInitializer = true;
             }
-            const valv = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, types.AnyType);
-            c.vars.items[valv].genInitializer = true;
 
             try semaStmts(c, node.head.for_iter_stmt.body_head, false);
             try endIterSubBlock(c);

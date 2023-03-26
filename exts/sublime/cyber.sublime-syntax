@@ -26,7 +26,7 @@ contexts:
       scope: punctuation.definition.comment.cyber
       push: line_comment
 
-    - match: '\b(if|then|else|match|while|for|each|break|continue|pass)\b'
+    - match: '\b(if|then|else|match|while|for|each|break|continue|pass|some)\b'
       scope: keyword.control.cyber
 
     - match: '\b(or|and|not|is)\b'

@@ -38,6 +38,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "is", .is_k },
     .{ "static", .static_k },
     .{ "capture", .capture_k },
+    .{ "some", .some_k },
     .{ "none", .none_k },
     .{ "not", .not_k },
     .{ "object", .object_k },
@@ -1214,6 +1215,35 @@ pub const Parser = struct {
                     },
                 };
                 return whileStmt;
+            } else if (token.tag() == .some_k) {
+                self.advanceToken();
+                token = self.peekToken();
+                const ident = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected ident.", &.{});
+                };
+                if (self.nodes.items[ident].node_t == .ident) {
+                    token = self.peekToken();
+                    if (token.tag() == .colon) {
+                        self.advanceToken();
+                        try self.pushBlock();
+                        const firstChild = try self.parseSingleOrIndentedBodyStmts();
+                        self.popBlock();
+
+                        const whileStmt = try self.pushNode(.whileOptStmt, start);
+                        self.nodes.items[whileStmt].head = .{
+                            .whileOptStmt = .{
+                                .opt = expr_id,
+                                .bodyHead = firstChild,
+                                .some = ident,
+                            },
+                        };
+                        return whileStmt;
+                    } else {
+                        return self.reportParseError("Expected :.", &.{});
+                    }
+                } else {
+                    return self.reportParseError("Expected ident.", &.{});
+                }
             } else {
                 return self.reportParseError("Expected :.", &.{});
             }
@@ -1239,44 +1269,15 @@ pub const Parser = struct {
             const firstChild = try self.parseSingleOrIndentedBodyStmts();
             self.popBlock();
 
-            const forStmt = try self.pushNode(.forOptStmt, start);
+            const forStmt = try self.pushNode(.for_iter_stmt, start);
             self.nodes.items[forStmt].head = .{
-                .forOptStmt = .{
-                    .opt = expr_id,
-                    .bodyHead = firstChild,
-                    .as = NullId,
+                .for_iter_stmt = .{
+                    .iterable = expr_id,
+                    .body_head = firstChild,
+                    .eachClause = NullId,
                 },
             };
             return forStmt;
-        } else if (token.tag() == .as_k) {
-            self.advanceToken();
-            token = self.peekToken();
-            const ident = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected ident.", &.{});
-            };
-            if (self.nodes.items[ident].node_t == .ident) {
-                token = self.peekToken();
-                if (token.tag() == .colon) {
-                    self.advanceToken();
-                    try self.pushBlock();
-                    const firstChild = try self.parseSingleOrIndentedBodyStmts();
-                    self.popBlock();
-
-                    const forStmt = try self.pushNode(.forOptStmt, start);
-                    self.nodes.items[forStmt].head = .{
-                        .forOptStmt = .{
-                            .opt = expr_id,
-                            .bodyHead = firstChild,
-                            .as = ident,
-                        },
-                    };
-                    return forStmt;
-                } else {
-                    return self.reportParseError("Expected :.", &.{});
-                }
-            } else {
-                return self.reportParseError("Expected ident.", &.{});
-            }
         } else if (token.tag() == .dot_dot) {
             self.advanceToken();
             const right_range_expr = (try self.parseExpr(.{})) orelse {
@@ -2716,6 +2717,7 @@ pub const Parser = struct {
                 .and_k,
                 .then_k,
                 .as_k,
+                .some_k,
                 .each_k,
                 .string,
                 .number,
@@ -2858,8 +2860,8 @@ pub const Parser = struct {
                 .then_k,
                 .comma,
                 .colon,
+                .some_k,
                 .dot_dot,
-                .as_k,
                 .each_k,
                 .new_line,
                 .none => break,
@@ -3253,6 +3255,7 @@ pub const TokenType = enum(u6) {
     as_k,
     pass_k,
     none_k,
+    some_k,
     object_k,
     atype_k,
     tagtype_k,
@@ -3334,7 +3337,7 @@ pub const NodeType = enum {
     else_clause,
     whileInfStmt,
     whileCondStmt,
-    forOptStmt,
+    whileOptStmt,
     for_range_stmt,
     for_iter_stmt,
     range_clause,
@@ -3533,10 +3536,10 @@ pub const Node = struct {
             cond: NodeId,
             bodyHead: NodeId,
         },
-        forOptStmt: struct {
+        whileOptStmt: struct {
             opt: NodeId,
             bodyHead: NodeId,
-            as: NodeId,
+            some: NodeId,
         },
         for_range_stmt: struct {
             range_clause: NodeId,
@@ -4649,6 +4652,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 61);
-    try t.eq(keywords.kvs.len, 35);
+    try t.eq(std.enums.values(TokenType).len, 62);
+    try t.eq(keywords.kvs.len, 36);
 }

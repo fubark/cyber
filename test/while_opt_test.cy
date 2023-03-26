@@ -12,7 +12,7 @@ next = func():
   else:
     return none
 sum = 0
-for next() as res:
+while next() some res:
   sum += res
 try t.eq(sum, 10)
 
@@ -26,7 +26,7 @@ next = func ():
   else:
     return none
 sum = 0
-for next() as res:
+while next() some res:
   sum += res[0]
 try t.eq(sum, 10)
 
@@ -40,5 +40,5 @@ next = func():
   else:
     return none
 sum = 0
-for next() as res: sum += res
+while next() some res: sum += res
 try t.eq(sum, 10)

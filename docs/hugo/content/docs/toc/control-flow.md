@@ -44,6 +44,14 @@ while running:
     -- Keep looping until `running` is false.
     pass
 ```
+
+You can use the optional `while` loop to continue the loop until the expression evaluates to the `none` value. The unwrapped optional value is copied to the variable declared after `some`.
+```cy
+iter = dir.walk()
+while iter.next() some entry:
+    print entry.name
+```
+
 `for` loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
 ```cy
 for 0..100 each i:
@@ -93,12 +101,6 @@ for map each k, v:
 -- Iterate on just keys.
 for map each k, _:
     print k
-```
-If you have an iterator already, you can use the optional `for` loop to continue executing an expression until it is the `none` value. Adding an `as` clause will save the expression's value to the given variable.
-```cy
-iter = dir.walk()
-for iter.next() as entry:
-    print entry.name
 ```
 
 You can exit a loop using `break`.

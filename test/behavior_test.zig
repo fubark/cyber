@@ -1990,8 +1990,8 @@ test "While conditional." {
     try evalPass(.{}, @embedFile("while_cond_test.cy"));
 }
 
-test "For optional." {
-    try evalPass(.{}, @embedFile("for_opt_test.cy"));
+test "While optional." {
+    try evalPass(.{}, @embedFile("while_opt_test.cy"));
 }
 
 test "For iterator." {

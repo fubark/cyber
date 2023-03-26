@@ -23,7 +23,6 @@ export fn _start() void {
     runTest(@embedFile("compare_num_test.cy"));
     runTest(@embedFile("core_test.cy"));
     runTest(@embedFile("for_iter_test.cy"));
-    runTest(@embedFile("for_opt_test.cy"));
     runTest(@embedFile("for_range_test.cy"));
     runTest(@embedFile("list_test.cy"));
     runTest(@embedFile("logic_op_test.cy"));
@@ -43,6 +42,7 @@ export fn _start() void {
     runTest(@embedFile("ustring_test.cy"));
     runTest(@embedFile("while_cond_test.cy"));
     runTest(@embedFile("while_inf_test.cy"));
+    runTest(@embedFile("while_opt_test.cy"));
 }
 
 fn runTest(src: [:0]const u8) void {

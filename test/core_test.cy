@@ -14,7 +14,7 @@ try t.eq(a[0] == a[1], false)
 
 -- copy()
 try t.eq(copy(123), 123)
-object S:
+type S object:
   foo
   bar
 s = S{}

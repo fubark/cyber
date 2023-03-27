@@ -1,6 +1,6 @@
 import t 'test'
 
-object Node:
+type Node object:
   value
 
 var snode: Node{ value: 123 }
@@ -63,7 +63,7 @@ n = Node{ value: 123 }
 try t.eq(string(n), 'Node')
 
 -- Initialize fields without commas.
-object W:
+type W object:
   a
   b
 w = W{
@@ -87,7 +87,7 @@ try t.eq(w.a, 1)
 try t.eq(w.b, 2)
 
 -- Big structs (allocated outside of heap pages).
-object BigNode:
+type BigNode object:
   a
   b
   c
@@ -101,13 +101,13 @@ try t.eq(n.d, 4)
 try t.eq(n.e, 5)
 
 -- Multiple structs with the same field names but different offsets.
-object Node1:
+type Node1 object:
   a
   b
-object Node2:
+type Node2 object:
   b
   a
-object Node3:
+type Node3 object:
   a
   b
 n1 = Node1{ a: 1, b: 2 }

@@ -7,7 +7,7 @@ const cyber = function(CodeMirror) {
 
   var wordOperators = wordRegexp(["and", "or", "not", "is"]);
   var commonKeywords = ["as", "break", "object", "continue",
-                        "func", "else", "each", "tagtype", "var", "static", "capture",
+                        "func", "else", "each", "enum", "type" "var", "static", "capture",
                         "for", "if", "import", "while",
                         "pass", "return",
                         "try", "coresume", "coinit", "coyield", "false", "true"];

@@ -23,7 +23,7 @@ foo = '{'fo'}{'o'}'
 try t.eq(foo == 'foo', true)
 
 -- Object equals.
-object S:
+type S object:
   value
 s = S{ value: 123 }
 a = S{ value: 123 }

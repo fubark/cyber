@@ -1,10 +1,10 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 import a 'test_mods/a.cy'
 
-object Bar:
+type Bar object:
     b number
 
-object Foo:
+type Foo object:
     field Bar     -- Allowed after field ident.
     field2 a.Bar  -- Prefix path also allowed.
 

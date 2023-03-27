@@ -88,6 +88,9 @@ pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec:
     return new;
 }
 
+/// Example spec entry:
+/// @lib.com/mylib.cy
+/// cacheDate=1679911482
 fn writeSpecEntry(file: std.fs.File, entry: SpecEntry) !void {
     const w = file.writer();
     try std.fmt.format(w, "@{s}\n", .{entry.spec});

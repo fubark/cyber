@@ -21,39 +21,38 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "as", .as_k },
     // .{ "await", .await_k },
     .{ "break", .break_k },
+    .{ "capture", .capture_k },
     .{ "catch", .catch_k },
     .{ "coinit", .coinit_k },
-    .{ "compt", .compt_k },
     .{ "continue", .continue_k },
     .{ "coresume", .coresume_k },
     .{ "coyield", .coyield_k },
     .{ "each", .each_k },
+    .{ "else", .else_k },
+    .{ "enum", .enum_k },
+    .{ "export", .export_k },
     .{ "false", .false_k },
     .{ "for", .for_k },
-    .{ "while", .while_k },
     .{ "func", .func_k },
-    .{ "else", .else_k },
     .{ "if", .if_k },
     .{ "import", .import_k },
     .{ "is", .is_k },
-    .{ "static", .static_k },
-    .{ "capture", .capture_k },
-    .{ "some", .some_k },
+    .{ "match", .match_k },
     .{ "none", .none_k },
-    .{ "not", .not_k },
     .{ "object", .object_k },
     .{ "or", .or_k },
     .{ "pass", .pass_k },
+    .{ "some", .some_k },
+    .{ "static", .static_k },
+    .{ "not", .not_k },
     .{ "recover", .recover_k },
     .{ "return", .return_k },
-    .{ "atype", .atype_k },
-    .{ "tagtype", .tagtype_k },
     .{ "then", .then_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
+    .{ "type", .type_k },
     .{ "var", .var_k },
-    .{ "match", .match_k },
-    .{ "export", .export_k },
+    .{ "while", .while_k },
 });
 
 const BlockState = struct {
@@ -615,21 +614,35 @@ pub const Parser = struct {
         } else return null;
     }
 
-    fn parseTypeAliasDecl(self: *Parser) !NodeId {
+    fn parseTypeDecl(self: *Parser) !NodeId {
         const start = self.next_pos;
-        // Assumes first token is the `atype` keyword.
+        // Assumes first token is the `type` keyword.
         self.advanceToken();
 
         // Parse name.
         var token = self.peekToken();
-        var name: NodeId = NullId;
-        if (token.tag() == .ident) {
-            name = try self.pushIdentNode(self.next_pos);
-            self.advanceToken();
-        } else return self.reportParseError("Expected type alias name identifier.", &.{});
+        if (token.tag() != .ident) {
+            return self.reportParseError("Expected type name identifier.", &.{});
+        }
+        const name = try self.pushIdentNode(self.next_pos);
+        self.advanceToken();
 
-        // TODO: Only allow single term expr.
-        var typeSpecHead = (try self.parseOptTypeSpec()) orelse {
+        token = self.peekToken();
+        switch (token.tag()) {
+            .enum_k => {
+                return self.parseEnumDecl(start, name);
+            },
+            .object_k => {
+                return self.parseObjectDecl(start, name);
+            },
+            else => {
+                return self.parseTypeAliasDecl(start, name);
+            }
+        }
+    }
+
+    fn parseTypeAliasDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
+        const typeSpecHead = (try self.parseOptTypeSpec()) orelse {
             return self.reportParseError("Expected type specifier.", &.{});
         };
 
@@ -651,20 +664,11 @@ pub const Parser = struct {
         return id;
     }
 
-    fn parseTagDecl(self: *Parser) !NodeId {
-        const start = self.next_pos;
-        // Assumes first token is the `tagtype` keyword.
+    fn parseEnumDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
+        // Assumes first token is the `enum` keyword.
         self.advanceToken();
 
-        // Parse tag name.
         var token = self.peekToken();
-        var name: NodeId = NullId;
-        if (token.tag() == .ident) {
-            name = try self.pushIdentNode(self.next_pos);
-            self.advanceToken();
-        } else return self.reportParseError("Expected tag name identifier.", &.{});
-
-        token = self.peekToken();
         if (token.tag() == .colon) {
             self.advanceToken();
         } else {
@@ -705,23 +709,15 @@ pub const Parser = struct {
         unreachable;
     }
 
-    fn parseObjectDecl(self: *Parser) !NodeId {
+    fn parseObjectDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
         self.inObjectDecl = true;
         defer self.inObjectDecl = false;
 
-        const start = self.next_pos;
-        // Assumes first token is the `type` keyword.
+        // Assumes first token is the `object` keyword.
         self.advanceToken();
 
         // Parse struct name.
         var token = self.peekToken();
-        var name: NodeId = NullId;
-        if (token.tag() == .ident) {
-            name = try self.pushIdentNode(self.next_pos);
-            self.advanceToken();
-        } else return self.reportParseError("Expected type name identifier.", &.{});
-
-        token = self.peekToken();
         if (token.tag() == .colon) {
             self.advanceToken();
         } else {
@@ -1564,14 +1560,8 @@ pub const Parser = struct {
                     return self.reportParseError("Expected ident after @.", &.{});
                 }
             },
-            .object_k => {
-                return try self.parseObjectDecl();
-            },
-            .tagtype_k => {
-                return try self.parseTagDecl();
-            },
-            .atype_k => {
-                return try self.parseTypeAliasDecl();
+            .type_k => {
+                return try self.parseTypeDecl();
             },
             .func_k => {
                 return try self.parseFuncDecl();
@@ -1809,10 +1799,26 @@ pub const Parser = struct {
         return error.ParseError;
     }
 
-    fn parseMapEntry(self: *Parser, key_node_t: NodeType) !NodeId {
+    fn parseMapEntry(self: *Parser) !?NodeId {
         const start = self.next_pos;
-        self.advanceToken();
+
+        var keyNodeT: NodeType = undefined;
         var token = self.peekToken();
+        switch (token.tag()) {
+            .ident => keyNodeT = .ident,
+            .string => keyNodeT = .string,
+            .number => keyNodeT = .number,
+            .type_k => keyNodeT = .ident,
+            .right_brace => {
+                return null;
+            },
+            else => {
+                return self.reportParseError("Expected map key.", &.{});
+            }
+        }
+
+        self.advanceToken();
+        token = self.peekToken();
         if (token.tag() != .colon) {
             return self.reportParseError("Expected colon.", &.{});
         }
@@ -1820,7 +1826,7 @@ pub const Parser = struct {
         const val_id = (try self.parseExpr(.{})) orelse {
             return self.reportParseError("Expected map value.", &.{});
         };
-        const key_id = try self.pushNode(key_node_t, start);
+        const key_id = try self.pushNode(keyNodeT, start);
         const entry_id = try self.pushNode(.mapEntry, start);
         self.nodes.items[entry_id].head = .{
             .mapEntry = .{
@@ -1927,29 +1933,17 @@ pub const Parser = struct {
         var first_entry: NodeId = NullId;
         outer: {
             self.consumeWhitespaceTokens();
-            var token = self.peekToken();
-            switch (token.tag()) {
-                .ident => {
-                    first_entry = try self.parseMapEntry(.ident);
-                    last_entry = first_entry;
-                },
-                .string => {
-                    first_entry = try self.parseMapEntry(.string);
-                    last_entry = first_entry;
-                },
-                .number => {
-                    first_entry = try self.parseMapEntry(.number);
-                    last_entry = first_entry;
-                },
-                .right_brace => {
-                    break :outer;
-                },
-                else => return self.reportParseError("Expected map key.", &.{}),
+
+            if (try self.parseMapEntry()) |entry| {
+                first_entry = entry;
+                last_entry = first_entry;
+            } else {
+                break :outer;
             }
 
             while (true) {
                 self.consumeWhitespaceTokens();
-                token = self.peekToken();
+                const token = self.peekToken();
                 if (token.tag() == .comma) {
                     self.advanceToken();
                     if (self.peekToken().tag() == .new_line) {
@@ -1960,27 +1954,11 @@ pub const Parser = struct {
                     break :outer;
                 }
 
-                token = self.peekToken();
-                switch (token.tag()) {
-                    .ident => {
-                        const entry_id = try self.parseMapEntry(.ident);
-                        self.nodes.items[last_entry].next = entry_id;
-                        last_entry = entry_id;
-                    },
-                    .string => {
-                        const entry_id = try self.parseMapEntry(.string);
-                        self.nodes.items[last_entry].next = entry_id;
-                        last_entry = entry_id;
-                    },
-                    .number => {
-                        const entry_id = try self.parseMapEntry(.number);
-                        self.nodes.items[last_entry].next = entry_id;
-                        last_entry = entry_id;
-                    },
-                    .right_brace => {
-                        break :outer;
-                    },
-                    else => return self.reportParseError("Expected map key.", &.{}),
+                if (try self.parseMapEntry()) |entry| {
+                    self.nodes.items[last_entry].next = entry;
+                    last_entry = entry;
+                } else {
+                    break :outer;
                 }
             }
         }
@@ -2577,19 +2555,25 @@ pub const Parser = struct {
                     // AccessExpression.
                     self.advanceToken();
                     const next2 = self.peekToken();
-                    if (next2.tag() == .ident) {
-                        const right_id = try self.pushIdentNode(self.next_pos);
-                        const expr_id = try self.pushNode(.accessExpr, start);
-                        self.nodes.items[expr_id].head = .{
-                            .accessExpr = .{
-                                .left = left_id,
-                                .right = right_id,
-                            },
-                        };
-                        left_id = expr_id;
-                        self.advanceToken();
-                        start = self.next_pos;
-                    } else return self.reportParseError("Expected ident", &.{});
+                    switch (next2.tag()) {
+                        .ident,
+                        .type_k => {
+                            const right_id = try self.pushIdentNode(self.next_pos);
+                            const expr_id = try self.pushNode(.accessExpr, start);
+                            self.nodes.items[expr_id].head = .{
+                                .accessExpr = .{
+                                    .left = left_id,
+                                    .right = right_id,
+                                },
+                            };
+                            left_id = expr_id;
+                            self.advanceToken();
+                            start = self.next_pos;
+                        },
+                        else => {
+                            return self.reportParseError("Expected ident", &.{});
+                        }
+                    }
                 },
                 .left_bracket => {
                     // Index or slice operator.
@@ -3257,8 +3241,8 @@ pub const TokenType = enum(u6) {
     none_k,
     some_k,
     object_k,
-    atype_k,
-    tagtype_k,
+    type_k,
+    enum_k,
     func_k,
     is_k,
     coinit_k,
@@ -4659,5 +4643,5 @@ test "Internals." {
     try t.eq(@sizeOf(TokenizeState), 4);
 
     try t.eq(std.enums.values(TokenType).len, 62);
-    try t.eq(keywords.kvs.len, 36);
+    try t.eq(keywords.kvs.len, 35);
 }

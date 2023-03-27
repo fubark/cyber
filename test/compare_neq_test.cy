@@ -9,7 +9,7 @@ try t.eq('foo' != rawstring('foo'), false)
 try t.eq('foo' != rawstring('bar'), true)
 
 -- Comparing objects.
-object S:
+type S object:
   value
 o = S{ value: 3 }
 try t.eq(o != 123, true)

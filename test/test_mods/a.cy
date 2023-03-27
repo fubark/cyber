@@ -45,12 +45,12 @@ export func sameFuncName():
 export func useNumber(a):
     return number(a)
 
-export object Vec2:
+export type Vec2 object:
     x number
     y number
 
     func new(x, y):
         return Vec2{ x: x, y: y }
 
-export object Bar:
+export type Bar object:
     a number

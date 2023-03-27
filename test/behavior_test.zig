@@ -27,7 +27,7 @@ test "Type casting." {
         );
     }}.func);
 
-    // taglist cast fails.
+    // taglit cast fails.
     try eval(.{ .silent = true },
         \\123 as taglit
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -76,7 +76,7 @@ test "Type casting." {
 test "Typed object." {
     // Wrong param type.
     try eval(.{ .silent = true },
-        \\object Foo:
+        \\type Foo object:
         \\  a number
         \\func foo(a Foo):
         \\  pass
@@ -96,7 +96,7 @@ test "Typed object." {
     try evalPass(.{},
         \\import t 'test'
         \\
-        \\object Foo:
+        \\type Foo object:
         \\  a number
         \\
         \\func foo(a Foo):
@@ -442,7 +442,7 @@ test "Typed function calls." {
 }
 
 test "Typed recursive function." {
-    try evalPass(.{}, @embedFile("typed_rec_func_test.cy"));
+    try evalPass(.{}, @embedFile("typed_recursion_test.cy"));
 }
 
 test "Custom modules." {
@@ -655,8 +655,7 @@ test "Type specifiers." {
 }
 
 test "Type alias." {
-    // TODO: Rename to typealias_test.cy
-    try evalPass(Config.initFileModules("./test/atype_test.cy"), @embedFile("atype_test.cy"));
+    try evalPass(Config.initFileModules("./test/typealias_test.cy"), @embedFile("typealias_test.cy"));
 }
 
 test "Import http spec." {
@@ -1042,7 +1041,7 @@ test "FFI." {
     try evalPass(.{}, @embedFile("ffi_test.cy"));
 }
 
-test "Tag types." {
+test "Symbols." {
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -1053,8 +1052,10 @@ test "Tag types." {
     );
     const id = try vm_.gvm.ensureTagLitSym("Tiger");
     try t.eq(val.asF64toI32(), @intCast(i32, id));
+}
 
-    _ = try run.eval(@embedFile("tagtype_test.cy"));
+test "Enum types." {
+    try evalPass(.{}, @embedFile("enum_test.cy"));
 }
 
 test "test module" {
@@ -1076,34 +1077,34 @@ test "Objects." {
 
     // Missing semicolon.
     var res = run.evalExt(.{ .silent = true },
-        \\object Vec2
+        \\type Vec2 object
         \\  x
         \\  y
     );
     try run.expectErrorReport(res, error.ParseError,
         \\ParseError: Expected colon to start an object type block.
         \\
-        \\main:1:12:
-        \\object Vec2
-        \\           ^
+        \\main:1:17:
+        \\type Vec2 object
+        \\                ^
         \\
     );
 
     // Field declaration ends the file without parser error.
     _ = try run.eval(
-        \\object Vec2:
+        \\type Vec2 object:
         \\  x
         \\  y
     );
     _ = try run.eval(
-        \\object Vec2:
+        \\type Vec2 object:
         \\  x number
         \\  y number
     );
 
     // Initialize with undeclared field.
     res = run.evalExt(.{ .silent = true },
-        \\object S:
+        \\type S object:
         \\  a
         \\o = S{ b: 100 }
     );
@@ -1118,7 +1119,7 @@ test "Objects." {
 
     // Write to undeclared field.
     res = run.evalExt(.{ .silent = true },
-        \\object S:
+        \\type S object:
         \\  a
         \\o = S{ a: 100 }
         \\o.b = 200
@@ -1134,7 +1135,7 @@ test "Objects." {
 
     // Calling a missing method name.
     res = run.evalExt(.{ .silent = true },
-        \\object S:
+        \\type S object:
         \\  a
         \\o = S{}
         \\o.foo()
@@ -1150,7 +1151,7 @@ test "Objects." {
 
     // Calling a method with the wrong signature.
     res = run.evalExt(.{ .silent = true },
-        \\object S:
+        \\type S object:
         \\  a
         \\  func foo(self):
         \\    return 123
@@ -1175,7 +1176,7 @@ test "Object methods." {
 
     // self param.
     var val = try run.eval(
-        \\object Node:
+        \\type Node object:
         \\  value
         \\  func get(self):
         \\    return self.value
@@ -1186,7 +1187,7 @@ test "Object methods." {
 
     // self param with regular param.
     val = try run.eval(
-        \\object Node:
+        \\type Node object:
         \\  value
         \\  func get(self, param):
         \\    return self.value + param
@@ -1197,7 +1198,7 @@ test "Object methods." {
 
     // self param with many regular param.
     val = try run.eval(
-        \\object Node:
+        \\type Node object:
         \\  value
         \\  func get(self, param, param2):
         \\    return self.value + param - param2
@@ -1208,7 +1209,7 @@ test "Object methods." {
 
     // Static method, no params.
     val = try run.eval(
-        \\object Node:
+        \\type Node object:
         \\  value
         \\  func get():
         \\    return 123
@@ -1218,7 +1219,7 @@ test "Object methods." {
 
     // Static method, one params.
     val = try run.eval(
-        \\object Node:
+        \\type Node object:
         \\  value
         \\  func get(param):
         \\    return 123 + param
@@ -1228,7 +1229,7 @@ test "Object methods." {
 
     // Static method, many params.
     val = try run.eval(
-        \\object Node:
+        \\type Node object:
         \\  value
         \\  func get(param, param2):
         \\    return 123 + param - param2
@@ -1750,16 +1751,19 @@ test "Assignment statements" {
 
     _ = try run.eval(
         \\import t 'test'
+        \\
         \\-- Assign to variable.
         \\a = 1
         \\a += 10
         \\try t.eq(a, 11)
+        \\
         \\-- Assign to field.
-        \\object S:
+        \\type S object:
         \\  foo
         \\s = S{ foo: 1 }
         \\s.foo += 10
         \\try t.eq(s.foo, 11)
+        \\
         \\-- Other operator assignments.
         \\a = 100
         \\a *= 2
@@ -1917,7 +1921,7 @@ test "Local variable assignment." {
             }
         }.func,
     },
-        \\object S:
+        \\type S object:
         \\  value
         \\if false:
         \\  a = S{ value: 123 }
@@ -1931,7 +1935,7 @@ test "Local variable assignment." {
             }
         }.func,
     },
-        \\object S:
+        \\type S object:
         \\  value
         \\  func foo(self):
         \\    if false:
@@ -2116,43 +2120,7 @@ test "Closures." {
 }
 
 test "Function recursion." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    var val = try run.eval(
-        \\func foo(n):
-        \\  if n is 0:
-        \\    return 0
-        \\  return n + foo(n-1)
-        \\foo(10)
-    );
-    try t.eq(val.asF64toI32(), 55);
-
-    // Recursion with long lived object.
-    val = try run.eval(
-        \\object S:
-        \\  n
-        \\func foo(o):
-        \\  if o.n is 0:
-        \\    return 0
-        \\  n = o.n
-        \\  o.n = o.n - 1
-        \\  return n + foo(o)
-        \\foo(S{ n: 10 })
-    );
-    try t.eq(val.asF64toI32(), 55);
-
-    // Recursion with new objects.
-    val = try run.eval(
-        \\object S:
-        \\  n
-        \\func foo(o):
-        \\  if o.n is 0:
-        \\    return 0
-        \\  return o.n + foo(S{ n: o.n - 1 })
-        \\foo(S{ n: 10 })
-    );
-    try t.eq(val.asF64toI32(), 55);
+    try evalPass(.{}, @embedFile("recursion_test.cy"));
 }
 
 test "Function overloading." {

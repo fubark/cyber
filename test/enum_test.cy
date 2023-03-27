@@ -3,7 +3,7 @@
 import t 'test'
 
 -- TagType to number.
-tagtype Animal:
+type Animal enum:
   Bear
   Tiger
 n = Animal#Tiger
@@ -11,13 +11,13 @@ try t.eq(number(n), 1)
 
 -- Using TagType declared afterwards.
 n = Animal#Tiger
-tagtype Animal:
+type Animal enum:
   Bear
   Tiger
 try t.eq(number(n), 1)
 
 -- Reassign using tag literal.
-tagtype Animal:
+type Animal enum:
   Bear
   Tiger
   Dragon

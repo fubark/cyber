@@ -1,4 +1,4 @@
-object Node:
+type Node object:
     left
     right
     parent
@@ -50,7 +50,7 @@ object Node:
         else:
             return self.left.getLeftN(n - 1)
 
-object Heap:
+type Heap object:
     root
     size
     last

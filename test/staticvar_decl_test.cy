@@ -28,7 +28,7 @@ a4.append(4)
 try t.eq(a4.len(), 4)
 
 -- Using object initializer.
-object Object:
+type Object object:
     foo
 var a5: Object{ foo: 123 }
 try t.eq(a5.foo, 123)

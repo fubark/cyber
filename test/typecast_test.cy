@@ -9,7 +9,7 @@ func foo1(a number):
 -- Cast to exact object type.
 a = Foo{ a: 123 }
 try t.eq(foo2(a as Foo), true)
-object Foo:
+type Foo object:
     a number
 func foo2(a Foo):
     return true

@@ -34,7 +34,7 @@ try t.eq(a.sameFuncName(), sameFuncName())
 try t.eq(number(1), 1)
 try t.eq(a.useNumber(1), 1)
 
-object Vec2:
+type Vec2 object:
     x number
     y number
 -- Same name, different object types.

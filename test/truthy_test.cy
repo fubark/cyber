@@ -15,7 +15,7 @@ try t.eq(boolean(''), true)
 -- Heap objects evaluate to true.
 try t.eq(boolean({}), true)
 try t.eq(boolean([]), true)
-object S:
+type S object:
   a
 try t.eq(boolean(S{a: 0}), true)
 

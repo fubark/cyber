@@ -68,7 +68,7 @@ After adding a `CStruct` declaration, you can use the object type symbol in CFun
 ```cy
 import os 'os'
 
-object MyObject:
+type MyObject object:
     a number
     b string
     c bool

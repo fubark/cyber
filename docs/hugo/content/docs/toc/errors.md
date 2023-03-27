@@ -6,12 +6,12 @@ weight: 7
 # Error Handling.
 In Cyber, errors are values and do not propogate up the call stack by default. Users are not forced to handle errors unless the error value is passed to a typed destination.
 
-The `error` type is a primitive that contains either a tag or a tag literal. Tag literals can be used for convenience but the underlying id value can not be statically defined. Use your own tags if you want reliable id values. In a future version of Cyber, you'll be able to attach an optional payload value.
+The `error` type is a primitive that contains either an enum value or a symbol value. Symbols can be used for convenience but the underlying id value won't be consistent. Use your own enums if you want reliable id values. In a future version of Cyber, you'll be able to attach an optional payload value.
 ```cy
 func doThatThing():
     return error(#oops)
 
-tagtype MyError:
+type MyError enum:
     boom
     badArgument
     nameTooLong

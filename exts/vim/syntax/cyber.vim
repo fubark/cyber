@@ -5,7 +5,7 @@ syntax keyword cyberKeyword
     \ var static capture as
     \ func return
     \ coinit coyield coresume
-    \ object atype tagtype true false none
+    \ type object enum true false none
     \ try catch recover
     \ import export
 

@@ -19,7 +19,7 @@ else:
 lib = os.bindLib(libPath, [ os.CFunc{ sym: 'missing123', args: [], ret: #int }])
 try t.eq(lib, error(#MissingSymbol))
 
-object MyObject:
+type MyObject object:
   a number
   b number
   c string

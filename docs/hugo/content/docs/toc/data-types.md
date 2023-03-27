@@ -4,7 +4,7 @@ weight: 2
 ---
 
 # Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Tags](#tags), [Tag Literals](#tags), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Enums](#enums), [Symbols](#symbols), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
 
 The `none` value represents an empty value. This is similar to null in other languages.
 
@@ -414,9 +414,9 @@ for map each val, key:
 | `size() number` | Returns the number of key-value pairs in the map. |
 
 ## Objects.
-Any value that isn't a primitive is an object. You can declare your own object types using the `object` keyword. Object templates are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
+Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration. Object types are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
 ```cy
-object Node:
+type Node object:
     value
     next
 
@@ -426,7 +426,7 @@ print node.value          -- '123'
 New instances of an object template are created using the type name and braces that surround the initial member values.
 When declaring methods, the first parameter must be `self`. Otherwise, it becomes a function that can only be invoked from the type's namespace.
 ```cy
-object Node:
+type Node object:
     value
     next
 
@@ -442,12 +442,12 @@ n = Node.create()
 n.dump()
 ```
 
-## Tags.
-Tags are similar to enums in other languages. A new tag type can be declared with the `tagtype` keyword.
-A tag value can only be one of the unique tags declared in its tag type.
-By default, the tags have a unique id generated starting from 0.
+## Enums.
+A new enum type can be declared with the `type enum` declaration.
+An enum value can only be one of the unique symbols declared in the enum type.
+By default, the symbols generate unique ids starting from 0.
 ```cy
-tagtype Fruit:
+type Fruit enum:
     apple
     orange
     banana
@@ -457,20 +457,17 @@ fruit = Fruit#kiwi
 print fruit          -- '#kiwi'
 print number(fruit)  -- '3'
 ```
-When the type of the value is known to be a tag, it can be assigned using a tag literal.
+When the type of the value is known to be an enum, it can be assigned using a symbol literal.
 ```cy
 fruit = Fruit#kiwi
 fruit = #orange
 print(fruit == Fruit#orange)   -- 'true'
 ```
-Tag literals by themselves also have a global unique id. When assigned to a non tag value, it becomes a tag literal value.
+
+## Symbols.
+Symbol literals begin with `#`, followed by an identifier. They have their own global unique id.
 ```cy
-tagtype MyColor:
-    red
-    green
-    blue
-color = #red                 -- The variable `color` does not become a `MyColor` tag.
-print(color == Color#red)    -- 'false'
-print(color == #red)         -- 'true'
-print number(color)          -- '123' or some arbitrary id.
+currency = #usd
+print(currency == #usd)      -- 'true'
+print number(currency)       -- '123' or some arbitrary id.
 ```

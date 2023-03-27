@@ -1,1 +1,1 @@
-export func foo() = number
+func foo() = number

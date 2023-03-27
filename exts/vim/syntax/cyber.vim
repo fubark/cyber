@@ -7,7 +7,7 @@ syntax keyword cyberKeyword
     \ coinit coyield coresume
     \ type object enum true false none
     \ try catch recover
-    \ import export
+    \ import
 
 syntax match cyberComment "--.*$"
 

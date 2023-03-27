@@ -47,7 +47,7 @@ contexts:
     - match: '\b(try|catch|recover)\b'
       scope: keyword.error.cyber
 
-    - match: '\b(import|export)\b'
+    - match: '\b(import)\b'
       scope: keyword.module.cyber
 
     - match: '\b(-)?[0-9.]+\b'

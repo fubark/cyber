@@ -770,28 +770,8 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 return c.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
             }
         },
-        .exportStmt => {
-            const stmt = node.head.child_head;
-            switch (c.nodes[stmt].node_t) {
-                .varDecl => {
-                    try varDecl(c, stmt, true);
-                },
-                .funcDecl => {
-                    try funcDecl(c, stmt, true);
-                },
-                .funcDeclInit => {
-                    try funcDeclInit(c, stmt, true);
-                },
-                .objectDecl => {
-                    try objectDecl(c, stmt, true);
-                },
-                else => {
-                    return c.reportErrorAt("Unsupported export {}", &.{v(c.nodes[stmt].node_t)}, nodeId);
-                },
-            }
-        },
         .varDecl => {
-            try varDecl(c, nodeId, false);
+            try varDecl(c, nodeId, true);
         },
         .captureDecl => {
             const left = c.nodes[node.head.left_right.left];
@@ -852,10 +832,10 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             }
         },
         .objectDecl => {
-            try objectDecl(c, nodeId, false);
+            try objectDecl(c, nodeId, true);
         },
         .funcDeclInit => {
-            try funcDeclInit(c, nodeId, false);
+            try funcDeclInit(c, nodeId, true);
         },
         .funcDecl => {
             try funcDecl(c, nodeId, false);

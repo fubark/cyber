@@ -709,7 +709,7 @@ test "Import http spec." {
     try run.resetEnv();
     client = http.MockHttpClient.init();
     client.retBody =
-        \\export var foo: 123
+        \\var foo: 123
         ;
     run.vm.internal().httpClient = client.iface();
     _ = try run.evalExtNoReset(Config.initFileModules("./test/import_test.cy"),
@@ -774,9 +774,9 @@ test "Imports." {
     try run.expectErrorReport(res, error.Panic,
         \\panic: Assigning to static function with a different function signature.
         \\
-        \\@AbsPath(test/test_mods/init_func_error.cy):1:21 main:
-        \\export func foo() = number
-        \\                    ^
+        \\@AbsPath(test/test_mods/init_func_error.cy):1:14 main:
+        \\func foo() = number
+        \\             ^
         \\
     );
 
@@ -1361,7 +1361,7 @@ test "Stack trace unwinding." {
         .name = "main",
         .chunkId = 1,
         .line = 0,
-        .col = 16,
+        .col = 9,
         .lineStartPos = 0,
     });
 
@@ -1378,7 +1378,7 @@ test "Stack trace unwinding." {
         .name = "main",
         .chunkId = 1,
         .line = 0,
-        .col = 16,
+        .col = 9,
         .lineStartPos = 0,
     });
 }

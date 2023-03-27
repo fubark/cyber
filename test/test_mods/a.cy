@@ -1,20 +1,20 @@
-export var varNum: 123
-export var varList: [1, 2, 3]
-export var varMap: { a: 1, b: 2, c: 3 }
-export var varFunc: func():
+var varNum: 123
+var varList: [1, 2, 3]
+var varMap: { a: 1, b: 2, c: 3 }
+var varFunc: func():
     return 345
-export var varFunc1: func(a):
+var varFunc1: func(a):
     return a + 1
-export var varFunc2: func(a, b):
+var varFunc2: func(a, b):
     return a + b
 
 var varNoExport: 123
 
-export func fn():
+func fn():
     return 234
-export func fn1(a):
+func fn1(a):
     return a + 1
-export func fn2(a, b):
+func fn2(a, b):
     return a + b
 
 func barNoExport():
@@ -23,9 +23,9 @@ func barNoExport():
 -- Test that there is no main block execution for imported modules.
 panic(#ExecutedModuleMain)
 
-export func declAssign(val) number = number
+func declAssign(val) number = number
 
-export var initOnce: incInitOnce(initOnceCount)
+var initOnce: incInitOnce(initOnceCount)
 var initOnceCount: 0
 func incInitOnce(cur):
     static initOnceCount
@@ -33,24 +33,24 @@ func incInitOnce(cur):
     return initOnceCount
 
 -- Tests dependency generation, so set resulting symbol's natural order before the dependency.
-export var varDepRes: varDep
+var varDepRes: varDep
 var varDep: 123
-export func funcDepRes() = funcDep
+func funcDepRes() = funcDep
 var funcDep: func ():
     return 123
 
-export func sameFuncName():
+func sameFuncName():
     return 123
 
-export func useNumber(a):
+func useNumber(a):
     return number(a)
 
-export type Vec2 object:
+type Vec2 object:
     x number
     y number
 
     func new(x, y):
         return Vec2{ x: x, y: y }
 
-export type Bar object:
+type Bar object:
     a number

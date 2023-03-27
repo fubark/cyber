@@ -30,7 +30,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "each", .each_k },
     .{ "else", .else_k },
     .{ "enum", .enum_k },
-    .{ "export", .export_k },
     .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "func", .func_k },
@@ -1602,29 +1601,6 @@ pub const Parser = struct {
             },
             .return_k => {
                 return try self.parseReturnStatement();
-            },
-            .export_k => {
-                const start = self.next_pos;
-                self.advanceToken();
-                const stmtId = (try self.parseStatement()) orelse {
-                    return self.reportParseError("Expected declaration statement after `export`.", &.{});
-                };
-                const stmt = self.nodes.items[stmtId];
-                switch (stmt.node_t) {
-                    .funcDeclInit,
-                    .funcDecl,
-                    .objectDecl,
-                    .varDecl => {
-                        const exportStmt = try self.pushNode(.exportStmt, start);
-                        self.nodes.items[exportStmt].head = .{
-                            .child_head = stmtId,
-                        };
-                        return exportStmt;
-                    },
-                    else => {
-                        return self.reportParseError("export modifier is not supported for {}", &.{v(stmt.node_t)});
-                    },
-                }
             },
             .var_k => {
                 const start = self.next_pos;
@@ -3258,7 +3234,6 @@ pub const TokenType = enum(u6) {
     capture_k,
     var_k,
     match_k,
-    export_k,
     // Error token, returned if ignoreErrors = true.
     err,
     /// Used to indicate no token.
@@ -3292,7 +3267,6 @@ pub const NodeType = enum {
     staticDecl,
     captureDecl,
     varDecl,
-    exportStmt,
     pass_stmt,
     breakStmt,
     continueStmt,
@@ -4642,6 +4616,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 62);
-    try t.eq(keywords.kvs.len, 35);
+    try t.eq(std.enums.values(TokenType).len, 61);
+    try t.eq(keywords.kvs.len, 34);
 }

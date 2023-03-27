@@ -1071,7 +1071,9 @@ pub fn genTopDeclStatements(self: *CompileChunk, head: cy.NodeId) !void {
     while (nodeId != cy.NullId) {
         const node = self.nodes[nodeId];
         switch (node.node_t) {
-            .exportStmt,
+            .objectDecl => {
+                try genStatement(self, nodeId, true);
+            },
             .funcDecl => {
                 try genStatement(self, nodeId, true);
             },
@@ -1250,16 +1252,6 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 try genReleaseIfRetainedTempAt(self, leftv, left.head.accessExpr.left);
             } else {
                 unexpectedFmt("unsupported assignment to left {}", &.{fmt.v(left.node_t)});
-            }
-        },
-        .exportStmt => {
-            const stmt = node.head.child_head;
-            if (self.nodes[stmt].node_t == .funcDecl) {
-                try genStatement(self, stmt, discardTopExprReg);
-            } else if (self.nodes[stmt].node_t == .objectDecl) {
-                try genStatement(self, stmt, discardTopExprReg);
-            } else {
-                // Nop. Static variables are hoisted and initialized at the start of the program.
             }
         },
         .varDecl => {

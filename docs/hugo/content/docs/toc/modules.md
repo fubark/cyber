@@ -4,7 +4,7 @@ weight: 5
 ---
 
 # Modules.
-Modules contain accessible static symbols under a defined namespace. By default, importing another Cyber script returns its module with exported symbols.
+Modules have their own namespace and contain accessible static symbols. By default, importing another Cyber script returns a module with its declared symbols.
 
 ## Importing.
 Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader.
@@ -29,11 +29,11 @@ print a.foo
 
 -- foo.cy
 import 'bar.cy'
-export var foo: 123
+var foo: 123
 print foo         -- Statement is ignored.
 
 -- bar.cy
-export var bar: 321
+var bar: 321
 print bar         -- Statement is ignored.
 ```
 You can have circular imports in Cyber. In the following example, `main.cy` and `foo.cy` import each other without any problems.
@@ -41,7 +41,7 @@ You can have circular imports in Cyber. In the following example, `main.cy` and 
 -- main.cy
 import foo 'foo.cy'
 
-export func printB():
+func printB():
     foo.printC()
 
 foo.printA()
@@ -49,10 +49,10 @@ foo.printA()
 -- foo.cy
 import main 'main.cy'
 
-export func printA():
+func printA():
     main.printB()
 
-export func printC():
+func printC():
     print 'done'
 ```
 Static variable declarations from imports can have circular references. Read more about this in [Static Variables]({{<relref "/docs/toc/syntax#static-variables">}}).
@@ -64,13 +64,18 @@ print cos(pi)
 ```
 
 ## Exporting.
-Use the `export` prefix in front of static declarations to indicate that it should be exported when the script's module is loaded.
+All static declarations are exported when the script's module is loaded.
 ```cy
-export func foo():
+func foo():         -- Exported static function.
     print 123
 
-export var bar: 234
+var bar: 234        -- Exported static variable.
+
+type Thing object:  -- Exported type.
+    a number
 ```
+
+In a future version of Cyber, the annotation `@hide` would provide a hint to editors that the static symbol should not appear in the auto-complete. Despite this, the symbol would still be reachable.
 
 ## Builtin Modules.
 

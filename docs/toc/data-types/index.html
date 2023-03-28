@@ -304,12 +304,12 @@ By default, the symbols generate unique ids starting from 0.</p><pre tabindex=0>
     banana
     kiwi
 
-fruit = Fruit#kiwi
-print fruit          -- &#39;#kiwi&#39;
+fruit = Fruit.kiwi
+print fruit          -- &#39;Fruit.kiwi&#39;
 print number(fruit)  -- &#39;3&#39;
-</code></pre><p>When the type of the value is known to be an enum, it can be assigned using a symbol literal.</p><pre tabindex=0><code class=language-cy data-lang=cy>fruit = Fruit#kiwi
+</code></pre><p>When the type of the value is known to be an enum, it can be assigned using a symbol literal.</p><pre tabindex=0><code class=language-cy data-lang=cy>fruit = Fruit.kiwi
 fruit = #orange
-print(fruit == Fruit#orange)   -- &#39;true&#39;
+print(fruit == Fruit.orange)   -- &#39;true&#39;
 </code></pre><h2 id=symbols>Symbols.
 <a class=anchor href=#symbols>#</a></h2><p>Symbol literals begin with <code>#</code>, followed by an identifier. They have their own global unique id.</p><pre tabindex=0><code class=language-cy data-lang=cy>currency = #usd
 print(currency == #usd)      -- &#39;true&#39;

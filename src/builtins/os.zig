@@ -7,7 +7,7 @@ const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
-const TagLit = bindings.TagLit;
+const Symbol = bindings.Symbol;
 const fromUnsupportedError = bindings.fromUnsupportedError;
 const bt = cy.types.BuiltinTypeSymIds;
 const ffi = @import("os_ffi.zig");
@@ -49,9 +49,9 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     // Variables.
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
     if (builtin.cpu.arch.endian() == .Little) {
-        try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.little)));
+        try mod.setVar(self, "endian", cy.Value.initSymbol(@enumToInt(Symbol.little)));
     } else {
-        try mod.setVar(self, "endian", cy.Value.initTagLiteral(@enumToInt(TagLit.big)));
+        try mod.setVar(self, "endian", cy.Value.initSymbol(@enumToInt(Symbol.big)));
     }
     if (cy.hasStdFiles) {
         const stdin = try cy.heap.allocFile(self.vm, std.io.getStdIn().handle);
@@ -78,9 +78,9 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
 
     // Functions.
     if (cy.isWasm) {
-        try b.setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop1);
+        try b.setFunc("access", &.{bt.Any, bt.Symbol}, bt.Any, bindings.nop1);
     } else {
-        try b.setFunc("access", &.{bt.Any, bt.TagLiteral}, bt.Any, access);
+        try b.setFunc("access", &.{bt.Any, bt.Symbol}, bt.Any, access);
     }
     try mod.setNativeTypedFunc(self, "args", &.{}, bt.List, osArgs);
     if (cy.isWasm) {
@@ -119,7 +119,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     if (cy.isWasm) {
         try b.setFunc("openDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
-        try b.setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, bindings.nop2);
+        try b.setFunc("openFile", &.{bt.Any, bt.Symbol}, bt.Any, bindings.nop2);
         try b.setFunc("realPath", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("removeDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("removeFile", &.{bt.Any}, bt.Any, bindings.nop1);
@@ -127,7 +127,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     } else {
         try b.setFunc("openDir", &.{bt.Any}, bt.Any, openDir);
         try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, openDir2);
-        try b.setFunc("openFile", &.{bt.Any, bt.TagLiteral}, bt.Any, openFile);
+        try b.setFunc("openFile", &.{bt.Any, bt.Symbol}, bt.Any, openFile);
         try b.setFunc("realPath", &.{bt.Any}, bt.Any, realPath);
         try b.setFunc("removeDir", &.{bt.Any}, bt.Any, removeDir);
         try b.setFunc("removeFile", &.{bt.Any}, bt.Any, removeFile);
@@ -174,7 +174,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     if (iterable) {
         const dir = std.fs.cwd().openIterableDir(path, .{}) catch |err| {
             if (err == error.FileNotFound) {
-                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
             } else {
                 return fromUnsupportedError("openDir", err, @errorReturnTrace());
             }
@@ -183,7 +183,7 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     } else {
         const dir = std.fs.cwd().openDir(path, .{}) catch |err| {
             if (err == error.FileNotFound) {
-                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
             } else {
                 return fromUnsupportedError("openDir", err, @errorReturnTrace());
             }
@@ -198,7 +198,7 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteDir(path) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
         } else {
             return fromUnsupportedError("removeDir", err, @errorReturnTrace());
         }
@@ -218,7 +218,7 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const dst = vm.valueToTempRawString(args[1]);
     std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
         } else {
             return fromUnsupportedError("copyFile", err, @errorReturnTrace());
         }
@@ -231,7 +231,7 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteFile(path) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
         } else {
             return fromUnsupportedError("removeFile", err, @errorReturnTrace());
         }
@@ -262,7 +262,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
 
-    const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
+    const mode = @intToEnum(Symbol, args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
         .read => .read_only,
         .write => .write_only,
@@ -273,9 +273,9 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     };
     std.fs.cwd().access(path, .{ .mode = zmode }) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
         } else if (err == error.PermissionDenied) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.PermissionDenied));
+            return Value.initErrorSymbol(@enumToInt(Symbol.PermissionDenied));
         } else {
             return fromUnsupportedError("access", err, @errorReturnTrace());
         }
@@ -286,7 +286,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
-    const mode = @intToEnum(TagLit, args[1].asTagLiteralId());
+    const mode = @intToEnum(Symbol, args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
         .read => .read_only,
         .write => .write_only,
@@ -297,7 +297,7 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     };
     const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
         } else {
             return fromUnsupportedError("openFile", err, @errorReturnTrace());
         }
@@ -435,7 +435,7 @@ pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return @call(.never_inline, ffi.bindLib, .{vm, args, .{}}) catch |err| {
         if (err == error.InvalidArgument) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+            return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
         } else {
             return fromUnsupportedError("bindLib", err, @errorReturnTrace());
         }
@@ -457,7 +457,7 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     }
     return @call(.never_inline, ffi.bindLib, .{vm, args, config}) catch |err| {
         if (err == error.InvalidArgument) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+            return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
         } else {
             return fromUnsupportedError("bindLib", err, @errorReturnTrace());
         }

@@ -24,8 +24,8 @@ typedef enum {
     CY_TypeError,
     CY_TypeStaticAstring,
     CY_TypeStaticUstring,
-    CY_TypeUserTag,
-    CY_TypeUserTagLiteral,
+    CY_TypeEnum,
+    CY_TypeSymbol,
     CY_TypeInteger,
     CY_TypeNumber,
     CY_TypeList,
@@ -47,7 +47,7 @@ typedef enum {
     CY_TypeFile,
     CY_TypeDir,
     CY_TypeDirIter,
-    CY_TypeSymbol,
+    CY_TypeType,
 } CyType;
 
 // Null terminated string, but also includes a length.

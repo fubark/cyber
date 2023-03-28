@@ -26,8 +26,8 @@ const NoneMask: u64 = TaggedValueMask | (@as(u64, TagNone) << 32);
 const ErrorMask: u64 = TaggedValueMask | (@as(u64, TagError) << 32);
 const StaticAstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticAstring) << 32);
 const StaticUstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticUstring) << 32);
-const UserTagMask: u64 = TaggedValueMask | (@as(u64, TagUserTag) << 32);
-const UserTagLiteralMask: u64 = TaggedValueMask | (@as(u64, TagUserTagLiteral) << 32);
+const EnumMask: u64 = TaggedValueMask | (@as(u64, TagEnum) << 32);
+const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
 const IntegerMask: u64 = TaggedValueMask | (@as(u64, TagInteger) << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
@@ -41,16 +41,16 @@ pub const TagBoolean: TagId = 1;
 pub const TagError: TagId = 2;
 pub const TagStaticAstring: TagId = 3;
 pub const TagStaticUstring: TagId = 4;
-pub const TagUserTag: TagId = 5;
-pub const TagUserTagLiteral: TagId = 6;
+pub const TagEnum: TagId = 5;
+pub const TagSymbol: TagId = 6;
 pub const TagInteger: TagId = 7;
 pub const NoneT: u32 = vmc.TYPE_NONE;
 pub const BooleanT: u32 = vmc.TYPE_BOOLEAN;
 pub const ErrorT: u32 = vmc.TYPE_ERROR;
 pub const StaticAstringT: u32 = vmc.TYPE_STATIC_ASTRING; // ASCII string.
 pub const StaticUstringT: u32 = vmc.TYPE_STATIC_USTRING; // UTF8 string.
-pub const UserTagT: u32 = vmc.TYPE_TAG;
-pub const UserTagLiteralT: u32 = vmc.TYPE_TAGLIT;
+pub const EnumT: u32 = vmc.TYPE_ENUM;
+pub const SymbolT: u32 = vmc.TYPE_SYMBOL;
 pub const IntegerT: u32 = vmc.TYPE_INTEGER;
 pub const NumberT: u32 = vmc.TYPE_NUMBER;
 
@@ -110,7 +110,7 @@ pub const Value = packed union {
         return @bitCast(f64, self.val);
     }
 
-    pub inline fn asTagLiteralId(self: *const Value) u32 {
+    pub inline fn asSymbolId(self: *const Value) u32 {
         return @intCast(u32, self.val & @as(u64, 0xFFFFFFFF));
     }
 
@@ -201,8 +201,8 @@ pub const Value = packed union {
         return self.val & TaggedPrimitiveMask == ErrorMask;
     }
 
-    pub inline fn assumeNotPtrIsTagLiteral(self: *const Value) bool {
-        return self.val & TaggedPrimitiveMask == UserTagLiteralMask;
+    pub inline fn assumeNotPtrIsSymbol(self: *const Value) bool {
+        return self.val & TaggedPrimitiveMask == SymbolMask;
     }
 
     pub inline fn getPrimitiveTypeId(self: *const Value) u32 {
@@ -305,16 +305,23 @@ pub const Value = packed union {
         return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
     }
 
-    pub inline fn initTag(tag: u8, val: u8) Value {
-        return .{ .val = UserTagMask | (@as(u32, tag) << 8) | val };
+    pub inline fn initEnum(tag: u8, val: u8) Value {
+        return .{ .val = EnumMask | (@as(u32, tag) << 8) | val };
     }
 
-    pub inline fn isTagLiteral(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == UserTagLiteralMask;
+    pub inline fn asEnum(self: *const Value) EnumValue {
+        return .{
+            .enumId = @intCast(u16, (0xff00 & self.val) >> 8),
+            .memberId = @intCast(u16, 0xff & self.val),
+        };
     }
 
-    pub inline fn initTagLiteral(symId: u8) Value {
-        return .{ .val = UserTagLiteralMask | symId };
+    pub inline fn isSymbol(self: *const Value) bool {
+        return self.val & (TaggedPrimitiveMask | SignMask) == SymbolMask;
+    }
+
+    pub inline fn initSymbol(symId: u8) Value {
+        return .{ .val = SymbolMask | symId };
     }
 
     pub inline fn initF64(val: f64) Value {
@@ -371,11 +378,11 @@ pub const Value = packed union {
         return std.math.floor(val) == val;
     }
 
-    pub inline fn initErrorTagLit(id: u8) Value {
+    pub inline fn initErrorSymbol(id: u8) Value {
         return .{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | id };
     }
 
-    pub inline fn asErrorTagLit(self: *const Value) u8 {
+    pub inline fn asErrorSymbol(self: *const Value) u8 {
         return @intCast(u8, self.val & 0xff);
     }
 
@@ -420,6 +427,13 @@ pub const Value = packed union {
                     TagInteger => {
                         log.info("Integer {}", .{self.asInteger()});
                     },
+                    TagEnum => {
+                        const enumv = self.asEnum();
+                        log.info("Enum {} {}", .{enumv.enumId, enumv.memberId});
+                    },
+                    TagError => {
+                        log.info("Error {}", .{self.asErrorSymbol()});
+                    },
                     TagStaticUstring,
                     TagStaticAstring => {
                         const slice = self.asStaticStringSlice();
@@ -458,7 +472,7 @@ pub const Value = packed union {
                     cy.FileT => return .file,
                     cy.DirT => return .dir,
                     cy.DirIteratorT => return .dirIter,
-                    cy.SymbolT => return .symbol,
+                    cy.TypeSymbolT => return .type,
                     else => {
                         return .object;
                     },
@@ -469,8 +483,8 @@ pub const Value = packed union {
                     TagStaticAstring => return .string,
                     TagStaticUstring => return .string,
                     TagNone => return .none,
-                    TagUserTag => return .tag,
-                    TagUserTagLiteral => return .tagLiteral,
+                    TagEnum => return .enumT,
+                    TagSymbol => return .symbol,
                     TagError => return .errorVal,
                     TagInteger => return .int,
                     // else => unreachable,
@@ -478,6 +492,11 @@ pub const Value = packed union {
             }
         }
     }
+};
+
+const EnumValue = struct {
+    enumId: u16,
+    memberId: u16,
 };
 
 pub const ValueUserTag = enum {
@@ -496,13 +515,13 @@ pub const ValueUserTag = enum {
     nativeFunc,
     tccState,
     pointer,
-    tag,
-    tagLiteral,
+    enumT,
+    symbol,
     errorVal,
     file,
     dir,
     dirIter,
-    symbol,
+    type,
     none,
 };
 

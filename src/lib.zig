@@ -194,8 +194,8 @@ export fn cyValueAllocNativeFunc(vm: *cy.UserVM, func: c.CyFunc, numParams: u32)
 }
 
 export fn cyValueTagLiteral(vm: *cy.UserVM, str: c.CStr) Value {
-    const id = vm.internal().ensureTagLitSymExt(str.charz[0..str.len], true) catch fatal();
-    return Value.initTagLiteral(@intCast(u8, id));
+    const id = vm.internal().ensureSymbolExt(str.charz[0..str.len], true) catch fatal();
+    return Value.initSymbol(@intCast(u8, id));
 }
 
 test "cyValueAllocNativeFunc()" {
@@ -256,7 +256,7 @@ test "cyValueAsInteger()" {
 }
 
 export fn cyValueAsTagLiteralId(val: Value) u32 {
-    return val.asTagLiteralId();
+    return val.asSymbolId();
 }
 
 test "cyValueAsTagLiteralId()" {
@@ -304,8 +304,8 @@ test "Constants." {
     try t.eq(c.CY_TypeError, cy.ErrorT);
     try t.eq(c.CY_TypeStaticAstring, cy.StaticAstringT);
     try t.eq(c.CY_TypeStaticUstring, cy.StaticUstringT);
-    try t.eq(c.CY_TypeUserTag, cy.UserTagT);
-    try t.eq(c.CY_TypeUserTagLiteral, cy.UserTagLiteralT);
+    try t.eq(c.CY_TypeEnum, cy.EnumT);
+    try t.eq(c.CY_TypeSymbol, cy.SymbolT);
     try t.eq(c.CY_TypeInteger, cy.IntegerT);
     try t.eq(c.CY_TypeNumber, cy.NumberT);
     try t.eq(c.CY_TypeList, cy.ListS);
@@ -327,7 +327,7 @@ test "Constants." {
     try t.eq(c.CY_TypeFile, cy.FileT);
     try t.eq(c.CY_TypeDir, cy.DirT);
     try t.eq(c.CY_TypeDirIter, cy.DirIteratorT);
-    try t.eq(c.CY_TypeSymbol, cy.SymbolT);
+    try t.eq(c.CY_TypeType, cy.TypeSymbolT);
 }
 
 export fn cyValueGetTypeId(val: Value) c.CyTypeId {

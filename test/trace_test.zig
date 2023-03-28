@@ -143,7 +143,7 @@ test "ARC assignments." {
         \\a = [123]
         \\b = {}
         \\a[0] = b
-        \\try t.eq(valtag(a[0]), #map)
+        \\try t.eq(typesym(a[0]), #map)
     );
     try t.eq(trace.numRetainAttempts, 4);
     try t.eq(trace.numReleaseAttempts, 7);

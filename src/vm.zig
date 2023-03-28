@@ -99,13 +99,13 @@ pub const VM = struct {
     structs: cy.List(Struct),
     structSignatures: std.HashMapUnmanaged(StructKey, TypeId, KeyU64Context, 80),
 
-    /// Tag types.
-    tagTypes: cy.List(TagType),
-    tagTypeSignatures: std.StringHashMapUnmanaged(TagTypeId),
+    /// Enums.
+    enums: cy.List(Enum),
+    enumSignatures: std.StringHashMapUnmanaged(EnumId),
 
-    /// Tag literals.
-    tagLitSyms: cy.List(TagLitSym),
-    tagLitSymSignatures: std.StringHashMapUnmanaged(SymbolId),
+    /// Symbols.
+    syms: cy.List(Symbol),
+    symSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     u8Buf: cy.ListAligned(u8, 8),
     u8Buf2: cy.ListAligned(u8, 8),
@@ -186,10 +186,10 @@ pub const VM = struct {
             .fieldSymSignatures = .{},
             .structs = .{},
             .structSignatures = .{},
-            .tagTypes = .{},
-            .tagTypeSignatures = .{},
-            .tagLitSyms = .{},
-            .tagLitSymSignatures = .{},
+            .enums = .{},
+            .enumSignatures = .{},
+            .syms = .{},
+            .symSignatures = .{},
             .iteratorObjSym = undefined,
             .pairIteratorObjSym = undefined,
             .nextObjSym = undefined,
@@ -360,21 +360,24 @@ pub const VM = struct {
             self.structSignatures.deinit(self.alloc);
         }
 
-        for (self.tagLitSyms.items()) |sym| {
+        for (self.syms.items()) |sym| {
             if (sym.nameOwned) {
                 self.alloc.free(sym.name);
             }
         }
+        for (self.enums.items()) |sym| {
+            self.alloc.free(sym.members);
+        }
         if (reset) {
-            self.tagTypes.clearRetainingCapacity();
-            self.tagTypeSignatures.clearRetainingCapacity();
-            self.tagLitSyms.clearRetainingCapacity();
-            self.tagLitSymSignatures.clearRetainingCapacity();
+            self.enums.clearRetainingCapacity();
+            self.enumSignatures.clearRetainingCapacity();
+            self.syms.clearRetainingCapacity();
+            self.symSignatures.clearRetainingCapacity();
         } else {
-            self.tagTypes.deinit(self.alloc);
-            self.tagTypeSignatures.deinit(self.alloc);
-            self.tagLitSyms.deinit(self.alloc);
-            self.tagLitSymSignatures.deinit(self.alloc);
+            self.enums.deinit(self.alloc);
+            self.enumSignatures.deinit(self.alloc);
+            self.syms.deinit(self.alloc);
+            self.symSignatures.deinit(self.alloc);
         }
 
         self.stackTrace.deinit(self.alloc);
@@ -717,10 +720,10 @@ pub const VM = struct {
         }
     }
 
-    pub fn ensureTagType(self: *VM, name: []const u8) !TagTypeId {
-        const res = try self.tagTypeSignatures.getOrPut(self.alloc, name);
+    pub fn ensureEnum(self: *VM, name: []const u8) !EnumId {
+        const res = try self.enumSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            return self.addTagType(name);
+            return self.addEnum(name);
         } else {
             return res.value_ptr.*;
         }
@@ -778,14 +781,14 @@ pub const VM = struct {
         }
     }
 
-    pub fn addTagType(self: *VM, name: []const u8) !TagTypeId {
-        const s = TagType{
+    pub fn addEnum(self: *VM, name: []const u8) !EnumId {
+        const s = Enum{
             .name = name,
-            .numMembers = 0,
+            .members = &.{},
         };
-        const id = @intCast(u32, self.tagTypes.len);
-        try self.tagTypes.append(self.alloc, s);
-        try self.tagTypeSignatures.put(self.alloc, name, id);
+        const id = @intCast(u32, self.enums.len);
+        try self.enums.append(self.alloc, s);
+        try self.enumSignatures.put(self.alloc, name, id);
         return id;
     }
 
@@ -892,23 +895,23 @@ pub const VM = struct {
         }
     }
 
-    pub fn getTagLitName(self: *const VM, id: u32) []const u8 {
-        return self.tagLitSyms.buf[id].name;
+    pub fn getSymbolName(self: *const VM, id: u32) []const u8 {
+        return self.syms.buf[id].name;
     }
 
-    pub fn ensureTagLitSym(self: *VM, name: []const u8) !SymbolId {
-        return self.ensureTagLitSymExt(name, false);
+    pub fn ensureSymbol(self: *VM, name: []const u8) !SymbolId {
+        return self.ensureSymbolExt(name, false);
     }
 
-    pub fn ensureTagLitSymExt(self: *VM, name: []const u8, owned: bool) !SymbolId {
-        const res = try self.tagLitSymSignatures.getOrPut(self.alloc, name);
+    pub fn ensureSymbolExt(self: *VM, name: []const u8, owned: bool) !SymbolId {
+        const res = try self.symSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.tagLitSyms.len);
+            const id = @intCast(u32, self.syms.len);
             var effName = name;
             if (owned) {
                 effName = try self.alloc.dupe(u8, name);
             }
-            try self.tagLitSyms.append(self.alloc, .{
+            try self.syms.append(self.alloc, .{
                 .symT = .empty,
                 .inner = undefined,
                 .name = effName,
@@ -1008,9 +1011,9 @@ pub const VM = struct {
         }
     }
 
-    pub inline fn setTagLitSym(self: *VM, tid: TagTypeId, symId: SymbolId, val: u32) void {
-        self.tagLitSyms.buf[symId].symT = .one;
-        self.tagLitSyms.buf[symId].inner = .{
+    pub inline fn setTagLitSym(self: *VM, tid: EnumId, symId: SymbolId, val: u32) void {
+        self.syms.buf[symId].symT = .one;
+        self.syms.buf[symId].inner = .{
             .one = .{
                 .id = tid,
                 .val = val,
@@ -1846,79 +1849,89 @@ pub const VM = struct {
         } else {
             if (val.isPointer()) {
                 const obj = val.asHeapObject();
-                if (obj.common.structId == cy.AstringT) {
-                    const res = obj.astring.getConstSlice();
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, res.len);
-                    }
-                    return res;
-                } else if (obj.common.structId == cy.UstringT) {
-                    if (getCharLen) {
-                        outCharLen.* = obj.ustring.charLen;
-                    }
-                    return obj.ustring.getConstSlice();
-                } else if (obj.common.structId == cy.StringSliceT) {
-                    if (getCharLen) {
-                        if (obj.stringSlice.isAstring()) {
-                            outCharLen.* = obj.stringSlice.len;
-                        } else {
-                            outCharLen.* = obj.stringSlice.uCharLen;
+                switch (obj.common.structId) {
+                    cy.AstringT => {
+                        const res = obj.astring.getConstSlice();
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, res.len);
                         }
+                        return res;
+                    },
+                    cy.UstringT => {
+                        if (getCharLen) {
+                            outCharLen.* = obj.ustring.charLen;
+                        }
+                        return obj.ustring.getConstSlice();
+                    },
+                    cy.StringSliceT => {
+                        if (getCharLen) {
+                            if (obj.stringSlice.isAstring()) {
+                                outCharLen.* = obj.stringSlice.len;
+                            } else {
+                                outCharLen.* = obj.stringSlice.uCharLen;
+                            }
+                        }
+                        return obj.stringSlice.getConstSlice();
+                    },
+                    cy.RawStringT => {
+                        const start = writer.pos();
+                        std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, slice.len);
+                        }
+                        return slice;
+                    },
+                    cy.RawStringSliceT => {
+                        const start = writer.pos();
+                        std.fmt.format(writer, "rawstring ({})", .{obj.rawstringSlice.len}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, slice.len);
+                        }
+                        return slice;
+                    },
+                    cy.ListS => {
+                        const start = writer.pos();
+                        std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, slice.len);
+                        }
+                        return slice;
+                    },
+                    cy.MapS => {
+                        const start = writer.pos();
+                        std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, slice.len);
+                        }
+                        return slice;
+                    },
+                    cy.TypeSymbolT => {
+                        const start = writer.pos();
+                        const symType = @intToEnum(cy.heap.TypeSymbolType, obj.typesym.symId);
+                        var slice: []const u8 = undefined;
+                        if (symType == .object) {
+                            const name = self.structs.buf[obj.typesym.symId].name;
+                            std.fmt.format(writer, "Object Symbol ({s})", .{name}) catch stdx.fatal();
+                            slice = writer.sliceFrom(start);
+                        } else {
+                            slice = "Unknown Symbol";
+                        }
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, slice.len);
+                        }
+                        return slice;
+                    },
+                    else => {
+                        const buf = self.structs.buf[obj.common.structId].name;
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, buf.len);
+                        }
+                        return buf;
                     }
-                    return obj.stringSlice.getConstSlice();
-                } else if (obj.common.structId == cy.RawStringT) {
-                    const start = writer.pos();
-                    std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
-                    const slice = writer.sliceFrom(start);
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, slice.len);
-                    }
-                    return slice;
-                } else if (obj.common.structId == cy.RawStringSliceT) {
-                    const start = writer.pos();
-                    std.fmt.format(writer, "rawstring ({})", .{obj.rawstringSlice.len}) catch stdx.fatal();
-                    const slice = writer.sliceFrom(start);
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, slice.len);
-                    }
-                    return slice;
-                } else if (obj.common.structId == cy.ListS) {
-                    const start = writer.pos();
-                    std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
-                    const slice = writer.sliceFrom(start);
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, slice.len);
-                    }
-                    return slice;
-                } else if (obj.common.structId == cy.MapS) {
-                    const start = writer.pos();
-                    std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
-                    const slice = writer.sliceFrom(start);
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, slice.len);
-                    }
-                    return slice;
-                } else if (obj.common.structId == cy.SymbolT) {
-                    const start = writer.pos();
-                    const symType = @intToEnum(cy.heap.SymbolType, obj.symbol.symId);
-                    var slice: []const u8 = undefined;
-                    if (symType == .object) {
-                        const name = self.structs.buf[obj.symbol.symId].name;
-                        std.fmt.format(writer, "Object Symbol ({s})", .{name}) catch stdx.fatal();
-                        slice = writer.sliceFrom(start);
-                    } else {
-                        slice = "Unknown Symbol";
-                    }
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, slice.len);
-                    }
-                    return slice;
-                } else {
-                    const buf = self.structs.buf[obj.common.structId].name;
-                    if (getCharLen) {
-                        outCharLen.* = @intCast(u32, buf.len);
-                    }
-                    return buf;
                 }
             } else {
                 switch (val.getTag()) {
@@ -1943,8 +1956,8 @@ pub const VM = struct {
                     },
                     cy.ErrorT => {
                         const start = writer.pos();
-                        const litId = val.asErrorTagLit();
-                        std.fmt.format(writer, "error#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        const symId = val.asErrorSymbol();
+                        std.fmt.format(writer, "error.{s}", .{self.getSymbolName(symId)}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, slice.len);
@@ -1966,10 +1979,22 @@ pub const VM = struct {
                         }
                         return self.strBuf[slice.start..slice.end];
                     },
-                    cy.UserTagLiteralT => {
+                    cy.EnumT => {
                         const start = writer.pos();
-                        const litId = val.asTagLiteralId();
-                        std.fmt.format(writer, "#{s}", .{self.getTagLitName(litId)}) catch stdx.fatal();
+                        const enumv = val.asEnum();
+                        const enumSym = self.enums.buf[enumv.enumId];
+                        const memberName = sema.getName(&self.compiler, enumSym.members[enumv.memberId]);
+                        std.fmt.format(writer, "{s}.{s}", .{enumSym.name, memberName}) catch stdx.fatal();
+                        const slice = writer.sliceFrom(start);
+                        if (getCharLen) {
+                            outCharLen.* = @intCast(u32, slice.len);
+                        }
+                        return slice;
+                    },
+                    cy.SymbolT => {
+                        const start = writer.pos();
+                        const litId = val.asSymbolId();
+                        std.fmt.format(writer, "#{s}", .{self.getSymbolName(litId)}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, slice.len);
@@ -1984,10 +2009,6 @@ pub const VM = struct {
                             outCharLen.* = @intCast(u32, slice.len);
                         }
                         return slice;
-                    },
-                    else => {
-                        log.debug("unexpected tag {}", .{val.getTag()});
-                        stdx.fatal();
                     },
                 }
             }
@@ -2267,11 +2288,11 @@ const SymbolMapType = enum {
     empty,
 };
 
-const TagLitSym = struct {
+const Symbol = struct {
     symT: SymbolMapType,
     inner: union {
         one: struct {
-            id: TagTypeId,
+            id: EnumId,
             val: u32,
         },
     },
@@ -2328,10 +2349,10 @@ test "Internals." {
     try t.eq(@offsetOf(VM, "fieldSymSignatures"), @offsetOf(vmc.VM, "fieldSymSignatures"));
     try t.eq(@offsetOf(VM, "structs"), @offsetOf(vmc.VM, "structs"));
     try t.eq(@offsetOf(VM, "structSignatures"), @offsetOf(vmc.VM, "structSignatures"));
-    try t.eq(@offsetOf(VM, "tagTypes"), @offsetOf(vmc.VM, "tagTypes"));
-    try t.eq(@offsetOf(VM, "tagTypeSignatures"), @offsetOf(vmc.VM, "tagTypeSignatures"));
-    try t.eq(@offsetOf(VM, "tagLitSyms"), @offsetOf(vmc.VM, "tagLitSyms"));
-    try t.eq(@offsetOf(VM, "tagLitSymSignatures"), @offsetOf(vmc.VM, "tagLitSymSignatures"));
+    try t.eq(@offsetOf(VM, "enums"), @offsetOf(vmc.VM, "enums"));
+    try t.eq(@offsetOf(VM, "enumSignatures"), @offsetOf(vmc.VM, "enumSignatures"));
+    try t.eq(@offsetOf(VM, "syms"), @offsetOf(vmc.VM, "syms"));
+    try t.eq(@offsetOf(VM, "symSignatures"), @offsetOf(vmc.VM, "symSignatures"));
     try t.eq(@offsetOf(VM, "u8Buf"), @offsetOf(vmc.VM, "u8Buf"));
     try t.eq(@offsetOf(VM, "u8Buf2"), @offsetOf(vmc.VM, "u8Buf2"));
     try t.eq(@offsetOf(VM, "stackTrace"), @offsetOf(vmc.VM, "stackTrace"));
@@ -2514,10 +2535,10 @@ pub const FuncSymbolEntry = extern struct {
     }
 };
 
-const TagTypeId = u32;
-const TagType = struct {
+const EnumId = u32;
+const Enum = struct {
     name: []const u8,
-    numMembers: u32,
+    members: []const sema.NameSymId,
 };
 
 const StructKey = KeyU64;
@@ -3787,7 +3808,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const tagId = pc[1].arg;
                 const val = pc[2].arg;
-                framePtr[pc[3].arg] = Value.initTag(tagId, val);
+                framePtr[pc[3].arg] = Value.initEnum(tagId, val);
                 pc += 4;
                 continue;
             },
@@ -3796,7 +3817,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpTagLiteral:"::);
                 }
                 const symId = pc[1].arg;
-                framePtr[pc[2].arg] = Value.initTagLiteral(symId);
+                framePtr[pc[2].arg] = Value.initSymbol(symId);
                 pc += 3;
                 continue;
             },
@@ -4002,7 +4023,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const symType = pc[1].arg;
                 const symId = @ptrCast(*const align(1) u32, pc + 2).*;
-                framePtr[pc[6].arg] = try cy.heap.allocSymbol(vm, symType, symId);
+                framePtr[pc[6].arg] = try cy.heap.allocTypeSymbol(vm, symType, symId);
                 pc += 7;
                 continue;
             },
@@ -4142,7 +4163,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                     for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
                         release(vm, val);
                     }
-                    framePtr.*[startLocal] = Value.initErrorTagLit(@enumToInt(bindings.TagLit.InvalidSignature));
+                    framePtr.*[startLocal] = Value.initErrorSymbol(@enumToInt(bindings.Symbol.InvalidSignature));
                     return;
                 }
 
@@ -4168,7 +4189,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                     for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
                         release(vm, val);
                     }
-                    framePtr.*[startLocal] = Value.initErrorTagLit(@enumToInt(bindings.TagLit.InvalidSignature));
+                    framePtr.*[startLocal] = Value.initErrorSymbol(@enumToInt(bindings.Symbol.InvalidSignature));
                     return;
                 }
 
@@ -4189,7 +4210,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                     for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
                         release(vm, val);
                     }
-                    framePtr.*[startLocal] = Value.initErrorTagLit(@enumToInt(bindings.TagLit.InvalidSignature));
+                    framePtr.*[startLocal] = Value.initErrorSymbol(@enumToInt(bindings.Symbol.InvalidSignature));
                     return;
                 }
 

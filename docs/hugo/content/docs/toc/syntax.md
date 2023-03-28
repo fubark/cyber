@@ -178,7 +178,7 @@ var myImage:
 The final resulting value that is set to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is used instead.
 
 ## Keywords.
-There are currently `34` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `35` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
 - [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass` `some`
 - [Operators](#operators): `or` `and` `not` `is`
@@ -186,7 +186,7 @@ There are currently `34` keywords in Cyber. This list categorizes them and shows
 - [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
 - [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`
 - [Data Types]({{<relref "/docs/toc/data-types">}}): `type` `object` `enum` `true` `false` `none`
-- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `recover`
+- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `recover` `error`
 - [Modules]({{<relref "/docs/toc/modules">}}): `import`
 
 ## Operators.

@@ -3,11 +3,11 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
-const TagLit = @import("bindings.zig").TagLit;
 const vm_ = @import("../vm.zig");
 const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
+const Symbol = bindings.Symbol;
 const bt = cy.types.BuiltinTypeSymIds;
 const v = fmt.v;
 
@@ -93,13 +93,13 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .tagLiteral => {
-                const actv = act.asTagLiteralId();
-                const expv = exp.asTagLiteralId();
+            .symbol => {
+                const actv = act.asSymbolId();
+                const expv = exp.asSymbolId();
                 if (actv == expv) {
                     return true;
                 } else {
-                    printStderr("actual: {} != {}\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
+                    printStderr("actual: {} != {}\n", &.{v(gvm.syms.buf[actv].name), v(gvm.syms.buf[expv].name)});
                     return false;
                 }
             },
@@ -107,12 +107,12 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 return true;
             },
             .errorVal => {
-                const actv = act.asErrorTagLit();
-                const expv = exp.asErrorTagLit();
+                const actv = act.asErrorSymbol();
+                const expv = exp.asErrorSymbol();
                 if (actv == expv) {
                     return true;
                 } else {
-                    printStderr("actual: error({}) != error({})\n", &.{v(gvm.tagLitSyms.buf[actv].name), v(gvm.tagLitSyms.buf[expv].name)});
+                    printStderr("actual: error.{} != error.{}\n", &.{v(gvm.syms.buf[actv].name), v(gvm.syms.buf[expv].name)});
                     return false;
                 }
             },
@@ -150,7 +150,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
     if (eq2(vm, act, exp)) {
         return Value.True;
     } else {
-        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
     }
 }
 
@@ -168,16 +168,16 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 return Value.True;
             } else {
                 printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
-                return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
             }
         } else {
             printStderr("Expected number, actual: {}\n", &.{v(actType)});
-            return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+            return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
         }
     } else {
         printStderr("Types do not match:\n", &.{});
         printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
-        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
     }
 }
 
@@ -202,22 +202,22 @@ pub fn eqList(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
                 while (i < acto.list.list.len) : (i += 1) {
                     if (!eq2(vm, actItems[i], expItems[i])) {
                         printStderr("Item mismatch at idx: {}\n", &.{v(i)});
-                        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
                     }
                 }
                 return Value.True;
             } else {
                 printStderr("actual list len: {} != {}\n", &.{v(acto.list.list.len), v(expo.list.list.len)});
-                return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+                return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
             }
         } else {
             printStderr("Expected list, actual: {}\n", &.{v(actType)});
-            return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+            return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
         }
     } else {
         printStderr("Types do not match:\n", &.{});
         printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
-        return Value.initErrorTagLit(@enumToInt(TagLit.AssertError));
+        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
     }
 }
 

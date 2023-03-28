@@ -122,5 +122,5 @@ try t.eq(n3.b, 6)
 
 -- Using Object sym as a value.
 sym = Node
-try t.eq(valtag(sym), #symbol)
+try t.eq(typesym(sym), #type)
 try t.eq(string(sym), 'Object Symbol (Node)')

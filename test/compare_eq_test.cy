@@ -32,5 +32,5 @@ a = s
 try t.eq(a == s, true)
 
 -- Error equals.
-try t.eq(error(#SomeError) == error(#OtherError), false)
-try t.eq(error(#SomeError) == error(#SomeError), true)
+try t.eq(error.SomeError == error.OtherError, false)
+try t.eq(error.SomeError == error.SomeError, true)

@@ -24,14 +24,14 @@ bar = foo3
 try t.eq(bar(), 5)
 
 -- Wrong number of arguments when invoking lambda.
-try t.eq(bar(2), error(#InvalidSignature))
+try t.eq(bar(2), error.InvalidSignature)
 
 -- Static function binding wrapped in value.
 bar = string
 try t.eq(bar(10), '10')
 
 -- Wrong number of arugments when invoking wrapped native func.
-try t.eq(bar('a', 123), error(#InvalidSignature))
+try t.eq(bar('a', 123), error.InvalidSignature)
 
 -- Using as custom less function for sort.
 func less(a, b):

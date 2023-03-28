@@ -10,7 +10,7 @@ hljs.registerLanguage('cy', function() {
 			'static', 'capture', 'true', 'false', 'none', 'try', 'catch', 'recover', 'enum', 'type'
 		],
 		type: [
-			'number', 'string', 'bool', 'any', 'int', 'List', 'Map', 'rawstring', 'taglit'
+			'number', 'string', 'bool', 'any', 'int', 'List', 'Map', 'rawstring', 'symbol'
 		],
 	},
 	contains: [
@@ -19,7 +19,7 @@ hljs.registerLanguage('cy', function() {
 			begin: '\'', end: '\''
 		},
 		{
-			scope: 'tagliteral',
+			scope: 'symbol',
 			begin: '#', end: /\w(?=[^\w])/
 		},
 		hljs.COMMENT(

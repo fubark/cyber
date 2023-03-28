@@ -1,1 +1,1 @@
-var foo: try error(#boom)
+var foo: try error.boom

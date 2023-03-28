@@ -5,7 +5,7 @@ import os 'os'
 
 -- Not found.
 lib = os.bindLib('xyz123.so', [])
-try t.eq(lib, error(#FileNotFound))
+try t.eq(lib, error.FileNotFound)
 
 if os.system == 'macos':
   -- rdynamic doesn't work atm for MacOS.
@@ -17,7 +17,7 @@ else:
 
 -- Missing symbol.
 lib = os.bindLib(libPath, [ os.CFunc{ sym: 'missing123', args: [], ret: #int }])
-try t.eq(lib, error(#MissingSymbol))
+try t.eq(lib, error.MissingSymbol)
 
 type MyObject object:
   a number
@@ -69,7 +69,7 @@ try t.eq(res.d, true)
 
 -- Return struct ptr and convert to Cyber object.
 ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: 'foo', d: true})
-try t.eq(valtag(ptr), #pointer)
+try t.eq(typesym(ptr), #pointer)
 res = lib.ptrToMyObject(pointer(ptr))
 try t.eq(res.a, 123)
 try t.eq(res.b, 10)

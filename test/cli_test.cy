@@ -12,9 +12,9 @@ import t 'test'
 import os 'os'
 if os.system == 'windows':
   try t.eq(getInput().utf8(), 'abc\\r')
-  try t.eq(getInput(), error(#EndOfStream))
+  try t.eq(getInput(), error.EndOfStream)
 else:
-  try t.eq(getInput(), error(#EndOfStream))
+  try t.eq(getInput(), error.EndOfStream)
 ")
 
 -- core.getInput() returns user input before new line.

@@ -14,7 +14,7 @@ pub const BuiltinTypeSymIds = struct {
     pub const Integer: ResolvedSymId = 3;
     pub const String: ResolvedSymId = 4;
     pub const Rawstring: ResolvedSymId = 5;
-    pub const TagLiteral: ResolvedSymId = 6;
+    pub const Symbol: ResolvedSymId = 6;
     pub const List: ResolvedSymId = 7;
     pub const Map: ResolvedSymId = 8;
     pub const Pointer: ResolvedSymId = 9;
@@ -29,7 +29,7 @@ test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NameInt, bt.Integer);
     try t.eq(sema.NameString, bt.String);
     try t.eq(sema.NameRawstring, bt.Rawstring);
-    try t.eq(sema.NameTagLiteral, bt.TagLiteral);
+    try t.eq(sema.NameSymbol, bt.Symbol);
     try t.eq(sema.NameList, bt.List);
     try t.eq(sema.NameMap, bt.Map);
     try t.eq(sema.NamePointer, bt.Pointer);
@@ -45,7 +45,7 @@ const BuiltinTypes = [_]Type{
     IntegerType,
     StringType,
     RawstringType,
-    TagLiteralType,
+    SymbolType,
     ListType,
     MapType,
     PointerType,
@@ -61,7 +61,7 @@ pub const BuiltinTypeTags = [_]TypeTag{
     .int,
     .string,
     .rawstring,
-    .tagLiteral,
+    .symbol,
     .list,
     .map,
     .pointer,
@@ -149,7 +149,7 @@ pub fn typeTagToExactTypeId(tag: TypeTag) ?cy.TypeId {
         .any => null,
         .number => cy.NumberT,
         .int => cy.IntegerT,
-        .tagLiteral => cy.UserTagLiteralT,
+        .symbol => cy.SymbolT,
         .list => cy.ListS,
         .boolean => cy.BooleanT,
 
@@ -170,13 +170,13 @@ pub fn typeTagToResolvedSym(tag: TypeTag) ResolvedSymId {
         .any => bt.Any,
         .number => bt.Number,
         .int => bt.Integer,
-        .tagLiteral => bt.TagLiteral,
+        .symbol => bt.Symbol,
         .list => bt.List,
         .boolean => bt.Boolean,
         .string => bt.String,
         .rawstring => bt.Rawstring,
         .map => bt.Map,
-        .tag => bt.Any, // TODO: Handle tagtype.
+        .enumT => bt.Any, // TODO: Handle tagtype.
         .pointer => bt.Pointer,
         .none => bt.None,
         .err => bt.Error,
@@ -219,8 +219,8 @@ pub const TypeTag = enum {
     string,
     rawstring,
     box,
-    tag,
-    tagLiteral,
+    enumT,
+    symbol,
     pointer,
     none,
     err,
@@ -235,8 +235,8 @@ pub const Type = struct {
     typeT: TypeTag,
     rcCandidate: bool,
     inner: packed union {
-        tag: packed struct {
-            tagId: u8,
+        enumT: packed struct {
+            enumId: u8,
         },
         number: packed struct {
             canRequestInteger: bool,
@@ -252,7 +252,7 @@ pub const Type = struct {
     fn isFlexibleType(self: Type) bool {
         switch (self.typeT) {
             .number => return self.inner.number.canRequestInteger,
-            .tagLiteral => return true,
+            .symbol => return true,
             else => return false,
         }
     }
@@ -349,8 +349,8 @@ pub const ListType = Type{
     .rcCandidate = true,
 };
 
-pub const TagLiteralType = Type{
-    .typeT = .tagLiteral,
+pub const SymbolType = Type{
+    .typeT = .symbol,
     .rcCandidate = false,
 };
 
@@ -371,13 +371,13 @@ pub fn initResolvedSymType(rSymId: ResolvedSymId) Type {
     };
 }
 
-pub fn initTagType(tagId: u32) Type {
+pub fn initEnumType(enumId: u32) Type {
     return .{
-        .typeT = .tag,
+        .typeT = .enumT,
         .rcCandidate = false,
         .inner = .{
-            .tag = .{
-                .tagId = @intCast(u8, tagId),
+            .enumT = .{
+                .enumId = @intCast(u8, enumId),
             },
         },
     };

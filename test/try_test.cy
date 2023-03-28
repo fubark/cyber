@@ -31,12 +31,12 @@ try t.eq(foo4(), 123)
 
 -- Error value inside function. Returns from function.
 func foo5():
-    try error(#boom)
+    try error.boom
     return 123
-try t.eq(foo5(), error(#boom))
+try t.eq(foo5(), error.boom)
 
 -- Error value assignment inside function. Returns from function.
 func foo6():
-    val = try error(#boom)
+    val = try error.boom
     return 123
-try t.eq(foo6(), error(#boom))
+try t.eq(foo6(), error.boom)

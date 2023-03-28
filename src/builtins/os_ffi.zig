@@ -5,7 +5,7 @@ const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const bindings = @import("bindings.zig");
-const TagLit = bindings.TagLit;
+const Symbol = bindings.Symbol;
 const os = @import("os.zig");
 const sema = cy.sema;
 const bt = cy.types.BuiltinTypeSymIds;
@@ -32,15 +32,15 @@ const Context = struct {
 
     fn genFuncReleaseOps(self: *@This(), w: anytype, cargs: []const Value) !void {
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.SymbolT)) {
+            if (carg.isObjectType(cy.TypeSymbolT)) {
                 try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                 // Free any child temps.
-                const objType = carg.asPointer(*cy.heap.Symbol);
+                const objType = carg.asPointer(*cy.heap.TypeSymbol);
                 const fields = self.symToCStructFields.get(objType.symId).?.items();
                 for (fields, 0..) |field, fidx| {
-                    if (!field.isObjectType(cy.SymbolT)) {
-                        const fieldType = field.asTagLiteralId();
-                        switch (@intToEnum(TagLit, fieldType)) {
+                    if (!field.isObjectType(cy.TypeSymbolT)) {
+                        const fieldType = field.asSymbolId();
+                        switch (@intToEnum(Symbol, fieldType)) {
                             .charPtrZ => {
                                 try w.print("  icyFree(s{}.f{});\n", .{i, fidx});
                             },
@@ -49,8 +49,8 @@ const Context = struct {
                     }
                 }
             } else {
-                const argTag = carg.asTagLiteralId();
-                switch (@intToEnum(TagLit, argTag)) {
+                const argTag = carg.asSymbolId();
+                switch (@intToEnum(Symbol, argTag)) {
                     .charPtrZ => {
                         try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                         try w.print("  icyFree(str{});\n", .{i});
@@ -69,8 +69,8 @@ const Context = struct {
 };
 
 fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
-    const tag = val.asTagLiteralId();
-    switch (@intToEnum(TagLit, tag)) {
+    const tag = val.asSymbolId();
+    switch (@intToEnum(Symbol, tag)) {
         .bool => return bt.Boolean,
         .char => return bt.Number,
         .uchar => return bt.Number,
@@ -87,13 +87,13 @@ fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
         .dupeCharPtrZ => return bt.Any,
         .voidPtr => return bt.Pointer,
         .void => return bt.None,
-        else => stdx.panicFmt("Unsupported param type: {s}", .{ ivm.getTagLitName(tag) }),
+        else => stdx.panicFmt("Unsupported param type: {s}", .{ ivm.getSymbolName(tag) }),
     }
 }
 
 fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
-    const tag = val.asTagLiteralId();
-    switch (@intToEnum(TagLit, tag)) {
+    const tag = val.asSymbolId();
+    switch (@intToEnum(Symbol, tag)) {
         .bool => return bt.Boolean,
         .char => return bt.Number,
         .uchar => return bt.Number,
@@ -109,13 +109,13 @@ fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
         .charPtrZ => return bt.Rawstring,
         .voidPtr => return bt.Pointer,
         .void => return bt.None,
-        else => stdx.panicFmt("Unsupported return type: {s}", .{ ivm.getTagLitName(tag) }),
+        else => stdx.panicFmt("Unsupported return type: {s}", .{ ivm.getSymbolName(tag) }),
     }
 }
 
 fn toCType(ivm: *cy.VM, val: Value) []const u8 {
-    const tag = val.asTagLiteralId();
-    switch (@intToEnum(TagLit, tag)) {
+    const tag = val.asSymbolId();
+    switch (@intToEnum(Symbol, tag)) {
         .bool => return "bool",
         .char => return "int8_t",
         .uchar => return "uint8_t",
@@ -132,14 +132,14 @@ fn toCType(ivm: *cy.VM, val: Value) []const u8 {
         .dupeCharPtrZ => return "char*",
         .voidPtr => return "void*",
         .void => return "void",
-        else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getTagLitName(tag) }),
+        else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getSymbolName(tag) }),
     }
 }
 
 /// Assumes `uint64_t* args` is available in the scope.
 fn printToCValueFromArg(ivm: *cy.VM, w: anytype, argType: Value, i: usize) !void {
-    const tag = argType.asTagLiteralId();
-    switch (@intToEnum(TagLit, tag)) {
+    const tag = argType.asSymbolId();
+    switch (@intToEnum(Symbol, tag)) {
         .bool => {
             try w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i});
         },
@@ -185,14 +185,14 @@ fn printToCValueFromArg(ivm: *cy.VM, w: anytype, argType: Value, i: usize) !void
         .voidPtr => {
             try w.print("icyGetPtr(args[{}])", .{i});
         },
-        else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getTagLitName(tag) }),
+        else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getSymbolName(tag) }),
     }
 }
 
 /// If the c value is converted to a number, this assumes `cval` is already a double.
 fn printCyValue(ivm: *cy.VM, w: anytype, argType: Value, cval: []const u8) !void {
-    const tag = argType.asTagLiteralId();
-    switch (@intToEnum(TagLit, tag)) {
+    const tag = argType.asSymbolId();
+    switch (@intToEnum(Symbol, tag)) {
         .char,
         .uchar,
         .short,
@@ -219,7 +219,7 @@ fn printCyValue(ivm: *cy.VM, w: anytype, argType: Value, cval: []const u8) !void
         .bool => {
             try w.print("({s} == 1) ? 0x7FFC000100000001 : 0x7FFC000100000000", .{cval});
         },
-        else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getTagLitName(tag) }),
+        else => stdx.panicFmt("Unsupported arg type: {s}", .{ ivm.getSymbolName(tag) }),
     }
 }
 
@@ -253,7 +253,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     } else {
         lib.* = dlopen(vm.valueToTempRawString(path)) catch |err| {
             if (err == error.FileNotFound) {
-                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
             } else {
                 return err;
             }
@@ -295,8 +295,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
                 const ret = try ivm.getField(decl, retf);
                 var retTypeSymId: sema.ResolvedSymId = undefined;
-                if (ret.isObjectType(cy.SymbolT)) {
-                    const objType = ret.asPointer(*cy.heap.Symbol);
+                if (ret.isObjectType(cy.TypeSymbolT)) {
+                    const objType = ret.asPointer(*cy.heap.TypeSymbol);
                     const rtType = ivm.structs.buf[objType.symId];
                     retTypeSymId = rtType.rTypeSymId;
                 } else {
@@ -308,8 +308,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
                 if (cargs.len > 0) {
                     for (cargs) |carg| {
-                        if (carg.isObjectType(cy.SymbolT)) {
-                            const objType = carg.asPointer(*cy.heap.Symbol);
+                        if (carg.isObjectType(cy.TypeSymbolT)) {
+                            const objType = carg.asPointer(*cy.heap.TypeSymbol);
 
                             const rtType = ivm.structs.buf[objType.symId];
                             try ivm.compiler.tempSyms.append(ctx.alloc, rtType.rTypeSymId);
@@ -327,31 +327,31 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                 });
             } else {
                 log.debug("Missing sym: '{s}'", .{sym});
-                return Value.initErrorTagLit(@enumToInt(TagLit.MissingSymbol));
+                return Value.initErrorSymbol(@enumToInt(Symbol.MissingSymbol));
             }
         } else if (decl.isObjectType(os.CStructT)) {
             const val = try ivm.getField(decl, typeF);
-            if (val.isObjectType(cy.SymbolT)) {
-                const objType = val.asPointer(*cy.heap.Symbol);
-                if (objType.symType == @enumToInt(cy.heap.SymbolType.object)) {
+            if (val.isObjectType(cy.TypeSymbolT)) {
+                const objType = val.asPointer(*cy.heap.TypeSymbol);
+                if (objType.symType == @enumToInt(cy.heap.TypeSymbolType.object)) {
                     if (!ctx.symToCStructFields.contains(objType.symId)) {
                         const fields = try ivm.getField(decl, fieldsF);
                         try ctx.symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
                     } else {
                         log.debug("Object type already declared.", .{});
-                        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+                        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
                     }
                 } else {
                     log.debug("Not an object Symbol", .{});
-                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
                 }
             } else {
                 log.debug("Not a Symbol", .{});
-                return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+                return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
             }
         } else {
             log.debug("Not a CFunc or CStruct", .{});
-            return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+            return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
         }
     }
 
@@ -404,12 +404,12 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         try w.print("  Struct{} res;\n", .{objSymId, });
         for (fields.items(), 0..) |field, i| {
             try w.print("  res.f{} = ", .{i});
-            if (field.isObjectType(cy.SymbolT)) {
-                const objType = field.asPointer(*cy.heap.Symbol);
+            if (field.isObjectType(cy.TypeSymbolT)) {
+                const objType = field.asPointer(*cy.heap.TypeSymbol);
                 try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
             } else {
-                const tag = field.asTagLiteralId();
-                switch (@intToEnum(TagLit, tag)) {
+                const tag = field.asSymbolId();
+                switch (@intToEnum(Symbol, tag)) {
                     .charPtrZ => {
                         try w.print("icyToCStr(vm, args[{}])", .{i});
                     },
@@ -430,8 +430,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         var buf: [8]u8 = undefined;
         for (fields.items(), 0..) |field, i| {
             if (!field.isObjectType(cy.SymbolT)) {
-                const fieldTag = field.asTagLiteralId();
-                switch (@intToEnum(TagLit, fieldTag)) {
+                const fieldTag = field.asSymbolId();
+                switch (@intToEnum(Symbol, fieldTag)) {
                     .char,
                     .uchar,
                     .short,
@@ -635,8 +635,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     const cargs = cargsv.asPointer(*cy.CyList).items();
 
     // Emit extern declaration.
-    if (ret.isObjectType(cy.SymbolT)) {
-        const objType = ret.asPointer(*cy.heap.Symbol);
+    if (ret.isObjectType(cy.TypeSymbolT)) {
+        const objType = ret.asPointer(*cy.heap.TypeSymbol);
         if (ctx.symToCStructFields.contains(objType.symId)) {
             try w.print("extern Struct{} {s}(", .{objType.symId, sym});
         } else {
@@ -649,8 +649,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         const lastArg = cargs.len-1;
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.SymbolT)) {
-                const objType = carg.asPointer(*cy.heap.Symbol);
+            if (carg.isObjectType(cy.TypeSymbolT)) {
+                const objType = carg.asPointer(*cy.heap.TypeSymbol);
                 if (ctx.symToCStructFields.contains(objType.symId)) {
                     try w.print("Struct{}", .{objType.symId});
                 } else {
@@ -677,12 +677,12 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     // Gen temp args.
     if (cargs.len > 0) {
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.SymbolT)) {
-                const objType = carg.asPointer(*cy.heap.Symbol);
+            if (carg.isObjectType(cy.TypeSymbolT)) {
+                const objType = carg.asPointer(*cy.heap.TypeSymbol);
                 try w.print("Struct{} s{} = toStruct{}(vm, args[{}]);\n", .{objType.symId, i, objType.symId, i});
             } else {
-                const tag = carg.asTagLiteralId();
-                switch (@intToEnum(TagLit, tag)) {
+                const tag = carg.asSymbolId();
+                switch (@intToEnum(Symbol, tag)) {
                     .charPtrZ => {
                         try w.print("  char* str{} = icyToCStr(vm, args[{}]);\n", .{i, i});
                     },
@@ -693,8 +693,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     }
 
     // Gen call.
-    if (ret.isObjectType(cy.SymbolT)) {
-        const objType = ret.asPointer(*cy.heap.Symbol);
+    if (ret.isObjectType(cy.TypeSymbolT)) {
+        const objType = ret.asPointer(*cy.heap.TypeSymbol);
         if (ctx.symToCStructFields.contains(objType.symId)) {
             try w.print("  Struct{} res = {s}(", .{objType.symId, sym});
         } else {
@@ -702,8 +702,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
             return error.InvalidArgument;
         }
     } else {
-        const retTag = ret.asTagLiteralId();
-        switch (@intToEnum(TagLit, retTag)) {
+        const retTag = ret.asSymbolId();
+        switch (@intToEnum(Symbol, retTag)) {
             .char,
             .uchar,
             .short,
@@ -731,7 +731,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
             .bool => {
                 try w.print("  bool res = {s}(", .{sym});
             },
-            else => stdx.panicFmt("Unsupported return type: {s}", .{ ivm.getTagLitName(retTag) }),
+            else => stdx.panicFmt("Unsupported return type: {s}", .{ ivm.getSymbolName(retTag) }),
         }
     }
 
@@ -739,7 +739,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         const lastArg = cargs.len-1;
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.SymbolT)) {
+            if (carg.isObjectType(cy.TypeSymbolT)) {
                 try w.print("s{}", .{i});
             } else {
                 try printToCValueFromArg(ivm, w, carg, i);
@@ -761,8 +761,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
 
     // Gen return.
     try w.print("  return ", .{});
-    if (ret.isObjectType(cy.SymbolT)) {
-        const objType = ret.asPointer(*cy.heap.Symbol);
+    if (ret.isObjectType(cy.TypeSymbolT)) {
+        const objType = ret.asPointer(*cy.heap.TypeSymbol);
         try w.print("fromStruct{}(vm, res)", .{ objType.symId });
     } else {
         try printCyValue(ivm, w, ret, "res");

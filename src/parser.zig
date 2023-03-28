@@ -30,6 +30,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "each", .each_k },
     .{ "else", .else_k },
     .{ "enum", .enum_k },
+    .{ "error", .error_k },
     .{ "false", .false_k },
     .{ "for", .for_k },
     .{ "func", .func_k },
@@ -559,26 +560,22 @@ pub const Parser = struct {
         return null;
     }
 
-    fn parseTagMember(self: *Parser) !?NodeId {
+    fn parseEnumMember(self: *Parser) !?NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
         if (token.tag() == .ident) {
             const name = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
-            token = self.peekToken();
-            if (token.tag() == .new_line) {
-                self.advanceToken();
-                const field = try self.pushNode(.tagMember, start);
-                self.nodes.items[field].head = .{
-                    .tagMember = .{
-                        .name = name,
-                    },
-                };
-                return field;
-            } else {
-                return self.reportParseError("Unexpected token.", &.{});
-            }
+            try self.consumeNewLineOrEnd();
+
+            const field = try self.pushNode(.tagMember, start);
+            self.nodes.items[field].head = .{
+                .tagMember = .{
+                    .name = name,
+                },
+            };
+            return field;
         } else return null;
     }
 
@@ -679,7 +676,7 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var firstMember = (try self.parseTagMember()) orelse {
+        var firstMember = (try self.parseEnumMember()) orelse {
             return self.reportParseError("Expected tag member.", &.{});
         };
         var lastMember = firstMember;
@@ -688,18 +685,24 @@ pub const Parser = struct {
             const start2 = self.next_pos;
             const indent = try self.consumeIndentBeforeStmt();
             if (indent == reqIndent) {
-                const id = (try self.parseTagMember()) orelse break;
+                const id = (try self.parseEnumMember()) orelse break;
                 self.nodes.items[lastMember].next = id;
                 lastMember = id;
             } else if (indent <= prevIndent) {
                 self.next_pos = start2;
-                const id = try self.pushNode(.tagDecl, start);
+                const id = try self.pushNode(.enumDecl, start);
                 self.nodes.items[id].head = .{
-                    .tagDecl = .{
+                    .enumDecl = .{
                         .name = name,
                         .memberHead = firstMember,
                     },
                 };
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = .enumT,
+                    .inner = .{
+                        .enumT = id,
+                    },
+                });
                 return id;
             } else {
                 return self.reportParseError("Unexpected indentation.", &.{});
@@ -2346,6 +2349,36 @@ pub const Parser = struct {
 
                 break :b id;
             },
+            .error_k => b: {
+                self.advanceToken();
+                token = self.peekToken();
+                if (token.token_t == .dot) {
+                    // Error symbol literal.
+                    self.advanceToken();
+                    token = self.peekToken();
+                    if (token.token_t == .ident) {
+                        const symbol = try self.pushIdentNode(self.next_pos);
+                        self.advanceToken();
+                        const id = try self.pushNode(.errorSymLit, start);
+                        self.nodes.items[id].head = .{
+                            .errorSymLit = .{
+                                .symbol = symbol,
+                            },
+                        };
+                        break :b id;
+                    } else {
+                        return self.reportParseError("Expected symbol identifier.", &.{});
+                    }
+                } else {
+                    // Becomes an ident.
+                    const id = try self.pushIdentNode(start);
+                    break :b id;
+                }
+            },
+            .symbol => {
+                self.advanceToken();
+                return try self.pushNode(.symbolLit, start);
+            },
             .true_k => {
                 self.advanceToken();
                 return try self.pushNode(.true_literal, start);
@@ -2365,10 +2398,6 @@ pub const Parser = struct {
             .nonDecInt => b: {
                 self.advanceToken();
                 break :b try self.pushNode(.nonDecInt, start);
-            },
-            .tag => {
-                self.advanceToken();
-                return try self.pushNode(.tagLiteral, start);
             },
             .string => b: {
                 self.advanceToken();
@@ -2506,25 +2535,6 @@ pub const Parser = struct {
                         return self.parseLambdaFuncWithParam(left_id);
                     } else {
                         return self.reportParseError("Unexpected `=>` token", &.{});
-                    }
-                },
-                .tag => {
-                    // Tag init.
-                    const left = self.nodes.items[left_id];
-                    if (left.node_t == .ident) {
-                        const tagLiteral = try self.pushNode(.tagLiteral, self.next_pos);
-                        self.advanceToken();
-
-                        const tagInit = try self.pushNode(.tagInit, start);
-                        self.nodes.items[tagInit].head = .{
-                            .left_right = .{
-                                .left = left_id,
-                                .right = tagLiteral,
-                            },
-                        };
-                        return tagInit;
-                    } else {
-                        return self.reportParseError("Expected left ident.", &.{});
                     }
                 },
                 .dot => {
@@ -3007,9 +3017,9 @@ pub const Parser = struct {
         return id;
     }
 
-    inline fn pushTagToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
+    inline fn pushSymbolToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
-            .token_t = .tag,
+            .token_t = .symbol,
             .start_pos = @intCast(u26, start_pos),
             .data = .{
                 .end_pos = end_pos,
@@ -3219,12 +3229,13 @@ pub const TokenType = enum(u6) {
     object_k,
     type_k,
     enum_k,
+    error_k,
+    symbol,
     func_k,
     is_k,
     coinit_k,
     coyield_k,
     coresume_k,
-    tag,
     import_k,
     try_k,
     catch_k,
@@ -3309,10 +3320,11 @@ pub const NodeType = enum {
     objectField,
     objectInit,
     typeAliasDecl,
-    tagDecl,
+    enumDecl,
     tagMember,
     tagInit,
-    tagLiteral,
+    symbolLit,
+    errorSymLit,
     lambda_assign_decl,
     lambda_expr, 
     lambda_multi,
@@ -3368,6 +3380,9 @@ pub const Node = struct {
     next: NodeId,
     /// Fixed size. TODO: Rename to `data`.
     head: union {
+        errorSymLit: struct {
+            symbol: NodeId,
+        },
         castExpr: struct {
             expr: NodeId,
             typeSpecHead: NodeId,
@@ -3492,7 +3507,7 @@ pub const Node = struct {
         tagMember: struct {
             name: NodeId,
         },
-        tagDecl: struct {
+        enumDecl: struct {
             name: NodeId,
             memberHead: NodeId,
         },
@@ -4077,7 +4092,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     }
                 },
                 '#' => {
-                    try tokenizeTag(p, p.next_pos);
+                    try tokenizeSymbol(p, p.next_pos);
                     return .{ .stateT = .token };
                 },
                 else => {
@@ -4336,11 +4351,11 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
         }
 
-        fn tokenizeTag(p: *Parser, start: u32) !void {
+        fn tokenizeSymbol(p: *Parser, start: u32) !void {
             // Consume alpha, numeric, underscore.
             while (true) {
                 if (isAtEndChar(p)) {
-                    try p.pushTagToken(start, p.next_pos);
+                    try p.pushSymbolToken(start, p.next_pos);
                     return;
                 }
                 const ch = peekChar(p);
@@ -4352,7 +4367,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     advanceChar(p);
                     continue;
                 }
-                try p.pushTagToken(start, p.next_pos);
+                try p.pushSymbolToken(start, p.next_pos);
                 return;
             }
         }
@@ -4596,6 +4611,7 @@ const StaticDeclType = enum {
     funcInit,
     import,
     object,
+    enumT,
 };
 
 const StaticDecl = struct {
@@ -4607,6 +4623,7 @@ const StaticDecl = struct {
         funcInit: NodeId,
         import: NodeId,
         object: NodeId,
+        enumT: NodeId,
     },
 };
 
@@ -4616,6 +4633,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 61);
-    try t.eq(keywords.kvs.len, 34);
+    try t.eq(std.enums.values(TokenType).len, 62);
+    try t.eq(keywords.kvs.len, 35);
 }

@@ -16,10 +16,10 @@ try t.eq(o != 123, true)
 o2 = o
 try t.eq(o != o2, false)
 
--- Compare tag literal.
+-- Compare symbols.
 try t.eq(#abc != #xyz, true) 
 try t.eq(#abc != #abc, false)
 
 -- Compare errors.
-try t.eq(error(#SomeError) != error(#OtherError), true)
-try t.eq(error(#SomeError) != error(#SomeError), false)
+try t.eq(error.SomeError != error.OtherError, true)
+try t.eq(error.SomeError != error.SomeError, false)

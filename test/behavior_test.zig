@@ -27,15 +27,15 @@ test "Type casting." {
         );
     }}.func);
 
-    // taglit cast fails.
+    // symbol cast fails.
     try eval(.{ .silent = true },
-        \\123 as taglit
+        \\123 as symbol
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `number` to `taglit`.
+            \\panic: Can not cast `number` to `symbol`.
             \\
             \\main:1:5 main:
-            \\123 as taglit
+            \\123 as symbol
             \\    ^
             \\
         );
@@ -368,16 +368,16 @@ test "Typed List." {
     );
 }
 
-test "Typed taglit." {
+test "Typed symbol." {
     // Wrong param type.
     try eval(.{ .silent = true },
-        \\func foo(a taglit):
+        \\func foo(a symbol):
         \\  pass
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not find compatible function signature for `foo(number) any`.
-            \\Only `func foo(taglit) any` exists for the symbol `foo`.
+            \\Only `func foo(symbol) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
             \\foo(123)
@@ -389,7 +389,7 @@ test "Typed taglit." {
     try evalPass(.{},
         \\import t 'test'
         \\
-        \\func foo(a taglit):
+        \\func foo(a symbol):
         \\  return a == #sometag
         \\
         \\-- Literal.
@@ -401,7 +401,7 @@ test "Typed taglit." {
         \\
         \\-- Cast erased type.
         \\tag = t.erase(#sometag)
-        \\try t.eq(foo(tag as taglit), true)
+        \\try t.eq(foo(tag as symbol), true)
     );
 }
 
@@ -769,7 +769,7 @@ test "Imports." {
     res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/init_func_error.cy'
         \\import t 'test'
-        \\try t.eq(valtag(a.foo), #function)
+        \\try t.eq(typesym(a.foo), #function)
     );
     try run.expectErrorReport(res, error.Panic,
         \\panic: Assigning to static function with a different function signature.
@@ -860,9 +860,9 @@ test "os module" {
         \\os.endian
     );
     if (builtin.cpu.arch.endian() == .Little) {
-        try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.little));
+        try t.eq(val.asSymbolId(), @enumToInt(bindings.Symbol.little));
     } else {
-        try t.eq(val.asTagLiteralId(), @enumToInt(bindings.TagLit.big));
+        try t.eq(val.asSymbolId(), @enumToInt(bindings.Symbol.big));
     }
 
     run.deinit();
@@ -880,7 +880,7 @@ test "try value" {
 
     // Try failure at root block panics.
     const res = run.evalExt(.{ .silent = true },
-        \\try error(#boom)
+        \\try error.boom
     );
     try t.expectError(res, error.Panic);
 
@@ -1045,12 +1045,12 @@ test "Symbols." {
     const run = VMrunner.create();
     defer run.destroy();
 
-    // Tag literal.
+    // Literal.
     var val = try run.eval(
         \\n = #Tiger
         \\number(n)
     );
-    const id = try vm_.gvm.ensureTagLitSym("Tiger");
+    const id = try vm_.gvm.ensureSymbol("Tiger");
     try t.eq(val.asF64toI32(), @intCast(i32, id));
 }
 
@@ -1250,19 +1250,19 @@ test "must()" {
     );
 
     var res = run.evalExt(.{ .silent = true },
-        \\a = error(#boom)
+        \\a = error.boom
         \\must(a)
     );
     try t.expectError(res, error.Panic);
     var trace = run.getStackTrace();
-    try run.assertPanicMsg("error#boom");
+    try run.assertPanicMsg("error.boom");
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",
         .chunkId = 0,
         .line = 1,
         .col = 0,
-        .lineStartPos = 17,
+        .lineStartPos = 15,
     });
 }
 

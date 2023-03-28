@@ -190,7 +190,7 @@ func split(self, delim string) List
 func startsWith(self, prefix string) bool
 -- Returns whether the string starts with `prefix`.
 
-func trim(self, mode taglit, trimRunes any) string
+func trim(self, mode symbol, trimRunes any) string
 -- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
 
 func upper(self) string
@@ -216,11 +216,11 @@ String templates can not contain nested string templates.
 ### rawstring.
 A `rawstring` does not automatically validate the string and is indexed by bytes and not UTF-8 runes.
 
-Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, `error(#InvalidRune)` is returned. This is equivalent to calling the method `sliceAt()`.
+Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, `error.InvalidRune` is returned. This is equivalent to calling the method `sliceAt()`.
 ```cy
 str = rawstring('abcd').insertByte(1, 255)
 print str[0]     -- "a"
-print str[1]     -- error(#InvalidRune)
+print str[1]     -- error.InvalidRune
 print str[-1]    -- "d"
 ```
 
@@ -269,13 +269,13 @@ func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`.
 
 func runeAt(self, idx number) number
--- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+-- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func slice(self, start number, end number) rawstring
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
 func sliceAt(self, idx number) string
--- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+-- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func split(self, delim string) List
 -- Returns a list of rawstrings split at occurrences of `delim`.
@@ -286,11 +286,11 @@ func startsWith(self, prefix string) bool
 func upper(self) string
 -- Returns this string in uppercase.
 
-func trim(self, mode taglit, trimRunes any) rawstring
+func trim(self, mode symbol, trimRunes any) rawstring
 -- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
 
 func utf8(self) string
--- Returns a valid UTF-8 string or returns `error(#InvalidRune)`.
+-- Returns a valid UTF-8 string or returns `error.InvalidRune`.
 ```
 
 ## Lists.
@@ -453,15 +453,15 @@ type Fruit enum:
     banana
     kiwi
 
-fruit = Fruit#kiwi
-print fruit          -- '#kiwi'
+fruit = Fruit.kiwi
+print fruit          -- 'Fruit.kiwi'
 print number(fruit)  -- '3'
 ```
 When the type of the value is known to be an enum, it can be assigned using a symbol literal.
 ```cy
-fruit = Fruit#kiwi
+fruit = Fruit.kiwi
 fruit = #orange
-print(fruit == Fruit#orange)   -- 'true'
+print(fruit == Fruit.orange)   -- 'true'
 ```
 
 ## Symbols.

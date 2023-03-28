@@ -103,14 +103,14 @@ print contents
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
 | `exit(status number) noreturn` | Exits the program with a status code. | 
-| `error(any) error` | Create an error from a tag or tag literal. | 
+| `error(e (enum \| symbol)) error` | Create an error from an enum or symbol. | 
 | `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Casts or converts the value to a `number`. Panics if type conversion fails. | 
-| `panic(e taglit) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
+| `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
 | `pointer(val any) pointer` | Converts a `number` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
@@ -121,7 +121,7 @@ print contents
 | `string(val any) string` | Converts a value to a string. | 
 | `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeid(val any) number` | Returns the type id of the value. | 
-| `valtag(any) #taglit` | Returns the value's type as a tag literal. |
+| `typesym(any) symbol` | Returns the value's type as a symbol. |
 | `writeFile(path string, contents string) none` | Writes a string value to a file. | 
 
 ### Math Module.
@@ -238,7 +238,7 @@ for map each k, v:
 #### `type File`
 | Method | Summary |
 | -- | -- |
-| `close() none` | Closes the file handle. File ops invoked afterwards will return `error(#Closed)`. |
+| `close() none` | Closes the file handle. File ops invoked afterwards will return `error.Closed`. |
 | `read(n number) rawstring` | Reads at most `n` bytes as a `rawstring`. `n` must be at least 1. A result with length 0 indicates the end of file was reached. |
 | `readToEnd() rawstring` | Reads to the end of the file and returns the content as a `rawstring`. |
 | `seek(pos number) none` | Seeks the read/write position to `pos` bytes from the start. Negative `pos` is invalid. |
@@ -252,9 +252,9 @@ for map each k, v:
 #### `type Dir`
 | Method | Summary |
 | -- | -- |
-| `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
+| `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead. |
 | `stat() Map` | Returns info about the file as a `Map`. |
-| `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error(#NotAllowed)` is returned instead. |
+| `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead. |
 
 #### `map DirEntry`
 | Entry | Summary |
@@ -282,6 +282,6 @@ try t.eq(a, 444)
 
 | Function | Summary |
 | -- | -- |
-| `eq(a any, b any) true \| error` | Returns whether two values are equal. Returns `error(#AssertError)` if types do not match up. |
+| `eq(a any, b any) true \| error` | Returns whether two values are equal. Returns `error.AssertError` if types do not match up. |
 | `eqList(a any, b any) true \| error` | Returns true if two lists have the same size and the elements are equal as if `eq` was called on those corresponding elements. |
 | `eqNear(a any, b any) true \| error` | Returns two numbers are near each other within epsilon 1e-5. |

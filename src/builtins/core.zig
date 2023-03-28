@@ -6,7 +6,7 @@ const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const bindings = @import("bindings.zig");
-const TagLit = bindings.TagLit;
+const Symbol = bindings.Symbol;
 const fmt = @import("../fmt.zig");
 const os_mod = @import("os.zig");
 const http = @import("../http.zig");
@@ -38,7 +38,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try b.setFunc("char", &.{bt.Any}, bt.Any, char);
     try b.setFunc("copy", &.{bt.Any}, bt.Any, copy);
-    try b.setFunc("error", &.{bt.TagLiteral}, bt.Error, coreError);
+    try b.setFunc("error", &.{bt.Symbol}, bt.Error, coreError);
     if (cy.isWasm) {
         try b.setFunc("evalJS", &.{bt.Any}, bt.None, evalJS);
         try b.setFunc("execCmd", &.{bt.List}, bt.Any, bindings.nop1);
@@ -75,7 +75,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try b.setFunc("string", &.{bt.Any}, bt.String, string);
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
     try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
-    try b.setFunc("valtag", &.{ bt.Any }, bt.TagLiteral, valtag);
+    try b.setFunc("valtag", &.{ bt.Any }, bt.Symbol, valtag);
+    try b.setFunc("typesym", &.{ bt.Any }, bt.Symbol, typesym);
     if (cy.hasStdFiles) {
         try b.setFunc("writeFile", &.{ bt.Any, bt.Any }, bt.Any, writeFile);
     } else {
@@ -120,12 +121,12 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
     const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
         log.debug("cacheUrl error: {}", .{err});
-        return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+        return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
     };
     defer alloc.free(resp.body);
     if (resp.status != .ok) {
         log.debug("cacheUrl response status: {}", .{resp.status});
-        return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+        return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
     } else {
         const entry = cache.saveNewSpecFile(alloc, specGroup, url, resp.body) catch stdx.fatal();
         defer entry.deinit(alloc);
@@ -171,8 +172,8 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     if (val.isPointer()) {
         stdx.fatal();
     } else {
-        if (val.assumeNotPtrIsTagLiteral()) {
-            return Value.initErrorTagLit(@intCast(u8, val.asTagLiteralId()));
+        if (val.assumeNotPtrIsSymbol()) {
+            return Value.initErrorSymbol(@intCast(u8, val.asSymbolId()));
         } else {
             stdx.fatal();
         }
@@ -204,11 +205,11 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }) catch |err| {
         switch (err) {
             error.FileNotFound => 
-                return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound)),
+                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound)),
             error.StdoutStreamTooLong =>
-                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+                return Value.initErrorSymbol(@enumToInt(Symbol.StreamTooLong)),
             error.StderrStreamTooLong =>
-                return Value.initErrorTagLit(@enumToInt(TagLit.StreamTooLong)),
+                return Value.initErrorSymbol(@enumToInt(Symbol.StreamTooLong)),
             else => stdx.panicFmt("exec err {}\n", .{err}),
         }
     };
@@ -246,7 +247,7 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     } else {
         const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
             log.debug("fetchUrl error: {}", .{err});
-            return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+            return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
         };
         defer alloc.free(resp.body);
         // TODO: Use allocOwnedString
@@ -259,7 +260,7 @@ extern fn hostFetchUrl(url: [*]const u8, urlLen: usize) void;
 pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.allocator(), '\n', 10e8) catch |err| {
         if (err == error.EndOfStream) {
-            return Value.initErrorTagLit(@enumToInt(TagLit.EndOfStream));
+            return Value.initErrorSymbol(@enumToInt(Symbol.EndOfStream));
         } else stdx.fatal();
     };
     defer vm.allocator().free(input);
@@ -308,8 +309,8 @@ pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
             };
             return Value.initF64(res);
         },
-        .tag => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-        .tagLiteral => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+        .enumT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+        .symbol => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
         .int => return Value.initF64(@intToFloat(f64, val.asInteger())),
         else => {
             vm.release(val);
@@ -564,26 +565,32 @@ pub fn typeid(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initF64(@intToFloat(f64, args[0].getTypeId()));
 }
 
-pub fn valtag(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn valtag(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    fmt.printDeprecated("valtag", "0.2", "Use typesym() instead.", &.{});
+    return typesym(vm, args, nargs);
+}
+
+pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     defer vm.release(val);
     switch (val.getUserTag()) {
-        .number => return Value.initTagLiteral(@enumToInt(TagLit.number)),
-        .object => return Value.initTagLiteral(@enumToInt(TagLit.object)),
-        .errorVal => return Value.initTagLiteral(@enumToInt(TagLit.err)),
-        .boolean => return Value.initTagLiteral(@enumToInt(TagLit.bool)),
-        .map => return Value.initTagLiteral(@enumToInt(TagLit.map)),
-        .int => return Value.initTagLiteral(@enumToInt(TagLit.int)),
-        .list => return Value.initTagLiteral(@enumToInt(TagLit.list)),
-        .string => return Value.initTagLiteral(@enumToInt(TagLit.string)),
-        .rawstring => return Value.initTagLiteral(@enumToInt(TagLit.rawstring)),
-        .fiber => return Value.initTagLiteral(@enumToInt(TagLit.fiber)),
+        .number => return Value.initSymbol(@enumToInt(Symbol.number)),
+        .object => return Value.initSymbol(@enumToInt(Symbol.object)),
+        .errorVal => return Value.initSymbol(@enumToInt(Symbol.err)),
+        .boolean => return Value.initSymbol(@enumToInt(Symbol.bool)),
+        .map => return Value.initSymbol(@enumToInt(Symbol.map)),
+        .int => return Value.initSymbol(@enumToInt(Symbol.int)),
+        .list => return Value.initSymbol(@enumToInt(Symbol.list)),
+        .string => return Value.initSymbol(@enumToInt(Symbol.string)),
+        .rawstring => return Value.initSymbol(@enumToInt(Symbol.rawstring)),
+        .fiber => return Value.initSymbol(@enumToInt(Symbol.fiber)),
         .nativeFunc,
         .closure,
-        .lambda => return Value.initTagLiteral(@enumToInt(TagLit.function)),
-        .none => return Value.initTagLiteral(@enumToInt(TagLit.none)),
-        .symbol => return Value.initTagLiteral(@enumToInt(TagLit.symbol)),
-        .pointer => return Value.initTagLiteral(@enumToInt(TagLit.pointer)),
+        .lambda => return Value.initSymbol(@enumToInt(Symbol.function)),
+        .none => return Value.initSymbol(@enumToInt(Symbol.none)),
+        .symbol => return Value.initSymbol(@enumToInt(Symbol.symbol)),
+        .type => return Value.initSymbol(@enumToInt(Symbol.type)),
+        .pointer => return Value.initSymbol(@enumToInt(Symbol.pointer)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }

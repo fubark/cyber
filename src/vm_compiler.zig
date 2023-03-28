@@ -68,7 +68,7 @@ pub const VMcompiler = struct {
             .lastErrNode = undefined,
             .lastErrChunk = undefined,
             .errorPayload = undefined,
-            .sema = sema.Model.init(),
+            .sema = sema.Model.init(vm.alloc),
             .chunks = .{},
             .importTasks = .{},
             .moduleLoaders = .{},
@@ -157,8 +157,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameString);
         id = try sema.ensureNameSym(self, "rawstring");
         std.debug.assert(id == sema.NameRawstring);
-        id = try sema.ensureNameSym(self, "taglit");
-        std.debug.assert(id == sema.NameTagLiteral);
+        id = try sema.ensureNameSym(self, "symbol");
+        std.debug.assert(id == sema.NameSymbol);
         id = try sema.ensureNameSym(self, "List");
         std.debug.assert(id == sema.NameList);
         id = try sema.ensureNameSym(self, "Map");
@@ -183,8 +183,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.String);
         id = try sema.addResolvedBuiltinSym(self, .rawstring, "rawstring");
         std.debug.assert(id == bt.Rawstring);
-        id = try sema.addResolvedBuiltinSym(self, .tagLiteral, "taglit");
-        std.debug.assert(id == bt.TagLiteral);
+        id = try sema.addResolvedBuiltinSym(self, .symbol, "symbol");
+        std.debug.assert(id == bt.Symbol);
         id = try sema.addResolvedBuiltinSym(self, .list, "List");
         std.debug.assert(id == bt.List);
         id = try sema.addResolvedBuiltinSym(self, .map, "Map");
@@ -290,6 +290,9 @@ pub const VMcompiler = struct {
                         .object => {
                             try sema.declareObject(chunk, decl.inner.object);
                         },
+                        .enumT => {
+                            try sema.declareEnum(chunk, decl.inner.enumT);
+                        },
                         .typeAlias => {
                             try sema.declareTypeAlias(chunk, decl.inner.typeAlias);
                         },
@@ -334,6 +337,7 @@ pub const VMcompiler = struct {
                     .object => {
                         try sema.declareObjectMembers(chunk, decl.inner.object);
                     },
+                    .enumT,
                     .import,
                     .typeAlias => {},
                 }

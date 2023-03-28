@@ -102,7 +102,7 @@ pub const PointerT: cy.TypeId = 24;
 pub const FileT: cy.TypeId = 25;
 pub const DirT: cy.TypeId = 26;
 pub const DirIteratorT: cy.TypeId = 27;
-pub const SymbolT: cy.TypeId = 28;
+pub const TypeSymbolT: cy.TypeId = 28;
 
 // Keep it just under 4kb page.
 pub const HeapPage = struct {
@@ -145,7 +145,7 @@ pub const HeapObject = extern union {
     file: if (cy.hasStdFiles) File else void,
     dir: if (cy.hasStdFiles) Dir else void,
     pointer: Pointer,
-    symbol: Symbol,
+    typesym: TypeSymbol,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
@@ -171,11 +171,11 @@ pub const HeapObject = extern union {
     }
 };
 
-pub const SymbolType = enum {
+pub const TypeSymbolType = enum {
     object,
 };
 
-pub const Symbol = extern struct {
+pub const TypeSymbol = extern struct {
     structId: cy.TypeId,
     rc: u32,
     symType: u32,
@@ -612,10 +612,10 @@ pub fn freePoolObject(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection)
     }
 }
 
-pub fn allocSymbol(self: *cy.VM, symType: u8, symId: u32) !Value {
+pub fn allocTypeSymbol(self: *cy.VM, symType: u8, symId: u32) !Value {
     const obj = try allocPoolObject(self);
-    obj.symbol = .{
-        .structId = SymbolT,
+    obj.typesym = .{
+        .structId = TypeSymbolT,
         .rc = 1,
         .symType = symType,
         .symId = symId,
@@ -1584,7 +1584,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
             vm.alloc.free(slice);
         },
-        SymbolT => {
+        TypeSymbolT => {
             freePoolObject(vm, obj);
         },
         else => {

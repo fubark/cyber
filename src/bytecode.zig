@@ -768,7 +768,9 @@ pub const OpCode = enum(u8) {
     setBoxValueRelease = vmc.CodeSetBoxValueRelease,
     boxValue = vmc.CodeBoxValue,
     boxValueRetain = vmc.CodeBoxValueRetain,
+    /// TODO: Rename to enumOp.
     tag = vmc.CodeTag,
+    /// TODO: Rename to symbol.
     tagLiteral = vmc.CodeTagLiteral,
 
     /// Copies a non error value to a local or jumps to end of the function.
@@ -812,6 +814,7 @@ pub const OpCode = enum(u8) {
 
     /// Allocates a symbol object to a destination local.
     /// [symType] [symId] [dst]
+    /// TODO: Rename to typeOp.
     sym = vmc.CodeSym,
 
     cast = vmc.CodeCast,

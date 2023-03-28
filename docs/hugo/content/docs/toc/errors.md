@@ -6,17 +6,20 @@ weight: 7
 # Error Handling.
 In Cyber, errors are values and do not propogate up the call stack by default. Users are not forced to handle errors unless the error value is passed to a typed destination.
 
-The `error` type is a primitive that contains either an enum value or a symbol value. Symbols can be used for convenience but the underlying id value won't be consistent. Use your own enums if you want reliable id values. In a future version of Cyber, you'll be able to attach an optional payload value.
+The `error` type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying id value won't be consistent. Use your own enums if you want reliable id values. In a future version of Cyber, you'll be able to attach an optional payload value.
 ```cy
-func doThatThing():
-    return error(#oops)
+func fail():
+    return error.oops     -- Returns an error with the symbol `#oops`
+
+func fail2():
+    return error(#oops)   -- Alternatively, use the builtin error function to wrap a symbol.
 
 type MyError enum:
     boom
     badArgument
     nameTooLong
 
-err = error(MyError#boom)
+err = error(MyError.boom) -- Creates an error that wraps an enum value.
 ```
 
 The `try` expression wraps a value and guarantees a non error value is returned. If the value is an error, execution stops in the current block and the error is returned to the parent call site.
@@ -32,7 +35,7 @@ res = foo()
 The `catch` expression returns a non error value or swallows the error and returns the `none` value. If a `then` clause follows, a default value is returned instead of the `none` value. An `as` clause lets you use the error inside the `then` expression.
 ```cy
 func foo():
-    return error(#boom)
+    return error.boom
 
 res = catch foo()
 res = catch foo() then 123

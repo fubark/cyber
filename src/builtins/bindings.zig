@@ -19,7 +19,7 @@ const log = stdx.log.scoped(.bindings);
 
 const NullId = std.math.maxInt(u32);
 
-pub const TagLit = enum {
+pub const Symbol = enum {
     bool,
     char,
     uchar,
@@ -76,6 +76,7 @@ pub const TagLit = enum {
     none,
     symbol,
     pointer,
+    type,
 
     // Open modes.
     read,
@@ -170,10 +171,10 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.StaticUstringT);
 
-    id = try self.addBuiltinType("tag");
-    std.debug.assert(id == cy.UserTagT);
-    id = try self.addBuiltinType("taglit");
-    std.debug.assert(id == cy.UserTagLiteralT);
+    id = try self.addBuiltinType("enum");
+    std.debug.assert(id == cy.EnumT);
+    id = try self.addBuiltinType("symbol");
+    std.debug.assert(id == cy.SymbolT);
     id = try self.addBuiltinType("integer");
     std.debug.assert(id == cy.IntegerT);
     id = try self.addBuiltinType("number");
@@ -260,7 +261,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Number }, bt.Any, stringSliceAt(tag));
         try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
         try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
-        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.TagLiteral, bt.Any }, bt.Any, stringTrim(tag));
+        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.Symbol, bt.Any }, bt.Any, stringTrim(tag));
         try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.String, stringUpper(tag));
     }
 
@@ -307,7 +308,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
         try b.addMethod(typeId, toString,     &.{ bt.Any }, bt.Any,
             if (tag == .rawstring) rawStringToString else rawStringSliceToString);
-        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.TagLiteral, bt.Any }, bt.Any, stringTrim(tag));
+        try b.addMethod(typeId, trim,         &.{ bt.Any, bt.Symbol, bt.Any }, bt.Any, stringTrim(tag));
         try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.Rawstring, stringUpper(tag));
         try b.addMethod(typeId, utf8,         &.{ bt.Any }, bt.Any,
             if (tag == .rawstring) rawStringUtf8 else rawStringSliceUtf8);
@@ -315,7 +316,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("Fiber");
     std.debug.assert(id == cy.FiberS);
-    try b.addMethod(cy.FiberS, status, &.{ bt.Any }, bt.TagLiteral, fiberStatus);
+    try b.addMethod(cy.FiberS, status, &.{ bt.Any }, bt.Symbol, fiberStatus);
 
     id = try self.addBuiltinType("Box");
     std.debug.assert(id == cy.BoxS);
@@ -380,79 +381,80 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(cy.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
     }
 
-    id = try self.addBuiltinType("Symbol");
-    std.debug.assert(id == cy.SymbolT);
+    id = try self.addBuiltinType("Type");
+    std.debug.assert(id == cy.TypeSymbolT);
 
-    try ensureTagLitSym(self, "bool", .bool);
-    try ensureTagLitSym(self, "char", .char);
-    try ensureTagLitSym(self, "uchar", .uchar);
-    try ensureTagLitSym(self, "short", .short);
-    try ensureTagLitSym(self, "ushort", .ushort);
-    try ensureTagLitSym(self, "int", .int);
-    try ensureTagLitSym(self, "uint", .uint);
-    try ensureTagLitSym(self, "uint31", .uint31);
-    try ensureTagLitSym(self, "uint1", .uint1);
-    try ensureTagLitSym(self, "long", .long);
-    try ensureTagLitSym(self, "ulong", .ulong);
-    try ensureTagLitSym(self, "usize", .usize);
-    try ensureTagLitSym(self, "float", .float);
-    try ensureTagLitSym(self, "double", .double);
-    try ensureTagLitSym(self, "charPtrZ", .charPtrZ);
-    try ensureTagLitSym(self, "dupeCharPtrZ", .dupeCharPtrZ);
-    try ensureTagLitSym(self, "voidPtr", .voidPtr);
-    try ensureTagLitSym(self, "void", .void);
+    try ensureSymbol(self, "bool", .bool);
+    try ensureSymbol(self, "char", .char);
+    try ensureSymbol(self, "uchar", .uchar);
+    try ensureSymbol(self, "short", .short);
+    try ensureSymbol(self, "ushort", .ushort);
+    try ensureSymbol(self, "int", .int);
+    try ensureSymbol(self, "uint", .uint);
+    try ensureSymbol(self, "uint31", .uint31);
+    try ensureSymbol(self, "uint1", .uint1);
+    try ensureSymbol(self, "long", .long);
+    try ensureSymbol(self, "ulong", .ulong);
+    try ensureSymbol(self, "usize", .usize);
+    try ensureSymbol(self, "float", .float);
+    try ensureSymbol(self, "double", .double);
+    try ensureSymbol(self, "charPtrZ", .charPtrZ);
+    try ensureSymbol(self, "dupeCharPtrZ", .dupeCharPtrZ);
+    try ensureSymbol(self, "voidPtr", .voidPtr);
+    try ensureSymbol(self, "void", .void);
 
-    try ensureTagLitSym(self, "little", .little);
-    try ensureTagLitSym(self, "big", .big);
+    try ensureSymbol(self, "little", .little);
+    try ensureSymbol(self, "big", .big);
 
-    try ensureTagLitSym(self, "left", .left);
-    try ensureTagLitSym(self, "right", .right);
-    try ensureTagLitSym(self, "ends", .ends);
+    try ensureSymbol(self, "left", .left);
+    try ensureSymbol(self, "right", .right);
+    try ensureSymbol(self, "ends", .ends);
 
-    try ensureTagLitSym(self, "AssertError", .AssertError);
-    try ensureTagLitSym(self, "FileNotFound", .FileNotFound);
-    try ensureTagLitSym(self, "MissingSymbol", .MissingSymbol);
-    try ensureTagLitSym(self, "EndOfStream", .EndOfStream);
-    try ensureTagLitSym(self, "OutOfBounds", .OutOfBounds);
-    try ensureTagLitSym(self, "InvalidArgument", .InvalidArgument);
-    try ensureTagLitSym(self, "InvalidSignature", .InvalidSignature);
-    try ensureTagLitSym(self, "InvalidRune", .InvalidRune);
-    try ensureTagLitSym(self, "SteamTooLong", .StreamTooLong);
-    try ensureTagLitSym(self, "NotAllowed", .NotAllowed);
-    try ensureTagLitSym(self, "Closed", .Closed);
-    try ensureTagLitSym(self, "PermissionDenied", .PermissionDenied);
-    try ensureTagLitSym(self, "UnknownError", .UnknownError);
+    try ensureSymbol(self, "AssertError", .AssertError);
+    try ensureSymbol(self, "FileNotFound", .FileNotFound);
+    try ensureSymbol(self, "MissingSymbol", .MissingSymbol);
+    try ensureSymbol(self, "EndOfStream", .EndOfStream);
+    try ensureSymbol(self, "OutOfBounds", .OutOfBounds);
+    try ensureSymbol(self, "InvalidArgument", .InvalidArgument);
+    try ensureSymbol(self, "InvalidSignature", .InvalidSignature);
+    try ensureSymbol(self, "InvalidRune", .InvalidRune);
+    try ensureSymbol(self, "SteamTooLong", .StreamTooLong);
+    try ensureSymbol(self, "NotAllowed", .NotAllowed);
+    try ensureSymbol(self, "Closed", .Closed);
+    try ensureSymbol(self, "PermissionDenied", .PermissionDenied);
+    try ensureSymbol(self, "UnknownError", .UnknownError);
 
-    try ensureTagLitSym(self, "running", .running);
-    try ensureTagLitSym(self, "paused", .paused);
-    try ensureTagLitSym(self, "done", .done);
+    try ensureSymbol(self, "running", .running);
+    try ensureSymbol(self, "paused", .paused);
+    try ensureSymbol(self, "done", .done);
 
-    try ensureTagLitSym(self, "error", .err);
-    try ensureTagLitSym(self, "number", .number);
-    try ensureTagLitSym(self, "object", .object);
-    try ensureTagLitSym(self, "map", .map);
-    try ensureTagLitSym(self, "list", .list);
-    try ensureTagLitSym(self, "function", .function);
-    try ensureTagLitSym(self, "fiber", .fiber);
-    try ensureTagLitSym(self, "string", .string);
-    try ensureTagLitSym(self, "rawstring", .rawstring);
-    try ensureTagLitSym(self, "none", .none);
-    try ensureTagLitSym(self, "symbol", .symbol);
-    try ensureTagLitSym(self, "pointer", .pointer);
+    try ensureSymbol(self, "error", .err);
+    try ensureSymbol(self, "number", .number);
+    try ensureSymbol(self, "object", .object);
+    try ensureSymbol(self, "map", .map);
+    try ensureSymbol(self, "list", .list);
+    try ensureSymbol(self, "function", .function);
+    try ensureSymbol(self, "fiber", .fiber);
+    try ensureSymbol(self, "string", .string);
+    try ensureSymbol(self, "rawstring", .rawstring);
+    try ensureSymbol(self, "none", .none);
+    try ensureSymbol(self, "symbol", .symbol);
+    try ensureSymbol(self, "pointer", .pointer);
+    try ensureSymbol(self, "type", .type);
 
-    try ensureTagLitSym(self, "read", .read);
-    try ensureTagLitSym(self, "write", .write);
-    try ensureTagLitSym(self, "readWrite", .readWrite);
+    try ensureSymbol(self, "read", .read);
+    try ensureSymbol(self, "write", .write);
+    try ensureSymbol(self, "readWrite", .readWrite);
 
-    try ensureTagLitSym(self, "file", .file);
-    try ensureTagLitSym(self, "dir", .dir);
+    try ensureSymbol(self, "file", .file);
+    try ensureSymbol(self, "dir", .dir);
 
-    try ensureTagLitSym(self, "unknown", .unknown);
+    try ensureSymbol(self, "unknown", .unknown);
 }
 
-fn ensureTagLitSym(vm: *cy.VM, name: []const u8, tag: TagLit) !void {
-    const id = try vm.ensureTagLitSym(name);
-    std.debug.assert(id == @enumToInt(tag));
+fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
+    const id = try vm.ensureSymbol(name);
+    std.debug.assert(id == @enumToInt(sym));
 }
 
 fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -493,7 +495,7 @@ fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
     } 
     vm.release(inner.buf[@intCast(usize, index)]);
     inner.remove(@intCast(usize, index));
@@ -507,7 +509,7 @@ fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
     } 
     inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
     inner.insertAssumeCapacity(@intCast(usize, index), value);
@@ -761,13 +763,13 @@ fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     defer vm.releaseObject(obj);
 
     if (gvm.curFiber == @ptrCast(*cy.Fiber, obj)) {
-        return Value.initTagLiteral(@enumToInt(TagLit.running));
+        return Value.initSymbol(@enumToInt(Symbol.running));
     } else {
         // Check if done.
         if (obj.fiber.pc == NullId) {
-            return Value.initTagLiteral(@enumToInt(TagLit.done));
+            return Value.initSymbol(@enumToInt(Symbol.done));
         } else {
-            return Value.initTagLiteral(@enumToInt(TagLit.paused));
+            return Value.initSymbol(@enumToInt(Symbol.paused));
         }
     }
 }
@@ -906,7 +908,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const uidx = @intCast(u32, idx);
                 if (T == .staticAstring) {
@@ -917,7 +919,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isUstringObject(T, obj)) {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const uidx = @intCast(u32, idx);
                 const mru = getUstringMruChar(T, vm, obj);
@@ -936,7 +938,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const uidx = @intCast(u32, idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
@@ -946,7 +948,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         return vm.allocUstring(slice, 1) catch fatal();
                     }
                 } else {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidRune));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
                 }
             } else fatal();
         }
@@ -973,12 +975,12 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const idx = @floatToInt(i32, args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 return Value.initF64(@intToFloat(f64, str[@intCast(u32, idx)]));
             } else if (isUstringObject(T, obj)) {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const uidx = @intCast(u32, idx);
                 const mru = getUstringMruChar(T, vm, obj);
@@ -990,14 +992,14 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 return Value.initF64(@intToFloat(f64, cp));
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const uidx = @intCast(u32, idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
                     const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
                     return Value.initF64(@intToFloat(f64, cp));
                 } else {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidRune));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
                 }
             } else fatal();
         }
@@ -1008,7 +1010,7 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
     const index = @floatToInt(i64, indexv.asF64());
     if (index < 0 or index > str.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
     } 
     const byte = @floatToInt(u8, val.asF64());
     const new = vm.allocUnsetRawStringObject(str.len + 1) catch stdx.fatal();
@@ -1081,7 +1083,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 
             const n = @floatToInt(i32, args[0].asF64());
             if (n < 0) {
-                return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+                return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
             }
 
             var un = @intCast(u32, n);
@@ -1318,13 +1320,13 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const trimRunes = vm.valueToTempString(args[1]);
 
             var res: []const u8 = undefined;
-            const mode = @intToEnum(TagLit, args[0].asTagLiteralId());
+            const mode = @intToEnum(Symbol, args[0].asSymbolId());
             switch (mode) {
                 .left => res = std.mem.trimLeft(u8, str, trimRunes),
                 .right => res = std.mem.trimRight(u8, str, trimRunes),
                 .ends => res = std.mem.trim(u8, str, trimRunes),
                 else => {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
                 }
             }
 
@@ -1443,7 +1445,7 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     end = @intCast(i32, str.len) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const ustart = @intCast(u32, start);
                 const uend = @intCast(u32, end);
@@ -1465,7 +1467,7 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     end = @intCast(i32, charLen) + end;
                 }
                 if (start < 0 or end > charLen or end < start) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 const ustart = @intCast(u32, start);
                 const uend = @intCast(u32, end);
@@ -1491,7 +1493,7 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     end = @intCast(i32, str.len) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
 
                 vm.retainObject(obj);
@@ -1555,7 +1557,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const idx = @floatToInt(i32, args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx > str.len) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 var insertCharLen: u32 = undefined;
                 const insert = vm.valueToTempString2(args[1], &insertCharLen);
@@ -1568,7 +1570,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
                 if (idx < 0 or idx > charLen) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 }
                 var insertCharLen: u32 = undefined;
                 const insert = vm.valueToTempString2(args[1], &insertCharLen);
@@ -1580,7 +1582,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(u32, charLen + insertCharLen)) catch fatal();
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx > str.len) {
-                    return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
                 } 
                 const insert = vm.valueToTempString(args[1]);
                 const new = vm.allocUnsetRawStringObject(str.len + insert.len) catch stdx.fatal();
@@ -1691,7 +1693,7 @@ fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) lin
             return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
         }
     } else {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidRune));
+        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
     }
 }
 
@@ -1711,7 +1713,7 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
             return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
         }
     } else {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidRune));
+        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
     }
 }
 
@@ -1720,7 +1722,7 @@ fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
     defer vm.releaseObject(obj);
     const idx = @floatToInt(i32, args[0].asF64());
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
     }
     const str = obj.rawstringSlice.getConstSlice();
     const uidx = @intCast(u32, idx);
@@ -1732,7 +1734,7 @@ fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) lin
     defer vm.releaseObject(obj);
     const idx = @floatToInt(i32, args[0].asF64());
     if (idx < 0 or idx >= obj.rawstring.len) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.OutOfBounds));
+        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
     }
     const str = obj.rawstring.getConstSlice();
     const uidx = @intCast(u32, idx);
@@ -1992,7 +1994,7 @@ pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksectio
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), true) catch fatal();
     } else {
-        return Value.initErrorTagLit(@enumToInt(TagLit.NotAllowed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.NotAllowed));
     }
 }
 
@@ -2003,7 +2005,7 @@ pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), false) catch fatal();
     } else {
-        return Value.initErrorTagLit(@enumToInt(TagLit.NotAllowed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.NotAllowed));
     }
 }
 
@@ -2020,12 +2022,12 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes > 0) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
     }
 
     const file = obj.file.getStdFile();
@@ -2040,7 +2042,7 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
@@ -2057,12 +2059,12 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes < 0) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
     }
 
     const file = obj.file.getStdFile();
@@ -2081,7 +2083,7 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
     }
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     var buf = vm.valueToTempRawString(args[0]);
@@ -2105,12 +2107,12 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes <= 0) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.InvalidArgument));
+        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
     }
     const unumBytes = @intCast(u32, numBytes);
     const file = obj.file.getStdFile();
@@ -2133,7 +2135,7 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     const file = obj.file.getStdFile();
@@ -2168,7 +2170,7 @@ pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorTagLit(@enumToInt(TagLit.Closed));
+        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
     }
 
     const file = obj.file.getStdFile();
@@ -2182,12 +2184,12 @@ pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     const modeKey = vm.allocAstring("mode") catch fatal();
     gvm.setIndex(map, modeKey, Value.initF64(@intToFloat(f64, stat.mode))) catch fatal();
     const typeKey = vm.allocAstring("type") catch fatal();
-    const typeTag: TagLit = switch (stat.kind) {
+    const typeTag: Symbol = switch (stat.kind) {
         .File => .file,
         .Directory => .dir,
         else => .unknown,
     };
-    gvm.setIndex(map, typeKey, Value.initTagLiteral(@enumToInt(typeTag))) catch fatal();
+    gvm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
     const atimeKey = vm.allocAstring("atime") catch fatal();
     gvm.setIndex(map, atimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.atime, 1000000)))) catch fatal();
     const ctimeKey = vm.allocAstring("ctime") catch fatal();
@@ -2214,12 +2216,12 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
             const nameKey = vm.allocAstring("name") catch fatal();
             gvm.setIndex(map, nameKey, vm.allocRawString(entry.basename) catch fatal()) catch fatal();
             const typeKey = vm.allocAstring("type") catch fatal();
-            const typeTag: TagLit = switch (entry.kind) {
+            const typeTag: Symbol = switch (entry.kind) {
                 .File => .file,
                 .Directory => .dir,
                 else => .unknown,
             };
-            gvm.setIndex(map, typeKey, Value.initTagLiteral(@enumToInt(typeTag))) catch fatal();
+            gvm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2234,12 +2236,12 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
             const nameKey = vm.allocAstring("name") catch fatal();
             gvm.setIndex(map, nameKey, vm.allocRawString(entry.name) catch fatal()) catch fatal();
             const typeKey = vm.allocAstring("type") catch fatal();
-            const typeTag: TagLit = switch (entry.kind) {
+            const typeTag: Symbol = switch (entry.kind) {
                 .File => .file,
                 .Directory => .dir,
                 else => .unknown,
             };
-            gvm.setIndex(map, typeKey, Value.initTagLiteral(@enumToInt(typeTag))) catch fatal();
+            gvm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2347,10 +2349,10 @@ pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFun
                 fmt.printStderr("{} {}\n", &.{ fmt.v(name), fmt.v(err) });
                 switch (err) {
                     error.FileNotFound => {
-                        return Value.initErrorTagLit(@enumToInt(TagLit.FileNotFound));
+                        return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
                     },
                     else => {
-                        return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+                        return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
                     },
                 }
             };
@@ -2369,7 +2371,7 @@ pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin
         }
         fatal();
     }
-    return Value.initErrorTagLit(@enumToInt(TagLit.UnknownError));
+    return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
 }
 
 pub const ModuleBuilder = struct {

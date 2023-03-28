@@ -64,6 +64,9 @@ pub const LocalVar = struct {
     ///    Since the var needs to be released at the end of the root block,
     ///    it needs to have a defined value.
     /// 2. Var is first assigned in an iteration block.
+    /// 3. Var's lifetimeRcCandidate becomes true and is assigned on the main branch to 
+    ///    expression that can throw. If the expression throws, the var needs to be defined
+    ///    for the deinitializers. Currently, every expression is assumed to throw. 
     /// At the beginning of codegen for this block, these vars will be inited to the `none` value.
     genInitializer: bool = false,
 
@@ -263,11 +266,45 @@ const ResolvedSymType = enum {
     func,
     variable,
     object,
+    enumType,
+    enumMember,
     module,
     builtinType,
 };
 
 pub const ResolvedSymId = u32;
+
+const ResolvedSymData = extern union {
+    func: extern struct {
+        /// Refers to exactly one resolved func sym.
+        /// rFuncSymId == cy.NullId indicates this sym is overloaded;
+        /// more than one func shares the same symbol. To disambiguate,
+        /// `resolvedFuncSymMap` must be queried with a absResolvedFuncSymKey.
+        rFuncSymId: ResolvedFuncSymId,
+    },
+    variable: extern struct {
+        chunkId: CompileChunkId,
+        declId: cy.NodeId,
+        rTypeSymId: ResolvedSymId,
+    },
+    object: extern struct {
+        modId: ModuleId,
+    },
+    enumType: extern struct {
+        modId: ModuleId,
+    },
+    enumMember: extern struct {
+        enumId: u32,
+        memberId: u32,
+    },
+    module: extern struct {
+        id: ModuleId,
+    },
+    builtinType: extern struct {
+        // TypeTag.
+        typeT: u8,
+    },
+};
 
 /// Local symbols are resolved during and after the sema pass.
 /// Not all module members from builtins are resolved, only ones that are used.
@@ -275,30 +312,7 @@ pub const ResolvedSym = struct {
     symT: ResolvedSymType,
     /// Used to backtrack and build the full sym name.
     key: AbsResolvedSymKey,
-    inner: extern union {
-        func: extern struct {
-            /// Refers to exactly one resolved func sym.
-            /// rFuncSymId == cy.NullId indicates this sym is overloaded;
-            /// more than one func shares the same symbol. To disambiguate,
-            /// `resolvedFuncSymMap` must be queried with a absResolvedFuncSymKey.
-            rFuncSymId: ResolvedFuncSymId,
-        },
-        variable: extern struct {
-            chunkId: CompileChunkId,
-            declId: cy.NodeId,
-            rTypeSymId: ResolvedSymId,
-        },
-        object: extern struct {
-            modId: ModuleId,
-        },
-        module: extern struct {
-            id: ModuleId,
-        },
-        builtinType: extern struct {
-            // TypeTag.
-            typeT: u8,
-        },
-    },
+    inner: ResolvedSymData,
     /// Whether the symbol is exported.
     exported: bool,
     /// Whether the symbol has been or is in the process of generating it's static initializer.
@@ -306,6 +320,26 @@ pub const ResolvedSym = struct {
 
     pub fn getObjectTypeId(self: ResolvedSym, vm: *cy.VM) ?cy.TypeId {
         return vm.getObjectTypeId(self.key.absResolvedSymKey.rParentSymId, self.key.absResolvedSymKey.nameId);
+    }
+
+    pub fn getModuleId(self: ResolvedSym) ?ModuleId {
+        switch (self.symT) {
+            .module => {
+                return self.inner.module.id;
+            },
+            .enumType => {
+                return self.inner.enumType.modId;
+            },
+            .object => {
+                return self.inner.object.modId;
+            },
+            .builtinType,
+            .enumMember,
+            .func,
+            .variable => {
+                return null;
+            },
+        }
     }
 };
 
@@ -508,6 +542,50 @@ pub const Module = struct {
         });
     }
 
+    pub fn declareEnumMember(self: *Module, c: *cy.VMcompiler, name: []const u8, enumId: u32, memberId: u32) !void {
+        const nameId = try ensureNameSym(c, name);
+        const key = RelModuleSymKey{
+            .relModuleSymKey = .{
+                .nameId = nameId,
+                .rFuncSigId = cy.NullId,
+            },
+        };
+        if (self.syms.contains(key)) {
+            return error.DuplicateSymName;
+        }
+        try self.syms.put(c.alloc, key, .{
+            .symT = .enumMember,
+            .inner = .{
+                .enumMember = .{
+                    .rtEnumId = enumId,
+                    .memberId = memberId,
+                },
+            },
+        });
+    }
+
+    pub fn declareEnumType(self: *Module, c: *cy.VMcompiler, name: []const u8, rtEnumId: u32, modId: ModuleId) !void {
+        const nameId = try ensureNameSym(c, name);
+        const key = RelModuleSymKey{
+            .relModuleSymKey = .{
+                .nameId = nameId,
+                .rFuncSigId = cy.NullId,
+            },
+        };
+        if (self.syms.contains(key)) {
+            return error.DuplicateSymName;
+        }
+        try self.syms.put(c.alloc, key, .{
+            .symT = .enumType,
+            .inner = .{
+                .enumType = .{
+                    .rtEnumId = rtEnumId,
+                    .modId = modId,
+                },
+            },
+        });
+    }
+
     pub fn setObject(self: *Module, c: *cy.VMcompiler, name: []const u8, typeId: cy.TypeId, modId: ModuleId) !void {
         const nameId = try ensureNameSym(c, name);
         const key = RelModuleSymKey{
@@ -642,6 +720,8 @@ const ModuleSymType = enum {
     userVar,
     userFunc,
     object,
+    enumType,
+    enumMember,
     userObject,
     typeAlias,
 };
@@ -679,6 +759,14 @@ const ModuleSym = struct {
         object: struct {
             typeId: cy.TypeId,
             modId: ModuleId,
+        },
+        enumType: struct {
+            rtEnumId: u32,
+            modId: ModuleId,
+        },
+        enumMember: struct {
+            rtEnumId: u32,
+            memberId: u32,
         },
         userObject: struct {
             declId: cy.NodeId,
@@ -806,30 +894,8 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 .rParentSymId = rSym.key.absResolvedSymKey.rParentSymId,
             });
         },
-        .tagDecl => {
-            const nameN = c.nodes[node.head.tagDecl.name];
-            const name = c.getNodeTokenString(nameN);
-
-            const tid = try c.compiler.vm.ensureTagType(name);
-
-            var i: u32 = 0;
-            var memberId = node.head.tagDecl.memberHead;
-            while (memberId != cy.NullId) : (i += 1) {
-                const member = c.nodes[memberId];
-                memberId = member.next;
-            }
-            const numMembers = i;
-            c.compiler.vm.tagTypes.buf[tid].numMembers = numMembers;
-
-            i = 0;
-            memberId = node.head.tagDecl.memberHead;
-            while (memberId != cy.NullId) : (i += 1) {
-                const member = c.nodes[memberId];
-                const mName = c.getNodeTokenString(member);
-                const symId = try c.compiler.vm.ensureTagLitSym(mName);
-                c.compiler.vm.setTagLitSym(tid, symId, i);
-                memberId = member.next;
-            }
+        .enumDecl => {
+            return;
         },
         .objectDecl => {
             try objectDecl(c, nodeId, true);
@@ -1075,6 +1141,49 @@ pub fn declareObjectMembers(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
     }
 }
 
+pub fn declareEnum(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
+    const node = c.nodes[nodeId];
+    const nameN = c.nodes[node.head.enumDecl.name];
+    const name = c.getNodeTokenString(nameN);
+    // const nameId = try ensureNameSym(c.compiler, name);
+
+    const modId = try appendSubModule(c.compiler, name);
+    const mod = c.compiler.sema.getModulePtr(modId);
+
+    const eid = try c.compiler.vm.ensureEnum(name);
+
+    var i: u32 = 0;
+    var memberId = node.head.enumDecl.memberHead;
+    var buf: std.ArrayListUnmanaged(NameSymId) = .{};
+    defer buf.deinit(c.alloc);
+
+    while (memberId != cy.NullId) : (i += 1) {
+        const member = c.nodes[memberId];
+        const mName = c.getNodeTokenString(member);
+        const mNameId = try ensureNameSym(c.compiler, mName);
+        try buf.append(c.alloc, mNameId);
+        // const mSymId = try c.compiler.vm.ensureSymbol(mName);
+        mod.declareEnumMember(c.compiler, mName, eid, i) catch |err| {
+            if (err == error.DuplicateSymName) {
+                return c.reportErrorAt("The enum symbol `{}` was already declared.", &.{v(mName)}, memberId);
+            } else {
+                return err;
+            }
+        };
+        memberId = member.next;
+    }
+    c.compiler.vm.enums.buf[eid].members = try buf.toOwnedSlice(c.alloc);
+
+    const chunkMod = c.compiler.sema.getModulePtr(c.modId);
+    chunkMod.declareEnumType(c.compiler, name, eid, modId) catch |err| {
+        if (err == error.DuplicateSymName) {
+            return c.reportErrorAt("The symbol `{}` was already declared.", &.{v(name)}, nodeId);
+        } else {
+            return err;
+        }
+    };
+}
+
 pub fn declareObject(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.objectDecl.name];
@@ -1300,14 +1409,11 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
 
             return types.ListType;
         },
-        .tagLiteral => {
-            return types.TagLiteralType;
+        .symbolLit => {
+            return types.SymbolType;
         },
-        .tagInit => {
-            const nameN = c.nodes[node.head.left_right.left];
-            const name = c.getNodeTokenString(nameN);
-            const tid = try c.compiler.vm.ensureTagType(name);
-            return types.initTagType(tid);
+        .errorSymLit => {
+            return types.ErrorType;
         },
         .objectInit => {
             _ = try semaExpr(c, node.head.objectInit.name, discardTopExprReg);
@@ -2271,10 +2377,17 @@ fn getTypeForResolvedValueSym(chunk: *cy.CompileChunk, crSymId: CompactResolvedS
         return types.AnyType;
     } else {
         const rSym = chunk.compiler.sema.getResolvedSym(crSymId.id);
-        if (rSym.symT == .variable) {
-            return types.typeFromResolvedSym(chunk, rSym.inner.variable.rTypeSymId);
-        } else {
-            return types.AnyType;
+        switch (rSym.symT) {
+            .variable => {
+                return types.typeFromResolvedSym(chunk, rSym.inner.variable.rTypeSymId);
+            },
+            .enumMember => {
+                const enumId = rSym.inner.enumMember.enumId;
+                return types.initEnumType(enumId);
+            },
+            else => {
+                return types.AnyType;
+            },
         }
     }
 }
@@ -2467,6 +2580,8 @@ fn findDistinctModuleSym(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameS
             .userFunc,
             .variable,
             .object,
+            .enumType,
+            .enumMember,
             .typeAlias,
             .symToOneFunc,
             .userObject,
@@ -2710,9 +2825,8 @@ fn getOrResolveDistinctSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId,
         }
     }
             
-    const parentSym = chunk.compiler.sema.resolvedSyms.items[rParentSymId];
-    if (parentSym.symT == .module) {
-        const modId = parentSym.inner.module.id;
+    const parentSym = chunk.compiler.sema.getResolvedSym(rParentSymId);
+    if (parentSym.getModuleId()) |modId| {
         if (try findDistinctModuleSym(chunk, modId, nameId)) {
             const crSymId = (try resolveSymFromModule(chunk, modId, nameId, cy.NullId)).?;
             if (crSymId.isFuncSymId) {
@@ -2732,11 +2846,8 @@ fn getOrResolveDistinctSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId,
             const name = getName(chunk.compiler, nameId);
             return chunk.reportError("Missing symbol: `{}`", &.{v(name)});
         }
-    } else if (parentSym.symT == .variable) {
-        return null;
-    } else {
-        return chunk.reportError("Unsupported module type: {}", &.{v(parentSym.symT)});
     }
+    return null;
 }
 
 const FuncCallSymResult = struct {
@@ -3075,42 +3186,29 @@ fn resolveSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSy
                 return CompactResolvedSymId.initFuncSymId(res.rFuncSymId);
             },
             .variable => {
-                const id = @intCast(u32, self.sema.resolvedSyms.items.len);
                 const rtSymId = try self.vm.ensureVarSym(mod.resolvedRootSymId, nameId);
                 const rtSym = cy.VarSym.init(modSym.inner.variable.val);
                 cy.arc.retain(self.vm, rtSym.value);
                 self.vm.setVarSym(rtSymId, rtSym);
-                try self.sema.resolvedSyms.append(self.alloc, .{
-                    .symT = .variable,
-                    .key = key,
-                    .inner = .{
-                        .variable = .{
-                            .chunkId = cy.NullId,
-                            .declId = cy.NullId,
-                            .rTypeSymId = modSym.extra.variable.rTypeSymId,
-                        },
+                const id = try self.sema.addResolvedSym(key, .variable, .{
+                    .variable = .{
+                        .chunkId = cy.NullId,
+                        .declId = cy.NullId,
+                        .rTypeSymId = modSym.extra.variable.rTypeSymId,
                     },
-                    .exported = true,
                 });
-                try self.sema.resolvedSymMap.put(self.alloc, key, id);
                 return CompactResolvedSymId.initSymId(id);
             },
             .userVar => {
-                const id = @intCast(u32, self.sema.resolvedSyms.items.len);
                 _ = try self.vm.ensureVarSym(mod.resolvedRootSymId, nameId);
-                try self.sema.resolvedSyms.append(self.alloc, .{
-                    .symT = .variable,
-                    .key = key,
-                    .inner = .{
-                        .variable = .{
-                            .chunkId = self.sema.modules.items[modId].chunkId,
-                            .declId = modSym.inner.userVar.declId,
-                            .rTypeSymId = bt.Any,
-                        },
+
+                const id = try self.sema.addResolvedSym(key, .variable, .{
+                    .variable = .{
+                        .chunkId = self.sema.modules.items[modId].chunkId,
+                        .declId = modSym.inner.userVar.declId,
+                        .rTypeSymId = bt.Any,
                     },
-                    .exported = true,
                 });
-                try self.sema.resolvedSymMap.put(self.alloc, key, id);
                 return CompactResolvedSymId.initSymId(id);
             },
             .userFunc => {
@@ -3121,19 +3219,28 @@ fn resolveSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSy
                 return CompactResolvedSymId.initFuncSymId(res.rFuncSymId);
             },
             .object => {
-                const id = @intCast(u32, self.sema.resolvedSyms.items.len);
-                try self.sema.resolvedSyms.append(self.alloc, .{
-                    .symT = .object,
-                    .key = key,
-                    .inner = .{
-                        .object = .{
-                            .modId = modSym.inner.object.modId,
-                        },
+                const id = try self.sema.addResolvedSym(key, .object, .{
+                    .object = .{
+                        .modId = modSym.inner.object.modId,
                     },
-                    .exported = true,
                 });
-                try self.sema.resolvedSymMap.put(self.alloc, key, id);
-
+                return CompactResolvedSymId.initSymId(id);
+            },
+            .enumType => {
+                const id = try self.sema.addResolvedSym(key, .enumType, .{
+                    .enumType = .{
+                        .modId = modSym.inner.enumType.modId,
+                    },
+                });
+                return CompactResolvedSymId.initSymId(id);
+            },
+            .enumMember => {
+                const id = try self.sema.addResolvedSym(key, .enumMember, .{
+                    .enumMember = .{
+                        .enumId = modSym.inner.enumMember.rtEnumId,
+                        .memberId = modSym.inner.enumMember.memberId,
+                    },
+                });
                 return CompactResolvedSymId.initSymId(id);
             },
             .typeAlias => {
@@ -3316,6 +3423,9 @@ fn assignVar(self: *cy.CompileChunk, ident: cy.NodeId, vtype: Type, strat: VarLo
             svar.vtype = toLocalType(vtype);
             if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
                 svar.lifetimeRcCandidate = true;
+
+                // Rule #3 for setting genInitializer. Assumes right expr throws for now.
+                svar.genInitializer = true;
             }
         }
 
@@ -3524,6 +3634,35 @@ pub fn getOrLoadModule(self: *cy.CompileChunk, spec: []const u8, nodeId: cy.Node
         });
         return modId;
     }
+}
+
+pub fn resolveEnumSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []const u8, modId: ModuleId) !ResolvedSymId {
+    const nameId = try ensureNameSym(c, name);
+    const key = AbsResolvedSymKey{
+        .absResolvedSymKey = .{
+            .rParentSymId = rParentSymId,
+            .nameId = nameId,
+        },
+    };
+    if (c.sema.resolvedSymMap.contains(key)) {
+        return error.DuplicateSymName;
+    }
+
+    // Resolve the symbol.
+    const rSymId = @intCast(u32, c.sema.resolvedSyms.items.len);
+    try c.sema.resolvedSyms.append(c.alloc, .{
+        .symT = .enumT,
+        .key = key,
+        .inner = .{
+            .enumT = .{
+                .modId = modId,
+            },
+        },
+        .exported = true,
+    });
+    try @call(.never_inline, c.sema.resolvedSymMap.put, .{c.alloc, key, rSymId});
+
+    return rSymId;
 }
 
 pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []const u8, modId: ModuleId) !ResolvedSymId {
@@ -3863,7 +4002,7 @@ pub const NameNumber = 2;
 pub const NameInt = 3;
 pub const NameString = 4;
 pub const NameRawstring = 5;
-pub const NameTagLiteral = 6;
+pub const NameSymbol = 6;
 pub const NameList = 7;
 pub const NameMap = 8;
 pub const NamePointer = 9;
@@ -3967,6 +4106,8 @@ const ResolvedFuncSigKey = struct {
 };
 
 pub const Model = struct {
+    alloc: std.mem.Allocator,
+
     /// Unique name syms.
     nameSyms: std.ArrayListUnmanaged(Name),
     nameSymMap: std.StringHashMapUnmanaged(NameSymId),
@@ -3997,8 +4138,9 @@ pub const Model = struct {
     /// Owned absolute specifier path to module.
     moduleMap: std.StringHashMapUnmanaged(ModuleId),
 
-    pub fn init() Model {
+    pub fn init(alloc: std.mem.Allocator) Model {
         return .{
+            .alloc = alloc,
             .nameSyms = .{},
             .nameSymMap = .{},
             .resolvedSyms = .{},
@@ -4066,6 +4208,18 @@ pub const Model = struct {
 
     pub fn getResolvedSym(self: *Model, id: ResolvedSymId) ResolvedSym {
         return self.resolvedSyms.items[id];
+    }
+
+    pub fn addResolvedSym(self: *Model, key: AbsResolvedSymKey, symT: ResolvedSymType, data: ResolvedSymData) !ResolvedSymId {
+        const id = @intCast(u32, self.resolvedSyms.items.len);
+        try self.resolvedSyms.append(self.alloc, .{
+            .symT = symT,
+            .key = key,
+            .inner = data,
+            .exported = true,
+        });
+        try self.resolvedSymMap.put(self.alloc, key, id);
+        return id;
     }
 
     pub fn getResolvedSymPtr(self: *Model, id: ResolvedSymId) *ResolvedSym {

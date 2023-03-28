@@ -112,7 +112,7 @@ fn genSymbolTo(self: *CompileChunk, crSymId: sema.CompactResolvedSymId, dst: Loc
             return self.initGenValue(dst, types.AnyType, true);
         } else if (rSym.symT == .object) {
             const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
-            try self.buf.pushOp1(.sym, @enumToInt(cy.heap.SymbolType.object));
+            try self.buf.pushOp1(.sym, @enumToInt(cy.heap.TypeSymbolType.object));
             try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
             try self.buf.pushOperand(dst);
             return self.initGenValue(dst, types.AnyType, true);
@@ -735,20 +735,39 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
         } else {
             const rSym = self.compiler.sema.getResolvedSym(crSymId.id);
             const key = rSym.key.absResolvedSymKey;
-            if (rSym.symT == .variable) {
-                const rtSymId = self.compiler.vm.getVarSym(key.rParentSymId, key.nameId).?;
-                if (dstIsUsed) {
-                    // Static variable.
-                    try self.pushOptionalDebugSym(nodeId);       
-                    try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), dst);
-                    return self.initGenValue(dst, types.AnyType, true);
-                } else {
-                    return GenValue.initNoValue();
+            switch (rSym.symT) {
+                .variable => {
+                    const rtSymId = self.compiler.vm.getVarSym(key.rParentSymId, key.nameId).?;
+                    if (dstIsUsed) {
+                        // Static variable.
+                        try self.pushOptionalDebugSym(nodeId);       
+                        try self.buf.pushOp2(.staticVar, @intCast(u8, rtSymId), dst);
+                        return self.initGenValue(dst, types.AnyType, true);
+                    } else {
+                        return GenValue.initNoValue();
+                    }
+                },
+                .enumMember => {
+                    if (dstIsUsed) {
+                        const enumId = rSym.inner.enumMember.enumId;
+                        const val = cy.Value.initEnum(@intCast(u8, enumId), @intCast(u8, rSym.inner.enumMember.memberId));
+                        const idx = try self.buf.pushConst(cy.Const.init(val.val));
+                        try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+
+                        const vtype = types.initEnumType(enumId);
+                        return self.initGenValue(dst, vtype, true);
+                    } else {
+                        return GenValue.initNoValue();
+                    }
+                },
+                else => {
+                    return self.reportError("Unsupported accessExpr: {}", &.{v(rSym.symT)});
                 }
             }
         }
+    } else {
+        return genField(self, node.head.accessExpr.left, node.head.accessExpr.right, dst, retain, dstIsUsed, nodeId);
     }
-    return genField(self, node.head.accessExpr.left, node.head.accessExpr.right, dst, retain, dstIsUsed, nodeId);
 }
 
 fn genReleaseIfRetainedTempAt(self: *cy.CompileChunk, val: GenValue, nodeId: cy.NodeId) !void {
@@ -857,11 +876,20 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
                 return GenValue.initNoValue();
             }
         },
-        .tagLiteral => {
+        .symbolLit => {
             const name = self.getNodeTokenString(node);
-            const symId = try self.compiler.vm.ensureTagLitSym(name);
+            const symId = try self.compiler.vm.ensureSymbol(name);
             try self.buf.pushOp2(.tagLiteral, @intCast(u8, symId), dst);
-            return self.initGenValue(dst, types.TagLiteralType, false);
+            return self.initGenValue(dst, types.SymbolType, false);
+        },
+        .errorSymLit => {
+            const symN = self.nodes[node.head.errorSymLit.symbol];
+            const name = self.getNodeTokenString(symN);
+            const symId = try self.compiler.vm.ensureSymbol(name);
+            const val = cy.Value.initErrorSymbol(@intCast(u8, symId));
+            const idx = try self.buf.pushConst(cy.Const.init(val.val));
+            try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+            return self.initGenValue(dst, types.ErrorType, false);
         },
         .string => {
             if (dstIsUsed) {
@@ -879,28 +907,6 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
             if (dstIsUsed) {
                 return genNone(self, dst);
             } else return GenValue.initNoValue();
-        },
-        .tagInit => {
-            const name = self.nodes[node.head.left_right.left];
-            const tname = self.getNodeTokenString(name);
-            const tid = self.compiler.vm.tagTypeSignatures.get(tname) orelse {
-                return self.reportErrorAt("Missing tag type: `{}`", &.{v(tname)}, nodeId);
-            };
-
-            const tagLit = self.nodes[node.head.left_right.right];
-            const lname = self.getNodeTokenString(tagLit);
-            const symId = self.compiler.vm.tagLitSymSignatures.get(lname) orelse {
-                return self.reportErrorAt("Missing tag literal: `{}`", &.{v(lname)}, nodeId);
-            };
-            const sym = self.compiler.vm.tagLitSyms.buf[symId];
-            if (sym.symT == .one) {
-                if (sym.inner.one.id == tid) {
-                    try self.buf.pushOp3(.tag, @intCast(u8, tid), @intCast(u8, sym.inner.one.val), dst);
-                    const vtype = types.initTagType(tid);
-                    return self.initGenValue(dst, vtype, false);
-                }
-            }
-            return self.reportErrorAt("Tag `{}` does not have member `{}`", &.{ v(tname), v(lname) }, nodeId);
         },
         .matchBlock => {
             return genMatchBlock(self, nodeId, dst, retain);
@@ -1279,7 +1285,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 }
             }
         },
-        .tagDecl => {
+        .enumDecl => {
             // Nop.
         },
         .typeAliasDecl => {
@@ -2406,15 +2412,26 @@ fn genSetVarToExpr(self: *CompileChunk, leftId: cy.NodeId, exprId: cy.NodeId, co
                 svar.vtype = exprv.vtype;
             }
             return;
-        } else if (expr.node_t == .tagLiteral) {
-            if (svar.vtype.typeT == .tag) {
+        } else if (expr.node_t == .symbolLit) {
+            if (svar.vtype.typeT == .enumT) {
                 const name = self.getNodeTokenString(expr);
-                const symId = try self.compiler.vm.ensureTagLitSym(name);
-                const sym = self.compiler.vm.tagLitSyms.buf[symId];
-                if (sym.symT == .one and sym.inner.one.id == svar.vtype.inner.tag.tagId) {
-                    try self.buf.pushOp3(.tag, svar.vtype.inner.tag.tagId, @intCast(u8, sym.inner.one.val), svar.local);
-                    return;
+                const nameId = try sema.ensureNameSym(self.compiler, name);
+                const enumSym = self.compiler.vm.enums.buf[svar.vtype.inner.enumT.enumId];
+                for (enumSym.members, 0..) |mNameId, i| {
+                    if (nameId == mNameId) {
+                        const val = cy.Value.initEnum(@intCast(u8, svar.vtype.inner.enumT.enumId), @intCast(u8, i));
+                        const idx = try self.buf.pushConst(cy.Const.init(val.val));
+                        try self.buf.pushOp2(.constOp, @intCast(u8, idx), svar.local);
+                        return;
+                    }
                 }
+
+                // const symId = try self.compiler.vm.ensureSymbol(name);
+                // const sym = self.compiler.vm.syms.buf[symId];
+                // if (sym.symT == .one and sym.inner.one.id == svar.vtype.inner.enumT.tagId) {
+                //     try self.buf.pushOp3(.tag, svar.vtype.inner.enumT.tagId, @intCast(u8, sym.inner.one.val), svar.local);
+                //     return;
+                // }
             }
         }
 
@@ -2448,7 +2465,7 @@ fn genSetBoxedVarToExpr(self: *CompileChunk, svar: *sema.LocalVar, exprId: cy.No
     }
 }
 
-/// Reserve locals upfront and gen var initializer if necessary.
+/// Reserve locals upfront if `genInitializer` is set.
 pub fn genInitLocals(self: *CompileChunk) !void {
     const sblock = sema.curBlock(self);
 

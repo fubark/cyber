@@ -108,8 +108,8 @@ typedef enum {
     TYPE_ERROR = 2,
     TYPE_STATIC_ASTRING = 3,
     TYPE_STATIC_USTRING = 4,
-    TYPE_TAG = 5,
-    TYPE_TAGLIT = 6,
+    TYPE_ENUM = 5,
+    TYPE_SYMBOL = 6,
     TYPE_INTEGER = 7,
     TYPE_NUMBER = 8,
     TYPE_LIST,
@@ -131,7 +131,7 @@ typedef enum {
     TYPE_FILE,
     TYPE_DIR,
     TYPE_DIR_ITER,
-    TYPE_SYMBOL,
+    TYPE_TYPESYM,
 } Type;
 
 typedef uint8_t Inst;
@@ -253,11 +253,11 @@ typedef struct VM {
     ZCyList structs;
     ZHashMap structSignatures;
 
-    ZCyList tagTypes;
-    ZHashMap tagTypeSignatures;
+    ZCyList enums;
+    ZHashMap enumSignatures;
 
-    ZCyList tagLitSyms;
-    ZHashMap tagLitSymSignatures;
+    ZCyList syms;
+    ZHashMap symSignatures;
 
     ZCyList u8Buf;
     ZCyList u8Buf2;

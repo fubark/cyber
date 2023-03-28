@@ -113,7 +113,7 @@ func split(self, delim string) List
 func startsWith(self, prefix string) bool
 -- Returns whether the string starts with `prefix`.
 
-func trim(self, mode taglit, trimRunes any) string
+func trim(self, mode symbol, trimRunes any) string
 -- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
 
 func upper(self) string
@@ -125,9 +125,9 @@ str = &#39;Scoreboard: {name} {points}&#39;
 </code></pre><p>Escape braces with a backslash.</p><pre tabindex=0><code class=language-cy data-lang=cy>points = 123
 str = &#39;Scoreboard: \{ Bob \} {points}&#39;
 </code></pre><p>String templates can not contain nested string templates.</p><h3 id=rawstring>rawstring.
-<a class=anchor href=#rawstring>#</a></h3><p>A <code>rawstring</code> does not automatically validate the string and is indexed by bytes and not UTF-8 runes.</p><p>Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, <code>error(#InvalidRune)</code> is returned. This is equivalent to calling the method <code>sliceAt()</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>str = rawstring(&#39;abcd&#39;).insertByte(1, 255)
+<a class=anchor href=#rawstring>#</a></h3><p>A <code>rawstring</code> does not automatically validate the string and is indexed by bytes and not UTF-8 runes.</p><p>Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, <code>error.InvalidRune</code> is returned. This is equivalent to calling the method <code>sliceAt()</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>str = rawstring(&#39;abcd&#39;).insertByte(1, 255)
 print str[0]     -- &#34;a&#34;
-print str[1]     -- error(#InvalidRune)
+print str[1]     -- error.InvalidRune
 print str[-1]    -- &#34;d&#34;
 </code></pre><h3 id=type-rawstring><code>type rawstring</code>
 <a class=anchor href=#type-rawstring>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>func byteAt(self, idx number) number
@@ -173,13 +173,13 @@ func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`.
 
 func runeAt(self, idx number) number
--- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+-- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func slice(self, start number, end number) rawstring
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
 func sliceAt(self, idx number) string
--- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error(#InvalidRune)` is returned.
+-- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func split(self, delim string) List
 -- Returns a list of rawstrings split at occurrences of `delim`.
@@ -190,11 +190,11 @@ func startsWith(self, prefix string) bool
 func upper(self) string
 -- Returns this string in uppercase.
 
-func trim(self, mode taglit, trimRunes any) rawstring
+func trim(self, mode symbol, trimRunes any) rawstring
 -- Returns the string with ends trimmed from runes in `trimRunes`. `mode` can be #left, #right, or #ends.
 
 func utf8(self) string
--- Returns a valid UTF-8 string or returns `error(#InvalidRune)`.
+-- Returns a valid UTF-8 string or returns `error.InvalidRune`.
 </code></pre><h2 id=lists>Lists.
 <a class=anchor href=#lists>#</a></h2><p>Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Construct a new list.
 list = [1, 2, 3]
@@ -316,5 +316,5 @@ print(currency == #usd)      -- &#39;true&#39;
 print number(currency)       -- &#39;123&#39; or some arbitrary id.
 </code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/data-types.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
 <span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a></li><li><a href=#strings>Strings.</a><ul><li><a href=#type-string><code>type string</code></a></li><li><a href=#string-interpolation>String Interpolation.</a></li><li><a href=#rawstring>rawstring.</a></li><li><a href=#type-rawstring><code>type rawstring</code></a></li></ul></li><li><a href=#lists>Lists.</a><ul><li><a href=#type-list><code>type List</code></a></li></ul></li><li><a href=#maps>Maps.</a><ul><li><a href=#type-map><code>type Map</code></a></li></ul></li><li><a href=#objects>Objects.</a></li><li><a href=#enums>Enums.</a></li><li><a href=#symbols>Symbols.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
-<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","static","capture","true","false","none","try","catch","recover","enum","type"],type:["number","string","bool","any","int","List","Map","rawstring","taglit"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"tagliteral",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
+<script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","static","capture","true","false","none","try","catch","recover","enum","type"],type:["number","string","bool","any","int","List","Map","rawstring","symbol"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

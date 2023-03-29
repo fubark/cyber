@@ -10,7 +10,7 @@ Modules have their own namespace and contain accessible static symbols. By defau
 Import declarations create a local alias to the module referenced by the import specifier. The Cyber CLI comes with some builtin modules like `math` and `test`. If the specifier does not refer to a builtin module, it looks for a Cyber script file relative to the current script's directory. An embedder can integrate their own module loader.
 ```cy
 import t 'test'
-try t.eq(123, 123)
+t.eq(123, 123)
 
 -- Imports are static declarations so they can be anywhere in the script.
 import m 'math'
@@ -277,7 +277,7 @@ Sample usage:
 import t 'test'
 
 a = 123 + 321
-try t.eq(a, 444)
+t.eq(a, 444)
 ```
 
 | Function | Summary |

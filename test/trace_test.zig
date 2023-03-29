@@ -43,7 +43,7 @@ test "ARC." {
         \\  value
         \\a = [123]
         \\s = S{ value: a }
-        \\try t.eq(s.value[0], 123)
+        \\t.eq(s.value[0], 123)
     );
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
@@ -108,7 +108,7 @@ test "ARC for static variable declarations." {
     _ = try run.eval(
         \\import t 'test'
         \\var a: [123]
-        \\try t.eq(a[0], 123)
+        \\t.eq(a[0], 123)
     );
     run.deinit();
     try t.eq(trace.numRetainAttempts, 3);
@@ -130,7 +130,7 @@ test "ARC assignments." {
         \\a = [123]
         \\b = 234
         \\a[0] = b
-        \\try t.eq(a[0], 234)
+        \\t.eq(a[0], 234)
     );
     try t.eq(trace.numRetainAttempts, 2);
     try t.eq(trace.numReleaseAttempts, 5);
@@ -143,7 +143,7 @@ test "ARC assignments." {
         \\a = [123]
         \\b = {}
         \\a[0] = b
-        \\try t.eq(typesym(a[0]), #map)
+        \\t.eq(typesym(a[0]), #map)
     );
     try t.eq(trace.numRetainAttempts, 4);
     try t.eq(trace.numReleaseAttempts, 7);
@@ -163,7 +163,7 @@ test "ARC for passing call args." {
         \\import t 'test'
         \\func foo(list):
         \\  return list[0]
-        \\try t.eq(foo([1]), 1)
+        \\t.eq(foo([1]), 1)
     );
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
@@ -185,7 +185,7 @@ test "ARC for function returns values." {
         \\  a = S{ value: 123 }
         \\  return a
         \\s = foo()
-        \\try t.eq(s.value, 123)
+        \\t.eq(s.value, 123)
     );
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);

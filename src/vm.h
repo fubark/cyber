@@ -64,6 +64,9 @@ typedef enum {
     CodeSetField,
     CodeSetFieldRelease,
     CodeSetFieldReleaseIC,
+    CodePushTry,
+    CodePopTry,
+    CodeThrow,
     CodeCoinit,
     CodeCoyield,
     CodeCoresume,
@@ -77,7 +80,6 @@ typedef enum {
     CodeBoxValueRetain,
     CodeTag,
     CodeTagLiteral,
-    CodeTryValue,
     CodeCast,
     CodeCastAbstract,
     CodeBitwiseAnd,
@@ -230,6 +232,8 @@ typedef struct VM {
     ZCyList heapPages;
     HeapObject* heapFreeHead;
 
+    ZCyList tryStack;
+
 #if TRACK_GLOBAL_RC
     size_t refCounts;
 #endif
@@ -290,10 +294,10 @@ typedef struct CallObjSymResult {
     ResultCode code;
 } CallObjSymResult;
 
-typedef struct PcStackResult {
+typedef struct PcSp {
     Inst* pc;
-    Value* stack;
-} PcStackResult;
+    Value* sp;
+} PcSp;
 
 typedef Value (*FuncPtr)(VM* vm, Value* args, uint8_t nargs);
 typedef Value (*MethodPtr)(VM* vm, Value recv, Value* args, uint8_t nargs);
@@ -304,7 +308,7 @@ ResultCode execBytecode(VM* vm);
 // Calling into Zig.
 void zFatal();
 char* zOpCodeName(OpCode code);
-PcStackResult zCallSym(VM* vm, Inst* pc, Value* stack, uint8_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
+PcSp zCallSym(VM* vm, Inst* pc, Value* stack, uint8_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
 void zDumpEvalOp(VM* vm, Inst* pc);
 extern bool verbose;
 void zFreeObject(VM* vm, HeapObject* obj);
@@ -313,8 +317,8 @@ ValueResult zAllocList(VM* vm, Value* elemStart, uint8_t nelems);
 double zOtherToF64(Value val);
 CallObjSymResult zCallObjSym(VM* vm, Inst* pc, Value* stack, Value recv, TypeId typeId, uint8_t symId, uint16_t rFuncSigId, uint8_t startLocal, uint8_t numArgs, uint8_t numRet);
 ValueResult zAllocFiber(VM* vm, uint32_t pc, Value* args, uint8_t nargs, uint8_t initialStackSize);
-PcStackResult zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
-PcStackResult zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
+PcSp zPushFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Fiber* fiber, uint8_t parentDstLocal);
+PcSp zPopFiber(VM* vm, size_t curFiberEndPc, Value* curStack, Value retValue);
 ValueResult zAllocObjectSmall(VM* vm, TypeId typeId, Value* fields, uint8_t nfields);
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(VM* vm, Value left, Value right);

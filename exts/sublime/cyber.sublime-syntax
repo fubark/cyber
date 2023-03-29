@@ -44,7 +44,7 @@ contexts:
     - match: '\b(type|enum|object|true|false|none)\b'
       scope: keyword.type.cyber
 
-    - match: '\b(try|catch|recover)\b'
+    - match: '\b(try|catch|error|throw)\b'
       scope: keyword.error.cyber
 
     - match: '\b(import)\b'

@@ -5,5 +5,5 @@ func fib(n int) int:
         return n
     return fib(n - 1) + fib(n - 2)
 res = fib(6)
-try t.eq(res, int(8))
-try t.eq(typesym(res), #int)
+t.eq(res, int(8))
+t.eq(typesym(res), #int)

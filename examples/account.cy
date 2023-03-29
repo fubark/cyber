@@ -10,7 +10,7 @@ type Account object:
 
     func withdraw(self, amt):
         if amt > self.balance:
-            return error(#InsufficientFunds)
+            throw error.InsufficientFunds
         else:
             self.balance -= amt
 
@@ -21,6 +21,6 @@ a = Account.new('Savings')
 a.show('Initial')
 a.deposit(1000.00)
 a.show('After deposit')
-try a.withdraw(100.00)
+a.withdraw(100.00)
 --try a.withdraw(2000.00)
 a.show('After withdraw')

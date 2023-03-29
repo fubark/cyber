@@ -14,7 +14,7 @@ next = func():
 sum = 0
 while next() some res:
   sum += res
-try t.eq(sum, 10)
+t.eq(sum, 10)
 
 -- Assign rc value to variable.
 a = 0 
@@ -28,7 +28,7 @@ next = func ():
 sum = 0
 while next() some res:
   sum += res[0]
-try t.eq(sum, 10)
+t.eq(sum, 10)
 
 -- Single line block.
 a = 0 
@@ -41,4 +41,4 @@ next = func():
     return none
 sum = 0
 while next() some res: sum += res
-try t.eq(sum, 10)
+t.eq(sum, 10)

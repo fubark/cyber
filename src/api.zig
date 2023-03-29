@@ -308,7 +308,14 @@ pub const UserVM = struct {
         const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
         vm.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         vm.panicType = .msg;
-        return Value.Panic;
+        return Value.Interrupt;
+    }
+
+    pub fn prepareThrowSymbol(self: *UserVM, id: u8) Value {
+        const vm = self.internal();
+        vm.panicPayload = Value.initErrorSymbol(id).val;
+        vm.panicType = .nativeThrow;
+        return Value.Interrupt;
     }
 
     pub inline fn getStaticUstringHeader(self: *UserVM, start: u32) *align (1) cy.StaticUstringHeader {
@@ -325,14 +332,14 @@ pub const UserVM = struct {
 
     pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value) u32 {
         const vm = @ptrCast(*const VM, self);
-        return @intCast(u32, cy.vm.framePtrOffsetFrom(vm.stack.ptr, args));
+        return @intCast(u32, cy.fiber.getStackOffset(vm.stack.ptr, args));
     }
 
     pub fn callFunc(self: *UserVM, framePtr: u32, func: Value, args: []const Value) !Value {
         const vm = self.internal();
 
-        try vm.ensureTotalStackCapacity(framePtr + args.len + 1 + 4);
-        const saveFramePtrOffset = cy.vm.framePtrOffsetFrom(vm.stack.ptr, vm.framePtr);
+        try cy.fiber.ensureTotalStackCapacity(vm, framePtr + args.len + 1 + 4);
+        const saveFramePtrOffset = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
         vm.framePtr = vm.stack.ptr + framePtr;
 
         self.retain(func);

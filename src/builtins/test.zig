@@ -8,6 +8,7 @@ const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
+const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const bt = cy.types.BuiltinTypeSymIds;
 const v = fmt.v;
 
@@ -21,6 +22,11 @@ pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection
         // Only available for zig test, until `any` local type specifier is implemented.
         try b.setFunc("erase", &.{bt.Any}, bt.Any, erase);
     }
+    try b.setFunc("fail", &.{}, bt.Any, fail);
+}
+
+fn fail(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
+    return prepareThrowSymbol(vm, .AssertError);
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.
@@ -112,7 +118,10 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    printStderr("actual: error.{} != error.{}\n", &.{v(gvm.syms.buf[actv].name), v(gvm.syms.buf[expv].name)});
+                    const ivm = vm.internal();
+                    const actName: []const u8 = if (act.isInterrupt()) "Interrupt" else ivm.syms.buf[actv].name;
+                    const expName: []const u8 = if (exp.isInterrupt()) "Interrupt" else ivm.syms.buf[expv].name;
+                    printStderr("actual: error.{} != error.{}\n", &.{v(actName), v(expName)});
                     return false;
                 }
             },
@@ -150,12 +159,11 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
     if (eq2(vm, act, exp)) {
         return Value.True;
     } else {
-        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+        return vm.prepareThrowSymbol(@enumToInt(Symbol.AssertError));
     }
 }
 
 pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = vm;
     _ = nargs;
     const act = args[0];
     const exp = args[1];
@@ -168,16 +176,16 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 return Value.True;
             } else {
                 printStderr("actual: {} != {}\n", &.{v(act.asF64()), v(exp.asF64())});
-                return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+                return prepareThrowSymbol(vm, .AssertError);
             }
         } else {
             printStderr("Expected number, actual: {}\n", &.{v(actType)});
-            return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+            return prepareThrowSymbol(vm, .AssertError);
         }
     } else {
         printStderr("Types do not match:\n", &.{});
         printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
-        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+        return prepareThrowSymbol(vm, .AssertError);
     }
 }
 
@@ -202,22 +210,22 @@ pub fn eqList(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
                 while (i < acto.list.list.len) : (i += 1) {
                     if (!eq2(vm, actItems[i], expItems[i])) {
                         printStderr("Item mismatch at idx: {}\n", &.{v(i)});
-                        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+                        return prepareThrowSymbol(vm, .AssertError);
                     }
                 }
                 return Value.True;
             } else {
                 printStderr("actual list len: {} != {}\n", &.{v(acto.list.list.len), v(expo.list.list.len)});
-                return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+                return prepareThrowSymbol(vm, .AssertError);
             }
         } else {
             printStderr("Expected list, actual: {}\n", &.{v(actType)});
-            return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+            return prepareThrowSymbol(vm, .AssertError);
         }
     } else {
         printStderr("Types do not match:\n", &.{});
         printStderr("actual: {} != {}\n", &.{v(actType), v(expType)});
-        return Value.initErrorSymbol(@enumToInt(Symbol.AssertError));
+        return prepareThrowSymbol(vm, .AssertError);
     }
 }
 

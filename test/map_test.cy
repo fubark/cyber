@@ -7,43 +7,43 @@ a = {
   foo: 123,
   bar: 234,
 }
-try t.eq(a.size(), 2)
+t.eq(a.size(), 2)
 
 a = {
     b: 123
     'c': 234
 }
 -- Get size.
-try t.eq(a.size(), 2)
+t.eq(a.size(), 2)
 
 -- Number entry.
 a = {
   b: 32
 }
-try t.eq(a['b'], 32)
+t.eq(a['b'], 32)
 
 -- Access expression.
 a = {
   b: 32
 }
-try t.eq(a.b, 32)
+t.eq(a.b, 32)
 
 -- String entry.
 a = {
   b: 'hello'
 }
-try t.eq(a['b'], 'hello')
+t.eq(a['b'], 'hello')
 
 -- Add to empty map.
 a = {}
 a[123] = 234
-try t.eq(a[123], 234)
+t.eq(a[123], 234)
 
 -- Nested list.
 a = {
   b: [ 1, 2 ]
 }
-try t.eq(a.b[1], 2)
+t.eq(a.b[1], 2)
 
 -- Nested list with items separated by new line.
 a = {
@@ -52,7 +52,7 @@ a = {
     2
   ]
 }
-try t.eq(a.b[1], 2)
+t.eq(a.b[1], 2)
 
 -- Iterate maps.
 
@@ -61,7 +61,7 @@ m = { a: 2, b: 3, c: 4 }
 sum = 0
 for m each v:
   sum += v 
-try t.eq(sum, 9)
+t.eq(sum, 9)
 
 -- Pair Iterator.
 sum = 0
@@ -69,8 +69,8 @@ codeSum = 0
 for m each k, v:
   sum += v
   codeSum += k.runeAt(0)
-try t.eq(sum, 9)
-try t.eq(codeSum, 294)
+t.eq(sum, 9)
+t.eq(codeSum, 294)
 
 -- Nested iteration.
 m = { a: 1, b: 2, c: 3 }
@@ -80,7 +80,7 @@ for m each n:
   for m each nn:
     innerSum += nn
   res += n * innerSum
-try t.eq(res, 36)
+t.eq(res, 36)
 
 -- Nested pair iteration.
 m = { a: 1, b: 2, c: 3 }
@@ -93,8 +93,8 @@ for m each k, n:
     codeSum += kk.runeAt(0)
   res += n * innerSum
   codeSum += k.runeAt(0)
-try t.eq(res, 36)
-try t.eq(codeSum, 294 * 4)
+t.eq(res, 36)
+t.eq(codeSum, 294 * 4)
 
 -- Iterate rc values.
 m = { a: [2], b: [3], c: [4] }
@@ -103,13 +103,13 @@ codeSum = 0
 for m each k, v:
   sum += v[0]
   codeSum += k.runeAt(0)
-try t.eq(sum, 9)
-try t.eq(codeSum, 294)
+t.eq(sum, 9)
+t.eq(codeSum, 294)
 
 -- Remove from map.
 m = { a: 2, b: 3, c: 4 }
 m.remove('a')
-try t.eq(m.size(), 2)
-try t.eq(m['a'], none)
-try t.eq(m['b'], 3)
-try t.eq(m['c'], 4)
+t.eq(m.size(), 2)
+t.eq(m['a'], none)
+t.eq(m['b'], 3)
+t.eq(m['c'], 4)

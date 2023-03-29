@@ -64,12 +64,19 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
 }
 
 pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    var pc = startPc;
-    while (vm.ops[pc].code == .release) {
-        const local = vm.ops[pc+1].arg;
-        // stack[framePtr + local].dump();
-        cy.arc.release(vm, stack[framePtr + local]);
-        pc += 2;
+    if (vm.ops[startPc].code == .releaseN) {
+        const numLocals = vm.ops[startPc+1].arg;
+        for (vm.ops[startPc+2..startPc+2+numLocals]) |local| {
+            release(vm, stack[framePtr + local.arg]);
+        }
+    } else {
+        var pc = startPc;
+        while (vm.ops[pc].code == .release) {
+            const local = vm.ops[pc+1].arg;
+            // stack[framePtr + local].dump();
+            release(vm, stack[framePtr + local]);
+            pc += 2;
+        }
     }
 }
 

@@ -5,6 +5,7 @@ const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const bindings = @import("bindings.zig");
+const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const Symbol = bindings.Symbol;
 const os = @import("os.zig");
 const sema = cy.sema;
@@ -32,13 +33,13 @@ const Context = struct {
 
     fn genFuncReleaseOps(self: *@This(), w: anytype, cargs: []const Value) !void {
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.TypeSymbolT)) {
+            if (carg.isObjectType(cy.MetaTypeT)) {
                 try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                 // Free any child temps.
-                const objType = carg.asPointer(*cy.heap.TypeSymbol);
+                const objType = carg.asPointer(*cy.heap.MetaType);
                 const fields = self.symToCStructFields.get(objType.symId).?.items();
                 for (fields, 0..) |field, fidx| {
-                    if (!field.isObjectType(cy.TypeSymbolT)) {
+                    if (!field.isObjectType(cy.MetaTypeT)) {
                         const fieldType = field.asSymbolId();
                         switch (@intToEnum(Symbol, fieldType)) {
                             .charPtrZ => {
@@ -253,7 +254,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     } else {
         lib.* = dlopen(vm.valueToTempRawString(path)) catch |err| {
             if (err == error.FileNotFound) {
-                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+                return prepareThrowSymbol(vm, .FileNotFound);
             } else {
                 return err;
             }
@@ -295,8 +296,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
                 const ret = try ivm.getField(decl, retf);
                 var retTypeSymId: sema.ResolvedSymId = undefined;
-                if (ret.isObjectType(cy.TypeSymbolT)) {
-                    const objType = ret.asPointer(*cy.heap.TypeSymbol);
+                if (ret.isObjectType(cy.MetaTypeT)) {
+                    const objType = ret.asPointer(*cy.heap.MetaType);
                     const rtType = ivm.structs.buf[objType.symId];
                     retTypeSymId = rtType.rTypeSymId;
                 } else {
@@ -308,8 +309,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
                 if (cargs.len > 0) {
                     for (cargs) |carg| {
-                        if (carg.isObjectType(cy.TypeSymbolT)) {
-                            const objType = carg.asPointer(*cy.heap.TypeSymbol);
+                        if (carg.isObjectType(cy.MetaTypeT)) {
+                            const objType = carg.asPointer(*cy.heap.MetaType);
 
                             const rtType = ivm.structs.buf[objType.symId];
                             try ivm.compiler.tempSyms.append(ctx.alloc, rtType.rTypeSymId);
@@ -327,31 +328,31 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                 });
             } else {
                 log.debug("Missing sym: '{s}'", .{sym});
-                return Value.initErrorSymbol(@enumToInt(Symbol.MissingSymbol));
+                return prepareThrowSymbol(vm, .MissingSymbol);
             }
         } else if (decl.isObjectType(os.CStructT)) {
             const val = try ivm.getField(decl, typeF);
-            if (val.isObjectType(cy.TypeSymbolT)) {
-                const objType = val.asPointer(*cy.heap.TypeSymbol);
-                if (objType.symType == @enumToInt(cy.heap.TypeSymbolType.object)) {
+            if (val.isObjectType(cy.MetaTypeT)) {
+                const objType = val.asPointer(*cy.heap.MetaType);
+                if (objType.type == @enumToInt(cy.heap.MetaTypeKind.object)) {
                     if (!ctx.symToCStructFields.contains(objType.symId)) {
                         const fields = try ivm.getField(decl, fieldsF);
                         try ctx.symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
                     } else {
                         log.debug("Object type already declared.", .{});
-                        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+                        return prepareThrowSymbol(vm, .InvalidArgument);
                     }
                 } else {
                     log.debug("Not an object Symbol", .{});
-                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+                    return prepareThrowSymbol(vm, .InvalidArgument);
                 }
             } else {
                 log.debug("Not a Symbol", .{});
-                return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+                return prepareThrowSymbol(vm, .InvalidArgument);
             }
         } else {
             log.debug("Not a CFunc or CStruct", .{});
-            return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+            return prepareThrowSymbol(vm, .InvalidArgument);
         }
     }
 
@@ -404,8 +405,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         try w.print("  Struct{} res;\n", .{objSymId, });
         for (fields.items(), 0..) |field, i| {
             try w.print("  res.f{} = ", .{i});
-            if (field.isObjectType(cy.TypeSymbolT)) {
-                const objType = field.asPointer(*cy.heap.TypeSymbol);
+            if (field.isObjectType(cy.MetaTypeT)) {
+                const objType = field.asPointer(*cy.heap.MetaType);
                 try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
             } else {
                 const tag = field.asSymbolId();
@@ -635,8 +636,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     const cargs = cargsv.asPointer(*cy.CyList).items();
 
     // Emit extern declaration.
-    if (ret.isObjectType(cy.TypeSymbolT)) {
-        const objType = ret.asPointer(*cy.heap.TypeSymbol);
+    if (ret.isObjectType(cy.MetaTypeT)) {
+        const objType = ret.asPointer(*cy.heap.MetaType);
         if (ctx.symToCStructFields.contains(objType.symId)) {
             try w.print("extern Struct{} {s}(", .{objType.symId, sym});
         } else {
@@ -649,8 +650,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         const lastArg = cargs.len-1;
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.TypeSymbolT)) {
-                const objType = carg.asPointer(*cy.heap.TypeSymbol);
+            if (carg.isObjectType(cy.MetaTypeT)) {
+                const objType = carg.asPointer(*cy.heap.MetaType);
                 if (ctx.symToCStructFields.contains(objType.symId)) {
                     try w.print("Struct{}", .{objType.symId});
                 } else {
@@ -677,8 +678,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     // Gen temp args.
     if (cargs.len > 0) {
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.TypeSymbolT)) {
-                const objType = carg.asPointer(*cy.heap.TypeSymbol);
+            if (carg.isObjectType(cy.MetaTypeT)) {
+                const objType = carg.asPointer(*cy.heap.MetaType);
                 try w.print("Struct{} s{} = toStruct{}(vm, args[{}]);\n", .{objType.symId, i, objType.symId, i});
             } else {
                 const tag = carg.asSymbolId();
@@ -693,8 +694,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     }
 
     // Gen call.
-    if (ret.isObjectType(cy.TypeSymbolT)) {
-        const objType = ret.asPointer(*cy.heap.TypeSymbol);
+    if (ret.isObjectType(cy.MetaTypeT)) {
+        const objType = ret.asPointer(*cy.heap.MetaType);
         if (ctx.symToCStructFields.contains(objType.symId)) {
             try w.print("  Struct{} res = {s}(", .{objType.symId, sym});
         } else {
@@ -739,7 +740,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         const lastArg = cargs.len-1;
         for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(cy.TypeSymbolT)) {
+            if (carg.isObjectType(cy.MetaTypeT)) {
                 try w.print("s{}", .{i});
             } else {
                 try printToCValueFromArg(ivm, w, carg, i);
@@ -761,8 +762,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
 
     // Gen return.
     try w.print("  return ", .{});
-    if (ret.isObjectType(cy.TypeSymbolT)) {
-        const objType = ret.asPointer(*cy.heap.TypeSymbol);
+    if (ret.isObjectType(cy.MetaTypeT)) {
+        const objType = ret.asPointer(*cy.heap.MetaType);
         try w.print("fromStruct{}(vm, res)", .{ objType.symId });
     } else {
         try printCyValue(ivm, w, ret, "res");

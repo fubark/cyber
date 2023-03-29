@@ -88,9 +88,9 @@ pub const Value = packed union {
     pub const True = Value{ .val = TrueMask };
     pub const False = Value{ .val = FalseMask };
 
-    /// Panic value. Represented as an error tag literal with a null tag id.
-    /// Can be returned from native functions.
-    pub const Panic = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
+    /// Interrupt value. Represented as an error tag literal with a null tag id.
+    /// Returned from native funcs.
+    pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
     pub inline fn asInteger(self: *const Value) i32 {
         return @bitCast(i32, @intCast(u32, self.val & 0xffffffff));
@@ -289,8 +289,8 @@ pub const Value = packed union {
         return self.val == TrueMask;
     }
 
-    pub inline fn isPanic(self: *const Value) bool {
-        return self.val == Panic.val;
+    pub inline fn isInterrupt(self: *const Value) bool {
+        return self.val == Interrupt.val;
     }
 
     pub inline fn isBool(self: *const Value) bool {
@@ -472,7 +472,7 @@ pub const Value = packed union {
                     cy.FileT => return .file,
                     cy.DirT => return .dir,
                     cy.DirIteratorT => return .dirIter,
-                    cy.TypeSymbolT => return .type,
+                    cy.MetaTypeT => return .type,
                     else => {
                         return .object;
                     },

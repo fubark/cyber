@@ -135,4 +135,7 @@ match val:
         print 'val is {val}'
 ```
 
+## Try/Catch.
+The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling]({{<relref "/docs/toc/errors">}}).
+
 ## Deferred Execution.

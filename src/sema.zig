@@ -993,6 +993,18 @@ pub fn semaStmt(c: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                 }
             }
         },
+        .tryStmt => {
+            try pushSubBlock(c);
+            try semaStmts(c, node.head.tryStmt.tryFirstStmt, false);
+            try endSubBlock(c);
+
+            try pushSubBlock(c);
+            if (node.head.tryStmt.errorVar != cy.NullId) {
+                _ = try ensureLocalBodyVar(c, node.head.tryStmt.errorVar, types.ErrorType);
+            }
+            try semaStmts(c, node.head.tryStmt.catchFirstStmt, false);
+            try endSubBlock(c);
+        },
         .importStmt => {
             return;
         },
@@ -1570,11 +1582,14 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
             }
             return types.AnyType;
         },
-        .comptExpr => {
-            _ = try semaExpr(c, node.head.child_head, discardTopExprReg);
+        .tryExpr => {
+            _ = try semaExpr(c, node.head.tryExpr.expr, discardTopExprReg);
+            if (node.head.tryExpr.elseExpr != cy.NullId) {
+                _ = try semaExpr(c, node.head.tryExpr.elseExpr, discardTopExprReg);
+            }
             return types.AnyType;
         },
-        .tryExpr => {
+        .throwExpr => {
             _ = try semaExpr(c, node.head.child_head, discardTopExprReg);
             return types.AnyType;
         },

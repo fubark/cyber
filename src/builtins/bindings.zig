@@ -90,6 +90,10 @@ pub const Symbol = enum {
     unknown,
 };
 
+pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
+    return vm.prepareThrowSymbol(@enumToInt(sym));
+}  
+
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
@@ -163,6 +167,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == cy.BooleanT);
     id = try self.addBuiltinType("error");
     std.debug.assert(id == cy.ErrorT);
+    try b.addMethod(cy.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
     id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.StaticAstringT);
@@ -382,7 +387,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     }
 
     id = try self.addBuiltinType("Type");
-    std.debug.assert(id == cy.TypeSymbolT);
+    std.debug.assert(id == cy.MetaTypeT);
 
     try ensureSymbol(self, "bool", .bool);
     try ensureSymbol(self, "char", .char);
@@ -479,7 +484,7 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksectio
     const S = struct {
         fn less(ctx_: *LessContext, a: Value, b: Value) bool {
             const res = ctx_.vm.callFunc(ctx_.newFramePtr, ctx_.lessFn, &.{a, b}) catch |err| {
-                _ = fromUnsupportedError("less", err, @errorReturnTrace());
+                _ = fromUnsupportedError(ctx_.vm, "less", err, @errorReturnTrace());
                 return false;
             };
             return res.toBool();
@@ -495,7 +500,7 @@ fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+        return prepareThrowSymbol(vm, .OutOfBounds);
     } 
     vm.release(inner.buf[@intCast(usize, index)]);
     inner.remove(@intCast(usize, index));
@@ -509,7 +514,7 @@ fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+        return prepareThrowSymbol(vm, .OutOfBounds);
     } 
     inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
     inner.insertAssumeCapacity(@intCast(usize, index), value);
@@ -752,6 +757,16 @@ fn listLen(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy
 //     return Value.None;
 // }
 
+fn errorValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
+    const enumId = (recv.val & 0xFF00) >> 8;
+    if (enumId == cy.NullU8) {
+        return Value.initSymbol(recv.asErrorSymbol());
+    } else {
+        log.debug("TODO: error.value() for enums.", .{});
+        return prepareThrowSymbol(vm, .InvalidArgument);
+    }
+}
+
 fn pointerValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
@@ -759,14 +774,14 @@ fn pointerValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
 }
 
 fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
-    const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
+    const fiber = recv.asPointer(*cy.fiber.Fiber);
+    defer vm.releaseObject(stdx.ptrAlignCast(*cy.HeapObject, fiber));
 
-    if (gvm.curFiber == @ptrCast(*cy.Fiber, obj)) {
+    if (vm.internal().curFiber == fiber) {
         return Value.initSymbol(@enumToInt(Symbol.running));
     } else {
         // Check if done.
-        if (obj.fiber.pc == NullId) {
+        if (fiber.pcOffset == NullId) {
             return Value.initSymbol(@enumToInt(Symbol.done));
         } else {
             return Value.initSymbol(@enumToInt(Symbol.paused));
@@ -908,7 +923,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const uidx = @intCast(u32, idx);
                 if (T == .staticAstring) {
@@ -919,7 +934,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isUstringObject(T, obj)) {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const uidx = @intCast(u32, idx);
                 const mru = getUstringMruChar(T, vm, obj);
@@ -938,7 +953,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const uidx = @intCast(u32, idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
@@ -948,7 +963,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         return vm.allocUstring(slice, 1) catch fatal();
                     }
                 } else {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
+                    return prepareThrowSymbol(vm, .InvalidRune);
                 }
             } else fatal();
         }
@@ -975,12 +990,12 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const idx = @floatToInt(i32, args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 return Value.initF64(@intToFloat(f64, str[@intCast(u32, idx)]));
             } else if (isUstringObject(T, obj)) {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const uidx = @intCast(u32, idx);
                 const mru = getUstringMruChar(T, vm, obj);
@@ -992,14 +1007,14 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 return Value.initF64(@intToFloat(f64, cp));
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx >= str.len) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const uidx = @intCast(u32, idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
                     const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
                     return Value.initF64(@intToFloat(f64, cp));
                 } else {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
+                    return prepareThrowSymbol(vm, .InvalidRune);
                 }
             } else fatal();
         }
@@ -1010,7 +1025,7 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
     const index = @floatToInt(i64, indexv.asF64());
     if (index < 0 or index > str.len) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+        return prepareThrowSymbol(vm, .OutOfBounds);
     } 
     const byte = @floatToInt(u8, val.asF64());
     const new = vm.allocUnsetRawStringObject(str.len + 1) catch stdx.fatal();
@@ -1083,7 +1098,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 
             const n = @floatToInt(i32, args[0].asF64());
             if (n < 0) {
-                return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+                return prepareThrowSymbol(vm, .InvalidArgument);
             }
 
             var un = @intCast(u32, n);
@@ -1326,7 +1341,7 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 .right => res = std.mem.trimRight(u8, str, trimRunes),
                 .ends => res = std.mem.trim(u8, str, trimRunes),
                 else => {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+                    return prepareThrowSymbol(vm, .InvalidArgument);
                 }
             }
 
@@ -1445,7 +1460,7 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     end = @intCast(i32, str.len) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const ustart = @intCast(u32, start);
                 const uend = @intCast(u32, end);
@@ -1467,7 +1482,7 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     end = @intCast(i32, charLen) + end;
                 }
                 if (start < 0 or end > charLen or end < start) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 const ustart = @intCast(u32, start);
                 const uend = @intCast(u32, end);
@@ -1493,7 +1508,7 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     end = @intCast(i32, str.len) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
 
                 vm.retainObject(obj);
@@ -1557,7 +1572,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const idx = @floatToInt(i32, args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx > str.len) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 var insertCharLen: u32 = undefined;
                 const insert = vm.valueToTempString2(args[1], &insertCharLen);
@@ -1570,7 +1585,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
                 if (idx < 0 or idx > charLen) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 var insertCharLen: u32 = undefined;
                 const insert = vm.valueToTempString2(args[1], &insertCharLen);
@@ -1582,7 +1597,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(u32, charLen + insertCharLen)) catch fatal();
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx > str.len) {
-                    return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+                    return prepareThrowSymbol(vm, .OutOfBounds);
                 } 
                 const insert = vm.valueToTempString(args[1]);
                 const new = vm.allocUnsetRawStringObject(str.len + insert.len) catch stdx.fatal();
@@ -1693,7 +1708,7 @@ fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) lin
             return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
         }
     } else {
-        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
+        return prepareThrowSymbol(vm, .InvalidRune);
     }
 }
 
@@ -1713,7 +1728,7 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
             return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
         }
     } else {
-        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidRune));
+        return prepareThrowSymbol(vm, .InvalidRune);
     }
 }
 
@@ -1722,7 +1737,7 @@ fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
     defer vm.releaseObject(obj);
     const idx = @floatToInt(i32, args[0].asF64());
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+        return prepareThrowSymbol(vm, .OutOfBounds);
     }
     const str = obj.rawstringSlice.getConstSlice();
     const uidx = @intCast(u32, idx);
@@ -1734,7 +1749,7 @@ fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) lin
     defer vm.releaseObject(obj);
     const idx = @floatToInt(i32, args[0].asF64());
     if (idx < 0 or idx >= obj.rawstring.len) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.OutOfBounds));
+        return prepareThrowSymbol(vm, .OutOfBounds);
     }
     const str = obj.rawstring.getConstSlice();
     const uidx = @intCast(u32, idx);
@@ -1994,7 +2009,7 @@ pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksectio
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), true) catch fatal();
     } else {
-        return Value.initErrorSymbol(@enumToInt(Symbol.NotAllowed));
+        return prepareThrowSymbol(vm, .NotAllowed);
     }
 }
 
@@ -2005,7 +2020,7 @@ pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), false) catch fatal();
     } else {
-        return Value.initErrorSymbol(@enumToInt(Symbol.NotAllowed));
+        return prepareThrowSymbol(vm, .NotAllowed);
     }
 }
 
@@ -2022,17 +2037,17 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes > 0) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+        return prepareThrowSymbol(vm, .InvalidArgument);
     }
 
     const file = obj.file.getStdFile();
     file.seekFromEnd(numBytes) catch |err| {
-        return fromUnsupportedError("seekFromEnd", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "seekFromEnd", err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -2042,14 +2057,14 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
 
     const file = obj.file.getStdFile();
     file.seekBy(numBytes) catch |err| {
-        return fromUnsupportedError("seekFromCur", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "seekFromCur", err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -2059,18 +2074,18 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes < 0) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+        return prepareThrowSymbol(vm, .InvalidArgument);
     }
 
     const file = obj.file.getStdFile();
     const unumBytes = @intCast(u32, numBytes);
     file.seekTo(unumBytes) catch |err| {
-        return fromUnsupportedError("seek", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "seek", err, @errorReturnTrace());
     };
     return Value.None;
 }
@@ -2083,13 +2098,13 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
     }
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     var buf = vm.valueToTempRawString(args[0]);
     const file = obj.file.getStdFile();
     const numWritten = file.write(buf) catch |err| {
-        return fromUnsupportedError("write", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "write", err, @errorReturnTrace());
     };
 
     return Value.initF64(@intToFloat(f64, numWritten));
@@ -2107,12 +2122,12 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     const numBytes = @floatToInt(i32, args[0].asF64());
     if (numBytes <= 0) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+        return prepareThrowSymbol(vm, .InvalidArgument);
     }
     const unumBytes = @intCast(u32, numBytes);
     const file = obj.file.getStdFile();
@@ -2124,7 +2139,7 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     tempBuf.ensureTotalCapacityPrecise(alloc, unumBytes) catch fatal();
 
     const numRead = file.read(tempBuf.buf[0..unumBytes]) catch |err| {
-        return fromUnsupportedError("read", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "read", err, @errorReturnTrace());
     };
     // Can return empty string when numRead == 0.
     return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
@@ -2135,7 +2150,7 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     const file = obj.file.getStdFile();
@@ -2151,7 +2166,7 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     while (true) {
         const buf = tempBuf.buf[tempBuf.len .. tempBuf.buf.len];
         const numRead = file.readAll(buf) catch |err| {
-            return fromUnsupportedError("readToEnd", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "readToEnd", err, @errorReturnTrace());
         };
         tempBuf.len += numRead;
         if (numRead < buf.len) {
@@ -2170,12 +2185,12 @@ pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
-        return Value.initErrorSymbol(@enumToInt(Symbol.Closed));
+        return prepareThrowSymbol(vm, .Closed);
     }
 
     const file = obj.file.getStdFile();
     const stat = file.stat() catch |err| {
-        return fromUnsupportedError("stat", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "stat", err, @errorReturnTrace());
     };
 
     const map = vm.allocEmptyMap() catch fatal();
@@ -2207,7 +2222,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     if (iter.recursive) {
         const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
         const entryOpt = walker.next() catch |err| {
-            return fromUnsupportedError("next", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "next", err, @errorReturnTrace());
         };
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch fatal();
@@ -2229,7 +2244,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     } else {
         const stdIter = stdx.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
         const entryOpt = stdIter.next() catch |err| {
-            return fromUnsupportedError("next", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "next", err, @errorReturnTrace());
         };
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch fatal();
@@ -2349,10 +2364,10 @@ pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFun
                 fmt.printStderr("{} {}\n", &.{ fmt.v(name), fmt.v(err) });
                 switch (err) {
                     error.FileNotFound => {
-                        return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+                        return prepareThrowSymbol(vm, .FileNotFound);
                     },
                     else => {
-                        return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
+                        return prepareThrowSymbol(vm, .UnknownError);
                     },
                 }
             };
@@ -2363,7 +2378,7 @@ pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFun
 
 /// In debug mode, the unsupported error's stack trace is dumped and program panics.
 /// In release mode, the error is logged and UnknownError is returned.
-pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
+pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
     fmt.printStderr("{}: {}\n", &.{fmt.v(msg), fmt.v(err)});
     if (builtin.mode == .Debug) {
         if (!cy.silentError) {
@@ -2371,7 +2386,7 @@ pub fn fromUnsupportedError(msg: []const u8, err: anyerror, trace: ?*std.builtin
         }
         fatal();
     }
-    return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
+    return prepareThrowSymbol(vm, .UnknownError);
 }
 
 pub const ModuleBuilder = struct {

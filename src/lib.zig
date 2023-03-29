@@ -327,7 +327,7 @@ test "Constants." {
     try t.eq(c.CY_TypeFile, cy.FileT);
     try t.eq(c.CY_TypeDir, cy.DirT);
     try t.eq(c.CY_TypeDirIter, cy.DirIteratorT);
-    try t.eq(c.CY_TypeType, cy.TypeSymbolT);
+    try t.eq(c.CY_TypeMetaType, cy.MetaTypeT);
 }
 
 export fn cyValueGetTypeId(val: Value) c.CyTypeId {

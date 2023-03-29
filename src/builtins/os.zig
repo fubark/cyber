@@ -8,6 +8,7 @@ const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
+const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const fromUnsupportedError = bindings.fromUnsupportedError;
 const bt = cy.types.BuiltinTypeSymIds;
 const ffi = @import("os_ffi.zig");
@@ -174,18 +175,18 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     if (iterable) {
         const dir = std.fs.cwd().openIterableDir(path, .{}) catch |err| {
             if (err == error.FileNotFound) {
-                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+                return prepareThrowSymbol(vm, .FileNotFound);
             } else {
-                return fromUnsupportedError("openDir", err, @errorReturnTrace());
+                return fromUnsupportedError(vm, "openDir", err, @errorReturnTrace());
             }
         };
         fd = dir.dir.fd;
     } else {
         const dir = std.fs.cwd().openDir(path, .{}) catch |err| {
             if (err == error.FileNotFound) {
-                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+                return prepareThrowSymbol(vm, .FileNotFound);
             } else {
-                return fromUnsupportedError("openDir", err, @errorReturnTrace());
+                return fromUnsupportedError(vm, "openDir", err, @errorReturnTrace());
             }
         };
         fd = dir.fd;
@@ -198,9 +199,9 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteDir(path) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+            return prepareThrowSymbol(vm, .FileNotFound);
         } else {
-            return fromUnsupportedError("removeDir", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "removeDir", err, @errorReturnTrace());
         }
     };
     return Value.True;
@@ -218,9 +219,9 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const dst = vm.valueToTempRawString(args[1]);
     std.fs.cwd().copyFile(srcDupe, std.fs.cwd(), dst, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+            return prepareThrowSymbol(vm, .FileNotFound);
         } else {
-            return fromUnsupportedError("copyFile", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "copyFile", err, @errorReturnTrace());
         }
     };
     return Value.True;
@@ -231,9 +232,9 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteFile(path) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+            return prepareThrowSymbol(vm, .FileNotFound);
         } else {
-            return fromUnsupportedError("removeFile", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "removeFile", err, @errorReturnTrace());
         }
     };
     return Value.True;
@@ -243,7 +244,7 @@ fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().makeDir(path) catch |err| {
-        return fromUnsupportedError("createDir", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "createDir", err, @errorReturnTrace());
     };
     return Value.True;
 }
@@ -253,7 +254,7 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     const path = vm.valueToTempRawString(args[0]);
     const truncate = args[1].asBool();
     const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
-        return fromUnsupportedError("createFile", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "createFile", err, @errorReturnTrace());
     };
     return vm.allocFile(file.handle) catch fatal();
 }
@@ -273,11 +274,11 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     };
     std.fs.cwd().access(path, .{ .mode = zmode }) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+            return prepareThrowSymbol(vm, .FileNotFound);
         } else if (err == error.PermissionDenied) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.PermissionDenied));
+            return prepareThrowSymbol(vm, .PermissionDenied);
         } else {
-            return fromUnsupportedError("access", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "access", err, @errorReturnTrace());
         }
     };
     return Value.True;
@@ -297,9 +298,9 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     };
     const file = std.fs.cwd().openFile(path, .{ .mode = zmode }) catch |err| {
         if (err == error.FileNotFound) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound));
+            return prepareThrowSymbol(vm, .FileNotFound);
         } else {
-            return fromUnsupportedError("openFile", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "openFile", err, @errorReturnTrace());
         }
     };
     return vm.allocFile(file.handle) catch fatal();
@@ -383,7 +384,7 @@ pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
     const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch |err| {
-        return fromUnsupportedError("realPath", err, @errorReturnTrace());
+        return fromUnsupportedError(vm, "realPath", err, @errorReturnTrace());
     };
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString.
@@ -435,9 +436,9 @@ pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return @call(.never_inline, ffi.bindLib, .{vm, args, .{}}) catch |err| {
         if (err == error.InvalidArgument) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+            return prepareThrowSymbol(vm, .InvalidArgument);
         } else {
-            return fromUnsupportedError("bindLib", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "bindLib", err, @errorReturnTrace());
         }
     };
 }
@@ -457,9 +458,9 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     }
     return @call(.never_inline, ffi.bindLib, .{vm, args, config}) catch |err| {
         if (err == error.InvalidArgument) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.InvalidArgument));
+            return prepareThrowSymbol(vm, .InvalidArgument);
         } else {
-            return fromUnsupportedError("bindLib", err, @errorReturnTrace());
+            return fromUnsupportedError(vm, "bindLib", err, @errorReturnTrace());
         }
     };
 }

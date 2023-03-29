@@ -7,6 +7,7 @@ const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
+const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const fmt = @import("../fmt.zig");
 const os_mod = @import("os.zig");
 const http = @import("../http.zig");
@@ -39,6 +40,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try b.setFunc("char", &.{bt.Any}, bt.Any, char);
     try b.setFunc("copy", &.{bt.Any}, bt.Any, copy);
     try b.setFunc("error", &.{bt.Symbol}, bt.Error, coreError);
+    try b.setFunc("errorReport", &.{}, bt.String, errorReport);
     if (cy.isWasm) {
         try b.setFunc("evalJS", &.{bt.Any}, bt.None, evalJS);
         try b.setFunc("execCmd", &.{bt.List}, bt.Any, bindings.nop1);
@@ -121,12 +123,12 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
     const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
         log.debug("cacheUrl error: {}", .{err});
-        return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
+        return prepareThrowSymbol(vm, .UnknownError);
     };
     defer alloc.free(resp.body);
     if (resp.status != .ok) {
         log.debug("cacheUrl response status: {}", .{resp.status});
-        return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
+        return prepareThrowSymbol(vm, .UnknownError);
     } else {
         const entry = cache.saveNewSpecFile(alloc, specGroup, url, resp.body) catch stdx.fatal();
         defer entry.deinit(alloc);
@@ -180,6 +182,37 @@ pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdS
     }
 }
 
+pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const ivm = vm.internal();
+
+    // Unwind the fp to before the function call.
+    ivm.framePtr -= 4;
+
+    cy.debug.buildStackTrace(ivm, true) catch |err| {
+        log.debug("unexpected {}", .{err});
+        fatal();
+    };
+
+    var frames = ivm.alloc.alloc(cy.StackFrame, ivm.stackTrace.frames.len-1 + ivm.throwTrace.len) catch fatal();
+    defer ivm.alloc.free(frames);
+    for (ivm.throwTrace.items(), 0..) |tframe, i| {
+        const frame = cy.debug.compactToStackFrame(ivm, tframe) catch fatal();
+        frames[i] = frame;
+    }
+    // Skip the current callsite frame.
+    for (ivm.stackTrace.frames[1..], 0..) |frame, i| {
+        frames[ivm.throwTrace.len + i] = frame;
+    }
+
+    var buf: std.ArrayListUnmanaged(u8) = .{};
+    defer buf.deinit(ivm.alloc);
+
+    const w = buf.writer(ivm.alloc);
+    cy.debug.writeStackFrames(ivm, w, frames) catch fatal();
+
+    return vm.allocStringInfer(buf.items) catch fatal();
+}
+
 pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const alloc = vm.allocator();
     const ivm = vm.internal();
@@ -205,11 +238,11 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     }) catch |err| {
         switch (err) {
             error.FileNotFound => 
-                return Value.initErrorSymbol(@enumToInt(Symbol.FileNotFound)),
+                return prepareThrowSymbol(vm, .FileNotFound),
             error.StdoutStreamTooLong =>
-                return Value.initErrorSymbol(@enumToInt(Symbol.StreamTooLong)),
+                return prepareThrowSymbol(vm, .StreamTooLong),
             error.StderrStreamTooLong =>
-                return Value.initErrorSymbol(@enumToInt(Symbol.StreamTooLong)),
+                return prepareThrowSymbol(vm, .StreamTooLong),
             else => stdx.panicFmt("exec err {}\n", .{err}),
         }
     };
@@ -247,7 +280,7 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     } else {
         const resp = http.get(alloc, vm.internal().httpClient, url) catch |err| {
             log.debug("fetchUrl error: {}", .{err});
-            return Value.initErrorSymbol(@enumToInt(Symbol.UnknownError));
+            return prepareThrowSymbol(vm, .UnknownError);
         };
         defer alloc.free(resp.body);
         // TODO: Use allocOwnedString
@@ -260,7 +293,7 @@ extern fn hostFetchUrl(url: [*]const u8, urlLen: usize) void;
 pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.allocator(), '\n', 10e8) catch |err| {
         if (err == error.EndOfStream) {
-            return Value.initErrorSymbol(@enumToInt(Symbol.EndOfStream));
+            return prepareThrowSymbol(vm, .EndOfStream);
         } else stdx.fatal();
     };
     defer vm.allocator().free(input);

@@ -422,12 +422,6 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const dst = pc[3].arg;
             fmt.printStderr("{} {} startLocal={}, exprCount={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(exprCount), v(dst)});
         },
-        .tryValue => {
-            const local = pc[1].arg;
-            const dst = pc[2].arg;
-            const jump = @ptrCast(*const align(1) u16, pc + 3).*;
-            fmt.printStderr("{} {} local={} dst={} jump={}", &.{v(pcOffset), v(code), v(local), v(dst), v(jump)});
-        },
         else => {
             fmt.printStderr("{} {}", &.{v(pcOffset), v(code)});
             printStderr(" {any}", .{std.mem.sliceAsBytes(pc[1..len])});
@@ -519,6 +513,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .coreturn => {
             return 1;
         },
+        .throw,
         .retain,
         .end,
         .release,
@@ -533,6 +528,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             const numVars = pc[1].arg;
             return 2 + numVars;
         },
+        .popTry,
         .copy,
         .not,
         .bitwiseNot,
@@ -560,6 +556,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .constOp => {
             return 3;
         },
+        .pushTry,
         .setIndex,
         .setIndexRelease,
         .index,
@@ -604,8 +601,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .castAbstract,
         .slice,
         .object,
-        .objectSmall,
-        .tryValue => {
+        .objectSmall => {
             return 5;
         },
         .match => {
@@ -773,10 +769,6 @@ pub const OpCode = enum(u8) {
     /// TODO: Rename to symbol.
     tagLiteral = vmc.CodeTagLiteral,
 
-    /// Copies a non error value to a local or jumps to end of the function.
-    /// [srcLocal] [dstLocal] [jumpOffset: u16]
-    tryValue = vmc.CodeTryValue,
-
     bitwiseAnd = vmc.CodeBitwiseAnd,
     bitwiseOr = vmc.CodeBitwiseOr,
     bitwiseXor = vmc.CodeBitwiseXor,
@@ -820,12 +812,16 @@ pub const OpCode = enum(u8) {
     cast = vmc.CodeCast,
     castAbstract = vmc.CodeCastAbstract,
 
+    pushTry = vmc.CodePushTry,
+    popTry = vmc.CodePopTry,
+    throw = vmc.CodeThrow,
+
     /// Indicates the end of the main script.
     end = vmc.CodeEnd,
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 96);
+    try t.eq(std.enums.values(OpCode).len, 98);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -45,9 +45,9 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "some", .some_k },
     .{ "static", .static_k },
     .{ "not", .not_k },
-    .{ "recover", .recover_k },
     .{ "return", .return_k },
     .{ "then", .then_k },
+    .{ "throw", .throw_k },
     .{ "true", .true_k },
     .{ "try", .try_k },
     .{ "type", .type_k },
@@ -1091,6 +1091,56 @@ pub const Parser = struct {
         }
     }
 
+    fn parseTryStmt(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first tokens are `try` and `:`.
+        self.advanceToken();
+        self.advanceToken();
+
+        const stmt = try self.pushNode(.tryStmt, start);
+
+        try self.pushBlock();
+        const tryFirstStmt = try self.parseSingleOrIndentedBodyStmts();
+        self.popBlock();
+
+        const indent = try self.consumeIndentBeforeStmt();
+        if (indent != self.cur_indent) {
+            return self.reportParseError("Expected catch block.", &.{});
+        }
+
+        var token = self.peekToken();
+        if (token.token_t != .catch_k) {
+            return self.reportParseError("Expected catch block.", &.{});
+        }
+        self.advanceToken();
+
+        token = self.peekToken();
+        var errorVar: NodeId = cy.NullId;
+        if (token.token_t == .ident) {
+            errorVar = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+        }
+
+        token = self.peekToken();
+        if (token.token_t != .colon) {
+            return self.reportParseError("Expected colon.", &.{});
+        }
+        self.advanceToken();
+
+        try self.pushBlock();
+        const catchFirstStmt = try self.parseSingleOrIndentedBodyStmts();
+        self.popBlock();
+
+        self.nodes.items[stmt].head = .{
+            .tryStmt = .{
+                .tryFirstStmt = tryFirstStmt,
+                .errorVar = errorVar,
+                .catchFirstStmt = catchFirstStmt,
+            },
+        };
+        return stmt;
+    }
+
     fn parseIfStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `if` keyword.
@@ -1571,6 +1621,11 @@ pub const Parser = struct {
             .if_k => {
                 return try self.parseIfStatement();
             },
+            .try_k => {
+                if (self.peekTokenAhead(1).token_t == .colon) {
+                    return try self.parseTryStmt();
+                }
+            },
             .match_k => {
                 return try self.parseMatchStatement();
             },
@@ -1742,11 +1797,10 @@ pub const Parser = struct {
                 };
                 return decl;
             },
-            else => {
-                if (try self.parseExprOrAssignStatement()) |id| {
-                    return id;
-                }
-            },
+            else => {},
+        }
+        if (try self.parseExprOrAssignStatement()) |id| {
+            return id;
         }
         self.last_err = try fmt.allocFormat(self.alloc, "unknown token: {} at {}", &.{fmt.v(token.tag()), fmt.v(token.pos())});
         return error.UnknownToken;
@@ -2248,7 +2302,7 @@ pub const Parser = struct {
     /// An expression term doesn't contain a binary expression at the top.
     fn parseTermExpr(self: *Parser) anyerror!NodeId {
         const start = self.next_pos;
-        const token = self.peekToken();
+        var token = self.peekToken();
         switch (token.tag()) {
             // .await_k => {
             //     // Await expression.
@@ -2272,10 +2326,10 @@ pub const Parser = struct {
                 };
                 return expr;
             },
-            .compt_k => {
+            .throw_k => {
                 self.advanceToken();
-                const expr = try self.pushNode(.comptExpr, start);
                 const child = try self.parseTermExpr();
+                const expr = try self.pushNode(.throwExpr, start);
                 self.nodes.items[expr].head = .{
                     .child_head = child,
                 };
@@ -2283,12 +2337,23 @@ pub const Parser = struct {
             },
             .try_k => {
                 self.advanceToken();
-                const expr = try self.pushNode(.tryExpr, start);
-                const child = try self.parseTermExpr();
-                self.nodes.items[expr].head = .{
-                    .child_head = child,
+                const tryExpr = try self.pushNode(.tryExpr, start);
+                const expr = try self.parseTermExpr();
+
+                token = self.peekToken();
+                var elseExpr: NodeId = cy.NullId;
+                if (token.token_t == .else_k) {
+                    self.advanceToken();
+                    elseExpr = try self.parseTermExpr();
+                }
+
+                self.nodes.items[tryExpr].head = .{
+                    .tryExpr = .{
+                        .expr = expr,
+                        .elseExpr = elseExpr,
+                    },
                 };
-                return expr;
+                return tryExpr;
             },
             .coresume_k => {
                 self.advanceToken();
@@ -3239,8 +3304,7 @@ pub const TokenType = enum(u6) {
     import_k,
     try_k,
     catch_k,
-    recover_k,
-    compt_k,
+    throw_k,
     static_k,
     capture_k,
     var_k,
@@ -3336,7 +3400,8 @@ pub const NodeType = enum {
     coresume,
     importStmt,
     tryExpr,
-    comptExpr,
+    tryStmt,
+    throwExpr,
     group,
     caseBlock,
     matchBlock,
@@ -3380,6 +3445,15 @@ pub const Node = struct {
     next: NodeId,
     /// Fixed size. TODO: Rename to `data`.
     head: union {
+        tryStmt: struct {
+            tryFirstStmt: NodeId,
+            errorVar: Nullable(NodeId),
+            catchFirstStmt: NodeId,
+        },
+        tryExpr: struct {
+            expr: NodeId,
+            elseExpr: Nullable(NodeId),
+        },
         errorSymLit: struct {
             symbol: NodeId,
         },
@@ -4633,6 +4707,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 62);
+    try t.eq(std.enums.values(TokenType).len, 61);
     try t.eq(keywords.kvs.len, 35);
 }

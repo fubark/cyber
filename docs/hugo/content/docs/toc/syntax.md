@@ -186,7 +186,7 @@ There are currently `35` keywords in Cyber. This list categorizes them and shows
 - [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
 - [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`
 - [Data Types]({{<relref "/docs/toc/data-types">}}): `type` `object` `enum` `true` `false` `none`
-- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `recover` `error`
+- [Error Handling]({{<relref "/docs/toc/errors">}}): `try` `catch` `error` `throw`
 - [Modules]({{<relref "/docs/toc/modules">}}): `import`
 
 ## Operators.

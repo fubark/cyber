@@ -7,8 +7,8 @@ import t 'test'
 type Vec2 a.Vec2
 
 v = Vec2{ x: 1, y: 2 }
-try t.eq(v.x, 1)
-try t.eq(v.y, 2)
+t.eq(v.x, 1)
+t.eq(v.y, 2)
 
 func foo(v Vec2):
     pass

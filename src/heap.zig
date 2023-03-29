@@ -102,7 +102,7 @@ pub const PointerT: cy.TypeId = 24;
 pub const FileT: cy.TypeId = 25;
 pub const DirT: cy.TypeId = 26;
 pub const DirIteratorT: cy.TypeId = 27;
-pub const TypeSymbolT: cy.TypeId = 28;
+pub const MetaTypeT: cy.TypeId = 28;
 
 // Keep it just under 4kb page.
 pub const HeapPage = struct {
@@ -128,7 +128,6 @@ pub const HeapObject = extern union {
     },
     list: List,
     listIter: ListIterator,
-    fiber: cy.Fiber,
     map: Map,
     mapIter: MapIterator,
     closure: Closure,
@@ -145,7 +144,7 @@ pub const HeapObject = extern union {
     file: if (cy.hasStdFiles) File else void,
     dir: if (cy.hasStdFiles) Dir else void,
     pointer: Pointer,
-    typesym: TypeSymbol,
+    metatype: MetaType,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.common.structId) {
@@ -171,14 +170,14 @@ pub const HeapObject = extern union {
     }
 };
 
-pub const TypeSymbolType = enum {
+pub const MetaTypeKind = enum {
     object,
 };
 
-pub const TypeSymbol = extern struct {
+pub const MetaType = extern struct {
     structId: cy.TypeId,
     rc: u32,
-    symType: u32,
+    type: u32,
     symId: u32,
 };
 
@@ -614,10 +613,10 @@ pub fn freePoolObject(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection)
 
 pub fn allocTypeSymbol(self: *cy.VM, symType: u8, symId: u32) !Value {
     const obj = try allocPoolObject(self);
-    obj.typesym = .{
-        .structId = TypeSymbolT,
+    obj.metatype = .{
+        .structId = MetaTypeT,
         .rc = 1,
-        .symType = symType,
+        .type = symType,
         .symId = symId,
     };
     return Value.initPtr(obj);
@@ -1531,8 +1530,10 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             freePoolObject(vm, obj);
         },
         FiberS => {
-            cy.fiber.releaseFiberStack(vm, &obj.fiber);
-            freePoolObject(vm, obj);
+            const fiber = @ptrCast(*cy.fiber.Fiber, obj);
+            cy.fiber.releaseFiberStack(vm, fiber);
+            const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(cy.fiber.Fiber)];
+            vm.alloc.free(slice);
         },
         BoxS => {
             cy.arc.release(vm, obj.box.val);
@@ -1584,7 +1585,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..@sizeOf(DirIterator)];
             vm.alloc.free(slice);
         },
-        TypeSymbolT => {
+        MetaTypeT => {
             freePoolObject(vm, obj);
         },
         else => {
@@ -1615,7 +1616,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
     }
 }
 
-fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
+pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
     // log.debug("alloc {*} {}", .{ptr, cy.pcOffset(self, self.debugPc)});
     vm.objectTraceMap.put(vm.alloc, ptr, .{
         .allocPc = vm.debugPc,

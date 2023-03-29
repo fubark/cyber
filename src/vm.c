@@ -246,6 +246,9 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetField),
         JENTRY(SetFieldRelease),
         JENTRY(SetFieldReleaseIC),
+        JENTRY(PushTry),
+        JENTRY(PopTry),
+        JENTRY(Throw),
         JENTRY(Coinit),
         JENTRY(Coyield),
         JENTRY(Coresume),
@@ -259,7 +262,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(BoxValueRetain),
         JENTRY(Tag),
         JENTRY(TagLiteral),
-        JENTRY(TryValue),
         JENTRY(Cast),
         JENTRY(CastAbstract),
         JENTRY(BitwiseAnd),
@@ -916,6 +918,11 @@ beginSwitch:
             return RES_CODE_UNKNOWN;
         }
     }
+    CASE(PushTry):
+    CASE(PopTry):
+    CASE(Throw):
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
     CASE(Coinit): {
         uint8_t startArgsLocal = pc[1];
         uint8_t numArgs = pc[2];
@@ -976,7 +983,6 @@ beginSwitch:
     CASE(BoxValueRetain):
     CASE(Tag):
     CASE(TagLiteral):
-    CASE(TryValue):
     CASE(Cast):
     CASE(CastAbstract):
         printf("Unsupported %s\n", zOpCodeName(*pc));

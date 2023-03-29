@@ -8,7 +8,7 @@ func foo(list):
   list.append(123)
 list = []
 f = coinit foo(list)
-try t.eq(list.len(), 0)
+t.eq(list.len(), 0)
 
 -- Start fiber with yield at start.
 func foo2(list):
@@ -17,7 +17,7 @@ func foo2(list):
 list = []
 f = coinit foo2(list)
 coresume f
-try t.eq(list.len(), 0)
+t.eq(list.len(), 0)
 
 -- Start fiber without yield.
 func foo3(list):
@@ -25,7 +25,7 @@ func foo3(list):
 list = []
 f = coinit foo3(list)
 coresume f
-try t.eq(list[0], 123)
+t.eq(list[0], 123)
 
 -- coresume returns final value.
 func foo4(list):
@@ -33,7 +33,7 @@ func foo4(list):
   return list[0]
 list = []
 f = coinit foo4(list)
-try t.eq(coresume f, 123)
+t.eq(coresume f, 123)
 
 -- Start fiber with yield in nested function.
 func bar():
@@ -45,7 +45,7 @@ func foo5(list):
 list = []
 f = coinit foo5(list)
 coresume f
-try t.eq(list.len(), 0)
+t.eq(list.len(), 0)
 
 -- Continue to resume fiber.
 func foo6(list):
@@ -56,17 +56,17 @@ list = []
 f = coinit foo6(list)
 coresume f
 coresume f
-try t.eq(list.len(), 2)
+t.eq(list.len(), 2)
 
 -- Fiber status.
 func foo7():
   coyield
 f = coinit foo7()
-try t.eq(f.status(), #paused)
+t.eq(f.status(), #paused)
 coresume f
-try t.eq(f.status(), #paused)
+t.eq(f.status(), #paused)
 coresume f
-try t.eq(f.status(), #done)
+t.eq(f.status(), #done)
 
 -- Resuming after fiber is done is a nop.
 func foo8():
@@ -74,9 +74,9 @@ func foo8():
 f = coinit foo8()
 coresume f
 coresume f
-try t.eq(f.status(), #done)
+t.eq(f.status(), #done)
 coresume f
-try t.eq(f.status(), #done)
+t.eq(f.status(), #done)
 
 -- Grow fiber stack.
 func sum(n):
@@ -85,4 +85,4 @@ func sum(n):
   return n + sum(n - 1)
 f = coinit sum(20)
 res = coresume f
-try t.eq(res, 210)
+t.eq(res, 210)

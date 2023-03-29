@@ -47,7 +47,7 @@ typedef enum {
     CY_TypeFile,
     CY_TypeDir,
     CY_TypeDirIter,
-    CY_TypeType,
+    CY_TypeMetaType,
 } CyType;
 
 // Null terminated string, but also includes a length.

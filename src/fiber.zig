@@ -2,9 +2,11 @@
 
 /// Fibers.
 
-const cy = @import("cyber.zig");
-const stdx = @import("stdx");
 const std = @import("std");
+const builtin = @import("builtin");
+const stdx = @import("stdx");
+const t = stdx.testing;
+const cy = @import("cyber.zig");
 const log = stdx.log.scoped(.fiber);
 const Value = cy.Value;
 
@@ -14,31 +16,40 @@ pub const Fiber = extern struct {
     prevFiber: ?*Fiber,
     stackPtr: [*]Value,
     stackLen: u32,
-    /// If pc == NullId, the fiber is done.
-    pc: u32,
 
-    /// Contains framePtr in the lower 48 bits and adjacent 8 bit parentDstLocal.
-    /// parentDstLocal:
-    ///   Where coyield and coreturn should copy the return value to.
-    ///   If this is the NullByteId, no value is copied and instead released.
-    extra: u64,
+    /// If pcOffset == NullId, the fiber is done.
+    pcOffset: u32,
 
-    inline fn setFramePtr(self: *Fiber, ptr: [*]Value) void {
-        self.extra = (self.extra & 0xff000000000000) | @ptrToInt(ptr);
-    }
+    fpOffset: u32,
 
-    inline fn getFramePtr(self: *const Fiber) [*]Value {
-        return @intToPtr([*]Value, @intCast(usize, self.extra & 0xffffffffffff));
-    }
+    tryStackCap: u32,
+    tryStackPtr: [*]TryFrame,
+    tryStackLen: u32,
 
-    inline fn setParentDstLocal(self: *Fiber, parentDstLocal: u8) void {
-        self.extra = (self.extra & 0xffffffffffff) | (@as(u64, parentDstLocal) << 48);
-    }
+    throwTraceCap: u32,
+    throwTracePtr: [*]cy.debug.CompactFrame,
+    throwTraceLen: u32,
 
-    inline fn getParentDstLocal(self: *const Fiber) u8 {
-        return @intCast(u8, (self.extra & 0xff000000000000) >> 48);
+    /// Where coyield and coreturn should copy the return value to.
+    /// If this is the NullByteId, no value is copied and instead released.
+    parentDstLocal: u8,
+
+    fn getFp(self: Fiber) [*]Value {
+        return self.stackPtr + self.fpOffset;
     }
 };
+
+/// Holds info about a runtime try block.
+pub const TryFrame = extern struct {
+    fp: [*]Value,
+    catchPc: u32,
+    catchErrDst: u8,
+};
+
+test "Internals" {
+    try t.eq(@sizeOf(Fiber), 72);
+    try t.eq(@sizeOf(TryFrame), 16);
+}
 
 pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSize: u32) linksection(cy.HotSection) !cy.Value {
     // Args are copied over to the new stack.
@@ -47,77 +58,97 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
     // Assumes call start local is at 1.
     std.mem.copy(Value, stack[5..5+args.len], args);
 
-    const obj = try cy.heap.allocPoolObject(vm);
+    const objSlice = try vm.alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), @sizeOf(Fiber));
+    if (builtin.mode == .Debug) {
+        cy.heap.traceAlloc(vm, @ptrCast(*cy.HeapObject, objSlice.ptr));
+    }
+    if (cy.TrackGlobalRC) {
+        vm.refCounts += 1;
+    }
+    if (cy.TraceEnabled) {
+        vm.trace.numRetains += 1;
+        vm.trace.numRetainAttempts += 1;
+    }
+
+    const obj = @ptrCast(*Fiber, objSlice.ptr);
     const parentDstLocal = cy.NullU8;
-    obj.fiber = .{
+    obj.* = .{
         .structId = cy.FiberS,
         .rc = 1,
         .stackPtr = stack.ptr,
         .stackLen = @intCast(u32, stack.len),
-        .pc = @intCast(u32, pc),
-        .extra = @as(u64, @ptrToInt(stack.ptr)) | (parentDstLocal << 48),
+        .pcOffset = @intCast(u32, pc),
+        .fpOffset = 0,
+        .parentDstLocal = parentDstLocal,
+        .tryStackCap = 0,
+        .tryStackPtr = undefined,
+        .tryStackLen = 0,
+        .throwTracePtr = undefined,
+        .throwTraceCap = 0,
+        .throwTraceLen = 0,
         .prevFiber = undefined,
     };
+
     return Value.initPtr(obj);
 }
 
 /// Since this is called from a coresume expression, the fiber should already be retained.
-pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) cy.vm.PcFramePtr {
+pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) PcSp {
     // Save current fiber.
     vm.curFiber.stackPtr = vm.stack.ptr;
     vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
-    vm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    vm.curFiber.setFramePtr(curFramePtr);
+    vm.curFiber.pcOffset = @intCast(u32, curFiberEndPc);
+    vm.curFiber.fpOffset = @intCast(u32, getStackOffset(vm.stack.ptr, curFramePtr));
 
     // Push new fiber.
     fiber.prevFiber = vm.curFiber;
-    fiber.setParentDstLocal(parentDstLocal);
+    fiber.parentDstLocal = parentDstLocal;
     vm.curFiber = fiber;
     vm.stack = fiber.stackPtr[0..fiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
     // Check if fiber was previously yielded.
-    if (vm.ops[fiber.pc].code == .coyield) {
-        log.debug("fiber set to {} {*}", .{fiber.pc + 3, vm.framePtr});
+    if (vm.ops[fiber.pcOffset].code == .coyield) {
+        log.debug("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
         return .{
-            .pc = vm.toPc(fiber.pc + 3),
-            .framePtr = fiber.getFramePtr(),
+            .pc = toVmPc(vm, fiber.pcOffset + 3),
+            .sp = fiber.getFp(),
         };
     } else {
-        log.debug("fiber set to {} {*}", .{fiber.pc, vm.framePtr});
+        log.debug("fiber set to {} {*}", .{fiber.pcOffset, vm.framePtr});
         return .{
-            .pc = vm.toPc(fiber.pc),
-            .framePtr = fiber.getFramePtr(),
+            .pc = toVmPc(vm, fiber.pcOffset),
+            .sp = fiber.getFp(),
         };
     }
 }
 
-pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, retValue: Value) cy.vm.PcFramePtr {
+pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Value) PcSp {
     vm.curFiber.stackPtr = vm.stack.ptr;
     vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
-    vm.curFiber.pc = @intCast(u32, curFiberEndPc);
-    vm.curFiber.setFramePtr(curFramePtr);
-    const dstLocal = vm.curFiber.getParentDstLocal();
+    vm.curFiber.pcOffset = @intCast(u32, curFiberEndPc);
+    vm.curFiber.fpOffset = @intCast(u32, getStackOffset(vm.stack.ptr, curFp));
+    const dstLocal = vm.curFiber.parentDstLocal;
 
     // Release current fiber.
     const nextFiber = vm.curFiber.prevFiber.?;
-    cy.arc.releaseObject(vm, @ptrCast(*cy.HeapObject, vm.curFiber));
+    cy.arc.releaseObject(vm, stdx.ptrAlignCast(*cy.HeapObject, vm.curFiber));
 
     // Set to next fiber.
     vm.curFiber = nextFiber;
 
     // Copy return value to parent local.
     if (dstLocal != cy.NullU8) {
-        vm.curFiber.getFramePtr()[dstLocal] = retValue;
+        vm.curFiber.stackPtr[vm.curFiber.fpOffset + dstLocal] = retValue;
     } else {
         cy.arc.release(vm, retValue);
     }
 
     vm.stack = vm.curFiber.stackPtr[0..vm.curFiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + vm.curFiber.stackLen;
-    log.debug("fiber set to {} {*}", .{vm.curFiber.pc, vm.framePtr});
-    return cy.vm.PcFramePtr{
-        .pc = vm.toPc(vm.curFiber.pc),
-        .framePtr = vm.curFiber.getFramePtr(),
+    log.debug("fiber set to {} {*}", .{vm.curFiber.pcOffset, vm.framePtr});
+    return PcSp{
+        .pc = toVmPc(vm, vm.curFiber.pcOffset),
+        .sp = vm.curFiber.getFp(),
     };
 }
 
@@ -126,8 +157,8 @@ pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, retValu
 pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) void {
     log.debug("release fiber stack", .{});
     var stack = fiber.stackPtr[0..fiber.stackLen];
-    var framePtr = (@ptrToInt(fiber.getFramePtr()) - @ptrToInt(stack.ptr)) >> 3;
-    var pc = fiber.pc;
+    var framePtr = fiber.fpOffset;
+    var pc = fiber.pcOffset;
 
     if (pc != cy.NullId) {
 
@@ -137,7 +168,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) void {
             .callSym => {
                 if (vm.ops[pc + 11].code == .coreturn) {
                     const numArgs = vm.ops[pc - 4].arg;
-                    for (fiber.getFramePtr()[5..5 + numArgs]) |arg| {
+                    for (stack[fiber.fpOffset + 5..fiber.fpOffset + 5 + numArgs]) |arg| {
                         cy.arc.release(vm, arg);
                     }
                 }
@@ -155,10 +186,10 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) void {
 
         // Unwind stack and release all locals.
         while (framePtr > 0) {
-            pc = cy.vm.pcOffset(vm, stack[framePtr + 2].retPcPtr);
+            pc = @intCast(u32, getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr));
 
             // Compute next frame ptr offset.
-            framePtr = (@ptrToInt(stack[framePtr + 3].retFramePtr) - @ptrToInt(stack.ptr)) >> 3;
+            framePtr = @intCast(u32, getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
             const sym = cy.debug.getDebugSymBefore(vm, pc);
             const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
             log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
@@ -170,3 +201,271 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) void {
     // Finally free stack.
     vm.alloc.free(stack);
 }
+
+/// Unwind given stack starting at a pc, framePtr and release all locals.
+/// TODO: See if releaseFiberStack can resuse the same code.
+pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const Value, startPc: [*]const cy.OpData) void {
+    var pcOffset = getInstOffset(vm.ops.ptr, startPc);
+    var fpOffset = getStackOffset(vm.stack.ptr, startFramePtr);
+
+    // Top of the frame indexes directly into the debug table.
+    log.debug("release frame at {}", .{pcOffset});
+    var endLocalsPc = cy.debug.pcToEndLocalsPc(vm, pcOffset);
+    if (endLocalsPc != cy.NullId) {
+        cy.arc.runReleaseOps(vm, stack, fpOffset, endLocalsPc);
+    }
+    if (fpOffset == 0) {
+        return;
+    } else {
+        pcOffset = getInstOffset(vm.ops.ptr, stack[fpOffset + 2].retPcPtr);
+        fpOffset = getStackOffset(stack.ptr, stack[fpOffset + 3].retFramePtr);
+    }
+
+    while (true) {
+        log.debug("release frame at {}", .{pcOffset});
+
+        // Release temporaries in the current frame.
+        cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+
+        const sym = cy.debug.getDebugSymBefore(vm, pcOffset);
+        endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+        if (endLocalsPc != cy.NullId) {
+            cy.arc.runReleaseOps(vm, stack, fpOffset, endLocalsPc);
+        }
+        if (fpOffset == 0) {
+            // Done, at main block.
+            break;
+        } else {
+            // Unwind.
+            pcOffset = getInstOffset(vm.ops.ptr, stack[fpOffset + 2].retPcPtr);
+            fpOffset = getStackOffset(stack.ptr, stack[fpOffset + 3].retFramePtr);
+        }
+    }
+
+    // Release temporaries in the current frame.
+    cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+}
+
+/// Performs ARC deinit for each frame starting at `start` but not including the target framePtr.
+/// Records minimal trace to reconstruct later.
+pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]const cy.OpData, targetFp: [*]const Value) !void {
+    var pcOffset = getInstOffset(vm.ops.ptr, pc);
+    var fpOffset = getStackOffset(vm.stack.ptr, startFp);
+    const tFpOffset = getStackOffset(vm.stack.ptr, targetFp);
+
+    // Assumes pc at a non-call inst.
+    if (fpOffset > tFpOffset) {
+        log.debug("release frame: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+
+        // Perform cleanup for this frame.
+        var endLocalsPc = cy.debug.pcToEndLocalsPc(vm, pcOffset);
+        if (endLocalsPc != cy.NullId) {
+            cy.arc.runReleaseOps(vm, vm.stack, fpOffset, endLocalsPc);
+        }
+
+        // Record frame.
+        try vm.throwTrace.append(vm.alloc, .{
+            .pcOffset = pcOffset,
+            .fpOffset = fpOffset,
+        });
+
+        // Unwind frame.
+        pcOffset = getInstOffset(vm.ops.ptr, vm.stack[fpOffset + 2].retPcPtr);
+        fpOffset = getStackOffset(vm.stack.ptr, vm.stack[fpOffset + 3].retFramePtr);
+
+        while (fpOffset > tFpOffset) {
+            log.debug("release frame: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+            // Perform cleanup for this frame.
+            // Assumes, pc after call inst.
+
+            // Release temporaries in the current frame.
+            cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+
+            const sym = cy.debug.getDebugSymBefore(vm, pcOffset);
+            endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+            if (endLocalsPc != cy.NullId) {
+                cy.arc.runReleaseOps(vm, vm.stack, fpOffset, endLocalsPc);
+            }
+
+            // Record frame.
+            try vm.throwTrace.append(vm.alloc, .{
+                .pcOffset = sym.pc,
+                .fpOffset = fpOffset,
+            });
+
+            // Unwind frame.
+            pcOffset = getInstOffset(vm.ops.ptr, vm.stack[fpOffset + 2].retPcPtr);
+            fpOffset = getStackOffset(vm.stack.ptr, vm.stack[fpOffset + 3].retFramePtr);
+        }
+
+        // Release temporaries in the current frame.
+        log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+        cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+    }
+}
+
+pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.OpData, err: Value) !?PcSp {
+    if (vm.tryStack.len > 0) {
+        const tframe = vm.tryStack.buf[vm.tryStack.len-1];
+
+        // Pop try frame.
+        vm.tryStack.len -= 1;
+
+        vm.throwTrace.clearRetainingCapacity();
+        if (tframe.fp == startFp) {
+            // Copy error to catch dst.
+            if (tframe.catchErrDst != cy.NullU8) {
+                startFp[tframe.catchErrDst] = err;
+            }
+
+            // Record one frame.
+            const pcOffset = getInstOffset(vm.ops.ptr, pc);
+            const fpOffset = getStackOffset(vm.stack.ptr, startFp);
+            try vm.throwTrace.append(vm.alloc, .{
+                .pcOffset = pcOffset,
+                .fpOffset = fpOffset,
+            });
+
+            // Release temporaries in the current frame.
+            log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+            cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+
+            // Goto catch block in current frame.
+            return PcSp{
+                .pc = toVmPc(vm, tframe.catchPc),
+                .sp = startFp,
+            };
+        } else {
+            // Unwind to next try frame.
+            try cy.fiber.unwindThrowUntilFramePtr(vm, startFp, pc, tframe.fp);
+
+            // Copy error to catch dst.
+            if (tframe.catchErrDst != cy.NullU8) {
+                tframe.fp[tframe.catchErrDst] = err;
+            }
+
+            return PcSp{
+                .pc = toVmPc(vm, tframe.catchPc),
+                .sp = tframe.fp,
+            };
+        }
+    } else {
+        // No try frames.
+        return null;
+    }
+}
+
+pub inline fn getInstOffset(from: [*]const cy.OpData, to: [*]const cy.OpData) u32 {
+    return @intCast(u32, @ptrToInt(to) - @ptrToInt(from));
+}
+
+pub inline fn getStackOffset(from: [*]const Value, to: [*]const Value) u32 {
+    // Divide by eight.
+    return @intCast(u32, (@ptrToInt(to) - @ptrToInt(from)) >> 3);
+}
+
+pub inline fn stackEnsureUnusedCapacity(self: *cy.VM, unused: u32) !void {
+    if (@ptrToInt(self.framePtr) + 8 * unused >= @ptrToInt(self.stack.ptr + self.stack.len)) {
+        try self.stackGrowTotalCapacity((@ptrToInt(self.framePtr) + 8 * unused) / 8);
+    }
+}
+
+pub inline fn stackEnsureTotalCapacity(self: *cy.VM, newCap: usize) !void {
+    if (newCap > self.stack.len) {
+        try stackGrowTotalCapacity(self, newCap);
+    }
+}
+
+pub fn stackEnsureTotalCapacityPrecise(self: *cy.VM, newCap: usize) !void {
+    if (newCap > self.stack.len) {
+        try stackGrowTotalCapacityPrecise(self, newCap);
+    }
+}
+
+pub fn stackGrowTotalCapacity(self: *cy.VM, newCap: usize) !void {
+    var betterCap = self.stack.len;
+    while (true) {
+        betterCap +|= betterCap / 2 + 8;
+        if (betterCap >= newCap) {
+            break;
+        }
+    }
+    if (self.alloc.resize(self.stack, betterCap)) {
+        self.stack.len = betterCap;
+        self.stackEndPtr = self.stack.ptr + betterCap;
+    } else {
+        self.stack = try self.alloc.realloc(self.stack, betterCap);
+        self.stackEndPtr = self.stack.ptr + betterCap;
+    }
+}
+
+pub fn stackGrowTotalCapacityPrecise(self: *cy.VM, newCap: usize) !void {
+    if (self.alloc.resize(self.stack, newCap)) {
+        self.stack.len = newCap;
+        self.stackEndPtr = self.stack.ptr + newCap;
+    } else {
+        self.stack = try self.alloc.realloc(self.stack, newCap);
+        self.stackEndPtr = self.stack.ptr + newCap;
+    }
+}
+
+pub inline fn toVmPc(self: *const cy.VM, offset: usize) [*]cy.OpData {
+    return self.ops.ptr + offset;
+}
+
+// Performs stackGrowTotalCapacityPrecise in addition to patching the frame pointers.
+pub fn growStackAuto(vm: *cy.VM) !void {
+    @setCold(true);
+    // Grow by 50% with minimum of 16.
+    var growSize = vm.stack.len / 2;
+    if (growSize < 16) {
+        growSize = 16;
+    }
+    try growStackPrecise(vm, vm.stack.len + growSize);
+}
+
+pub fn ensureTotalStackCapacity(vm: *cy.VM, newCap: usize) !void {
+    if (newCap > vm.stack.len) {
+        var betterCap = vm.stack.len;
+        while (true) {
+            betterCap +|= betterCap / 2 + 8;
+            if (betterCap >= newCap) {
+                break;
+            }
+        }
+        try growStackPrecise(vm, betterCap);
+    }
+}
+
+fn growStackPrecise(vm: *cy.VM, newCap: usize) !void {
+    if (vm.alloc.resize(vm.stack, newCap)) {
+        vm.stack.len = newCap;
+        vm.stackEndPtr = vm.stack.ptr + newCap;
+    } else {
+        const newStack = try vm.alloc.alloc(Value, newCap);
+
+        // Copy to new stack.
+        std.mem.copy(Value, newStack[0..vm.stack.len], vm.stack);
+
+        // Patch frame ptrs. 
+        var curFpOffset = getStackOffset(vm.stack.ptr, vm.framePtr);
+        while (curFpOffset != 0) {
+            const prevFpOffset = getStackOffset(vm.stack.ptr, newStack[curFpOffset + 3].retFramePtr);
+            newStack[curFpOffset + 3].retFramePtr = newStack.ptr + prevFpOffset;
+            curFpOffset = prevFpOffset;
+        }
+
+        // Free old stack.
+        vm.alloc.free(vm.stack);
+
+        // Update to new frame ptr.
+        vm.framePtr = newStack.ptr + getStackOffset(vm.stack.ptr, vm.framePtr);
+        vm.stack = newStack;
+        vm.stackEndPtr = vm.stack.ptr + newCap;
+    }
+}
+
+pub const PcSp = struct {
+    pc: [*]cy.OpData,
+    sp: [*]Value,
+};

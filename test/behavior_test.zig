@@ -11,6 +11,14 @@ const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = stdx.log.scoped(.behavior_test);
 
+const setup = @import("setup.zig");
+const eval = setup.eval;
+const evalPass = setup.evalPass;
+const VMrunner = setup.VMrunner;
+const Config = setup.Config;
+const eqUserError = setup.eqUserError;
+const EvalResult = setup.EvalResult;
+
 test "Type casting." {
     // Failed to cast to exact type at runtime.
     try eval(.{ .silent = true },
@@ -103,16 +111,16 @@ test "Typed object." {
         \\  return a.a == 123
         \\
         \\-- Literal.
-        \\try t.eq(foo(Foo{a: 123}), true)
+        \\t.eq(foo(Foo{a: 123}), true)
         \\        
         \\-- From var.
         \\o = Foo{a: 123}
-        \\try t.eq(foo(o), true)
+        \\t.eq(foo(o), true)
         \\
         // TODO: Implement casting syntax.
         // \\-- Cast erased type.
         // \\n = t.erase(Foo{a: 123})
-        // \\try t.eq(foo(number(n)), true)
+        // \\t.eq(foo(number(n)), true)
     );
 }
 
@@ -141,15 +149,15 @@ test "Typed number." {
         \\  return a == 123
         \\
         \\-- Literal.
-        \\try t.eq(foo(123), true)
+        \\t.eq(foo(123), true)
         \\        
         \\-- From var.
         \\n = 123
-        \\try t.eq(foo(n), true)
+        \\t.eq(foo(n), true)
         \\
         \\-- Cast erased type.
         \\n = t.erase(123)
-        \\try t.eq(foo(number(n)), true)
+        \\t.eq(foo(number(n)), true)
     );
 }
 
@@ -178,11 +186,11 @@ test "Typed none." {
         \\  return a == none
         \\
         \\-- Literal.
-        \\try t.eq(foo(none), true)
+        \\t.eq(foo(none), true)
         \\        
         \\-- From var.
         \\n = none
-        \\try t.eq(foo(n), true)
+        \\t.eq(foo(n), true)
     );
 }
 
@@ -212,11 +220,11 @@ test "Typed pointer." {
         \\
         \\-- From var.
         \\ptr = pointer(123)
-        \\try t.eq(foo(ptr), true)
+        \\t.eq(foo(ptr), true)
         \\
         \\-- Cast erased type.
         \\ptr = t.erase(pointer(123))
-        \\try t.eq(foo(pointer(ptr)), true)
+        \\t.eq(foo(pointer(ptr)), true)
     );
 }
 
@@ -245,15 +253,15 @@ test "Typed string." {
         \\  return a == 'true'
         \\
         \\-- Literal.
-        \\try t.eq(foo('true'), true)
+        \\t.eq(foo('true'), true)
         \\
         \\-- From var.
         \\str = 'true'
-        \\try t.eq(foo(str), true)
+        \\t.eq(foo(str), true)
         \\
         \\-- Cast erased type.
         \\str = t.erase('true')
-        \\try t.eq(foo(string(str)), true)
+        \\t.eq(foo(string(str)), true)
     );
 }
 
@@ -282,15 +290,15 @@ test "Typed boolean." {
         \\  return a
         \\
         \\-- Literal.
-        \\try t.eq(foo(true), true)
+        \\t.eq(foo(true), true)
         \\
         \\-- From var.
         \\b = true
-        \\try t.eq(foo(b), true)
+        \\t.eq(foo(b), true)
         \\
         \\-- Cast erased type.
         \\b = t.erase(true)
-        \\try t.eq(foo(boolean(b)), true)
+        \\t.eq(foo(boolean(b)), true)
     );
 }
 
@@ -319,15 +327,15 @@ test "Typed Map." {
         \\  return a['a'] == 123
         \\
         \\-- Literal.
-        \\try t.eq(foo({ a: 123 }), true)
+        \\t.eq(foo({ a: 123 }), true)
         \\
         \\-- From var.
         \\map = { a: 123 }
-        \\try t.eq(foo(map), true)
+        \\t.eq(foo(map), true)
         \\
         \\-- Cast erased type.
         \\map = t.erase({ a: 123 })
-        \\try t.eq(foo(map as Map), true)
+        \\t.eq(foo(map as Map), true)
     );
 }
 
@@ -356,15 +364,15 @@ test "Typed List." {
         \\  return a[0] == 123
         \\
         \\-- Literal.
-        \\try t.eq(foo([123]), true)
+        \\t.eq(foo([123]), true)
         \\
         \\-- From var.
         \\list = [123]
-        \\try t.eq(foo(list), true)
+        \\t.eq(foo(list), true)
         \\
         \\-- Cast erased type.
         \\list = t.erase([123])
-        \\try t.eq(foo(list as List), true)
+        \\t.eq(foo(list as List), true)
     );
 }
 
@@ -393,15 +401,15 @@ test "Typed symbol." {
         \\  return a == #sometag
         \\
         \\-- Literal.
-        \\try t.eq(foo(#sometag), true)
+        \\t.eq(foo(#sometag), true)
         \\
         \\-- From var.
         \\tag = #sometag
-        \\try t.eq(foo(tag), true)
+        \\t.eq(foo(tag), true)
         \\
         \\-- Cast erased type.
         \\tag = t.erase(#sometag)
-        \\try t.eq(foo(tag as symbol), true)
+        \\t.eq(foo(tag as symbol), true)
     );
 }
 
@@ -422,8 +430,8 @@ test "Typed function params." {
     }}.func);
 }
 
-test "Typed function calls." {
-    // Calling static function with different type.
+test "Compile-time typed function calls." {
+    // Error from param type mismatch.
     try eval(.{ .silent = true },
         \\func foo(a number):
         \\  return a + 3
@@ -435,6 +443,23 @@ test "Typed function calls." {
             \\
             \\main:3:1:
             \\foo(none)
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Error from different number of params.
+    try eval(.{ .silent = true },
+        \\func foo(a number):
+        \\  return a + 3
+        \\foo(1, 2)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(number, number) any`.
+            \\Only `func foo(number) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(1, 2)
             \\^
             \\
         );
@@ -549,7 +574,7 @@ test "Multiple evals persisting state." {
 
     const src2 = 
         \\import t 'test'
-        \\try t.eq(g['a'], 1)
+        \\t.eq(g['a'], 1)
         ;
     _ = try run.vm.eval("main", src2, .{ 
         .singleRun = false,
@@ -565,7 +590,7 @@ test "Multiple evals with same VM." {
     const src =
         \\import t 'test'
         \\a = 1
-        \\try t.eq(a, 1)
+        \\t.eq(a, 1)
         ;
 
     _ = try run.vm.eval("main", src, .{ 
@@ -715,7 +740,7 @@ test "Import http spec." {
     _ = try run.evalExtNoReset(Config.initFileModules("./test/import_test.cy"),
         \\import a 'https://exists.com/a.cy'
         \\import t 'test'
-        \\try t.eq(a.foo, 123)
+        \\t.eq(a.foo, 123)
     );
 }
 
@@ -769,7 +794,7 @@ test "Imports." {
     res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/init_func_error.cy'
         \\import t 'test'
-        \\try t.eq(typesym(a.foo), #function)
+        \\t.eq(typesym(a.foo), #function)
     );
     try run.expectErrorReport(res, error.Panic,
         \\panic: Assigning to static function with a different function signature.
@@ -784,21 +809,21 @@ test "Imports." {
     _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a './test_mods/a.cy'
         \\import t 'test'
-        \\try t.eq(a.varNum, 123)
+        \\t.eq(a.varNum, 123)
     );
 
     // Import using implied relative path prefix.
     _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
-        \\try t.eq(a.varNum, 123)
+        \\t.eq(a.varNum, 123)
     );
 
     // Import using unresolved relative path.
     _ = try run.evalExt(Config.initFileModules("./test/import_test.cy"),
         \\import a './test_mods/../test_mods/a.cy'
         \\import t 'test'
-        \\try t.eq(a.varNum, 123)
+        \\t.eq(a.varNum, 123)
     );
 
     // Import when running main script in the cwd.
@@ -806,7 +831,7 @@ test "Imports." {
     _ = try run.evalExt(Config.initFileModules("./import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
-        \\try t.eq(a.varNum, 123)
+        \\t.eq(a.varNum, 123)
     );
 
     // Import when running main script in a child directory.
@@ -814,7 +839,7 @@ test "Imports." {
     _ = try run.evalExt(Config.initFileModules("../import_test.cy"),
         \\import a 'test_mods/a.cy'
         \\import t 'test'
-        \\try t.eq(a.varNum, 123)
+        \\t.eq(a.varNum, 123)
     );
 
     run.deinit();
@@ -874,18 +899,77 @@ test "Fibers" {
     try evalPass(.{}, @embedFile("fiber_test.cy"));
 }
 
-test "try value" {
-    const run = VMrunner.create();
-    defer run.destroy();
+test "throw." {
+    // Uncaught in main scope.
+    try eval(.{ .silent = true },
+        \\throw error.boom
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: error.boom
+            \\
+            \\main:1:1 main:
+            \\throw error.boom
+            \\^
+            \\
+        );
+    }}.func);
 
-    // Try failure at root block panics.
-    const res = run.evalExt(.{ .silent = true },
-        \\try error.boom
-    );
-    try t.expectError(res, error.Panic);
+    // Uncaught from function call.
+    try eval(.{ .silent = true },
+        \\func foo():
+        \\  throw error.boom
+        \\foo()
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: error.boom
+            \\
+            \\main:2:3 foo:
+            \\  throw error.boom
+            \\  ^
+            \\main:3:1 main:
+            \\foo()
+            \\^
+            \\
+        );
+    }}.func);
 
-    run.deinit();
-    try evalPass(.{}, @embedFile("try_test.cy"));
+    // Uncaught from nested function call.
+    try eval(.{ .silent = true },
+        \\func bar():
+        \\  throw error.boom
+        \\func foo():
+        \\  bar()
+        \\foo()
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: error.boom
+            \\
+            \\main:2:3 bar:
+            \\  throw error.boom
+            \\  ^
+            \\main:4:3 foo:
+            \\  bar()
+            \\  ^
+            \\main:5:1 main:
+            \\foo()
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{}, @embedFile("throw_test.cy"));
+}
+
+test "try expression." {
+    try evalPass(.{}, @embedFile("try_expr_test.cy"));
+}
+
+test "try else." {
+    try evalPass(.{}, @embedFile("try_else_test.cy"));
+}
+
+test "try catch." {
+    try evalPass(.{}, @embedFile("try_catch_test.cy"));
 }
 
 test "Errors." {
@@ -1059,16 +1143,21 @@ test "Enum types." {
 }
 
 test "test module" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    const res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\import t 'test'
-        \\try t.eq(123, 234)
-    );
-    try t.expectError(res, error.Panic);
+        \\t.eq(123, 234)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: error.AssertError
+            \\
+            \\main:2:1 main:
+            \\t.eq(123, 234)
+            \\^
+            \\
+        );
+    }}.func);
 
-    _ = try run.eval(@embedFile("test_mod_test.cy"));
+    try evalPass(.{}, @embedFile("test_mod_test.cy"));
 }
 
 test "Objects." {
@@ -1246,7 +1335,7 @@ test "must()" {
         \\import t 'test'
         \\a = 123
         \\-- no error, must returns argument.
-        \\try t.eq(must(a), 123)
+        \\t.eq(must(a), 123)
     );
 
     var res = run.evalExt(.{ .silent = true },
@@ -1352,7 +1441,7 @@ test "Stack trace unwinding." {
     res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
         \\import a 'test_mods/init_panic_error.cy'
         \\import t 'test'
-        \\try t.eq(a.foo, 123)
+        \\t.eq(a.foo, 123)
     );
     try t.expectError(res, error.Panic);
     trace = run.getStackTrace();
@@ -1365,22 +1454,32 @@ test "Stack trace unwinding." {
         .lineStartPos = 0,
     });
 
-    // `try` panic from another module.
-    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
-        \\import a 'test_mods/init_try_error.cy'
+    run.deinit();
+
+    // `throw` from another module's var initializer.
+    try eval(.{ .silent = true, .uri = "./test/main.cy" },
+        \\import a 'test_mods/init_throw_error.cy'
         \\import t 'test'
-        \\try t.eq(a.foo, 123)
-    );
-    try t.expectError(res, error.Panic);
-    trace = run.getStackTrace();
-    try t.eq(trace.frames.len, 1);
-    try eqStackFrame(trace.frames[0], .{
-        .name = "main",
-        .chunkId = 1,
-        .line = 0,
-        .col = 9,
-        .lineStartPos = 0,
-    });
+        \\t.eq(a.foo, 123)
+    , struct { fn func(run_: *VMrunner, res_: EvalResult) !void {
+        try run_.expectErrorReport(res_, error.Panic,
+            \\panic: error.boom
+            \\
+            \\@AbsPath(test/test_mods/init_throw_error.cy):1:10 main:
+            \\var foo: throw error.boom
+            \\         ^
+            \\
+        );
+        const trace_ = run_.getStackTrace();
+        try t.eq(trace_.frames.len, 1);
+        try eqStackFrame(trace_.frames[0], .{
+            .name = "main",
+            .chunkId = 1,
+            .line = 0,
+            .col = 9,
+            .lineStartPos = 0,
+        });
+    }}.func);
 }
 
 fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
@@ -1515,7 +1614,7 @@ test "Statements." {
         \\if true or
         \\   true:
         \\  a = 10
-        \\try t.eq(a, 10)
+        \\t.eq(a, 10)
     );
 
     // Invalid single line block.
@@ -1589,7 +1688,7 @@ test "Integers." {
         \\
         \\-- Once a int requestable number constant is assigned to a local, it loses that trait and becomes a number.
         \\a = 10
-        \\try t.eq(a < 4, false) -- This should generate less op. If lessInt is generated this would be `true` because the @bitCast(i32, lower a) == 0.
+        \\t.eq(a < 4, false) -- This should generate less op. If lessInt is generated this would be `true` because the @bitCast(i32, lower a) == 0.
     );
 }
 
@@ -1755,23 +1854,23 @@ test "Assignment statements" {
         \\-- Assign to variable.
         \\a = 1
         \\a += 10
-        \\try t.eq(a, 11)
+        \\t.eq(a, 11)
         \\
         \\-- Assign to field.
         \\type S object:
         \\  foo
         \\s = S{ foo: 1 }
         \\s.foo += 10
-        \\try t.eq(s.foo, 11)
+        \\t.eq(s.foo, 11)
         \\
         \\-- Other operator assignments.
         \\a = 100
         \\a *= 2
-        \\try t.eq(a, 200)
+        \\t.eq(a, 200)
         \\a /= 4
-        \\try t.eq(a, 50)
+        \\t.eq(a, 50)
         \\a -= 1
-        \\try t.eq(a, 49)
+        \\t.eq(a, 49)
     );
 }
 
@@ -1782,14 +1881,14 @@ test "Undefined variable references." {
     // Reading an undefined variable assumes it's a symbol and returns a CompileError. (TODO: should be runtime error).
     var res = run.evalExt(.{ .silent = true },
         \\import t 'test'
-        \\try t.eq(a, 123)
+        \\t.eq(a, 123)
     );
     try run.expectErrorReport(res, error.CompileError,
         \\CompileError: Missing symbol: `a`
         \\
-        \\main:2:10:
-        \\try t.eq(a, 123)
-        \\         ^
+        \\main:2:6:
+        \\t.eq(a, 123)
+        \\     ^
         \\
     );
 
@@ -1826,12 +1925,12 @@ test "Static variable declaration." {
         \\
         \\var a: b
         \\var b: a
-        \\try t.eq(b, none)
-        \\try t.eq(a, none)
+        \\t.eq(b, none)
+        \\t.eq(a, none)
         \\
         \\-- Reference self.
         \\var c: c 
-        \\try t.eq(c, none)
+        \\t.eq(c, none)
     );
 
     // Declaration that depends on another.
@@ -1840,9 +1939,9 @@ test "Static variable declaration." {
         \\var a: 123
         \\var b: a + 321
         \\var c: a + b
-        \\try t.eq(a, 123) 
-        \\try t.eq(b, 444) 
-        \\try t.eq(c, 567) 
+        \\t.eq(a, 123) 
+        \\t.eq(b, 444) 
+        \\t.eq(c, 567) 
     );
 
     // Depends on and declared before another.
@@ -1851,9 +1950,9 @@ test "Static variable declaration." {
         \\var c: a + b
         \\var b: a + 321
         \\var a: 123
-        \\try t.eq(a, 123) 
-        \\try t.eq(b, 444) 
-        \\try t.eq(c, 567) 
+        \\t.eq(a, 123) 
+        \\t.eq(b, 444) 
+        \\t.eq(c, 567) 
     );
 
     // Declaration for an existing alias symbol.
@@ -1965,7 +2064,7 @@ test "if expression" {
     _ = try run.eval(
         \\import t 'test'
         \\a = if false then 123 else '{123}456'
-        \\try t.eq(a, '123456')
+        \\t.eq(a, '123456')
         \\-- `a` should be released since else returns a heap string.
     );
 }
@@ -2008,7 +2107,7 @@ test "Return statement." {
         \\func foo():
         \\  return func():
         \\    return 123
-        \\try t.eq(foo()(), 123)
+        \\t.eq(foo()(), 123)
     );
 }
 
@@ -2132,9 +2231,9 @@ test "Function overloading." {
         \\    return 2 + n
         \\func foo(n, m):
         \\    return n * m
-        \\try t.eq(foo(), 4)
-        \\try t.eq(foo(10), 12)
-        \\try t.eq(foo(3, 5), 15)
+        \\t.eq(foo(), 4)
+        \\t.eq(foo(10), 12)
+        \\t.eq(foo(3, 5), 15)
     );
 }
 
@@ -2447,323 +2546,3 @@ test "Arithmetic operators." {
 
     try evalPass(.{}, @embedFile("arithmetic_op_test.cy"));
 }
-
-const VMrunner = struct {
-    vm: *cy.UserVM,
-    trace: cy.TraceInfo,
-
-    fn create() *VMrunner {
-        var new = t.alloc.create(VMrunner) catch fatal();
-        new.init() catch fatal();
-        return new;
-    }
-
-    fn destroy(self: *VMrunner) void {
-        self.deinit();
-        t.alloc.destroy(self);
-    }
-
-    fn init(self: *VMrunner) !void {
-        self.* = .{
-            .vm = cy.getUserVM(),
-            .trace = .{},
-        };
-        self.vm.init(t.alloc) catch fatal();
-        self.vm.setTrace(&self.trace);
-    }
-
-    fn deinit(self: *VMrunner) void {
-        self.vm.deinit();
-        self.trace.deinit(t.alloc);
-        const rc = self.vm.getGlobalRC();
-        if (rc != 0) {
-            stdx.panicFmt("{} unreleased refcount from previous eval", .{rc});
-        }
-    }
-
-    fn deinitValue(self: *VMrunner, val: cy.Value) void {
-        self.vm.release(val);
-    }
-
-    fn checkMemory(self: *VMrunner) !bool {
-        return self.vm.checkMemory();
-    }
-
-    fn compile(self: *VMrunner, src: []const u8) !cy.ByteCodeBuffer {
-        return self.vm.compile(src);
-    }
-
-    fn getStackTrace(self: *VMrunner) *const cy.StackTrace {
-        return self.vm.getStackTrace();
-    }
-
-    fn assertPanicMsg(self: *VMrunner, exp: []const u8) !void {
-        const msg = try self.allocPanicMsg();
-        defer self.vm.allocator().free(msg);
-        try t.eqStr(msg, exp);
-    }
-
-    fn allocPanicMsg(self: *VMrunner) ![]const u8 {
-        return self.vm.allocPanicMsg();
-    }
-
-    fn expectErrorReport(self: *VMrunner, val: anytype, expErr: UserError, expReport: []const u8) !void {
-        try t.expectError(val, expErr);
-        const report = try self.vm.allocLastErrorReport();
-        try eqUserError(t.alloc, report, expReport);
-    }
-
-    fn evalExt(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
-        if (config.silent) {
-            cy.silentError = true;
-        }
-        defer {
-            if (config.silent) {
-                cy.silentError = false;
-            }
-        }
-        try self.resetEnv();    
-        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
-            switch (err) {
-                error.Panic,
-                error.TokenError,
-                error.ParseError,
-                error.CompileError => {
-                    if (!cy.silentError) {
-                        const report = try self.vm.allocLastErrorReport();
-                        defer t.alloc.free(report);
-                        std.debug.print("{s}", .{report});
-                    }
-                },
-                else => {},
-            }
-            return err;
-        };
-    }
-
-    fn evalExtNoReset(self: *VMrunner, config: Config, src: []const u8) !cy.Value {
-        if (config.silent) {
-            cy.silentError = true;
-        }
-        defer {
-            if (config.silent) {
-                cy.silentError = false;
-            }
-        }
-        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules, .reload = true }) catch |err| {
-            switch (err) {
-                error.Panic,
-                error.TokenError,
-                error.ParseError,
-                error.CompileError => {
-                    if (!cy.silentError) {
-                        const report = try self.vm.allocLastErrorReport();
-                        defer t.alloc.free(report);
-                        std.debug.print("{s}", .{report});
-                    }
-                },
-                else => {},
-            }
-            return err;
-        };
-    }
-
-    fn eval(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.evalExt(.{ .uri = "main" }, src);
-    }
-
-    fn resetEnv(self: *VMrunner) !void {
-        self.vm.deinit();
-        const rc = self.vm.getGlobalRC();
-        if (rc != 0) {
-            log.debug("{} unreleased refcount from previous eval", .{rc});
-            return error.UnreleasedObjects;
-        }
-        try self.vm.init(t.alloc);
-        self.vm.setTrace(&self.trace);
-    }
-
-    fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
-        return self.evalExtNoReset(.{ .uri = "main" }, src);
-    }
-
-    pub fn valueIsF64(self: *VMrunner, act: cy.Value, exp: f64) !void {
-        _ = self;
-        if (act.isNumber()) {
-            try t.eq(act.asF64(), exp);
-            return;
-        }
-        return error.NotF64;
-    }
-
-    pub fn valueIsI32(self: *VMrunner, act: cy.Value, exp: i32) !void {
-        _ = self;
-        if (act.isNumber()) {
-            const actf = act.asF64();
-            if (cy.Value.floatCanBeInteger(actf)) {
-                try t.eq(act.asF64toI32(), exp);
-                return;
-            }
-        }
-        return error.NotI32;
-    }
-
-    pub fn assertValueString(self: *VMrunner, val: cy.Value) ![]const u8 {
-        if (val.isString()) {
-            return self.vm.valueAsString(val);
-        } else {
-            return error.NotAString;
-        }
-    }
-
-    pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {
-        _ = self;
-        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
-        const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
-        const dupe = try t.alloc.alloc(i32, list.len);
-        for (list.items(), 0..) |it, i| {
-            dupe[i] = @floatToInt(i32, it.toF64());
-        }
-        return dupe;
-    }
-
-    fn parse(self: *VMrunner, src: []const u8) !cy.ParseResultView {
-        _ = self;
-        _ = src;
-        return undefined;
-    }
-};
-
-const Config = struct {
-    uri: []const u8 = "main",
-
-    /// Don't print panic errors.
-    silent: bool = false,
-
-    enableFileModules: bool = false,
-
-    checkGlobalRc: bool = true,
-
-    preEval: ?*const fn (run: *VMrunner) void = null,
-
-    debug: bool = false,
-
-    fn withSilent(self: Config) Config {
-        var new = self;
-        new.silent = true;
-        return new;
-    }
-
-    fn withDebug(self: Config) Config {
-        var new = self;
-        new.debug = true;
-        return new;
-    }
-
-    fn initFileModules(uri: []const u8) Config {
-        return .{
-            .enableFileModules = true,
-            .uri = uri,
-        };
-    }
-};
-
-/// relPath does not have to physically exist.
-fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u8) !void {
-    defer alloc.free(act);
-    var exp: std.ArrayListUnmanaged(u8) = .{};
-    defer exp.deinit(alloc);
-    var pos: usize = 0;
-    while (true) {
-        if (std.mem.indexOfPos(u8, expTmpl, pos, "@AbsPath(")) |idx| {
-            if (std.mem.indexOfScalarPos(u8, expTmpl, idx, ')')) |endIdx| {
-                try exp.appendSlice(alloc, expTmpl[pos..idx]);
-                const basePath = try std.fs.realpathAlloc(alloc, ".");
-                defer t.alloc.free(basePath);
-                try exp.appendSlice(alloc, basePath);
-                try exp.append(alloc, std.fs.path.sep);
-
-                const relPathStart = exp.items.len;
-                try exp.appendSlice(alloc, expTmpl[idx+9..endIdx]);
-                if (builtin.os.tag == .windows) {
-                    _ = std.mem.replaceScalar(u8, exp.items[relPathStart..], '/', '\\');
-                }
-
-                pos = endIdx + 1;
-            }
-        }
-        try exp.appendSlice(alloc, expTmpl[pos..]);
-        break;
-    }
-    try t.eqStr(act, exp.items);
-}
-
-const UserError = error{Panic, CompileError, TokenError, ParseError};
-
-/// TODO: Refactor to use eval.
-fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, anyerror!cy.Value) anyerror!void) !void {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    if (config.silent) {
-        cy.silentError = true;
-    }
-    if (config.debug) {
-        cy.verbose = true;
-        t.setLogLevel(.debug);
-    }
-    defer {
-        if (config.silent) {
-            cy.silentError = false;
-        }
-        if (config.debug) {
-            cy.verbose = false;
-            t.setLogLevel(.warn);
-        }
-    }
-
-    if (config.preEval) |preEval| {
-        preEval(run);
-    }
-
-    const res = run.vm.eval(config.uri, src, .{ 
-        .singleRun = false,
-        .enableFileModules = config.enableFileModules,
-        .genAllDebugSyms = config.debug,
-    });
-
-    if (optCb) |cb| {
-        try cb(run, res);
-    }  else {
-        _ = res catch |err| {
-            switch (err) {
-                error.Panic,
-                error.TokenError,
-                error.ParseError,
-                error.CompileError => {
-                    if (!cy.silentError) {
-                        const report = try run.vm.allocLastErrorReport();
-                        defer t.alloc.free(report);
-                        std.debug.print("{s}", .{report});
-                    }
-                },
-                else => {},
-            }
-            return err;
-        };
-    }
-
-    // Deinit, so global objects from builtins are released.
-    run.vm.internal().compiler.deinitRtObjects();
-    run.vm.internal().deinitRtObjects();
-
-    if (config.checkGlobalRc) {
-        try cy.arc.checkGlobalRC(run.vm.internal());
-    }
-}
-
-fn evalPass(config: Config, src: []const u8) !void {
-    return eval(config, src, null);
-}
-
-const EvalResult = anyerror!cy.Value;

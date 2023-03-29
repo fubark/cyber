@@ -7,60 +7,60 @@ var snode: Node{ value: 123 }
 
 -- Initialization.
 n = Node{ value: 123 }
-try t.eq(n.value, 123)
+t.eq(n.value, 123)
 
 -- Init and default field to none.
 n = Node{}
-try t.eq(n.value, none)
+t.eq(n.value, none)
 
 -- Init with heap value.
 n = Node{ value: [123] }
-try t.eq(n.value[0], 123)
+t.eq(n.value[0], 123)
 
 -- Get field from declared static var.
 snode.value = 123
 f = func():
   static snode
   return snode.value
-try t.eq(f(), 123)
+t.eq(f(), 123)
 
 -- Assign to object field.
 n = Node{ value: 123 }
 n.value = 234
-try t.eq(n.value, 234)
+t.eq(n.value, 234)
 
 -- Op assign to object field.
 nw = Node{ value: 123 }
 nw.value += 1
-try t.eq(nw.value, 124)
+t.eq(nw.value, 124)
 
 -- Assign to object field when the object is a temp local.
 nodes = [ Node{ value: 123 } ]
 nodes[0].value = 234
-try t.eq(nodes[0].value, 234)
+t.eq(nodes[0].value, 234)
 
 -- Op assign to object field when the object is a temp local.
 nodes = [ Node{ value: 123 } ]
 nodes[0].value += 1
-try t.eq(nodes[0].value, 124)
+t.eq(nodes[0].value, 124)
 
 -- Set object field after declared as a static var.
 snode.value = 123
 f = func():
   static snode
   snode.value = 234
-  try t.eq(snode.value, 234)
+  t.eq(snode.value, 234)
 try f()
-try t.eq(snode.value, 234)
+t.eq(snode.value, 234)
 
 -- Set to field with heap value.
 n = Node{ value: [123] }
 n.value = 234
-try t.eq(n.value, 234)
+t.eq(n.value, 234)
 
 -- Struct to string returns struct's name. 
 n = Node{ value: 123 }
-try t.eq(string(n), 'Node')
+t.eq(string(n), 'Node')
 
 -- Initialize fields without commas.
 type W object:
@@ -70,21 +70,21 @@ w = W{
   a: 1
   b: 2
 }
-try t.eq(w.a, 1)
-try t.eq(w.b, 2)
+t.eq(w.a, 1)
+t.eq(w.b, 2)
 
 -- Initialize fields with commas.
 w = W{ a: 1, b: 2 }
-try t.eq(w.a, 1)
-try t.eq(w.b, 2)
+t.eq(w.a, 1)
+t.eq(w.b, 2)
 
 -- Initialize fields with commas and newlines.
 w = W{
   a: 1,
   b: 2,
 }
-try t.eq(w.a, 1)
-try t.eq(w.b, 2)
+t.eq(w.a, 1)
+t.eq(w.b, 2)
 
 -- Big structs (allocated outside of heap pages).
 type BigNode object:
@@ -94,11 +94,11 @@ type BigNode object:
   d
   e
 n = BigNode{ a: 1, b: 2, c: 3, d: 4, e: 5 }
-try t.eq(n.a, 1)
-try t.eq(n.b, 2)
-try t.eq(n.c, 3)
-try t.eq(n.d, 4)
-try t.eq(n.e, 5)
+t.eq(n.a, 1)
+t.eq(n.b, 2)
+t.eq(n.c, 3)
+t.eq(n.d, 4)
+t.eq(n.e, 5)
 
 -- Multiple structs with the same field names but different offsets.
 type Node1 object:
@@ -113,14 +113,14 @@ type Node3 object:
 n1 = Node1{ a: 1, b: 2 }
 n2 = Node2{ a: 3, b: 4 }
 n3 = Node3{ a: 5, b: 6 }
-try t.eq(n1.a, 1)
-try t.eq(n1.b, 2)
-try t.eq(n2.a, 3)
-try t.eq(n2.b, 4)
-try t.eq(n3.a, 5)
-try t.eq(n3.b, 6)
+t.eq(n1.a, 1)
+t.eq(n1.b, 2)
+t.eq(n2.a, 3)
+t.eq(n2.b, 4)
+t.eq(n3.a, 5)
+t.eq(n3.b, 6)
 
 -- Using Object sym as a value.
 sym = Node
-try t.eq(typesym(sym), #type)
-try t.eq(string(sym), 'Object Symbol (Node)')
+t.eq(typesym(sym), #type)
+t.eq(string(sym), 'Object Symbol (Node)')

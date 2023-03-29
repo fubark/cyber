@@ -1,25 +1,25 @@
 import t 'test'
 
 -- Using `is not` op.
-try t.eq(3 is not 2, true)
-try t.eq(3 is not 3, false)
+t.eq(3 is not 2, true)
+t.eq(3 is not 3, false)
 
 -- string and rawstring contents.
-try t.eq('foo' != rawstring('foo'), false)
-try t.eq('foo' != rawstring('bar'), true)
+t.eq('foo' != rawstring('foo'), false)
+t.eq('foo' != rawstring('bar'), true)
 
 -- Comparing objects.
 type S object:
   value
 o = S{ value: 3 }
-try t.eq(o != 123, true)
+t.eq(o != 123, true)
 o2 = o
-try t.eq(o != o2, false)
+t.eq(o != o2, false)
 
 -- Compare symbols.
-try t.eq(#abc != #xyz, true) 
-try t.eq(#abc != #abc, false)
+t.eq(#abc != #xyz, true) 
+t.eq(#abc != #abc, false)
 
 -- Compare errors.
-try t.eq(error.SomeError != error.OtherError, true)
-try t.eq(error.SomeError != error.SomeError, false)
+t.eq(error.SomeError != error.OtherError, true)
+t.eq(error.SomeError != error.SomeError, false)

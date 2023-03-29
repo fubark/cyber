@@ -13,7 +13,7 @@ export fn _start() void {
     runTest(
         \\import os 'os'
         \\import t 'test'
-        \\try t.eq(os.system, 'wasm')
+        \\t.eq(os.system, 'wasm')
     );
     runTest(@embedFile("astring_slice_test.cy"));
     runTest(@embedFile("astring_test.cy"));
@@ -22,6 +22,7 @@ export fn _start() void {
     runTest(@embedFile("compare_neq_test.cy"));
     runTest(@embedFile("compare_num_test.cy"));
     runTest(@embedFile("core_test.cy"));
+    runTest(@embedFile("error_test.cy"));
     runTest(@embedFile("for_iter_test.cy"));
     runTest(@embedFile("for_range_test.cy"));
     runTest(@embedFile("list_test.cy"));
@@ -36,8 +37,11 @@ export fn _start() void {
     runTest(@embedFile("static_func_test.cy"));
     runTest(@embedFile("static_ustring_test.cy"));
     runTest(@embedFile("string_interpolation_test.cy"));
+    runTest(@embedFile("throw_test.cy"));
     runTest(@embedFile("truthy_test.cy"));
-    runTest(@embedFile("try_test.cy"));
+    runTest(@embedFile("try_catch_test.cy"));
+    runTest(@embedFile("try_else_test.cy"));
+    runTest(@embedFile("try_expr_test.cy"));
     runTest(@embedFile("ustring_slice_test.cy"));
     runTest(@embedFile("ustring_test.cy"));
     runTest(@embedFile("while_cond_test.cy"));

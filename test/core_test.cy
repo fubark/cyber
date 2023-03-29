@@ -3,142 +3,173 @@ import os 'os'
 
 -- arrayFill with primitive.
 a = arrayFill(123, 10)
-try t.eq(a.len(), 10)
+t.eq(a.len(), 10)
 for 0..10 each i:
-  try t.eq(a[i], 123)
+  t.eq(a[i], 123)
 
 -- arrayFill with object performs shallow copy.
 a = arrayFill([], 2)
-try t.eq(a.len(), 2)
-try t.eq(a[0] == a[1], false)
+t.eq(a.len(), 2)
+t.eq(a[0] == a[1], false)
 
 -- copy()
-try t.eq(copy(123), 123)
+t.eq(copy(123), 123)
 type S object:
   foo
   bar
 s = S{}
 oldList = [123, s]
 newList = copy(oldList)
-try t.eq(newList == oldList, false)
-try t.eq(newList.len(), 2)
-try t.eq(newList[0], 123)
-try t.eq(newList[1], s)
+t.eq(newList == oldList, false)
+t.eq(newList.len(), 2)
+t.eq(newList[0], 123)
+t.eq(newList[1], s)
 oldMap = { a: 123, b: s }
 newMap = copy(oldMap)
-try t.eq(newMap == oldMap, false)
-try t.eq(newMap.size(), 2)
-try t.eq(newMap.a, 123)
-try t.eq(newMap.b, s)
+t.eq(newMap == oldMap, false)
+t.eq(newMap.size(), 2)
+t.eq(newMap.a, 123)
+t.eq(newMap.b, s)
 oldStr = 'foo'
 newStr = copy(oldStr)
-try t.eq(newStr, oldStr)
+t.eq(newStr, oldStr)
 rcList = []
 s.foo = 123
 s.bar = rcList
 newS = copy(s)
-try t.eq(newS == s, false)
-try t.eq(newS.foo, 123)
-try t.eq(newS.bar, rcList)
+t.eq(newS == s, false)
+t.eq(newS.foo, 123)
+t.eq(newS.bar, rcList)
+
+-- error()
+-- See error_test.cy
+
+-- errorReport(), current frame.
+try:
+  throw error.Boom
+catch:
+  t.eq(errorReport(), "main:49:3 main:
+  throw error.Boom
+  ^
+")
+
+-- errorReport(), one frame before and one frame after.
+func foo2():
+  throw error.Boom
+func foo():
+  try:
+    foo2()
+  catch:
+    t.eq(errorReport(), "main:58:3 foo2:
+  throw error.Boom
+  ^
+main:61:5 foo:
+    foo2()
+    ^
+main:73:1 main:
+foo()
+^
+")
+foo()
 
 -- int()
 res = int(100)
-try t.eq(typesym(res), #int)
-try t.eq(number(res), 100)
-try t.eq(number(int(100.1)), 100)
-try t.eq(number(int('100')), 100)
-try t.eq(number(int('100.1')), 100)
+t.eq(typesym(res), #int)
+t.eq(number(res), 100)
+t.eq(number(int(100.1)), 100)
+t.eq(number(int('100')), 100)
+t.eq(number(int('100.1')), 100)
 
 -- number()
-try t.eq(number(100), 100)
-try t.eq(number(100.1), 100.1)
-try t.eq(number('100'), 100)
-try t.eq(number('100.1'), 100.1)
+t.eq(number(100), 100)
+t.eq(number(100.1), 100.1)
+t.eq(number('100'), 100)
+t.eq(number('100.1'), 100.1)
 
 -- parseCyon()
 val = parseCyon('123')
-try t.eq(val, 123)
+t.eq(val, 123)
 val = parseCyon('"foo"')
-try t.eq(val, 'foo')
+t.eq(val, 'foo')
 val = parseCyon('true')
-try t.eq(val, true)
+t.eq(val, true)
 val = parseCyon('false')
-try t.eq(val, false)
+t.eq(val, false)
 val = parseCyon('[]')
-try t.eqList(val, [])
+t.eqList(val, [])
 val = parseCyon('[1, 2, 3]')
-try t.eqList(val, [1, 2, 3])
+t.eqList(val, [1, 2, 3])
 val = parseCyon('\{\}')
-try t.eq(val.size(), 0)
+t.eq(val.size(), 0)
 val = parseCyon('\{ a: 123 \}')
-try t.eq(val.size(), 1)
-try t.eq(val['a'], 123)
+t.eq(val.size(), 1)
+t.eq(val['a'], 123)
 
 -- pointer()
 ptr = pointer(0xDEADBEEF)
-try t.eq(ptr.value(), 3735928559)
+t.eq(ptr.value(), 3735928559)
 
 -- string()
 str = 'abcd'
-try t.eq(string(str), 'abcd')
-try t.eq(string(str[0..2]), 'ab')
+t.eq(string(str), 'abcd')
+t.eq(string(str[0..2]), 'ab')
 rstr = rawstring('abcd')
-try t.eq(string(rstr), 'rawstring (4)')
-try t.eq(string(rstr[0..2]), 'rawstring (2)')
-try t.eq(string(123), '123')
-try t.eq(string(123.4), '123.4')
-try t.eq(string(123.456), '123.456')
-try t.eq(string(123.00000123), '123.00000123')
-try t.eq(string(int(123)), '123')
-try t.eq(string(error.foo), 'error.foo')
-try t.eq(string(#foo), '#foo')
+t.eq(string(rstr), 'rawstring (4)')
+t.eq(string(rstr[0..2]), 'rawstring (2)')
+t.eq(string(123), '123')
+t.eq(string(123.4), '123.4')
+t.eq(string(123.456), '123.456')
+t.eq(string(123.00000123), '123.00000123')
+t.eq(string(int(123)), '123')
+t.eq(string(error.foo), 'error.foo')
+t.eq(string(#foo), '#foo')
 
 -- toCyon()
 cyon = toCyon(123)
-try t.eq(cyon, '123')
+t.eq(cyon, '123')
 cyon = toCyon('foo')
-try t.eq(cyon, "'foo'")
+t.eq(cyon, "'foo'")
 cyon = toCyon(true)
-try t.eq(cyon, 'true')
+t.eq(cyon, 'true')
 cyon = toCyon(false)
-try t.eq(cyon, 'false')
+t.eq(cyon, 'false')
 cyon = toCyon([])
-try t.eq(cyon, '[]')
+t.eq(cyon, '[]')
 cyon = toCyon([1, 2, 3])
-try t.eq(cyon, "[
+t.eq(cyon, "[
     1
     2
     3
 ]")
 cyon = toCyon({})
-try t.eq(cyon, "\{\}")
+t.eq(cyon, "\{\}")
 cyon = toCyon({ a: 123 })
-try t.eq(cyon, "\{
+t.eq(cyon, "\{
     a: 123
 \}")
 
 -- typeid()
-try t.eq(typeid(none), 0)
-try t.eq(typeid(true), 1)
-try t.eq(typeid(false), 1)
-try t.eq(typeid(error.err), 2)
-try t.eq(typeid('abc'), 3)
-try t.eq(typeid('abc🦊'), 4)
-try t.eq(typeid(#abc), 6)
-try t.eq(typeid(int(123)), 7)
-try t.eq(typeid(123), 8)
-try t.eq(typeid([]), 9)
-try t.eq(typeid({}), 11)
+t.eq(typeid(none), 0)
+t.eq(typeid(true), 1)
+t.eq(typeid(false), 1)
+t.eq(typeid(error.err), 2)
+t.eq(typeid('abc'), 3)
+t.eq(typeid('abc🦊'), 4)
+t.eq(typeid(#abc), 6)
+t.eq(typeid(int(123)), 7)
+t.eq(typeid(123), 8)
+t.eq(typeid([]), 9)
+t.eq(typeid({}), 11)
 
 -- typesym()
-try t.eq(typesym(123), #number)
-try t.eq(typesym('abc'), #string)
-try t.eq(typesym(pointer(0)), #pointer)
+t.eq(typesym(123), #number)
+t.eq(typesym('abc'), #string)
+t.eq(typesym(pointer(0)), #pointer)
 
 -- writeFile() rawstring
 if os.system != 'wasm':
   s = rawstring('').insertByte(0, 255)
   writeFile('test.txt', s)
   read = readFile('test.txt')
-  try t.eq(read.len(), 1)
-  try t.eq(read.byteAt(0), 255)
+  t.eq(read.len(), 1)
+  t.eq(read.byteAt(0), 255)

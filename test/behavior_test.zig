@@ -124,6 +124,46 @@ test "Typed object." {
     );
 }
 
+test "Typed fiber." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a fiber):
+        \\  pass
+        \\foo(true)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(boolean) any`.
+            \\Only `func foo(fiber) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(true)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a fiber):
+        \\  return typesym(a) == #fiber
+        \\
+        \\func start():
+        \\  pass
+        \\
+        \\-- Literal.
+        \\t.eq(foo(coinit start()), true)
+        \\        
+        \\-- From var.
+        \\f = coinit start()
+        \\t.eq(foo(f), true)
+        \\
+        \\-- Cast erased type.
+        \\f = t.erase(coinit start())
+        \\t.eq(foo(f as fiber), true)
+    );
+}
+
 test "Typed number." {
     // Wrong param type.
     try eval(.{ .silent = true },

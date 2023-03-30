@@ -164,6 +164,7 @@ pub fn typeTagToExactTypeId(tag: TypeTag) ?cy.TypeId {
         .map => cy.MapS,
         .pointer => cy.PointerT,
         .none => cy.NoneT,
+        .fiber => cy.FiberS,
         .err => cy.ErrorT,
         else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };

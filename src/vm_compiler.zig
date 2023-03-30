@@ -169,6 +169,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameNone);
         id = try sema.ensureNameSym(self, "error");
         std.debug.assert(id == sema.NameError);
+        id = try sema.ensureNameSym(self, "fiber");
+        std.debug.assert(id == sema.NameFiber);
 
         // Add builtins types as resolved syms.
         id = try sema.addResolvedBuiltinSym(self, .any, "any");
@@ -195,6 +197,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.None);
         id = try sema.addResolvedBuiltinSym(self, .err, "error");
         std.debug.assert(id == bt.Error);
+        id = try sema.addResolvedBuiltinSym(self, .fiber, "fiber");
+        std.debug.assert(id == bt.Fiber);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

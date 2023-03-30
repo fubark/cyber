@@ -4,7 +4,7 @@ weight: 7
 ---
 
 # Error Handling.
-Cyber provides errors values and try/catch mechanisms to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
+Cyber provides error values and try/catch mechanisms to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
 
 ## Error value.
 The `error` type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won't be consistent. Use your own enums if you want reliable ID values. In a future version of Cyber, you'll be able to attach an optional payload value.

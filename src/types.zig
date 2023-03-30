@@ -20,6 +20,7 @@ pub const BuiltinTypeSymIds = struct {
     pub const Pointer: ResolvedSymId = 9;
     pub const None: ResolvedSymId = 10;
     pub const Error: ResolvedSymId = 11;
+    pub const Fiber: ResolvedSymId = 12;
 };
 
 test "Reserved names map to reserved sym ids." {
@@ -35,6 +36,7 @@ test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NamePointer, bt.Pointer);
     try t.eq(sema.NameNone, bt.None);
     try t.eq(sema.NameError, bt.Error);
+    try t.eq(sema.NameFiber, bt.Fiber);
 }
 
 /// Names and resolved builtin sym ids are reserved to index into `BuiltinTypes`.
@@ -51,6 +53,7 @@ const BuiltinTypes = [_]Type{
     PointerType,
     NoneType,
     ErrorType,
+    FiberType,
 };
 
 /// Names and resolved builtin sym ids are reserved to index into `BuiltinTypeTags`.
@@ -67,6 +70,7 @@ pub const BuiltinTypeTags = [_]TypeTag{
     .pointer,
     .none,
     .err,
+    .fiber,
 };
 
 /// Check type constraints on target func signature.
@@ -179,6 +183,7 @@ pub fn typeTagToResolvedSym(tag: TypeTag) ResolvedSymId {
         .enumT => bt.Any, // TODO: Handle tagtype.
         .pointer => bt.Pointer,
         .none => bt.None,
+        .fiber => bt.Fiber,
         .err => bt.Error,
         else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };

@@ -4023,6 +4023,7 @@ pub const NameMap = 8;
 pub const NamePointer = 9;
 pub const NameNone = 10;
 pub const NameError = 11;
+pub const NameFiber = 12;
 
 pub const FuncDeclId = u32;
 

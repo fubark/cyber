@@ -141,7 +141,7 @@ pub const VM = struct {
 
     /// Interface used for imports and fetch.
     httpClient: http.HttpClient,
-    stdHttpClient: http.StdHttpClient,
+    stdHttpClient: if (!cy.isWasm) http.StdHttpClient else void,
 
     trace: if (TraceEnabled) *TraceInfo else void,
 

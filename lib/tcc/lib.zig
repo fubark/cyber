@@ -1,25 +1,27 @@
 const std = @import("std");
 
-pub fn addModule(step: *std.build.CompileStep) void {
-    const mod = step.builder.createModule(.{
-        .source_file = .{ .path = srcPath() ++ "/tcc.zig" },
+pub fn createModule(b: *std.Build) *std.build.Module {
+    return b.createModule(.{
+        .source_file = .{ .path = thisDir() ++ "/tcc.zig" },
     });
-    step.addModule("tcc", mod);
-    step.addIncludePath(srcPath() ++ "/vendor");
+}
+
+pub fn addModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
+    step.addModule(name, mod);
+    step.addIncludePath(thisDir() ++ "/vendor");
 }
 
 const BuildOptions = struct {
     selinux: bool = false,
 };
 
-pub fn buildAndLink(step: *std.build.CompileStep, opts: BuildOptions) void {
-    const b = step.builder;
+pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOptions) void {
     const lib = b.addStaticLibrary(.{
         .name = "tcc",
         .target = step.target,
         .optimize = step.optimize,
     });
-    lib.addIncludePath(srcPath() ++ "/vendor");
+    lib.addIncludePath(thisDir() ++ "/vendor");
     lib.linkLibC();
     lib.disable_sanitize_c = true;
 
@@ -41,11 +43,11 @@ pub fn buildAndLink(step: *std.build.CompileStep, opts: BuildOptions) void {
         // "/vendor/lib/libtcc1.c",
     }) catch @panic("error");
     for (sources.items) |src| {
-        lib.addCSourceFile(b.fmt("{s}{s}", .{srcPath(), src}), c_flags.items);
+        lib.addCSourceFile(b.fmt("{s}{s}", .{thisDir(), src}), c_flags.items);
     }
     step.linkLibrary(lib);
 }
 
-inline fn srcPath() []const u8 {
+inline fn thisDir() []const u8 {
     return comptime std.fs.path.dirname(@src().file) orelse @panic("error");
 }

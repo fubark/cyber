@@ -3,6 +3,7 @@ const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 
 const Request = if (!cy.isWasm) std.http.Client.Request else void;
+const StdResponse = if (!cy.isWasm) std.http.Client.Response else void;
 
 /// Interface to http client.
 pub const HttpClient = struct {
@@ -10,15 +11,19 @@ pub const HttpClient = struct {
     vtable: *const VTable,
 
     const VTable = struct {
-        request: *const fn (ptr: *anyopaque, uri: std.Uri) RequestError!Request,
-        readAll: *const fn (ptr: *anyopaque, req: *Request, buf: []u8) RequestError!usize,
+        // request: *const fn (ptr: *anyopaque, uri: std.Uri) RequestError!Request,
+        // Using `anyerror` because of dependency loop issue with zig master.
+        request: *const fn (ptr: *anyopaque, uri: std.Uri) anyerror!Request,
+        // readAll: *const fn (ptr: *anyopaque, req: *Request, buf: []u8) RequestError!usize,
+        readAll: *const fn (ptr: *anyopaque, req: *Request, buf: []u8) anyerror!usize,
     };
 
     pub fn request(self: HttpClient, uri: std.Uri) !Request {
         return self.vtable.request(self.ptr, uri);
     }
 
-    pub fn readAll(self: HttpClient, req: *Request, buf: []u8) RequestError!usize {
+    // pub fn readAll(self: HttpClient, req: *Request, buf: []u8) RequestError!usize {
+    pub fn readAll(self: HttpClient, req: *Request, buf: []u8) anyerror!usize {
         return self.vtable.readAll(self.ptr, req, buf);
     }
 };
@@ -82,20 +87,28 @@ pub const MockHttpClient = struct {
     }
 
     fn request(ptr: *anyopaque, uri: std.Uri) RequestError!Request {
-        _ = uri;
         const self = stdx.ptrAlignCast(*MockHttpClient, ptr);
         self.readResponseHeaders = false;
         if (self.retReqError) |err| {
             return err;
         } else {
             self.retBodyIdx = 0;
-            return Request{
+            var req = Request{
+                .uri = uri,
                 .client = undefined,
                 .connection = undefined,
                 .redirects_left = undefined,
                 .response = undefined,
                 .headers = undefined,
+                .handle_redirects = undefined,
+                .compression_init = undefined,
+                .arena = undefined,
             };
+            req.response.compression = .none;
+            req.response.done = true;
+
+            req.arena = std.heap.ArenaAllocator.init(undefined);
+            return req;
         }
     }
 
@@ -166,38 +179,89 @@ fn stdRequest(client: *std.http.Client, uri: std.Uri, headers: std.http.Client.R
     const host = uri.host orelse return error.UriMissingHost;
 
     if (client.next_https_rescan_certs and protocol == .tls) {
-        try client.ca_bundle.rescan(client.allocator);
-        client.next_https_rescan_certs = false;
+        client.connection_pool.mutex.lock(); // TODO: this could be so much better than reusing the connection pool mutex.
+        defer client.connection_pool.mutex.unlock();
+
+        if (client.next_https_rescan_certs) {
+            try client.ca_bundle.rescan(client.allocator);
+            client.next_https_rescan_certs = false;
+        }
     }
 
     var req: Request = .{
+        .uri = uri,
         .client = client,
         .headers = headers,
         .connection = try client.connect(host, port, protocol),
         .redirects_left = options.max_redirects,
+        .handle_redirects = options.handle_redirects,
+        .compression_init = false,
         .response = switch (options.header_strategy) {
-            .dynamic => |max| Request.Response.initDynamic(max),
-            .static => |buf| Request.Response.initStatic(buf),
+            .dynamic => |max| StdResponse.initDynamic(max),
+            .static => |buf| StdResponse.initStatic(buf),
         },
+        .arena = undefined,
     };
 
-    {
-        var h = try std.BoundedArray(u8, 1000).init(0);
-        try h.appendSlice(@tagName(headers.method));
-        try h.appendSlice(" ");
-        try h.appendSlice(uri.path);
-        if (uri.query) |query| {
-            try h.appendSlice("?");
-            try h.appendSlice(query);
-        }
-        try h.appendSlice(" ");
-        try h.appendSlice(@tagName(headers.version));
-        try h.appendSlice("\r\nHost: ");
-        try h.appendSlice(host);
-        try h.appendSlice("\r\nConnection: close\r\n\r\n");
+    req.arena = std.heap.ArenaAllocator.init(client.allocator);
 
-        const header_bytes = h.slice();
-        try req.connection.writeAll(header_bytes);
+    {
+        var buffered = std.io.bufferedWriter(req.connection.data.writer());
+        const writer = buffered.writer();
+
+        const escaped_path = try std.Uri.escapePath(client.allocator, uri.path);
+        defer client.allocator.free(escaped_path);
+
+        const escaped_query = if (uri.query) |q| try std.Uri.escapeQuery(client.allocator, q) else null;
+        defer if (escaped_query) |q| client.allocator.free(q);
+
+        const escaped_fragment = if (uri.fragment) |f| try std.Uri.escapeQuery(client.allocator, f) else null;
+        defer if (escaped_fragment) |f| client.allocator.free(f);
+
+        try writer.writeAll(@tagName(headers.method));
+        try writer.writeByte(' ');
+        if (escaped_path.len == 0) {
+            try writer.writeByte('/');
+        } else {
+            try writer.writeAll(escaped_path);
+        }
+        if (escaped_query) |q| {
+            try writer.writeByte('?');
+            try writer.writeAll(q);
+        }
+        if (escaped_fragment) |f| {
+            try writer.writeByte('#');
+            try writer.writeAll(f);
+        }
+        try writer.writeByte(' ');
+        try writer.writeAll(@tagName(headers.version));
+        try writer.writeAll("\r\nHost: ");
+        try writer.writeAll(host);
+        try writer.writeAll("\r\nUser-Agent: ");
+        try writer.writeAll(headers.user_agent);
+        if (headers.connection == .close) {
+            try writer.writeAll("\r\nConnection: close");
+        } else {
+            try writer.writeAll("\r\nConnection: keep-alive");
+        }
+        try writer.writeAll("\r\nAccept-Encoding: gzip, deflate, zstd");
+
+        switch (headers.transfer_encoding) {
+            .chunked => try writer.writeAll("\r\nTransfer-Encoding: chunked"),
+            .content_length => |content_length| try writer.print("\r\nContent-Length: {d}", .{content_length}),
+            .none => {},
+        }
+
+        for (headers.custom) |header| {
+            try writer.writeAll("\r\n");
+            try writer.writeAll(header.name);
+            try writer.writeAll(": ");
+            try writer.writeAll(header.value);
+        }
+
+        try writer.writeAll("\r\n\r\n");
+
+        try buffered.flush();
     }
 
     return req;

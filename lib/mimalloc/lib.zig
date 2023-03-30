@@ -1,26 +1,28 @@
 const std = @import("std");
 
 
-pub fn addModule(step: *std.build.CompileStep) void {
-    const mod = step.builder.createModule(.{
-        .source_file = .{ .path = srcPath() ++ "/mimalloc.zig" },
+pub fn createModule(b: *std.Build) *std.build.Module {
+    return b.createModule(.{
+        .source_file = .{ .path = thisDir() ++ "/mimalloc.zig" },
     });
-    step.addModule("mimalloc", mod);
-    step.addIncludePath(srcPath() ++ "/vendor/include");
+}
+
+pub fn addModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
+    step.addModule(name, mod);
+    step.addIncludePath(thisDir() ++ "/vendor/include");
 }
 
 const BuildOptions = struct {
 };
 
-pub fn buildAndLink(step: *std.build.CompileStep, opts: BuildOptions) void {
+pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOptions) void {
     _ = opts;
-    const b = step.builder;
     const lib = b.addStaticLibrary(.{
         .name = "mimalloc",
         .target = step.target,
         .optimize = step.optimize,
     });
-    lib.addIncludePath(srcPath() ++ "/vendor/include");
+    lib.addIncludePath(thisDir() ++ "/vendor/include");
     lib.linkLibC();
     // lib.disable_sanitize_c = true;
 
@@ -71,11 +73,11 @@ pub fn buildAndLink(step: *std.build.CompileStep, opts: BuildOptions) void {
         "/vendor/src/stats.c",
     }) catch @panic("error");
     for (sources.items) |src| {
-        lib.addCSourceFile(b.fmt("{s}{s}", .{srcPath(), src}), c_flags.items);
+        lib.addCSourceFile(b.fmt("{s}{s}", .{thisDir(), src}), c_flags.items);
     }
     step.linkLibrary(lib);
 }
 
-inline fn srcPath() []const u8 {
+inline fn thisDir() []const u8 {
     return comptime std.fs.path.dirname(@src().file) orelse @panic("error");
 }

@@ -1,16 +1,19 @@
 const std = @import("std");
 const config = @import("src/config.zig");
-const mimalloc = @import("lib/mimalloc/lib.zig");
-const tcc = @import("lib/tcc/lib.zig");
+const mimalloc_lib = @import("lib/mimalloc/lib.zig");
+const tcc_lib = @import("lib/tcc/lib.zig");
 
 // FIND: v0.2
 const Version = "0.2";
 
-var stdx: *std.build.Module = undefined;
 var useMalloc: bool = undefined;
 var selinux: bool = undefined;
 var engine: config.Engine = .zig;
 var testFilter: ?[]const u8 = undefined;
+
+var stdx: *std.build.Module = undefined;
+var tcc: *std.build.Module = undefined;
+var mimalloc: *std.build.Module = undefined;
 
 pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
@@ -25,8 +28,12 @@ pub fn build(b: *std.build.Builder) !void {
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
     });
+    tcc = tcc_lib.createModule(b);
+    mimalloc = mimalloc_lib.createModule(b);
 
     {
+        const step = b.step("cli", "Build main cli.");
+
         const exe = b.addExecutable(.{
             .name = "cyber",
             .root_source_file = .{ .path = "src/main.zig" },
@@ -47,22 +54,23 @@ pub fn build(b: *std.build.Builder) !void {
 
         try addBuildOptions(b, exe, opts);
         if (engine == .c) {
-            try buildCVM(exe, opts);
+            try buildCVM(b.allocator, exe, opts);
         }
         // exe.emit_asm = .emit;
 
         // exe.linkLibC();
         exe.addModule("stdx", stdx);
-        mimalloc.addModule(exe);
-        mimalloc.buildAndLink(exe, .{});
-        tcc.addModule(exe);
-        tcc.buildAndLink(exe, .{
+        mimalloc_lib.addModule(exe, "mimalloc", mimalloc);
+        mimalloc_lib.buildAndLink(b, exe, .{});
+        tcc_lib.addModule(exe, "tcc", tcc);
+        tcc_lib.buildAndLink(b, exe, .{
             .selinux = selinux,
         });
-        b.step("cli", "Build main cli.").dependOn(&exe.step);
+        step.dependOn(&exe.step);
     }
 
     {
+        const step = b.step("lib", "Build as a library.");
         const lib = b.addSharedLibrary(.{
             .name = "cyber",
             .root_source_file = .{ .path = "src/lib.zig" },
@@ -86,12 +94,12 @@ pub fn build(b: *std.build.Builder) !void {
 
         // lib.linkLibC();
         lib.addModule("stdx", stdx);
-        mimalloc.addModule(lib);
-        mimalloc.buildAndLink(lib, .{});
+        mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
+        mimalloc_lib.buildAndLink(b, lib, .{});
 
         if (!target.getCpuArch().isWasm()) {
-            tcc.addModule(lib);
-            tcc.buildAndLink(lib, .{
+            tcc_lib.addModule(lib, "tcc", tcc);
+            tcc_lib.buildAndLink(b, lib, .{
                 .selinux = selinux,
             });
         } else {
@@ -101,10 +109,11 @@ pub fn build(b: *std.build.Builder) !void {
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
             lib.stack_protector = false;
         }
-        b.step("lib", "Build as a library.").dependOn(&lib.step);
+        step.dependOn(&lib.step);
     }
 
     {
+        const step = b.step("wasm-test", "Build the wasm test runner.");
         const lib = b.addSharedLibrary(.{
             .name = "test",
             .root_source_file = .{ .path = "test/wasm_test.zig" },
@@ -129,12 +138,12 @@ pub fn build(b: *std.build.Builder) !void {
 
         // lib.linkLibC();
         lib.addModule("stdx", stdx);
-        mimalloc.addModule(lib);
-        mimalloc.buildAndLink(lib, .{});
+        mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
+        mimalloc_lib.buildAndLink(b, lib, .{});
 
         if (!target.getCpuArch().isWasm()) {
-            tcc.addModule(lib);
-            tcc.buildAndLink(lib, .{
+            tcc_lib.addModule(lib, "tcc", tcc);
+            tcc_lib.buildAndLink(b, lib, .{
                 .selinux = selinux,
             });
         } else {
@@ -144,11 +153,13 @@ pub fn build(b: *std.build.Builder) !void {
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
             lib.stack_protector = false;
         }
-        b.step("wasm-test", "Build the wasm test runner.").dependOn(&lib.step);
+        step.dependOn(&lib.step);
     }
 
     {
-        const step = b.addTest(.{
+        const mainStep = b.step("test", "Run tests.");
+
+        var step = b.addTest(.{
             .root_source_file = .{ .path = "./test/main_test.zig" },
             .target = target,
             .optimize = optimize,
@@ -162,21 +173,22 @@ pub fn build(b: *std.build.Builder) !void {
         step.rdynamic = true;
 
         if (engine == .c) {
-            try buildCVM(step, opts);
+            try buildCVM(b.allocator, step, opts);
         }
 
-        tcc.addModule(step);
-        tcc.buildAndLink(step, .{
+        tcc_lib.addModule(step, "tcc", tcc);
+        tcc_lib.buildAndLink(b, step, .{
             .selinux = opts.selinux,
         });
+        mainStep.dependOn(&step.run().step);
 
-        const traceTest = try addTraceTest(b, opts);
-        traceTest.step.dependOn(&step.step);
-        b.step("test", "Run tests.").dependOn(&traceTest.step);
+        step = try addTraceTest(b, opts);
+        mainStep.dependOn(&step.run().step);
     }
 
     {
-        const step = b.addTest(.{
+        const mainStep = b.step("test-lib", "Run tests.");
+        var step = b.addTest(.{
             .root_source_file = .{ .path = "./test/lib_test.zig" },
             .target = target,
             .optimize = optimize,
@@ -189,20 +201,21 @@ pub fn build(b: *std.build.Builder) !void {
         step.addModule("stdx", stdx);
         step.rdynamic = true;
 
-        tcc.addModule(step);
-        tcc.buildAndLink(step, .{
+        tcc_lib.addModule(step, "tcc", tcc);
+        tcc_lib.buildAndLink(b, step, .{
             .selinux = opts.selinux,
         });
+        mainStep.dependOn(&step.run().step);
 
-        const traceTest = try addTraceTest(b, opts);
-        traceTest.step.dependOn(&step.step);
-        b.step("test-lib", "Run tests.").dependOn(&traceTest.step);
+        step = try addTraceTest(b, opts);
+        mainStep.dependOn(&step.run().step);
     }
 
     {
         // Just trace test.
-        const traceTest = try addTraceTest(b, opts);
-        b.step("test-trace", "Run trace tests.").dependOn(&traceTest.step);
+        const mainStep = b.step("test-trace", "Run trace tests.");
+        const step = try addTraceTest(b, opts);
+        mainStep.dependOn(&step.run().step);
     }
 
     const printStep = b.allocator.create(PrintStep) catch unreachable;
@@ -273,12 +286,12 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
     try addBuildOptions(b, step, newOpts);
     step.addModule("stdx", stdx);
 
-    tcc.addModule(step);
-    tcc.buildAndLink(step, .{
+    tcc_lib.addModule(step, "tcc", tcc);
+    tcc_lib.buildAndLink(b, step, .{
         .selinux = opts.selinux,
     });
     if (engine == .c) {
-        try buildCVM(step, newOpts);
+        try buildCVM(b.allocator, step, newOpts);
     }
     return step;
 }
@@ -294,26 +307,30 @@ inline fn thisDir() []const u8 {
 
 pub const PrintStep = struct {
     step: std.build.Step,
-    builder: *std.build.Builder,
+    build: *std.Build,
     str: []const u8,
 
-    pub fn init(builder: *std.build.Builder, str: []const u8) PrintStep {
+    pub fn init(build_: *std.Build, str: []const u8) PrintStep {
         return PrintStep{
-            .builder = builder,
-            .step = std.build.Step.init(.custom, "print", builder.allocator, make),
-            .str = builder.dupe(str),
+            .build = build_,
+            .step = std.build.Step.init(.{
+                .id = .custom,
+                .name = "print",
+                .owner = build_,
+                .makeFn = make,
+            }),
+            .str = build_.dupe(str),
         };
     }
 
-    fn make(step: *std.build.Step) anyerror!void {
+    fn make(step: *std.build.Step, _: *std.Progress.Node) anyerror!void {
         const self = @fieldParentPtr(PrintStep, "step", step);
         std.io.getStdOut().writer().writeAll(self.str) catch unreachable;
     }
 };
 
-pub fn buildCVM(step: *std.build.CompileStep, opts: Options) !void {
-    const b = step.builder;
-    var cflags = std.ArrayList([]const u8).init(b.allocator);
+pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Options) !void {
+    var cflags = std.ArrayList([]const u8).init(alloc);
     if (step.optimize == .Debug) {
         try cflags.append("-DDEBUG=1");
     }

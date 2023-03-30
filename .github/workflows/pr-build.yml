@@ -79,7 +79,7 @@ jobs:
       BUILD_MODE: ${{ matrix.config.mode }}
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
-      ZIG_VERSION: 0.11.0-dev.1797+d3c9bfada
+      ZIG_VERSION: 0.11.0-dev.2317+46b2f1f70
     steps:
       - name: Install Linux deps.
         if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'x86_64-linux-gnu'

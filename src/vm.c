@@ -173,6 +173,7 @@ ResultCode execBytecode(VM* vm) {
     #define READ_I16(offset) ((int16_t)(pc[offset] | ((uint16_t)pc[offset + 1] << 8)))
     #define READ_U16(offset) (pc[offset] | ((uint16_t)pc[offset + 1] << 8))
     #define WRITE_U16(offset, u) pc[offset] = u & 0xff; pc[offset+1] = u >> 8
+    #define READ_U32(offset) ((uint32_t)pc[offset] | ((uint32_t)pc[offset+1] << 8) | ((uint32_t)pc[offset+2] << 16) | ((uint32_t)pc[offset+3] << 24))
     #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 8) | ((uint64_t)pc[offset+2] << 16) | ((uint64_t)pc[offset+3] << 24) | ((uint64_t)pc[offset+4] << 32) | ((uint64_t)pc[offset+5] << 40))
 #if DEBUG    
     #define PRE_NEXT() \
@@ -505,7 +506,7 @@ beginSwitch:
             *((uint8_t*)(stack + 1) + 1) = 0;
             stack[2] = (uintptr_t)(pc + 16);
             stack[3] = retFramePtr;
-            pc = (Inst*)READ_U48(8);
+            pc = vm->instPtr + READ_U32(8);
             NEXT();
         }
 
@@ -518,9 +519,9 @@ beginSwitch:
         uint8_t numArgs = pc[2];
         uint8_t numRet = pc[3];
         uint8_t symId = pc[4];
-        PcStackResult res = zCallSym(vm, pc, stack, symId, startLocal, numArgs, numRet);
+        PcSp res = zCallSym(vm, pc, stack, symId, startLocal, numArgs, numRet);
         pc = res.pc;
-        stack = res.stack;
+        stack = res.sp;
         NEXT();
     }
     CASE(CallFuncIC): {
@@ -940,9 +941,9 @@ beginSwitch:
     }
     CASE(Coyield):
         if (vm->curFiber != &vm->mainFiber) {
-            PcStackResult res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_NONE);
+            PcSp res = zPopFiber(vm, pcOffset(vm, pc), stack, VALUE_NONE);
             pc = res.pc;
-            stack = res.stack;
+            stack = res.sp;
         } else {
             pc += 3;
         }
@@ -954,9 +955,9 @@ beginSwitch:
             if (obj->retainedCommon.typeId == TYPE_FIBER) {
                 if ((Fiber*)obj != vm->curFiber) {
                     if (obj->fiber.pc != NULL_U32) {
-                        PcStackResult res = zPushFiber(vm, pcOffset(vm, pc + 3), stack, (Fiber*)obj, pc[2]);
+                        PcSp res = zPushFiber(vm, pcOffset(vm, pc + 3), stack, (Fiber*)obj, pc[2]);
                         pc = res.pc;
-                        stack = res.stack;
+                        stack = res.sp;
                         NEXT();
                     }
                 }
@@ -969,9 +970,9 @@ beginSwitch:
     CASE(Coreturn):
         pc += 1;
         if (vm->curFiber != &vm->mainFiber) {
-            PcStackResult res = zPopFiber(vm, NULL_U32, stack, stack[1]);
+            PcSp res = zPopFiber(vm, NULL_U32, stack, stack[1]);
             pc = res.pc;
-            stack = res.stack;
+            stack = res.sp;
         }
         NEXT();
     CASE(Retain):

@@ -242,7 +242,7 @@ pub const VM = struct {
         try self.methodTable.ensureTotalCapacity(self.alloc, 96);
 
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
-        try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 255);
+        try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 170);
 
         try self.structs.ensureTotalCapacityPrecise(alloc, 170);
         try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
@@ -1611,9 +1611,9 @@ pub const VM = struct {
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callObjFuncIC };
                 pc[7] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
-                @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(cy.fiber.toVmPc(self, sym.inner.func.pc)));
+                @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
                 @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
-                
+
                 const newFp = framePtr + startLocal;
                 newFp[1] = buildReturnInfo2(reqNumRetVals, true);
                 newFp[2] = Value{ .retPcPtr = pc + 16 };
@@ -3151,7 +3151,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     @ptrCast([*]u8, framePtr + 1)[1] = 0;
                     framePtr[2] = Value{ .retPcPtr = pc + 16 };
                     framePtr[3] = retFramePtr;
-                    pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 8).*));
+                    pc = vm.ops.ptr + @ptrCast(*align(1) u32, pc + 8).*;
                     continue;
                 }
 

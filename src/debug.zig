@@ -738,6 +738,11 @@ const DumpContext = struct {
                 const name = sym.namePtr[0..sym.nameLen];
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
             },
+            .callObjSym => {
+                const symId = pc[4].arg;
+                const symName = self.vm.methodSymExtras.buf[symId].getName();
+                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
+            },
             else => {},
         }
         bytecode.dumpInst(pcOffset, code, pc, len, extra);

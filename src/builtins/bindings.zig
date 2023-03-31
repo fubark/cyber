@@ -347,7 +347,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(cy.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, fileSeek);
         try b.addMethod(cy.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromCur);
         try b.addMethod(cy.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromEnd);
-        try b.addMethod(cy.FileT, stat,                &.{ bt.Any }, bt.Any, fileStat);
+        try b.addMethod(cy.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(cy.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
         try b.addMethod(cy.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
         try b.addMethod(cy.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
@@ -370,7 +370,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == cy.DirT);
     if (cy.hasStdFiles) {
         try b.addMethod(cy.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, dirIterator);
-        try b.addMethod(cy.DirT, stat,                &.{ bt.Any }, bt.Any, fileStat);
+        try b.addMethod(cy.DirT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(cy.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
     } else {
         try b.addMethod(cy.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
@@ -2180,14 +2180,21 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     }
 }
 
-pub fn fileStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
+    if (obj.retainedCommon.structId == cy.FileT) {
+        if (obj.file.closed) {
+            return prepareThrowSymbol(vm, .Closed);
+        }
+    } else {
+        if (obj.dir.closed) {
+            return prepareThrowSymbol(vm, .Closed);
+        }
     }
 
+    // File/Dir share the same fd member offset.
     const file = obj.file.getStdFile();
     const stat = file.stat() catch |err| {
         return fromUnsupportedError(vm, "stat", err, @errorReturnTrace());

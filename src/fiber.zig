@@ -58,19 +58,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
     // Assumes call start local is at 1.
     std.mem.copy(Value, stack[5..5+args.len], args);
 
-    const objSlice = try vm.alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), @sizeOf(Fiber));
-    if (builtin.mode == .Debug) {
-        cy.heap.traceAlloc(vm, @ptrCast(*cy.HeapObject, objSlice.ptr));
-    }
-    if (cy.TrackGlobalRC) {
-        vm.refCounts += 1;
-    }
-    if (cy.TraceEnabled) {
-        vm.trace.numRetains += 1;
-        vm.trace.numRetainAttempts += 1;
-    }
-
-    const obj = @ptrCast(*Fiber, objSlice.ptr);
+    const obj = @ptrCast(*Fiber, try cy.heap.allocExternalObject(vm, @sizeOf(Fiber)));
     const parentDstLocal = cy.NullU8;
     obj.* = .{
         .structId = cy.FiberS,

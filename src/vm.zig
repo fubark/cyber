@@ -683,7 +683,12 @@ pub const VM = struct {
                     if (end < start or end > list.len) {
                         return self.interruptThrowSymbol(.OutOfBounds);
                     }
-                    return cy.heap.allocList(self, list.buf[@intCast(u32, start)..@intCast(u32, end)]);
+
+                    const elems = list.buf[@intCast(u32, start) .. @intCast(u32, end)];
+                    for (elems) |elem| {
+                        retain(self, elem);
+                    }
+                    return cy.heap.allocList(self, elems);
                 },
                 cy.AstringT => b: {
                     retainObject(self, obj);

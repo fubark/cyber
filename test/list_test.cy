@@ -16,7 +16,7 @@ t.eq(a[0], 1)
 -- Reverse index access.
 t.eq(a[-1], 3)
 
--- Slice operator.
+--| Slice operator.
 -- Start to end index slice.
 a = [1, 2, 3, 4, 5]
 t.eqList(a[1..4], [2, 3, 4])
@@ -24,6 +24,11 @@ t.eqList(a[1..4], [2, 3, 4])
 t.eqList(a[3..], [4, 5])
 -- Start of list to end index.
 t.eqList(a[..3], [1, 2, 3])
+
+--| Slice retains rc elems.
+a = [string(1), string(2), string(3)]
+a = a[..1]
+t.eq(a[0], '1')
 
 -- Set index
 a = []

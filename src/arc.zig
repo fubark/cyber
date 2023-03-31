@@ -15,16 +15,12 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         if (builtin.mode == .Debug) {
-            if (obj.retainedCommon.structId == cy.NullId) {
-                log.debug("object already freed. {*}", .{obj});
-                cy.debug.dumpObjectTrace(vm, obj) catch stdx.fatal();
-                stdx.fatal();
-            }
+            checkDoubleFree(vm, obj);
         }
         obj.retainedCommon.rc -= 1;
         if (builtin.mode == .Debug) {
             if (cy.verbose) {
-                log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
+                log.debug("release {} rc={}", .{val.getUserTag(), obj.retainedCommon.rc});
             }
         }
         if (cy.TrackGlobalRC) {
@@ -39,16 +35,27 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
 }
 
+fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
+    if (obj.retainedCommon.structId == cy.NullId) {
+        const msg = std.fmt.allocPrint(vm.alloc, "Double free object: {*} at pc: {}({s})", .{
+            obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].code),
+        }) catch stdx.fatal();
+        defer vm.alloc.free(msg);
+        cy.debug.printTraceAtPc(vm, vm.debugPc, msg) catch stdx.fatal();
+
+        cy.debug.dumpObjectTrace(vm, obj) catch stdx.fatal();
+        stdx.fatal();
+    }
+}
+
 pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
     if (builtin.mode == .Debug or builtin.is_test) {
-        if (obj.retainedCommon.structId == cy.NullId) {
-            stdx.panic("object already freed.");
-        }
+        checkDoubleFree(vm, obj);
     }
     obj.retainedCommon.rc -= 1;
     if (builtin.mode == .Debug) {
         if (cy.verbose) {
-            log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+            log.debug("release {} rc={}", .{obj.getUserTag(), obj.retainedCommon.rc});
         }
     }
     if (cy.TrackGlobalRC) {
@@ -83,6 +90,7 @@ pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, start
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
     obj.retainedCommon.rc += 1;
     if (builtin.mode == .Debug) {
+        checkRetainDanglingPointer(obj);
         if (cy.verbose) {
             log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         }
@@ -96,6 +104,12 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.Hot
     }
 }
 
+fn checkRetainDanglingPointer(obj: *cy.HeapObject) void {
+    if (obj.retainedCommon.structId == cy.NullId) {
+        stdx.panic("Retaining dangling pointer.");
+    }
+}
+
 pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     if (cy.TraceEnabled) {
         self.trace.numRetainAttempts += 1;
@@ -104,6 +118,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
         const obj = val.asHeapObject();
         obj.retainedCommon.rc += 1;
         if (builtin.mode == .Debug) {
+            checkRetainDanglingPointer(obj);
             if (cy.verbose) {
                 log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
             }
@@ -124,7 +139,12 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         obj.retainedCommon.rc += inc;
-        log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+        if (builtin.mode == .Debug) {
+            checkRetainDanglingPointer(obj);
+            if (cy.verbose) {
+                log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+            }
+        }
         if (cy.TrackGlobalRC) {
             self.refCounts += inc;
         }

@@ -1374,11 +1374,18 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
 
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
     if (builtin.mode == .Debug) {
-        if (cy.verbose) {
-            log.debug("free {}", .{obj.getUserTag()});
-        }   
+        if (obj.retainedCommon.structId == cy.NullId) {
+            stdx.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
+        } else {
+            if (cy.verbose) {
+                log.debug("free type={}({s})", .{
+                    obj.retainedCommon.structId, cy.heap.getTypeName(vm, obj.retainedCommon.structId),
+                });
+            }
+        }
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
+            trace.freeTypeId = obj.retainedCommon.structId;
         } else {
             log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
         }
@@ -1562,6 +1569,7 @@ pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
     vm.objectTraceMap.put(vm.alloc, ptr, .{
         .allocPc = vm.debugPc,
         .freePc = cy.NullId,
+        .freeTypeId = cy.NullId,
     }) catch stdx.fatal();
 }
 

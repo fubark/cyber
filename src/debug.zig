@@ -162,12 +162,16 @@ pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
 
 pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
-        const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}", .{obj, trace.allocPc});
+        const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}({s})", .{
+            obj, trace.allocPc, @tagName(vm.ops[trace.allocPc].code),
+        });
         defer vm.alloc.free(msg);
         try printTraceAtPc(vm, trace.allocPc, msg);
 
         if (trace.freePc != cy.NullId) {
-            const msg2 = try std.fmt.allocPrint(vm.alloc, "Freed object: {*} at pc: {}", .{obj, trace.freePc});
+            const msg2 = try std.fmt.allocPrint(vm.alloc, "Last freed at pc: {}({s}) with type: {}({s})", .{
+                trace.freePc, @tagName(vm.ops[trace.freePc].code), trace.freeTypeId, cy.heap.getTypeName(vm, trace.freeTypeId),
+            });
             defer vm.alloc.free(msg2);
             try printTraceAtPc(vm, trace.freePc, msg2);
         }
@@ -187,7 +191,7 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, msg: []const u8) !void {
         if (pc == cy.NullId) {
             fmt.printStderr("Trace: {} (vm global allocation)\n", &.{v(msg)});
         } else {
-            log.debug("Missing debug sym for {}, pc: {}.", .{vm.ops[pc].code, pc});
+            fmt.printStderr("{}\nMissing debug sym for {}, pc: {}.\n", &.{v(msg), v(vm.ops[pc].code), v(pc)});
         }
     }
 }
@@ -552,6 +556,9 @@ pub const ObjectTrace = struct {
 
     /// Points to inst that freed the object.
     freePc: u32,
+
+    /// Type when freed.
+    freeTypeId: cy.TypeId,
 };
 
 fn getOpCodeAtPc(ops: []const cy.OpData, atPc: u32) ?cy.OpCode {

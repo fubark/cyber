@@ -2447,6 +2447,7 @@ fn genSetVarToExpr(self: *CompileChunk, leftId: cy.NodeId, exprId: cy.NodeId, co
                     if (exprv.vtype.rcCandidate) {
                         try self.buf.pushOp2(.copyRetainRelease, exprv.local, svar.local);
                     } else {
+                        try self.pushOptionalDebugSym(leftId);
                         try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
                     }
                 } else {
@@ -2507,6 +2508,7 @@ fn genSetVarToExpr(self: *CompileChunk, leftId: cy.NodeId, exprId: cy.NodeId, co
             }
         } else {
             const exprv = try self.genRetainedTempExpr(exprId, false);
+            try self.pushOptionalDebugSym(leftId);
             try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
             svar.vtype = exprv.vtype;
         }

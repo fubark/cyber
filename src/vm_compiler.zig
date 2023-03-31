@@ -1363,6 +1363,8 @@ pub const CompileChunk = struct {
         
         const locals = self.operandStack.items[start..];
         if (locals.len > 0) {
+            const nodeId = sema.getBlockNodeId(self, sblock);
+            try self.pushOptionalDebugSym(nodeId);
             if (locals.len == 1) {
                 try self.buf.pushOp1(.release, locals[0].arg);
             } else {

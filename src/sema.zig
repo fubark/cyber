@@ -205,6 +205,15 @@ pub const Block = struct {
     }
 };
 
+pub fn getBlockNodeId(c: *cy.CompileChunk, block: *Block) cy.NodeId {
+    if (block.funcDeclId == cy.NullId) {
+        return c.parserAstRootId;
+    } else {
+        const decl = c.semaFuncDecls.items[block.funcDeclId];
+        return decl.nodeId;
+    }
+}
+
 pub const NameSymId = u32;
 
 pub const Name = struct {

@@ -409,7 +409,8 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const recv = pc[1].arg;
             const start = pc[2].arg;
             const end = pc[3].arg;
-            fmt.printStderr("{} {} recv={}, start={}, end={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end)});
+            const dst = pc[4].arg;
+            fmt.printStderr("{} {} recv={}, start={}, end={}, dst={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end), v(dst)});
         },
         .staticVar => {
             const symId = pc[1].arg;

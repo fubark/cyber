@@ -552,6 +552,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const rFuncSigId = try vm.ensureUntypedFuncSig(@intCast(u32, cargs.len));
             const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), rFuncSigId, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
+            vm.release(symKey);
         }
         iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
@@ -569,6 +570,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const rFuncSigId = try vm.ensureUntypedFuncSig(1);
             const funcVal = cy.heap.allocNativeFunc1(ivm, func, 1, rFuncSigId, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
+            vm.release(symKey);
         }
         success = true;
         return map;

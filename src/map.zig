@@ -150,87 +150,27 @@ pub const ValueMap = struct {
     fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(cy.Section) u64 {
         if (key.isNumber()) {
             return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
+        }
+        if (vm.tryValueAsComparableString(key)) |str| {
+            return std.hash.Wyhash.hash(0, str);
         } else {
-            if (key.isPointer()) {
-                const obj = key.asHeapObject();
-                if (obj.common.structId == cy.AstringT) {
-                    return std.hash.Wyhash.hash(0, obj.astring.getConstSlice());
-                } else if (obj.common.structId == cy.UstringT) {
-                    return std.hash.Wyhash.hash(0, obj.ustring.getConstSlice());
-                } else stdx.unsupported();
-            } else {
-                switch (key.getTag()) {
-                    cy.StaticAstringT => {
-                        const slice = key.asStaticStringSlice();
-                        return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
-                    },
-                    cy.StaticUstringT => {
-                        const slice = key.asStaticStringSlice();
-                        return std.hash.Wyhash.hash(0, vm.strBuf[slice.start..slice.end]);
-                    },
-                    else => stdx.unsupported(),
-                }
-            }
+            return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
         }
     }
 
     fn stringKeyEqual(vm: *const cy.VM, a: []const u8, b: cy.Value) linksection(cy.Section) bool {
-        if (b.isPointer()) {
-            const obj = b.asHeapObject();
-            if (obj.common.structId == cy.AstringT) {
-                return std.mem.eql(u8, a, obj.astring.getConstSlice());
-            } else if (obj.common.structId == cy.UstringT) {
-                return std.mem.eql(u8, a, obj.ustring.getConstSlice());
-            } else return false;
-        } else {
-            switch (b.getTag()) {
-                cy.StaticAstringT => {
-                    const slice = b.asStaticStringSlice();
-                    return std.mem.eql(u8, a, vm.strBuf[slice.start..slice.end]);
-                },
-                cy.StaticUstringT => {
-                    const slice = b.asStaticStringSlice();
-                    return std.mem.eql(u8, a, vm.strBuf[slice.start..slice.end]);
-                },
-                else => stdx.unsupported(),
-            }
-        }
+        const bstr = vm.tryValueAsComparableString(b) orelse return false;
+        return std.mem.eql(u8, a, bstr);
     }
 
     fn keysEqual(vm: *const cy.VM, a: cy.Value, b: cy.Value) linksection(cy.Section) bool {
-        if (a.isNumber()) {
-            return a.val == b.val;
-        } else {
-            if (a.isPointer()) {
-                const aObj = a.asHeapObject();
-                if (aObj.common.structId == cy.AstringT) {
-                    const bStr = vm.tryValueAsComparableString(b) orelse return false;
-                    const aStr = aObj.astring.getConstSlice();
-                    return std.mem.eql(u8, aStr, bStr);
-                } else if (aObj.common.structId == cy.UstringT) {
-                    const bStr = vm.tryValueAsComparableString(b) orelse return false;
-                    const aStr = aObj.ustring.getConstSlice();
-                    return std.mem.eql(u8, aStr, bStr);
-                } else if (aObj.common.structId == cy.StringSliceT) {
-                    const bStr = vm.tryValueAsComparableString(b) orelse return false;
-                    const aStr = aObj.stringSlice.getConstSlice();
-                    return std.mem.eql(u8, aStr, bStr);
-                } else stdx.unsupported();
-            } else {
-                switch (a.getTag()) {
-                    cy.StaticUstringT,
-                    cy.StaticAstringT => {
-                        const bStr = vm.tryValueAsComparableString(b) orelse return false;
-                        const aSlice = a.asStaticStringSlice();
-                        const aStr = vm.strBuf[aSlice.start..aSlice.end];
-                        return std.mem.eql(u8, aStr, bStr);
-                    },
-                    else => {
-                        stdx.unsupported();
-                    },
-                }
-            }
+        if (a.val == b.val) {
+            return true;
         }
+        if (vm.tryValueAsComparableString(a)) |astr| {
+            const bstr = vm.tryValueAsComparableString(b) orelse return false;
+            return std.mem.eql(u8, astr, bstr);
+        } else return false;
     }
 
     fn capacityForSize(size: u32) linksection(cy.Section) u32 {

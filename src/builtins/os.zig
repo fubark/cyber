@@ -349,6 +349,7 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
         const key = vm.allocStringInfer(entry.key_ptr.*) catch stdx.fatal();
         const val = vm.allocStringInfer(entry.value_ptr.*) catch stdx.fatal();
         vm.internal().setIndex(map, key, val) catch stdx.fatal();
+        vm.release(key);
     }
     return map;
 }

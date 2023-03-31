@@ -7,20 +7,46 @@ a = {
   foo: 123,
   bar: 234,
 }
-t.eq(a.size(), 2)
-
-a = {
-    b: 123
-    'c': 234
-}
 -- Get size.
 t.eq(a.size(), 2)
 
--- Number entry.
+-- String literal in initializer.
 a = {
-  b: 32
+  'c': 234
 }
-t.eq(a['b'], 32)
+t.eq(a['c'], 234)
+t.eq(a.c, 234)
+
+--| Different string keys.
+a = {}
+-- Static astring
+a['abc'] = 123
+t.eq(a['abc'], 123)
+-- Static ustring
+a['abc🦊'] = 123
+t.eq(a['abc🦊'], 123)
+-- astring
+a['abc'.concat('d')] = 123
+t.eq(a['abcd'], 123)
+-- ustring
+a['abc🦊'.concat('d')] = 123
+t.eq(a['abc🦊d'], 123)
+-- astring slice
+a['abc'[1..]] = 123
+t.eq(a['bc'], 123)
+-- ustring slice
+a['abc🦊'[1..]] = 123
+t.eq(a['bc🦊'], 123)
+-- rawstring
+a[rawstring('abc')] = 123
+t.eq(a['abc'], 123)
+-- rawstring slice
+a[rawstring('abc')[1..]] = 123
+t.eq(a['bc'], 123)
+
+-- Number key.
+a[32] = 123
+t.eq(a[32], 123)
 
 -- Access expression.
 a = {

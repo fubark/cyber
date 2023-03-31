@@ -249,17 +249,23 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
     const map = vm.allocEmptyMap() catch stdx.fatal();
     const outKey = vm.allocAstring("out") catch stdx.fatal();
+    const errKey = vm.allocAstring("err") catch stdx.fatal();
+    defer {
+        vm.release(outKey);
+        vm.release(errKey);
+    }
+
     // TODO: Use allocOwnedString
     defer alloc.free(res.stdout);
     const out = vm.allocStringInfer(res.stdout) catch stdx.fatal();
     ivm.setIndex(map, outKey, out) catch stdx.fatal();
-    const errKey = vm.allocAstring("err") catch stdx.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stderr);
     const err = vm.allocStringInfer(res.stderr) catch stdx.fatal();
     ivm.setIndex(map, errKey, err) catch stdx.fatal();
     if (res.term == .Exited) {
         const exitedKey = vm.allocAstring("exited") catch stdx.fatal();
+        defer vm.release(exitedKey);
         ivm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
     }
     return map;

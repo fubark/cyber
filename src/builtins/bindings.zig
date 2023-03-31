@@ -2208,24 +2208,34 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
         return fromUnsupportedError(vm, "stat", err, @errorReturnTrace());
     };
 
+    const ivm = vm.internal();
+
     const map = vm.allocEmptyMap() catch fatal();
     const sizeKey = vm.allocAstring("size") catch fatal();
-    gvm.setIndex(map, sizeKey, Value.initF64(@intToFloat(f64, stat.size))) catch fatal();
     const modeKey = vm.allocAstring("mode") catch fatal();
-    gvm.setIndex(map, modeKey, Value.initF64(@intToFloat(f64, stat.mode))) catch fatal();
     const typeKey = vm.allocAstring("type") catch fatal();
+    const atimeKey = vm.allocAstring("atime") catch fatal();
+    const ctimeKey = vm.allocAstring("ctime") catch fatal();
+    const mtimeKey = vm.allocAstring("mtime") catch fatal();
+    defer {
+        vm.release(sizeKey);
+        vm.release(modeKey);
+        vm.release(typeKey);
+        vm.release(atimeKey);
+        vm.release(ctimeKey);
+        vm.release(mtimeKey);
+    }
+    ivm.setIndex(map, sizeKey, Value.initF64(@intToFloat(f64, stat.size))) catch fatal();
+    ivm.setIndex(map, modeKey, Value.initF64(@intToFloat(f64, stat.mode))) catch fatal();
     const typeTag: Symbol = switch (stat.kind) {
         .File => .file,
         .Directory => .dir,
         else => .unknown,
     };
-    gvm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
-    const atimeKey = vm.allocAstring("atime") catch fatal();
-    gvm.setIndex(map, atimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.atime, 1000000)))) catch fatal();
-    const ctimeKey = vm.allocAstring("ctime") catch fatal();
-    gvm.setIndex(map, ctimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.ctime, 1000000)))) catch fatal();
-    const mtimeKey = vm.allocAstring("mtime") catch fatal();
-    gvm.setIndex(map, mtimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.mtime, 1000000)))) catch fatal();
+    ivm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
+    ivm.setIndex(map, atimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.atime, 1000000)))) catch fatal();
+    ivm.setIndex(map, ctimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.ctime, 1000000)))) catch fatal();
+    ivm.setIndex(map, mtimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.mtime, 1000000)))) catch fatal();
     return map;
 }
 
@@ -2233,6 +2243,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
+    const ivm = vm.internal();
     const iter = @ptrCast(*cy.DirIterator, obj);
     if (iter.recursive) {
         const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
@@ -2242,16 +2253,21 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch fatal();
             const pathKey = vm.allocAstring("path") catch fatal();
-            gvm.setIndex(map, pathKey, vm.allocRawString(entry.path) catch fatal()) catch fatal();
             const nameKey = vm.allocAstring("name") catch fatal();
-            gvm.setIndex(map, nameKey, vm.allocRawString(entry.basename) catch fatal()) catch fatal();
             const typeKey = vm.allocAstring("type") catch fatal();
+            defer {
+                vm.release(pathKey);
+                vm.release(nameKey);
+                vm.release(typeKey);
+            }
+            ivm.setIndex(map, pathKey, vm.allocRawString(entry.path) catch fatal()) catch fatal();
+            ivm.setIndex(map, nameKey, vm.allocRawString(entry.basename) catch fatal()) catch fatal();
             const typeTag: Symbol = switch (entry.kind) {
                 .File => .file,
                 .Directory => .dir,
                 else => .unknown,
             };
-            gvm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
+            ivm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2264,14 +2280,18 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
         if (entryOpt) |entry| {
             const map = vm.allocEmptyMap() catch fatal();
             const nameKey = vm.allocAstring("name") catch fatal();
-            gvm.setIndex(map, nameKey, vm.allocRawString(entry.name) catch fatal()) catch fatal();
             const typeKey = vm.allocAstring("type") catch fatal();
+            defer {
+                vm.release(nameKey);
+                vm.release(typeKey);
+            }
+            ivm.setIndex(map, nameKey, vm.allocRawString(entry.name) catch fatal()) catch fatal();
             const typeTag: Symbol = switch (entry.kind) {
                 .File => .file,
                 .Directory => .dir,
                 else => .unknown,
             };
-            gvm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
+            ivm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;

@@ -1115,7 +1115,7 @@ pub const VM = struct {
                         //     list.val.items[i] = Value.None;
                         // }
                         // list.val.items[idx] = right;
-                        return self.panic("Index out of bounds.");
+                        return self.interruptThrowSymbol(.OutOfBounds);
                     }
                 },
                 cy.MapS => {
@@ -1123,15 +1123,18 @@ pub const VM = struct {
                     const res = try map.getOrPut(self.alloc, self, index);
                     if (res.foundExisting) {
                         release(self, res.valuePtr.*);
+                    } else {
+                        // No previous entry, retain key.
+                        retain(self, index);
                     }
                     res.valuePtr.* = right;
                 },
                 else => {
-                    return stdx.panic("unsupported struct");
+                    return self.interruptThrowSymbol(.InvalidArgument);
                 },
             }
         } else {
-            return stdx.panic("expected pointer");
+            return self.interruptThrowSymbol(.InvalidArgument);
         }
     }
 
@@ -1151,20 +1154,24 @@ pub const VM = struct {
                         //     list.val.items[i] = Value.None;
                         // }
                         // list.val.items[idx] = right;
-                        return self.panic("Index out of bounds.");
+                        return self.interruptThrowSymbol(.OutOfBounds);
                     }
                 },
                 cy.MapS => {
                     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                    try map.put(self.alloc, self, index, right);
+                    const res = try map.getOrPut(self.alloc, self, index);
+                    if (!res.foundExisting) {
+                        // No previous entry, retain key.
+                        retain(self, index);
+                    }
+                    res.valuePtr.* = right;
                 },
                 else => {
-                    log.debug("unsupported object: {}", .{obj.retainedCommon.structId});
-                    stdx.fatal();
+                    return self.interruptThrowSymbol(.InvalidArgument);
                 },
             }
         } else {
-            return stdx.panic("expected pointer");
+            return self.interruptThrowSymbol(.InvalidArgument);
         }
     }
 

@@ -1941,6 +1941,11 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool,
     const condv = try self.genExpr(node.head.if_expr.cond, false);
     var jumpNotPc = try self.pushEmptyJumpNotCond(condv.local);
 
+    // Enter if body.
+
+    // ARC cleanup.
+    try genReleaseIfRetainedTemp(self, condv);
+
     self.computeNextTempLocalFrom(startTempLocal);
 
     var truev = try self.genExprTo(node.head.if_expr.body_expr, dst, retain, false);

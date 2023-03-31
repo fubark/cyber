@@ -1,6 +1,9 @@
 import t 'test'
 
--- Temporary rc cond is released before entering body. (cond always evaluates true for rc objects)
+-- Temporary rc if expr cond is released before entering body. (cond always evaluates true for rc objects)
+a = if string(1) then 123 else false
+
+-- Temporary rc if stmt cond is released before entering body. (cond always evaluates true for rc objects)
 if string(1):
     pass
 

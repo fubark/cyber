@@ -660,7 +660,7 @@ const DumpContext = struct {
         var extra: []const u8 = "";
         switch (code) {
             .staticVar => {
-                const symId = pc[1].arg;
+                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
                 const nameId = self.symIdToVar.get(symId).?.rtVarSymKey.nameId;
                 const name = cy.sema.getName(&self.vm.compiler, nameId);
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});

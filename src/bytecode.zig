@@ -68,6 +68,10 @@ pub const ByteCodeBuffer = struct {
         self.debugLabels.clearRetainingCapacity();
     }
 
+    pub inline fn len(self: *ByteCodeBuffer) usize {
+        return self.ops.items.len;
+    }
+
     pub fn pushConst(self: *ByteCodeBuffer, val: Const) !u32 {
         const start = @intCast(u32, self.consts.items.len);
         try self.consts.resize(self.alloc, self.consts.items.len + 1);
@@ -413,8 +417,8 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             fmt.printStderr("{} {} recv={}, start={}, end={}, dst={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end), v(dst)});
         },
         .staticVar => {
-            const symId = pc[1].arg;
-            const dst = pc[2].arg;
+            const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+            const dst = pc[3].arg;
             fmt.printStderr("{} {} sym={} dst={}", &.{v(pcOffset), v(code), v(symId), v(dst)});
         },
         .stringTemplate => {
@@ -550,13 +554,13 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .boxValue,
         .boxValueRetain,
         .tagLiteral,
-        .staticFunc,
-        .staticVar,
-        .setStaticVar,
-        .setStaticFunc,
         .constOp => {
             return 3;
         },
+        .staticVar,
+        .setStaticVar,
+        .staticFunc,
+        .setStaticFunc,
         .pushTry,
         .setIndex,
         .setIndexRelease,
@@ -789,20 +793,20 @@ pub const OpCode = enum(u8) {
     /// [exprLocal] [numCases] [case1Local] [case1Jump] ... [elseJump]
     match = vmc.CodeMatch,
 
-    /// Wraps a static function in a function value.
-    /// [symId] [dstLocal]
-    staticFunc = vmc.CodeStaticFunc,
-
     /// Copies and retains a static variable to a destination local.
-    /// [symId] [dstLocal]
+    /// [symId u16] [dstLocal]
     staticVar = vmc.CodeStaticVar,
 
     /// Copies a local register to a static variable.
-    /// [symId] [local]
+    /// [symId u16] [local]
     setStaticVar = vmc.CodeSetStaticVar,
 
+    /// Wraps a static function in a function value.
+    /// [symId u16] [dstLocal]
+    staticFunc = vmc.CodeStaticFunc,
+
     /// Copies a local register to a static function.
-    /// [symId] [local]
+    /// [symId u16] [local] 
     setStaticFunc = vmc.CodeSetStaticFunc,
 
     /// Allocates a symbol object to a destination local.

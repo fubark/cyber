@@ -3580,31 +3580,31 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpStaticVar:"::);
                 }
-                const symId = pc[1].arg;
+                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
                 const sym = vm.varSyms.buf[symId];
                 retain(vm, sym.value);
-                framePtr[pc[2].arg] = sym.value;
-                pc += 3;
+                framePtr[pc[3].arg] = sym.value;
+                pc += 4;
                 continue;
             },
             .setStaticVar => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpSetStaticVar:"::);
                 }
-                const symId = pc[1].arg;
+                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
                 const prev = vm.varSyms.buf[symId].value;
-                vm.varSyms.buf[symId].value = framePtr[pc[2].arg];
+                vm.varSyms.buf[symId].value = framePtr[pc[3].arg];
                 release(vm, prev);
-                pc += 3;
+                pc += 4;
                 continue;
             },
             .staticFunc => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpStaticFunc:"::);
                 }
-                const symId = pc[1].arg;
-                framePtr[pc[2].arg] = try cy.heap.allocFuncFromSym(vm, symId);
-                pc += 3;
+                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                framePtr[pc[3].arg] = try cy.heap.allocFuncFromSym(vm, symId);
+                pc += 4;
                 continue;
             },
             .coreturn => {
@@ -4020,9 +4020,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpSetStaticFunc:"::);
                 }
-                const symId = pc[1].arg;
-                try @call(.never_inline, setStaticFunc, .{vm, symId, framePtr[pc[2].arg]});
-                pc += 3;
+                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                try @call(.never_inline, setStaticFunc, .{vm, symId, framePtr[pc[3].arg]});
+                pc += 4;
                 continue;
             },
             .end => {

@@ -205,6 +205,18 @@ pub const UserVM = struct {
         return cy.heap.allocRawStringSlice(self.internal(), slice, parent);
     }
 
+    pub inline fn allocStringOrRawstring(self: *UserVM, str: []const u8) !Value {
+        if (cy.string.validateUtf8(str)) |runeLen| {
+            if (runeLen == str.len) {
+                return self.allocAstring(str);
+            } else {
+                return self.allocUstring(str, @intCast(u32, runeLen));
+            }
+        } else {
+            return self.allocRawString(str);
+        }
+    }
+
     pub inline fn allocAstringSlice(self: *UserVM, slice: []const u8, parent: *cy.HeapObject) !Value {
         return cy.heap.allocAstringSlice(self.internal(), slice, parent);
     }

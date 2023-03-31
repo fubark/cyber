@@ -308,13 +308,13 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
 fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const alloc = vm.allocator();
-    var iter = std.process.argsWithAllocator(alloc) catch stdx.fatal();
+    var iter = std.process.argsWithAllocator(alloc) catch fatal();
     defer iter.deinit();
-    const listv = vm.allocEmptyList() catch stdx.fatal();
+    const listv = vm.allocEmptyList() catch fatal();
     const listo = listv.asHeapObject();
     while (iter.next()) |arg| {
-        const argv = vm.allocRawString(arg) catch stdx.fatal();
-        listo.list.append(vm.allocator(), argv);
+        const str = vm.allocStringOrRawstring(arg) catch fatal();
+        listo.list.append(vm.allocator(), str);
     }
     return listv;
 }

@@ -10,43 +10,18 @@ const log = stdx.log.scoped(.debug);
 
 const NullId = std.math.maxInt(u32);
 
-pub fn computeLinePos(src: []const u8, loc: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
+/// Find the line/col in `src` at `pos`.
+/// Iterating tokens could be faster but it would still require counting new lines for skipped segments like comments, multiline strings.
+pub fn computeLinePos(src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
     var line: u32 = 0;
     var lineStart: u32 = 0;
     for (src, 0..) |ch, i| {
-        if (i == loc) {
+        if (i == pos) {
             break;
         }
         if (ch == '\n') {
             line += 1;
             lineStart = @intCast(u32, i + 1);
-        }
-    }
-    // This also handles the case where target pos is at the end of source.
-    outLine.* = line;
-    outCol.* = loc - lineStart;
-    outLineStart.* = lineStart;
-}
-
-/// `pos` is the char pos in `src`.
-pub fn computeLinePosWithTokens(tokens: []const cy.Token, src: []const u8, pos: u32, outLine: *u32, outCol: *u32, outLineStart: *u32) linksection(cy.Section) void {
-    var line: u32 = 0;
-    var lineStart: u32 = 0;
-    for (tokens) |token| {
-        if (token.pos() == pos) {
-            break;
-        }
-        if (token.tag() == .new_line) {
-            line += 1;
-            lineStart = token.pos() + 1;
-        } else if (token.tag() == .string or token.tag() == .templateString) {
-            const str = src[token.start_pos..token.data.end_pos];
-            var lastIdx: u32 = undefined;
-            const newLines = countNewLines(str, &lastIdx);
-            if (newLines > 0) {
-                line += newLines;
-                lineStart = token.start_pos + lastIdx + 1;
-            }
         }
     }
     // This also handles the case where target pos is at the end of source.
@@ -77,44 +52,6 @@ pub fn countNewLines(str: []const u8, outLastIdx: *u32) u32 {
         }
     }
     return count;
-}
-
-test "computeLinePosFromTokens" {
-    var parser = cy.Parser.init(t.alloc);
-    defer parser.deinit();
-
-    // Basic.
-    _ = try parser.parse(
-        \\a = 1
-    );
-    var line: u32 = undefined;
-    var col: u32 = undefined;
-    var lineStart: u32 = undefined;
-    computeLinePosWithTokens(parser.tokens.items, parser.src, 4, &line, &col, &lineStart);
-    try t.eq(line, 0);
-    try t.eq(col, 4);
-    try t.eq(lineStart, 0);
-
-    // String token with new lines.
-    _ = try parser.parse(
-        \\a = "abc
-        \\xyz
-        \\123"
-        \\a
-    );
-    computeLinePosWithTokens(parser.tokens.items, parser.src, @intCast(u32, parser.src.len-1), &line, &col, &lineStart);
-    try t.eq(line, 3);
-    try t.eq(col, 0);
-    try t.eq(lineStart, 18);
-
-    // Error at end.
-    _ = try parser.parse(
-        \\a = 1
-    );
-    computeLinePosWithTokens(parser.tokens.items, parser.src, @intCast(u32, parser.src.len), &line, &col, &lineStart);
-    try t.eq(line, 0);
-    try t.eq(col, 5);
-    try t.eq(lineStart, 0);
 }
 
 /// Assumes symbol exists.
@@ -186,7 +123,7 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, msg: []const u8) !void {
         const chunk = &vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.loc];
         const token = chunk.tokens[node.start_token];
-        try printUserError(vm, "Trace", msg, sym.file, token.pos(), false);
+        try printUserError(vm, "Trace", msg, sym.file, token.pos());
     } else {
         if (pc == cy.NullId) {
             fmt.printStderr("Trace: {} (vm global allocation)\n", &.{v(msg)});
@@ -246,9 +183,9 @@ fn writeLastUserCompileError(vm: *const cy.VM, w: anytype) !void {
     if (vm.compiler.lastErrNode != cy.NullId) {
         const token = chunk.nodes[vm.compiler.lastErrNode].start_token;
         const pos = chunk.tokens[token].pos();
-        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, pos, false);
+        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, pos);
     } else {
-        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId, false);
+        try writeUserError(vm, w, "CompileError", vm.compiler.lastErr, chunk.id, cy.NullId);
     }
 }
 
@@ -268,7 +205,7 @@ pub fn allocLastUserTokenError(vm: *const cy.VM) ![]const u8 {
 
 fn writeLastUserTokenError(vm: *const cy.VM, w: anytype) !void {
     const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
-    try writeUserError(vm, w, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
+    try writeUserError(vm, w, "TokenError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos);
 }
 
 pub fn printLastUserTokenError(vm: *const cy.VM) !void {
@@ -282,7 +219,7 @@ pub fn printLastUserTokenError(vm: *const cy.VM) !void {
 
 fn writeLastUserParseError(vm: *const cy.VM, w: anytype) !void {
     const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
-    try writeUserError(vm, w, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos, true);
+    try writeUserError(vm, w, "ParseError", chunk.parser.last_err, chunk.id, chunk.parser.last_err_pos);
 }
 
 pub fn printLastUserParseError(vm: *const cy.VM) !void {
@@ -294,27 +231,23 @@ pub fn printLastUserParseError(vm: *const cy.VM) !void {
     try writeLastUserParseError(vm, w);
 }
 
-pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, queryPosFromSrc: bool) linksection(cy.Section) !void {
+pub fn printUserError(vm: *const cy.VM, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
     if (cy.silentError) {
         return;
     }
     const w = fmt.lockStderrWriter();
     defer fmt.unlockPrint();
-    try writeUserError(vm, w, title, msg, chunkId, pos, queryPosFromSrc);
+    try writeUserError(vm, w, title, msg, chunkId, pos);
 }
 
 /// Reduced to using writer so printed errors can be tested.
-pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32, queryPosFromSrc: bool) linksection(cy.Section) !void {
+pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []const u8, chunkId: u32, pos: u32) linksection(cy.Section) !void {
     const chunk = vm.compiler.chunks.items[chunkId];
     if (pos != NullId) {
         var line: u32 = undefined;
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
-        if (queryPosFromSrc) {
-            computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
-        } else {
-            computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
-        }
+        computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
         const lineEnd = std.mem.indexOfScalarPos(u8, chunk.src, lineStart, '\n') orelse chunk.src.len;
         try fmt.format(w,
             \\{}: {}
@@ -454,7 +387,7 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) !StackFrame {
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
         const pos = chunk.tokens[node.start_token].pos();
-        computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
+        computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
         return StackFrame{
             .name = "main",
             .chunkId = sym.file,
@@ -473,7 +406,7 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) !StackFrame {
         var col: u32 = undefined;
         var lineStart: u32 = undefined;
         const pos = chunk.tokens[node.start_token].pos();
-        computeLinePosWithTokens(chunk.tokens, chunk.src, pos, &line, &col, &lineStart);
+        computeLinePos(chunk.parser.src, pos, &line, &col, &lineStart);
         return StackFrame{
             .name = name,
             .chunkId = sym.file,
@@ -623,7 +556,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         const token = chunk.tokens[node.start_token];
         const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].code), @tagName(node.node_t) });
         defer vm.alloc.free(msg);
-        try printUserError(vm, "Trace", msg, sym.file, token.pos(), false);
+        try printUserError(vm, "Trace", msg, sym.file, token.pos());
 
         fmt.printStderr("Bytecode:\n", &.{});
         const ContextSize = 40;

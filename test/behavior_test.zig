@@ -1416,6 +1416,51 @@ test "panic()" {
     });
 }
 
+test "Error reporting." {
+    // Parse error considers shebang line.
+    try eval(.{ .silent = true },
+        \\#!cyber
+        \\import
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected import clause.
+            \\
+            \\main:2:7:
+            \\import
+            \\      ^
+            \\
+        );
+    }}.func);
+
+    // Panic error considers shebang line.
+    try eval(.{ .silent = true },
+        \\#!cyber
+        \\throw error.Boom
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: error.Boom
+            \\
+            \\main:2:1 main:
+            \\throw error.Boom
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Windows new lines in source code.
+    try eval(.{ .silent = true }, "a = 123\r\nb = 234\r\nc =",
+    struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected right expression for assignment statement.
+            \\
+            \\main:3:4:
+            \\c =
+            \\   ^
+            \\
+        );
+    }}.func);
+}
+
 test "Stack trace unwinding." {
     const run = VMrunner.create();
     defer run.destroy();

@@ -435,7 +435,7 @@ type Node object:
         return Node{ value: 123, next: none }
 
     -- A method.
-    func dump(self)
+    func dump(self):
         print self.value
 
 n = Node.create()

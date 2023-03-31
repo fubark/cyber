@@ -19,6 +19,10 @@ const Config = setup.Config;
 const eqUserError = setup.eqUserError;
 const EvalResult = setup.EvalResult;
 
+test "Specific ARC cases." {
+    try evalPass(.{}, @embedFile("arc_cases_test.cy"));
+}
+
 test "Type casting." {
     // Failed to cast to exact type at runtime.
     try eval(.{ .silent = true },

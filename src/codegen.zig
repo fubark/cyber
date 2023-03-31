@@ -1404,6 +1404,11 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
 
             var jumpPc = try self.pushEmptyJumpNotCond(condLocal);
 
+            // Enter while body.
+
+            // ARC cleanup.
+            try genReleaseIfRetainedTemp(self, condv);
+
             try genStatements(self, node.head.whileCondStmt.bodyHead, false);
             try self.pushJumpBackTo(topPc);
 
@@ -1648,6 +1653,11 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
             var lastCondJump = try self.pushEmptyJumpNotCond(condv.local);
             self.setFirstFreeTempLocal(startTempLocal);
 
+            // Enter if body.
+
+            // ARC cleanup.
+            try genReleaseIfRetainedTemp(self, condv);
+
             self.nextSemaSubBlock();
             try genStatements(self, node.head.left_right.right, false);
             self.prevSemaSubBlock();
@@ -1673,8 +1683,13 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                         self.setFirstFreeTempLocal(startTempLocal);
                         break;
                     } else {
-                        const elifCondv = try self.genExpr(elseClause.head.else_clause.cond, false);
-                        lastCondJump = try self.pushEmptyJumpNotCond(elifCondv.local);
+                        const elseCondv = try self.genExpr(elseClause.head.else_clause.cond, false);
+                        lastCondJump = try self.pushEmptyJumpNotCond(elseCondv.local);
+
+                        // Enter else-if body.
+            
+                        // ARC cleanup.
+                        try genReleaseIfRetainedTemp(self, elseCondv);
 
                         self.nextSemaSubBlock();
                         try genStatements(self, elseClause.head.else_clause.body_head, false);

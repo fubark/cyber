@@ -211,7 +211,7 @@ for map each k, v:
 | Function | Summary |
 | -- | -- |
 | `access(path any, mode (#read \| #write \| #readWrite)) true \| error` | Attempts to access a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. Return true or an error. |
-| `args() List<rawstring>` | Returns the command line arguments as a list of `rawstring`s. |
+| `args() List<string \| rawstring>` | Returns the command line arguments as a list. Each argument is validated and returned as a UTF-8 `string` or `rawstring` if the validation failed. |
 | `bindLib(path any, decls [](CFunc\|CStruct)) Object \| Map` | Calls `bindLib(path, decls, {})`. | 
 | `bindLib(path any, decls [](CFunc\|CStruct), config: BindLibConfig) Object \| Map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a `Map` is returned instead with C-functions binded as function values. | 
 | `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |

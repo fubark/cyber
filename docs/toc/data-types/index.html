@@ -290,7 +290,7 @@ When declaring methods, the first parameter must be <code>self</code>. Otherwise
         return Node{ value: 123, next: none }
 
     -- A method.
-    func dump(self)
+    func dump(self):
         print self.value
 
 n = Node.create()

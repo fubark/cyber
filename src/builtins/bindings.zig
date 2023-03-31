@@ -90,6 +90,12 @@ pub const Symbol = enum {
     unknown,
 };
 
+fn getBuiltinSymbol(id: u32) ?Symbol {
+    return std.meta.intToEnum(Symbol, id) catch {
+        return null;
+    };
+}
+
 pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
     return vm.prepareThrowSymbol(@enumToInt(sym));
 }  
@@ -1335,7 +1341,9 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const trimRunes = vm.valueToTempString(args[1]);
 
             var res: []const u8 = undefined;
-            const mode = @intToEnum(Symbol, args[0].asSymbolId());
+            const mode = getBuiltinSymbol(args[0].asSymbolId()) orelse {
+                return prepareThrowSymbol(vm, .InvalidArgument);
+            };
             switch (mode) {
                 .left => res = std.mem.trimLeft(u8, str, trimRunes),
                 .right => res = std.mem.trimRight(u8, str, trimRunes),

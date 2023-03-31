@@ -143,6 +143,7 @@ t.eq(str.startsWith('bc'), false)
 t.eq(str.trim(#left, 'a'), 'bcxyz')
 t.eq(str.trim(#right, 'z'), 'abcxy')
 t.eq(str.trim(#ends, 'az'), 'bcxy')
+t.eq(try str.trim(#both, 'az'), error.InvalidArgument)
 
 -- upper()
 t.eq(str.upper(), 'ABCXYZ')

@@ -612,15 +612,27 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
 }
 
 fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize) void {
+    if (builtin.mode == .Debug) {
+        if (vm.objectTraceMap.getPtr(obj)) |trace| {
+            trace.freePc = vm.debugPc;
+            trace.freeTypeId = obj.retainedCommon.structId;
+        } else {
+            log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
+        }
+    }
     const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..len];
     vm.alloc.free(slice);
-    if (builtin.mode == .Debug) {
-        // Invalidate.
-        obj.retainedCommon.structId = cy.NullId;
-    }
 }
 
-pub fn freePoolObject(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+    if (builtin.mode == .Debug) {
+        if (vm.objectTraceMap.getPtr(obj)) |trace| {
+            trace.freePc = vm.debugPc;
+            trace.freeTypeId = obj.retainedCommon.structId;
+        } else {
+            log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
+        }
+    }
     const prev = &(@ptrCast([*]HeapObject, obj) - 1)[0];
     if (prev.common.structId == NullId) {
         // Left is a free span. Extend length.
@@ -636,9 +648,9 @@ pub fn freePoolObject(self: *cy.VM, obj: *HeapObject) linksection(cy.HotSection)
             .structId = if (builtin.mode == .Debug) NullId else undefined,
             .len = 1,
             .start = obj,
-            .next = self.heapFreeHead,
+            .next = vm.heapFreeHead,
         };
-        self.heapFreeHead = obj;
+        vm.heapFreeHead = obj;
     }
 }
 
@@ -1383,12 +1395,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 });
             }
         }
-        if (vm.objectTraceMap.getPtr(obj)) |trace| {
-            trace.freePc = vm.debugPc;
-            trace.freeTypeId = obj.retainedCommon.structId;
-        } else {
-            log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
-        }
     }
     switch (obj.retainedCommon.structId) {
         ListS => {
@@ -1580,6 +1586,10 @@ pub fn getTypeName(vm: *const cy.VM, typeId: cy.TypeId) []const u8 {
 test "Free object invalidation." {
     var vm: cy.VM = undefined;
     try vm.init(t.alloc);
+    if (cy.TraceEnabled) {
+        var trace = cy.TraceInfo{};
+        vm.trace = &trace;
+    }
     defer vm.deinit(false);
 
     // Invalidation only happens in Debug mode.
@@ -1603,8 +1613,9 @@ test "Free object invalidation." {
         // Free external object invalidates object pointer.
         obj = try allocExternalObject(&vm, 40);
         obj.retainedCommon.structId = 100;
+        vm.debugPc = 123;
         freeExternalObject(&vm, obj, 40);
-        try t.eq(obj.retainedCommon.structId, cy.NullId);
+        try t.eq(cy.arc.isObjectAlreadyFreed(&vm, obj), true);
     }
 }
 

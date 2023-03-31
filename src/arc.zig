@@ -35,8 +35,22 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
 }
 
-fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
+pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
     if (obj.retainedCommon.structId == cy.NullId) {
+        // Can check structId for pool objects since they are still in memory.
+        return true;
+    }
+    if (vm.objectTraceMap.get(obj)) |trace| {
+        // For external objects check for trace entry.
+        if (trace.freePc != cy.NullId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
+    if (isObjectAlreadyFreed(vm, obj)) {
         const msg = std.fmt.allocPrint(vm.alloc, "Double free object: {*} at pc: {}({s})", .{
             obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].code),
         }) catch stdx.fatal();
@@ -90,7 +104,7 @@ pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, start
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
     obj.retainedCommon.rc += 1;
     if (builtin.mode == .Debug) {
-        checkRetainDanglingPointer(obj);
+        checkRetainDanglingPointer(self, obj);
         if (cy.verbose) {
             log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
         }
@@ -104,8 +118,8 @@ pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.Hot
     }
 }
 
-fn checkRetainDanglingPointer(obj: *cy.HeapObject) void {
-    if (obj.retainedCommon.structId == cy.NullId) {
+fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
+    if (isObjectAlreadyFreed(vm, obj)) {
         stdx.panic("Retaining dangling pointer.");
     }
 }
@@ -118,7 +132,7 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
         const obj = val.asHeapObject();
         obj.retainedCommon.rc += 1;
         if (builtin.mode == .Debug) {
-            checkRetainDanglingPointer(obj);
+            checkRetainDanglingPointer(self, obj);
             if (cy.verbose) {
                 log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
             }
@@ -140,7 +154,7 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
         const obj = val.asHeapObject();
         obj.retainedCommon.rc += inc;
         if (builtin.mode == .Debug) {
-            checkRetainDanglingPointer(obj);
+            checkRetainDanglingPointer(self, obj);
             if (cy.verbose) {
                 log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
             }

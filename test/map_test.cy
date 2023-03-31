@@ -2,6 +2,11 @@
 
 import t 'test'
 
+-- Empty map.
+a = {}
+t.eq(a.size(), 0)
+t.eq(a['foo'], none)
+
 -- Omits last comma for multiline initializer.
 a = {
   foo: 123,
@@ -139,3 +144,9 @@ t.eq(m.size(), 2)
 t.eq(m['a'], none)
 t.eq(m['b'], 3)
 t.eq(m['c'], 4)
+
+-- Remove rc key from map.
+m = {}
+m[string(1)] = 123
+m.remove('1')
+t.eq(m.size(), 0)

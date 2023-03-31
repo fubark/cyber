@@ -181,6 +181,11 @@ pub const ValueMap = struct {
 
     inline fn getIndexByString(self: ValueMap, vm: *const cy.VM, key: []const u8) linksection(cy.Section) ?usize {
         @setRuntimeSafety(debug);
+
+        if (self.size == 0) {
+            return null;
+        }
+
         const hash = computeStringHash(key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);
@@ -214,6 +219,10 @@ pub const ValueMap = struct {
     /// from this function.  To encourage that, this function is
     /// marked as inline.
     inline fn getIndex(self: ValueMap, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) ?usize {
+        if (self.size == 0) {
+            return null;
+        }
+
         const hash = computeHash(vm, key);
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);
@@ -296,6 +305,8 @@ pub const ValueMap = struct {
     pub fn remove(self: *ValueMap, vm: *cy.VM, key: cy.Value) linksection(cy.Section) bool {
         if (self.getIndex(vm, key)) |idx| {
             self.removeByIndex(idx);
+            // Release key since it can be an object.
+            cy.arc.release(vm, self.entries.?[idx].key);
             return true;
         }
         return false;

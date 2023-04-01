@@ -16,3 +16,9 @@ else string(1):
 -- Temporary rc where cond is released before entering body.
 while string(1):
     break
+
+-- b's narrow type becomes `any` after the if branch, `a = b` should generate copyRetainSrc.
+b = []
+if false:
+    b = 123
+a = b

@@ -1537,7 +1537,13 @@ pub const CompileChunk = struct {
     }
 
     pub fn prevSemaSubBlock(self: *CompileChunk) void {
-        self.curSemaSubBlockId = sema.curSubBlock(self).prevSubBlockId;
+        const ssblock = sema.curSubBlock(self);
+        self.curSemaSubBlockId = ssblock.prevSubBlockId;
+
+        // Update narrow types.
+        for (ssblock.endMergeTypes.items) |it| {
+            self.vars.items[it.id].vtype = it.vtype;
+        }
     }
 
     pub fn unescapeString(self: *CompileChunk, literal: []const u8) ![]const u8 {

@@ -1176,12 +1176,12 @@ pub fn genStatements(self: *CompileChunk, head: cy.NodeId, comptime attachEnd: b
 /// would just grow the register stack unnecessarily. However, the last main statement requires the
 /// resulting expr to persist to return from `eval`.
 fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !void {
+    const node = self.nodes[nodeId];
     // log.debug("gen stmt {}", .{node.node_t});
     self.curNodeId = nodeId;
 
     self.resetNextFreeTemp();
 
-    const node = self.nodes[nodeId];
     switch (node.node_t) {
         .pass_stmt => {
             return;
@@ -1516,7 +1516,9 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     @intCast(u8, self.compiler.vm.nextPairObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
                 if (hasEach) {
+                    try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
+                    try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
                 }
             } else {
@@ -1524,6 +1526,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     @intCast(u8, self.compiler.vm.nextObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
                 if (hasEach) {
+                    try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
                 }
             }
@@ -1545,7 +1548,9 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     @intCast(u8, self.compiler.vm.nextPairObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
                 if (hasEach) {
+                    try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
+                    try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
                 }
             } else {
@@ -1553,6 +1558,7 @@ fn genStatement(self: *CompileChunk, nodeId: cy.NodeId, comptime discardTopExprR
                     @intCast(u8, self.compiler.vm.nextObjSym), @intCast(u16, rFuncSigId),
                     node.head.for_iter_stmt.iterable);
                 if (hasEach) {
+                    try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
                 }
             }
@@ -2479,6 +2485,7 @@ fn genSetVarToExpr(self: *CompileChunk, leftId: cy.NodeId, exprId: cy.NodeId, co
                 } else {
                     const exprv = try self.genRetainedTempExpr(exprId, false);
                     svar.vtype = exprv.vtype;
+                    try self.pushOptionalDebugSym(leftId);
                     try self.buf.pushOp2(.copyReleaseDst, exprv.local, svar.local);
                 }
                 return;

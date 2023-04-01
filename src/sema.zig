@@ -108,6 +108,9 @@ pub const SubBlock = struct {
     /// that the first `genSetVar` produces the correct `set` op.
     iterVarBeginTypes: std.ArrayListUnmanaged(VarAndType),
 
+    /// Record any merged narrow types at the end of the subblock for codegen.
+    endMergeTypes: std.ArrayListUnmanaged(VarAndType),
+
     /// Track which vars were assigned to in the current sub block.
     /// If the var was first assigned in a parent sub block, the type is saved in the map to
     /// be merged later with the ending var type.
@@ -127,6 +130,7 @@ pub const SubBlock = struct {
         return .{
             .assignedVarStart = @intCast(u32, assignedVarStart),
             .iterVarBeginTypes = .{},
+            .endMergeTypes = .{},
             .prevVarTypes = .{},
             .prevSubBlockId = prevSubBlockId,
         };
@@ -134,6 +138,7 @@ pub const SubBlock = struct {
 
     pub fn deinit(self: *SubBlock, alloc: std.mem.Allocator) void {
         self.iterVarBeginTypes.deinit(alloc);
+        self.endMergeTypes.deinit(alloc);
     }
 };
 
@@ -3330,9 +3335,9 @@ fn hasResolvedSym(self: *const cy.CompileChunk, rParentSymId: ResolvedSymId, nam
     return self.compiler.sema.resolvedSymMap.contains(key);
 }
 
-pub fn getVarName(self: *cy.VMcompiler, varId: LocalVarId) []const u8 {
+pub fn getVarName(c: *cy.CompileChunk, varId: LocalVarId) []const u8 {
     if (builtin.mode == .Debug) {
-        return self.vars.items[varId].name;
+        return c.vars.items[varId].name;
     } else {
         return "";
     }
@@ -3487,6 +3492,12 @@ fn endSubBlock(self: *cy.CompileChunk) !void {
                     if (!pssblock.prevVarTypes.contains(varId)) {
                         try self.assignedVarStack.append(self.alloc, varId);
                     }
+
+                    // Record merged type for codegen.
+                    try ssblock.endMergeTypes.append(self.alloc, .{
+                        .id = varId,
+                        .vtype = svar.vtype,
+                    });
                 }
             } else {
                 // New variable assignment, propagate to parent block.

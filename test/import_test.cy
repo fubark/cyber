@@ -31,7 +31,7 @@ func sameFuncName():
 t.eq(a.sameFuncName(), sameFuncName())
 
 -- Reference the alias `number` in `a.cy` that was already resolved in main.
-t.eq(toNumber(1), 1)
+t.eq(number(1), 1)
 t.eq(a.useNumber(1), 1)
 
 type Vec2 object:

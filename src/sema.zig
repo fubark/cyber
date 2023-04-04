@@ -315,6 +315,7 @@ const ResolvedSymData = extern union {
         id: ModuleId,
     },
     builtinType: extern struct {
+        modId: ModuleId,
         // TypeTag.
         typeT: u8,
     },
@@ -347,7 +348,9 @@ pub const ResolvedSym = struct {
             .object => {
                 return self.inner.object.modId;
             },
-            .builtinType,
+            .builtinType => {
+                return self.inner.builtinType.modId;
+            },
             .enumMember,
             .func,
             .variable => {
@@ -2430,8 +2433,8 @@ fn getTypeForResolvedValueSym(chunk: *cy.CompileChunk, crSymId: CompactResolvedS
     }
 }
 
-pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, literal: []const u8) !ResolvedSymId {
-    const nameId = try ensureNameSym(c, literal);
+pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []const u8) !ResolvedSymId {
+    const nameId = try ensureNameSym(c, name);
     const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
             .rParentSymId = cy.NullId,
@@ -2439,18 +2442,23 @@ pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, literal: [
         },
     };
 
+    const modId = try appendSubModule(c, name);
+    const mod = c.sema.getModulePtr(modId);
+
     const id = @intCast(u32, c.sema.resolvedSyms.items.len);
     try c.sema.resolvedSyms.append(c.alloc, .{
         .key = key,
         .symT = .builtinType,
         .inner = .{
             .builtinType = .{
+                .modId = modId,
                 .typeT = @enumToInt(typeT),
             },
         },
         .exported = true,
     });
     try c.sema.resolvedSymMap.put(c.alloc, key, id);
+    mod.resolvedRootSymId = id;
     return id;
 }
 
@@ -2925,6 +2933,10 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
         };
         if (chunk.localSyms.get(key)) |sym| {
             rParentSymIdFinal = sym.rParentSymId;
+        } else {
+            if (nameId < types.BuiltinTypeTags.len) {
+                rParentSymIdFinal = cy.NullId;
+            }
         }
     }
 
@@ -2937,7 +2949,7 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
 
     var rSymId = chunk.compiler.sema.resolvedSymMap.get(key) orelse cy.NullId;
     if (rSymId != cy.NullId) {
-        const sym = chunk.compiler.sema.resolvedSyms.items[rSymId];
+        const sym = chunk.compiler.sema.getResolvedSym(rSymId);
         switch (sym.symT) {
             .variable => {
                 // TODO: Check var type.
@@ -2946,6 +2958,7 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
                     .retType = types.AnyType,
                 };
             },
+            .builtinType,
             .func => {
                 // Match against exact signature.
                 key = AbsResolvedFuncSymKey{
@@ -2972,53 +2985,92 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
         }
     }
 
-    var modId: ModuleId = undefined;
-    const parentSym = chunk.compiler.sema.resolvedSyms.items[rParentSymIdFinal];
-    if (parentSym.symT == .module) {
-        modId = parentSym.inner.module.id;
-    } else if (parentSym.symT == .object) {
-        modId = parentSym.inner.object.modId;
-    } else {
-        return null;
-    }
+    if (rParentSymIdFinal != cy.NullId) {
+        const parentSym = chunk.compiler.sema.getResolvedSym(rParentSymIdFinal);
+        const modId = parentSym.getModuleId() orelse return null;
 
-    if (try findModuleSymForFuncCall(chunk, modId, nameId, args, ret)) |mod_rFuncSigId| {
-        if (rSymId != cy.NullId) {
-            key = AbsResolvedFuncSymKey{
-                .absResolvedFuncSymKey = .{
-                    .rSymId = rSymId,
-                    .rFuncSigId = mod_rFuncSigId,
-                },
-            };
-            if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
-                const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
-                return FuncCallSymResult{
-                    .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
-                    .retType = rFuncSym.retType,
+        if (try findModuleSymForFuncCall(chunk, modId, nameId, args, ret)) |mod_rFuncSigId| {
+            if (rSymId != cy.NullId) {
+                key = AbsResolvedFuncSymKey{
+                    .absResolvedFuncSymKey = .{
+                        .rSymId = rSymId,
+                        .rFuncSigId = mod_rFuncSigId,
+                    },
                 };
+                if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
+                    return FuncCallSymResult{
+                        .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
+                        .retType = rFuncSym.retType,
+                    };
+                }
             }
-        }
 
-        if (try resolveSymFromModule(chunk, modId, nameId, mod_rFuncSigId)) |crSymId| {
-            if (crSymId.isFuncSymId) {
-                const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(crSymId.id);
-                return FuncCallSymResult{
-                    .crSymId = crSymId,
-                    .retType = rFuncSym.retType,
-                };
+            if (try resolveSymFromModule(chunk, modId, nameId, mod_rFuncSigId)) |crSymId| {
+                if (crSymId.isFuncSymId) {
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(crSymId.id);
+                    return FuncCallSymResult{
+                        .crSymId = crSymId,
+                        .retType = rFuncSym.retType,
+                    };
+                } else {
+                    return FuncCallSymResult{
+                        .crSymId = crSymId,
+                        .retType = types.AnyType,
+                    };
+                }
             } else {
-                return FuncCallSymResult{
-                    .crSymId = crSymId,
-                    .retType = types.AnyType,
-                };
+                stdx.panic("unexpected");
             }
         } else {
-            stdx.panic("unexpected");
+            try reportIncompatibleFuncSig(chunk, nameId, rFuncSigId, modId);
         }
     }
 
-    try reportIncompatibleFuncSig(chunk, nameId, rFuncSigId, modId);
-    unreachable;
+    // Look for <call> magic function.
+    if (rSymId != cy.NullId) {
+        const sym = chunk.compiler.sema.getResolvedSym(rSymId);
+        if (sym.getModuleId()) |symModId| {
+            const callNameId = try ensureNameSym(chunk.compiler, "<call>");
+            if (try findModuleSymForFuncCall(chunk, symModId, callNameId, args, ret)) |funcSigId| {
+                // Check if already resolved.
+                key = AbsResolvedSymKey{
+                    .absResolvedSymKey = .{
+                        .rParentSymId = rSymId,
+                        .nameId = callNameId,
+                    },
+                };
+                if (chunk.compiler.sema.resolvedSymMap.get(key)) |callSymId| {
+                    key = AbsResolvedFuncSymKey{
+                        .absResolvedFuncSymKey = .{
+                            .rSymId = callSymId,
+                            .rFuncSigId = funcSigId,
+                        },
+                    };
+                    if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
+                        const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
+                        return FuncCallSymResult{
+                            .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
+                            .retType = rFuncSym.retType,
+                        };
+                    }
+                }
+
+                if (try resolveSymFromModule(chunk, symModId, callNameId, funcSigId)) |crSymId| {
+                    std.debug.assert(crSymId.isFuncSymId);
+
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(crSymId.id);
+                    return FuncCallSymResult{
+                        .crSymId = crSymId,
+                        .retType = rFuncSym.retType,
+                    };
+                } else {
+                    stdx.panic("unexpected");
+                }
+            }
+        }
+    }
+    return null;
 }
 
 fn reportIncompatibleFuncSig(c: *cy.CompileChunk, nameId: NameSymId, rFuncSigId: ResolvedFuncSigId, searchModId: ModuleId) !void {

@@ -26,7 +26,7 @@ t.eqList(a[3..], [4, 5])
 t.eqList(a[..3], [1, 2, 3])
 
 --| Slice retains rc elems.
-a = [toString(1), toString(2), toString(3)]
+a = [string(1), string(2), string(3)]
 a = a[..1]
 t.eq(a[0], '1')
 

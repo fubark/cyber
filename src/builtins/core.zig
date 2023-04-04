@@ -70,13 +70,6 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
-    try b.setFunc("toError", &.{bt.Any}, bt.Error, bindings.errorNew);
-    try b.setFunc("toInteger", &.{bt.Any}, bt.Integer, toInteger);
-    try b.setFunc("toString", &.{bt.Any}, bt.String, toString);
-    try b.setFunc("toBoolean", &.{ bt.Any }, bt.Boolean, toBoolean);
-    try b.setFunc("toNumber", &.{ bt.Any }, bt.Number, bindings.numberNew);
-    try b.setFunc("toPointer", &.{ bt.Any }, bt.Pointer, toPointer);
-    try b.setFunc("toRawstring", &.{bt.Any}, bt.Rawstring, toRawstring);
     try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
     try b.setFunc("valtag", &.{ bt.Any }, bt.Symbol, valtag);
     try b.setFunc("typesym", &.{ bt.Any }, bt.Symbol, typesym);
@@ -152,12 +145,7 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(c
 
 pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     fmt.printDeprecated("bool", "0.2", "Use boolean() instead.", &.{});
-    return toBoolean(vm, args, nargs);
-}
-
-pub fn toBoolean(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    defer vm.release(args[0]);
-    return Value.initBool(args[0].toBool());
+    return bindings.booleanCall(vm, args, nargs);
 }
 
 pub fn char(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -296,28 +284,6 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     return vm.allocRawString(input) catch stdx.fatal();
 }
 
-pub fn toInteger(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    switch (val.getUserTag()) {
-        .number => {
-            return Value.initI32(@floatToInt(i32, @trunc(val.asF64())));
-        },
-        .string => {
-            var str = vm.valueToTempString(val);
-            if (std.mem.indexOfScalar(u8, str, '.')) |idx| {
-                str = str[0..idx];
-            }
-            const res = std.fmt.parseInt(i32, str, 10) catch {
-                return Value.initI32(0);
-            };
-            return Value.initI32(res);
-        },
-        else => {
-            return Value.initI32(0);
-        }
-    }
-}
-
 pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     if (!args[0].isError()) {
         return args[0];
@@ -328,19 +294,7 @@ pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
 
 pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     fmt.printDeprecated("opaque", "0.1", "Use pointer() instead.", &.{});
-    return toPointer(vm, args, nargs);
-}
-
-pub fn toPointer(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    if (val.isPointerT()) {
-        return val;
-    } else if (val.isNumber()) {
-        return cy.heap.allocPointer(vm.internal(), @intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch fatal();
-    } else {
-        vm.release(val);
-        return vm.returnPanic("Not a `pointer`.");
-    }
+    return bindings.pointerCall(vm, args, nargs);
 }
 
 pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -556,17 +510,6 @@ pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return getInput(vm, args, nargs);
 }
 
-pub fn toString(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    if (val.isString()) {
-        return val; 
-    } else {
-        defer vm.release(val);
-        const str = vm.valueToTempString(val);
-        return vm.allocStringInfer(str) catch stdx.fatal();
-    }
-}
-
 pub fn typeid(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
     fmt.printDeprecated("typeid", "0.2", "Use metatype.id() instead.", &.{});
@@ -622,12 +565,6 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     const content = vm.valueToTempRawString(args[1]);
     std.fs.cwd().writeFile(path, content) catch stdx.fatal();
     return Value.None;
-}
-
-pub fn toRawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const str = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
-    return vm.allocRawString(str) catch stdx.fatal();
 }
 
 pub fn evalJS(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

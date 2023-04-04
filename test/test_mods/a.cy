@@ -24,6 +24,8 @@ func barNoExport():
 panic(#ExecutedModuleMain)
 
 func declAssign(val) number = toNumber
+func toNumber(val) number:
+    return number(val)
 
 var initOnce: incInitOnce(initOnceCount)
 var initOnceCount: 0

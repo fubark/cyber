@@ -43,10 +43,10 @@ t.eq(a['bc'], 123)
 a['abc🦊'[1..]] = 123
 t.eq(a['bc🦊'], 123)
 -- rawstring
-a[toRawstring('abc')] = 123
+a[rawstring('abc')] = 123
 t.eq(a['abc'], 123)
 -- rawstring slice
-a[toRawstring('abc')[1..]] = 123
+a[rawstring('abc')[1..]] = 123
 t.eq(a['bc'], 123)
 
 -- Number key.
@@ -147,6 +147,6 @@ t.eq(m['c'], 4)
 
 -- Remove rc key from map.
 m = {}
-m[toString(1)] = 123
+m[string(1)] = 123
 m.remove('1')
 t.eq(m.size(), 0)

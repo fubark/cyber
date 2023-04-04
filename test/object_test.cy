@@ -60,7 +60,7 @@ t.eq(n.value, 234)
 
 -- Struct to string returns struct's name. 
 n = Node{ value: 123 }
-t.eq(toString(n), 'Node')
+t.eq(string(n), 'Node')
 
 -- Initialize fields without commas.
 type W object:
@@ -123,4 +123,4 @@ t.eq(n3.b, 6)
 -- Using Object sym as a value.
 sym = Node
 t.eq(typesym(sym), #metatype)
-t.eq(toString(sym), 'type: Node')
+t.eq(string(sym), 'type: Node')

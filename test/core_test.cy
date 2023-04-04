@@ -1,6 +1,35 @@
 import t 'test'
 import os 'os'
 
+--| Tests sensitive to line numbers.
+-- errorReport(), current frame.
+try:
+  throw error.Boom
+catch:
+  t.eq(errorReport(), "main:7:3 main:
+  throw error.Boom
+  ^
+")
+
+-- errorReport(), one frame before and one frame after.
+func foo2():
+  throw error.Boom
+func foo():
+  try:
+    foo2()
+  catch:
+    t.eq(errorReport(), "main:16:3 foo2:
+  throw error.Boom
+  ^
+main:19:5 foo:
+    foo2()
+    ^
+main:31:1 main:
+foo()
+^
+")
+foo()
+
 -- arrayFill with primitive.
 a = arrayFill(123, 10)
 t.eq(a.len(), 10)
@@ -11,6 +40,8 @@ for 0..10 each i:
 a = arrayFill([], 2)
 t.eq(a.len(), 2)
 t.eq(a[0] == a[1], false)
+
+-- boolean(), see truthy_test.cy
 
 -- copy()
 t.eq(copy(123), 123)
@@ -41,50 +72,17 @@ t.eq(newS == s, false)
 t.eq(newS.foo, 123)
 t.eq(newS.bar, rcList)
 
--- error()
--- See error_test.cy
+-- error(), see error_test.cy
 
--- errorReport(), current frame.
-try:
-  throw error.Boom
-catch:
-  t.eq(errorReport(), "main:49:3 main:
-  throw error.Boom
-  ^
-")
-
--- errorReport(), one frame before and one frame after.
-func foo2():
-  throw error.Boom
-func foo():
-  try:
-    foo2()
-  catch:
-    t.eq(errorReport(), "main:58:3 foo2:
-  throw error.Boom
-  ^
-main:61:5 foo:
-    foo2()
-    ^
-main:73:1 main:
-foo()
-^
-")
-foo()
-
--- toInteger()
-res = toInteger(100)
+-- int()
+res = int(100)
 t.eq(typesym(res), #int)
-t.eq(toNumber(res), 100)
-t.eq(toNumber(toInteger(100.1)), 100)
-t.eq(toNumber(toInteger('100')), 100)
-t.eq(toNumber(toInteger('100.1')), 100)
+t.eq(number(res), 100)
+t.eq(number(int(100.1)), 100)
+t.eq(number(int('100')), 100)
+t.eq(number(int('100.1')), 100)
 
--- toNumber()
-t.eq(toNumber(100), 100)
-t.eq(toNumber(100.1), 100.1)
-t.eq(toNumber('100'), 100)
-t.eq(toNumber('100.1'), 100.1)
+-- number(), see number_test.cy
 
 -- parseCyon()
 val = parseCyon('123')
@@ -105,25 +103,25 @@ val = parseCyon('\{ a: 123 \}')
 t.eq(val.size(), 1)
 t.eq(val['a'], 123)
 
--- toPointer()
-ptr = toPointer(0xDEADBEEF)
+-- pointer()
+ptr = pointer(0xDEADBEEF)
 t.eq(ptr.value(), 3735928559)
 
--- toString()
+-- string()
 str = 'abcd'
-t.eq(toString(str), 'abcd')
-t.eq(toString(str[0..2]), 'ab')
-rstr = toRawstring('abcd')
-t.eq(toString(rstr), 'rawstring (4)')
-t.eq(toString(rstr[0..2]), 'rawstring (2)')
-t.eq(toString(123), '123')
-t.eq(toString(123.4), '123.4')
-t.eq(toString(123.456), '123.456')
-t.eq(toString(123.00000123), '123.00000123')
-t.eq(toString(toInteger(123)), '123')
-t.eq(toString(error.foo), 'error.foo')
-t.eq(toString(#foo), '#foo')
-t.eq(toString(number), 'type: number')
+t.eq(string(str), 'abcd')
+t.eq(string(str[0..2]), 'ab')
+rstr = rawstring('abcd')
+t.eq(string(rstr), 'rawstring (4)')
+t.eq(string(rstr[0..2]), 'rawstring (2)')
+t.eq(string(123), '123')
+t.eq(string(123.4), '123.4')
+t.eq(string(123.456), '123.456')
+t.eq(string(123.00000123), '123.00000123')
+t.eq(string(int(123)), '123')
+t.eq(string(error.foo), 'error.foo')
+t.eq(string(#foo), '#foo')
+t.eq(string(number), 'type: number')
 
 -- toCyon()
 cyon = toCyon(123)
@@ -152,9 +150,9 @@ t.eq(cyon, "\{
 -- typeof()
 t.eq(typeof(true), boolean)
 t.eq(typeof(123), number)
-t.eq(typeof(toPointer(123)), pointer)
+t.eq(typeof(pointer(123)), pointer)
 t.eq(typeof('abc'), typeof('xyz'))
-t.eq(typeof(toRawstring('abc')), typeof(toRawstring('xyz')))
+t.eq(typeof(rawstring('abc')), typeof(rawstring('xyz')))
 t.eq(typeof(error.Foo), error)
 t.eq(typeof([]), List)
 t.eq(typeof({}), Map)
@@ -162,11 +160,11 @@ t.eq(typeof({}), Map)
 -- typesym()
 t.eq(typesym(123), #number)
 t.eq(typesym('abc'), #string)
-t.eq(typesym(toPointer(0)), #pointer)
+t.eq(typesym(pointer(0)), #pointer)
 
 -- writeFile() rawstring
 if os.system != 'wasm':
-  s = toRawstring('').insertByte(0, 255)
+  s = rawstring('').insertByte(0, 255)
   writeFile('test.txt', s)
   read = readFile('test.txt')
   t.eq(read.len(), 1)

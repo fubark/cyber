@@ -241,7 +241,7 @@ test "Typed number." {
         \\
         \\-- Cast erased type.
         \\n = t.erase(123)
-        \\t.eq(foo(toNumber(n)), true)
+        \\t.eq(foo(number(n)), true)
     );
 }
 
@@ -303,12 +303,12 @@ test "Typed pointer." {
         \\  return a.value() == 123
         \\
         \\-- From var.
-        \\ptr = toPointer(123)
+        \\ptr = pointer(123)
         \\t.eq(foo(ptr), true)
         \\
         \\-- Cast erased type.
-        \\ptr = t.erase(toPointer(123))
-        \\t.eq(foo(toPointer(ptr)), true)
+        \\ptr = t.erase(pointer(123))
+        \\t.eq(foo(pointer(ptr)), true)
     );
 }
 
@@ -345,7 +345,7 @@ test "Typed string." {
         \\
         \\-- Cast erased type.
         \\str = t.erase('true')
-        \\t.eq(foo(toString(str)), true)
+        \\t.eq(foo(string(str)), true)
     );
 }
 
@@ -382,7 +382,7 @@ test "Typed boolean." {
         \\
         \\-- Cast erased type.
         \\b = t.erase(true)
-        \\t.eq(foo(toBoolean(b)), true)
+        \\t.eq(foo(boolean(b)), true)
     );
 }
 
@@ -1213,7 +1213,7 @@ test "Symbols." {
     // Literal.
     try eval(.{},
         \\n = #Tiger
-        \\toNumber(n)
+        \\number(n)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
         const id = try run.vm.internal().ensureSymbol("Tiger");

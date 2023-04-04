@@ -171,18 +171,27 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     // Primitive types.
     var id = try self.addBuiltinType("none");
     std.debug.assert(id == cy.NoneT);
+
     id = try self.addBuiltinType("boolean");
     std.debug.assert(id == cy.BooleanT);
+    var rsym = self.compiler.sema.getResolvedSym(bt.Boolean);
+    var sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.Boolean, booleanCall);
+
     id = try self.addBuiltinType("error");
     std.debug.assert(id == cy.ErrorT);
-    var subModId = try sema.appendSubModule(&self.compiler, "error");
-    var sb = ModuleBuilder.initModId(&self.compiler, subModId);
-    try sb.setFunc("new", &.{ bt.Any }, bt.Error, errorNew);
-
+    rsym = self.compiler.sema.getResolvedSym(bt.Error);
+    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.Error, errorCall);
     try b.addMethod(cy.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
     id = try self.addBuiltinType("string");
     std.debug.assert(id == cy.StaticAstringT);
+
+    // string type module.
+    rsym = self.compiler.sema.getResolvedSym(bt.String);
+    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.String, stringCall);
 
     // Astring and Ustring share the same string user type.
     id = try self.addBuiltinType("string");
@@ -190,16 +199,21 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("enum");
     std.debug.assert(id == cy.EnumT);
+
     id = try self.addBuiltinType("symbol");
     std.debug.assert(id == cy.SymbolT);
+
     id = try self.addBuiltinType("integer");
     std.debug.assert(id == cy.IntegerT);
+    rsym = self.compiler.sema.getResolvedSym(bt.Integer);
+    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.Integer, integerCall);
 
     id = try self.addBuiltinType("number");
     std.debug.assert(id == cy.NumberT);
-    subModId = try sema.appendSubModule(&self.compiler, "number");
-    sb = ModuleBuilder.initModId(&self.compiler, subModId);
-    try sb.setFunc("new", &.{ bt.Any }, bt.Number, numberNew);
+    rsym = self.compiler.sema.getResolvedSym(bt.Number);
+    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.Number, numberCall);
 
     id = try self.addBuiltinType("List");
     std.debug.assert(id == cy.ListS);
@@ -289,6 +303,11 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("rawstring");
     std.debug.assert(id == cy.RawStringT);
 
+    // rawstring type module.
+    rsym = self.compiler.sema.getResolvedSym(bt.Rawstring);
+    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.Rawstring, rawstringCall);
+
     id = try self.addBuiltinType("rawstring");
     std.debug.assert(id == cy.RawStringSliceT);
 
@@ -350,6 +369,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("pointer");
     std.debug.assert(id == cy.PointerT);
+    rsym = self.compiler.sema.getResolvedSym(bt.Pointer);
+    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    try sb.setFunc("<call>", &.{ bt.Any }, bt.Pointer, pointerCall);
     try b.addMethod(cy.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
 
     id = try self.addBuiltinType("File");
@@ -2375,7 +2397,34 @@ pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     }
 }
 
-pub fn numberNew(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn booleanCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    defer vm.release(args[0]);
+    return Value.initBool(args[0].toBool());
+}
+
+pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    switch (val.getUserTag()) {
+        .number => {
+            return Value.initI32(@floatToInt(i32, @trunc(val.asF64())));
+        },
+        .string => {
+            var str = vm.valueToTempString(val);
+            if (std.mem.indexOfScalar(u8, str, '.')) |idx| {
+                str = str[0..idx];
+            }
+            const res = std.fmt.parseInt(i32, str, 10) catch {
+                return Value.initI32(0);
+            };
+            return Value.initI32(res);
+        },
+        else => {
+            return Value.initI32(0);
+        }
+    }
+}
+
+pub fn numberCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .number => return val,
@@ -2396,7 +2445,36 @@ pub fn numberNew(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn errorNew(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    if (val.isPointerT()) {
+        return val;
+    } else if (val.isNumber()) {
+        return cy.heap.allocPointer(vm.internal(), @intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch fatal();
+    } else {
+        vm.release(val);
+        return vm.returnPanic("Not a `pointer`.");
+    }
+}
+
+pub fn rawstringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const str = vm.valueToTempRawString(args[0]);
+    defer vm.release(args[0]);
+    return vm.allocRawString(str) catch stdx.fatal();
+}
+
+pub fn stringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    if (val.isString()) {
+        return val; 
+    } else {
+        defer vm.release(val);
+        const str = vm.valueToTempString(val);
+        return vm.allocStringInfer(str) catch stdx.fatal();
+    }
+}
+
+pub fn errorCall(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = args[0];
     if (val.isPointer()) {
         return prepareThrowSymbol(vm, .InvalidArgument);

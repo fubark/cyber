@@ -10,7 +10,21 @@ weight: 10
 
 ## Custom operators.
 
-## Function/Method fallback.
+## Magic functions.
+
+### Calling a module symbol.
+Declare a `<call>` function to allow invoking a module as a function. Currently, this is only available to builtin types like `number`.
+```cy
+-- Type declarations are also modules.
+type Vec2 object:
+  x number
+  y number
+
+  func <call>(x number, y number) Vec2:
+    return Vec2{ x: x, y: y }
+
+v = Vec2(1, 2)
+```
 
 ## Reflection.
 A `metatype` object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.

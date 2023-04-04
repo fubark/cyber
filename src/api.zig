@@ -361,7 +361,7 @@ pub const UserVM = struct {
             self.retain(arg);
             vm.framePtr[4 + i] = arg;
         }
-        const retInfo = cy.vm.buildReturnInfo(1, false);
+        const retInfo = cy.vm.buildReturnInfo(1, false, 0);
         try cy.vm.callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len), retInfo);
         try @call(.never_inline, cy.vm.evalLoopGrowStack, .{vm});
 

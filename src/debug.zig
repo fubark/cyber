@@ -54,27 +54,6 @@ pub fn countNewLines(str: []const u8, outLastIdx: *u32) u32 {
     return count;
 }
 
-/// Assumes symbol exists.
-/// Since there are different call insts with varying lengths,
-/// the call convention prefers to advance the pc before saving it so
-/// stepping over the call will already have the correct pc.
-/// The saved pc would point to the end of the inst so the lookup
-/// returns the first entry before the saved pc.
-pub fn getDebugSymBefore(vm: *const cy.VM, pc: usize) cy.DebugSym {
-    for (vm.debugTable, 0..) |sym, i| {
-        if (sym.pc >= pc) {
-            if (builtin.mode == .Debug) {
-                const foundPcOffset = vm.debugTable[i-1].pc;
-                if (cy.getInstLenAt(vm.ops.ptr + foundPcOffset) + foundPcOffset != pc) {
-                    stdx.panicFmt("Missing debug sym before: {}", .{pc});
-                }
-            }
-            return vm.debugTable[i - 1];
-        }
-    }
-    return vm.debugTable[vm.debugTable.len-1];
-}
-
 pub fn getDebugSym(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
     return getDebugSymFromTable(vm.debugTable, pc);
 }
@@ -417,31 +396,22 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) !StackFrame {
     }
 }
 
-pub fn buildStackTrace(self: *cy.VM, fromPanic: bool) !void {
+pub fn buildStackTrace(self: *cy.VM) !void {
     @setCold(true);
     self.stackTrace.deinit(self.alloc);
     var frames: std.ArrayListUnmanaged(StackFrame) = .{};
 
     var fpOffset = cy.getStackOffset(self, self.framePtr);
     var pcOffset = cy.getInstOffset(self, self.pc);
-    var isTopFrame = true;
     while (true) {
-        const sym = b: {
-            if (isTopFrame) {
-                isTopFrame = false;
-                if (fromPanic) {
-                    break :b getDebugSym(self, pcOffset) orelse return error.NoDebugSym;
-                }
-            }
-            break :b getDebugSymBefore(self, pcOffset);
-        };
+        const sym = getDebugSym(self, pcOffset) orelse return error.NoDebugSym;
 
         const frame = try getStackFrame(self, sym);
         try frames.append(self.alloc, frame);
         if (sym.frameLoc == cy.NullId) {
             break;
         } else {
-            pcOffset = cy.getInstOffset(self, self.stack[fpOffset + 2].retPcPtr);
+            pcOffset = cy.getInstOffset(self, self.stack[fpOffset + 2].retPcPtr) - self.stack[fpOffset + 1].retInfo.callInstOffset;
             fpOffset = cy.getStackOffset(self, self.stack[fpOffset + 3].retFramePtr);
         }
     }

@@ -517,6 +517,10 @@ const DebugLabel = struct {
     }
 };
 
+pub const CallObjSymInstLen = 16;
+pub const CallSymInstLen = 11;
+pub const CallInstLen = 3;
+
 pub fn getInstLenAt(pc: [*]const OpData) u8 {
     switch (pc[0].code) {
         .ret0,
@@ -539,6 +543,10 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
             const numVars = pc[1].arg;
             return 2 + numVars;
         },
+        .call0,
+        .call1 => {
+            return CallInstLen;
+        },
         .popTry,
         .copy,
         .not,
@@ -549,8 +557,6 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .copyRetainRelease,
         .constI8,
         .constI8Int,
-        .call0,
-        .call1,
         .jump,
         .coyield,
         .coresume,
@@ -644,12 +650,12 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .callSym,
         .callNativeFuncIC,
         .callFuncIC => {
-            return 11;
+            return CallSymInstLen;
         },
         .callObjSym,
         .callObjNativeFuncIC,
         .callObjFuncIC => {
-            return 16;
+            return CallObjSymInstLen;
         },
     }
 }

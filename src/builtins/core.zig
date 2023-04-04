@@ -165,7 +165,7 @@ pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdS
     // Unwind the fp to before the function call.
     ivm.framePtr -= 4;
 
-    cy.debug.buildStackTrace(ivm, true) catch |err| {
+    cy.debug.buildStackTrace(ivm) catch |err| {
         log.debug("unexpected {}", .{err});
         fatal();
     };

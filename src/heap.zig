@@ -1481,7 +1481,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         },
         FiberS => {
             const fiber = @ptrCast(*cy.fiber.Fiber, obj);
-            cy.fiber.releaseFiberStack(vm, fiber);
+            cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
+                stdx.panicFmt("release fiber: {}", .{err});
+            };
             freeExternalObject(vm, obj, @sizeOf(cy.fiber.Fiber));
         },
         BoxS => {

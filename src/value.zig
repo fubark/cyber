@@ -76,6 +76,12 @@ pub const Value = packed union {
     retInfo: packed struct {
         numRetVals: u8,
         retFlag: bool,
+
+        /// Since there are different call insts with varying lengths,
+        /// the call convention prefers to advance the pc before saving it so
+        /// stepping over the call will already have the correct pc.
+        /// An offset is stored to the original call inst for stack unwinding.
+        callInstOffset: u8,
     },
     retPcPtr: [*]const cy.OpData,
     retFramePtr: [*]Value,

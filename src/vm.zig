@@ -651,7 +651,7 @@ pub const VM = struct {
         @call(.never_inline, evalLoopGrowStack, .{self}) catch |err| {
             if (err == error.Panic) {
                 self.lastError = error.Panic;
-                cy.fiber.unwindReleaseStack(self, self.stack, self.framePtr, self.pc);
+                try cy.fiber.unwindReleaseStack(self, self.stack, self.framePtr, self.pc);
             }
             return err;
         };
@@ -1513,7 +1513,7 @@ pub const VM = struct {
                     }
                 }
                 return cy.fiber.PcSp{
-                    .pc = pc + 11,
+                    .pc = pc + cy.bytecode.CallSymInstLen,
                     .sp = framePtr,
                 };
             },
@@ -1528,8 +1528,8 @@ pub const VM = struct {
                 @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(cy.fiber.toVmPc(self, sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + startLocal;
-                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true);
-                newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
+                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
+                newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(self, sym.inner.func.pc),
@@ -1542,8 +1542,8 @@ pub const VM = struct {
                 }
 
                 const newFramePtr = framePtr + startLocal;
-                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true);
-                newFramePtr[2] = Value{ .retPcPtr = pc + 11 };
+                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
+                newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 newFramePtr[3] = Value{ .retFramePtr = framePtr };
 
                 // Copy over captured vars to new call stack locals.
@@ -1630,8 +1630,8 @@ pub const VM = struct {
                 @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
 
                 const newFp = framePtr + startLocal;
-                newFp[1] = buildReturnInfo2(reqNumRetVals, true);
-                newFp[2] = Value{ .retPcPtr = pc + 16 };
+                newFp[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
+                newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
                 newFp[3] = Value{ .retFramePtr = framePtr };
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(self, sym.inner.func.pc),
@@ -1663,7 +1663,7 @@ pub const VM = struct {
                     }
                 }
                 return cy.fiber.PcSp{
-                    .pc = pc + 16,
+                    .pc = pc + cy.bytecode.CallObjSymInstLen,
                     .sp = framePtr,
                 };
             },
@@ -1692,7 +1692,7 @@ pub const VM = struct {
                     }
                 }
                 return cy.fiber.PcSp{
-                    .pc = pc + 16,
+                    .pc = pc + cy.bytecode.CallObjSymInstLen,
                     .sp = framePtr,
                 };
             },
@@ -2592,7 +2592,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
                             vm.panicType = .uncaughtError;
                         }
                     }
-                    try @call(.never_inline, debug.buildStackTrace, .{vm, true});
+                    try @call(.never_inline, debug.buildStackTrace, .{vm});
                     return error.Panic;
                 } else return err;
             };
@@ -3142,7 +3142,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 3;
 
                 const callee = framePtr[startLocal + numArgs + 4];
-                const retInfo = buildReturnInfo(0, true);
+                const retInfo = buildReturnInfo(0, true, cy.bytecode.CallInstLen);
                 // const retInfo = buildReturnInfo(getInstOffset(pc), framePtrOffset(framePtr), 0, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
@@ -3157,7 +3157,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 3;
 
                 const callee = framePtr[startLocal + numArgs + 4];
-                const retInfo = buildReturnInfo(1, true);
+                const retInfo = buildReturnInfo(1, true, cy.bytecode.CallInstLen);
                 // const retInfo = buildReturnInfo(getInstOffset(pc), framePtrOffset(framePtr), 1, true);
                 // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
@@ -4386,7 +4386,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value
     // Replace receiver with function.
     framePtr[startLocal + 4 + numArgs - 1] = func;
     // const retInfo = buildReturnInfo(pc, framePtrOffset(framePtr), reqNumRetVals, true);
-    const retInfo = buildReturnInfo2(reqNumRetVals, true);
+    const retInfo = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
     var newPc = pc;
     var newFramePtr = framePtr;
     try @call(.always_inline, callNoInline, .{vm, &newPc, &newFramePtr, func, startLocal, numArgs-1, retInfo});
@@ -4470,22 +4470,24 @@ fn callSymEntryNoInline(vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, sym
     return pc;
 }
 
-pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool) linksection(cy.HotSection) Value {
+pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool, comptime callInstOffset: u8) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,
             // .retFlag = if (cont) 0 else 1,
             .retFlag = !cont,
+            .callInstOffset = callInstOffset,
         },
     };
 }
 
-pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool) linksection(cy.HotSection) Value {
+pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool, comptime callInstOffset: u8) Value {
     return Value{
         .retInfo = .{
             .numRetVals = numRetVals,
             // .retFlag = if (cont) 0 else 1,
             .retFlag = !cont,
+            .callInstOffset = callInstOffset,
         },
     };
 }

@@ -168,6 +168,10 @@ export fn cyValueInteger(n: i32) Value {
     return Value.initI32(n);
 }
 
+export fn cyValueHeapObject(o: *c.CyHeapObject) Value {
+    return Value.initPtr(o);
+}
+
 export fn cyValueGetOrAllocStringInfer(vm: *cy.UserVM, cstr: c.CStr) Value {
     return vm.allocStringInfer(cstr.charz[0..cstr.len]) catch fatal();
 }
@@ -216,6 +220,18 @@ test "cyValueAllocPointer()" {
 
     const val = c.cyValueAllocPointer(vm, @intToPtr(?*anyopaque, 123));
     try t.eq(c.cyValueGetTypeId(val), cy.PointerT);
+
+    const obj = c.cyValueAsHeapObject(val)[0];
+    try t.eq(@ptrToInt(obj.pointer.ptr), 123);
+}
+
+export fn cyValueAsHeapObject(val: Value) *c.CyHeapObject {
+    return @ptrCast(*c.CyHeapObject, val.asHeapObject());
+}
+
+test "cyValueAsHeapObject()" {
+    const o = c.cyValueAsHeapObject(c.cyValueHeapObject(@intToPtr(*c.CyHeapObject, 80)));
+    try t.eq(@ptrToInt(o), 80);
 }
 
 export fn cyValueAsNumber(val: Value) f64 {

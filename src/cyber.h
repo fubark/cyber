@@ -62,6 +62,14 @@ typedef uint32_t CyTypeId;
 typedef CyValue (*CyFunc)(CyVM* vm, CyValue* args, uint8_t nargs);
 typedef bool (*CyLoadModuleFunc)(CyVM* vm, CyModule* mod);
 
+typedef union CyHeapObject {
+    struct {
+        CyTypeId typeId;
+        uint32_t rc;
+        void* ptr;
+    } pointer;
+} CyHeapObject;
+
 // Top level.
 CStr cyGetFullVersion();
 CStr cyGetVersion();
@@ -102,11 +110,13 @@ CyValue cyValueAllocMap(CyVM* vm);
 CyValue cyValueAllocNativeFunc(CyVM* vm, CyFunc func, uint32_t numParams);
 CyValue cyValueAllocPointer(CyVM* vm, void* ptr);
 CyValue cyValueTagLiteral(CyVM* vm, CStr str);
+CyValue cyValueHeapObject(CyHeapObject* ptr);
 
 // Values.
 CyTypeId cyValueGetTypeId(CyValue val);
 
 // Values to C types.
+CyHeapObject* cyValueAsHeapObject(CyValue val);
 double cyValueAsNumber(CyValue val);
 bool cyValueToBool(CyValue val);
 bool cyValueAsBool(CyValue val);

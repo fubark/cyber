@@ -56,6 +56,8 @@ print fiber.status()   -- '#done'
 ```
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 
+## Gas mileage.
+
 ## Async.
 
 ## Multi-thread.

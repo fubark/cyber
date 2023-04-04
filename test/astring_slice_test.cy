@@ -133,7 +133,7 @@ t.eq(str.sliceAt(5), 'z')
 t.eq(try str.sliceAt(6), error.OutOfBounds)
 
 -- split()
-res = string('abc,ab,a')[0..].split(',')
+res = toString('abc,ab,a')[0..].split(',')
 t.eq(res.len(), 3)
 t.eq(res[0], 'abc')
 t.eq(res[1], 'ab')

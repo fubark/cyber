@@ -643,7 +643,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
         if (ctx.symToCStructFields.contains(objType.symId)) {
             try w.print("extern Struct{} {s}(", .{objType.symId, sym});
         } else {
-            log.debug("CStruct not declared.", .{});
+            const name = ivm.valueToTempString(ret);
+            log.debug("CStruct not declared for: {s}", .{name});
             return error.InvalidArgument;
         }
     } else {
@@ -657,7 +658,8 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
                 if (ctx.symToCStructFields.contains(objType.symId)) {
                     try w.print("Struct{}", .{objType.symId});
                 } else {
-                    log.debug("CStruct not declared.", .{});
+                    const name = ivm.valueToTempString(carg);
+                    log.debug("CStruct not declared for: {s}", .{name});
                     return error.InvalidArgument;
                 }
             } else {

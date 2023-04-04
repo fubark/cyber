@@ -165,6 +165,8 @@ pub const VM = struct {
 
     lastError: ?error{TokenError, ParseError, CompileError, Panic},
 
+    expGlobalRC: usize,
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -225,6 +227,7 @@ pub const VM = struct {
             .stdHttpClient = undefined,
             .lastError = null,
             .userData = null,
+            .expGlobalRC = 0,
         };
         // Pointer offset from gvm to avoid deoptimization.
         self.curFiber = &gvm.mainFiber;
@@ -666,7 +669,7 @@ pub const VM = struct {
     fn sliceOp(self: *VM, recv: *Value, startV: Value, endV: Value) !Value {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
-            const res = switch (obj.retainedCommon.structId) {
+            const res = switch (obj.head.typeId) {
                 cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     var start = @floatToInt(i32, startV.toF64());
@@ -711,7 +714,7 @@ pub const VM = struct {
                     break :b bindings.stringSlice(.rawSlice)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 else => {
-                    return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(self.structs.buf[obj.retainedCommon.structId].name)});
+                    return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(self.structs.buf[obj.head.typeId].name)});
                 },
             };
             if (res.isInterrupt()) {
@@ -1101,7 +1104,7 @@ pub const VM = struct {
     pub fn setIndexRelease(self: *VM, left: Value, index: Value, right: Value) !void {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
-            switch (obj.retainedCommon.structId) {
+            switch (obj.head.typeId) {
                 cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
@@ -1141,7 +1144,7 @@ pub const VM = struct {
     pub fn setIndex(self: *VM, left: Value, index: Value, right: Value) !void {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
-            switch (obj.retainedCommon.structId) {
+            switch (obj.head.typeId) {
                 cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
@@ -1179,7 +1182,7 @@ pub const VM = struct {
     fn getReverseIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
-            const res = switch (obj.retainedCommon.structId) {
+            const res = switch (obj.head.typeId) {
                 cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
@@ -1231,7 +1234,7 @@ pub const VM = struct {
                     break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 else => {
-                    return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
+                    return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.structs.buf[obj.head.typeId].name)});
                 },
             };
             if (res.isInterrupt()) {
@@ -1267,7 +1270,7 @@ pub const VM = struct {
     pub fn getIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
-            const res = switch (obj.retainedCommon.structId) {
+            const res = switch (obj.head.typeId) {
                 cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
@@ -1306,7 +1309,7 @@ pub const VM = struct {
                     break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 else => {
-                    return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.structs.buf[obj.common.structId].name)});
+                    return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.structs.buf[obj.head.typeId].name)});
                 },
             };
             if (res.isInterrupt()) {
@@ -1374,12 +1377,12 @@ pub const VM = struct {
             const obj = recv.asHeapObject();
             const symMap = &self.fieldSyms.buf[fieldId];
 
-            if (obj.common.structId == symMap.mruTypeId) {
+            if (obj.head.typeId == symMap.mruTypeId) {
                 obj.object.getValuePtr(symMap.mruOffset).* = val;
             } else {
                 const offset = self.getFieldOffset(obj, fieldId);
                 if (offset != cy.NullU8) {
-                    symMap.mruTypeId = obj.common.structId;
+                    symMap.mruTypeId = obj.head.typeId;
                     symMap.mruOffset = offset;
                     obj.object.getValuePtr(offset).* = val;
                 } else {
@@ -1414,10 +1417,10 @@ pub const VM = struct {
 
     pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
         const symMap = self.fieldSyms.buf[symId];
-        if (obj.common.structId == symMap.mruTypeId) {
+        if (obj.head.typeId == symMap.mruTypeId) {
             return @intCast(u8, symMap.mruOffset);
         } else {
-            return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.common.structId, symId});
+            return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.head.typeId, symId});
         }
     }
 
@@ -1470,13 +1473,13 @@ pub const VM = struct {
 
     fn getFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(cy.HotSection) Value {
         @setCold(true);
-        if (obj.common.structId == cy.MapS) {
+        if (obj.head.typeId == cy.MapS) {
             const map = stdx.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
             if (map.getByString(self, name)) |val| {
                 return val;
             } else return Value.None;
         } else {
-            log.debug("Missing symbol for object: {}", .{obj.common.structId});
+            log.debug("Missing symbol for object: {}", .{obj.head.typeId});
             return Value.None;
         }
     }
@@ -1746,20 +1749,20 @@ pub const VM = struct {
             const map = self.methodSyms.buf[symId];
             switch (map.mapT) {
                 .one => {
-                    if (obj.retainedCommon.structId == map.inner.one.id) {
+                    if (obj.head.typeId == map.inner.one.id) {
                         return try @call(.{.modifier = .never_inline }, callSymEntryNoInline, .{pc, framePtr, map.inner.one.sym, obj, startLocal, numArgs, reqNumRetVals});
                     } else return self.panic("Symbol does not exist for receiver.");
                 },
                 .many => {
-                    if (map.inner.many.mruTypeId == obj.retainedCommon.structId) {
+                    if (map.inner.many.mruTypeId == obj.head.typeId) {
                         return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, map.inner.many.mruSym, obj, startLocal, numArgs, reqNumRetVals});
                     } else {
-                        const sym = self.methodTable.get(.{ .structId = obj.retainedCommon.structId, .methodId = symId }) orelse {
+                        const sym = self.methodTable.get(.{ .structId = obj.head.typeId, .methodId = symId }) orelse {
                             log.debug("Symbol does not exist for receiver.", .{});
                             stdx.fatal();
                         };
                         self.methodSyms.buf[symId].inner.many = .{
-                            .mruTypeId = obj.retainedCommon.structId,
+                            .mruTypeId = obj.head.typeId,
                             .mruSym = sym,
                         };
                         return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, sym, obj, startLocal, numArgs, reqNumRetVals});
@@ -1793,15 +1796,15 @@ pub const VM = struct {
     pub fn tryValueAsComparableString(self: *const VM, val: Value) linksection(cy.Section) ?[]const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            if (obj.common.structId == cy.AstringT) {
+            if (obj.head.typeId == cy.AstringT) {
                 return obj.astring.getConstSlice();
-            } else if (obj.common.structId == cy.UstringT) {
+            } else if (obj.head.typeId == cy.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.common.structId == cy.StringSliceT) {
+            } else if (obj.head.typeId == cy.StringSliceT) {
                 return obj.stringSlice.getConstSlice();
-            } else if (obj.common.structId == cy.RawStringT) {
+            } else if (obj.head.typeId == cy.RawStringT) {
                 return obj.rawstring.getConstSlice();
-            } else if (obj.common.structId == cy.RawStringSliceT) {
+            } else if (obj.head.typeId == cy.RawStringSliceT) {
                 return obj.rawstringSlice.getConstSlice();
             } else return null;
         } else {
@@ -1846,11 +1849,11 @@ pub const VM = struct {
     pub fn valueAsString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            if (obj.common.structId == cy.AstringT) {
+            if (obj.head.typeId == cy.AstringT) {
                 return obj.astring.getConstSlice();
-            } else if (obj.common.structId == cy.UstringT) {
+            } else if (obj.head.typeId == cy.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.common.structId == cy.StringSliceT) {
+            } else if (obj.head.typeId == cy.StringSliceT) {
                 return obj.stringSlice.getConstSlice();
             } else unreachable;
         } else {
@@ -1916,7 +1919,7 @@ pub const VM = struct {
         } else {
             if (val.isPointer()) {
                 const obj = val.asHeapObject();
-                switch (obj.common.structId) {
+                switch (obj.head.typeId) {
                     cy.AstringT => {
                         const res = obj.astring.getConstSlice();
                         if (getCharLen) {
@@ -1982,7 +1985,7 @@ pub const VM = struct {
                         var slice: []const u8 = undefined;
                         if (symType == .object) {
                             const name = self.structs.buf[obj.metatype.symId].name;
-                            std.fmt.format(writer, "Object Symbol ({s})", .{name}) catch stdx.fatal();
+                            std.fmt.format(writer, "type: {s}", .{name}) catch stdx.fatal();
                             slice = writer.sliceFrom(start);
                         } else {
                             slice = "Unknown Symbol";
@@ -1993,7 +1996,7 @@ pub const VM = struct {
                         return slice;
                     },
                     else => {
-                        const buf = self.structs.buf[obj.common.structId].name;
+                        const buf = self.structs.buf[obj.head.typeId].name;
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, buf.len);
                         }
@@ -2101,15 +2104,15 @@ pub const StringType = enum {
 fn getComparableStringType(val: Value) ?StringType {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (obj.common.structId == cy.AstringT) {
+        if (obj.head.typeId == cy.AstringT) {
             return .astring;
-        } else if (obj.common.structId == cy.UstringT) {
+        } else if (obj.head.typeId == cy.UstringT) {
             return .ustring;
-        } else if (obj.common.structId == cy.StringSliceT) {
+        } else if (obj.head.typeId == cy.StringSliceT) {
             return .slice;
-        } else if (obj.common.structId == cy.RawStringT) {
+        } else if (obj.head.typeId == cy.RawStringT) {
             return .rawstring;
-        } else if (obj.common.structId == cy.RawStringSliceT) {
+        } else if (obj.head.typeId == cy.RawStringSliceT) {
             return .rawSlice;
         }
         return null;
@@ -2127,17 +2130,6 @@ fn getComparableStringType(val: Value) ?StringType {
             else => return null,
         }
     }
-}
-
-fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
-    if (getComparableStringType(left)) |lstrT| {
-        if (getComparableStringType(right)) |rstrT| {
-            const lstr = vm.valueAsStringType(left, lstrT);
-            const rstr = vm.valueAsStringType(right, rstrT);
-            return Value.initBool(!std.mem.eql(u8, lstr, rstr));
-        }
-    }
-    return Value.True;
 }
 
 fn evalCompareBool(vm: *const VM, left: Value, right: Value) linksection(cy.HotSection) bool {
@@ -2159,7 +2151,38 @@ fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSecti
             return Value.initBool(std.mem.eql(u8, lstr, rstr));
         }
     }
+    switch (left.getTypeId()) {
+        cy.MetaTypeT => {
+            if (right.getTypeId() == cy.MetaTypeT) {
+                const l = left.asHeapObject().metatype;
+                const r = right.asHeapObject().metatype;
+                return Value.initBool(l.type == r.type and l.symId == r.symId);
+            }
+        },
+        else => {},
+    }
     return Value.False;
+}
+
+fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy.HotSection) cy.Value {
+    if (getComparableStringType(left)) |lstrT| {
+        if (getComparableStringType(right)) |rstrT| {
+            const lstr = vm.valueAsStringType(left, lstrT);
+            const rstr = vm.valueAsStringType(right, rstrT);
+            return Value.initBool(!std.mem.eql(u8, lstr, rstr));
+        }
+    }
+    switch (left.getTypeId()) {
+        cy.MetaTypeT => {
+            if (right.getTypeId() == cy.MetaTypeT) {
+                const l = left.asHeapObject().metatype;
+                const r = right.asHeapObject().metatype;
+                return Value.initBool(l.type != r.type or l.symId != r.symId);
+            }
+        },
+        else => {},
+    }
+    return Value.True;
 }
 
 fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
@@ -2186,13 +2209,13 @@ fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
 fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (obj.common.structId == cy.AstringT) {
+        if (obj.head.typeId == cy.AstringT) {
             const str = obj.astring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
-        } else if (obj.common.structId == cy.UstringT) {
+        } else if (obj.head.typeId == cy.UstringT) {
             const str = obj.ustring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
-        } else if (obj.common.structId == cy.RawStringT) {
+        } else if (obj.head.typeId == cy.RawStringT) {
             const str = obj.rawstring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
         } else return gvm.panic("Cannot convert struct to number");
@@ -3750,7 +3773,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = box.asHeapObject();
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.common.structId == cy.BoxS);
+                    std.debug.assert(obj.head.typeId == cy.BoxS);
                 }
                 obj.box.val = rval;
                 continue;
@@ -3767,7 +3790,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = box.asHeapObject();
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.common.structId == cy.BoxS);
+                    std.debug.assert(obj.head.typeId == cy.BoxS);
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
@@ -3781,7 +3804,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (box.isPointer()) {
                     const obj = box.asHeapObject();
                     if (builtin.mode == .Debug) {
-                        std.debug.assert(obj.common.structId == cy.BoxS);
+                        std.debug.assert(obj.head.typeId == cy.BoxS);
                     }
                     framePtr[pc[2].arg] = obj.box.val;
                 } else {
@@ -3804,7 +3827,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
                 // if (builtin.mode == .Debug) {
                 //     // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
-                //     std.debug.assert(obj.common.structId == BoxS);
+                //     std.debug.assert(obj.head.typeId == BoxS);
                 // }
                 // gvm.stack[gvm.framePtr + pc[2].arg] = obj.box.val;
                 // retain(vm, obj.box.val);
@@ -4012,7 +4035,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const symType = pc[1].arg;
                 const symId = @ptrCast(*const align(1) u32, pc + 2).*;
-                framePtr[pc[6].arg] = try cy.heap.allocTypeSymbol(vm, symType, symId);
+                framePtr[pc[6].arg] = try cy.heap.allocMetaType(vm, symType, symId);
                 pc += 7;
                 continue;
             },
@@ -4143,7 +4166,7 @@ const ObjectSymKey = struct {
 pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
-        switch (obj.common.structId) {
+        switch (obj.head.typeId) {
             cy.ClosureS => {
                 if (numArgs != obj.closure.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
@@ -4205,9 +4228,13 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                 const res = obj.nativeFunc1.func(@ptrCast(*UserVM, vm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
             },
-            else => {},
+            else => {
+                // TODO: Throw error.
+                stdx.panic("not a function");
+            },
         }
     } else {
+        // TODO: Throw error.
         stdx.panic("not a function");
     }
 }
@@ -4215,7 +4242,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
 pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
-        switch (obj.common.structId) {
+        switch (obj.head.typeId) {
             cy.ClosureS => {
                 if (numArgs != obj.closure.numParams) {
                     stdx.panic("params/args mismatch");
@@ -4499,7 +4526,7 @@ fn boxValueRetain(vm: *VM, box: Value) linksection(cy.HotSection) Value {
     if (box.isPointer()) {
         const obj = box.asHeapObject();
         if (builtin.mode == .Debug) {
-            std.debug.assert(obj.common.structId == cy.BoxS);
+            std.debug.assert(obj.head.typeId == cy.BoxS);
         }
         retain(vm, obj.box.val);
         return obj.box.val;
@@ -4519,7 +4546,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
     } else {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            switch (obj.common.structId) {
+            switch (obj.head.typeId) {
                 cy.ListS => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
                 cy.MapS => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
                 cy.AstringT => {
@@ -4543,7 +4570,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 cy.FiberS => fmt.printStdout("Fiber {}\n", &.{v(obj)}),
                 cy.NativeFunc1S => fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
                 else => {
-                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.common.structId), v(vm.structs.buf[obj.common.structId].name)});
+                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.head.typeId), v(vm.structs.buf[obj.head.typeId].name)});
                 },
             }
         } else {
@@ -4580,6 +4607,7 @@ pub const KeyU96 = extern union {
     },
     rtFuncSymKey: extern struct {
         // TODO: Is it enough to just use the final resolved func sym id?
+        // One use for splitting up rParentSymId/nameId is to look for <call>() magic function.
         rParentSymId: sema.ResolvedSymId,
         nameId: sema.NameSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
@@ -4744,6 +4772,18 @@ fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
     }
 }
 
+fn reportAssignFuncSigMismatch(vm: *VM, srcFuncSigId: u32, dstFuncSigId: u32) error{OutOfMemory, Panic} {
+    const dstSig = cy.sema.allocResolvedFuncSigStr(&vm.compiler, dstFuncSigId) catch fatal();
+    const srcSig = cy.sema.allocResolvedFuncSigStr(&vm.compiler, srcFuncSigId) catch fatal();
+    defer {
+        vm.alloc.free(dstSig);
+        vm.alloc.free(srcSig);
+    }
+    return vm.panicFmt("Assigning to static function `func {}` with a different function signature `func {}`.",
+        &.{v(dstSig), v(srcSig)}
+    );
+}
+
 fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
     errdefer {
         // TODO: This should be taken care of by panic stack unwinding.
@@ -4751,11 +4791,11 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        switch (obj.common.structId) {
+        switch (obj.head.typeId) {
             cy.NativeFunc1S => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
                 if (dstRFuncSigId != obj.nativeFunc1.rFuncSigId) {
-                    return vm.panic("Assigning to static function with a different function signature.");
+                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, obj.nativeFunc1.rFuncSigId, dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
 
@@ -4777,14 +4817,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
             cy.LambdaS => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
                 if (dstRFuncSigId != obj.lambda.rFuncSigId) {
-                    vm.u8Buf.clearRetainingCapacity();
-                    const w = vm.u8Buf.writer(vm.alloc);
-                    cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, dstRFuncSigId) catch fatal();
-                    const dstSig = vm.u8Buf.items();
-                    const start = vm.u8Buf.len;
-                    cy.sema.writeResolvedFuncSigStr(&vm.compiler, w, @intCast(u32, obj.lambda.rFuncSigId)) catch fatal();
-                    const srcSig = vm.u8Buf.buf[start..vm.u8Buf.len];
-                    return vm.panicFmt("Assigning to static function `func {}` with a different function signature `func {}`.", &.{v(dstSig), v(srcSig)});
+                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.lambda.rFuncSigId), dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
@@ -4802,7 +4835,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
             cy.ClosureS => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
                 if (dstRFuncSigId != obj.closure.rFuncSigId) {
-                    return vm.panic("Assigning to static function with a different function signature.");
+                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.closure.rFuncSigId), dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
@@ -4814,7 +4847,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 // Don't set func sym dep since the closure is assigned into the func sym entry.
             },
             else => {
-                return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.common.structId)});
+                return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.head.typeId)});
             }
         }
     } else {

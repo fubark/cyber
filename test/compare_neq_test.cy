@@ -5,8 +5,8 @@ t.eq(3 is not 2, true)
 t.eq(3 is not 3, false)
 
 -- string and rawstring contents.
-t.eq('foo' != rawstring('foo'), false)
-t.eq('foo' != rawstring('bar'), true)
+t.eq('foo' != toRawstring('foo'), false)
+t.eq('foo' != toRawstring('bar'), true)
 
 -- Comparing objects.
 type S object:

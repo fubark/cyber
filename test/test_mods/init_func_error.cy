@@ -1,1 +1,1 @@
-func foo() = number
+func foo() = toNumber

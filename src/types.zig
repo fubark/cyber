@@ -21,6 +21,7 @@ pub const BuiltinTypeSymIds = struct {
     pub const None: ResolvedSymId = 10;
     pub const Error: ResolvedSymId = 11;
     pub const Fiber: ResolvedSymId = 12;
+    pub const MetaType: ResolvedSymId = 13;
 };
 
 test "Reserved names map to reserved sym ids." {
@@ -37,6 +38,7 @@ test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NameNone, bt.None);
     try t.eq(sema.NameError, bt.Error);
     try t.eq(sema.NameFiber, bt.Fiber);
+    try t.eq(sema.NameMetatype, bt.MetaType);
 }
 
 /// Names and resolved builtin sym ids are reserved to index into `BuiltinTypes`.
@@ -54,6 +56,7 @@ const BuiltinTypes = [_]Type{
     NoneType,
     ErrorType,
     FiberType,
+    MetaTypeType,
 };
 
 /// Names and resolved builtin sym ids are reserved to index into `BuiltinTypeTags`.
@@ -71,6 +74,7 @@ pub const BuiltinTypeTags = [_]TypeTag{
     .none,
     .err,
     .fiber,
+    .metatype,
 };
 
 /// Check type constraints on target func signature.
@@ -85,31 +89,27 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const Type, ret: Type, tar
     }
 
     // Check each param type. Attempt to satisfy constraints.
-    for (target.params(), args) |tTypeSymId, sType| {
+    for (target.params(), args) |cstrSymId, sType| {
         const sTypeSymId = typeToResolvedSym(sType);
-        if (sTypeSymId == tTypeSymId) {
-            continue;
-        }
-        if (tTypeSymId == bt.Any) {
-            continue;
-        }
-        if (tTypeSymId == bt.Integer) {
-            if (sType.typeT == .number and sType.inner.number.canRequestInteger) {
-                continue;
-            } else {
-                return false;
+        if (!isTypeSymCompat(c, sTypeSymId, cstrSymId)) {
+            if (cstrSymId == bt.Integer) {
+                if (sType.typeT == .number and sType.inner.number.canRequestInteger) {
+                    continue;
+                }
             }
+            return false;
         }
-        return false;
     }
 
     // Check return type. Target is the source return type.
-    const tTypeSymId = typeToResolvedSym(ret);
-    const sTypeSymId = target.retSymId;
-    if (sTypeSymId == tTypeSymId) {
+    return isTypeSymCompat(c, target.retSymId, typeToResolvedSym(ret));
+}
+
+pub fn isTypeSymCompat(_: *cy.VMcompiler, typeSymId: ResolvedSymId, cstrSymId: ResolvedSymId) bool {
+    if (typeSymId == cstrSymId) {
         return true;
     }
-    if (tTypeSymId == bt.Any) {
+    if (cstrSymId == bt.Any) {
         return true;
     }
     return false;
@@ -126,26 +126,14 @@ pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: 
     }
 
     // Check each param type. Attempt to satisfy constraints.
-    for (target.params(), src.params()) |tTypeSymId, sTypeSymId| {
-        if (sTypeSymId == tTypeSymId) {
-            continue;
+    for (target.params(), src.params()) |cstrSymId, typeSymId| {
+        if (!isTypeSymCompat(c, typeSymId, cstrSymId)) {
+            return false;
         }
-        if (tTypeSymId == bt.Any) {
-            continue;
-        }
-        return false;
     }
 
-    // Check return type. Target is the source return type.
-    const tTypeSymId = src.retSymId;
-    const sTypeSymId = target.retSymId;
-    if (sTypeSymId == tTypeSymId) {
-        return true;
-    }
-    if (tTypeSymId == bt.Any) {
-        return true;
-    }
-    return false;
+    // Check return type. Source return type is the constraint.
+    return isTypeSymCompat(c, target.retSymId, src.retSymId);
 }
 
 pub fn typeTagToExactTypeId(tag: TypeTag) ?cy.TypeId {
@@ -165,6 +153,7 @@ pub fn typeTagToExactTypeId(tag: TypeTag) ?cy.TypeId {
         .pointer => cy.PointerT,
         .none => cy.NoneT,
         .fiber => cy.FiberS,
+        .metatype => cy.MetaTypeT,
         .err => cy.ErrorT,
         else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };
@@ -185,6 +174,7 @@ pub fn typeTagToResolvedSym(tag: TypeTag) ResolvedSymId {
         .pointer => bt.Pointer,
         .none => bt.None,
         .fiber => bt.Fiber,
+        .metatype => bt.MetaType,
         .err => bt.Error,
         else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };
@@ -230,6 +220,7 @@ pub const TypeTag = enum {
     pointer,
     none,
     err,
+    metatype,
 
     /// Type from a resolved type sym.
     rsym,
@@ -347,6 +338,11 @@ pub const RawstringType = Type{
 
 pub const FiberType = Type{
     .typeT = .fiber,
+    .rcCandidate = true,
+};
+
+pub const MetaTypeType = Type{
+    .typeT = .metatype,
     .rcCandidate = true,
 };
 

@@ -21,6 +21,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
 
     const b = bindings.ModuleBuilder.init(self, mod);
 
+    // Funcs.
     try b.setFunc("arrayFill", &.{bt.Any, bt.Number}, bt.List, arrayFill);
     try b.setFunc("asciiCode", &.{bt.Any}, bt.Any, asciiCode);
     if (cy.isWasm) {
@@ -31,7 +32,6 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
     }
     try b.setFunc("bool", &.{ bt.Any }, bt.Boolean, coreBool);
-    try b.setFunc("boolean", &.{ bt.Any }, bt.Boolean, boolean);
     if (cy.isWasm) {
         try b.setFunc("cacheUrl", &.{ bt.Any }, bt.Any, bindings.nop1);
     } else {
@@ -39,7 +39,6 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     }
     try b.setFunc("char", &.{bt.Any}, bt.Any, char);
     try b.setFunc("copy", &.{bt.Any}, bt.Any, copy);
-    try b.setFunc("error", &.{bt.Symbol}, bt.Error, coreError);
     try b.setFunc("errorReport", &.{}, bt.String, errorReport);
     if (cy.isWasm) {
         try b.setFunc("evalJS", &.{bt.Any}, bt.None, evalJS);
@@ -54,17 +53,13 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     } else {
         try b.setFunc("getInput", &.{}, bt.Any, bindings.nop0);
     }
-    try b.setFunc("int", &.{bt.Any}, bt.Integer, int);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
-    try b.setFunc("number", &.{ bt.Any }, bt.Number, number);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
     try b.setFunc("panic", &.{ bt.Any }, bt.None, panic);
     try b.setFunc("parseCyon", &.{ bt.Any }, bt.Any, parseCyon);
-    try b.setFunc("pointer", &.{ bt.Any }, bt.Pointer, pointer);
     try b.setFunc("print", &.{bt.Any}, bt.None, print);
     try b.setFunc("prints", &.{bt.Any}, bt.None, prints);
-    try b.setFunc("rawstring", &.{bt.Any}, bt.Rawstring, rawstring);
     if (cy.hasStdFiles) {
         try b.setFunc("readAll", &.{}, bt.Any, readAll);
         try b.setFunc("readFile", &.{ bt.Any }, bt.Any, readFile);
@@ -74,11 +69,18 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try b.setFunc("readFile", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
-    try b.setFunc("string", &.{bt.Any}, bt.String, string);
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
+    try b.setFunc("toError", &.{bt.Any}, bt.Error, bindings.errorNew);
+    try b.setFunc("toInteger", &.{bt.Any}, bt.Integer, toInteger);
+    try b.setFunc("toString", &.{bt.Any}, bt.String, toString);
+    try b.setFunc("toBoolean", &.{ bt.Any }, bt.Boolean, toBoolean);
+    try b.setFunc("toNumber", &.{ bt.Any }, bt.Number, bindings.numberNew);
+    try b.setFunc("toPointer", &.{ bt.Any }, bt.Pointer, toPointer);
+    try b.setFunc("toRawstring", &.{bt.Any}, bt.Rawstring, toRawstring);
     try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
     try b.setFunc("valtag", &.{ bt.Any }, bt.Symbol, valtag);
     try b.setFunc("typesym", &.{ bt.Any }, bt.Symbol, typesym);
+    try b.setFunc("typeof", &.{ bt.Any }, bt.MetaType, typeof);
     if (cy.hasStdFiles) {
         try b.setFunc("writeFile", &.{ bt.Any, bt.Any }, bt.Any, writeFile);
     } else {
@@ -150,10 +152,10 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(c
 
 pub fn coreBool(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     fmt.printDeprecated("bool", "0.2", "Use boolean() instead.", &.{});
-    return boolean(vm, args, nargs);
+    return toBoolean(vm, args, nargs);
 }
 
-pub fn boolean(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn toBoolean(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
     return Value.initBool(args[0].toBool());
 }
@@ -167,19 +169,6 @@ pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const val = args[0];
     defer vm.release(val);
     return cy.value.shallowCopy(@ptrCast(*cy.VM, vm), val);
-}
-
-pub fn coreError(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const val = args[0];
-    if (val.isPointer()) {
-        stdx.fatal();
-    } else {
-        if (val.assumeNotPtrIsSymbol()) {
-            return Value.initErrorSymbol(@intCast(u8, val.asSymbolId()));
-        } else {
-            stdx.fatal();
-        }
-    }
 }
 
 pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -307,7 +296,7 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     return vm.allocRawString(input) catch stdx.fatal();
 }
 
-pub fn int(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn toInteger(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .number => {
@@ -337,33 +326,12 @@ pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
     }
 }
 
-pub fn number(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    const val = args[0];
-    switch (val.getUserTag()) {
-        .number => return val,
-        .string => {
-            defer vm.release(val);
-            const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
-                return Value.initI32(0);
-            };
-            return Value.initF64(res);
-        },
-        .enumT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-        .symbol => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-        .int => return Value.initF64(@intToFloat(f64, val.asInteger())),
-        else => {
-            vm.release(val);
-            return vm.returnPanic("Not a type that can be converted to `number`.");
-        }
-    }
-}
-
 pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     fmt.printDeprecated("opaque", "0.1", "Use pointer() instead.", &.{});
-    return pointer(vm, args, nargs);
+    return toPointer(vm, args, nargs);
 }
 
-pub fn pointer(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn toPointer(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     if (val.isPointerT()) {
         return val;
@@ -588,7 +556,7 @@ pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return getInput(vm, args, nargs);
 }
 
-pub fn string(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn toString(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     if (val.isString()) {
         return val; 
@@ -601,6 +569,7 @@ pub fn string(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub fn typeid(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
+    fmt.printDeprecated("typeid", "0.2", "Use metatype.id() instead.", &.{});
     return Value.initF64(@intToFloat(f64, args[0].getTypeId()));
 }
 
@@ -609,14 +578,22 @@ fn valtag(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
     return typesym(vm, args, nargs);
 }
 
+fn typeof(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    defer vm.release(val);
+
+    const typeId = val.getTypeId();
+    return cy.heap.allocMetaType(vm.internal(), @enumToInt(cy.heap.MetaTypeKind.object), typeId) catch fatal();
+}
+
 pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     defer vm.release(val);
     switch (val.getUserTag()) {
         .number => return Value.initSymbol(@enumToInt(Symbol.number)),
         .object => return Value.initSymbol(@enumToInt(Symbol.object)),
-        .errorVal => return Value.initSymbol(@enumToInt(Symbol.err)),
-        .boolean => return Value.initSymbol(@enumToInt(Symbol.bool)),
+        .err => return Value.initSymbol(@enumToInt(Symbol.err)),
+        .boolean => return Value.initSymbol(@enumToInt(Symbol.boolean)),
         .map => return Value.initSymbol(@enumToInt(Symbol.map)),
         .int => return Value.initSymbol(@enumToInt(Symbol.int)),
         .list => return Value.initSymbol(@enumToInt(Symbol.list)),
@@ -628,7 +605,7 @@ pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .lambda => return Value.initSymbol(@enumToInt(Symbol.function)),
         .none => return Value.initSymbol(@enumToInt(Symbol.none)),
         .symbol => return Value.initSymbol(@enumToInt(Symbol.symbol)),
-        .type => return Value.initSymbol(@enumToInt(Symbol.type)),
+        .metatype => return Value.initSymbol(@enumToInt(Symbol.metatype)),
         .pointer => return Value.initSymbol(@enumToInt(Symbol.pointer)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
@@ -647,7 +624,7 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     return Value.None;
 }
 
-pub fn rawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn toRawstring(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const str = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
     return vm.allocRawString(str) catch stdx.fatal();

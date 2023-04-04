@@ -23,7 +23,7 @@ func barNoExport():
 -- Test that there is no main block execution for imported modules.
 panic(#ExecutedModuleMain)
 
-func declAssign(val) number = number
+func declAssign(val) number = toNumber
 
 var initOnce: incInitOnce(initOnceCount)
 var initOnceCount: 0
@@ -43,7 +43,7 @@ func sameFuncName():
     return 123
 
 func useNumber(a):
-    return number(a)
+    return toNumber(a)
 
 type Vec2 object:
     x number

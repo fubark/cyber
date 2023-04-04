@@ -113,18 +113,18 @@ const HeapObjectId = u32;
 
 /// Total of 40 bytes per object. If objects are bigger, they are allocated on the gpa.
 pub const HeapObject = extern union {
-    common: extern struct {
-        structId: cy.TypeId,
+    headType: extern struct {
+        typeId: cy.TypeId,
+    },
+    head: extern struct {
+        typeId: cy.TypeId,
+        rc: u32,
     },
     freeSpan: extern struct {
-        structId: cy.TypeId,
+        typeId: cy.TypeId,
         len: u32,
         start: *HeapObject,
         next: ?*HeapObject,
-    },
-    retainedCommon: extern struct {
-        structId: cy.TypeId,
-        rc: u32,
     },
     list: List,
     listIter: ListIterator,
@@ -147,7 +147,7 @@ pub const HeapObject = extern union {
     metatype: MetaType,
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
-        switch (self.common.structId) {
+        switch (self.head.typeId) {
             cy.ListS => return .list,
             cy.MapS => return .map,
             cy.AstringT => return .string,
@@ -174,8 +174,9 @@ pub const MetaTypeKind = enum {
     object,
 };
 
+/// MetaType needs a RC to prevent ARC cleanup of the internal type and source code.
 pub const MetaType = extern struct {
-    structId: cy.TypeId,
+    typeId: cy.TypeId,
     rc: u32,
     type: u32,
     symId: u32,
@@ -506,20 +507,20 @@ pub const Pointer = extern struct {
 /// Initializes the page with freed object slots and returns the pointer to the first slot.
 fn initHeapPage(page: *HeapPage) *HeapObject {
     // First HeapObject at index 0 is reserved so that freeObject can get the previous slot without a bounds check.
-    page.objects[0].common = .{
-        .structId = 0, // Non-NullId so freeObject doesn't think it's a free span.
+    page.objects[0].headType = .{
+        .typeId = 0, // Non-NullId so freeObject doesn't think it's a free span.
     };
     const first = &page.objects[1];
     first.freeSpan = .{
-        .structId = NullId,
+        .typeId = NullId,
         .len = page.objects.len - 1,
         .start = first,
         .next = null,
     };
     // The rest initialize as free spans so checkMemory doesn't think they are retained objects.
     std.mem.set(HeapObject, page.objects[2..], .{
-        .common = .{
-            .structId = NullId,
+        .headType = .{
+            .typeId = NullId,
         }
     });
     page.objects[page.objects.len-1].freeSpan.start = first;
@@ -566,6 +567,7 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
     return @ptrCast(*HeapObject, slice.ptr);
 }
 
+/// Assumes new object will have an RC = 1.
 pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
     if (self.heapFreeHead == null) {
         self.heapFreeHead = try growHeapPages(self, std.math.max(1, (self.heapPages.len * 15) / 10));
@@ -575,11 +577,6 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         if (builtin.mode == .Debug) {
             traceAlloc(self, ptr);
         }
-    }
-    if (ptr.freeSpan.len == 1) {
-        // This is the only free slot, move to the next free span.
-        self.heapFreeHead = ptr.freeSpan.next;
-
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }
@@ -587,11 +584,15 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
+    }
+    if (ptr.freeSpan.len == 1) {
+        // This is the only free slot, move to the next free span.
+        self.heapFreeHead = ptr.freeSpan.next;
         return ptr;
     } else {
         const next = &@ptrCast([*]HeapObject, ptr)[1];
         next.freeSpan = .{
-            .structId = NullId,
+            .typeId = NullId,
             .len = ptr.freeSpan.len - 1,
             .start = next,
             .next = ptr.freeSpan.next,
@@ -599,14 +600,6 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         const last = &@ptrCast([*]HeapObject, ptr)[ptr.freeSpan.len-1];
         last.freeSpan.start = next;
         self.heapFreeHead = next;
-
-        if (cy.TrackGlobalRC) {
-            self.refCounts += 1;
-        }
-        if (cy.TraceEnabled) {
-            self.trace.numRetains += 1;
-            self.trace.numRetainAttempts += 1;
-        }
         return ptr;
     }
 }
@@ -615,9 +608,9 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize) void {
     if (builtin.mode == .Debug) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
-            trace.freeTypeId = obj.retainedCommon.structId;
+            trace.freeTypeId = obj.head.typeId;
         } else {
-            log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
+            log.debug("Missing object trace {*} {}", .{obj, obj.head.typeId});
         }
     }
     const slice = @ptrCast([*]align(@alignOf(HeapObject)) u8, obj)[0..len];
@@ -628,24 +621,24 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
     if (builtin.mode == .Debug) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
-            trace.freeTypeId = obj.retainedCommon.structId;
+            trace.freeTypeId = obj.head.typeId;
         } else {
-            log.debug("Missing object trace {*} {}", .{obj, obj.common.structId});
+            log.debug("Missing object trace {*} {}", .{obj, obj.head.typeId});
         }
     }
     const prev = &(@ptrCast([*]HeapObject, obj) - 1)[0];
-    if (prev.common.structId == NullId) {
+    if (prev.head.typeId == NullId) {
         // Left is a free span. Extend length.
         prev.freeSpan.start.freeSpan.len += 1;
         obj.freeSpan.start = prev.freeSpan.start;
         if (builtin.mode == .Debug) {
             // Only invalidate in debug mode to surface double frees.
-            obj.freeSpan.structId = cy.NullId;
+            obj.freeSpan.typeId = cy.NullId;
         }
     } else {
         // Add single slot free span.
         obj.freeSpan = .{
-            .structId = if (builtin.mode == .Debug) NullId else undefined,
+            .typeId = if (builtin.mode == .Debug) NullId else undefined,
             .len = 1,
             .start = obj,
             .next = vm.heapFreeHead,
@@ -654,10 +647,10 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
     }
 }
 
-pub fn allocTypeSymbol(self: *cy.VM, symType: u8, symId: u32) !Value {
+pub fn allocMetaType(self: *cy.VM, symType: u8, symId: u32) !Value {
     const obj = try allocPoolObject(self);
     obj.metatype = .{
-        .structId = MetaTypeT,
+        .typeId = MetaTypeT,
         .rc = 1,
         .type = symType,
         .symId = symId,
@@ -1386,17 +1379,17 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
 
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
     if (builtin.mode == .Debug) {
-        if (obj.retainedCommon.structId == cy.NullId) {
+        if (obj.head.typeId == cy.NullId) {
             stdx.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             if (cy.verbose) {
                 log.debug("free type={}({s})", .{
-                    obj.retainedCommon.structId, cy.heap.getTypeName(vm, obj.retainedCommon.structId),
+                    obj.head.typeId, cy.heap.getTypeName(vm, obj.head.typeId),
                 });
             }
         }
     }
-    switch (obj.retainedCommon.structId) {
+    switch (obj.head.typeId) {
         ListS => {
             const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
             for (list.items()) |it| {
@@ -1548,16 +1541,16 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             if (builtin.mode == .Debug) {
 
                 if (cy.verbose) {
-                    log.debug("free {s}", .{vm.structs.buf[obj.retainedCommon.structId].name});
+                    log.debug("free {s}", .{vm.structs.buf[obj.head.typeId].name});
                 }
 
                 // Check range.
-                if (obj.retainedCommon.structId >= vm.structs.len) {
-                    log.debug("unsupported struct type {}", .{obj.retainedCommon.structId});
+                if (obj.head.typeId >= vm.structs.len) {
+                    log.debug("unsupported struct type {}", .{obj.head.typeId});
                     stdx.fatal();
                 }
             }
-            const numFields = vm.structs.buf[obj.retainedCommon.structId].numFields;
+            const numFields = vm.structs.buf[obj.head.typeId].numFields;
             for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
                 cy.arc.release(vm, child);
             }
@@ -1571,7 +1564,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
 }
 
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
-    // log.debug("alloc {*} {} {}", .{ptr, ptr.retainedCommon.structId, vm.debugPc});
+    // log.debug("alloc {*} {} {}", .{ptr, ptr.head.typeId, vm.debugPc});
     vm.objectTraceMap.put(vm.alloc, ptr, .{
         .allocPc = vm.debugPc,
         .freePc = cy.NullId,
@@ -1596,23 +1589,23 @@ test "Free object invalidation." {
     if (builtin.mode == .Debug) {
         // Free pool object with no previous free slot invalidates object pointer.
         var obj = try allocPoolObject(&vm);
-        obj.retainedCommon.structId = 100;
+        obj.head.typeId = 100;
         freePoolObject(&vm, obj);
-        try t.eq(obj.retainedCommon.structId, cy.NullId);
+        try t.eq(obj.head.typeId, cy.NullId);
 
         // Free pool object with previous free slot invalidates object pointer.
         var obj1 = try allocPoolObject(&vm);
-        obj1.retainedCommon.structId = 100;
+        obj1.head.typeId = 100;
         var obj2 = try allocPoolObject(&vm);
-        obj2.retainedCommon.structId = 100;
+        obj2.head.typeId = 100;
         freePoolObject(&vm, obj1); // Previous slot is freed.
         freePoolObject(&vm, obj2);
-        try t.eq(obj1.retainedCommon.structId, cy.NullId);
-        try t.eq(obj2.retainedCommon.structId, cy.NullId);
+        try t.eq(obj1.head.typeId, cy.NullId);
+        try t.eq(obj2.head.typeId, cy.NullId);
 
         // Free external object invalidates object pointer.
         obj = try allocExternalObject(&vm, 40);
-        obj.retainedCommon.structId = 100;
+        obj.head.typeId = 100;
         vm.debugPc = 123;
         freeExternalObject(&vm, obj, 40);
         try t.eq(cy.arc.isObjectAlreadyFreed(&vm, obj), true);

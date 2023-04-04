@@ -301,6 +301,12 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const endLocal = pc[1].arg;
             fmt.printStderr("{} {} endLocal={}", &.{v(pcOffset), v(code), v(endLocal) });
         },
+        .compare => {
+            const left = pc[1].arg;
+            const right = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} left={}, right={}, dst={}", &.{v(pcOffset), v(code), v(left), v(right), v(dst)});
+        },
         .field => {
             const recv = pc[1].arg;
             const dst = pc[2].arg;

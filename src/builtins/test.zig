@@ -112,7 +112,7 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
             .none => {
                 return true;
             },
-            .errorVal => {
+            .err => {
                 const actv = act.asErrorSymbol();
                 const expv = exp.asErrorSymbol();
                 if (actv == expv) {
@@ -134,6 +134,16 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return true;
                 } else {
                     printStderr("actual: {} != {}\n", &.{v(actv), v(expv)});
+                    return false;
+                }
+            },
+            .metatype => {
+                const actv = act.asHeapObject().metatype;
+                const expv = exp.asHeapObject().metatype;
+                if (std.meta.eql(actv, expv)) {
+                    return true;
+                } else {
+                    printStderr("actual: {} != {}\n", &.{v(actv.symId), v(expv.symId)});
                     return false;
                 }
             },

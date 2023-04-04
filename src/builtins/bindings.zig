@@ -64,6 +64,7 @@ pub const Symbol = enum {
     paused,
     done,
 
+    boolean,
     err,
     number,
     object,
@@ -76,7 +77,7 @@ pub const Symbol = enum {
     none,
     symbol,
     pointer,
-    type,
+    metatype,
 
     // Open modes.
     read,
@@ -125,6 +126,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const find = try b.ensureMethodSym("find", 1);
     const findAnyRune = try b.ensureMethodSym("findAnyRune", 1);
     const findRune = try b.ensureMethodSym("findRune", 1);
+    const idSym = try b.ensureMethodSym("id", 0);
     const index = try b.ensureMethodSym("index", 1);
     const indexChar = try b.ensureMethodSym("indexChar", 1);
     const indexCharSet = try b.ensureMethodSym("indexCharSet", 1);
@@ -173,6 +175,10 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == cy.BooleanT);
     id = try self.addBuiltinType("error");
     std.debug.assert(id == cy.ErrorT);
+    var subModId = try sema.appendSubModule(&self.compiler, "error");
+    var sb = ModuleBuilder.initModId(&self.compiler, subModId);
+    try sb.setFunc("new", &.{ bt.Any }, bt.Error, errorNew);
+
     try b.addMethod(cy.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
     id = try self.addBuiltinType("string");
@@ -188,8 +194,12 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == cy.SymbolT);
     id = try self.addBuiltinType("integer");
     std.debug.assert(id == cy.IntegerT);
+
     id = try self.addBuiltinType("number");
     std.debug.assert(id == cy.NumberT);
+    subModId = try sema.appendSubModule(&self.compiler, "number");
+    sb = ModuleBuilder.initModId(&self.compiler, subModId);
+    try sb.setFunc("new", &.{ bt.Any }, bt.Number, numberNew);
 
     id = try self.addBuiltinType("List");
     std.debug.assert(id == cy.ListS);
@@ -392,8 +402,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(cy.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
     }
 
-    id = try self.addBuiltinType("Type");
+    id = try self.addBuiltinType("MetaType");
     std.debug.assert(id == cy.MetaTypeT);
+    try b.addMethod(cy.MetaTypeT, idSym, &.{ bt.Any }, bt.Number, metatypeId);
 
     try ensureSymbol(self, "bool", .bool);
     try ensureSymbol(self, "char", .char);
@@ -439,6 +450,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "paused", .paused);
     try ensureSymbol(self, "done", .done);
 
+    try ensureSymbol(self, "boolean", .boolean);
     try ensureSymbol(self, "error", .err);
     try ensureSymbol(self, "number", .number);
     try ensureSymbol(self, "object", .object);
@@ -451,7 +463,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "none", .none);
     try ensureSymbol(self, "symbol", .symbol);
     try ensureSymbol(self, "pointer", .pointer);
-    try ensureSymbol(self, "type", .type);
+    try ensureSymbol(self, "metatype", .metatype);
 
     try ensureSymbol(self, "read", .read);
     try ensureSymbol(self, "write", .write);
@@ -2192,7 +2204,7 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
-    if (obj.retainedCommon.structId == cy.FileT) {
+    if (obj.head.typeId == cy.FileT) {
         if (obj.file.closed) {
             return prepareThrowSymbol(vm, .Closed);
         }
@@ -2237,6 +2249,12 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     ivm.setIndex(map, ctimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.ctime, 1000000)))) catch fatal();
     ivm.setIndex(map, mtimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.mtime, 1000000)))) catch fatal();
     return map;
+}
+
+pub fn metatypeId(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = recv.asHeapObject();
+    defer vm.releaseObject(obj);
+    return Value.initF64(@intToFloat(f64, obj.metatype.symId));
 }
 
 pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
@@ -2357,6 +2375,43 @@ pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     }
 }
 
+pub fn numberNew(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const val = args[0];
+    switch (val.getUserTag()) {
+        .number => return val,
+        .string => {
+            defer vm.release(val);
+            const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
+                return Value.initI32(0);
+            };
+            return Value.initF64(res);
+        },
+        .enumT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+        .symbol => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
+        .int => return Value.initF64(@intToFloat(f64, val.asInteger())),
+        else => {
+            vm.release(val);
+            return vm.returnPanic("Not a type that can be converted to `number`.");
+        }
+    }
+}
+
+pub fn errorNew(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const val = args[0];
+    if (val.isPointer()) {
+        return prepareThrowSymbol(vm, .InvalidArgument);
+    } else {
+        if (val.assumeNotPtrIsSymbol()) {
+            return Value.initErrorSymbol(@intCast(u8, val.asSymbolId()));
+        } else if (val.assumeNotPtrIsEnum()) {
+            const enumv = val.asEnum();
+            return Value.initErrorEnum(@intCast(u8, enumv.enumId), @intCast(u8, enumv.memberId));
+        } else {
+            return prepareThrowSymbol(vm, .InvalidArgument);
+        }
+    }
+}
+
 pub fn nop0(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return vm.returnPanic("Unsupported.");
 }
@@ -2392,25 +2447,6 @@ pub fn objNop1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksec
     return vm.returnPanic("Unsupported.");
 }
 
-pub fn wrapErrorFunc(comptime name: []const u8, comptime func: cy.NativeErrorFunc) cy.NativeFuncPtr {
-    const S = struct {
-        fn wrapped(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-            return func(vm, args, nargs) catch |err| {
-                fmt.printStderr("{} {}\n", &.{ fmt.v(name), fmt.v(err) });
-                switch (err) {
-                    error.FileNotFound => {
-                        return prepareThrowSymbol(vm, .FileNotFound);
-                    },
-                    else => {
-                        return prepareThrowSymbol(vm, .UnknownError);
-                    },
-                }
-            };
-        }
-    };
-    return S.wrapped;
-}
-
 /// In debug mode, the unsupported error's stack trace is dumped and program panics.
 /// In release mode, the error is logged and UnknownError is returned.
 pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, trace: ?*std.builtin.StackTrace) Value {
@@ -2429,12 +2465,20 @@ pub const ModuleBuilder = struct {
     compiler: *cy.VMcompiler,
     vm: *cy.VM,
 
+    pub fn initModId(c: *cy.VMcompiler, modId: sema.ModuleId) ModuleBuilder {
+        return init(c, c.sema.getModulePtr(modId));
+    }
+
     pub fn init(c: *cy.VMcompiler, mod: *cy.Module) ModuleBuilder {
         return .{
             .mod = mod,
             .compiler = c,
             .vm = c.vm,
         };
+    }
+
+    pub fn setVar(self: *const ModuleBuilder, name: []const u8, typeSymId: sema.ResolvedSymId, val: Value) !void {
+        try self.mod.setTypedVar(self.compiler, name, typeSymId, val);
     }
 
     pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {

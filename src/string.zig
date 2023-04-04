@@ -68,7 +68,7 @@ pub const HeapStringBuilder = struct {
         if (self.isAstring and utf8) {
             // Upgrade to Ustring.
             const obj = self.getHeapObject();
-            obj.common.structId = cy.UstringT;
+            obj.head.typeId = cy.UstringT;
             self.isAstring = false;
         }
     }

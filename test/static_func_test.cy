@@ -27,7 +27,7 @@ t.eq(bar(), 5)
 t.eq(try bar(2), error.InvalidSignature)
 
 -- Static function binding wrapped in value.
-bar = string
+bar = toString
 t.eq(bar(10), '10')
 
 -- Wrong number of arugments when invoking wrapped native func.
@@ -45,8 +45,8 @@ func foo5(): return 2 + 2
 t.eq(foo5(), 4)
 
 -- Static func initializer assigns static function value.
-func foo6(val) number = number
-t.eq(foo6('123'), 123)
+func foo6(val) number = toNumber
+t.eq(foo6(123), 123)
 
 -- Static func initializer assigns function value.
 func foo7() = foo7dep

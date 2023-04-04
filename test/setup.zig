@@ -75,8 +75,8 @@ pub const VMrunner = struct {
         self.trace.deinit(t.alloc);
         if (checkGlobalRC) {
             const rc = self.vm.getGlobalRC();
-            if (rc != 0) {
-                stdx.panicFmt("{} unreleased refcount from previous eval", .{rc});
+            if (rc != self.vm.internal().expGlobalRC) {
+                stdx.panicFmt("unreleased refcount from previous eval: {}, exp: {}", .{rc, self.vm.internal().expGlobalRC});
             }
         }
     }

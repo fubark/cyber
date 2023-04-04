@@ -121,10 +121,50 @@ test "Typed object." {
         \\o = Foo{a: 123}
         \\t.eq(foo(o), true)
         \\
-        // TODO: Implement casting syntax.
-        // \\-- Cast erased type.
-        // \\n = t.erase(Foo{a: 123})
-        // \\t.eq(foo(number(n)), true)
+        \\-- Cast erased type.
+        \\o = t.erase(Foo{a: 123})
+        \\t.eq(foo(o as Foo), true)
+    );
+}
+
+test "metatype" {
+    try evalPass(.{}, @embedFile("metatype_test.cy"));
+}
+
+test "Typed metatype." {
+    // Wrong param type.
+    try eval(.{ .silent = true },
+        \\func foo(a metatype):
+        \\  pass
+        \\foo(true)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Can not find compatible function signature for `foo(boolean) any`.
+            \\Only `func foo(metatype) any` exists for the symbol `foo`.
+            \\
+            \\main:3:1:
+            \\foo(true)
+            \\^
+            \\
+        );
+    }}.func);
+
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\func foo(a metatype):
+        \\  return a == number
+        \\
+        \\-- Literal.
+        \\t.eq(foo(number), true)
+        \\        
+        \\-- From var.
+        \\mt = number
+        \\t.eq(foo(mt), true)
+        \\
+        \\-- Cast erased type.
+        \\mt = t.erase(number)
+        \\t.eq(foo(mt as metatype), true)
     );
 }
 
@@ -201,7 +241,7 @@ test "Typed number." {
         \\
         \\-- Cast erased type.
         \\n = t.erase(123)
-        \\t.eq(foo(number(n)), true)
+        \\t.eq(foo(toNumber(n)), true)
     );
 }
 
@@ -263,12 +303,12 @@ test "Typed pointer." {
         \\  return a.value() == 123
         \\
         \\-- From var.
-        \\ptr = pointer(123)
+        \\ptr = toPointer(123)
         \\t.eq(foo(ptr), true)
         \\
         \\-- Cast erased type.
-        \\ptr = t.erase(pointer(123))
-        \\t.eq(foo(pointer(ptr)), true)
+        \\ptr = t.erase(toPointer(123))
+        \\t.eq(foo(toPointer(ptr)), true)
     );
 }
 
@@ -305,7 +345,7 @@ test "Typed string." {
         \\
         \\-- Cast erased type.
         \\str = t.erase('true')
-        \\t.eq(foo(string(str)), true)
+        \\t.eq(foo(toString(str)), true)
     );
 }
 
@@ -342,7 +382,7 @@ test "Typed boolean." {
         \\
         \\-- Cast erased type.
         \\b = t.erase(true)
-        \\t.eq(foo(boolean(b)), true)
+        \\t.eq(foo(toBoolean(b)), true)
     );
 }
 
@@ -841,10 +881,10 @@ test "Imports." {
         \\t.eq(typesym(a.foo), #function)
     );
     try run.expectErrorReport(res, error.Panic,
-        \\panic: Assigning to static function with a different function signature.
+        \\panic: Assigning to static function `func () any` with a different function signature `func (any) number`.
         \\
         \\@AbsPath(test/test_mods/init_func_error.cy):1:14 main:
-        \\func foo() = number
+        \\func foo() = toNumber
         \\             ^
         \\
     );
@@ -1170,16 +1210,15 @@ test "FFI." {
 }
 
 test "Symbols." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
     // Literal.
-    var val = try run.eval(
+    try eval(.{},
         \\n = #Tiger
-        \\number(n)
-    );
-    const id = try vm_.gvm.ensureSymbol("Tiger");
-    try t.eq(val.asF64toI32(), @intCast(i32, id));
+        \\toNumber(n)
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        const val = try res;
+        const id = try run.vm.internal().ensureSymbol("Tiger");
+        try t.eq(val.asF64toI32(), @intCast(i32, id));
+    }}.func);
 }
 
 test "Enum types." {
@@ -1958,10 +1997,7 @@ test "Maps" {
 }
 
 test "Assignment statements" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    _ = try run.eval(
+    try evalPass(.{},
         \\import t 'test'
         \\
         \\-- Assign to variable.
@@ -2420,13 +2456,15 @@ test "Static functions." {
 
     // Declaration initializer has a function value with a different signature.
     try eval(.{ .silent = true },
-        \\func foo() = number
+        \\func toNum(a):
+        \\  pass
+        \\func foo() = toNum
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to static function with a different function signature.
+            \\panic: Assigning to static function `func () any` with a different function signature `func (any) any`.
             \\
-            \\main:1:14 main:
-            \\func foo() = number
+            \\main:3:14 main:
+            \\func foo() = toNum
             \\             ^
             \\
         );

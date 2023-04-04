@@ -8,16 +8,16 @@ type Animal enum:
 
 -- enum to number.
 n = Animal.Tiger
-t.eq(number(n), 1)
+t.eq(toNumber(n), 1)
 
 -- Using enum declared afterwards.
 n = Animal2.Tiger
-t.eq(number(n), 1)
+t.eq(toNumber(n), 1)
 
 -- Reassign using symbol literal.
 n = Animal2.Tiger
 n = #Dragon
-t.eq(number(n), 2)
+t.eq(toNumber(n), 2)
 
 type Animal2 enum:
   Bear

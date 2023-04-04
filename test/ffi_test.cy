@@ -64,36 +64,36 @@ t.eq(lib.testF64(1.2345), 1.2345)
 res = lib.testObject(MyObject{ a: 123, b: 10, c: 'foo', d: true})
 t.eq(res.a, 123)
 t.eq(res.b, 10)
-t.eq(res.c, rawstring('foo'))
+t.eq(res.c, toRawstring('foo'))
 t.eq(res.d, true)
 
 -- Return struct ptr and convert to Cyber object.
 ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: 'foo', d: true})
 t.eq(typesym(ptr), #pointer)
-res = lib.ptrToMyObject(pointer(ptr))
+res = lib.ptrToMyObject(toPointer(ptr))
 t.eq(res.a, 123)
 t.eq(res.b, 10)
-t.eq(res.c, rawstring('foo'))
+t.eq(res.c, toRawstring('foo'))
 t.eq(res.d, true)
 
 -- testCharPtrZ with const string
-t.eq(lib.testCharPtrZ('foo'), rawstring('foo'))
+t.eq(lib.testCharPtrZ('foo'), toRawstring('foo'))
 
 -- testCharPtrZ with heap string
 str = 'foo{123}'
-t.eq(lib.testCharPtrZ(str), rawstring('foo123'))
+t.eq(lib.testCharPtrZ(str), toRawstring('foo123'))
 
 -- testCharPtrZ with number
-t.eq(lib.testCharPtrZ(100), rawstring('100'))
+t.eq(lib.testCharPtrZ(100), toRawstring('100'))
 
 -- testCharPtrZ with rawstring
-t.eq(lib.testCharPtrZ(rawstring('foo')), rawstring('foo'))
+t.eq(lib.testCharPtrZ(toRawstring('foo')), toRawstring('foo'))
 
 -- testDupeCharPtrZ
-t.eq(lib.testDupeCharPtrZ('foo'), rawstring('foo'))
+t.eq(lib.testDupeCharPtrZ('foo'), toRawstring('foo'))
 
 -- testPtr
-t.eq(lib.testPtr(pointer(123)), pointer(123))
+t.eq(lib.testPtr(toPointer(123)), toPointer(123))
 
 -- void return and no args.
 t.eq(lib.testVoid(), none)

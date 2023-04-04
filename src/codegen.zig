@@ -100,29 +100,38 @@ fn genSymbolTo(self: *CompileChunk, crSymId: sema.CompactResolvedSymId, dst: Loc
 
         const rtSymId = try self.compiler.vm.ensureFuncSym(rSym.key.absResolvedSymKey.rParentSymId, rSym.key.absResolvedSymKey.nameId, rFuncSym.getResolvedFuncSigId());
         const pc = self.buf.len();
+
+        try self.pushOptionalDebugSym(self.curNodeId);
         try self.buf.pushOp3(.staticFunc, 0, 0, dst);
         self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
         return self.initGenValue(dst, types.AnyType, true);
     } else {
         const rSym = self.compiler.sema.getResolvedSym(crSymId.id);
-        if (rSym.symT == .variable) {
-            const key = rSym.key.absResolvedSymKey;
-            const varId = try self.compiler.vm.ensureVarSym(key.rParentSymId, key.nameId);
+        switch (rSym.symT) {
+            .variable => {
+                const key = rSym.key.absResolvedSymKey;
+                const varId = try self.compiler.vm.ensureVarSym(key.rParentSymId, key.nameId);
 
-            try self.pushOptionalDebugSym(self.curNodeId);       
-            const pc = self.buf.len();
-            try self.buf.pushOp3(.staticVar, 0, 0, dst);
-            self.buf.setOpArgU16(pc + 1, @intCast(u16, varId));
-            return self.initGenValue(dst, types.AnyType, true);
-        } else if (rSym.symT == .object) {
-            const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
-            try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
-            try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
-            try self.buf.pushOperand(dst);
-            return self.initGenValue(dst, types.AnyType, true);
-        } else {
-            const name = sema.getName(self.compiler, rSym.key.absResolvedSymKey.nameId);
-            return self.reportError("Can't use symbol `{}` as a value.", &.{v(name)});
+                try self.pushOptionalDebugSym(self.curNodeId);       
+                const pc = self.buf.len();
+                try self.buf.pushOp3(.staticVar, 0, 0, dst);
+                self.buf.setOpArgU16(pc + 1, @intCast(u16, varId));
+
+                const stype = types.initResolvedSymType(rSym.inner.variable.rTypeSymId);
+                return self.initGenValue(dst, stype, true);
+            },
+            .builtinType,
+            .object => {
+                const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
+                try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
+                try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
+                try self.buf.pushOperand(dst);
+                return self.initGenValue(dst, types.MetaTypeType, true);
+            },
+            else => {
+                const name = sema.getName(self.compiler, rSym.key.absResolvedSymKey.nameId);
+                return self.reportError("Can't use symbol `{}` as a value.", &.{v(name)});
+            }
         }
     }
 }
@@ -736,6 +745,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
             const key = rSym.key.absResolvedSymKey;
             const rtSymId = try self.compiler.vm.ensureFuncSym(key.rParentSymId, key.nameId, rFuncSym.getResolvedFuncSigId());
 
+            try self.pushOptionalDebugSym(nodeId);
             const pc = self.buf.len();
             try self.buf.pushOp3(.staticFunc, 0, 0, dst);
             self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
@@ -2148,8 +2158,12 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                     self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
                 }
 
-                if (rFuncSym) |funcSym| {
-                    return GenValue.initTempValue(callStartLocal, funcSym.retType, !discardTopExprReg);
+                if (crSymId.isPresent()) {
+                    if (rFuncSym) |funcSym| {
+                        return GenValue.initTempValue(callStartLocal, funcSym.retType, !discardTopExprReg);
+                    } else {
+                        return GenValue.initTempValue(callStartLocal, types.AnyType, !discardTopExprReg);
+                    }
                 } else {
                     return GenValue.initTempValue(callStartLocal, types.AnyType, !discardTopExprReg);
                 }

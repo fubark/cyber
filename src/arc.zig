@@ -17,10 +17,10 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         if (builtin.mode == .Debug) {
             checkDoubleFree(vm, obj);
         }
-        obj.retainedCommon.rc -= 1;
+        obj.head.rc -= 1;
         if (builtin.mode == .Debug) {
             if (cy.verbose) {
-                log.debug("release {} rc={}", .{val.getUserTag(), obj.retainedCommon.rc});
+                log.debug("release {} rc={}", .{val.getUserTag(), obj.head.rc});
             }
         }
         if (cy.TrackGlobalRC) {
@@ -29,14 +29,14 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         if (cy.TraceEnabled) {
             vm.trace.numReleases += 1;
         }
-        if (obj.retainedCommon.rc == 0) {
+        if (obj.head.rc == 0) {
             @call(.never_inline, cy.heap.freeObject, .{vm, obj});
         }
     }
 }
 
 pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
-    if (obj.retainedCommon.structId == cy.NullId) {
+    if (obj.head.typeId == cy.NullId) {
         // Can check structId for pool objects since they are still in memory.
         return true;
     }
@@ -66,10 +66,10 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     if (builtin.mode == .Debug or builtin.is_test) {
         checkDoubleFree(vm, obj);
     }
-    obj.retainedCommon.rc -= 1;
+    obj.head.rc -= 1;
     if (builtin.mode == .Debug) {
         if (cy.verbose) {
-            log.debug("release {} rc={}", .{obj.getUserTag(), obj.retainedCommon.rc});
+            log.debug("release {} rc={}", .{obj.getUserTag(), obj.head.rc});
         }
     }
     if (cy.TrackGlobalRC) {
@@ -79,7 +79,7 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
         vm.trace.numReleases += 1;
         vm.trace.numReleaseAttempts += 1;
     }
-    if (obj.retainedCommon.rc == 0) {
+    if (obj.head.rc == 0) {
         @call(.never_inline, cy.heap.freeObject, .{vm, obj});
     }
 }
@@ -102,11 +102,11 @@ pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, start
 }
 
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
-    obj.retainedCommon.rc += 1;
+    obj.head.rc += 1;
     if (builtin.mode == .Debug) {
         checkRetainDanglingPointer(self, obj);
         if (cy.verbose) {
-            log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+            log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
         }
     }
     if (cy.TrackGlobalRC) {
@@ -130,11 +130,11 @@ pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) voi
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        obj.retainedCommon.rc += 1;
+        obj.head.rc += 1;
         if (builtin.mode == .Debug) {
             checkRetainDanglingPointer(self, obj);
             if (cy.verbose) {
-                log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+                log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
             }
         }
         if (cy.TrackGlobalRC) {
@@ -152,11 +152,11 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        obj.retainedCommon.rc += inc;
+        obj.head.rc += inc;
         if (builtin.mode == .Debug) {
             checkRetainDanglingPointer(self, obj);
             if (cy.verbose) {
-                log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+                log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
             }
         }
         if (cy.TrackGlobalRC) {
@@ -172,13 +172,13 @@ pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
     if (cy.TraceEnabled) {
         self.trace.numForceReleases += 1;
     }
-    switch (obj.retainedCommon.structId) {
+    switch (obj.head.typeId) {
         cy.ListS => {
             const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
             list.deinit(self.alloc);
             cy.heap.freePoolObject(self, obj);
             if (cy.TrackGlobalRC) {
-                self.refCounts -= obj.retainedCommon.rc;
+                self.refCounts -= obj.head.rc;
             }
         },
         cy.MapS => {
@@ -186,7 +186,7 @@ pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
             map.deinit(self.alloc);
             cy.heap.freePoolObject(self, obj);
             if (cy.TrackGlobalRC) {
-                self.refCounts -= obj.retainedCommon.rc;
+                self.refCounts -= obj.head.rc;
             }
         },
         else => {
@@ -215,7 +215,7 @@ pub fn checkMemory(self: *cy.VM) !bool {
     // First construct the graph.
     for (self.heapPages.items()) |page| {
         for (page.objects[1..]) |*obj| {
-            if (obj.common.structId != cy.NullId) {
+            if (obj.head.typeId != cy.NullId) {
                 try nodes.put(self.alloc, obj, .{
                     .visited = false,
                     .entered = false,
@@ -233,7 +233,7 @@ pub fn checkMemory(self: *cy.VM) !bool {
             }
             node.entered = true;
 
-            switch (obj.retainedCommon.structId) {
+            switch (obj.head.typeId) {
                 cy.ListS => {
                     const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
                     for (list.items()) |it| {
@@ -278,8 +278,8 @@ const RcNode = struct {
 
 pub fn checkGlobalRC(vm: *cy.VM) !void {
     const rc = getGlobalRC(vm);
-    if (rc != 0) {
-        std.debug.print("{} unreleased refcount\n", .{rc});
+    if (rc != vm.expGlobalRC) {
+        std.debug.print("unreleased refcount: {}, expected: {}\n", .{rc, vm.expGlobalRC});
 
         if (builtin.mode == .Debug) {
             var buf: [128]u8 = undefined;
@@ -287,8 +287,8 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
             while (iter.next()) |it| {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
-                    const typeName = vm.structs.buf[it.key_ptr.*.retainedCommon.structId].name;
-                    const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.retainedCommon.rc, trace.allocPc });
+                    const typeName = vm.structs.buf[it.key_ptr.*.head.typeId].name;
+                    const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc });
                     try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
                 }
             }

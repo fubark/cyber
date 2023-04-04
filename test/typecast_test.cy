@@ -21,13 +21,13 @@ func foo3(a string):
     return true
 
 -- Cast to abstract rawstring type.
-a = rawstring('abc')
+a = toRawstring('abc')
 t.eq(foo4(a as rawstring), true)
 func foo4(a rawstring):
     return true
 
 -- Cast to abstract any type.
-a = rawstring('abc')
+a = toRawstring('abc')
 t.eq(foo5(a as any), true)
 func foo5(a any):
     return true

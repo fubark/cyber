@@ -1,23 +1,23 @@
 import t 'test'
 
-t.eq(boolean(true), true)
-t.eq(boolean(false), false)
+t.eq(toBoolean(true), true)
+t.eq(toBoolean(false), false)
 
 -- Numbers including zero evaluates to true.
-t.eq(boolean(123), true)
-t.eq(boolean(-123), true)
-t.eq(boolean(0), true)
+t.eq(toBoolean(123), true)
+t.eq(toBoolean(-123), true)
+t.eq(toBoolean(0), true)
 
 -- Strings including the empty string evaluates to true.
-t.eq(boolean('cyber'), true)
-t.eq(boolean(''), true)
+t.eq(toBoolean('cyber'), true)
+t.eq(toBoolean(''), true)
 
 -- Heap objects evaluate to true.
-t.eq(boolean({}), true)
-t.eq(boolean([]), true)
+t.eq(toBoolean({}), true)
+t.eq(toBoolean([]), true)
 type S object:
   a
-t.eq(boolean(S{a: 0}), true)
+t.eq(toBoolean(S{a: 0}), true)
 
 -- none evaluates to false
-t.eq(boolean(none), false)
+t.eq(toBoolean(none), false)

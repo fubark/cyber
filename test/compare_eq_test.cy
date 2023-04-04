@@ -13,8 +13,8 @@ t.eq('foo' == 'bar', false)
 t.eq('foo' == 'foo', true)
 
 -- string matches rawstring contents.
-t.eq('foo' == rawstring('foo'), true)
-t.eq('foo' == rawstring('bar'), false)
+t.eq('foo' == toRawstring('foo'), true)
+t.eq('foo' == toRawstring('bar'), false)
 
 -- Heap string equals.
 foo = '{'fo'}{'o'}'

@@ -1911,7 +1911,16 @@ fn identifier(c: *cy.CompileChunk, nodeId: cy.NodeId) !Type {
         const crSymId = symRes.toCompactId();
         try referenceSym(c, crSymId, true);
         c.nodes[nodeId].head.ident.sema_crSymId = crSymId;
-        return types.AnyType;
+
+        const rSym = c.compiler.sema.getResolvedSym(symRes.rSymId);
+        switch (rSym.symT) {
+            .builtinType => {
+                return types.MetaTypeType;
+            },
+            else => {
+                return types.AnyType;
+            },
+        }
     }
 }
 
@@ -2871,11 +2880,22 @@ fn getOrResolveDistinctSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId,
                 };
             }
         } else {
+            // Check builtin types.
+            if (rParentSymId == chunk.semaResolvedRootSymId) {
+                if (nameId < types.BuiltinTypeTags.len) {
+                    return ResolvedSymResult{
+                        .rSymId = @intCast(ResolvedSymId, nameId),
+                        .rFuncSymId = cy.NullId,
+                    };
+                }
+            }
+
             // Report missing symbol when looking in a module.
             const name = getName(chunk.compiler, nameId);
             return chunk.reportError("Missing symbol: `{}`", &.{v(name)});
         }
     }
+
     return null;
 }
 
@@ -2915,36 +2935,40 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
         },
     };
 
-    const rSymId = chunk.compiler.sema.resolvedSymMap.get(key) orelse cy.NullId;
+    var rSymId = chunk.compiler.sema.resolvedSymMap.get(key) orelse cy.NullId;
     if (rSymId != cy.NullId) {
         const sym = chunk.compiler.sema.resolvedSyms.items[rSymId];
-        if (sym.symT == .variable) {
-            // TODO: Check var type.
-            return FuncCallSymResult{
-                .crSymId = CompactResolvedSymId.initSymId(rSymId),
-                .retType = types.AnyType,
-            };
-        } else if (sym.symT == .func) {
-            // Match against exact signature.
-            key = AbsResolvedFuncSymKey{
-                .absResolvedFuncSymKey = .{
-                    .rSymId = rSymId,
-                    .rFuncSigId = rFuncSigId,
-                },
-            };
-            if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
-                const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
+        switch (sym.symT) {
+            .variable => {
+                // TODO: Check var type.
                 return FuncCallSymResult{
-                    .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
-                    .retType = rFuncSym.retType,
+                    .crSymId = CompactResolvedSymId.initSymId(rSymId),
+                    .retType = types.AnyType,
                 };
-            }
+            },
+            .func => {
+                // Match against exact signature.
+                key = AbsResolvedFuncSymKey{
+                    .absResolvedFuncSymKey = .{
+                        .rSymId = rSymId,
+                        .rFuncSigId = rFuncSigId,
+                    },
+                };
+                if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
+                    return FuncCallSymResult{
+                        .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
+                        .retType = rFuncSym.retType,
+                    };
+                }
 
-            // Fallthrough. Still need to check the module that contains the func 
-            // in case it's an overloaded function not yet resolved.
-        } else {
-            const name = getName(chunk.compiler, nameId);
-            return chunk.reportError("`{}` is not a callable symbol.", &.{v(name)});
+                // Fallthrough. Still need to check the module that contains the func 
+                // in case it's an overloaded function not yet resolved.
+            },
+            else => {
+                const name = getName(chunk.compiler, nameId);
+                return chunk.reportError("`{}` is not a callable symbol.", &.{v(name)});
+            }
         }
     }
 
@@ -2991,10 +3015,10 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
         } else {
             stdx.panic("unexpected");
         }
-    } else {
-        try reportIncompatibleFuncSig(chunk, nameId, rFuncSigId, modId);
-        unreachable;
     }
+
+    try reportIncompatibleFuncSig(chunk, nameId, rFuncSigId, modId);
+    unreachable;
 }
 
 fn reportIncompatibleFuncSig(c: *cy.CompileChunk, nameId: NameSymId, rFuncSigId: ResolvedFuncSigId, searchModId: ModuleId) !void {
@@ -4044,6 +4068,7 @@ pub const NamePointer = 9;
 pub const NameNone = 10;
 pub const NameError = 11;
 pub const NameFiber = 12;
+pub const NameMetatype = 13;
 
 pub const FuncDeclId = u32;
 

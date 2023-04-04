@@ -22,3 +22,8 @@ b = []
 if false:
     b = 123
 a = b
+
+-- Binary metatype operand does not reuse dst for temp since it is retained.
+f = func():
+    return number == boolean
+f()

@@ -707,15 +707,21 @@ fn willAlwaysRetainResolvedSym(c: *CompileChunk, crSymId: sema.CompactResolvedSy
         return true;
     } else {
         const rSym = c.compiler.sema.getResolvedSym(crSymId.id);
-        if (rSym.symT == .variable) {
-            // Since `staticVar` op is always retained atm.
-            return true;
-        } else if (rSym.symT == .object) {
-            // `sym` op is always retained.
-            return true;
+        switch (rSym.symT) {
+            .variable => {
+                // Since `staticVar` op is always retained atm.
+                return true;
+            },
+            .object => {
+                // `sym` op is always retained.
+                return true;
+            },
+            .builtinType => {
+                return true;
+            },
+            else => return false,
         }
     }
-    return false;
 }
 
 /// `buf` is assumed to be big enough.

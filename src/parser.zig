@@ -217,6 +217,13 @@ pub const Parser = struct {
 
         try self.pushBlock();
         defer self.popBlock();
+
+        const indent = (try self.consumeIndentBeforeStmt()) orelse {
+            return self.reportParseError("Expected one statement.", &.{});
+        };
+        if (indent != 0) {
+            return self.reportParseError("Unexpected indentation.", &.{});
+        }
         const first_stmt = try self.parseBodyStatements(0);
         self.nodes.items[root_id].head = .{
             .root = .{
@@ -228,7 +235,7 @@ pub const Parser = struct {
 
     /// Returns number of spaces that precedes a statement.
     /// If current line is consumed if there is no statement.
-    fn consumeIndentBeforeStmt(self: *Parser) !u32 {
+    fn consumeIndentBeforeStmt(self: *Parser) !?u32 {
         while (true) {
             var res: u32 = 0;
             var token = self.peekToken();
@@ -244,7 +251,7 @@ pub const Parser = struct {
                 // If another indent token is encountered, it would be a different type.
                 return self.reportParseError("Can not mix tabs and spaces for indentation.", &.{});
             } else if (token.tag() == .none) {
-                return 0;
+                return null;
             } else {
                 return res;
             }
@@ -266,9 +273,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         if (token.tag() != .new_line) {
             // Parse single statement only.
-            return (try self.parseStatement()) orelse {
-                return self.reportParseError("Expected one statement after the block.", &.{});
-            };
+            return try self.parseStatement();
         } else {
             self.advanceToken();
             return self.parseIndentedBodyStatements();
@@ -277,7 +282,9 @@ pub const Parser = struct {
 
     /// Indent is determined by the first body statement.
     fn parseIndentedBodyStatements(self: *Parser) !NodeId {
-        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+        const reqIndent = (try self.parseFirstChildIndent(self.cur_indent)) orelse {
+            return self.reportParseError("Expected one statement.", &.{});
+        };
         return self.parseBodyStatements(reqIndent);
     }
 
@@ -287,15 +294,15 @@ pub const Parser = struct {
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var first_stmt = (try self.parseStatement()) orelse return NullId;
+        var first_stmt = try self.parseStatement();
         var last_stmt = first_stmt;
 
         // Parse body statements until indentation goes back to at least the previous indent.
         while (true) {
             const start = self.next_pos;
-            const indent = try self.consumeIndentBeforeStmt();
+            const indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (indent == reqIndent) {
-                const id = (try self.parseStatement()) orelse break;
+                const id = try self.parseStatement();
                 self.nodes.items[last_stmt].next = id;
                 last_stmt = id;
             } else if (indent <= prevIndent) {
@@ -309,8 +316,8 @@ pub const Parser = struct {
     }
 
     /// Parses the first child indent and returns the indent size.
-    fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !u32 {
-        const indent = try self.consumeIndentBeforeStmt();
+    fn parseFirstChildIndent(self: *Parser, fromIndent: u32) !?u32 {
+        const indent = (try self.consumeIndentBeforeStmt()) orelse return null;
         if (indent > fromIndent) {
             return indent;
         } else {
@@ -498,7 +505,7 @@ pub const Parser = struct {
 
                 token = self.peekToken();
                 start = self.next_pos;
-                if (token.tag() != .ident) {
+                if (token.tag() != .ident and token.tag() != .type_k) {
                     return self.reportParseError("Expected param identifier.", &.{});
                 }
 
@@ -560,7 +567,7 @@ pub const Parser = struct {
         return null;
     }
 
-    fn parseEnumMember(self: *Parser) !?NodeId {
+    fn parseEnumMember(self: *Parser) !NodeId {
         const start = self.next_pos;
         var token = self.peekToken();
         if (token.tag() == .ident) {
@@ -576,7 +583,9 @@ pub const Parser = struct {
                 },
             };
             return field;
-        } else return null;
+        } else {
+            return self.reportParseError("Expected enum member.", &.{});
+        }
     }
 
     fn parseObjectField(self: *Parser) !?NodeId {
@@ -671,44 +680,62 @@ pub const Parser = struct {
             return self.reportParseError("Expected colon.", &.{});
         }
 
-        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+        const reqIndent = (try self.parseFirstChildIndent(self.cur_indent)) orelse {
+            return self.reportParseError("Expected tag member.", &.{});
+        };
         const prevIndent = self.cur_indent;
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
 
-        var firstMember = (try self.parseEnumMember()) orelse {
-            return self.reportParseError("Expected tag member.", &.{});
-        };
+        var firstMember = try self.parseEnumMember();
         var lastMember = firstMember;
 
         while (true) {
             const start2 = self.next_pos;
-            const indent = try self.consumeIndentBeforeStmt();
+            const indent = (try self.consumeIndentBeforeStmt()) orelse break;
             if (indent == reqIndent) {
-                const id = (try self.parseEnumMember()) orelse break;
+                const id = try self.parseEnumMember();
                 self.nodes.items[lastMember].next = id;
                 lastMember = id;
             } else if (indent <= prevIndent) {
                 self.next_pos = start2;
-                const id = try self.pushNode(.enumDecl, start);
-                self.nodes.items[id].head = .{
-                    .enumDecl = .{
-                        .name = name,
-                        .memberHead = firstMember,
-                    },
-                };
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .enumT,
-                    .inner = .{
-                        .enumT = id,
-                    },
-                });
-                return id;
+                break;
             } else {
                 return self.reportParseError("Unexpected indentation.", &.{});
             }
         }
-        unreachable;
+        const id = try self.pushNode(.enumDecl, start);
+        self.nodes.items[id].head = .{
+            .enumDecl = .{
+                .name = name,
+                .memberHead = firstMember,
+            },
+        };
+        try self.staticDecls.append(self.alloc, .{
+            .declT = .enumT,
+            .inner = .{
+                .enumT = id,
+            },
+        });
+        return id;
+    }
+
+    fn pushObjectDecl(self: *Parser, start: TokenId, name: NodeId, fieldsHead: NodeId, funcsHead: NodeId) !NodeId {
+        const id = try self.pushNode(.objectDecl, start);
+        self.nodes.items[id].head = .{
+            .objectDecl = .{
+                .name = name,
+                .fieldsHead = fieldsHead,
+                .funcsHead = funcsHead,
+            },
+        };
+        try self.staticDecls.append(self.alloc, .{
+            .declT = .object,
+            .inner = .{
+                .object = id,
+            },
+        });
+        return id;
     }
 
     fn parseObjectDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
@@ -726,7 +753,9 @@ pub const Parser = struct {
             return self.reportParseError("Expected colon to start an object type block.", &.{});
         }
 
-        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+        const reqIndent = (try self.parseFirstChildIndent(self.cur_indent)) orelse {
+            return self.reportParseError("Expected member.", &.{});
+        };
         const prevIndent = self.cur_indent;
         self.cur_indent = reqIndent;
         defer self.cur_indent = prevIndent;
@@ -737,29 +766,16 @@ pub const Parser = struct {
 
             while (true) {
                 const start2 = self.next_pos;
-                const indent = try self.consumeIndentBeforeStmt();
+                const indent = (try self.consumeIndentBeforeStmt()) orelse {
+                    return self.pushObjectDecl(start, name, firstField, NullId);
+                };
                 if (indent == reqIndent) {
                     const id = (try self.parseObjectField()) orelse break;
                     self.nodes.items[lastField].next = id;
                     lastField = id;
                 } else if (indent <= prevIndent) {
                     self.next_pos = start2;
-                    const id = try self.pushNode(.objectDecl, start);
-                    self.nodes.items[id].head = .{
-                        .objectDecl = .{
-                            .name = name,
-                            .fieldsHead = firstField,
-                            .funcsHead = NullId,
-                        },
-                    };
-
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .object,
-                        .inner = .{
-                            .object = id,
-                        },
-                    });
-                    return id;
+                    return self.pushObjectDecl(start, name, firstField, NullId);
                 } else {
                     return self.reportParseError("Unexpected indentation.", &.{});
                 }
@@ -773,7 +789,7 @@ pub const Parser = struct {
 
             while (true) {
                 const start2 = self.next_pos;
-                const indent = try self.consumeIndentBeforeStmt();
+                const indent = (try self.consumeIndentBeforeStmt()) orelse break;
                 if (indent == reqIndent) {
                     token = self.peekToken();
                     if (token.tag() == .func_k) {
@@ -788,22 +804,7 @@ pub const Parser = struct {
                     return self.reportParseError("Unexpected indentation.", &.{});
                 }
             }
-
-            const id = try self.pushNode(.objectDecl, start);
-            self.nodes.items[id].head = .{
-                .objectDecl = .{
-                    .name = name,
-                    .fieldsHead = firstField,
-                    .funcsHead = firstFunc,
-                },
-            };
-            try self.staticDecls.append(self.alloc, .{
-                .declT = .object,
-                .inner = .{
-                    .object = id,
-                },
-            });
-            return id;
+            return self.pushObjectDecl(start, name, firstField, firstFunc);
         } else {
             return self.reportParseError("Unexpected token.", &.{});
         }
@@ -1053,7 +1054,9 @@ pub const Parser = struct {
         }
         self.advanceToken();
 
-        const reqIndent = try self.parseFirstChildIndent(self.cur_indent);
+        const reqIndent = (try self.parseFirstChildIndent(self.cur_indent)) orelse {
+            return self.reportParseError("Expected case.", &.{});
+        };
 
         // Like `parseBodyStatements` but only parses case blocks.
         {
@@ -1067,7 +1070,7 @@ pub const Parser = struct {
             // Parse body statements until indentation goes back to at least the previous indent.
             while (true) {
                 const save = self.next_pos;
-                const indent = try self.consumeIndentBeforeStmt();
+                const indent = (try self.consumeIndentBeforeStmt()) orelse break;
                 if (indent == reqIndent) {
                     const case = try self.parseCaseBlock();
                     self.nodes.items[lastCase].next = case;
@@ -1548,26 +1551,9 @@ pub const Parser = struct {
         return case;
     }
 
-    fn parseStatement(self: *Parser) anyerror!?NodeId {
+    fn parseStatement(self: *Parser) anyerror!NodeId {
         var token = self.peekToken();
-        if (token.tag() == .none) {
-            return null;
-        }
         switch (token.tag()) {
-            .new_line => {
-                // Skip newlines.
-                while (true) {
-                    self.advanceToken();
-                    token = self.peekToken();
-                    if (token.tag() == .none) {
-                        return null;
-                    }
-                    if (token.tag() != .new_line) {
-                        break;
-                    }
-                }
-                return try self.parseStatement();
-            },
             .ident => {
                 const token2 = self.peekTokenAhead(1);
                 if (token2.tag() == .colon) {
@@ -1684,7 +1670,7 @@ pub const Parser = struct {
                         right = try self.parseMultilineLambdaFunction();
                     },
                     .match_k => {
-                        right = (try self.parseStatement()).?;
+                        right = try self.parseStatement();
                     },
                     else => {
                         right = (try self.parseExpr(.{})) orelse {
@@ -2127,10 +2113,29 @@ pub const Parser = struct {
     /// Parses the right expression of a BinaryExpression.
     fn parseRightExpression(self: *Parser, left_op: BinaryExprOp) anyerror!NodeId {
         var start = self.next_pos;
+        var token = self.peekToken();
+
+        switch (token.tag()) {
+            .none => {
+                return self.reportParseError("Expected right operand.", &.{});
+            },
+            .indent,
+            .new_line => {
+                self.advanceToken();
+                self.consumeWhitespaceTokens();
+                start = self.next_pos;
+                token = self.peekToken();
+                if (token.tag() == .none) {
+                    return self.reportParseError("Expected right operand.", &.{});
+                }
+            },
+            else => {},
+        }
+
         const expr_id = try self.parseTermExpr();
 
         // Check if next token is an operator with higher precedence.
-        var token = self.peekToken();
+        token = self.peekToken();
 
         var rightOp: BinaryExprOp = undefined;
         switch (token.tag()) {
@@ -2395,12 +2400,6 @@ pub const Parser = struct {
     fn parseTightTermExpr(self: *Parser) anyerror!NodeId {
         var start = self.next_pos;
         var token = self.peekToken();
-        if (token.tag() == .new_line) {
-            self.consumeWhitespaceTokens();
-            start = self.next_pos;
-            token = self.peekToken();
-        }
-
         var left_id = switch (token.tag()) {
             .ident => b: {
                 self.advanceToken();
@@ -2810,10 +2809,19 @@ pub const Parser = struct {
             .none => return null,
             .right_paren => return null,
             .right_bracket => return null,
-            else => {
-                left_id = try self.parseTermExpr();
+            .indent,
+            .new_line => {
+                self.advanceToken();
+                self.consumeWhitespaceTokens();
+                start = self.next_pos;
+                token = self.peekToken();
+                if (token.tag() == .none) {
+                    return null;
+                }
             },
+            else => {},
         }
+        left_id = try self.parseTermExpr();
 
         while (true) {
             const next = self.peekToken();
@@ -2981,7 +2989,7 @@ pub const Parser = struct {
                             right = try self.parseMultilineLambdaFunction();
                         },
                         .match_k => {
-                            right = (try self.parseStatement()).?;
+                            right = try self.parseStatement();
                             rightIsStmt = true;
                         },
                         else => {
@@ -4201,6 +4209,9 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     advanceChar(p);
                     var count: u32 = 1;
                     while (true) {
+                        if (isAtEndChar(p)) {
+                            break;
+                        }
                         ch = peekChar(p);
                         if (ch == ' ') {
                             count += 1;
@@ -4215,6 +4226,9 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                     advanceChar(p);
                     var count: u32 = 1;
                     while (true) {
+                        if (isAtEndChar(p)) {
+                            break;
+                        }
                         ch = peekChar(p);
                         if (ch == '\t') {
                             count += 1;

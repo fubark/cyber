@@ -1744,20 +1744,44 @@ test "Statements." {
             \\
         );
     }}.func);
+
+    // Expects one statement.
+    try eval(.{ .silent = true }, "   ",
+    struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected one statement.
+            \\
+            \\main:1:4:
+            \\   
+            \\   ^
+            \\
+        );
+    }}.func);
 }
 
 test "Indentation." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("indentation_test.cy"));
+    try evalPass(.{}, @embedFile("indentation_test.cy"));
 
     // Mixing tabs and spaces is an error.
-    const res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
          \\if true:
          \\	 return 123
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Can not mix tabs and spaces for indentation.
+            \\
+            \\main:2:2:
+            \\	 return 123
+            \\ ^
+            \\
+        );
+    }}.func);
+
+    // Last line with just indents.
+    try evalPass(.{},
+        \\pass
+        \\      
     );
-    try t.expectError(res, error.ParseError);
-    try t.eqStr(run.vm.getParserErrorMsg(), "Can not mix tabs and spaces for indentation.");
 
     // New block requires at least one statement.
     // const parse_res = try run.parse(

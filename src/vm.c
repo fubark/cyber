@@ -59,16 +59,16 @@ static inline void release(VM* vm, Value val) {
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
         // if (builtin.mode == .Debug) {
-        //     if (obj.retainedCommon.structId == cy.NullId) {
+        //     if (obj.head.typeId == cy.NullId) {
         //         log.debug("object already freed. {*}", .{obj});
         //         cy.debug.dumpObjectTrace(vm, obj) catch stdx.fatal();
         //         stdx.fatal();
         //     }
         // }
-        obj->retainedCommon.rc -= 1;
+        obj->head.rc -= 1;
         // if (builtin.mode == .Debug) {
         //     if (cy.verbose) {
-        //         log.debug("release {} {}", .{val.getUserTag(), obj.retainedCommon.rc});
+        //         log.debug("release {} {}", .{val.getUserTag(), obj.head.rc});
         //     }
         // }
 #if TRACK_GLOBAL_RC
@@ -77,7 +77,7 @@ static inline void release(VM* vm, Value val) {
         // if (cy.TraceEnabled) {
         //     vm.trace.numReleases += 1;
         // }
-        if (obj->retainedCommon.rc == 0) {
+        if (obj->head.rc == 0) {
             zFreeObject(vm, obj);
         }
     }
@@ -85,14 +85,14 @@ static inline void release(VM* vm, Value val) {
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
     // if (builtin.mode == .Debug or builtin.is_test) {
-    //     if (obj.retainedCommon.structId == cy.NullId) {
+    //     if (obj.head.typeId == cy.NullId) {
     //         stdx.panic("object already freed.");
     //     }
     // }
-    obj->retainedCommon.rc -= 1;
+    obj->head.rc -= 1;
     // if (builtin.mode == .Debug) {
     //     if (cy.verbose) {
-    //         log.debug("release {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+    //         log.debug("release {} {}", .{obj.getUserTag(), obj.head.rc});
     //     }
     // }
 #if TRACK_GLOBAL_RC
@@ -102,7 +102,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
     //     vm.trace.numReleases += 1;
     //     vm.trace.numReleaseAttempts += 1;
     // }
-    if (obj->retainedCommon.rc == 0) {
+    if (obj->head.rc == 0) {
         zFreeObject(vm, obj);
     }
 }
@@ -113,10 +113,10 @@ static inline void retain(VM* vm, Value val) {
     // }
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
-        obj->retainedCommon.rc += 1;
+        obj->head.rc += 1;
         // if (builtin.mode == .Debug) {
         //     if (cy.verbose) {
-        //         log.debug("retain {} {}", .{obj.getUserTag(), obj.retainedCommon.rc});
+        //         log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
         //     }
         // }
 #if TRACK_GLOBAL_RC
@@ -226,7 +226,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(FieldIC),
         JENTRY(FieldRetain),
         JENTRY(FieldRetainIC),
-        JENTRY(FieldRelease),
         JENTRY(Lambda),
         JENTRY(Closure),
         JENTRY(Compare),
@@ -308,8 +307,8 @@ beginSwitch:
     switch ((OpCode)*pc) {
 #endif
     CASE(ConstOp):
-        stack[pc[2]] = VALUE_RAW(vm->constPtr[pc[1]]);
-        pc += 3;
+        stack[pc[3]] = VALUE_RAW(vm->constPtr[READ_U16(1)]);
+        pc += 4;
         NEXT();
     CASE(ConstI8):
         stack[pc[2]] = VALUE_NUMBER((double)(int8_t)pc[1]);
@@ -726,7 +725,6 @@ beginSwitch:
         // pc += 7;
         NEXT();
     }
-    CASE(FieldRelease):
     CASE(Lambda):
     CASE(Closure):
         printf("Unsupported %s\n", zOpCodeName(*pc));

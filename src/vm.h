@@ -43,7 +43,6 @@ typedef enum {
     CodeFieldIC,
     CodeFieldRetain,
     CodeFieldRetainIC,
-    CodeFieldRelease,
     CodeLambda,
     CodeClosure,
     CodeCompare,

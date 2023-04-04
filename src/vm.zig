@@ -2657,8 +2657,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpConstOp:"::);
                 }
-                framePtr[pc[2].arg] = Value.initRaw(vm.consts[pc[1].arg].val);
-                pc += 3;
+                const idx = @ptrCast(*align (1) u16, pc + 1).*;
+                framePtr[pc[3].arg] = Value.initRaw(vm.consts[idx].val);
+                pc += 4;
                 continue;
             },
             .constI8 => {
@@ -2704,9 +2705,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[2].arg;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
-                        framePtr[dst] = obj.object.getValue(pc[6].arg);
-                        pc += 7;
+                    if (obj.head.typeId == @ptrCast(*align (1) u16, pc + 5).*) {
+                        framePtr[dst] = obj.object.getValue(pc[7].arg);
+                        pc += 8;
                         continue;
                     }
                 } else {
@@ -2714,9 +2715,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .field };
-                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-                framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
-                pc += 7;
                 continue;
             },
             .copyRetainSrc => {
@@ -2999,10 +2997,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[1].arg;
                 const numEntries = pc[2].arg;
                 const dst = pc[3].arg;
-                const keyIdxes = pc[4..4+numEntries];
-                pc += 4 + numEntries;
+                const keyIdxes = @ptrCast([*]const align(1) u16, pc + 4)[0..numEntries];
                 const vals = framePtr[startLocal .. startLocal + numEntries];
                 framePtr[dst] = try cy.heap.allocMap(vm, keyIdxes, vals);
+                pc += 4 + numEntries * 2;
                 continue;
             },
             .slice => {
@@ -3348,7 +3346,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[pc[1].arg];
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
+                    if (obj.head.typeId == @ptrCast(*align (1) u16, pc + 4).*) {
                         const lastValue = obj.object.getValuePtr(pc[6].arg);
                         release(vm, lastValue.*);
                         lastValue.* = framePtr[pc[2].arg];
@@ -3373,10 +3371,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[2].arg;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.common.structId == @ptrCast(*align (1) u16, pc + 4).*) {
-                        framePtr[dst] = obj.object.getValue(pc[6].arg);
+                    if (obj.head.typeId == @ptrCast(*align (1) u16, pc + 5).*) {
+                        framePtr[dst] = obj.object.getValue(pc[7].arg);
                         retain(vm, framePtr[dst]);
-                        pc += 7;
+                        pc += 8;
                         continue;
                     }
                 } else {
@@ -3384,10 +3382,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 // Deoptimize.
                 pc[0] = cy.OpData{ .code = .fieldRetain };
-                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-                framePtr[dst] = try @call(.never_inline, gvm.getField, .{ recv, pc[3].arg });
-                retain(vm, framePtr[dst]);
-                pc += 7;
                 continue;
             },
             .forRangeInit => {
@@ -3472,26 +3466,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // try @call(.never_inline, gvm.setField, .{recv, fieldId, val});
                 continue;
             },
-            .fieldRelease => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpFieldRelease:"::);
-                }
-                const fieldId = pc[1].arg;
-                const left = pc[2].arg;
-                const dst = pc[3].arg;
-                pc += 4;
-                const recv = framePtr[left];
-                framePtr[dst] = try @call(.never_inline, gvm.getField, .{recv, fieldId});
-                release(vm, recv);
-                continue;
-            },
             .field => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpField:"::);
                 }
                 const left = pc[1].arg;
                 const dst = pc[2].arg;
-                const symId = pc[3].arg;
+                const symId = @ptrCast(*align (1) u16, pc + 3).*;
                 const recv = framePtr[left];
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
@@ -3501,13 +3482,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.OpData{ .code = .fieldIC };
-                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
-                        pc[6] = cy.OpData{ .arg = offset };
+                        @ptrCast(*align (1) u16, pc + 5).* = @intCast(u16, obj.head.typeId);
+                        pc[7] = cy.OpData{ .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
                         framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.namePtr[0..sym.nameLen]});
                     }
-                    pc += 7;
+                    pc += 8;
                     continue;
                 } else {
                     return vm.getFieldMissingSymbolError();
@@ -3519,7 +3500,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const recv = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
-                const symId = pc[3].arg;
+                const symId = @ptrCast(*align (1) u16, pc + 3).*;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
@@ -3528,14 +3509,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.OpData{ .code = .fieldRetainIC };
-                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
-                        pc[6] = cy.OpData { .arg = offset };
+                        @ptrCast(*align (1) u16, pc + 5).* = @intCast(u16, obj.head.typeId);
+                        pc[7] = cy.OpData { .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
                         framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.namePtr[0..sym.nameLen]});
                     }
                     retain(vm, framePtr[dst]);
-                    pc += 7;
+                    pc += 8;
                     continue;
                 } else {
                     return vm.getFieldMissingSymbolError();
@@ -3559,7 +3540,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                         // Inline cache.
                         pc[0] = cy.OpData{ .code = .setFieldReleaseIC };
-                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.common.structId);
+                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.head.typeId);
                         pc[6] = cy.OpData { .arg = offset };
                         pc += 7;
                         continue;
@@ -4133,8 +4114,8 @@ fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) !void {
     const offset = getInstOffset(vm, pc);
     switch (pc[0].code) {
         .constOp => {
-            const idx = pc[1].arg;
-            const dst = pc[2].arg;
+            const idx = @ptrCast(*const align (1) u16, pc + 1).*;
+            const dst = pc[3].arg;
             _ = dst;
             const val = Value{ .val = vm.consts[idx].val };
             extra = try std.fmt.bufPrint(&buf, "[constVal={s}]", .{vm.valueToTempString(val)});

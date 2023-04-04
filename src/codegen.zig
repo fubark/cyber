@@ -277,12 +277,17 @@ fn genMapInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime dst
                 .ident => {
                     const name = self.getNodeTokenString(key);
                     const idx = try self.buf.getOrPushStringConst(name);
-                    try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
+
+                    try self.operandStack.ensureUnusedCapacity(self.alloc, 2);
+                    @ptrCast(*align (1) u16, self.operandStack.items.ptr + self.operandStack.items.len).* = @intCast(u16, idx);
+                    self.operandStack.items.len += 2;
                 },
                 .string => {
                     const name = self.getNodeTokenString(key);
                     const idx = try self.buf.getOrPushStringConst(name);
-                    try self.operandStack.append(self.alloc, cy.OpData.initArg(@intCast(u8, idx)));
+                    try self.operandStack.ensureUnusedCapacity(self.alloc, 2);
+                    @ptrCast(*align (1) u16, self.operandStack.items.ptr + self.operandStack.items.len).* = @intCast(u16, idx);
+                    self.operandStack.items.len += 2;
                 },
                 else => stdx.panicFmt("unsupported key {}", .{key.node_t}),
             }
@@ -772,7 +777,7 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                         const enumId = rSym.inner.enumMember.enumId;
                         const val = cy.Value.initEnum(@intCast(u8, enumId), @intCast(u8, rSym.inner.enumMember.memberId));
                         const idx = try self.buf.pushConst(cy.Const.init(val.val));
-                        try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+                        try genConstOp(self, idx, dst);
 
                         const vtype = types.initEnumType(enumId);
                         return self.initGenValue(dst, vtype, true);
@@ -788,6 +793,12 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
     } else {
         return genField(self, node.head.accessExpr.left, node.head.accessExpr.right, dst, retain, dstIsUsed, nodeId);
     }
+}
+
+fn genConstOp(c: *cy.CompileChunk, idx: usize, dst: u8) !void {
+    const pc = c.buf.len();
+    try c.buf.pushOp3(.constOp, 0, 0, dst);
+    c.buf.setOpArgU16(pc + 1, @intCast(u16, idx));
 }
 
 fn genReleaseIfRetainedTempAt(self: *cy.CompileChunk, val: GenValue, nodeId: cy.NodeId) !void {
@@ -819,14 +830,18 @@ fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: 
         try self.pushDebugSym(debugNodeId);
         const leftIsTempRetained = leftv.retained and leftv.isTempLocal;
         if (retain or leftIsTempRetained) {
-            try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
+            const pc = self.buf.len();
+            try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
+            self.buf.setOpArgU16(pc + 3, @intCast(u16, fieldId));
 
             // ARC cleanup.
             try genReleaseIfRetainedTemp(self, leftv);
 
             return self.initGenValue(dst, types.AnyType, true);
         } else {
-            try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, @intCast(u8, fieldId), 0, 0, 0 });
+            const pc = self.buf.len();
+            try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
+            self.buf.setOpArgU16(pc + 3, @intCast(u16, fieldId));
 
             // ARC cleanup.
             try genReleaseIfRetainedTemp(self, leftv);
@@ -908,7 +923,7 @@ pub fn genExprTo2(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, requeste
             const symId = try self.compiler.vm.ensureSymbol(name);
             const val = cy.Value.initErrorSymbol(@intCast(u8, symId));
             const idx = try self.buf.pushConst(cy.Const.init(val.val));
-            try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+            try genConstOp(self, idx, dst);
             return self.initGenValue(dst, types.ErrorType, false);
         },
         .string => {
@@ -1936,7 +1951,7 @@ fn genMatchBlock(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
 
 fn genString(self: *CompileChunk, str: []const u8, dst: LocalId) !GenValue {
     const idx = try self.buf.getOrPushStringConst(str);
-    try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+    try genConstOp(self, idx, dst);
     return self.initGenValue(dst, types.StaticStringType, false);
 }
 
@@ -1952,7 +1967,7 @@ fn genConstInt(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
     }
     const int = @floatToInt(i32, val);
     const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initI32(int).val));
-    try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+    try genConstOp(self, idx, dst);
     return self.initGenValue(dst, types.IntegerType, false);
 }
 
@@ -1965,7 +1980,7 @@ fn genConstNumber(self: *CompileChunk, val: f64, dst: LocalId) !GenValue {
         }
     }
     const idx = try self.buf.pushConst(cy.Const.init(@bitCast(u64, val)));
-    try self.buf.pushOp2(.constOp, @intCast(u8, idx), dst);
+    try genConstOp(self, idx, dst);
     return self.initGenValue(dst, types.NumberType, false);
 }
 
@@ -2427,7 +2442,10 @@ fn genBinOpAssignToField(self: *CompileChunk, code: cy.OpCode, leftId: cy.NodeId
     const accessLeftv = try self.genExpr(left.head.accessExpr.left, false);
     const accessLocal = try self.nextFreeTempLocal();
     try self.pushDebugSym(leftId);
-    try self.buf.pushOpSlice(.field, &.{ accessLeftv.local, accessLocal, @intCast(u8, fieldId), 0, 0, 0 });
+
+    const pc = self.buf.len();
+    try self.buf.pushOpSlice(.field, &.{ accessLeftv.local, accessLocal, 0, 0, 0, 0, 0 });
+    self.buf.setOpArgU16(pc + 3, @intCast(u16, fieldId));
 
     const rightv = try self.genExpr(rightId, false);
     try self.buf.pushOp3(code, accessLocal, rightv.local, accessLocal);
@@ -2551,7 +2569,7 @@ fn genSetVarToExpr(self: *CompileChunk, leftId: cy.NodeId, exprId: cy.NodeId, co
                     if (nameId == mNameId) {
                         const val = cy.Value.initEnum(@intCast(u8, svar.vtype.inner.enumT.enumId), @intCast(u8, i));
                         const idx = try self.buf.pushConst(cy.Const.init(val.val));
-                        try self.buf.pushOp2(.constOp, @intCast(u8, idx), svar.local);
+                        try genConstOp(self, idx, svar.local);
                         return;
                     }
                 }

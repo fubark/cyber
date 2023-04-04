@@ -278,8 +278,8 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             fmt.printStderr("{} {} val={} dst={}", &.{v(pcOffset), v(code), v(val), v(dst)});
         },
         .constOp => {
-            const idx = pc[1].arg;
-            const dst = pc[2].arg;
+            const idx = @ptrCast(*const align (1) u16, pc + 1).*;
+            const dst = pc[3].arg;
             fmt.printStderr("{} {} constIdx={} dst={}", &.{v(pcOffset), v(code), v(idx), v(dst)});
         },
         .copy => {
@@ -310,13 +310,13 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
         .field => {
             const recv = pc[1].arg;
             const dst = pc[2].arg;
-            const symId = pc[3].arg;
+            const symId = @ptrCast(*const align(1) u16, pc + 3).*;
             fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
         },
         .fieldRetain => {
             const recv = pc[1].arg;
             const dst = pc[2].arg;
-            const symId = pc[3].arg;
+            const symId = @ptrCast(*const align(1) u16, pc + 3).*;
             fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
         },
         .forRangeInit => {
@@ -372,7 +372,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const numEntries = pc[2].arg;
             const dst = pc[3].arg;
             fmt.printStderr("{} {} startLocal={}, numEntries={}, dst={}", &.{v(pcOffset), v(code), v(startLocal), v(numEntries), v(dst)});
-            const keyIdxes = pc[4..4+numEntries];
+            const keyIdxes = pc[4..4+numEntries*2];
             printStderr(" {any}", .{std.mem.sliceAsBytes(keyIdxes)});
         },
         .object => {
@@ -559,10 +559,10 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .setBoxValueRelease,
         .boxValue,
         .boxValueRetain,
-        .tagLiteral,
-        .constOp => {
+        .tagLiteral => {
             return 3;
         },
+        .constOp,
         .staticVar,
         .setStaticVar,
         .staticFunc,
@@ -606,7 +606,7 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         },
         .map => {
             const numEntries = pc[2].arg;
-            return 4 + numEntries;
+            return 4 + numEntries * 2;
         },
         .cast,
         .castAbstract,
@@ -627,13 +627,13 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .forRange,
         .forRangeReverse,
         .setFieldRelease,
-        .setFieldReleaseIC,
+        .setFieldReleaseIC => {
+            return 7;
+        },
         .fieldRetain,
         .fieldRetainIC,
         .field,
-        .fieldIC => {
-            return 7;
-        },
+        .fieldIC,
         .forRangeInit => {
             return 8;
         },
@@ -651,15 +651,14 @@ pub fn getInstLenAt(pc: [*]const OpData) u8 {
         .callObjFuncIC => {
             return 16;
         },
-        else => {
-            stdx.panicFmt("unsupported {}", .{pc[0].code});
-        },
     }
 }
 
 pub const OpCode = enum(u8) {
     /// Copies a constant value from `consts` to a dst local.
+    /// [constIdx u16] [dst]
     constOp = vmc.CodeConstOp,
+
     /// Sets an immediate i8 value as a number to a dst local.
     constI8 = vmc.CodeConstI8,
     /// Sets an immediate i8 value as an integer to a dst local.
@@ -729,7 +728,6 @@ pub const OpCode = enum(u8) {
     fieldIC = vmc.CodeFieldIC,
     fieldRetain = vmc.CodeFieldRetain,
     fieldRetainIC = vmc.CodeFieldRetainIC,
-    fieldRelease = vmc.CodeFieldRelease,
     lambda = vmc.CodeLambda,
     closure = vmc.CodeClosure,
     compare = vmc.CodeCompare,
@@ -832,7 +830,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 98);
+    try t.eq(std.enums.values(OpCode).len, 97);
     try t.eq(@sizeOf(OpData), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -759,7 +759,7 @@ pub fn allocEmptyMap(self: *cy.VM) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocMap(self: *cy.VM, keyIdxs: []const cy.OpData, vals: []const Value) !Value {
+pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
         .structId = MapS,
@@ -777,7 +777,7 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []const cy.OpData, vals: []const Value) !
     for (keyIdxs, 0..) |idx, i| {
         const val = vals[i];
 
-        const keyVal = Value{ .val = self.consts[idx.arg].val };
+        const keyVal = Value{ .val = self.consts[idx].val };
         const res = try inner.getOrPut(self.alloc, self, keyVal);
         if (res.foundExisting) {
             // TODO: Handle reference count.

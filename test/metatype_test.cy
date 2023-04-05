@@ -12,3 +12,12 @@ t.eq(typeof(int(123)).id(), 7)
 t.eq(typeof(123).id(), 8)
 t.eq(typeof([]).id(), 9)
 t.eq(typeof({}).id(), 11)
+
+-- Referencing type name.
+type Foo object:
+	a number
+t.eq(typesym(Foo), #metatype)
+
+-- Referencing type name path.
+import os 'os'
+t.eq(typesym(os.CFunc), #metatype)

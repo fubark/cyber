@@ -785,6 +785,17 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                         return GenValue.initNoValue();
                     }
                 },
+                .object => {
+                    if (dstIsUsed) {
+                        const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
+                        try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
+                        try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
+                        try self.buf.pushOperand(dst);
+                        return self.initGenValue(dst, types.MetaTypeType, true);
+                    } else {
+                        return GenValue.initNoValue();
+                    }
+                },
                 else => {
                     return self.reportError("Unsupported accessExpr: {}", &.{v(rSym.symT)});
                 }

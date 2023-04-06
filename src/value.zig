@@ -125,11 +125,11 @@ pub const Value = packed union {
         if (self.isNumber()) {
             return self.asF64();
         } else {
-            return @call(.never_inline, otherToF64, .{self});
+            return @call(.never_inline, otherToF64, .{self}) catch stdx.fatal();
         }
     }
 
-    pub fn otherToF64(self: *const Value) linksection(cy.HotSection) f64 {
+    pub fn otherToF64(self: *const Value) linksection(cy.HotSection) !f64 {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
             if (obj.head.typeId == cy.AstringT) {
@@ -138,13 +138,22 @@ pub const Value = packed union {
             } else if (obj.head.typeId == cy.UstringT) {
                 const str = obj.ustring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
-            } else stdx.panicFmt("unexpected struct {}", .{obj.head.typeId});
+            } else if (obj.head.typeId == cy.StringSliceT) {
+                const str = obj.stringSlice.getConstSlice();
+                return std.fmt.parseFloat(f64, str) catch 0;
+            } else {
+                log.debug("unsupported conv to number: {}", .{obj.head.typeId});
+                return error.Unsupported;
+            }
         } else {
             switch (self.getTag()) {
                 TagNone => return 0,
                 TagBoolean => return if (self.asBool()) 1 else 0,
                 TagInteger => return @intToFloat(f64, self.asInteger()),
-                else => stdx.panicFmt("unexpected tag {}", .{self.getTag()}),
+                else => {
+                    log.debug("unsupported conv to number: {}", .{self.getTag()});
+                    return error.Unsupported;
+                }
             }
         }
     }
@@ -448,6 +457,9 @@ pub const Value = packed union {
                     TagError => {
                         log.info("Error {}", .{self.asErrorSymbol()});
                     },
+                    TagSymbol => {
+                        log.info("Symbol {}", .{self.asSymbolId()});
+                    },
                     TagStaticUstring,
                     TagStaticAstring => {
                         const slice = self.asStaticStringSlice();
@@ -455,7 +467,7 @@ pub const Value = packed union {
                         log.info("Const String len={}", .{slice.len()});
                     },
                     else => {
-                        log.info("Unknown {}", .{self.val});
+                        log.info("Unknown {}", .{self.getTag()});
                     },
                 }
             }

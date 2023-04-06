@@ -44,6 +44,7 @@ lib = os.bindLib(libPath, [
   os.CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
   os.CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
   os.CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #voidPtr }
+  os.CFunc{ sym: 'testArray', args: [os.CArray{n: 2, elem: #double}], ret: #double }
   os.CStruct{ fields: [#double, #int, #charPtr, #bool], type: MyObject }
 ])
 t.eq(lib.testAdd(123, 321), 444)
@@ -58,6 +59,7 @@ t.eq(lib.testU64(123456789000), 123456789000)
 t.eq(lib.testUSize(123456789000), 123456789000)
 t.eqNear(lib.testF32(1.2345), 1.2345)
 t.eq(lib.testF64(1.2345), 1.2345)
+t.eq(lib.testArray([123, 321]), 444)
 
 -- object arg and return type.
 cstr = os.cstr('foo')
@@ -107,7 +109,7 @@ var staticLibPath: if os.system == 'macos' then 'test/macos_lib.dylib' else if o
 var staticLib: os.bindLib(staticLibPath, [
   os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
-func staticAdd(a, b) = staticLib.testAdd
+func staticAdd(a number, b number) number = staticLib.testAdd
 t.eq(staticAdd(123, 321), 444)
 -- Freeing the lib reference should not affect `staticAdd`
 staticLib = none

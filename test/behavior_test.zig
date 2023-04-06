@@ -1132,6 +1132,9 @@ test "FFI." {
             };
             return &temp;
         }
+        export fn testArray(arr: [*c]f64) f64 {
+            return arr[0] + arr[1];
+        }
         var temp: MyObject = undefined;
     };
     _ = S;

@@ -4914,7 +4914,7 @@ export fn zAllocList(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.Valu
 }
 
 export fn zOtherToF64(val: Value) f64 {
-    return val.otherToF64();
+    return val.otherToF64() catch fatal();
 }
 
 export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: cy.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {

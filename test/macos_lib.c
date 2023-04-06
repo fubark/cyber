@@ -90,3 +90,6 @@ MyObject* testRetObjectPtr(MyObject o) {
     temp.d = o.d;
     return &temp;
 }
+double testArray(double arr[2]) {
+    return arr[0] + arr[1];
+}

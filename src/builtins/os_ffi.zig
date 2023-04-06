@@ -22,18 +22,46 @@ pub const BindLibConfig = struct {
 };
 
 const Context = struct {
+    var buf: [64]u8 = undefined;
+
     ivm: *cy.VM,
     alloc: std.mem.Allocator,
-    symToCStructFields: std.AutoHashMapUnmanaged(u32, *cy.CyList) = .{},
+
+    /// Ordered to handle C decl rules.
+    symToCStructFields: std.AutoArrayHashMapUnmanaged(u32, *cy.CyList) = .{},
+
+    arrays: std.StringHashMapUnmanaged(cy.Value),
+
     config: BindLibConfig,
+    nField: u32,
+    elemField: u32,
 
     fn deinit(self: *Context) void {
         self.symToCStructFields.deinit(self.alloc);
+        var iter = self.arrays.keyIterator();
+        while (iter.next()) |key| {
+            self.alloc.free(key.*);
+        }
+        self.arrays.deinit(self.alloc);
+    }
+
+    fn ensureArray(self: *Context, bindT: Value) !void {
+        const n = @floatToInt(u32, (try self.ivm.getField(bindT, self.nField)).asF64());
+        const elem = try self.ivm.getField(bindT, self.elemField);
+        const elemName = try self.getTempBaseTypeName(elem);
+        const key = try std.fmt.bufPrint(&Context.buf, "{s}[{}]", .{elemName, n});
+        const res = try self.arrays.getOrPut(self.alloc, key);
+        if (!res.found_existing) {
+            res.key_ptr.* = try self.alloc.dupe(u8, key);
+            res.value_ptr.* = bindT;
+        }
     }
 
     fn genFuncReleaseOps(_: *Context, w: anytype, cargs: []const Value) !void {
         for (cargs, 0..) |carg, i| {
             if (carg.isObjectType(cy.MetaTypeT)) {
+                try w.print("  icyRelease(vm, args[{}]);\n", .{i});
+            } else if (carg.isObjectType(os.CArrayT)) {
                 try w.print("  icyRelease(vm, args[{}]);\n", .{i});
             } else {
                 const argTag = carg.asSymbolId();
@@ -50,6 +78,19 @@ const Context = struct {
         }
     }
 
+    /// eg. int a; int a[4];
+    fn genNamedCType(self: *Context, w: anytype, val: Value, name: []const u8) !void {
+        if (val.isObjectType(os.CArrayT)) {
+            const n = (try self.ivm.getField(val, self.nField)).asF64();
+            const elem = try self.ivm.getField(val, self.elemField);
+            try self.genCType(w, elem);
+            try w.print(" {s}[{}]", .{ name, @floatToInt(u32, n) });
+        } else {
+            try self.genCType(w, val);
+            try w.print(" {s}", .{name});
+        }
+    }
+
     fn genCType(self: *Context, w: anytype, val: Value) !void {
         if (val.isObjectType(cy.MetaTypeT)) {
             const objType = val.asPointer(*cy.heap.MetaType);
@@ -60,6 +101,11 @@ const Context = struct {
                 log.debug("CStruct not declared for: {s}", .{name});
                 return error.InvalidArgument;
             }
+        } else if (val.isObjectType(os.CArrayT)) {
+            const n = (try self.ivm.getField(val, self.nField)).asF64();
+            const elem = try self.ivm.getField(val, self.elemField);
+            try self.genCType(w, elem);
+            try w.print("[{}]", .{ @floatToInt(u32, n) });
         } else {
             if (val.isSymbol()) {
                 const tag = val.asSymbolId();
@@ -92,11 +138,60 @@ const Context = struct {
         }
     }
 
+    /// Returns the name of a base type. No arrays.
+    fn getTempBaseTypeName(self: *Context, val: Value) ![]const u8 {
+        const S = struct {
+            var buf: [16]u8 = undefined;
+        };
+        if (val.isObjectType(cy.MetaTypeT)) {
+            const objType = val.asPointer(*cy.heap.MetaType);
+            if (self.symToCStructFields.contains(objType.symId)) {
+                return std.fmt.bufPrint(&S.buf, "Struct{}", .{objType.symId});
+            } else {
+                const name = self.ivm.valueToTempString(val);
+                log.debug("CStruct not declared for: {s}", .{name});
+                return error.InvalidArgument;
+            }
+        } else {
+            if (val.isSymbol()) {
+                const tag = val.asSymbolId();
+                return switch (@intToEnum(Symbol, tag)) {
+                    .bool => "Bool",
+                    .char => "I8",
+                    .uchar => "U8",
+                    .short => "I16",
+                    .ushort => "U16",
+                    .int => "I32",
+                    .uint => "U32",
+                    .long => "I64",
+                    .ulong => "U64",
+                    .usize => "Usize",
+                    .float => "Float",
+                    .double => "Double",
+                    .charPtr => "CharPtr",
+                    .voidPtr => "VoidPtr",
+                    else => {
+                        std.debug.print("Unsupported arg type: {s}\n", .{ self.ivm.getSymbolName(tag) });
+                        return error.InvalidArgument;
+                    },
+                };
+            } else {
+                std.debug.print("Unsupported arg type: {s}\n", .{ self.ivm.valueToTempString(val) });
+                return error.InvalidArgument;
+            }
+        }
+    }
+
     /// If the c value is converted to a number, this assumes `cval` is already a double.
     fn genToCyValue(self: *Context, w: anytype, argType: Value, cval: []const u8) !void {
         if (argType.isObjectType(cy.MetaTypeT)) {
             const objType = argType.asPointer(*cy.heap.MetaType);
             try w.print("fromStruct{}(vm, {s})", .{ objType.symId, cval });
+        } else if (argType.isObjectType(os.CArrayT)) {
+            const n = @floatToInt(u32, (try self.ivm.getField(argType, self.nField)).asF64());
+            const elem = try self.ivm.getField(argType, self.elemField);
+            const elemName = try self.getTempBaseTypeName(elem);
+            try w.print("from{s}Array{}(vm, {s})", .{elemName, n, cval});
         } else {
             const tag = argType.asSymbolId();
             switch (@intToEnum(Symbol, tag)) {
@@ -133,27 +228,98 @@ const Context = struct {
             }
         }
     }
+
+    /// Assumes `uint64_t* args` is available in the scope.
+    fn genToCValueFromArg(self: *Context, w: anytype, argType: Value, i: usize) !void {
+        if (argType.isObjectType(cy.MetaTypeT)) {
+            const objType = argType.asPointer(*cy.heap.MetaType);
+            try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
+        } else {
+            if (argType.isSymbol()) {
+                const tag = argType.asSymbolId();
+                switch (@intToEnum(Symbol, tag)) {
+                    .bool => {
+                        try w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i});
+                    },
+                    .char => {
+                        try w.print("(int8_t)*(double*)&args[{}]", .{i});
+                    },
+                    .uchar => {
+                        try w.print("(uint8_t)*(double*)&args[{}]", .{i});
+                    },
+                    .short => {
+                        try w.print("(int16_t)*(double*)&args[{}]", .{i});
+                    },
+                    .ushort => {
+                        try w.print("(uint16_t)*(double*)&args[{}]", .{i});
+                    },
+                    .int => {
+                        try w.print("(int)*(double*)&args[{}]", .{i});
+                    },
+                    .uint => {
+                        try w.print("(uint32_t)*(double*)&args[{}]", .{i});
+                    },
+                    .long => {
+                        try w.print("(int64_t)*(double*)&args[{}]", .{i});
+                    },
+                    .ulong => {
+                        try w.print("(uint64_t)*(double*)&args[{}]", .{i});
+                    },
+                    .usize => {
+                        try w.print("(size_t)*(double*)&args[{}]", .{i});
+                    },
+                    .float => {
+                        try w.print("(float)*(double*)&args[{}]", .{i});
+                    },
+                    .double => {
+                        try w.print("*(double*)&args[{}]", .{i});
+                    },
+                    .charPtr => {
+                        try w.print("(char*)icyGetPtr(args[{}])", .{i});
+                    },
+                    .voidPtr => {
+                        try w.print("icyGetPtr(args[{}])", .{i});
+                    },
+                    else => {
+                        std.debug.print("Unsupported arg type: {s}\n", .{ self.ivm.getSymbolName(tag) });
+                        return error.InvalidArgument;
+                    }
+                }
+            } else {
+                std.debug.print("Unsupported arg type: {s}\n", .{ self.ivm.valueToTempString(argType) });
+                return error.InvalidArgument;
+            }
+        }
+    }
 };
 
-fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
-    const tag = val.asSymbolId();
-    switch (@intToEnum(Symbol, tag)) {
-        .bool => return bt.Boolean,
-        .char => return bt.Number,
-        .uchar => return bt.Number,
-        .short => return bt.Number,
-        .ushort => return bt.Number,
-        .int => return bt.Number,
-        .uint => return bt.Number,
-        .long => return bt.Number,
-        .ulong => return bt.Number,
-        .usize => return bt.Number,
-        .float => return bt.Number,
-        .double => return bt.Number,
-        .charPtr => return bt.Pointer,
-        .voidPtr => return bt.Pointer,
-        .void => return bt.None,
-        else => stdx.panicFmt("Unsupported param type: {s}", .{ ivm.getSymbolName(tag) }),
+fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.ResolvedSymId {
+    if (val.isSymbol()) {
+        const tag = val.asSymbolId();
+        switch (@intToEnum(Symbol, tag)) {
+            .bool => return bt.Boolean,
+            .char => return bt.Number,
+            .uchar => return bt.Number,
+            .short => return bt.Number,
+            .ushort => return bt.Number,
+            .int => return bt.Number,
+            .uint => return bt.Number,
+            .long => return bt.Number,
+            .ulong => return bt.Number,
+            .usize => return bt.Number,
+            .float => return bt.Number,
+            .double => return bt.Number,
+            .charPtr => return bt.Pointer,
+            .voidPtr => return bt.Pointer,
+            .void => return bt.None,
+            else => {
+                std.debug.print("Unsupported val type: {s}\n", .{ ivm.getSymbolName(tag) });
+                return error.InvalidArgument;
+            }
+        }
+    } else {
+        std.debug.print("Unsupported val type: {s}\n", .{ ivm.valueToTempString(val) });
+        return error.InvalidArgument;
     }
 }
 
@@ -176,69 +342,6 @@ fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
         .voidPtr => return bt.Pointer,
         .void => return bt.None,
         else => stdx.panicFmt("Unsupported return type: {s}", .{ ivm.getSymbolName(tag) }),
-    }
-}
-
-/// Assumes `uint64_t* args` is available in the scope.
-fn printToCValueFromArg(ivm: *cy.VM, w: anytype, argType: Value, i: usize) !void {
-    if (argType.isObjectType(cy.MetaTypeT)) {
-        const objType = argType.asPointer(*cy.heap.MetaType);
-        try w.print("toStruct{}(vm, args[{}])", .{objType.symId, i});
-    } else {
-        if (argType.isSymbol()) {
-            const tag = argType.asSymbolId();
-            switch (@intToEnum(Symbol, tag)) {
-                .bool => {
-                    try w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i});
-                },
-                .char => {
-                    try w.print("(int8_t)*(double*)&args[{}]", .{i});
-                },
-                .uchar => {
-                    try w.print("(uint8_t)*(double*)&args[{}]", .{i});
-                },
-                .short => {
-                    try w.print("(int16_t)*(double*)&args[{}]", .{i});
-                },
-                .ushort => {
-                    try w.print("(uint16_t)*(double*)&args[{}]", .{i});
-                },
-                .int => {
-                    try w.print("(int)*(double*)&args[{}]", .{i});
-                },
-                .uint => {
-                    try w.print("(uint32_t)*(double*)&args[{}]", .{i});
-                },
-                .long => {
-                    try w.print("(int64_t)*(double*)&args[{}]", .{i});
-                },
-                .ulong => {
-                    try w.print("(uint64_t)*(double*)&args[{}]", .{i});
-                },
-                .usize => {
-                    try w.print("(size_t)*(double*)&args[{}]", .{i});
-                },
-                .float => {
-                    try w.print("(float)*(double*)&args[{}]", .{i});
-                },
-                .double => {
-                    try w.print("*(double*)&args[{}]", .{i});
-                },
-                .charPtr => {
-                    try w.print("(char*)icyGetPtr(args[{}])", .{i});
-                },
-                .voidPtr => {
-                    try w.print("icyGetPtr(args[{}])", .{i});
-                },
-                else => {
-                    std.debug.print("Unsupported arg type: {s}\n", .{ ivm.getSymbolName(tag) });
-                    return error.InvalidArgument;
-                }
-            }
-        } else {
-            std.debug.print("Unsupported arg type: {s}\n", .{ ivm.valueToTempString(argType) });
-            return error.InvalidArgument;
-        }
     }
 }
 
@@ -283,7 +386,10 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         .ivm = ivm,
         .alloc = alloc,
         .symToCStructFields = .{},
+        .arrays = .{},
         .config = config,
+        .nField = try ivm.ensureFieldSym("n"),
+        .elemField = try ivm.ensureFieldSym("elem"),
     };
     defer ctx.deinit();
 
@@ -318,6 +424,9 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
                     const objType = ret.asPointer(*cy.heap.MetaType);
                     const rtType = ivm.structs.buf[objType.symId];
                     retTypeSymId = rtType.rTypeSymId;
+                } else if (ret.isObjectType(os.CArrayT)) {
+                    try ctx.ensureArray(ret);
+                    retTypeSymId = bt.List;
                 } else {
                     retTypeSymId = toResolvedReturnTypeSymId(ivm, ret);
                 }
@@ -332,8 +441,11 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
                             const rtType = ivm.structs.buf[objType.symId];
                             try ivm.compiler.tempSyms.append(ctx.alloc, rtType.rTypeSymId);
+                        } else if (carg.isObjectType(os.CArrayT)) {
+                            try ctx.ensureArray(carg);
+                            try ivm.compiler.tempSyms.append(ctx.alloc, bt.List);
                         } else {
-                            try ivm.compiler.tempSyms.append(ctx.alloc, toResolvedParamTypeSymId(ivm, carg));
+                            try ivm.compiler.tempSyms.append(ctx.alloc, try toResolvedParamTypeSymId(ivm, carg));
                         }
                     }
                 }
@@ -395,93 +507,180 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         \\extern void icyRelease(UserVM*, uint64_t);
         \\extern void* icyGetPtr(uint64_t);
         \\extern uint64_t icyAllocObject(UserVM*, uint32_t);
+        \\extern uint64_t icyAllocList(UserVM*, uint64_t*, uint32_t);
         \\extern uint64_t icyAllocCyPointer(UserVM*, void*);
         // \\extern int printf(char* fmt, ...);
         // \\extern void exit(int code);
         \\
     , .{});
 
-    var iter = ctx.symToCStructFields.iterator();
-    while (iter.next()) |e| {
-        const objSymId = e.key_ptr.*;
-        const fields = e.value_ptr.*;
+    {
+        var iter = ctx.symToCStructFields.iterator();
+        while (iter.next()) |e| {
+            const objSymId = e.key_ptr.*;
+            const fields = e.value_ptr.*;
 
-        // Generate C struct.
-        try w.print("typedef struct Struct{} {{\n", .{objSymId});
-        for (fields.items(), 0..) |field, i| {
-            try w.writeAll("  ");
-            try ctx.genCType(w, field);
-            try w.print(" f{};\n", .{i});
+            // Generate C struct.
+            try w.print("typedef struct Struct{} {{\n", .{objSymId});
+            for (fields.items(), 0..) |field, i| {
+                try w.writeAll("  ");
+                if (field.isObjectType(os.CArrayT)) {
+                    try ctx.ensureArray(field);
+                }
+                const name = try std.fmt.bufPrint(&Context.buf, "f{}", .{i});
+                try ctx.genNamedCType(w, field, name);
+                try w.writeAll(";\n");
+            }
+            try w.print("}} Struct{};\n", .{objSymId});
         }
-        try w.print("}} Struct{};\n", .{objSymId});
+    }
 
-        // Generate to C struct conv.
-        try w.print("Struct{} toStruct{}(UserVM* vm, uint64_t val) {{\n", .{objSymId, objSymId});
-        // Get pointer to first cyber object field.
-        try w.print("  uint64_t* args = (uint64_t*)(val & ~PointerMask) + 1;\n", .{});
-        try w.print("  Struct{} res;\n", .{objSymId, });
-        for (fields.items(), 0..) |field, i| {
-            try w.print("  res.f{} = ", .{i});
-            try printToCValueFromArg(ivm, w, field, i);
-            try w.print(";\n", .{});
+    // Generate array conversions declarations.
+    {
+        var iter = ctx.arrays.iterator();
+        while (iter.next()) |entry| {
+            const carr = entry.value_ptr.*;
+            const n = @floatToInt(u32, (try ivm.getField(carr, ctx.nField)).asF64());
+            const elem = try ivm.getField(carr, ctx.elemField);
+            const elemName = try ctx.getTempBaseTypeName(elem);
+
+            // to{elem}Array{n}
+            try w.print("void to{s}Array{}(UserVM* vm, uint64_t val, ", .{elemName, n});
+            try ctx.genCType(w, elem);
+            try w.print("* out);\n", .{});
+
+            // from{elem}Array{n}.
+            try w.print("uint64_t from{s}Array{}(UserVM* vm, ", .{elemName, n});
+            try ctx.genCType(w, elem);
+            try w.print(" arr[{}]);\n", .{n});
         }
-        try w.print("  return res;\n", .{});
-        try w.print("}}\n", .{});
+    }
 
-        // Generate from C struct conv.
-        try w.print("uint64_t fromStruct{}(UserVM* vm, Struct{} val) {{\n", .{objSymId, objSymId});
-        try w.print("  uint64_t obj = icyAllocObject(vm, {});\n", .{objSymId});
-        try w.print("  uint64_t* args = (uint64_t*)(obj & ~PointerMask) + 1;\n", .{});
-        var buf: [8]u8 = undefined;
-        for (fields.items(), 0..) |field, i| {
-            if (field.isSymbol()) {
-                const fieldTag = field.asSymbolId();
-                switch (@intToEnum(Symbol, fieldTag)) {
-                    .char,
-                    .uchar,
-                    .short,
-                    .ushort,
-                    .int,
-                    .uint,
-                    .long,
-                    .ulong,
-                    .usize,
-                    .float => {
-                        try w.print("  double arg{} = (double)val.f{};\n", .{i, i});
-                        const argStr = try std.fmt.bufPrint(&buf, "arg{}", .{i});
-                        try w.print("  args[{}] = ", .{i});
-                        try ctx.genToCyValue(w, field, argStr);
-                        try w.print(";\n", .{});
-                        continue;
-                    },
-                    else => {},
+    {
+        var iter = ctx.symToCStructFields.iterator();
+        while (iter.next()) |e| {
+            const objSymId = e.key_ptr.*;
+            const fields = e.value_ptr.*;
+            // Generate to C struct conv.
+            try w.print("Struct{} toStruct{}(UserVM* vm, uint64_t val) {{\n", .{objSymId, objSymId});
+            // Get pointer to first cyber object field.
+            try w.print("  uint64_t* args = (uint64_t*)(val & ~PointerMask) + 1;\n", .{});
+            try w.print("  Struct{} res;\n", .{objSymId, });
+            for (fields.items(), 0..) |field, i| {
+                if (field.isObjectType(os.CArrayT)) {
+                    const n = @floatToInt(u32, (try ivm.getField(field, ctx.nField)).asF64());
+                    const elem = try ivm.getField(field, ctx.elemField);
+                    const elemName = try ctx.getTempBaseTypeName(elem);
+                    try w.print("  to{s}Array{}(vm, args[{}], &res.f{}[0]);", .{elemName, n, i, i});
+                } else {
+                    try w.print("  res.f{} = ", .{i});
+                    try ctx.genToCValueFromArg(w, field, i);
+                    try w.print(";\n", .{});
                 }
             }
+            try w.print("  return res;\n", .{});
+            try w.print("}}\n", .{});
 
-            // Non number types.
+            // Generate from C struct conv.
+            try w.print("uint64_t fromStruct{}(UserVM* vm, Struct{} val) {{\n", .{objSymId, objSymId});
+            try w.print("  uint64_t obj = icyAllocObject(vm, {});\n", .{objSymId});
+            try w.print("  uint64_t* args = (uint64_t*)(obj & ~PointerMask) + 1;\n", .{});
+            var buf: [8]u8 = undefined;
+            for (fields.items(), 0..) |field, i| {
+                if (field.isSymbol()) {
+                    const fieldTag = field.asSymbolId();
+                    switch (@intToEnum(Symbol, fieldTag)) {
+                        .char,
+                        .uchar,
+                        .short,
+                        .ushort,
+                        .int,
+                        .uint,
+                        .long,
+                        .ulong,
+                        .usize,
+                        .float => {
+                            try w.print("  double arg{} = (double)val.f{};\n", .{i, i});
+                            const argStr = try std.fmt.bufPrint(&buf, "arg{}", .{i});
+                            try w.print("  args[{}] = ", .{i});
+                            try ctx.genToCyValue(w, field, argStr);
+                            try w.print(";\n", .{});
+                            continue;
+                        },
+                        else => {},
+                    }
+                }
 
-            const argStr = try std.fmt.bufPrint(&buf, "val.f{}", .{i});
-            try w.print("  args[{}] = ", .{i});
-            try ctx.genToCyValue(w, field, argStr);
-            try w.print(";\n", .{});
-        }
-        try w.print("  return obj;\n", .{});
-        try w.print("}}\n", .{});
+                // Non number types.
 
-        // Generate ptrTo[Object].
-        if (config.genMap) {
-            try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{ivm.structs.buf[objSymId].name});
-        } else {
-            try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t recv, uint64_t* args, char numArgs) {{\n", .{ivm.structs.buf[objSymId].name});
+                const argStr = try std.fmt.bufPrint(&buf, "val.f{}", .{i});
+                try w.print("  args[{}] = ", .{i});
+                try ctx.genToCyValue(w, field, argStr);
+                try w.print(";\n", .{});
+            }
+            try w.print("  return obj;\n", .{});
+            try w.print("}}\n", .{});
+
+            // Generate ptrTo[Object].
+            if (config.genMap) {
+                try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{ivm.structs.buf[objSymId].name});
+            } else {
+                try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t recv, uint64_t* args, char numArgs) {{\n", .{ivm.structs.buf[objSymId].name});
+            }
+            try w.print("  uint64_t ptr = *((uint64_t*)(args[0] & ~PointerMask) + 1);\n", .{});
+            try w.print("  uint64_t res = fromStruct{}(vm, *(Struct{}*)ptr);\n", .{objSymId, objSymId});
+            try w.print("  icyRelease(vm, args[0]);\n", .{});
+            if (!config.genMap) {
+                try w.print("  icyRelease(vm, recv);\n", .{});
+            }
+            try w.print("  return res;\n", .{});
+            try w.print("}}\n", .{});
         }
-        try w.print("  uint64_t ptr = *((uint64_t*)(args[0] & ~PointerMask) + 1);\n", .{});
-        try w.print("  uint64_t res = fromStruct{}(vm, *(Struct{}*)ptr);\n", .{objSymId, objSymId});
-        try w.print("  icyRelease(vm, args[0]);\n", .{});
-        if (!config.genMap) {
-            try w.print("  icyRelease(vm, recv);\n", .{});
+    }
+
+    // Generate array conversions.
+    {
+        var iter = ctx.arrays.iterator();
+        while (iter.next()) |entry| {
+            const carr = entry.value_ptr.*;
+            const n = @floatToInt(u32, (try ivm.getField(carr, ctx.nField)).asF64());
+            const elem = try ivm.getField(carr, ctx.elemField);
+            const elemName = try ctx.getTempBaseTypeName(elem);
+
+            // Generate to{elem}Array{n}. Writes to ptr since arrays can't be returned in C.
+            try w.print("void to{s}Array{}(UserVM* vm, uint64_t val, ", .{elemName, n});
+            try ctx.genCType(w, elem);
+            try w.print("* out) {{\n", .{});
+            try w.print("  uint64_t* args = (uint64_t*)*((uint64_t*)(val & ~PointerMask) + 1);\n", .{});
+            for (0..n) |i| {
+                if (elem.isObjectType(os.CArrayT)) {
+                    const subn = @floatToInt(u32, (try ivm.getField(elem, ctx.nField)).asF64());
+                    const subelem = try ivm.getField(elem, ctx.elemField);
+                    const subelemName = try ctx.getTempBaseTypeName(subelem);
+                    try w.print("  to{s}Array{}(vm, args[{}], &out[0]);", .{subelemName, subn, i});
+                } else {
+                    try w.print("  out[{}] = ", .{i});
+                    try ctx.genToCValueFromArg(w, elem, i);
+                    try w.writeAll(";\n");
+                }
+            }
+            try w.print("}}\n", .{});
+
+            // Generate from{elem}Array{n}.
+            try w.print("uint64_t from{s}Array{}(UserVM* vm, ", .{elemName, n});
+            try ctx.genCType(w, elem);
+            try w.print(" arr[{}]) {{\n", .{n});
+
+            try w.print("  uint64_t vals[{}];\n", .{n});
+            for (0..n) |i| {
+                try w.print("  vals[{}] = ", .{i});
+                const cval = try std.fmt.bufPrint(&Context.buf, "arr[{}]", .{i});
+                try ctx.genToCyValue(w, elem, cval);
+                try w.writeAll(";\n");
+            }
+            try w.print("  return icyAllocList(vm, &vals[0], {});\n", .{n});
+            try w.print("}}\n", .{});
         }
-        try w.print("  return res;\n", .{});
-        try w.print("}}\n", .{});
     }
 
     // Begin func binding generation.
@@ -517,6 +716,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     _ = tcc.tcc_add_symbol(state, "icyGetPtr", cGetPtr);
     _ = tcc.tcc_add_symbol(state, "icyAllocCyPointer", cAllocCyPointer);
     _ = tcc.tcc_add_symbol(state, "icyAllocObject", cAllocObject);
+    _ = tcc.tcc_add_symbol(state, "icyAllocList", cAllocList);
     if (builtin.cpu.arch == .aarch64) {
         _ = tcc.tcc_add_symbol(state, "memmove", memmove);
     }
@@ -538,7 +738,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         const map = vm.allocEmptyMap() catch stdx.fatal();
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
-        cy.arc.retainInc(ivm, cyState, @intCast(u32, cfuncs.items.len + ctx.symToCStructFields.size - 1));
+        cy.arc.retainInc(ivm, cyState, @intCast(u32, cfuncs.items.len + ctx.symToCStructFields.count() - 1));
 
         for (cfuncs.items) |cfunc| {
             const sym = vm.valueToTempString(try ivm.getField2(cfunc.decl, symF));
@@ -553,12 +753,12 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const cargs = cargsv.asPointer(*cy.CyList).items();
             const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
 
-            const rFuncSigId = try vm.ensureUntypedFuncSig(@intCast(u32, cargs.len));
-            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len), rFuncSigId, cyState) catch stdx.fatal();
+            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len),
+                cfunc.rFuncSigId, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
             vm.release(symKey);
         }
-        iter = ctx.symToCStructFields.iterator();
+        var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
             const objSymId = e.key_ptr.*;
             const typeName = ivm.structs.buf[objSymId].name;
@@ -602,7 +802,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const methodSym = try ivm.ensureMethodSym(sym, @intCast(u32, cargs.len));
             try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, cy.MethodSym.initNativeFunc1(cfunc.rFuncSigId, func) });
         }
-        iter = ctx.symToCStructFields.iterator();
+        var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
             const objSymId = e.key_ptr.*;
             const rtType = ivm.structs.buf[objSymId];
@@ -663,6 +863,26 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     }
     // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch stdx.fatal();
 
+    // Temps.
+    if (cargs.len > 0) {
+        for (cargs, 0..) |carg, i| {
+            if (carg.isObjectType(os.CArrayT)) {
+                const n = @floatToInt(u32, (try ivm.getField(carg, ctx.nField)).asF64());
+                const elem = try ivm.getField(carg, ctx.elemField);
+                const elemName = try ctx.getTempBaseTypeName(elem);
+
+                try w.print("  ", .{});
+                const cval = try std.fmt.bufPrint(&Context.buf, "arr{}", .{i});
+                try ctx.genNamedCType(w, carg, cval);
+                try w.print(";\n", .{});
+
+                try w.print("  to{s}Array{}(vm, args[{}], &arr{}[0]);", .{elemName, n, i, i});
+            } else {
+                continue;
+            }
+        }
+    }
+
     // Gen call.
     if (ret.isObjectType(cy.MetaTypeT)) {
         const objType = ret.asPointer(*cy.heap.MetaType);
@@ -710,7 +930,11 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         const lastArg = cargs.len-1;
         for (cargs, 0..) |carg, i| {
-            try printToCValueFromArg(ivm, w, carg, i);
+            if (carg.isObjectType(os.CArrayT)) {
+                try w.print("arr{}", .{i});
+            } else {
+                try ctx.genToCValueFromArg(w, carg, i);
+            }
             if (i != lastArg) {
                 try w.print(", ", .{});
             }
@@ -772,6 +996,11 @@ fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
     } else {
         return cy.heap.allocEmptyObject(ivm, id, ivm.structs.buf[id].numFields) catch stdx.fatal();
     }
+}
+
+fn cAllocList(vm: *cy.UserVM, elems: [*]Value, n: u32) callconv(.C) Value {
+    const ivm = vm.internal();
+    return cy.heap.allocList(ivm, elems[0..n]) catch stdx.fatal();
 }
 
 fn breakpoint() callconv(.C) void {

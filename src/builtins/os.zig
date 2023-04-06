@@ -17,6 +17,7 @@ const log = stdx.log.scoped(.os);
 
 pub var CFuncT: cy.TypeId = undefined;
 pub var CStructT: cy.TypeId = undefined;
+pub var CArrayT: cy.TypeId = undefined;
 
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     const b = bindings.ModuleBuilder.init(self, mod);
@@ -24,6 +25,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     // Object Types.
     CFuncT = try b.createAndSetTypeObject("CFunc", &.{"sym", "args", "ret"});
     CStructT = try b.createAndSetTypeObject("CStruct", &.{"fields", "type"});
+    CArrayT = try b.createAndSetTypeObject("CArray", &.{"n", "elem"});
 
     // Variables.
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));

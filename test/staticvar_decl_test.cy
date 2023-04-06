@@ -32,3 +32,7 @@ type Object object:
     foo
 var a5: Object{ foo: 123 }
 t.eq(a5.foo, 123)
+
+-- Type specifier.
+var a6 number: 123
+t.eq(a6, 123)

@@ -1367,21 +1367,31 @@ fn funcDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
 
 pub fn declareVar(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    const left = c.nodes[node.head.varDecl.left];
-    const name = c.getNodeTokenString(left);
+    const varSpec = c.nodes[node.head.varDecl.varSpec];
+    const nameN = c.nodes[varSpec.head.varSpec.name];
+    const name = c.getNodeTokenString(nameN);
     const nameId = try ensureNameSym(c.compiler, name);
     try c.compiler.sema.modules.items[c.modId].setUserVar(c.compiler, name, nodeId);
 
-    const rSymId = try resolveLocalVarSym(c, c.semaResolvedRootSymId, nameId, nodeId, true);
+    // var type.
+    var typeSymId: ResolvedSymId = undefined;
+    if (varSpec.head.varSpec.typeSpecHead != cy.NullId) {
+        typeSymId = try getOrResolveTypeSymFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+    } else {
+        typeSymId = bt.Any;
+    }
+
+    const rSymId = try resolveLocalVarSym(c, c.semaResolvedRootSymId, nameId, typeSymId, nodeId, true);
     c.nodes[nodeId].head.varDecl.sema_rSymId = rSymId;
 }
 
 fn varDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     _ = exported;
     const node = c.nodes[nodeId];
-    const left = c.nodes[node.head.varDecl.left];
-    if (left.node_t == .ident) {
-        const name = c.getNodeTokenString(left);
+    const varSpec = c.nodes[node.head.varDecl.varSpec];
+    const nameN = c.nodes[varSpec.head.varSpec.name];
+    if (nameN.node_t == .ident) {
+        const name = c.getNodeTokenString(nameN);
 
         const rSymId = node.head.varDecl.sema_rSymId;
         const crSymId = CompactResolvedSymId.initSymId(rSymId);
@@ -1405,7 +1415,7 @@ fn varDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
             };
         }
     } else {
-        return c.reportErrorAt("Static variable declarations can only have an identifier as the name. Parsed {} instead.", &.{fmt.v(left.node_t)}, nodeId);
+        return c.reportErrorAt("Static variable declarations can only have an identifier as the name. Parsed {} instead.", &.{fmt.v(nameN.node_t)}, nodeId);
     }
 }
 
@@ -3853,7 +3863,7 @@ pub fn resolveRootModuleSym(self: *cy.VMcompiler, name: []const u8, modId: Modul
 
 /// Given the local sym path, add a resolved var sym entry.
 /// Fail if there is already a symbol in this path with the same name.
-fn resolveLocalVarSym(self: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
+fn resolveLocalVarSym(self: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId, typeSymId: ResolvedSymId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
     if (rParentSymId == self.semaResolvedRootSymId) {
         // Check for local sym.
         const key = RelLocalSymKey{
@@ -3864,7 +3874,8 @@ fn resolveLocalVarSym(self: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameI
         };
         if (self.localSyms.contains(key)) {
             const node = self.nodes[declId];
-            return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(getName(self.compiler, nameId))}, node.head.varDecl.left);
+            const varSpec = self.nodes[node.head.varDecl.varSpec];
+            return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(getName(self.compiler, nameId))}, varSpec.head.varSpec.name);
         }
     }
 
@@ -3888,7 +3899,7 @@ fn resolveLocalVarSym(self: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameI
             .variable = .{
                 .chunkId = self.id,
                 .declId = declId,
-                .rTypeSymId = bt.Any,
+                .rTypeSymId = typeSymId,
             },
         },
         .exported = exported,

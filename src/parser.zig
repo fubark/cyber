@@ -1658,6 +1658,8 @@ pub const Parser = struct {
                     self.advanceToken();
                 } else return self.reportParseError("Expected local name identifier.", &.{});
 
+                const typeSpecHead = (try self.parseOptTypeSpec()) orelse cy.NullId;
+
                 token = self.peekToken();
                 if (token.tag() != .colon) {
                     return self.reportParseError("Expected `:` after local variable name.", &.{});
@@ -1678,10 +1680,18 @@ pub const Parser = struct {
                         };
                     },
                 }
+                const varSpec = try self.pushNode(.varSpec, start);
+                self.nodes.items[varSpec].head = .{
+                    .varSpec = .{
+                        .name = name,
+                        .typeSpecHead = typeSpecHead,
+                    },
+                };
+
                 const decl = try self.pushNode(.varDecl, start);
                 self.nodes.items[decl].head = .{
                     .varDecl = .{
-                        .left = name,
+                        .varSpec = varSpec,
                         .right = right,
                     },
                 };
@@ -3349,6 +3359,7 @@ pub const NodeType = enum {
     opAssignStmt,
     staticDecl,
     captureDecl,
+    varSpec,
     varDecl,
     pass_stmt,
     breakStmt,
@@ -3581,8 +3592,12 @@ pub const Node = struct {
             fieldsHead: NodeId,
             funcsHead: NodeId,
         },
+        varSpec: struct {
+            name: NodeId,
+            typeSpecHead: Nullable(NodeId),
+        },
         varDecl: struct {
-            left: NodeId,
+            varSpec: NodeId,
             right: NodeId,
             sema_rSymId: cy.sema.ResolvedSymId = cy.NullId,
         },

@@ -767,7 +767,9 @@ fn genAccessExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                         const pc = self.buf.len();
                         try self.buf.pushOp3(.staticVar, 0, 0, dst);
                         self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
-                        return self.initGenValue(dst, types.AnyType, true);
+
+                        const vtype = try types.typeFromResolvedSym(self, rSym.inner.variable.rTypeSymId);
+                        return self.initGenValue(dst, vtype, true);
                     } else {
                         return GenValue.initNoValue();
                     }

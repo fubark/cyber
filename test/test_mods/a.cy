@@ -1,4 +1,5 @@
 var varNum: 123
+var varTypedNum number: 123
 var varList: [1, 2, 3]
 var varMap: { a: 1, b: 2, c: 3 }
 var varFunc: func():

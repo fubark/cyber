@@ -2,6 +2,9 @@ import a 'test_mods/a.cy'
 import t 'test'
 
 t.eq(a.varNum, 123)
+t.eq(checkNumberArg(a.varTypedNum), 123)
+func checkNumberArg(a number):
+    return a
 t.eqList(a.varList, [1, 2, 3])
 t.eq(a.varMap.size(), 3)
 t.eq(a.varMap.a, 1)

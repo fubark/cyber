@@ -1927,6 +1927,9 @@ fn identifier(c: *cy.CompileChunk, nodeId: cy.NodeId) !Type {
 
         const rSym = c.compiler.sema.getResolvedSym(symRes.rSymId);
         switch (rSym.symT) {
+            .variable => {
+                return try types.typeFromResolvedSym(c, rSym.inner.variable.rTypeSymId);
+            },
             .builtinType => {
                 return types.MetaTypeType;
             },

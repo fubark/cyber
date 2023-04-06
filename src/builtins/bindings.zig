@@ -27,15 +27,12 @@ pub const Symbol = enum {
     ushort,
     int,
     uint,
-    uint31,
-    uint1,
     long,
     ulong,
     usize,
     float,
     double,
-    charPtrZ,
-    dupeCharPtrZ,
+    charPtr,
     voidPtr,
     void,
 
@@ -435,15 +432,12 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "ushort", .ushort);
     try ensureSymbol(self, "int", .int);
     try ensureSymbol(self, "uint", .uint);
-    try ensureSymbol(self, "uint31", .uint31);
-    try ensureSymbol(self, "uint1", .uint1);
     try ensureSymbol(self, "long", .long);
     try ensureSymbol(self, "ulong", .ulong);
     try ensureSymbol(self, "usize", .usize);
     try ensureSymbol(self, "float", .float);
     try ensureSymbol(self, "double", .double);
-    try ensureSymbol(self, "charPtrZ", .charPtrZ);
-    try ensureSymbol(self, "dupeCharPtrZ", .dupeCharPtrZ);
+    try ensureSymbol(self, "charPtr", .charPtr);
     try ensureSymbol(self, "voidPtr", .voidPtr);
     try ensureSymbol(self, "void", .void);
 
@@ -2575,5 +2569,18 @@ pub const ModuleBuilder = struct {
     pub fn addMethod2(self: *const ModuleBuilder, typeId: cy.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
         const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
         try self.vm.addMethodSym(typeId, symId, cy.MethodSym.initNativeFunc2(rFuncSigId, ptr));
+    }
+
+    pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !cy.TypeId {
+        const rSymId = try cy.sema.resolveObjectSym(self.compiler, self.mod.resolvedRootSymId, name, self.mod.id);
+        const nameId = try cy.sema.ensureNameSym(self.compiler, name);
+        const typeId = try self.vm.addObjectTypeExt(self.mod.resolvedRootSymId, nameId, name, rSymId);
+        for (fields, 0..) |field, i| {
+            const id = try self.vm.ensureFieldSym(field);
+            try self.vm.addFieldSym(typeId, id, @intCast(u16, i));
+        }
+        try self.mod.setTypeObject(self.compiler, name, typeId, cy.NullId);
+        self.vm.structs.buf[typeId].numFields = @intCast(u32, fields.len);
+        return typeId;
     }
 };

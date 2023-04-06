@@ -217,10 +217,12 @@ for map each k, v:
 | `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |
 | `createDir(path any) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
 | `createFile(path any, truncate boolean) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
+| `cstr(any) pointer` | Returns a null terminated C string. |
 | `cwd() string` | Returns the current working directory. |
 | `dirName(path any) string \| none` | Returns the given path with its last component removed. |
 | `exePath() string` | Returns the current executable's path. |
 | `free(ptr pointer) none` | Frees the memory located at `ptr`. |
+| `fromCstr(pointer) rawstring` | Returns a `rawstring` from a null terminated C string. |
 | `getEnv(key any) string \| none` | Returns an environment value by key. |
 | `getEnvAll() Map` | Returns all environment entries as a `Map`. |
 | `malloc(size number) pointer` | Allocates `size` bytes of memory and returns a pointer. |

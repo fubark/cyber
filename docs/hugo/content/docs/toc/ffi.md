@@ -34,10 +34,8 @@ When using `CFunc` or `CStruct` declarations, [tag literals]({{<relref "/docs/to
 | #usize | number | size_t, uintptr_t | 
 | #float | number | float |
 | #double | number | double |
-| #charPtrZ | any | char* (null terminated) | C receives a null terminated string that lives until the end of the function call. |
-| #charPtrZ (return) | rawstring | char* (null terminated) |
-| #dupeCharPtrZ | any | char* (null terminated) | C receives and owns a null terminated string. |
-| #voidPtr | opaque | void* |
+| #charPtr | pointer | char* | Use `os.cstr()` and `os.fromCstr()` to convert between a Cyber string and a null terminated C string.
+| #voidPtr | pointer | void* |
 | sym symbol | object \<sym\> | Struct | The mapping from a Cyber object type `sym` and the C-struct can be declared with `CStruct`. |
 
 By default `bindLib` returns an anonymous object with the binded C-functions as methods. This is convenient for using it like an object, but it's less optimal compared to binding as functions. If a config is passed into `bindLib` as the third argument, `genMap: true` makes `bindLib` return a map instead with the binded C-functions as Cyber functions.
@@ -70,14 +68,14 @@ import os 'os'
 
 type MyObject object:
     a number
-    b string
+    b pointer
     c bool
 
 lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
-    os.CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+    os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
 ])
-res = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
+res = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
 ```
 The example above maps to these C declarations in `mylib.so`:
 ```text
@@ -98,9 +96,9 @@ import os 'os'
 
 lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'foo', args: [MyObject], ret: #voidPtr }
-    os.CStruct{ fields: [#f64, #charPtrZ, #bool], type: MyObject }
+    os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
 ])
-ptr = lib.foo(MyObject{ a: 123, b: 'foo', c: true })
+ptr = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
 res = lib.ptrToMyObject(ptr)
 ```
 

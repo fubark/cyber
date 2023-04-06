@@ -603,7 +603,7 @@ pub const Module = struct {
         });
     }
 
-    pub fn setObject(self: *Module, c: *cy.VMcompiler, name: []const u8, typeId: cy.TypeId, modId: ModuleId) !void {
+    pub fn setTypeObject(self: *Module, c: *cy.VMcompiler, name: []const u8, typeId: cy.TypeId, modId: ModuleId) !void {
         const nameId = try ensureNameSym(c, name);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
@@ -1234,7 +1234,7 @@ pub fn declareObject(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
     const sid = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId, rObjSymId);
 
     const mod = c.compiler.sema.getModulePtr(c.modId);
-    try mod.setObject(c.compiler, name, sid, objModId);
+    try mod.setTypeObject(c.compiler, name, sid, objModId);
 }
 
 fn objectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {

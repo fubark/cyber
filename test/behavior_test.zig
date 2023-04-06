@@ -1098,20 +1098,10 @@ test "FFI." {
         export fn testF64(n: f64) f64 {
             return n;
         }
-        export fn testCharPtrZ(ptr: [*:0]u8) [*:0]const u8 {
-            const slice = std.mem.span(ptr);
-            std.mem.copy(u8, &buf, slice);
-            buf[slice.len] = 0;
-            return @ptrCast([*:0]const u8, &buf);
+        export fn testCharPtr(ptr: [*:0]u8) [*:0]const u8 {
+            return ptr;
         }
-        export fn testDupeCharPtrZ(ptr: [*:0]u8) [*:0]const u8 {
-            const slice = std.mem.span(ptr);
-            std.mem.copy(u8, &buf, slice);
-            buf[slice.len] = 0;
-            std.c.free(ptr);
-            return @ptrCast([*:0]const u8, &buf);
-        }
-        export fn testPtr(ptr: *anyopaque) *anyopaque {
+        export fn testVoidPtr(ptr: *anyopaque) *anyopaque {
             return ptr;
         }
         export fn testVoid() void {
@@ -1126,30 +1116,23 @@ test "FFI." {
             d: bool,
         };
         export fn testObject(o: MyObject) MyObject {
-            const slice = std.mem.span(o.c);
-            std.mem.copy(u8, &buf, slice);
-            buf[slice.len] = 0;
             return MyObject{
                 .a = o.a,
                 .b = o.b,
-                .c = @ptrCast([*:0]u8, &buf),
+                .c = o.c,
                 .d = o.d,
             };
         }
         export fn testRetObjectPtr(o: MyObject) *MyObject {
-            const slice = std.mem.span(o.c);
-            std.mem.copy(u8, &buf, slice);
-            buf[slice.len] = 0;
             temp = .{
                 .a = o.a,
                 .b = o.b,
-                .c = @ptrCast([*:0]u8, &buf),
+                .c = o.c,
                 .d = o.d,
             };
             return &temp;
         }
         var temp: MyObject = undefined;
-        var buf: [1024]u8 = undefined;
     };
     _ = S;
 

@@ -19,33 +19,11 @@ pub var CFuncT: cy.TypeId = undefined;
 pub var CStructT: cy.TypeId = undefined;
 
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
-    const vm = self.vm;
-
     const b = bindings.ModuleBuilder.init(self, mod);
 
     // Object Types.
-    var id: u32 = undefined;
-    var rSymId = try cy.sema.resolveObjectSym(self, mod.resolvedRootSymId, "CFunc", mod.id);
-    var nameId = try cy.sema.ensureNameSym(self, "CFunc");
-    CFuncT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId, "CFunc", rSymId);
-    vm.structs.buf[CFuncT].numFields = 3;
-    id = try vm.ensureFieldSym("sym");
-    try vm.addFieldSym(CFuncT, id, 0);
-    id = try vm.ensureFieldSym("args");
-    try vm.addFieldSym(CFuncT, id, 1);
-    id = try vm.ensureFieldSym("ret");
-    try vm.addFieldSym(CFuncT, id, 2);
-    try mod.setObject(self, "CFunc", CFuncT, cy.NullId);
-
-    rSymId = try cy.sema.resolveObjectSym(self, mod.resolvedRootSymId, "CStruct", mod.id);
-    nameId = try cy.sema.ensureNameSym(self, "CStruct");
-    CStructT = try vm.addObjectTypeExt(mod.resolvedRootSymId, nameId, "CStruct", rSymId);
-    vm.structs.buf[CStructT].numFields = 2;
-    id = try vm.ensureFieldSym("fields");
-    try vm.addFieldSym(CStructT, id, 0);
-    id = try vm.ensureFieldSym("type");
-    try vm.addFieldSym(CStructT, id, 1);
-    try mod.setObject(self, "CStruct", CStructT, cy.NullId);
+    CFuncT = try b.createAndSetTypeObject("CFunc", &.{"sym", "args", "ret"});
+    CStructT = try b.createAndSetTypeObject("CStruct", &.{"fields", "type"});
 
     // Variables.
     try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
@@ -90,10 +68,12 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
         try b.setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
+        try b.setFunc("cstr", &.{bt.Any}, bt.Pointer, bindings.nop1);
         try b.setFunc("cwd", &.{}, bt.String, bindings.nop0);
         try b.setFunc("dirName", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("exePath", &.{}, bt.String, bindings.nop0);
         try b.setFunc("free", &.{bt.Pointer}, bt.None, bindings.nop1);
+        try b.setFunc("fromCstr", &.{bt.Pointer}, bt.Rawstring, bindings.nop1);
         try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
         try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
@@ -103,10 +83,12 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
         try b.setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
         try b.setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);
+        try b.setFunc("cstr", &.{bt.Any}, bt.Pointer, cstr);
         try b.setFunc("cwd", &.{}, bt.String, cwd);
         try b.setFunc("dirName", &.{ bt.Any }, bt.Any, dirName);
         try b.setFunc("exePath", &.{}, bt.String, exePath);
         try b.setFunc("free", &.{bt.Pointer}, bt.None, free);
+        try b.setFunc("fromCstr", &.{bt.Pointer}, bt.Rawstring, fromCstr);
         if (builtin.os.tag == .windows) {
             try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
             try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
@@ -367,6 +349,21 @@ pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     return cy.heap.allocPointer(vm.internal(), ptr) catch stdx.fatal();
 }
 
+fn fromCstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    const bytes = std.mem.span(@ptrCast([*:0]const u8, args[0].asHeapObject().pointer.ptr));
+    return vm.allocRawString(bytes) catch fatal();
+}
+
+fn cstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    defer vm.release(args[0]);
+    const bytes = vm.valueToTempRawString(args[0]);
+    const new = @ptrCast([*]u8, std.c.malloc(bytes.len + 1));
+    @memcpy(new, bytes.ptr, bytes.len);
+    new[bytes.len] = 0;
+    return cy.heap.allocPointer(vm.internal(), new) catch fatal();
+}
+
 pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return Value.initF64(@intToFloat(f64, stdx.time.getMilliTimestamp()));
 }
@@ -436,6 +433,9 @@ pub extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return @call(.never_inline, ffi.bindLib, .{vm, args, .{}}) catch |err| {
+        if (builtin.mode == .Debug) {
+            std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+        }
         if (err == error.InvalidArgument) {
             return prepareThrowSymbol(vm, .InvalidArgument);
         } else {
@@ -458,6 +458,9 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
         config.genMap = true;
     }
     return @call(.never_inline, ffi.bindLib, .{vm, args, config}) catch |err| {
+        if (builtin.mode == .Debug) {
+            std.debug.dumpStackTrace(@errorReturnTrace().?.*);
+        }
         if (err == error.InvalidArgument) {
             return prepareThrowSymbol(vm, .InvalidArgument);
         } else {

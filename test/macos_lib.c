@@ -3,6 +3,7 @@
  */
 
 // Build: clang -shared -o macos_lib.dylib macos_lib.c -arch arm64 -arch x86_64
+//        zig cc macos_lib.c -target x86_64-windows-gnu -shared -o win_lib.dll
 
 #include <string.h>
 #include <stdlib.h>
@@ -52,17 +53,10 @@ float testF32(float n) {
 double testF64(double n) {
     return n;
 }
-char buf[1024];
-char* testCharPtrZ(char* ptr) {
-    strcpy(buf, ptr);
-    return &buf[0];
+char* testCharPtr(char* ptr) {
+    return ptr;
 }
-char* testDupeCharPtrZ(char* ptr) {
-    strcpy(buf, ptr);
-    free(ptr);
-    return &buf[0];
-}
-void* testPtr(void* ptr) {
+void* testVoidPtr(void* ptr) {
     return ptr;
 }
 void testVoid() {
@@ -79,11 +73,10 @@ typedef struct MyObject{
 } MyObject;
 
 MyObject testObject(MyObject o) {
-    strcpy(buf, o.c);
     MyObject new = {
         .a = o.a,
         .b = o.b,
-        .c = (char*)&buf,
+        .c = o.c,
         .d = o.d,
     };
     return new;
@@ -91,10 +84,9 @@ MyObject testObject(MyObject o) {
 
 MyObject temp;
 MyObject* testRetObjectPtr(MyObject o) {
-    strcpy(buf, o.c);
     temp.a = o.a;
     temp.b = o.b;
-    temp.c = (char*)&buf;
+    temp.c = o.c;
     temp.d = o.d;
     return &temp;
 }

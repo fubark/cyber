@@ -38,14 +38,13 @@ lib = os.bindLib(libPath, [
   os.CFunc{ sym: 'testUSize', args: [#usize], ret: #usize }
   os.CFunc{ sym: 'testF32', args: [#float], ret: #float }
   os.CFunc{ sym: 'testF64', args: [#double], ret: #double }
-  os.CFunc{ sym: 'testCharPtrZ', args: [#charPtrZ], ret: #charPtrZ }
-  os.CFunc{ sym: 'testDupeCharPtrZ', args: [#dupeCharPtrZ], ret: #charPtrZ }
-  os.CFunc{ sym: 'testPtr', args: [#voidPtr], ret: #voidPtr }
+  os.CFunc{ sym: 'testCharPtr', args: [#charPtr], ret: #charPtr }
+  os.CFunc{ sym: 'testVoidPtr', args: [#voidPtr], ret: #voidPtr }
   os.CFunc{ sym: 'testVoid', args: [], ret: #void }
   os.CFunc{ sym: 'testBool', args: [#bool], ret: #bool }
   os.CFunc{ sym: 'testObject', args: [MyObject], ret: MyObject }
   os.CFunc{ sym: 'testRetObjectPtr', args: [MyObject], ret: #voidPtr }
-  os.CStruct{ fields: [#double, #int, #charPtrZ, #bool], type: MyObject }
+  os.CStruct{ fields: [#double, #int, #charPtr, #bool], type: MyObject }
 ])
 t.eq(lib.testAdd(123, 321), 444)
 t.eq(lib.testI8(-128), -128)
@@ -61,39 +60,32 @@ t.eqNear(lib.testF32(1.2345), 1.2345)
 t.eq(lib.testF64(1.2345), 1.2345)
 
 -- object arg and return type.
-res = lib.testObject(MyObject{ a: 123, b: 10, c: 'foo', d: true})
+cstr = os.cstr('foo')
+res = lib.testObject(MyObject{ a: 123, b: 10, c: cstr, d: true})
 t.eq(res.a, 123)
 t.eq(res.b, 10)
-t.eq(res.c, rawstring('foo'))
+t.eq(os.fromCstr(res.c as pointer), rawstring('foo'))
 t.eq(res.d, true)
+os.free(cstr)
 
 -- Return struct ptr and convert to Cyber object.
-ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: 'foo', d: true})
+cstr = os.cstr('foo')
+ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: cstr, d: true})
 t.eq(typesym(ptr), #pointer)
 res = lib.ptrToMyObject(pointer(ptr))
 t.eq(res.a, 123)
 t.eq(res.b, 10)
-t.eq(res.c, rawstring('foo'))
+t.eq(os.fromCstr(res.c as pointer), rawstring('foo'))
 t.eq(res.d, true)
+os.free(cstr)
 
--- testCharPtrZ with const string
-t.eq(lib.testCharPtrZ('foo'), rawstring('foo'))
+-- testCharPtr
+cstr = os.cstr('foo')
+t.eq(os.fromCstr(lib.testCharPtr(cstr) as pointer), rawstring('foo'))
+os.free(cstr)
 
--- testCharPtrZ with heap string
-str = 'foo{123}'
-t.eq(lib.testCharPtrZ(str), rawstring('foo123'))
-
--- testCharPtrZ with number
-t.eq(lib.testCharPtrZ(100), rawstring('100'))
-
--- testCharPtrZ with rawstring
-t.eq(lib.testCharPtrZ(rawstring('foo')), rawstring('foo'))
-
--- testDupeCharPtrZ
-t.eq(lib.testDupeCharPtrZ('foo'), rawstring('foo'))
-
--- testPtr
-t.eq(lib.testPtr(pointer(123)), pointer(123))
+-- testVoidPtr
+t.eq(lib.testVoidPtr(pointer(123)), pointer(123))
 
 -- void return and no args.
 t.eq(lib.testVoid(), none)

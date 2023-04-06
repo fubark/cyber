@@ -2572,12 +2572,13 @@ pub const ModuleBuilder = struct {
     }
 
     pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !cy.TypeId {
-        const rSymId = try cy.sema.resolveObjectSym(self.compiler, self.mod.resolvedRootSymId, name, self.mod.id);
         const nameId = try cy.sema.ensureNameSym(self.compiler, name);
-        const typeId = try self.vm.addObjectTypeExt(self.mod.resolvedRootSymId, nameId, name, rSymId);
+        const typeId = try self.vm.addObjectTypeExt(self.mod.resolvedRootSymId, nameId, name, cy.NullId);
+        const rSymId = try cy.sema.resolveObjectSym(self.compiler, self.mod.resolvedRootSymId, name, typeId, self.mod.id);
+        self.vm.structs.buf[typeId].rTypeSymId = rSymId;
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
-            try self.vm.addFieldSym(typeId, id, @intCast(u16, i));
+            try self.vm.addFieldSym(typeId, id, @intCast(u16, i), bt.Any);
         }
         try self.mod.setTypeObject(self.compiler, name, typeId, cy.NullId);
         self.vm.structs.buf[typeId].numFields = @intCast(u32, fields.len);

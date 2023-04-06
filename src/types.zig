@@ -204,6 +204,16 @@ pub fn typeFromResolvedSym(chunk: *cy.CompileChunk, rSymId: ResolvedSymId) !Type
     }
 }
 
+pub fn isSameType(t1: Type, t2: Type) bool {
+    if (t1.typeT != t2.typeT) {
+        return false;
+    }
+    if (t1.typeT == .rsym) {
+        return t1.inner.rsym.rSymId == t2.inner.rsym.rSymId;
+    }
+    return false;
+}
+
 pub const TypeTag = enum {
     any,
     boolean,
@@ -228,6 +238,7 @@ pub const TypeTag = enum {
     undefined,
 };
 
+/// TODO: Can rSymId replace typeT?
 pub const Type = struct {
     typeT: TypeTag,
     rcCandidate: bool,

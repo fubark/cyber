@@ -638,7 +638,7 @@ const DumpContext = struct {
             .fieldRetain => {
                 const symId = pc[3].arg;
                 const sym = self.vm.fieldSyms.buf[symId];
-                const name = sym.namePtr[0..sym.nameLen];
+                const name = cy.sema.getName(&self.vm.compiler, sym.nameId);
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
             },
             .callObjSym => {

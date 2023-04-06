@@ -201,9 +201,9 @@ typedef struct DebugSym {
 
 typedef struct FieldSymbolMap {
     uint32_t mruTypeId;
-    uint16_t mruOffset;
-    uint16_t nameLen;
-    const char* namePtr;
+    uint32_t mruOffset;
+    uint32_t mruFieldTypeSymId;
+    uint32_t nameId;
 } FieldSymbolMap;
 
 typedef struct VM {

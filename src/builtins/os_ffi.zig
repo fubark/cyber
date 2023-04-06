@@ -783,7 +783,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         const sid = try ivm.addAnonymousStruct("BindLib");
         const tccField = try ivm.ensureFieldSym("tcc");
         ivm.structs.buf[sid].numFields = 1;
-        try ivm.addFieldSym(sid, tccField, 0);
+        try ivm.addFieldSym(sid, tccField, 0, bt.Any);
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
         for (cfuncs.items) |cfunc| {

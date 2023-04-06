@@ -208,8 +208,10 @@ test "Typed fiber." {
     );
 }
 
-test "Typed number." {
-    // Wrong param type.
+test "Type constraints." {
+    try evalPass(.{}, @embedFile("typeconstraint_test.cy"));
+
+    // Wrong arg type to number param.
     try eval(.{ .silent = true },
         \\func foo(a number):
         \\  pass
@@ -226,27 +228,7 @@ test "Typed number." {
         );
     }}.func);
 
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a number):
-        \\  return a == 123
-        \\
-        \\-- Literal.
-        \\t.eq(foo(123), true)
-        \\        
-        \\-- From var.
-        \\n = 123
-        \\t.eq(foo(n), true)
-        \\
-        \\-- Cast erased type.
-        \\n = t.erase(123)
-        \\t.eq(foo(number(n)), true)
-    );
-}
-
-test "Typed none." {
-    // Wrong param type.
+    // Wrong arg type to none param.
     try eval(.{ .silent = true },
         \\func foo(a none):
         \\  pass
@@ -262,20 +244,6 @@ test "Typed none." {
             \\
         );
     }}.func);
-
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\func foo(a none):
-        \\  return a == none
-        \\
-        \\-- Literal.
-        \\t.eq(foo(none), true)
-        \\        
-        \\-- From var.
-        \\n = none
-        \\t.eq(foo(n), true)
-    );
 }
 
 test "Typed pointer." {
@@ -1230,102 +1198,104 @@ test "test module" {
 }
 
 test "Objects." {
-    const run = VMrunner.create();
-    defer run.destroy();
+    try evalPass(.{}, @embedFile("object_test.cy"));
 
     // Missing semicolon.
-    var res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\type Vec2 object
         \\  x
         \\  y
-    );
-    try run.expectErrorReport(res, error.ParseError,
-        \\ParseError: Expected colon to start an object type block.
-        \\
-        \\main:1:17:
-        \\type Vec2 object
-        \\                ^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.ParseError,
+            \\ParseError: Expected colon to start an object type block.
+            \\
+            \\main:1:17:
+            \\type Vec2 object
+            \\                ^
+            \\
+        );
+    }}.func);
 
     // Field declaration ends the file without parser error.
-    _ = try run.eval(
+    try evalPass(.{}, 
         \\type Vec2 object:
         \\  x
         \\  y
     );
-    _ = try run.eval(
+    try evalPass(.{},
         \\type Vec2 object:
         \\  x number
         \\  y number
     );
 
     // Initialize with undeclared field.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\type S object:
         \\  a
         \\o = S{ b: 100 }
-    );
-    try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Missing field `b` in `S`.
-        \\
-        \\main:3:8:
-        \\o = S{ b: 100 }
-        \\       ^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Missing field `b` in `S`.
+            \\
+            \\main:3:8:
+            \\o = S{ b: 100 }
+            \\       ^
+            \\
+        );
+    }}.func);
 
     // Write to undeclared field.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\type S object:
         \\  a
         \\o = S{ a: 100 }
         \\o.b = 200
-    );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: Field not found in value.
-        \\
-        \\main:4:1 main:
-        \\o.b = 200
-        \\^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Missing field `b` for type: S
+            \\
+            \\main:4:1:
+            \\o.b = 200
+            \\^
+            \\
+        );
+    }}.func);
 
     // Calling a missing method name.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\type S object:
         \\  a
         \\o = S{}
         \\o.foo()
-    );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: `func foo(any) any` can not be found in `S`.
-        \\
-        \\main:4:1 main:
-        \\o.foo()
-        \\^
-        \\
-    );
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: `func foo(any) any` can not be found in `S`.
+            \\
+            \\main:4:1 main:
+            \\o.foo()
+            \\^
+            \\
+        );
+    }}.func);
 
     // Calling a method with the wrong signature.
-    res = run.evalExt(.{ .silent = true },
+    try eval(.{ .silent = true },
         \\type S object:
         \\  a
         \\  func foo(self):
         \\    return 123
         \\o = S{}
         \\o.foo(234)
-    );
-    try run.expectErrorReport(res, error.Panic,
-        \\panic: `func foo(any, number) any` can not be found in `S`.
-        \\
-        \\main:6:1 main:
-        \\o.foo(234)
-        \\^
-        \\
-    );
-
-    _ = try run.eval(@embedFile("object_test.cy"));
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: `func foo(any, number) any` can not be found in `S`.
+            \\
+            \\main:6:1 main:
+            \\o.foo(234)
+            \\^
+            \\
+        );
+    }}.func);
 }
 
 test "Object methods." {

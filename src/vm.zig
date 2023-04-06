@@ -94,7 +94,7 @@ pub const VM = struct {
 
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
-    fieldTable: std.AutoHashMapUnmanaged(ObjectSymKey, u16),
+    fieldTable: std.AutoHashMapUnmanaged(ObjectSymKey, FieldEntry),
     fieldSymSignatures: std.StringHashMapUnmanaged(SymbolId),
 
     /// Structs.
@@ -807,10 +807,11 @@ pub const VM = struct {
         if (entry.mruTypeId == typeId) {
             return entry.mruOffset;
         } else {
-            const offset = self.fieldTable.get(.{ .typeId = typeId, .symId = fieldId }) orelse return null;
+            const res = self.fieldTable.get(.{ .typeId = typeId, .symId = fieldId }) orelse return null;
             entry.mruTypeId = typeId;
-            entry.mruOffset = offset;
-            return offset;
+            entry.mruOffset = res.offset;
+            entry.mruFieldTypeSymId = res.typeSymId;
+            return res.offset;
         }
     }
 
@@ -958,14 +959,15 @@ pub const VM = struct {
     }
 
     pub fn ensureFieldSym(self: *VM, name: []const u8) !SymbolId {
+        const nameId = try sema.ensureNameSym(&self.compiler, name);
         const res = try self.fieldSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
             const id = @intCast(u32, self.fieldSyms.len);
             try self.fieldSyms.append(self.alloc, .{
                 .mruTypeId = cy.NullId,
                 .mruOffset = undefined,
-                .namePtr = name.ptr,
-                .nameLen = @intCast(u16, name.len),
+                .mruFieldTypeSymId = undefined,
+                .nameId = nameId,
             });
             res.value_ptr.* = id;
             return id;
@@ -1020,7 +1022,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn addFieldSym(self: *VM, sid: TypeId, symId: SymbolId, offset: u16) !void {
+    pub fn addFieldSym(self: *VM, sid: TypeId, symId: SymbolId, offset: u16, typeSymId: sema.ResolvedSymId) !void {
         const sym = &self.fieldSyms.buf[symId];
         if (sym.mruTypeId != cy.NullId) {
             // Add prev mru if it doesn't exist in hashmap.
@@ -1029,18 +1031,26 @@ pub const VM = struct {
                 .symId = symId,
             };
             if (!self.fieldTable.contains(prev)) {
-                try self.fieldTable.putNoClobber(self.alloc, prev, sym.mruOffset);
+                try self.fieldTable.putNoClobber(self.alloc, prev, .{
+                    .offset = sym.mruOffset,
+                    .typeSymId = sym.mruFieldTypeSymId,
+                });
             }
             const key = ObjectSymKey{
                 .typeId = sid,
                 .symId = symId,
             };
-            try self.fieldTable.putNoClobber(self.alloc, key, offset);
+            try self.fieldTable.putNoClobber(self.alloc, key, .{
+                .offset = offset,
+                .typeSymId = typeSymId,
+            });
             sym.mruTypeId = sid;
             sym.mruOffset = offset;
+            sym.mruFieldTypeSymId = typeSymId;
         } else {
             sym.mruTypeId = sid;
             sym.mruOffset = offset;
+            sym.mruFieldTypeSymId = typeSymId;
         }
     }
 
@@ -1404,12 +1414,13 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    fn getFieldOffsetFromTable(self: *VM, typeId: TypeId, symId: SymbolId) u8 {
-        if (self.fieldTable.get(.{ .typeId = typeId, .symId = symId })) |offset| {
+    pub fn getFieldOffsetFromTable(self: *VM, typeId: TypeId, symId: SymbolId) u8 {
+        if (self.fieldTable.get(.{ .typeId = typeId, .symId = symId })) |res| {
             const sym = &self.fieldSyms.buf[symId];
             sym.mruTypeId = typeId;
-            sym.mruOffset = offset;
-            return @intCast(u8, offset);
+            sym.mruOffset = res.offset;
+            sym.mruFieldTypeSymId = res.typeSymId;
+            return @intCast(u8, res.offset);
         } else {
             return cy.NullU8;
         }
@@ -1449,7 +1460,7 @@ pub const VM = struct {
                 return obj.object.getValue(offset);
             } else {
                 const sym = self.fieldSyms.buf[symId];
-                return self.getFieldFallback(obj, sym.namePtr[0..sym.nameLen]);
+                return self.getFieldFallback(obj, sym.nameId);
             }
         } else {
             return self.getFieldMissingSymbolError();
@@ -1464,15 +1475,16 @@ pub const VM = struct {
                 return obj.object.getValue(offset);
             } else {
                 const sym = self.fieldSyms.buf[symId];
-                return self.getFieldFallback(obj, sym.namePtr[0..sym.nameLen]);
+                return self.getFieldFallback(obj, sym.nameId);
             }
         } else {
             return self.getFieldMissingSymbolError();
         }
     }
 
-    fn getFieldFallback(self: *const VM, obj: *const HeapObject, name: []const u8) linksection(cy.HotSection) Value {
+    fn getFieldFallback(self: *const VM, obj: *const HeapObject, nameId: sema.NameSymId) linksection(cy.HotSection) Value {
         @setCold(true);
+        const name = sema.getName(&self.compiler, nameId);
         if (obj.head.typeId == cy.MapS) {
             const map = stdx.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
             if (map.getByString(self, name)) |val| {
@@ -3486,7 +3498,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         pc[7] = cy.OpData{ .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
-                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.namePtr[0..sym.nameLen]});
+                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.nameId});
                     }
                     pc += 8;
                     continue;
@@ -3513,7 +3525,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         pc[7] = cy.OpData { .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
-                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.namePtr[0..sym.nameLen]});
+                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.nameId});
                     }
                     retain(vm, framePtr[dst]);
                     pc += 8;
@@ -4140,6 +4152,11 @@ pub const EvalError = error{
 const ObjectSymKey = struct {
     typeId: TypeId,
     symId: SymbolId,
+};
+
+const FieldEntry = struct {
+    offset: u32,
+    typeSymId: sema.ResolvedSymId,
 };
 
 /// See `reserveFuncParams` for stack layout.

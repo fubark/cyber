@@ -840,6 +840,8 @@ fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: 
     const fieldId = try self.compiler.vm.ensureFieldSym(name);
 
     if (dstIsUsed) {
+        const newtype = try sema.getAccessExprType(self, leftv.vtype, name);
+
         try self.pushDebugSym(debugNodeId);
         const leftIsTempRetained = leftv.retained and leftv.isTempLocal;
         if (retain or leftIsTempRetained) {
@@ -850,7 +852,7 @@ fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: 
             // ARC cleanup.
             try genReleaseIfRetainedTemp(self, leftv);
 
-            return self.initGenValue(dst, types.AnyType, true);
+            return self.initGenValue(dst, newtype, true);
         } else {
             const pc = self.buf.len();
             try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
@@ -859,7 +861,7 @@ fn genField(self: *cy.CompileChunk, leftId: cy.NodeId, rightId: cy.NodeId, dst: 
             // ARC cleanup.
             try genReleaseIfRetainedTemp(self, leftv);
 
-            return self.initGenValue(dst, types.AnyType, false);
+            return self.initGenValue(dst, newtype, false);
         }
     } else {
         return GenValue.initNoValue();

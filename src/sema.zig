@@ -303,6 +303,7 @@ const ResolvedSymData = extern union {
     },
     object: extern struct {
         modId: ModuleId,
+        typeId: cy.TypeId,
     },
     enumType: extern struct {
         modId: ModuleId,
@@ -1136,6 +1137,28 @@ pub fn declareObjectMembers(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
     const rObjSym = c.compiler.sema.getResolvedSym(rObjSymId);
     const objMod = c.compiler.sema.getModulePtr(rObjSym.inner.object.modId);
 
+    const typeId = rObjSym.inner.object.typeId;
+
+    // Declare fields.
+    var i: u32 = 0;
+    var fieldId = node.head.objectDecl.fieldsHead;
+    while (fieldId != cy.NullId) : (i += 1) {
+        const field = c.nodes[fieldId];
+        const fieldName = c.getNodeTokenString(field);
+        const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
+
+        var fieldType: ResolvedSymId = undefined;
+        if (field.head.objectField.typeSpecHead != cy.NullId) {
+            fieldType = try getOrResolveTypeSymFromSpecNode(c, field.head.objectField.typeSpecHead);
+        } else {
+            fieldType = bt.Any;
+        }
+
+        try c.compiler.vm.addFieldSym(typeId, fieldSymId, @intCast(u16, i), fieldType);
+        fieldId = field.next;
+    }
+    c.compiler.vm.structs.buf[typeId].numFields = i;
+
     var funcId = node.head.objectDecl.funcsHead;
     while (funcId != cy.NullId) {
         const declId = try appendFuncDecl(c, funcId, true);
@@ -1225,39 +1248,25 @@ pub fn declareObject(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
 
     const objModId = try appendSubModule(c.compiler, name);
 
-    const rObjSymId = try resolveLocalObjectSym(c, c.semaResolvedRootSymId, name, objModId, nodeId, true);
+    const typeId = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId, cy.NullId);
+    const rObjSymId = try resolveLocalObjectSym(c, c.semaResolvedRootSymId, name, typeId, objModId, nodeId, true);
+    c.compiler.vm.structs.buf[typeId].rTypeSymId = rObjSymId;
     const objMod = c.compiler.sema.getModulePtr(objModId);
     objMod.resolvedRootSymId = rObjSymId;
     // Persist local sym for codegen.
     c.nodes[node.head.objectDecl.name].head.ident.sema_crSymId = CompactResolvedSymId.initSymId(rObjSymId);
 
-    const sid = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId, rObjSymId);
-
     const mod = c.compiler.sema.getModulePtr(c.modId);
-    try mod.setTypeObject(c.compiler, name, sid, objModId);
+    try mod.setTypeObject(c.compiler, name, typeId, objModId);
 }
 
 fn objectDecl(c: *cy.CompileChunk, nodeId: cy.NodeId, exported: bool) !void {
     _ = exported;
     const node = c.nodes[nodeId];
-    const nameN = c.nodes[node.head.objectDecl.name];
-    const name = c.getNodeTokenString(nameN);
-    const nameId = try ensureNameSym(c.compiler, name);
-
-    const rSymId = nameN.head.ident.sema_crSymId.id;
-    const sid = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId, rSymId);
-
-    var i: u32 = 0;
-    var fieldId = node.head.objectDecl.fieldsHead;
-    while (fieldId != cy.NullId) : (i += 1) {
-        const field = c.nodes[fieldId];
-        const fieldName = c.getNodeTokenString(field);
-        const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
-        try c.compiler.vm.addFieldSym(sid, fieldSymId, @intCast(u16, i));
-        fieldId = field.next;
-    }
-    const numFields = i;
-    c.compiler.vm.structs.buf[sid].numFields = numFields;
+    // const nameN = c.nodes[node.head.objectDecl.name];
+    // const name = c.getNodeTokenString(nameN);
+    // const nameId = try ensureNameSym(c.compiler, name);
+    // const rSymId = nameN.head.ident.sema_crSymId.id;
 
     var funcId = node.head.objectDecl.funcsHead;
     while (funcId != cy.NullId) {
@@ -3253,7 +3262,8 @@ fn resolveTypeSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: Na
                     .key = key,
                     .inner = .{
                         .object = .{
-                            .modId = cy.NullId,
+                            .modId = modSym.inner.object.modId,
+                            .typeId = modSym.inner.object.typeId,
                             // .declId = cy.NullId,
                         },
                     },
@@ -3340,6 +3350,7 @@ fn resolveSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSy
                 const id = try self.sema.addResolvedSym(key, .object, .{
                     .object = .{
                         .modId = modSym.inner.object.modId,
+                        .typeId = modSym.inner.object.typeId,
                     },
                 });
                 return CompactResolvedSymId.initSymId(id);
@@ -3448,6 +3459,29 @@ pub fn endBlock(self: *cy.CompileChunk) !void {
     self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
 }
 
+pub fn getAccessExprType(c: *cy.CompileChunk, ltype: Type, rightName: []const u8) !Type {
+    if (ltype.typeT == .rsym) {
+        const sym = c.compiler.sema.getResolvedSym(ltype.inner.rsym.rSymId);
+        if (sym.symT == .object) {
+            const typeId = sym.inner.object.typeId;
+            const rtFieldId = try c.compiler.vm.ensureFieldSym(rightName);
+            var offset: u8 = undefined;
+            const symMap = c.compiler.vm.fieldSyms.buf[rtFieldId];
+            if (typeId == symMap.mruTypeId) {
+                offset = @intCast(u8, symMap.mruOffset);
+            } else {
+                offset = @call(.never_inline, c.compiler.vm.getFieldOffsetFromTable, .{typeId, rtFieldId});
+            }
+            if (offset == cy.NullU8) {
+                const name = c.compiler.vm.structs.buf[typeId].name;
+                return c.reportError("Missing field `{}` for type: {}", &.{v(rightName), v(name)});
+            }
+            return types.typeFromResolvedSym(c, c.compiler.vm.fieldSyms.buf[rtFieldId].mruFieldTypeSymId);
+        }
+    }
+    return types.AnyType;
+}
+
 fn accessExpr(self: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExprReg: bool) !Type {
     const node = self.nodes[nodeId];
     const right = self.nodes[node.head.accessExpr.right];
@@ -3457,27 +3491,35 @@ fn accessExpr(self: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExpr
             const name = self.getNodeTokenString(left);
             const nameId = try ensureNameSym(self.compiler, name);
             const res = try getOrLookupVar(self, name, .read);
+
+            const rightName = self.getNodeTokenString(right);
+            const rightNameId = try ensureNameSym(self.compiler, rightName);
             if (!res.isLocal) {
-                const leftSym = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
-                const crLeftSym = leftSym.toCompactId();
+                const leftSymRes = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
+                const crLeftSym = leftSymRes.toCompactId();
                 try referenceSym(self, crLeftSym, true);
                 self.nodes[node.head.accessExpr.left].head.ident.sema_crSymId = crLeftSym;
 
-                const rightName = self.getNodeTokenString(right);
-                const rightNameId = try ensureNameSym(self.compiler, rightName);
-
                 self.curNodeId = node.head.accessExpr.right;
-                if (try getOrResolveDistinctSym(self, leftSym.rSymId, rightNameId)) |symRes| {
+                if (try getOrResolveDistinctSym(self, leftSymRes.rSymId, rightNameId)) |symRes| {
                     const crRightSym = symRes.toCompactId();
                     try referenceSym(self, crRightSym, true);
                     self.nodes[nodeId].head.accessExpr.sema_crSymId = crRightSym;
                     return try getTypeForResolvedValueSym(self, crRightSym);
+                } else {
+                    const leftSym = self.compiler.sema.getResolvedSym(leftSymRes.rSymId);
+                    if (leftSym.symT == .variable) {
+                        const vtype = types.initResolvedSymType(leftSym.inner.variable.rTypeSymId);
+                        return getAccessExprType(self, vtype, rightName);
+                    }
                 }
             } else {
                 self.nodes[node.head.accessExpr.left].head.ident.semaVarId = res.id;
+                const svar = self.vars.items[res.id];
+                return getAccessExprType(self, svar.vtype, rightName);
             }
         } else if (left.node_t == .accessExpr) {
-            _ = try accessExpr(self, node.head.accessExpr.left, discardTopExprReg);
+            const leftv = try accessExpr(self, node.head.accessExpr.left, discardTopExprReg);
 
             left = self.nodes[node.head.accessExpr.left];
             if (left.head.accessExpr.sema_crSymId.isPresent()) {
@@ -3491,6 +3533,9 @@ fn accessExpr(self: *cy.CompileChunk, nodeId: cy.NodeId, comptime discardTopExpr
                         self.nodes[nodeId].head.accessExpr.sema_crSymId = crRightSym;
                     }
                 }
+            } else {
+                const rightName = self.getNodeTokenString(right);
+                return getAccessExprType(self, leftv, rightName);
             }
         } else {
             _ = try semaExpr(self, node.head.accessExpr.left, discardTopExprReg);
@@ -3537,7 +3582,7 @@ fn assignVar(self: *cy.CompileChunk, ident: cy.NodeId, vtype: Type, strat: VarLo
         }
 
         // Update current type after checking for branched assignment.
-        if (svar.vtype.typeT != vtype.typeT) {
+        if (!types.isSameType(svar.vtype, vtype)) {
             svar.vtype = toLocalType(vtype);
             if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
                 svar.lifetimeRcCandidate = true;
@@ -3789,7 +3834,7 @@ pub fn resolveEnumSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []co
     return rSymId;
 }
 
-pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []const u8, modId: ModuleId) !ResolvedSymId {
+pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []const u8, typeId: cy.TypeId, modId: ModuleId) !ResolvedSymId {
     const nameId = try ensureNameSym(c, name);
     const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
@@ -3809,6 +3854,7 @@ pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []
         .inner = .{
             .object = .{
                 .modId = modId,
+                .typeId = typeId,
             },
         },
         .exported = true,
@@ -3820,10 +3866,10 @@ pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []
 
 /// Given the local sym path, add a resolved object sym entry.
 /// Assumes parent is resolved.
-fn resolveLocalObjectSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, name: []const u8, modId: ModuleId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
+fn resolveLocalObjectSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, name: []const u8, typeId: cy.TypeId, modId: ModuleId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
     _ = exported;
     const c = chunk.compiler;
-    return resolveObjectSym(c, rParentSymId, name, modId) catch |err| {
+    return resolveObjectSym(c, rParentSymId, name, typeId, modId) catch |err| {
         if (err == error.DuplicateSymName) {
             return chunk.reportErrorAt("The symbol `{}` was already declared.", &.{v(name)}, declId);
         } else {

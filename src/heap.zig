@@ -191,6 +191,10 @@ pub const List = extern struct {
         len: usize,
     },
 
+    pub fn getList(self: *List) *cy.List(Value) {
+        return stdx.ptrAlignCast(*cy.List(Value), &self.list);
+    }
+
     pub inline fn items(self: *const List) []Value {
         return self.list.ptr[0..self.list.len];
     }

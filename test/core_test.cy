@@ -84,6 +84,35 @@ t.eq(number(int('100.1')), 100)
 
 -- number(), see number_test.cy
 
+-- parseCyber()
+res = parseCyber('var foo: 123')
+t.eq(res['decls'][0].type, 'variable')
+t.eq(res['decls'][0].name, 'foo')
+
+res = parseCyber('type foo bar')
+t.eq(res['decls'][0].type, 'typeAlias')
+t.eq(res['decls'][0].name, 'foo')
+
+res = parseCyber('func foo(): pass')
+t.eq(res['decls'][0].type, 'func')
+t.eq(res['decls'][0].name, 'foo')
+
+res = parseCyber('func foo() = bar')
+t.eq(res['decls'][0].type, 'funcInit')
+t.eq(res['decls'][0].name, 'foo')
+
+res = parseCyber('import foo \'bar\'')
+t.eq(res['decls'][0].type, 'import')
+t.eq(res['decls'][0].name, 'foo')
+
+res = parseCyber('type foo object:\n  a')
+t.eq(res['decls'][0].type, 'object')
+t.eq(res['decls'][0].name, 'foo')
+
+res = parseCyber('type foo enum:\n  a')
+t.eq(res['decls'][0].type, 'enumT')
+t.eq(res['decls'][0].name, 'foo')
+
 -- parseCyon()
 val = parseCyon('123')
 t.eq(val, 123)

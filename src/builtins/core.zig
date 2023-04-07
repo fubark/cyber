@@ -57,6 +57,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
     try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
     try b.setFunc("panic", &.{ bt.Any }, bt.None, panic);
+    try b.setFunc("parseCyber", &.{ bt.Any }, bt.Map, parseCyber);
     try b.setFunc("parseCyon", &.{ bt.Any }, bt.Any, parseCyon);
     try b.setFunc("print", &.{bt.Any}, bt.None, print);
     try b.setFunc("prints", &.{bt.Any}, bt.None, prints);
@@ -403,14 +404,86 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
     return vm.allocStringInfer(cyon) catch fatal();
 }
 
+fn parseCyber(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const src = vm.valueToTempRawString(args[0]);
+    defer vm.release(args[0]);
+
+    const alloc = vm.allocator();
+    var parser = cy.Parser.init(alloc);
+    defer parser.deinit();
+    const res = parser.parse(src) catch |err| {
+        log.debug("parseCyber: {}", .{err});
+        return prepareThrowSymbol(vm, .UnknownError);
+    };
+
+    return parseCyberGenResult(vm, &parser, res) catch |err| {
+        log.debug("parseCyber: {}", .{err});
+        return prepareThrowSymbol(vm, .UnknownError);
+    };
+}
+
+fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseResultView) !Value {
+    const alloc = vm.allocator();
+    const nodes = parser.nodes.items;
+    const root = try vm.allocEmptyMap();
+    const map = root.asHeapObject().map.map();
+
+    const decls = try vm.allocEmptyList();
+    const declsList = decls.asHeapObject().list.getList();
+    for (parser.staticDecls.items) |decl| {
+        const entry = try vm.allocEmptyMap();
+        const entryMap = entry.asHeapObject().map.map();
+        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("type"), try vm.allocAstring(@tagName(decl.declT)));
+        var name: []const u8 = undefined;
+        switch (decl.declT) {
+            .variable => {
+                const node = nodes[decl.inner.variable];
+                const varSpec = nodes[node.head.varDecl.varSpec];
+                name = res.getFirstNodeString(varSpec.head.varSpec.name);
+            },
+            .typeAlias => {
+                const node = nodes[decl.inner.typeAlias];
+                name = res.getFirstNodeString(node.head.typeAliasDecl.name);
+            },
+            .func => {
+                const node = nodes[decl.inner.func];
+                const header = nodes[node.head.func.header];
+                name = res.getFirstNodeString(header.head.funcHeader.name);
+            },
+            .funcInit => {
+                const node = nodes[decl.inner.funcInit];
+                const header = nodes[node.head.func.header];
+                name = res.getFirstNodeString(header.head.funcHeader.name);
+            },
+            .import => {
+                const node = nodes[decl.inner.import];
+                name = res.getFirstNodeString(node.head.left_right.left);
+            },
+            .object => {
+                const node = nodes[decl.inner.object];
+                name = res.getFirstNodeString(node.head.objectDecl.name);
+            },
+            .enumT => {
+                const node = nodes[decl.inner.object];
+                name = res.getFirstNodeString(node.head.enumDecl.name);
+            }
+        }
+        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("name"), try vm.allocAstring(name));
+        try declsList.append(alloc, entry);
+    }
+    try map.put(alloc, vm.internal(), try vm.allocAstring("decls"), decls);
+
+    return root;
+}
+
 pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const str = vm.valueAsString(args[0]);
+    const src = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
     
     const alloc = vm.allocator();
     var parser = cy.Parser.init(alloc);
     defer parser.deinit();
-    const val = cy.decodeCyon(alloc, &parser, str) catch stdx.fatal();
+    const val = cy.decodeCyon(alloc, &parser, src) catch stdx.fatal();
     return fromCyonValue(vm, val) catch stdx.fatal();
 }
 

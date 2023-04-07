@@ -19,7 +19,7 @@ lib.add(123, 321)
 
 If the path argument to `bindLib` is just a filename, the search steps for the library is specific to the operating system. Provide an absolute (eg. '/foo/mylib.so') or relative (eg. './mylib.so') path to load from a direct location instead. When the path argument is `none`, it loads the currently running executable as a library allowing you to bind exported functions from the Cyber CLI or your own embedded Cyber app/runtime.
 
-When using `CFunc` or `CStruct` declarations, [tag literals]({{<relref "/docs/toc/data-types#tags">}}) are used to represent default type mappings from Cyber to C and back:
+When using `CFunc` or `CStruct` declarations, [symbols]({{<relref "/docs/toc/data-types#symbols">}}) are used to represent default type mappings from Cyber to C and back:
 | Binding | Cyber | C | Details |
 | -- | -- | -- | -- |
 | #bool | bool | bool |

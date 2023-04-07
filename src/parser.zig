@@ -3719,6 +3719,12 @@ pub const ResultView = struct {
     name: []const u8,
     deps: *std.StringHashMapUnmanaged(NodeId),
 
+    pub fn getFirstNodeString(self: ResultView, nodeId: NodeId) []const u8 {
+        const node = self.nodes.items[nodeId];
+        const token = self.tokens[node.start_token];
+        return self.src[token.pos()..token.data.end_pos];
+    }
+
     pub fn getTokenString(self: ResultView, token_id: u32) []const u8 {
         // Assumes token with end_pos.
         const token = self.tokens[token_id];

@@ -111,7 +111,8 @@ print contents
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Casts or converts the value to a `number`. Panics if type conversion fails. | 
 | `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
-| `parseCyon(cyon string) any` | Parses a CYON string into a value. | 
+| `parseCyber(src any) map` | Parses Cyber source string into structured map object. Currently, only metadata about static declarations is made available but this will be extended to include an AST. | 
+| `parseCyon(src any) any` | Parses a CYON string into a value. | 
 | `pointer(val any) pointer` | Converts a `number` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 

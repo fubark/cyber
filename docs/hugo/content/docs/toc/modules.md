@@ -85,7 +85,7 @@ Cyber currently contains the builtin modules:
 - [os](#os-module): System level functions.
 - [test](#test-module): Utilities for testing.
 
-### Core Module.
+## Core Module.
 The core module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
 
 Sample usage:
@@ -125,7 +125,7 @@ print contents
 | `typesym(any) symbol` | Returns the value's type as one of the predefined symbols: #number, #int, #boolean, #object, #list, #map, #string, #rawstring, #function, #fiber, #pointer, #symbol, #metatype, #none, #error |
 | `writeFile(path string, contents string) none` | Writes a string value to a file. | 
 
-### Math Module.
+## Math Module.
 The math module contains commonly used math constants and functions.
 
 Sample usage:
@@ -188,7 +188,7 @@ print(m.pi * r^2)
 | tanh(number) number | Returns the hyperbolic tangent of x. |
 | trunc(number) number | Returns the integer portion of x, removing any fractional digits. |
 
-### Os Module.
+## Os Module.
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
 
 Sample usage:
@@ -231,6 +231,7 @@ for map each k, v:
 | `openDir(path any) Dir \| error` | Invokes `openDir(path, false)`. |
 | `openDir(path any, iterable boolean) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |
 | `openFile(path any, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
+| `parseArgs(options list[ArgOption]) map` | Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
 | `realPath(path any) string \| error` | Returns the absolute path of the given path. |
 | `removeDir(path any) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
 | `removeFile(path any) true \| error` | Removes the file at `path`. Returns `true` if successful. |
@@ -238,7 +239,7 @@ for map each k, v:
 | `sleep(ms number) none` | Pauses the current thread for given milliseconds. |
 | `unsetEnv(key any) none` | Removes an environment value by key. |
 
-#### `type File`
+### `type File`
 | Method | Summary |
 | -- | -- |
 | `close() none` | Closes the file handle. File ops invoked afterwards will return `error.Closed`. |
@@ -252,27 +253,34 @@ for map each k, v:
 | `streamLines(bufSize number) Iterable<rawstring>` | Returns an iterable that streams lines ending in `\n`, `\r`, `\r\n`, or the `EOF`. The lines returned include the new line character(s). A buffer size of `bufSize` bytes is allocated for reading. If `\r` is found at the end of the read buffer, the line is returned instead of waiting to see if the next read has a connecting `\n`. |
 | `write(data (string \| rawstring)) number` | Writes a `string` or `rawstring` at the current file position. The number of bytes written is returned. |
 
-#### `type Dir`
+### `type Dir`
 | Method | Summary |
 | -- | -- |
 | `iterator() Iterator<DirEntry> \| error` | Returns a new iterator over the directory entries. If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead. |
 | `stat() Map` | Returns info about the file as a `Map`. |
 | `walk() Iterator<DirWalkEntry> \| error` | Returns a new iterator over the directory recursive entries. If this directory was not opened with the iterable flag, `error.NotAllowed` is returned instead. |
 
-#### `map DirEntry`
+### `map DirEntry`
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
-#### `map DirWalkEntry`
+### `map DirWalkEntry`
 | Entry | Summary |
 | -- | -- |
 | `'name' -> rawstring` | The name of the file or directory. |
 | `'path' -> rawstring` | The path of the file or directory relative to the walker's root directory. |
 | `'type' -> #file \| #dir \| #unknown` | The type of the entry. |
 
-### Test Module.
+### `map ArgOption`
+| Entry | Summary |
+| -- | -- |
+| `'name' -> string` | The name of the option to match excluding the hyphen prefix. eg. `-path` |
+| `'type' -> metatype(string \| number \| boolean)` | Parse as given value type. |
+| `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
+
+## Test Module.
 The `test` module contains utilities for testing.
 
 Sample usage:

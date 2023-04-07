@@ -5,6 +5,7 @@ const stdx = @import("stdx");
 const fatal = stdx.fatal;
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const Value = cy.Value;
 const t = stdx.testing;
 const log = stdx.log.scoped(.lib);

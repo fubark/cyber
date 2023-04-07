@@ -64,8 +64,8 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     } else {
         try b.setFunc("access", &.{bt.Any, bt.Symbol}, bt.Any, access);
     }
-    try mod.setNativeTypedFunc(self, "args", &.{}, bt.List, osArgs);
     if (cy.isWasm) {
+        try b.setFunc("args", &.{}, bt.List, bindings.nop0);
         try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
         try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
@@ -81,6 +81,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
         try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
     } else {
+        try b.setFunc("args", &.{}, bt.List, osArgs);
         try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
         try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
@@ -106,6 +107,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try b.setFunc("openDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
         try b.setFunc("openFile", &.{bt.Any, bt.Symbol}, bt.Any, bindings.nop2);
+        try b.setFunc("parseArgs", &.{ bt.List }, bt.Map, bindings.nop1);
         try b.setFunc("realPath", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("removeDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("removeFile", &.{bt.Any}, bt.Any, bindings.nop1);
@@ -114,6 +116,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
         try b.setFunc("openDir", &.{bt.Any}, bt.Any, openDir);
         try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, openDir2);
         try b.setFunc("openFile", &.{bt.Any, bt.Symbol}, bt.Any, openFile);
+        try b.setFunc("parseArgs", &.{ bt.List }, bt.Map, parseArgs);
         try b.setFunc("realPath", &.{bt.Any}, bt.Any, realPath);
         try b.setFunc("removeDir", &.{bt.Any}, bt.Any, removeDir);
         try b.setFunc("removeFile", &.{bt.Any}, bt.Any, removeFile);
@@ -289,6 +292,130 @@ fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         }
     };
     return vm.allocFile(file.handle) catch fatal();
+}
+
+fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const ivm = vm.internal();
+    const alloc = vm.allocator();
+
+    const list = args[0].asHeapObject().list.items();
+    defer vm.release(args[0]);
+
+    // Build options map.
+    const OptionType = enum {
+        string,
+        number,
+        boolean,
+    };
+    const Option = struct {
+        name: Value,
+        type: OptionType,
+        default: Value,
+
+        found: bool,
+    };
+    var optionMap: std.StringHashMapUnmanaged(Option) = .{};
+    defer optionMap.deinit(alloc);
+    for (list) |opt| {
+        if (opt.isObjectType(rt.MapT)) {
+            const entry = opt.asHeapObject().map.map();
+            const name = entry.getByString(ivm, "name") orelse return prepareThrowSymbol(vm, .InvalidArgument);
+            if (!name.isString()) {
+                return prepareThrowSymbol(vm, .InvalidArgument);
+            }
+            const entryType = entry.getByString(ivm, "type") orelse return prepareThrowSymbol(vm, .InvalidArgument);
+            if (!entryType.isObjectType(rt.MetaTypeT)) {
+                return prepareThrowSymbol(vm, .InvalidArgument);
+            }
+            var optType: OptionType = undefined;
+            switch (entryType.asHeapObject().metatype.symId) {
+                rt.StringUnionT => {
+                    optType = .string;
+                },
+                rt.NumberT => {
+                    optType = .number;
+                },
+                rt.BooleanT => {
+                    optType = .boolean;
+                },
+                else => {
+                    return prepareThrowSymbol(vm, .InvalidArgument);
+                },
+            }
+            const default = entry.getByString(ivm, "default") orelse Value.None;
+            optionMap.put(alloc, vm.valueAsString(name), .{
+                .name = name,
+                .type = optType,
+                .default = default,
+                .found = false,
+            }) catch fatal();
+        } else {
+            return prepareThrowSymbol(vm, .InvalidArgument);
+        }
+    }
+
+    const res = vm.allocEmptyMap() catch fatal();
+    const map = res.asHeapObject().map.map();
+
+    var iter = std.process.argsWithAllocator(alloc) catch fatal();
+    defer iter.deinit();
+    const rest = vm.allocEmptyList() catch fatal();
+    const restList = rest.asHeapObject().list.getList();
+    while (iter.next()) |arg| {
+        if (arg[0] == '-') {
+            const optName = arg[1..];
+            if (optionMap.getPtr(optName)) |opt| {
+                if (opt.found) {
+                    continue;
+                }
+                switch (opt.type) {
+                    .string => {
+                        if (iter.next()) |nextArg| {
+                            const val = vm.allocStringInfer(nextArg) catch fatal();
+                            vm.retain(opt.name);
+                            map.put(alloc, ivm, opt.name, val) catch fatal();
+                            opt.found = true;
+                        } else {
+                            return prepareThrowSymbol(vm, .InvalidArgument);
+                        }
+                    },
+                    .number => {
+                        if (iter.next()) |nextArg| {
+                            const num = std.fmt.parseFloat(f64, nextArg) catch {
+                                return prepareThrowSymbol(vm, .InvalidArgument);
+                            };
+                            vm.retain(opt.name);
+                            map.put(alloc, ivm, opt.name, Value.initF64(num)) catch fatal();
+                            opt.found = true;
+                        } else {
+                            return prepareThrowSymbol(vm, .InvalidArgument);
+                        }
+                    },
+                    .boolean => {
+                        vm.retain(opt.name);
+                        map.put(alloc, ivm, opt.name, Value.True) catch fatal();
+                        opt.found = true;
+                    }
+                }
+            }
+            continue;
+        }
+        const str = vm.allocStringOrRawstring(arg) catch fatal();
+        restList.append(alloc, str) catch fatal();
+    }
+
+    // Fill missing with defaults.
+    var optIter = optionMap.valueIterator();
+    while (optIter.next()) |opt| {
+        if (!opt.*.found) {
+            vm.retain(opt.*.name);
+            vm.retain(opt.*.default);
+            map.put(alloc, ivm, opt.*.name, opt.*.default) catch fatal();
+        }
+    }
+
+    map.put(alloc, ivm, vm.allocAstring("rest") catch fatal(), rest) catch fatal();
+    return res;
 }
 
 fn osArgs(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {

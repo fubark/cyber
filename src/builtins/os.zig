@@ -3,6 +3,7 @@ const stdx = @import("stdx");
 const fatal = stdx.fatal;
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
+const rt = cy.rt;
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
@@ -15,9 +16,9 @@ const ffi = @import("os_ffi.zig");
 
 const log = stdx.log.scoped(.os);
 
-pub var CFuncT: cy.TypeId = undefined;
-pub var CStructT: cy.TypeId = undefined;
-pub var CArrayT: cy.TypeId = undefined;
+pub var CFuncT: rt.TypeId = undefined;
+pub var CStructT: rt.TypeId = undefined;
+pub var CArrayT: rt.TypeId = undefined;
 
 pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
     const b = bindings.ModuleBuilder.init(self, mod);

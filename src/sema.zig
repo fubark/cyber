@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const types = cy.types;
 const Type = types.Type;
 const bt = types.BuiltinTypeSymIds;
@@ -303,7 +304,7 @@ const ResolvedSymData = extern union {
     },
     object: extern struct {
         modId: ModuleId,
-        typeId: cy.TypeId,
+        typeId: rt.TypeId,
     },
     enumType: extern struct {
         modId: ModuleId,
@@ -317,6 +318,7 @@ const ResolvedSymData = extern union {
     },
     builtinType: extern struct {
         modId: ModuleId,
+        typeId: rt.TypeId,
         // TypeTag.
         typeT: u8,
     },
@@ -334,7 +336,7 @@ pub const ResolvedSym = struct {
     /// Whether the symbol has been or is in the process of generating it's static initializer.
     genStaticInitVisited: bool = false,
 
-    pub fn getObjectTypeId(self: ResolvedSym, vm: *cy.VM) ?cy.TypeId {
+    pub fn getObjectTypeId(self: ResolvedSym, vm: *cy.VM) ?rt.TypeId {
         return vm.getObjectTypeId(self.key.absResolvedSymKey.rParentSymId, self.key.absResolvedSymKey.nameId);
     }
 
@@ -368,12 +370,12 @@ pub const InitializerSym = struct {
     depsEnd: u32,
 };
 
-const RelModuleSymKey = vm_.KeyU64;
+const RelModuleSymKey = cy.hash.KeyU64;
 const CompileChunkId = u32;
 
 pub const ModuleId = u32;
 pub const Module = struct {
-    syms: std.HashMapUnmanaged(RelModuleSymKey, ModuleSym, vm_.KeyU64Context, 80),
+    syms: std.HashMapUnmanaged(RelModuleSymKey, ModuleSym, cy.hash.KeyU64Context, 80),
 
     id: ModuleId,
 
@@ -604,7 +606,7 @@ pub const Module = struct {
         });
     }
 
-    pub fn setTypeObject(self: *Module, c: *cy.VMcompiler, name: []const u8, typeId: cy.TypeId, modId: ModuleId) !void {
+    pub fn setTypeObject(self: *Module, c: *cy.VMcompiler, name: []const u8, typeId: rt.TypeId, modId: ModuleId) !void {
         const nameId = try ensureNameSym(c, name);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
@@ -775,7 +777,7 @@ const ModuleSym = struct {
             declId: cy.NodeId,
         },
         object: struct {
-            typeId: cy.TypeId,
+            typeId: rt.TypeId,
             modId: ModuleId,
         },
         enumType: struct {
@@ -800,12 +802,12 @@ const ModuleFuncNode = struct {
 /// Relative symbol signature key. RelFuncSigKey is repurposed for variable syms when `numParams` == cy.NullId.
 const RelSymSigKey = cy.RelFuncSigKey;
 const RelSymSigKeyContext = cy.RelFuncSigKeyContext;
-pub const RelLocalSymKey = vm_.KeyU64;
+pub const RelLocalSymKey = cy.hash.KeyU64;
 
 /// Absolute symbol signature key. AbsFuncSigKey is repurposed for variable syms when `numParams` == cy.NullId.
-pub const AbsSymSigKey = vm_.KeyU64;
-pub const AbsResolvedSymKey = vm_.KeyU64;
-pub const AbsResolvedFuncSymKey = vm_.KeyU64;
+pub const AbsSymSigKey = cy.hash.KeyU64;
+pub const AbsResolvedSymKey = cy.hash.KeyU64;
+pub const AbsResolvedFuncSymKey = cy.hash.KeyU64;
 pub const AbsSymSigKeyContext = cy.AbsFuncSigKeyContext;
 
 pub fn semaStmts(self: *cy.CompileChunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
@@ -1157,7 +1159,7 @@ pub fn declareObjectMembers(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
         try c.compiler.vm.addFieldSym(typeId, fieldSymId, @intCast(u16, i), fieldType);
         fieldId = field.next;
     }
-    c.compiler.vm.structs.buf[typeId].numFields = i;
+    c.compiler.vm.types.buf[typeId].numFields = i;
 
     var funcId = node.head.objectDecl.funcsHead;
     while (funcId != cy.NullId) {
@@ -1250,7 +1252,7 @@ pub fn declareObject(c: *cy.CompileChunk, nodeId: cy.NodeId) !void {
 
     const typeId = try c.compiler.vm.ensureObjectType(c.semaResolvedRootSymId, nameId, cy.NullId);
     const rObjSymId = try resolveLocalObjectSym(c, c.semaResolvedRootSymId, name, typeId, objModId, nodeId, true);
-    c.compiler.vm.structs.buf[typeId].rTypeSymId = rObjSymId;
+    c.compiler.vm.types.buf[typeId].rTypeSymId = rObjSymId;
     const objMod = c.compiler.sema.getModulePtr(objModId);
     objMod.resolvedRootSymId = rObjSymId;
     // Persist local sym for codegen.
@@ -2455,7 +2457,7 @@ fn getTypeForResolvedValueSym(chunk: *cy.CompileChunk, crSymId: CompactResolvedS
     }
 }
 
-pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []const u8) !ResolvedSymId {
+pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []const u8, typeId: rt.TypeId) !ResolvedSymId {
     const nameId = try ensureNameSym(c, name);
     const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
@@ -2475,6 +2477,7 @@ pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []co
             .builtinType = .{
                 .modId = modId,
                 .typeT = @enumToInt(typeT),
+                .typeId = typeId,
             },
         },
         .exported = true,
@@ -2733,7 +2736,7 @@ fn getOrResolveTypeSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, nam
         }
     }
 
-    var key: vm_.KeyU64 = undefined;
+    var key: cy.hash.KeyU64 = undefined;
     if (rParentSymId == chunk.semaResolvedRootSymId) {
         // Faster check against local syms.
         key = RelLocalSymKey{
@@ -2839,7 +2842,7 @@ fn resolveDistinctLocalSym(chunk: *cy.CompileChunk, lkey: RelLocalSymKey) !Resol
 /// TODO: This should perform type checking.
 fn getOrResolveDistinctSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, nameId: NameSymId) !?ResolvedSymResult {
     log.debug("getDistinctSym {}.{s}", .{rParentSymId, getName(chunk.compiler, nameId)} );
-    var key: vm_.KeyU64 = undefined;
+    var key: cy.hash.KeyU64 = undefined;
     if (rParentSymId == chunk.semaResolvedRootSymId) {
         // Faster check against local syms.
         key = RelLocalSymKey{
@@ -2945,7 +2948,7 @@ fn getOrResolveSymForFuncCall(chunk: *cy.CompileChunk, rParentSymId: ResolvedSym
 
     var rParentSymIdFinal = rParentSymId;
 
-    var key: vm_.KeyU64 = undefined;
+    var key: cy.hash.KeyU64 = undefined;
     if (rParentSymId == chunk.semaResolvedRootSymId) {
         key = RelLocalSymKey{
             .relLocalSymKey = .{
@@ -3473,7 +3476,7 @@ pub fn getAccessExprType(c: *cy.CompileChunk, ltype: Type, rightName: []const u8
                 offset = @call(.never_inline, c.compiler.vm.getFieldOffsetFromTable, .{typeId, rtFieldId});
             }
             if (offset == cy.NullU8) {
-                const name = c.compiler.vm.structs.buf[typeId].name;
+                const name = c.compiler.vm.types.buf[typeId].name;
                 return c.reportError("Missing field `{}` for type: {}", &.{v(rightName), v(name)});
             }
             return types.typeFromResolvedSym(c, c.compiler.vm.fieldSyms.buf[rtFieldId].mruFieldTypeSymId);
@@ -3834,7 +3837,7 @@ pub fn resolveEnumSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []co
     return rSymId;
 }
 
-pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []const u8, typeId: cy.TypeId, modId: ModuleId) !ResolvedSymId {
+pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []const u8, typeId: rt.TypeId, modId: ModuleId) !ResolvedSymId {
     const nameId = try ensureNameSym(c, name);
     const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
@@ -3866,7 +3869,7 @@ pub fn resolveObjectSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []
 
 /// Given the local sym path, add a resolved object sym entry.
 /// Assumes parent is resolved.
-fn resolveLocalObjectSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, name: []const u8, typeId: cy.TypeId, modId: ModuleId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
+fn resolveLocalObjectSym(chunk: *cy.CompileChunk, rParentSymId: ResolvedSymId, name: []const u8, typeId: rt.TypeId, modId: ModuleId, declId: cy.NodeId, exported: bool) !ResolvedSymId {
     _ = exported;
     const c = chunk.compiler;
     return resolveObjectSym(c, rParentSymId, name, typeId, modId) catch |err| {
@@ -4290,12 +4293,12 @@ pub const Model = struct {
     /// When a symbol is missing, sema will attempt to find it within the resolved parent module.
     /// Each symbol is keyed by the absolute path to the symbol.
     resolvedSyms: std.ArrayListUnmanaged(ResolvedSym),
-    resolvedSymMap: std.HashMapUnmanaged(AbsResolvedSymKey, ResolvedSymId, vm_.KeyU64Context, 80),
+    resolvedSymMap: std.HashMapUnmanaged(AbsResolvedSymKey, ResolvedSymId, cy.hash.KeyU64Context, 80),
 
     /// Resolved function symbols that are included in the runtime.
     /// Each func symbol is keyed by the resolved sym and function signature.
     resolvedFuncSyms: std.ArrayListUnmanaged(ResolvedFuncSym),
-    resolvedFuncSymMap: std.HashMapUnmanaged(AbsResolvedFuncSymKey, ResolvedFuncSymId, vm_.KeyU64Context, 80),
+    resolvedFuncSymMap: std.HashMapUnmanaged(AbsResolvedFuncSymKey, ResolvedFuncSymId, cy.hash.KeyU64Context, 80),
 
     /// Resolved signatures for functions.
     resolvedFuncSigs: std.ArrayListUnmanaged(ResolvedFuncSig),

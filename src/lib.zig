@@ -207,7 +207,7 @@ test "cyValueAllocNativeFunc()" {
     defer c.cyVmDestroy(vm);
 
     const val = c.cyValueAllocNativeFunc(vm, @intToPtr(c.CyFunc, 0), 2);
-    try t.eq(c.cyValueGetTypeId(val), cy.NativeFunc1S);
+    try t.eq(c.cyValueGetTypeId(val), rt.NativeFuncT);
 }
 
 export fn cyValueAllocPointer(vm: *cy.UserVM, ptr: ?*anyopaque) Value {
@@ -219,7 +219,7 @@ test "cyValueAllocPointer()" {
     defer c.cyVmDestroy(vm);
 
     const val = c.cyValueAllocPointer(vm, @intToPtr(?*anyopaque, 123));
-    try t.eq(c.cyValueGetTypeId(val), cy.PointerT);
+    try t.eq(c.cyValueGetTypeId(val), rt.PointerT);
 
     const obj = c.cyValueAsHeapObject(val)[0];
     try t.eq(@ptrToInt(obj.pointer.ptr), 123);
@@ -315,35 +315,35 @@ export fn cyValueToTempRawString(vm: *cy.UserVM, val: Value) c.CStr {
 }
 
 test "Constants." {
-    try t.eq(c.CY_TypeNone, cy.NoneT);
-    try t.eq(c.CY_TypeBoolean, cy.BooleanT);
-    try t.eq(c.CY_TypeError, cy.ErrorT);
-    try t.eq(c.CY_TypeStaticAstring, cy.StaticAstringT);
-    try t.eq(c.CY_TypeStaticUstring, cy.StaticUstringT);
-    try t.eq(c.CY_TypeEnum, cy.EnumT);
-    try t.eq(c.CY_TypeSymbol, cy.SymbolT);
-    try t.eq(c.CY_TypeInteger, cy.IntegerT);
-    try t.eq(c.CY_TypeNumber, cy.NumberT);
-    try t.eq(c.CY_TypeList, cy.ListS);
-    try t.eq(c.CY_TypeListIter, cy.ListIteratorT);
-    try t.eq(c.CY_TypeMap, cy.MapS);
-    try t.eq(c.CY_TypeMapIter, cy.MapIteratorT);
-    try t.eq(c.CY_TypeClosure, cy.ClosureS);
-    try t.eq(c.CY_TypeLambda, cy.LambdaS);
-    try t.eq(c.CY_TypeAstring, cy.AstringT);
-    try t.eq(c.CY_TypeUstring, cy.UstringT);
-    try t.eq(c.CY_TypeStringSlice, cy.StringSliceT);
-    try t.eq(c.CY_TypeRawString, cy.RawStringT);
-    try t.eq(c.CY_TypeRawStringSlice, cy.RawStringSliceT);
-    try t.eq(c.CY_TypeFiber, cy.FiberS);
-    try t.eq(c.CY_TypeBox, cy.BoxS);
-    try t.eq(c.CY_TypeNativeFunc1, cy.NativeFunc1S);
-    try t.eq(c.CY_TypeTccState, cy.TccStateS);
-    try t.eq(c.CY_TypePointer, cy.PointerT);
-    try t.eq(c.CY_TypeFile, cy.FileT);
-    try t.eq(c.CY_TypeDir, cy.DirT);
-    try t.eq(c.CY_TypeDirIter, cy.DirIteratorT);
-    try t.eq(c.CY_TypeMetaType, cy.MetaTypeT);
+    try t.eq(c.CY_TypeNone, rt.NoneT);
+    try t.eq(c.CY_TypeBoolean, rt.BooleanT);
+    try t.eq(c.CY_TypeError, rt.ErrorT);
+    try t.eq(c.CY_TypeStaticAstring, rt.StaticAstringT);
+    try t.eq(c.CY_TypeStaticUstring, rt.StaticUstringT);
+    try t.eq(c.CY_TypeEnum, rt.EnumT);
+    try t.eq(c.CY_TypeSymbol, rt.SymbolT);
+    try t.eq(c.CY_TypeInteger, rt.IntegerT);
+    try t.eq(c.CY_TypeNumber, rt.NumberT);
+    try t.eq(c.CY_TypeList, rt.ListT);
+    try t.eq(c.CY_TypeListIter, rt.ListIteratorT);
+    try t.eq(c.CY_TypeMap, rt.MapT);
+    try t.eq(c.CY_TypeMapIter, rt.MapIteratorT);
+    try t.eq(c.CY_TypeClosure, rt.ClosureT);
+    try t.eq(c.CY_TypeLambda, rt.LambdaT);
+    try t.eq(c.CY_TypeAstring, rt.AstringT);
+    try t.eq(c.CY_TypeUstring, rt.UstringT);
+    try t.eq(c.CY_TypeStringSlice, rt.StringSliceT);
+    try t.eq(c.CY_TypeRawString, rt.RawstringT);
+    try t.eq(c.CY_TypeRawStringSlice, rt.RawstringSliceT);
+    try t.eq(c.CY_TypeFiber, rt.FiberT);
+    try t.eq(c.CY_TypeBox, rt.BoxT);
+    try t.eq(c.CY_TypeNativeFunc1, rt.NativeFuncT);
+    try t.eq(c.CY_TypeTccState, rt.TccStateT);
+    try t.eq(c.CY_TypePointer, rt.PointerT);
+    try t.eq(c.CY_TypeFile, rt.FileT);
+    try t.eq(c.CY_TypeDir, rt.DirT);
+    try t.eq(c.CY_TypeDirIter, rt.DirIteratorT);
+    try t.eq(c.CY_TypeMetaType, rt.MetaTypeT);
 }
 
 export fn cyValueGetTypeId(val: Value) c.CyTypeId {
@@ -351,7 +351,7 @@ export fn cyValueGetTypeId(val: Value) c.CyTypeId {
 }
 
 test "cyValueGetType()" {
-    try t.eq(c.cyValueGetTypeId(c.cyValueNumber(123)), cy.NumberT);
+    try t.eq(c.cyValueGetTypeId(c.cyValueNumber(123)), rt.NumberT);
 }
 
 export fn cyListLen(list: Value) usize {

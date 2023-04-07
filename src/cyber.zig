@@ -31,30 +31,22 @@ pub const CompileErrorType = vm_compiler.CompileErrorType;
 
 pub const bindings = @import("builtins/bindings.zig");
 
+pub const hash = @import("hash.zig");
+pub const rt = @import("runtime.zig");
+
 pub const codegen = @import("codegen.zig");
 
 pub const value = @import("value.zig");
 pub const Value = value.Value;
 pub const ValuePair = value.ValuePair;
-pub const BooleanT = value.BooleanT;
-pub const NoneT = value.NoneT;
-pub const ErrorT = value.ErrorT;
-pub const StaticAstringT = value.StaticAstringT;
-pub const StaticUstringT = value.StaticUstringT;
-pub const EnumT = value.EnumT;
-pub const SymbolT = value.SymbolT;
-pub const IntegerT = value.IntegerT;
-pub const NumberT = value.NumberT;
 pub const StaticUstringHeader = value.StaticUstringHeader;
 
 pub const ValueUserTag = value.ValueUserTag;
 
 pub const vm = @import("vm.zig");
 pub const EvalConfig = vm.EvalConfig;
-pub const TypeId = vm.TypeId;
 pub const getUserVM = vm.getUserVM;
 pub const VM = vm.VM;
-pub const MethodSym = vm.MethodSym;
 pub const FuncSymbolEntry = vm.FuncSymbolEntry;
 pub const VarSym = vm.VarSym;
 pub const TraceInfo = vm.TraceInfo;
@@ -64,9 +56,6 @@ pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
 pub const getInstOffset = vm.getInstOffset;
 pub const FuncSymDetail = vm.FuncSymDetail;
-pub const KeyU64 = vm.KeyU64;
-pub const KeyU96 = vm.KeyU96;
-pub const KeyU96Context = vm.KeyU96Context;
 pub const StringType = vm.StringType;
 
 const api = @import("api.zig");
@@ -74,30 +63,10 @@ pub const UserVM = api.UserVM;
 
 pub const heap = @import("heap.zig");
 pub const HeapObject = heap.HeapObject;
-pub const ListS = heap.ListS;
-pub const ListIteratorT = heap.ListIteratorT;
-pub const MapS = heap.MapS;
-pub const MapIteratorT = heap.MapIteratorT;
 pub const MapInner = heap.MapInner;
 pub const Map = heap.Map;
-pub const ClosureS = heap.ClosureS;
-pub const LambdaS = heap.LambdaS;
-pub const AstringT = heap.AstringT;
-pub const UstringT = heap.UstringT;
-pub const StringSliceT = heap.StringSliceT;
-pub const RawStringT = heap.RawStringT;
-pub const RawStringSliceT = heap.RawStringSliceT;
-pub const FiberS = heap.FiberS;
-pub const BoxS = heap.BoxS;
-pub const NativeFunc1S = heap.NativeFunc1S;
-pub const TccStateS = heap.TccStateS;
-pub const PointerT = heap.PointerT;
-pub const FileT = heap.FileT;
-pub const DirT = heap.DirT;
-pub const DirIteratorT = heap.DirIteratorT;
 pub const Dir = heap.Dir;
 pub const DirIterator = heap.DirIterator;
-pub const MetaTypeT = heap.MetaTypeT;
 pub const CyList = heap.List;
 pub const Closure = heap.Closure;
 pub const Pointer = heap.Pointer;

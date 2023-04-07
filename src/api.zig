@@ -7,6 +7,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
 const VM = cy.VM;
@@ -253,11 +254,11 @@ pub const UserVM = struct {
         return cy.heap.getOrAllocUstringConcat(self.internal(), left, right, charLen);
     }
 
-    pub inline fn allocObjectSmall(self: *UserVM, sid: cy.TypeId, fields: []const Value) !Value {
+    pub inline fn allocObjectSmall(self: *UserVM, sid: rt.TypeId, fields: []const Value) !Value {
         return cy.heap.allocObjectSmall(self.internal(), sid, fields);
     }
 
-    pub inline fn allocObject(self: *UserVM, sid: cy.TypeId, fields: []const Value) !Value {
+    pub inline fn allocObject(self: *UserVM, sid: rt.TypeId, fields: []const Value) !Value {
         return self.internal().allocObject(sid, fields);
     }
 

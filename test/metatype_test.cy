@@ -13,10 +13,26 @@ t.eq(typeof(123).id(), 8)
 t.eq(typeof([]).id(), 9)
 t.eq(typeof({}).id(), 11)
 
--- Referencing type name.
+-- Referencing type object.
 type Foo object:
 	a number
-t.eq(typesym(Foo), #metatype)
+foo = Foo{ a: 123 }
+t.eq(typeof(foo), Foo)
+
+-- Referencing builtin types.
+t.eq((any).id(), 29)
+t.eq((boolean).id(), 1)
+t.eq((number).id(), 8)
+t.eq((int).id(), 7)
+t.eq((string).id(), 30)
+t.eq((rawstring).id(), 31)
+t.eq((symbol).id(), 6)
+t.eq((List).id(), 9)
+t.eq((Map).id(), 11)
+t.eq((pointer).id(), 24)
+t.eq((error).id(), 2)
+t.eq((fiber).id(), 20)
+t.eq((metatype).id(), 28)
 
 -- Referencing type name path.
 import os 'os'

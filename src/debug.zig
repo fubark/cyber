@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const bytecode = @import("bytecode.zig");
 const v = fmt.v;
@@ -461,7 +462,7 @@ pub const ObjectTrace = struct {
     freePc: u32,
 
     /// Type when freed.
-    freeTypeId: cy.TypeId,
+    freeTypeId: rt.TypeId,
 };
 
 fn getOpCodeAtPc(ops: []const cy.OpData, atPc: u32) ?cy.OpCode {
@@ -619,7 +620,7 @@ fn dumpLabelAdvance(vm: *const cy.VM, curLabelIdx: *u32, nextLabelPc: *u32) void
 
 const DumpContext = struct {
     vm: *const cy.VM,
-    symIdToVar: std.AutoHashMapUnmanaged(u32, cy.KeyU64),
+    symIdToVar: std.AutoHashMapUnmanaged(u32, cy.hash.KeyU64),
 
     fn deinit(self: *DumpContext) void {
         self.symIdToVar.deinit(self.vm.alloc);
@@ -631,7 +632,7 @@ const DumpContext = struct {
         switch (code) {
             .staticVar => {
                 const symId = @ptrCast(*const align(1) u16, pc + 1).*;
-                const nameId = self.symIdToVar.get(symId).?.rtVarSymKey.nameId;
+                const nameId = self.symIdToVar.get(symId).?.rtVarKey.nameId;
                 const name = cy.sema.getName(&self.vm.compiler, nameId);
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
             },

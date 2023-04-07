@@ -11,6 +11,7 @@ const vmc = @import("vm_c.zig");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const sema = cy.sema;
 const types = cy.types;
 const bindings = @import("builtins/bindings.zig");
@@ -78,11 +79,11 @@ pub const VM = struct {
     /// Symbol table used to lookup object methods.
     /// A `SymbolId` indexes into `methodSyms`. If the `mruStructId` matches it uses `mruSym`.
     /// Otherwise, the sym is looked up from the hashmap `methodTable`.
-    methodSyms: cy.List(MethodSym),
-    methodTable: std.AutoHashMapUnmanaged(ObjectSymKey, MethodEntry),
+    methodSyms: cy.List(rt.MethodSym),
+    methodTable: std.HashMapUnmanaged(rt.MethodTableKey, rt.MethodEntry, cy.hash.KeyU64Context, 80),
 
     /// Maps a method signature to a symbol id in `methodSyms`.
-    methodSymSigs: std.HashMapUnmanaged(RtMethodSymKey, SymbolId, KeyU64Context, 80),
+    methodSymSigs: std.HashMapUnmanaged(rt.MethodKey, rt.MethodId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
     funcSyms: cy.List(FuncSymbolEntry),
@@ -90,16 +91,16 @@ pub const VM = struct {
     funcSymDetails: cy.List(FuncSymDetail),
 
     varSyms: cy.List(VarSym),
-    varSymSigs: std.HashMapUnmanaged(AbsVarSigKey, SymbolId, KeyU64Context, 80),
+    varSymSigs: std.HashMapUnmanaged(rt.VarKey, SymbolId, cy.hash.KeyU64Context, 80),
 
     /// Struct fields symbol table.
     fieldSyms: cy.List(FieldSymbolMap),
-    fieldTable: std.AutoHashMapUnmanaged(ObjectSymKey, FieldEntry),
-    fieldSymSignatures: std.StringHashMapUnmanaged(SymbolId),
+    fieldTable: std.HashMapUnmanaged(rt.FieldTableKey, FieldEntry, cy.hash.KeyU64Context, 80),
+    fieldSymSignatures: std.StringHashMapUnmanaged(rt.FieldId),
 
-    /// Structs.
-    structs: cy.List(Struct),
-    structSignatures: std.HashMapUnmanaged(StructKey, TypeId, KeyU64Context, 80),
+    /// Types.
+    types: cy.List(rt.Type),
+    typeSignatures: std.HashMapUnmanaged(rt.TypeKey, rt.TypeId, cy.hash.KeyU64Context, 80),
 
     /// Enums.
     enums: cy.List(Enum),
@@ -194,8 +195,8 @@ pub const VM = struct {
             .fieldSyms = .{},
             .fieldTable = .{},
             .fieldSymSignatures = .{},
-            .structs = .{},
-            .structSignatures = .{},
+            .types = .{},
+            .typeSignatures = .{},
             .enums = .{},
             .enumSignatures = .{},
             .syms = .{},
@@ -247,7 +248,7 @@ pub const VM = struct {
         try self.funcSyms.ensureTotalCapacityPrecise(self.alloc, 255);
         try self.methodSyms.ensureTotalCapacityPrecise(self.alloc, 170);
 
-        try self.structs.ensureTotalCapacityPrecise(alloc, 170);
+        try self.types.ensureTotalCapacityPrecise(alloc, 170);
         try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
 
         // Initialize heap.
@@ -373,11 +374,11 @@ pub const VM = struct {
         }
 
         if (reset) {
-            self.structs.clearRetainingCapacity();
-            self.structSignatures.clearRetainingCapacity();
+            self.types.clearRetainingCapacity();
+            self.typeSignatures.clearRetainingCapacity();
         } else {
-            self.structs.deinit(self.alloc);
-            self.structSignatures.deinit(self.alloc);
+            self.types.deinit(self.alloc);
+            self.typeSignatures.deinit(self.alloc);
         }
 
         for (self.syms.items()) |sym| {
@@ -670,7 +671,7 @@ pub const VM = struct {
         if (recv.isPointer()) {
             const obj = recv.asHeapObject();
             const res = switch (obj.head.typeId) {
-                cy.ListS => {
+                rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     var start = @floatToInt(i32, startV.toF64());
                     if (start < 0) {
@@ -693,28 +694,28 @@ pub const VM = struct {
                     }
                     return cy.heap.allocList(self, elems);
                 },
-                cy.AstringT => b: {
+                rt.AstringT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSlice(.astring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
                 },
-                cy.UstringT => b: {
+                rt.UstringT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSlice(.ustring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
                 },
-                cy.StringSliceT => b: {
+                rt.StringSliceT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSlice(.slice)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
                 },
-                cy.RawStringT => b: {
+                rt.RawstringT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSlice(.rawstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
                 },
-                cy.RawStringSliceT => b: {
+                rt.RawstringSliceT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSlice(.rawSlice)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 else => {
-                    return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(self.structs.buf[obj.head.typeId].name)});
+                    return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(self.types.buf[obj.head.typeId].name)});
                 },
             };
             if (res.isInterrupt()) {
@@ -726,8 +727,8 @@ pub const VM = struct {
                 return self.panic("Unsupported slice operation on type `number`.");
             } else {
                 const res = switch (recv.getTag()) {
-                    cy.StaticAstringT => bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2),
-                    cy.StaticUstringT => bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2),
+                    rt.StaticAstringT => bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2),
+                    rt.StaticUstringT => bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2),
                     else => {
                         return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@intCast(u8, recv.getTag()))});
                     },
@@ -762,7 +763,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn addAnonymousStruct(self: *VM, baseName: []const u8) !TypeId {
+    pub fn addAnonymousStruct(self: *VM, baseName: []const u8) !rt.TypeId {
         const name = try self.alloc.alloc(u8, baseName.len + 16);
         defer self.alloc.free(name);
 
@@ -772,26 +773,19 @@ pub const VM = struct {
             std.mem.copy(u8, name[0..baseName.len], baseName);
             _ = std.fmt.formatIntBuf(name[baseName.len..], next, 16, .lower, .{ .width = 16, .fill = '0'});
             const nameId = try cy.sema.ensureNameSymExt(&self.compiler, name, true);
-            const key = StructKey{
-                .structKey = .{
-                    .rParentSymId = cy.NullId,
-                    .nameId = nameId,
-                },
-            };
-            if (!self.structSignatures.contains(key)) {
+            const key = rt.TypeKey.initTypeKey(cy.NullId, nameId);
+            if (!self.typeSignatures.contains(key)) {
                 return try self.addObjectTypeExt(cy.NullId, nameId, baseName, cy.NullId);
             }
         }
         return error.TooManyAttempts;
     }
 
-    pub fn ensureObjectType(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId, rSymId: sema.ResolvedSymId) !TypeId {
-        const res = try @call(.never_inline, self.structSignatures.getOrPut, .{self.alloc, .{
-            .structKey = .{
-                .rParentSymId = rParentSymId,
-                .nameId = nameId,
-            },
-        }});
+    pub fn ensureObjectType(
+        self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId, rSymId: sema.ResolvedSymId
+    ) !rt.TypeId {
+        const key = rt.TypeKey.initTypeKey(rParentSymId, nameId);
+        const res = try @call(.never_inline, self.typeSignatures.getOrPut, .{self.alloc, key });
         if (!res.found_existing) {
             const name = sema.getName(&self.compiler, nameId);
             return self.addObjectTypeExt(rParentSymId, nameId, name, rSymId);
@@ -800,14 +794,15 @@ pub const VM = struct {
         }
     }
 
-    pub fn getStructFieldIdx(self: *const VM, typeId: TypeId, propName: []const u8) ?u32 {
+    pub fn getStructFieldIdx(self: *const VM, typeId: rt.TypeId, propName: []const u8) ?u32 {
         const fieldId = self.fieldSymSignatures.get(propName) orelse return null;
         const entry = &self.fieldSyms.buf[fieldId];
 
         if (entry.mruTypeId == typeId) {
             return entry.mruOffset;
         } else {
-            const res = self.fieldTable.get(.{ .typeId = typeId, .symId = fieldId }) orelse return null;
+            const key = rt.FieldTableKey.initFieldTableKey(typeId, fieldId);
+            const res = self.fieldTable.get(key) orelse return null;
             entry.mruTypeId = typeId;
             entry.mruOffset = res.offset;
             entry.mruFieldTypeSymId = res.typeSymId;
@@ -826,34 +821,31 @@ pub const VM = struct {
         return id;
     }
 
-    pub inline fn getObjectTypeId(self: *const VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) ?TypeId {
-        return self.structSignatures.get(.{
-            .structKey = .{
-                .rParentSymId = rParentSymId,
-                .nameId = nameId,
-            },
-        });
+    pub inline fn getObjectTypeId(
+        self: *const VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId
+    ) ?rt.TypeId {
+        const key = rt.TypeKey.initTypeKey(rParentSymId, nameId);
+        return self.typeSignatures.get(key);
     }
 
     /// Can provide a different display name.
-    pub fn addObjectTypeExt(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId, name: []const u8, rTypeSymId: sema.ResolvedSymId) !TypeId {
-        const s = Struct{
+    pub fn addObjectTypeExt(
+        self: *VM, rParentSymId: sema.ResolvedSymId,
+        nameId: sema.NameSymId, name: []const u8, rTypeSymId: sema.ResolvedSymId
+    ) !rt.TypeId {
+        const s = rt.Type{
             .name = name,
             .numFields = 0,
             .rTypeSymId = rTypeSymId,
         };
-        const id = @intCast(u32, self.structs.len);
-        try self.structs.append(self.alloc, s);
-        try self.structSignatures.put(self.alloc, .{
-            .structKey = .{
-                .rParentSymId = rParentSymId,
-                .nameId = nameId,
-            },
-        }, id);
+        const id = @intCast(u32, self.types.len);
+        try self.types.append(self.alloc, s);
+        const key = rt.TypeKey.initTypeKey(rParentSymId, nameId);
+        try self.typeSignatures.put(self.alloc, key, id);
         return id;
     }
 
-    pub fn addBuiltinType(self: *VM, name: []const u8) !TypeId {
+    pub fn addBuiltinType(self: *VM, name: []const u8) !rt.TypeId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
         return self.addObjectTypeExt(cy.NullId, nameId, name, cy.NullId);
     }
@@ -870,22 +862,12 @@ pub const VM = struct {
     }
 
     pub inline fn getVarSym(self: *const VM, rParentSymId: u32, nameId: u32) ?SymbolId {
-        const key = RtVarSymKey{
-            .rtVarSymKey = .{
-                .rParentSymId = rParentSymId,
-                .nameId = nameId,
-            }
-        };
+        const key = rt.VarKey.initVarKey(rParentSymId, nameId);
         return self.varSymSigs.get(key);
     }
 
     pub fn ensureVarSym(self: *VM, rParentSymId: sema.ResolvedSymId, nameId: u32) !SymbolId {
-        const key = RtVarSymKey{
-            .rtVarSymKey = .{
-                .rParentSymId = rParentSymId,
-                .nameId = nameId,
-            },
-        };
+        const key = rt.VarKey.initVarKey(rParentSymId, nameId);
         const res = try self.varSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.varSyms.len);
@@ -976,7 +958,7 @@ pub const VM = struct {
         }
     }
 
-    pub fn hasMethodSym(self: *const VM, sid: TypeId, methodId: SymbolId) bool {
+    pub fn hasMethodSym(self: *const VM, sid: rt.TypeId, methodId: SymbolId) bool {
         const map = self.methodSyms.buf[methodId];
         if (map.mapT == .one) {
             return map.inner.one.id == sid;
@@ -990,12 +972,7 @@ pub const VM = struct {
 
     pub fn ensureMethodSym2(self: *VM, name: []const u8, numParams: u32, dupeName: bool) !SymbolId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
-        const key = RtMethodSymKey{
-            .rtMethodSymKey = .{
-                .nameId = nameId,
-                .numParams = numParams,
-            },
-        };
+        const key = rt.MethodKey.initMethodKey(nameId, numParams);
         const res = try @call(.never_inline, self.methodSymSigs.getOrPut, .{self.alloc, key});
         if (!res.found_existing) {
             const id = @intCast(u32, self.methodSyms.len);
@@ -1022,24 +999,18 @@ pub const VM = struct {
         }
     }
 
-    pub fn addFieldSym(self: *VM, sid: TypeId, symId: SymbolId, offset: u16, typeSymId: sema.ResolvedSymId) !void {
+    pub fn addFieldSym(self: *VM, sid: rt.TypeId, symId: SymbolId, offset: u16, typeSymId: sema.ResolvedSymId) !void {
         const sym = &self.fieldSyms.buf[symId];
         if (sym.mruTypeId != cy.NullId) {
             // Add prev mru if it doesn't exist in hashmap.
-            const prev = ObjectSymKey{
-                .typeId = sym.mruTypeId,
-                .symId = symId,
-            };
+            const prev = rt.FieldTableKey.initFieldTableKey(sym.mruTypeId, symId);
             if (!self.fieldTable.contains(prev)) {
                 try self.fieldTable.putNoClobber(self.alloc, prev, .{
                     .offset = sym.mruOffset,
                     .typeSymId = sym.mruFieldTypeSymId,
                 });
             }
-            const key = ObjectSymKey{
-                .typeId = sid,
-                .symId = symId,
-            };
+            const key = rt.FieldTableKey.initFieldTableKey(sid, symId);
             try self.fieldTable.putNoClobber(self.alloc, key, .{
                 .offset = offset,
                 .typeSymId = typeSymId,
@@ -1072,13 +1043,10 @@ pub const VM = struct {
         self.funcSyms.buf[symId] = sym;
     }
 
-    pub fn addMethodSym(self: *VM, id: TypeId, symId: SymbolId, entry: MethodSym) !void {
+    pub fn addMethodSym(self: *VM, id: rt.TypeId, symId: SymbolId, entry: rt.MethodSym) !void {
         const sym = &self.methodSyms.buf[symId];
         if (sym.mruTypeId != cy.NullId) {
-            const prev = ObjectSymKey{
-                .typeId = sym.mruTypeId,
-                .symId = symId,
-            };
+            const prev = rt.MethodTableKey.initMethodTableKey(sym.mruTypeId, symId);
             if (!self.methodTable.contains(prev)) {
                 try self.methodTable.putNoClobber(self.alloc, prev, .{
                     .entryT = sym.entryT,
@@ -1086,10 +1054,7 @@ pub const VM = struct {
                     .inner = sym.inner,
                 });
             }
-            const key = ObjectSymKey{
-                .typeId = id,
-                .symId = symId,
-            };
+            const key = rt.MethodTableKey.initMethodTableKey(id, symId);
             try self.methodTable.putNoClobber(self.alloc, key, .{
                 .entryT = entry.entryT,
                 .rFuncSigId = entry.rFuncSigId,
@@ -1115,7 +1080,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
             switch (obj.head.typeId) {
-                cy.ListS => {
+                rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -1131,7 +1096,7 @@ pub const VM = struct {
                         return self.interruptThrowSymbol(.OutOfBounds);
                     }
                 },
-                cy.MapS => {
+                rt.MapT => {
                     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     const res = try map.getOrPut(self.alloc, self, index);
                     if (res.foundExisting) {
@@ -1155,7 +1120,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
             switch (obj.head.typeId) {
-                cy.ListS => {
+                rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -1170,7 +1135,7 @@ pub const VM = struct {
                         return self.interruptThrowSymbol(.OutOfBounds);
                     }
                 },
-                cy.MapS => {
+                rt.MapT => {
                     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     const res = try map.getOrPut(self.alloc, self, index);
                     if (!res.foundExisting) {
@@ -1193,7 +1158,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
             const res = switch (obj.head.typeId) {
-                cy.ListS => {
+                rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
                     if (idx < list.len) {
@@ -1204,7 +1169,7 @@ pub const VM = struct {
                         return self.interruptThrowSymbol(.OutOfBounds);
                     }
                 },
-                cy.MapS => {
+                rt.MapT => {
                     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     const key = Value.initF64(index.toF64());
                     if (map.get(self, key)) |val| {
@@ -1212,17 +1177,17 @@ pub const VM = struct {
                         return val;
                     } else return Value.None;
                 },
-                cy.AstringT => b: {
+                rt.AstringT => b: {
                     const idx = @intToFloat(f64, @intCast(i32, obj.astring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
-                cy.UstringT => b: {
+                rt.UstringT => b: {
                     const idx = @intToFloat(f64, @intCast(i32, obj.ustring.charLen) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
-                cy.StringSliceT => b: {
+                rt.StringSliceT => b: {
                     if (obj.stringSlice.isAstring()) {
                         const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.len) + @floatToInt(i32, index.toF64()));
                         retainObject(self, obj);
@@ -1233,18 +1198,18 @@ pub const VM = struct {
                         break :b bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     }
                 },
-                cy.RawStringT => b: {
+                rt.RawstringT => b: {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstring.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
-                cy.RawStringSliceT => b: {
+                rt.RawstringSliceT => b: {
                     const idx = @intToFloat(f64, @intCast(i32, obj.rawstringSlice.len) + @floatToInt(i32, index.toF64()));
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 else => {
-                    return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.structs.buf[obj.head.typeId].name)});
+                    return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.types.buf[obj.head.typeId].name)});
                 },
             };
             if (res.isInterrupt()) {
@@ -1256,11 +1221,11 @@ pub const VM = struct {
                 return self.panic("Unsupported reverse index operation on type `number`.");
             } else {
                 const res = switch (left.getTag()) {
-                    cy.StaticAstringT => {
+                    rt.StaticAstringT => {
                         const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
                         return bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     },
-                    cy.StaticUstringT => {
+                    rt.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
                         const idx = @intToFloat(f64, @intCast(i32, cy.string.getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
                         return bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
@@ -1281,7 +1246,7 @@ pub const VM = struct {
         if (left.isPointer()) {
             const obj = left.asHeapObject();
             const res = switch (obj.head.typeId) {
-                cy.ListS => {
+                rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                     const idx = @floatToInt(u32, index.toF64());
                     if (idx < list.len) {
@@ -1291,35 +1256,35 @@ pub const VM = struct {
                         return self.interruptThrowSymbol(.OutOfBounds);
                     }
                 },
-                cy.MapS => {
+                rt.MapT => {
                     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                     if (@call(.never_inline, map.get, .{self, index})) |val| {
                         retain(self, val);
                         return val;
                     } else return Value.None;
                 },
-                cy.AstringT => b: {
+                rt.AstringT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
-                cy.UstringT => b: {
+                rt.UstringT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
-                cy.StringSliceT => b: {
+                rt.StringSliceT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
-                cy.RawStringT => b: {
+                rt.RawstringT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
-                cy.RawStringSliceT => b: {
+                rt.RawstringSliceT => b: {
                     retainObject(self, obj);
                     break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
                 },
                 else => {
-                    return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.structs.buf[obj.head.typeId].name)});
+                    return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.types.buf[obj.head.typeId].name)});
                 },
             };
             if (res.isInterrupt()) {
@@ -1331,8 +1296,8 @@ pub const VM = struct {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 const res = switch (left.getTag()) {
-                    cy.StaticAstringT => bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
-                    cy.StaticUstringT => bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
+                    rt.StaticAstringT => bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
+                    rt.StaticUstringT => bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
                     else => {
                         return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
                     },
@@ -1414,8 +1379,9 @@ pub const VM = struct {
         return self.panic("Can't assign to value's field since the value is not an object.");
     }
 
-    pub fn getFieldOffsetFromTable(self: *VM, typeId: TypeId, symId: SymbolId) u8 {
-        if (self.fieldTable.get(.{ .typeId = typeId, .symId = symId })) |res| {
+    pub fn getFieldOffsetFromTable(self: *VM, typeId: rt.TypeId, symId: SymbolId) u8 {
+        const key = rt.FieldTableKey.initFieldTableKey(typeId, symId);
+        if (self.fieldTable.get(key)) |res| {
             const sym = &self.fieldSyms.buf[symId];
             sym.mruTypeId = typeId;
             sym.mruOffset = res.offset;
@@ -1485,7 +1451,7 @@ pub const VM = struct {
     fn getFieldFallback(self: *const VM, obj: *const HeapObject, nameId: sema.NameSymId) linksection(cy.HotSection) Value {
         @setCold(true);
         const name = sema.getName(&self.compiler, nameId);
-        if (obj.head.typeId == cy.MapS) {
+        if (obj.head.typeId == rt.MapT) {
             const map = stdx.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
             if (map.getByString(self, name)) |val| {
                 return val;
@@ -1628,7 +1594,10 @@ pub const VM = struct {
         }
     }
 
-    fn callSymEntry(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: MethodSym, recv: Value, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) !cy.fiber.PcSp {
+    fn callSymEntry(
+        self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: rt.MethodSym,
+        recv: Value, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8
+    ) linksection(cy.HotSection) !cy.fiber.PcSp {
         switch (sym.entryT) {
             .func => {
                 if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(self.stackEndPtr)) {
@@ -1715,7 +1684,9 @@ pub const VM = struct {
         }
     }
 
-    fn getCallObjSymFallback(self: *VM, typeId: TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) ?MethodSym {
+    fn getCallObjSymFallback(
+        self: *VM, typeId: rt.TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId
+    ) ?rt.MethodSym {
         const sym = self.methodSyms.buf[symId];
         if (sym.mruTypeId == typeId) {
             // Types match, but function signatures don't. Try to fit type constraints.
@@ -1727,8 +1698,11 @@ pub const VM = struct {
         return getCallObjSymFromTable(self, typeId, symId, rFuncSigId);
     }
 
-    fn getCallObjSymFromTable(self: *VM, typeId: TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) ?MethodSym {
-        if (self.methodTable.get(.{ .typeId = typeId, .symId = symId })) |entry| {
+    fn getCallObjSymFromTable(
+        self: *VM, typeId: rt.TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId
+    ) ?rt.MethodSym {
+        const key = rt.MethodTableKey.initMethodTableKey(typeId, symId);
+        if (self.methodTable.get(key)) |entry| {
             if (types.isFuncSigCompat(&self.compiler, rFuncSigId, entry.rFuncSigId)) {
                 const sym = &self.methodSyms.buf[symId];
                 sym.* = .{
@@ -1743,7 +1717,7 @@ pub const VM = struct {
         return null;
     }
 
-    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) linksection(cy.HotSection) ?MethodSym {
+    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) linksection(cy.HotSection) ?rt.MethodSym {
         const entry = self.methodSyms.buf[symId];
         if (entry.mruTypeId == typeId and entry.rFuncSigId == rFuncSigId) {
             return entry;
@@ -1808,15 +1782,15 @@ pub const VM = struct {
     pub fn tryValueAsComparableString(self: *const VM, val: Value) linksection(cy.Section) ?[]const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            if (obj.head.typeId == cy.AstringT) {
+            if (obj.head.typeId == rt.AstringT) {
                 return obj.astring.getConstSlice();
-            } else if (obj.head.typeId == cy.UstringT) {
+            } else if (obj.head.typeId == rt.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.head.typeId == cy.StringSliceT) {
+            } else if (obj.head.typeId == rt.StringSliceT) {
                 return obj.stringSlice.getConstSlice();
-            } else if (obj.head.typeId == cy.RawStringT) {
+            } else if (obj.head.typeId == rt.RawstringT) {
                 return obj.rawstring.getConstSlice();
-            } else if (obj.head.typeId == cy.RawStringSliceT) {
+            } else if (obj.head.typeId == rt.RawstringSliceT) {
                 return obj.rawstringSlice.getConstSlice();
             } else return null;
         } else {
@@ -1861,11 +1835,11 @@ pub const VM = struct {
     pub fn valueAsString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            if (obj.head.typeId == cy.AstringT) {
+            if (obj.head.typeId == rt.AstringT) {
                 return obj.astring.getConstSlice();
-            } else if (obj.head.typeId == cy.UstringT) {
+            } else if (obj.head.typeId == rt.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.head.typeId == cy.StringSliceT) {
+            } else if (obj.head.typeId == rt.StringSliceT) {
                 return obj.stringSlice.getConstSlice();
             } else unreachable;
         } else {
@@ -1932,20 +1906,20 @@ pub const VM = struct {
             if (val.isPointer()) {
                 const obj = val.asHeapObject();
                 switch (obj.head.typeId) {
-                    cy.AstringT => {
+                    rt.AstringT => {
                         const res = obj.astring.getConstSlice();
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, res.len);
                         }
                         return res;
                     },
-                    cy.UstringT => {
+                    rt.UstringT => {
                         if (getCharLen) {
                             outCharLen.* = obj.ustring.charLen;
                         }
                         return obj.ustring.getConstSlice();
                     },
-                    cy.StringSliceT => {
+                    rt.StringSliceT => {
                         if (getCharLen) {
                             if (obj.stringSlice.isAstring()) {
                                 outCharLen.* = obj.stringSlice.len;
@@ -1955,7 +1929,7 @@ pub const VM = struct {
                         }
                         return obj.stringSlice.getConstSlice();
                     },
-                    cy.RawStringT => {
+                    rt.RawstringT => {
                         const start = writer.pos();
                         std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
@@ -1964,7 +1938,7 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.RawStringSliceT => {
+                    rt.RawstringSliceT => {
                         const start = writer.pos();
                         std.fmt.format(writer, "rawstring ({})", .{obj.rawstringSlice.len}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
@@ -1973,7 +1947,7 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.ListS => {
+                    rt.ListT => {
                         const start = writer.pos();
                         std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
@@ -1982,7 +1956,7 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.MapS => {
+                    rt.MapT => {
                         const start = writer.pos();
                         std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
@@ -1991,12 +1965,12 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.MetaTypeT => {
+                    rt.MetaTypeT => {
                         const start = writer.pos();
                         const symType = @intToEnum(cy.heap.MetaTypeKind, obj.metatype.type);
                         var slice: []const u8 = undefined;
                         if (symType == .object) {
-                            const name = self.structs.buf[obj.metatype.symId].name;
+                            const name = self.types.buf[obj.metatype.symId].name;
                             std.fmt.format(writer, "type: {s}", .{name}) catch stdx.fatal();
                             slice = writer.sliceFrom(start);
                         } else {
@@ -2008,7 +1982,7 @@ pub const VM = struct {
                         return slice;
                     },
                     else => {
-                        const buf = self.structs.buf[obj.head.typeId].name;
+                        const buf = self.types.buf[obj.head.typeId].name;
                         if (getCharLen) {
                             outCharLen.* = @intCast(u32, buf.len);
                         }
@@ -2017,13 +1991,13 @@ pub const VM = struct {
                 }
             } else {
                 switch (val.getTag()) {
-                    cy.NoneT => {
+                    rt.NoneT => {
                         if (getCharLen) {
                             outCharLen.* = "none".len;
                         }
                         return "none";
                     },
-                    cy.BooleanT => {
+                    rt.BooleanT => {
                         if (val.asBool()) {
                             if (getCharLen) {
                                 outCharLen.* = "true".len;
@@ -2036,7 +2010,7 @@ pub const VM = struct {
                             return "false";
                         }
                     },
-                    cy.ErrorT => {
+                    rt.ErrorT => {
                         const start = writer.pos();
                         const symId = val.asErrorSymbol();
                         std.fmt.format(writer, "error.{s}", .{self.getSymbolName(symId)}) catch stdx.fatal();
@@ -2046,7 +2020,7 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.StaticAstringT => {
+                    rt.StaticAstringT => {
                         const slice = val.asStaticStringSlice();
                         const buf = self.strBuf[slice.start..slice.end];
                         if (getCharLen) {
@@ -2054,14 +2028,14 @@ pub const VM = struct {
                         }
                         return buf;
                     },
-                    cy.StaticUstringT => {
+                    rt.StaticUstringT => {
                         const slice = val.asStaticStringSlice();
                         if (getCharLen) {
                             outCharLen.* = @ptrCast(*align (1) cy.StaticUstringHeader, self.strBuf.ptr + slice.start - 12).charLen;
                         }
                         return self.strBuf[slice.start..slice.end];
                     },
-                    cy.EnumT => {
+                    rt.EnumT => {
                         const start = writer.pos();
                         const enumv = val.asEnum();
                         const enumSym = self.enums.buf[enumv.enumId];
@@ -2073,7 +2047,7 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.SymbolT => {
+                    rt.SymbolT => {
                         const start = writer.pos();
                         const litId = val.asSymbolId();
                         std.fmt.format(writer, "#{s}", .{self.getSymbolName(litId)}) catch stdx.fatal();
@@ -2083,7 +2057,7 @@ pub const VM = struct {
                         }
                         return slice;
                     },
-                    cy.IntegerT => {
+                    rt.IntegerT => {
                         const start = writer.pos();
                         std.fmt.format(writer, "{}", .{val.asInteger()}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
@@ -2116,15 +2090,15 @@ pub const StringType = enum {
 fn getComparableStringType(val: Value) ?StringType {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (obj.head.typeId == cy.AstringT) {
+        if (obj.head.typeId == rt.AstringT) {
             return .astring;
-        } else if (obj.head.typeId == cy.UstringT) {
+        } else if (obj.head.typeId == rt.UstringT) {
             return .ustring;
-        } else if (obj.head.typeId == cy.StringSliceT) {
+        } else if (obj.head.typeId == rt.StringSliceT) {
             return .slice;
-        } else if (obj.head.typeId == cy.RawStringT) {
+        } else if (obj.head.typeId == rt.RawstringT) {
             return .rawstring;
-        } else if (obj.head.typeId == cy.RawStringSliceT) {
+        } else if (obj.head.typeId == rt.RawstringSliceT) {
             return .rawSlice;
         }
         return null;
@@ -2133,10 +2107,10 @@ fn getComparableStringType(val: Value) ?StringType {
             return null;
         }
         switch (val.getTag()) {
-            cy.StaticUstringT => {
+            rt.StaticUstringT => {
                 return .staticUstring;
             },
-            cy.StaticAstringT => {
+            rt.StaticAstringT => {
                 return .staticAstring;
             },
             else => return null,
@@ -2164,8 +2138,8 @@ fn evalCompare(vm: *const VM, left: Value, right: Value) linksection(cy.HotSecti
         }
     }
     switch (left.getTypeId()) {
-        cy.MetaTypeT => {
-            if (right.getTypeId() == cy.MetaTypeT) {
+        rt.MetaTypeT => {
+            if (right.getTypeId() == rt.MetaTypeT) {
                 const l = left.asHeapObject().metatype;
                 const r = right.asHeapObject().metatype;
                 return Value.initBool(l.type == r.type and l.symId == r.symId);
@@ -2185,8 +2159,8 @@ fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy
         }
     }
     switch (left.getTypeId()) {
-        cy.MetaTypeT => {
-            if (right.getTypeId() == cy.MetaTypeT) {
+        rt.MetaTypeT => {
+            if (right.getTypeId() == rt.MetaTypeT) {
                 const l = left.asHeapObject().metatype;
                 const r = right.asHeapObject().metatype;
                 return Value.initBool(l.type != r.type or l.symId != r.symId);
@@ -2215,34 +2189,34 @@ fn panicExpectedNumber(vm: *cy.VM) error{Panic, OutOfMemory} {
 fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
     @setCold(true);
     const typeId = val.getTypeId();
-    return vm.panicFmt("Cannot convert `{}` to number.", &.{v(vm.structs.buf[typeId].name)});
+    return vm.panicFmt("Cannot convert `{}` to number.", &.{v(vm.types.buf[typeId].name)});
 }
 
 fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (obj.head.typeId == cy.AstringT) {
+        if (obj.head.typeId == rt.AstringT) {
             const str = obj.astring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
-        } else if (obj.head.typeId == cy.UstringT) {
+        } else if (obj.head.typeId == rt.UstringT) {
             const str = obj.ustring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
-        } else if (obj.head.typeId == cy.RawStringT) {
+        } else if (obj.head.typeId == rt.RawstringT) {
             const str = obj.rawstring.getConstSlice();
             return std.fmt.parseFloat(f64, str) catch 0;
         } else return gvm.panic("Cannot convert struct to number");
     } else {
         switch (val.getTag()) {
-            cy.NoneT => return 0,
-            cy.BooleanT => return if (val.asBool()) 1 else 0,
-            cy.IntegerT => return @intToFloat(f64, val.asI32()),
-            cy.ErrorT => stdx.fatal(),
-            cy.StaticAstringT => {
+            rt.NoneT => return 0,
+            rt.BooleanT => return if (val.asBool()) 1 else 0,
+            rt.IntegerT => return @intToFloat(f64, val.asI32()),
+            rt.ErrorT => stdx.fatal(),
+            rt.StaticAstringT => {
                 const slice = val.asStaticStringSlice();
                 const str = gvm.strBuf[slice.start..slice.end];
                 return std.fmt.parseFloat(f64, str) catch 0;
             },
-            cy.StaticUstringT => {
+            rt.StaticUstringT => {
                 const slice = val.asStaticStringSlice();
                 const str = gvm.strBuf[slice.start..slice.end];
                 return std.fmt.parseFloat(f64, str) catch 0;
@@ -2258,8 +2232,8 @@ fn evalNeg(val: Value) Value {
         return Value.initF64(-val.asF64());
     } else {
         switch (val.getTag()) {
-            cy.NoneT => return Value.initF64(0),
-            cy.BooleanT => {
+            rt.NoneT => return Value.initF64(0),
+            rt.BooleanT => {
                 if (val.asBool()) {
                     return Value.initF64(-1);
                 } else {
@@ -2276,8 +2250,8 @@ fn evalNot(val: cy.Value) cy.Value {
         return Value.False;
     } else {
         switch (val.getTag()) {
-            cy.NoneT => return Value.True,
-            cy.BooleanT => return Value.initBool(!val.asBool()),
+            rt.NoneT => return Value.True,
+            rt.BooleanT => return Value.initBool(!val.asBool()),
             else => stdx.panic("unexpected tag"),
         }
     }
@@ -2305,8 +2279,6 @@ const FieldSymbolMap = vmc.FieldSymbolMap;
 
 test "Internals." {
     try t.eq(@alignOf(VM), 8);
-    try t.eq(@alignOf(MethodSym), 8);
-    try t.eq(@sizeOf(MethodSym), 24);
 
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
     var funcSymEntry: FuncSymbolEntry = undefined;
@@ -2315,12 +2287,8 @@ test "Internals." {
     try t.eq(@ptrToInt(&funcSymEntry.inner), @ptrToInt(&funcSymEntry) + 8);
 
     try t.eq(@sizeOf(AbsFuncSigKey), 16);
-    try t.eq(@sizeOf(RelFuncSigKey), 8);
 
-    try t.eq(@sizeOf(Struct), 24);
     try t.eq(@sizeOf(FieldSymbolMap), 16);
-
-    try t.eq(@sizeOf(KeyU64), 8);
 
     // Check Zig/C structs.
     try t.eq(@offsetOf(VM, "alloc"), @offsetOf(vmc.VM, "alloc"));
@@ -2349,8 +2317,8 @@ test "Internals." {
     try t.eq(@offsetOf(VM, "fieldSyms"), @offsetOf(vmc.VM, "fieldSyms"));
     try t.eq(@offsetOf(VM, "fieldTable"), @offsetOf(vmc.VM, "fieldTable"));
     try t.eq(@offsetOf(VM, "fieldSymSignatures"), @offsetOf(vmc.VM, "fieldSymSignatures"));
-    try t.eq(@offsetOf(VM, "structs"), @offsetOf(vmc.VM, "structs"));
-    try t.eq(@offsetOf(VM, "structSignatures"), @offsetOf(vmc.VM, "structSignatures"));
+    try t.eq(@offsetOf(VM, "types"), @offsetOf(vmc.VM, "types"));
+    try t.eq(@offsetOf(VM, "typeSignatures"), @offsetOf(vmc.VM, "typeSignatures"));
     try t.eq(@offsetOf(VM, "enums"), @offsetOf(vmc.VM, "enums"));
     try t.eq(@offsetOf(VM, "enumSignatures"), @offsetOf(vmc.VM, "enumSignatures"));
     try t.eq(@offsetOf(VM, "syms"), @offsetOf(vmc.VM, "syms"));
@@ -2364,81 +2332,6 @@ test "Internals." {
     try t.eq(@offsetOf(VM, "curFiber"), @offsetOf(vmc.VM, "curFiber"));
     try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
 }
-
-const MethodSymType = enum {
-    func,
-    nativeFunc1,
-    nativeFunc2,
-};
-
-/// Stored in `methodTable`.
-const MethodEntry = struct {
-    entryT: MethodSymType,
-
-    /// The full signature of the function.
-    rFuncSigId: u32,
-
-    inner: MethodInner,
-};
-
-const MethodInner = packed union {
-    nativeFunc1: cy.NativeObjFuncPtr,
-    nativeFunc2: cy.NativeObjFunc2Ptr,
-    func: packed struct {
-        pc: u32,
-        /// Includes function params, locals, and return info slot.
-        numLocals: u32,
-    },
-};
-
-/// Keeping this small is better for function calls.
-/// Secondary symbol data should be moved to `methodSymExtras`.
-pub const MethodSym = struct {
-    entryT: MethodSymType,
-    /// Most recent sym used is cached avoid hashmap lookup. 
-    mruTypeId: TypeId,
-
-    /// The full signature of the function.
-    rFuncSigId: u32,
-
-    inner: MethodInner,
-
-    pub fn initFuncOffset(rFuncSigId: sema.ResolvedFuncSigId, pc: usize, numLocals: u32) MethodSym {
-        return .{
-            .entryT = .func,
-            .mruTypeId = undefined,
-            .rFuncSigId = rFuncSigId,
-            .inner = .{
-                .func = .{
-                    .pc = @intCast(u32, pc),
-                    .numLocals = numLocals,
-                },
-            },
-        };
-    }
-
-    pub fn initNativeFunc1(rFuncSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
-        return .{
-            .entryT = .nativeFunc1,
-            .mruTypeId = undefined,
-            .rFuncSigId = rFuncSigId,
-            .inner = .{
-                .nativeFunc1 = func,
-            },
-        };
-    }
-
-    pub fn initNativeFunc2(rFuncSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr) MethodSym {
-        return .{
-            .entryT = .nativeFunc2,
-            .mruTypeId = undefined,
-            .rFuncSigId = rFuncSigId,
-            .inner = .{
-                .nativeFunc2 = func,
-            },
-        };
-    }
-};
 
 pub const VarSym = struct {
     value: Value,
@@ -2542,20 +2435,6 @@ const Enum = struct {
     name: []const u8,
     members: []const sema.NameSymId,
 };
-
-const StructKey = KeyU64;
-
-pub const TypeId = u32;
-
-const Struct = struct {
-    name: []const u8,
-    numFields: u32,
-    rTypeSymId: sema.ResolvedSymId,
-};
-
-// const StructSymbol = struct {
-//     name: []const u8,
-// };
 
 pub const SymbolId = u32;
 
@@ -3642,7 +3521,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const val = framePtr[pc[1].arg];
                 if (val.isPointer()) {
                     const fiber = val.asPointer(*cy.fiber.Fiber);
-                    if (fiber.structId == cy.FiberS) {
+                    if (fiber.structId == rt.FiberT) {
                         if (fiber != vm.curFiber) {
                             // Only resume fiber if it's not done.
                             if (fiber.pcOffset != cy.NullId) {
@@ -3766,7 +3645,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = box.asHeapObject();
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.head.typeId == cy.BoxS);
+                    std.debug.assert(obj.head.typeId == rt.BoxT);
                 }
                 obj.box.val = rval;
                 continue;
@@ -3783,7 +3662,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = box.asHeapObject();
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.head.typeId == cy.BoxS);
+                    std.debug.assert(obj.head.typeId == rt.BoxT);
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
@@ -3797,7 +3676,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (box.isPointer()) {
                     const obj = box.asHeapObject();
                     if (builtin.mode == .Debug) {
-                        std.debug.assert(obj.head.typeId == cy.BoxS);
+                        std.debug.assert(obj.head.typeId == rt.BoxT);
                     }
                     framePtr[pc[2].arg] = obj.box.val;
                 } else {
@@ -4149,11 +4028,6 @@ pub const EvalError = error{
     NoDebugSym,
 };
 
-const ObjectSymKey = struct {
-    typeId: TypeId,
-    symId: SymbolId,
-};
-
 const FieldEntry = struct {
     offset: u32,
     typeSymId: sema.ResolvedSymId,
@@ -4165,7 +4039,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.head.typeId) {
-            cy.ClosureS => {
+            rt.ClosureT => {
                 if (numArgs != obj.closure.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     // Release func and args.
@@ -4190,7 +4064,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                 const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                 std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
             },
-            cy.LambdaS => {
+            rt.LambdaT => {
                 if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     // Release func and args.
@@ -4211,7 +4085,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
                 framePtr.*[3] = retFramePtr;
                 pc.* = cy.fiber.toVmPc(vm, obj.lambda.funcPc);
             },
-            cy.NativeFunc1S => {
+            rt.NativeFuncT => {
                 if (numArgs != obj.nativeFunc1.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     for (framePtr.*[startLocal + 4..startLocal + 4 + numArgs]) |val| {
@@ -4241,7 +4115,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.head.typeId) {
-            cy.ClosureS => {
+            rt.ClosureT => {
                 if (numArgs != obj.closure.numParams) {
                     stdx.panic("params/args mismatch");
                 }
@@ -4258,7 +4132,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
                 const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                 std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
             },
-            cy.LambdaS => {
+            rt.LambdaT => {
                 if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
                     stdx.fatal();
@@ -4275,7 +4149,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Val
                 framePtr.*[3] = retFramePtr;
                 pc.* = cy.fiber.toVmPc(vm, obj.lambda.funcPc);
             },
-            cy.NativeFunc1S => {
+            rt.NativeFuncT => {
                 vm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
                 vm.framePtr = newFramePtr;
@@ -4295,18 +4169,18 @@ fn panicCastAbstractError(vm: *cy.VM, val: Value, expTypeSymId: cy.sema.Resolved
     const sym = vm.compiler.sema.getResolvedSym(expTypeSymId);
     const name = cy.sema.getName(&vm.compiler, sym.key.absResolvedSymKey.nameId);
     return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
-         v(vm.structs.buf[val.getTypeId()].name), v(name), 
+         v(vm.types.buf[val.getTypeId()].name), v(name), 
     });
 }
 
-fn panicCastError(vm: *cy.VM, val: Value, expTypeId: cy.TypeId) !void {
+fn panicCastError(vm: *cy.VM, val: Value, expTypeId: rt.TypeId) !void {
     return vm.panicFmt("Can not cast `{}` to `{}`.", &.{
-         v(vm.structs.buf[val.getTypeId()].name), v(vm.structs.buf[expTypeId].name), 
+         v(vm.types.buf[val.getTypeId()].name), v(vm.types.buf[expTypeId].name), 
     });
 }
 
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
-fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: TypeId, rtSymId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) !Value {
+fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: rt.TypeId, rtSymId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) !Value {
     const name = vm.methodSymExtras.buf[rtSymId].getName();
     const methodSym = vm.methodSyms.buf[rtSymId];
     if (methodSym.mruTypeId == typeId) {
@@ -4320,15 +4194,12 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: TypeId, rtSymId: SymbolId, rFunc
             \\Can not find compatible function for `{}{}` in `{}`.
             \\Only `func {}{}` exists for the symbol `{}`.
             , &.{
-                v(name), v(sigStr), v(vm.structs.buf[typeId].name),
+                v(name), v(sigStr), v(vm.types.buf[typeId].name),
                 v(name), v(existingSigStr), v(name),
             },
         );
     } else {
-        const key = ObjectSymKey{
-            .typeId = typeId,
-            .symId = rtSymId,
-        };
+        const key = rt.MethodTableKey.initMethodTableKey(typeId, rtSymId);
         if (vm.methodTable.get(key)) |entry| {
             const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
             const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, entry.rFuncSigId);
@@ -4340,7 +4211,7 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: TypeId, rtSymId: SymbolId, rFunc
                 \\Can not find compatible function for `{}{}` in `{}`.
                 \\Only `func {}{}` exists for the symbol `{}`.
                 , &.{
-                    v(name), v(sigStr), v(vm.structs.buf[typeId].name),
+                    v(name), v(sigStr), v(vm.types.buf[typeId].name),
                     v(name), v(existingSigStr), v(name),
                 },
             );
@@ -4348,7 +4219,7 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: TypeId, rtSymId: SymbolId, rFunc
             const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
             defer vm.alloc.free(sigStr);
             return vm.panicFmt("`func {}{}` can not be found in `{}`.", &.{
-                 v(name), v(sigStr), v(vm.structs.buf[typeId].name), 
+                 v(name), v(sigStr), v(vm.types.buf[typeId].name), 
             });
         }
     }
@@ -4383,7 +4254,7 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32
             // `for [iterable]:`
             const name = vm.methodSymExtras.buf[rtSymId].getName();
             return vm.panicFmt("`{}` is either missing in `{}` or the call signature: {}(self, 0 args) is unsupported.", &.{
-                 v(name), v(vm.structs.buf[typeId].name), v(name),
+                 v(name), v(vm.types.buf[typeId].name), v(name),
             });
         }
     } else {
@@ -4413,7 +4284,10 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value
     };
 }
 
-fn callSymEntryNoInline(vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, sym: MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !cy.fiber.PcSp {
+fn callSymEntryNoInline(
+    vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value,
+    sym: rt.MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2
+) linksection(cy.HotSection) !cy.fiber.PcSp {
     switch (sym.entryT) {
         .func => {
             if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(vm.stack.ptr) + 8 * vm.stack.len) {
@@ -4526,7 +4400,7 @@ fn boxValueRetain(vm: *VM, box: Value) linksection(cy.HotSection) Value {
     if (box.isPointer()) {
         const obj = box.asHeapObject();
         if (builtin.mode == .Debug) {
-            std.debug.assert(obj.head.typeId == cy.BoxS);
+            std.debug.assert(obj.head.typeId == rt.BoxT);
         }
         retain(vm, obj.box.val);
         return obj.box.val;
@@ -4547,9 +4421,9 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
             switch (obj.head.typeId) {
-                cy.ListS => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
-                cy.MapS => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
-                cy.AstringT => {
+                rt.ListT => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
+                rt.MapT => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
+                rt.AstringT => {
                     const str = obj.astring.getConstSlice();
                     if (str.len > 20) {
                         fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(str.len), v(str[0..20])});
@@ -4557,7 +4431,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                         fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(str.len), v(str)});
                     }
                 },
-                cy.UstringT => {
+                rt.UstringT => {
                     const str = obj.ustring.getConstSlice();
                     if (str.len > 20) {
                         fmt.printStdout("String {} len={} str=\"{}\"...\n", &.{v(obj), v(str.len), v(str[0..20])});
@@ -4565,21 +4439,21 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                         fmt.printStdout("String {} len={} str=\"{}\"\n", &.{v(obj), v(str.len), v(str)});
                     }
                 },
-                cy.LambdaS => fmt.printStdout("Lambda {}\n", &.{v(obj)}),
-                cy.ClosureS => fmt.printStdout("Closure {}\n", &.{v(obj)}),
-                cy.FiberS => fmt.printStdout("Fiber {}\n", &.{v(obj)}),
-                cy.NativeFunc1S => fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
+                rt.LambdaT => fmt.printStdout("Lambda {}\n", &.{v(obj)}),
+                rt.ClosureT => fmt.printStdout("Closure {}\n", &.{v(obj)}),
+                rt.FiberT => fmt.printStdout("Fiber {}\n", &.{v(obj)}),
+                rt.NativeFuncT => fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
                 else => {
-                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.head.typeId), v(vm.structs.buf[obj.head.typeId].name)});
+                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.head.typeId), v(vm.types.buf[obj.head.typeId].name)});
                 },
             }
         } else {
             switch (val.getTag()) {
-                cy.NoneT => {
+                rt.NoneT => {
                     fmt.printStdout("None\n", &.{});
                 },
-                cy.StaticUstringT,
-                cy.StaticAstringT => {
+                rt.StaticUstringT,
+                rt.StaticAstringT => {
                     const slice = val.asStaticStringSlice();
                     if (slice.len() > 20) {
                         fmt.printStdout("Const String len={} str=\"{s}\"...\n", &.{v(slice.len()), v(vm.strBuf[slice.start..20])});
@@ -4595,10 +4469,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
     }
 }
 
-const RelFuncSigKey = KeyU64;
 const RtFuncSymKey = KeyU96;
-const RtMethodSymKey = KeyU64;
-const RtVarSymKey = KeyU64;
 
 pub const KeyU96 = extern union {
     val: extern struct {
@@ -4626,59 +4497,8 @@ pub const KeyU96Context = struct {
     }
 };
 
-pub const KeyU64 = extern union {
-    val: u64,
-    absResolvedSymKey: extern struct {
-        rParentSymId: u32,
-        nameId: u32,
-    },
-    absResolvedFuncSymKey: extern struct {
-        rSymId: sema.ResolvedSymId,
-        rFuncSigId: sema.ResolvedFuncSigId,
-    },
-    relLocalSymKey: extern struct {
-        nameId: sema.NameSymId,
-        rFuncSigId: sema.ResolvedFuncSigId,
-    },
-    rtMethodSymKey: extern struct {
-        nameId: sema.NameSymId,
-        /// Method syms are keyed by numParams since an exact signature
-        /// can miss a compatible typed function.
-        /// numParams does not include the self param to match callObjSym's numParams.
-        numParams: u32,
-    },
-    relModuleSymKey: extern struct {
-        nameId: sema.NameSymId,
-        rFuncSigId: sema.ResolvedFuncSigId,
-    },
-    rtVarSymKey: extern struct {
-        rParentSymId: sema.ResolvedSymId,
-        nameId: sema.NameSymId,
-    },
-    relFuncSigKey: extern struct {
-        nameId: sema.NameSymId,
-        numParams: u32,
-    },
-    structKey: extern struct {
-        rParentSymId: sema.ResolvedSymId,
-        nameId: sema.NameSymId,
-    },
-};
-
-pub const KeyU64Context = struct {
-    pub fn hash(_: @This(), key: KeyU64) linksection(cy.Section) u64 {
-        return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
-    }
-    pub fn eql(_: @This(), a: KeyU64, b: KeyU64) linksection(cy.Section) bool {
-        return a.val == b.val;
-    }
-};
-
 /// Absolute func symbol signature key.
 pub const AbsFuncSigKey = KeyU96;
-
-/// Absolute var signature key.
-const AbsVarSigKey = KeyU64;
 
 const SliceWriter = struct {
     buf: []u8,
@@ -4792,7 +4612,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.head.typeId) {
-            cy.NativeFunc1S => {
+            rt.NativeFuncT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
                 if (dstRFuncSigId != obj.nativeFunc1.rFuncSigId) {
                     return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, obj.nativeFunc1.rFuncSigId, dstRFuncSigId});
@@ -4814,7 +4634,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 };
                 vm.funcSymDeps.put(vm.alloc, symId, val) catch stdx.fatal();
             },
-            cy.LambdaS => {
+            rt.LambdaT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
                 if (dstRFuncSigId != obj.lambda.rFuncSigId) {
                     return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.lambda.rFuncSigId), dstRFuncSigId});
@@ -4832,7 +4652,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 };
                 vm.funcSymDeps.put(vm.alloc, symId, val) catch stdx.fatal();
             },
-            cy.ClosureS => {
+            rt.ClosureT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
                 if (dstRFuncSigId != obj.closure.rFuncSigId) {
                     return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.closure.rFuncSigId), dstRFuncSigId});
@@ -4934,7 +4754,7 @@ export fn zOtherToF64(val: Value) f64 {
     return val.otherToF64() catch fatal();
 }
 
-export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: cy.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
+export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: rt.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
     if (vm.getCallObjSym(typeId, symId, rFuncSigId)) |sym| {
         const res = @call(.never_inline, vm.callSymEntry, .{pc, stack, sym, recv, typeId, startLocal, numArgs, numRet }) catch {
             return .{
@@ -4993,7 +4813,7 @@ export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retVal
     };
 }
 
-export fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Value, nfields: u8) vmc.ValueResult {
+export fn zAllocObjectSmall(vm: *cy.VM, typeId: rt.TypeId, fields: [*]const Value, nfields: u8) vmc.ValueResult {
     const res = cy.heap.allocObjectSmall(vm, typeId, fields[0..nfields]) catch {
         return .{
             .val = undefined,
@@ -5006,7 +4826,7 @@ export fn zAllocObjectSmall(vm: *cy.VM, typeId: cy.TypeId, fields: [*]const Valu
     };
 }
 
-export fn zGetFieldOffsetFromTable(vm: *VM, typeId: TypeId, symId: SymbolId) u8 {
+export fn zGetFieldOffsetFromTable(vm: *VM, typeId: rt.TypeId, symId: SymbolId) u8 {
     return vm.getFieldOffsetFromTable(typeId, symId);
 }
 

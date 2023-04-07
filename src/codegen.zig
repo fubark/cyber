@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const sema = cy.sema;
 const types = cy.types;
 const bt = types.BuiltinTypeSymIds;
@@ -120,9 +121,15 @@ fn genSymbolTo(self: *CompileChunk, crSymId: sema.CompactResolvedSymId, dst: Loc
                 const stype = types.initResolvedSymType(rSym.inner.variable.rTypeSymId);
                 return self.initGenValue(dst, stype, true);
             },
-            .builtinType,
+            .builtinType => {
+                const typeId = rSym.inner.builtinType.typeId;
+                try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
+                try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
+                try self.buf.pushOperand(dst);
+                return self.initGenValue(dst, types.MetaTypeType, true);
+            },
             .object => {
-                const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
+                const typeId = rSym.inner.object.typeId;
                 try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
                 try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
                 try self.buf.pushOperand(dst);
@@ -193,7 +200,7 @@ fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
 
             // Push props onto stack.
 
-            const numFields = self.compiler.vm.structs.buf[typeId].numFields;
+            const numFields = self.compiler.vm.types.buf[typeId].numFields;
             // Repurpose stack for sorting fields.
             const sortedFieldsStart = self.assignedVarStack.items.len;
             try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
@@ -216,7 +223,7 @@ fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
                 const prop = self.nodes[entry.head.mapEntry.left];
                 const fieldName = self.getNodeTokenString(prop);
                 const fieldIdx = self.compiler.vm.getStructFieldIdx(typeId, fieldName) orelse {
-                    const objectName = self.compiler.vm.structs.buf[typeId].name;
+                    const objectName = self.compiler.vm.types.buf[typeId].name;
                     return self.reportErrorAt("Missing field `{}` in `{}`.", &.{v(fieldName), v(objectName)}, entry.head.mapEntry.left);
                 };
                 initFields[fieldIdx] = entryId;
@@ -239,7 +246,7 @@ fn genObjectInit(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: b
             }
 
             if (dstIsUsed) {
-                if (self.compiler.vm.structs.buf[typeId].numFields <= 4) {
+                if (self.compiler.vm.types.buf[typeId].numFields <= 4) {
                     try self.pushOptionalDebugSym(nodeId);
                     try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, typeId), argStartLocal, @intCast(u8, numFields), dst });
                 } else {
@@ -2107,7 +2114,7 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
 
                     // if (try self.readScopedVar(leftName)) |info| {
                     //     if (info.vtype.typeT == ListType.typeT) {
-                    //         if (self.compiler.vm.hasMethodSym(cy.ListS, methodId)) {
+                    //         if (self.compiler.vm.hasMethodSym(rt.ListT, methodId)) {
                     //             isStdCall = true;
                     //         }
                     //     }
@@ -2472,7 +2479,7 @@ fn genBinOpAssignToField(self: *CompileChunk, code: cy.OpCode, leftId: cy.NodeId
     try genReleaseIfRetainedTempAt(self, accessLeftv, left.head.accessExpr.left);
 }
 
-fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: sema.FuncDecl, name: []const u8) !void {
+fn genMethodDecl(self: *CompileChunk, structId: rt.TypeId, node: cy.Node, func: sema.FuncDecl, name: []const u8) !void {
     // log.debug("gen method {s}", .{name});
     const methodId = try self.compiler.vm.ensureMethodSym(name, func.numParams - 1);
 
@@ -2494,7 +2501,7 @@ fn genMethodDecl(self: *CompileChunk, structId: cy.TypeId, node: cy.Node, func: 
 
     self.patchJumpToCurPc(jumpPc);
 
-    const sym = cy.MethodSym.initFuncOffset(func.rFuncSigId, opStart, numLocals);
+    const sym = rt.MethodSym.initFuncOffset(func.rFuncSigId, opStart, numLocals);
     try self.compiler.vm.addMethodSym(structId, methodId, sym);
 }
 

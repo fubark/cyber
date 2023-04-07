@@ -3,6 +3,7 @@
 /// Heap objects, object allocation and deinitializers.
 
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const Value = cy.Value;
 const mi = @import("mimalloc");
 const build_options = @import("build_options");
@@ -81,29 +82,6 @@ pub fn deinitAllocator() void {
     }
 }
 
-/// Reserved object types known at comptime.
-/// Starts at 9 since primitive types go up to 8.
-pub const ListS: cy.TypeId = 9;
-pub const ListIteratorT: cy.TypeId = 10;
-pub const MapS: cy.TypeId = 11;
-pub const MapIteratorT: cy.TypeId = 12;
-pub const ClosureS: cy.TypeId = 13;
-pub const LambdaS: cy.TypeId = 14;
-pub const AstringT: cy.TypeId = 15;
-pub const UstringT: cy.TypeId = 16;
-pub const StringSliceT: cy.TypeId = 17;
-pub const RawStringT: cy.TypeId = 18;
-pub const RawStringSliceT: cy.TypeId = 19;
-pub const FiberS: cy.TypeId = 20;
-pub const BoxS: cy.TypeId = 21;
-pub const NativeFunc1S: cy.TypeId = 22;
-pub const TccStateS: cy.TypeId = 23;
-pub const PointerT: cy.TypeId = 24;
-pub const FileT: cy.TypeId = 25;
-pub const DirT: cy.TypeId = 26;
-pub const DirIteratorT: cy.TypeId = 27;
-pub const MetaTypeT: cy.TypeId = 28;
-
 // Keep it just under 4kb page.
 pub const HeapPage = struct {
     objects: [102]HeapObject,
@@ -114,14 +92,14 @@ const HeapObjectId = u32;
 /// Total of 40 bytes per object. If objects are bigger, they are allocated on the gpa.
 pub const HeapObject = extern union {
     headType: extern struct {
-        typeId: cy.TypeId,
+        typeId: rt.TypeId,
     },
     head: extern struct {
-        typeId: cy.TypeId,
+        typeId: rt.TypeId,
         rc: u32,
     },
     freeSpan: extern struct {
-        typeId: cy.TypeId,
+        typeId: rt.TypeId,
         len: u32,
         start: *HeapObject,
         next: ?*HeapObject,
@@ -148,21 +126,21 @@ pub const HeapObject = extern union {
 
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
         switch (self.head.typeId) {
-            cy.ListS => return .list,
-            cy.MapS => return .map,
-            cy.AstringT => return .string,
-            cy.UstringT => return .string,
-            cy.RawStringT => return .rawstring,
-            cy.ClosureS => return .closure,
-            cy.LambdaS => return .lambda,
-            cy.FiberS => return .fiber,
-            cy.NativeFunc1S => return .nativeFunc,
-            cy.TccStateS => return .tccState,
-            cy.PointerT => return .pointer,
-            cy.FileT => return .file,
-            cy.DirT => return .dir,
-            cy.DirIteratorT => return .dirIter,
-            cy.BoxS => return .box,
+            rt.ListT => return .list,
+            rt.MapT => return .map,
+            rt.AstringT => return .string,
+            rt.UstringT => return .string,
+            rt.RawstringT => return .rawstring,
+            rt.ClosureT => return .closure,
+            rt.LambdaT => return .lambda,
+            rt.FiberT => return .fiber,
+            rt.NativeFuncT => return .nativeFunc,
+            rt.TccStateT => return .tccState,
+            rt.PointerT => return .pointer,
+            rt.FileT => return .file,
+            rt.DirT => return .dir,
+            rt.DirIteratorT => return .dirIter,
+            rt.BoxT => return .box,
             else => {
                 return .object;
             },
@@ -176,14 +154,14 @@ pub const MetaTypeKind = enum {
 
 /// MetaType needs a RC to prevent ARC cleanup of the internal type and source code.
 pub const MetaType = extern struct {
-    typeId: cy.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     type: u32,
     symId: u32,
 };
 
 pub const List = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     list: extern struct {
         ptr: [*]Value,
@@ -217,7 +195,7 @@ pub const List = extern struct {
 };
 
 pub const ListIterator = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     list: *List,
     nextIdx: u32,
@@ -225,7 +203,7 @@ pub const ListIterator = extern struct {
 
 pub const MapInner = cy.ValueMap;
 pub const Map = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     inner: extern struct {
         metadata: ?[*]u64,
@@ -244,14 +222,14 @@ pub const Map = extern struct {
 };
 
 pub const MapIterator = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     map: *Map,
     nextIdx: u32,
 };
 
 pub const Closure = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     funcPc: u32, 
     numParams: u8,
@@ -268,7 +246,7 @@ pub const Closure = extern struct {
 };
 
 const Lambda = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     funcPc: u32, 
     numParams: u8,
@@ -282,7 +260,7 @@ const Lambda = extern struct {
 pub const MaxPoolObjectAstringByteLen = 28;
 
 pub const Astring = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     len: u32,
     bufStart: u8,
@@ -302,7 +280,7 @@ pub const Astring = extern struct {
 pub const MaxPoolObjectUstringByteLen = 16;
 
 const Ustring = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     len: u32,
     charLen: u32,
@@ -324,7 +302,7 @@ const Ustring = extern struct {
 /// One data structure for astring/ustring slice it can fit into a pool object
 /// and use the same layout.
 const StringSlice = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     buf: [*]const u8,
     len: u32,
@@ -354,7 +332,7 @@ const StringSlice = extern struct {
 pub const MaxPoolObjectRawStringByteLen = 28;
 
 pub const RawString = extern struct {
-    structId: if (cy.isWasm) cy.TypeId else cy.TypeId align(8),
+    structId: if (cy.isWasm) rt.TypeId else rt.TypeId align(8),
     rc: u32,
     len: u32,
     bufStart: u8,
@@ -371,7 +349,7 @@ pub const RawString = extern struct {
 };
 
 const RawStringSlice = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     buf: [*]const u8,
     len: u32,
@@ -384,7 +362,7 @@ const RawStringSlice = extern struct {
 };
 
 pub const Object = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     firstValue: Value,
 
@@ -406,13 +384,13 @@ pub const Object = extern struct {
 };
 
 const Box = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     val: Value,
 };
 
 const NativeFunc1 = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     func: *const fn (*cy.UserVM, [*]const Value, u8) Value,
     numParams: u32,
@@ -422,14 +400,14 @@ const NativeFunc1 = extern struct {
 };
 
 const TccState = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     state: *tcc.TCCState,
     lib: *std.DynLib,
 };
 
 const File = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     readBuf: [*]u8,
     /// Can be up to 8 bytes on windows, otherwise 4 bytes.
@@ -459,7 +437,7 @@ const File = extern struct {
 };
 
 pub const DirIterator = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     dir: *Dir,
     inner: extern union {
@@ -471,7 +449,7 @@ pub const DirIterator = extern struct {
 };
 
 pub const Dir = extern struct {
-    structId: cy.TypeId align(8),
+    structId: rt.TypeId align(8),
     rc: u32,
     /// Padding to make Dir.fd match the offset of File.fd.
     padding: usize = 0,
@@ -503,7 +481,7 @@ pub const Dir = extern struct {
 };
 
 pub const Pointer = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     ptr: ?*anyopaque,
 };
@@ -654,7 +632,7 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
 pub fn allocMetaType(self: *cy.VM, symType: u8, symId: u32) !Value {
     const obj = try allocPoolObject(self);
     obj.metatype = .{
-        .typeId = MetaTypeT,
+        .typeId = rt.MetaTypeT,
         .rc = 1,
         .type = symType,
         .symId = symId,
@@ -665,7 +643,7 @@ pub fn allocMetaType(self: *cy.VM, symType: u8, symId: u32) !Value {
 pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = ListS,
+        .structId = rt.ListT,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -679,7 +657,7 @@ pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
 pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = ListS,
+        .structId = rt.ListT,
         .rc = 1,
         .list = .{
             .ptr = elems.ptr,
@@ -693,7 +671,7 @@ pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
 pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = ListS,
+        .structId = rt.ListT,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -719,7 +697,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
 pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = ListS,
+        .structId = rt.ListT,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -739,7 +717,7 @@ pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) 
 pub fn allocListIterator(self: *cy.VM, list: *List) linksection(cy.HotSection) !Value {
     const obj = try allocPoolObject(self);
     obj.listIter = .{
-        .structId = ListIteratorT,
+        .structId = rt.ListIteratorT,
         .rc = 1,
         .list = list,
         .nextIdx = 0,
@@ -750,7 +728,7 @@ pub fn allocListIterator(self: *cy.VM, list: *List) linksection(cy.HotSection) !
 pub fn allocEmptyMap(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
-        .structId = MapS,
+        .structId = rt.MapT,
         .rc = 1,
         .inner = .{
             .metadata = null,
@@ -766,7 +744,7 @@ pub fn allocEmptyMap(self: *cy.VM) !Value {
 pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
-        .structId = MapS,
+        .structId = rt.MapT,
         .rc = 1,
         .inner = .{
             .metadata = null,
@@ -798,7 +776,7 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value
 pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Value {
     const obj = try allocPoolObject(self);
     obj.mapIter = .{
-        .structId = MapIteratorT,
+        .structId = rt.MapIteratorT,
         .rc = 1,
         .map = map,
         .nextIdx = 0,
@@ -814,7 +792,7 @@ pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: 
         obj = try allocExternalObject(self, (2 + capturedVals.len) * @sizeOf(Value));
     }
     obj.closure = .{
-        .structId = ClosureS,
+        .structId = rt.ClosureT,
         .rc = 1,
         .funcPc = @intCast(u32, funcPc),
         .numParams = numParams,
@@ -834,7 +812,7 @@ pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: 
 pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16) !Value {
     const obj = try allocPoolObject(self);
     obj.lambda = .{
-        .structId = LambdaS,
+        .structId = rt.LambdaT,
         .rc = 1,
         .funcPc = @intCast(u32, funcPc),
         .numParams = numParams,
@@ -877,7 +855,7 @@ pub fn allocRawStringConcat(self: *cy.VM, str: []const u8, str2: []const u8) lin
         obj = try allocExternalObject(self, len + RawString.BufOffset);
     }
     obj.rawstring = .{
-        .structId = RawStringT,
+        .structId = rt.RawstringT,
         .rc = 1,
         .len = len,
         .bufStart = undefined,
@@ -1071,7 +1049,7 @@ pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section)
         obj = try allocExternalObject(self, len + Astring.BufOffset);
     }
     obj.astring = .{
-        .structId = AstringT,
+        .structId = rt.AstringT,
         .rc = 1,
         .len = @intCast(u32, len),
         .bufStart = undefined,
@@ -1135,7 +1113,7 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
         obj = try allocExternalObject(self, len + Ustring.BufOffset);
     }
     obj.ustring = .{
-        .structId = UstringT,
+        .structId = rt.UstringT,
         .rc = 1,
         .len = @intCast(u32, len),
         .charLen = charLen,
@@ -1149,7 +1127,7 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
 pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.stringSlice = .{
-        .structId = StringSliceT,
+        .structId = rt.StringSliceT,
         .rc = 1,
         .buf = slice.ptr,
         .len = @intCast(u32, slice.len),
@@ -1164,7 +1142,7 @@ pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: 
 pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.stringSlice = .{
-        .structId = StringSliceT,
+        .structId = rt.StringSliceT,
         .rc = 1,
         .buf = slice.ptr,
         .len = @intCast(u32, slice.len),
@@ -1184,7 +1162,7 @@ pub fn allocUnsetRawStringObject(self: *cy.VM, len: usize) linksection(cy.Sectio
         obj = try allocExternalObject(self, len + RawString.BufOffset);
     }
     obj.rawstring = .{
-        .structId = RawStringT,
+        .structId = rt.RawstringT,
         .rc = 1,
         .len = @intCast(u32, len),
         .bufStart = undefined,
@@ -1202,7 +1180,7 @@ pub fn allocRawString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Va
 pub fn allocRawStringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.rawstringSlice = .{
-        .structId = RawStringSliceT,
+        .structId = rt.RawstringSliceT,
         .rc = 1,
         .buf = slice.ptr,
         .len = @intCast(u32, slice.len),
@@ -1214,7 +1192,7 @@ pub fn allocRawStringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject)
 pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     const obj = try allocPoolObject(vm);
     obj.box = .{
-        .structId = BoxS,
+        .structId = rt.BoxT,
         .rc = 1,
         .val = val,
     };
@@ -1224,7 +1202,7 @@ pub fn allocBox(vm: *cy.VM, val: Value) !Value {
 pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, rFuncSigId: cy.sema.ResolvedFuncSigId, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
-        .structId = NativeFunc1S,
+        .structId = rt.NativeFuncT,
         .rc = 1,
         .func = func,
         .numParams = numParams,
@@ -1242,7 +1220,7 @@ pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Valu
 pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.tccState = .{
-        .structId = TccStateS,
+        .structId = rt.TccStateT,
         .rc = 1,
         .state = state,
         .lib = lib,
@@ -1253,7 +1231,7 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) links
 pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
     const obj = try allocPoolObject(self);
     obj.pointer = .{
-        .structId = PointerT,
+        .structId = rt.PointerT,
         .rc = 1,
         .ptr = ptr,
     };
@@ -1263,7 +1241,7 @@ pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
 pub fn allocFile(self: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.file = .{
-        .structId = FileT,
+        .structId = rt.FileT,
         .rc = 1,
         .fd = fd,
         .curPos = 0,
@@ -1280,7 +1258,7 @@ pub fn allocFile(self: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Valu
 pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.dir = .{
-        .structId = DirT,
+        .structId = rt.DirT,
         .rc = 1,
         .fd = fd,
         .iterable = iterable,
@@ -1292,7 +1270,7 @@ pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.St
 pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy.StdSection) !Value {
     const obj = @ptrCast(*cy.DirIterator, try allocExternalObject(self, @sizeOf(cy.DirIterator)));
     obj.* = .{
-        .structId = DirIteratorT,
+        .structId = rt.DirIteratorT,
         .rc = 1,
         .dir = dir,
         .inner = undefined,
@@ -1309,7 +1287,7 @@ pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy
 }
 
 /// Allocates an object outside of the object pool.
-pub fn allocObject(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
+pub fn allocObject(self: *cy.VM, sid: rt.TypeId, fields: []const Value) !Value {
     // First slot holds the structId and rc.
     const obj = @ptrCast(*Object, try allocExternalObject(self, (1 + fields.len) * @sizeOf(Value)));
     obj.* = .{
@@ -1323,7 +1301,7 @@ pub fn allocObject(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocEmptyObject(self: *cy.VM, sid: cy.TypeId, numFields: u32) !Value {
+pub fn allocEmptyObject(self: *cy.VM, sid: rt.TypeId, numFields: u32) !Value {
     // First slot holds the structId and rc.
     const obj = @ptrCast(*Object, try allocExternalObject(self, (1 + numFields) * @sizeOf(Value)));
     obj.* = .{
@@ -1334,7 +1312,7 @@ pub fn allocEmptyObject(self: *cy.VM, sid: cy.TypeId, numFields: u32) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocObjectSmall(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Value {
+pub fn allocObjectSmall(self: *cy.VM, sid: rt.TypeId, fields: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
         .structId = sid,
@@ -1348,7 +1326,7 @@ pub fn allocObjectSmall(self: *cy.VM, sid: cy.TypeId, fields: []const Value) !Va
     return Value.initPtr(obj);
 }
 
-pub fn allocEmptyObjectSmall(self: *cy.VM, sid: cy.TypeId) !Value {
+pub fn allocEmptyObjectSmall(self: *cy.VM, sid: rt.TypeId) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
         .structId = sid,
@@ -1394,7 +1372,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         }
     }
     switch (obj.head.typeId) {
-        ListS => {
+        rt.ListT => {
             const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
             for (list.items()) |it| {
                 cy.arc.release(vm, it);
@@ -1402,11 +1380,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             list.deinit(vm.alloc);
             freePoolObject(vm, obj);
         },
-        ListIteratorT => {
+        rt.ListIteratorT => {
             cy.arc.releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.listIter.list));
             freePoolObject(vm, obj);
         },
-        MapS => {
+        rt.MapT => {
             const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
             var iter = map.iterator();
             while (iter.next()) |entry| {
@@ -1416,11 +1394,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             map.deinit(vm.alloc);
             freePoolObject(vm, obj);
         },
-        MapIteratorT => {
+        rt.MapIteratorT => {
             cy.arc.releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.mapIter.map));
             freePoolObject(vm, obj);
         },
-        ClosureS => {
+        rt.ClosureT => {
             const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
             for (src) |capturedVal| {
                 cy.arc.release(vm, capturedVal);
@@ -1431,10 +1409,10 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 freeExternalObject(vm, obj, (2 + obj.closure.numCaptured) * @sizeOf(Value));
             }
         },
-        LambdaS => {
+        rt.LambdaT => {
             freePoolObject(vm, obj);
         },
-        AstringT => {
+        rt.AstringT => {
             if (obj.astring.len <= DefaultStringInternMaxByteLen) {
                 // Check both the key and value to make sure this object is the intern entry.
                 const key = obj.astring.getConstSlice();
@@ -1450,7 +1428,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 freeExternalObject(vm, obj, Astring.BufOffset + obj.astring.len);
             }
         },
-        UstringT => {
+        rt.UstringT => {
             if (obj.ustring.len <= DefaultStringInternMaxByteLen) {
                 const key = obj.ustring.getConstSlice();
                 if (vm.strInterns.get(key)) |val| {
@@ -1465,42 +1443,42 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 freeExternalObject(vm, obj, Ustring.BufOffset + obj.ustring.len);
             }
         },
-        StringSliceT => {
+        rt.StringSliceT => {
             if (obj.stringSlice.getParentPtr()) |parent| {
                 cy.arc.releaseObject(vm, parent);
             }
             freePoolObject(vm, obj);
         },
-        RawStringT => {
+        rt.RawstringT => {
             if (obj.rawstring.len <= MaxPoolObjectRawStringByteLen) {
                 freePoolObject(vm, obj);
             } else {
                 freeExternalObject(vm, obj, RawString.BufOffset + obj.rawstring.len);
             }
         },
-        RawStringSliceT => {
+        rt.RawstringSliceT => {
             const parent = @ptrCast(*cy.HeapObject, obj.rawstringSlice.parent);
             cy.arc.releaseObject(vm, parent);
             freePoolObject(vm, obj);
         },
-        FiberS => {
+        rt.FiberT => {
             const fiber = @ptrCast(*cy.fiber.Fiber, obj);
             cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
                 stdx.panicFmt("release fiber: {}", .{err});
             };
             freeExternalObject(vm, obj, @sizeOf(cy.fiber.Fiber));
         },
-        BoxS => {
+        rt.BoxT => {
             cy.arc.release(vm, obj.box.val);
             freePoolObject(vm, obj);
         },
-        NativeFunc1S => {
+        rt.NativeFuncT => {
             if (obj.nativeFunc1.hasTccState) {
                 cy.arc.releaseObject(vm, obj.nativeFunc1.tccState.asHeapObject());
             }
             freePoolObject(vm, obj);
         },
-        TccStateS => {
+        rt.TccStateT => {
             if (cy.hasJit) {
                 tcc.tcc_delete(obj.tccState.state);
                 obj.tccState.lib.close();
@@ -1510,10 +1488,10 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
                 unreachable;
             }
         },
-        PointerT => {
+        rt.PointerT => {
             freePoolObject(vm, obj);
         },
-        FileT => {
+        rt.FileT => {
             if (cy.hasStdFiles) {
                 if (obj.file.hasReadBuf) {
                     vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
@@ -1522,13 +1500,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             }
             freePoolObject(vm, obj);
         },
-        DirT => {
+        rt.DirT => {
             if (cy.hasStdFiles) {
                 obj.dir.close();
             }
             freePoolObject(vm, obj);
         },
-        DirIteratorT => {
+        rt.DirIteratorT => {
             if (cy.hasStdFiles) {
                 var dir = @ptrCast(*DirIterator, obj);
                 if (dir.recursive) {
@@ -1539,7 +1517,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             }
             freeExternalObject(vm, obj, @sizeOf(DirIterator));
         },
-        MetaTypeT => {
+        rt.MetaTypeT => {
             freePoolObject(vm, obj);
         },
         else => {
@@ -1547,16 +1525,16 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             if (builtin.mode == .Debug) {
 
                 if (cy.verbose) {
-                    log.debug("free {s}", .{vm.structs.buf[obj.head.typeId].name});
+                    log.debug("free {s}", .{vm.types.buf[obj.head.typeId].name});
                 }
 
                 // Check range.
-                if (obj.head.typeId >= vm.structs.len) {
+                if (obj.head.typeId >= vm.types.len) {
                     log.debug("unsupported struct type {}", .{obj.head.typeId});
                     stdx.fatal();
                 }
             }
-            const numFields = vm.structs.buf[obj.head.typeId].numFields;
+            const numFields = vm.types.buf[obj.head.typeId].numFields;
             for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
                 cy.arc.release(vm, child);
             }
@@ -1578,8 +1556,8 @@ pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
     }) catch stdx.fatal();
 }
 
-pub fn getTypeName(vm: *const cy.VM, typeId: cy.TypeId) []const u8 {
-    return vm.structs.buf[typeId].name;
+pub fn getTypeName(vm: *const cy.VM, typeId: rt.TypeId) []const u8 {
+    return vm.types.buf[typeId].name;
 }
 
 test "Free object invalidation." {
@@ -1641,7 +1619,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&dirIter.rc), @ptrToInt(&dirIter) + 4);
 
     const rstr = RawString{
-        .structId = RawStringT,
+        .structId = rt.RawstringT,
         .rc = 1,
         .len = 1,
         .bufStart = undefined,
@@ -1653,7 +1631,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&rstr.bufStart), @ptrToInt(&rstr) + RawString.BufOffset);
 
     const astr = Astring{
-        .structId = AstringT,
+        .structId = rt.AstringT,
         .rc = 1,
         .len = 1,
         .bufStart = undefined,
@@ -1665,7 +1643,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&astr.bufStart), @ptrToInt(&astr) + Astring.BufOffset);
 
     const ustr = Ustring{
-        .structId = UstringT,
+        .structId = rt.UstringT,
         .rc = 1,
         .len = 1,
         .charLen = 1,
@@ -1683,7 +1661,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&ustr.bufStart), @ptrToInt(&ustr) + Ustring.BufOffset);
 
     const slice = StringSlice{
-        .structId = StringSliceT,
+        .structId = rt.StringSliceT,
         .rc = 1,
         .buf = undefined,
         .len = 1,
@@ -1702,7 +1680,7 @@ test "Internals." {
     try t.eq(@ptrToInt(&slice.extra), @ptrToInt(&slice) + 32);
 
     const rslice = RawStringSlice{
-        .structId = RawStringSliceT,
+        .structId = rt.RawstringSliceT,
         .rc = 1,
         .buf = undefined,
         .len = 1,

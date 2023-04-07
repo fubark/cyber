@@ -6,6 +6,7 @@ const fatal = stdx.fatal;
 const builtin = @import("builtin");
 
 const cy = @import("../cyber.zig");
+const rt = cy.rt;
 const sema = cy.sema;
 const bt = cy.types.BuiltinTypeSymIds;
 const Value = cy.Value;
@@ -165,108 +166,107 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     
     // Init compile time builtins.
 
-    // Primitive types.
+    // Builtin types.
     var id = try self.addBuiltinType("none");
-    std.debug.assert(id == cy.NoneT);
+    std.debug.assert(id == rt.NoneT);
 
     id = try self.addBuiltinType("boolean");
-    std.debug.assert(id == cy.BooleanT);
+    std.debug.assert(id == rt.BooleanT);
     var rsym = self.compiler.sema.getResolvedSym(bt.Boolean);
     var sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Boolean, booleanCall);
 
     id = try self.addBuiltinType("error");
-    std.debug.assert(id == cy.ErrorT);
+    std.debug.assert(id == rt.ErrorT);
     rsym = self.compiler.sema.getResolvedSym(bt.Error);
     sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Error, errorCall);
-    try b.addMethod(cy.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
+    try b.addMethod(rt.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
-    id = try self.addBuiltinType("string");
-    std.debug.assert(id == cy.StaticAstringT);
+    id = try self.addBuiltinType("StaticAstring");
+    std.debug.assert(id == rt.StaticAstringT);
 
     // string type module.
     rsym = self.compiler.sema.getResolvedSym(bt.String);
     sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.String, stringCall);
 
-    // Astring and Ustring share the same string user type.
-    id = try self.addBuiltinType("string");
-    std.debug.assert(id == cy.StaticUstringT);
+    id = try self.addBuiltinType("StaticUstring");
+    std.debug.assert(id == rt.StaticUstringT);
 
     id = try self.addBuiltinType("enum");
-    std.debug.assert(id == cy.EnumT);
+    std.debug.assert(id == rt.EnumT);
 
     id = try self.addBuiltinType("symbol");
-    std.debug.assert(id == cy.SymbolT);
+    std.debug.assert(id == rt.SymbolT);
 
     id = try self.addBuiltinType("integer");
-    std.debug.assert(id == cy.IntegerT);
+    std.debug.assert(id == rt.IntegerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Integer);
     sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Integer, integerCall);
 
     id = try self.addBuiltinType("number");
-    std.debug.assert(id == cy.NumberT);
+    std.debug.assert(id == rt.NumberT);
     rsym = self.compiler.sema.getResolvedSym(bt.Number);
     sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Number, numberCall);
 
     id = try self.addBuiltinType("List");
-    std.debug.assert(id == cy.ListS);
+    std.debug.assert(id == rt.ListT);
 
-    try b.addMethod(cy.ListS, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
-    try b.addMethod(cy.ListS, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
-    try b.addMethod(cy.ListS, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
-    try b.addMethod(cy.ListS, insert, &.{bt.Any, bt.Number, bt.Any}, bt.Any, listInsert);
-    try b.addMethod(cy.ListS, self.iteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
-    try b.addMethod(cy.ListS, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
-    try b.addMethod(cy.ListS, len, &.{bt.Any}, bt.Number, listLen);
-    try b.addMethod(cy.ListS, self.pairIteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
-    try b.addMethod(cy.ListS, remove, &.{bt.Any, bt.Number}, bt.Any, listRemove);
-    try b.addMethod(cy.ListS, resize, &.{bt.Any, bt.Number}, bt.Any, listResize);
-    try b.addMethod(cy.ListS, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
+    try b.addMethod(rt.ListT, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
+    try b.addMethod(rt.ListT, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
+    try b.addMethod(rt.ListT, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
+    try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Number, bt.Any}, bt.Any, listInsert);
+    try b.addMethod(rt.ListT, self.iteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
+    try b.addMethod(rt.ListT, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
+    try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Number, listLen);
+    try b.addMethod(rt.ListT, self.pairIteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
+    try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Number}, bt.Any, listRemove);
+    try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Number}, bt.Any, listResize);
+    try b.addMethod(rt.ListT, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
 
     id = try self.addBuiltinType("ListIterator");
-    std.debug.assert(id == cy.ListIteratorT);
-    try b.addMethod(cy.ListIteratorT, self.nextObjSym, &.{bt.Any}, bt.Any, listIteratorNext);
-    try b.addMethod2(cy.ListIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, listIteratorNextPair);
+    std.debug.assert(id == rt.ListIteratorT);
+    try b.addMethod(rt.ListIteratorT, self.nextObjSym, &.{bt.Any}, bt.Any, listIteratorNext);
+    try b.addMethod2(rt.ListIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, listIteratorNextPair);
 
     id = try self.addBuiltinType("Map");
-    std.debug.assert(id == cy.MapS);
-    try b.addMethod(cy.MapS, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
-    try b.addMethod(cy.MapS, size,                    &.{ bt.Any }, bt.Number, mapSize);
-    try b.addMethod(cy.MapS, self.iteratorObjSym,     &.{ bt.Any }, bt.Any, mapIterator);
-    try b.addMethod(cy.MapS, self.pairIteratorObjSym, &.{ bt.Any }, bt.Any, mapIterator);
+    std.debug.assert(id == rt.MapT);
+    try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
+    try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Number, mapSize);
+    try b.addMethod(rt.MapT, self.iteratorObjSym,     &.{ bt.Any }, bt.Any, mapIterator);
+    try b.addMethod(rt.MapT, self.pairIteratorObjSym, &.{ bt.Any }, bt.Any, mapIterator);
 
     id = try self.addBuiltinType("MapIterator");
-    std.debug.assert(id == cy.MapIteratorT);
-    try b.addMethod(cy.MapIteratorT, self.nextObjSym,     &.{bt.Any}, bt.Any, mapIteratorNext);
-    try b.addMethod2(cy.MapIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, mapIteratorNextPair);
+    std.debug.assert(id == rt.MapIteratorT);
+    try b.addMethod(rt.MapIteratorT, self.nextObjSym,     &.{bt.Any}, bt.Any, mapIteratorNext);
+    try b.addMethod2(rt.MapIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, mapIteratorNextPair);
 
     id = try self.addBuiltinType("Closure");
-    std.debug.assert(id == cy.ClosureS);
+    std.debug.assert(id == rt.ClosureT);
 
     id = try self.addBuiltinType("Lambda");
-    std.debug.assert(id == cy.LambdaS);
+    std.debug.assert(id == rt.LambdaT);
 
-    id = try self.addBuiltinType("string");
-    std.debug.assert(id == cy.AstringT);
+    id = try self.addBuiltinType("Astring");
+    std.debug.assert(id == rt.AstringT);
 
-    id = try self.addBuiltinType("string");
-    std.debug.assert(id == cy.UstringT);
+    id = try self.addBuiltinType("Ustring");
+    std.debug.assert(id == rt.UstringT);
 
-    id = try self.addBuiltinType("string");
-    std.debug.assert(id == cy.StringSliceT);
+    id = try self.addBuiltinType("StringSlice");
+    std.debug.assert(id == rt.StringSliceT);
 
-    const StringTypes = &[_]cy.TypeId{ cy.StaticAstringT, cy.StaticUstringT, cy.AstringT, cy.UstringT, cy.StringSliceT };
+    const StringTypes = &[_]rt.TypeId{ rt.StaticAstringT, rt.StaticUstringT, rt.AstringT, rt.UstringT, rt.StringSliceT };
     inline for (StringTypes) |typeId| {
         const tag: cy.StringType = switch (typeId) {
-            cy.StaticAstringT => .staticAstring,
-            cy.StaticUstringT => .staticUstring,
-            cy.AstringT => .astring,
-            cy.UstringT => .ustring,
-            cy.StringSliceT => .slice,
+            rt.StaticAstringT => .staticAstring,
+            rt.StaticUstringT => .staticUstring,
+            rt.AstringT => .astring,
+            rt.UstringT => .ustring,
+            rt.StringSliceT => .slice,
             else => unreachable,
         };
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.String, stringAppend(tag));
@@ -297,22 +297,22 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.String, stringUpper(tag));
     }
 
-    id = try self.addBuiltinType("rawstring");
-    std.debug.assert(id == cy.RawStringT);
+    id = try self.addBuiltinType("Rawstring");
+    std.debug.assert(id == rt.RawstringT);
 
     // rawstring type module.
     rsym = self.compiler.sema.getResolvedSym(bt.Rawstring);
     sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Rawstring, rawstringCall);
 
-    id = try self.addBuiltinType("rawstring");
-    std.debug.assert(id == cy.RawStringSliceT);
+    id = try self.addBuiltinType("RawstringSlice");
+    std.debug.assert(id == rt.RawstringSliceT);
 
-    const RawStringTypes = &[_]cy.TypeId{ cy.RawStringT, cy.RawStringSliceT };
-    inline for (RawStringTypes) |typeId| {
+    const RawstringTypes = &[_]rt.TypeId{ rt.RawstringT, rt.RawstringSliceT };
+    inline for (RawstringTypes) |typeId| {
         const tag = switch (typeId) {
-            cy.RawStringT => .rawstring,
-            cy.RawStringSliceT => .rawSlice,
+            rt.RawstringT => .rawstring,
+            rt.RawstringSliceT => .rawSlice,
             else => unreachable,
         };
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringAppend(tag));
@@ -352,78 +352,87 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     }
 
     id = try self.addBuiltinType("Fiber");
-    std.debug.assert(id == cy.FiberS);
-    try b.addMethod(cy.FiberS, status, &.{ bt.Any }, bt.Symbol, fiberStatus);
+    std.debug.assert(id == rt.FiberT);
+    try b.addMethod(rt.FiberT, status, &.{ bt.Any }, bt.Symbol, fiberStatus);
 
     id = try self.addBuiltinType("Box");
-    std.debug.assert(id == cy.BoxS);
+    std.debug.assert(id == rt.BoxT);
 
     id = try self.addBuiltinType("NativeFunc1");
-    std.debug.assert(id == cy.NativeFunc1S);
+    std.debug.assert(id == rt.NativeFuncT);
 
     id = try self.addBuiltinType("TccState");
-    std.debug.assert(id == cy.TccStateS);
+    std.debug.assert(id == rt.TccStateT);
 
     id = try self.addBuiltinType("pointer");
-    std.debug.assert(id == cy.PointerT);
+    std.debug.assert(id == rt.PointerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Pointer);
     sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Pointer, pointerCall);
-    try b.addMethod(cy.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
+    try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
 
     id = try self.addBuiltinType("File");
-    std.debug.assert(id == cy.FileT);
+    std.debug.assert(id == rt.FileT);
     if (cy.hasStdFiles) {
-        try b.addMethod(cy.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
-        try b.addMethod(cy.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, fileIterator);
-        try b.addMethod(cy.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, fileNext);
-        try b.addMethod(cy.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, fileRead);
-        try b.addMethod(cy.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
-        try b.addMethod(cy.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, fileSeek);
-        try b.addMethod(cy.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromCur);
-        try b.addMethod(cy.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromEnd);
-        try b.addMethod(cy.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
-        try b.addMethod(cy.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
-        try b.addMethod(cy.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
-        try b.addMethod(cy.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
+        try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
+        try b.addMethod(rt.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, fileIterator);
+        try b.addMethod(rt.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, fileNext);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, fileRead);
+        try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, fileSeek);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromCur);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromEnd);
+        try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
+        try b.addMethod(rt.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
+        try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
     } else {
-        try b.addMethod(cy.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
-        try b.addMethod(cy.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(cy.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(cy.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(cy.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
-        try b.addMethod(cy.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(cy.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(cy.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(cy.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(cy.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(cy.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(cy.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
+        try b.addMethod(rt.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
     }
 
     id = try self.addBuiltinType("Dir");
-    std.debug.assert(id == cy.DirT);
+    std.debug.assert(id == rt.DirT);
     if (cy.hasStdFiles) {
-        try b.addMethod(cy.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, dirIterator);
-        try b.addMethod(cy.DirT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
-        try b.addMethod(cy.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
+        try b.addMethod(rt.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, dirIterator);
+        try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
+        try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
     } else {
-        try b.addMethod(cy.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(cy.DirT, stat,                &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(cy.DirT, walk,                &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, objNop0);
     }
 
     id = try self.addBuiltinType("DirIterator");
-    std.debug.assert(id == cy.DirIteratorT);
+    std.debug.assert(id == rt.DirIteratorT);
     if (cy.hasStdFiles) {
-        try b.addMethod(cy.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, dirIteratorNext);
+        try b.addMethod(rt.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, dirIteratorNext);
     } else {
-        try b.addMethod(cy.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
     }
 
     id = try self.addBuiltinType("MetaType");
-    std.debug.assert(id == cy.MetaTypeT);
-    try b.addMethod(cy.MetaTypeT, idSym, &.{ bt.Any }, bt.Number, metatypeId);
+    std.debug.assert(id == rt.MetaTypeT);
+    try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Number, metatypeId);
+
+    id = try self.addBuiltinType("any");
+    std.debug.assert(id == rt.AnyT);
+
+    id = try self.addBuiltinType("string");
+    std.debug.assert(id == rt.StringUnionT);
+
+    id = try self.addBuiltinType("rawstring");
+    std.debug.assert(id == rt.RawstringUnionT);
 
     try ensureSymbol(self, "bool", .bool);
     try ensureSymbol(self, "char", .char);
@@ -2220,7 +2229,7 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
 
-    if (obj.head.typeId == cy.FileT) {
+    if (obj.head.typeId == rt.FileT) {
         if (obj.file.closed) {
             return prepareThrowSymbol(vm, .Closed);
         }
@@ -2561,27 +2570,27 @@ pub const ModuleBuilder = struct {
         return self.vm.ensureMethodSym(name, numParams);
     }
 
-    pub fn addMethod(self: *const ModuleBuilder, typeId: cy.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
+    pub fn addMethod(self: *const ModuleBuilder, typeId: rt.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
         const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
-        try self.vm.addMethodSym(typeId, symId, cy.MethodSym.initNativeFunc1(rFuncSigId, ptr));
+        try self.vm.addMethodSym(typeId, symId, rt.MethodSym.initNativeFunc1(rFuncSigId, ptr));
     }
 
-    pub fn addMethod2(self: *const ModuleBuilder, typeId: cy.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
+    pub fn addMethod2(self: *const ModuleBuilder, typeId: rt.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
         const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
-        try self.vm.addMethodSym(typeId, symId, cy.MethodSym.initNativeFunc2(rFuncSigId, ptr));
+        try self.vm.addMethodSym(typeId, symId, rt.MethodSym.initNativeFunc2(rFuncSigId, ptr));
     }
 
-    pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !cy.TypeId {
+    pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !rt.TypeId {
         const nameId = try cy.sema.ensureNameSym(self.compiler, name);
         const typeId = try self.vm.addObjectTypeExt(self.mod.resolvedRootSymId, nameId, name, cy.NullId);
         const rSymId = try cy.sema.resolveObjectSym(self.compiler, self.mod.resolvedRootSymId, name, typeId, self.mod.id);
-        self.vm.structs.buf[typeId].rTypeSymId = rSymId;
+        self.vm.types.buf[typeId].rTypeSymId = rSymId;
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
             try self.vm.addFieldSym(typeId, id, @intCast(u16, i), bt.Any);
         }
         try self.mod.setTypeObject(self.compiler, name, typeId, cy.NullId);
-        self.vm.structs.buf[typeId].numFields = @intCast(u32, fields.len);
+        self.vm.types.buf[typeId].numFields = @intCast(u32, fields.len);
         return typeId;
     }
 };

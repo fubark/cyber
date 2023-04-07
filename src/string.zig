@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 
 /// Like `ArrayList` except the buffer is allocated as a `Astring` or `Ustring`.
 /// TODO: Might not need the Astring -> Ustring upgrade logic now that there is HeapRawStringBuilder.
@@ -21,7 +22,7 @@ pub const HeapStringBuilder = struct {
     pub fn init(vm: *cy.VM) !HeapStringBuilder {
         const obj = try vm.allocPoolObject();
         obj.astring = .{
-            .structId = cy.AstringT,
+            .structId = rt.AstringT,
             .rc = 1,
             .len = cy.MaxPoolObjectStringByteLen,
             .bufStart = undefined,
@@ -68,7 +69,7 @@ pub const HeapStringBuilder = struct {
         if (self.isAstring and utf8) {
             // Upgrade to Ustring.
             const obj = self.getHeapObject();
-            obj.head.typeId = cy.UstringT;
+            obj.head.typeId = rt.UstringT;
             self.isAstring = false;
         }
     }
@@ -89,7 +90,7 @@ pub const HeapStringBuilder = struct {
                 const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
                 const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
                 obj.astring = .{
-                    .structId = if (self.isAstring) cy.AstringT else cy.UstringT,
+                    .structId = if (self.isAstring) rt.AstringT else rt.UstringT,
                     .rc = 1,
                     .len = 0,
                     .bufStart = undefined,
@@ -104,7 +105,7 @@ pub const HeapStringBuilder = struct {
             const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
             const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
             obj.astring = .{
-                .structId = if (self.isAstring) cy.AstringT else cy.UstringT,
+                .structId = if (self.isAstring) rt.AstringT else rt.UstringT,
                 .rc = 1,
                 .len = 0,
                 .bufStart = undefined,
@@ -139,7 +140,7 @@ pub const HeapRawStringBuilder = struct {
     pub fn init(vm: *cy.VM) !HeapRawStringBuilder {
         const obj = try cy.heap.allocPoolObject(vm);
         obj.rawstring = .{
-            .structId = cy.RawStringT,
+            .structId = rt.RawstringT,
             .rc = 1,
             .len = cy.MaxPoolObjectRawStringByteLen,
             .bufStart = undefined,
@@ -200,7 +201,7 @@ pub const HeapRawStringBuilder = struct {
                 const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
                 const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
                 obj.rawstring = .{
-                    .structId = cy.RawStringT,
+                    .structId = rt.RawstringT,
                     .rc = 1,
                     .len = 0,
                     .bufStart = undefined,
@@ -215,7 +216,7 @@ pub const HeapRawStringBuilder = struct {
             const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
             const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
             obj.rawstring = .{
-                .structId = cy.RawStringT,
+                .structId = rt.RawstringT,
                 .rc = 1,
                 .len = 0,
                 .bufStart = undefined,

@@ -6,6 +6,7 @@ const t = stdx.testing;
 const debug = builtin.mode == .Debug;
 const log = stdx.log.scoped(.value);
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const vmc = @import("vm_c.zig");
 
@@ -44,15 +45,6 @@ pub const TagStaticUstring: TagId = 4;
 pub const TagEnum: TagId = 5;
 pub const TagSymbol: TagId = 6;
 pub const TagInteger: TagId = 7;
-pub const NoneT: u32 = vmc.TYPE_NONE;
-pub const BooleanT: u32 = vmc.TYPE_BOOLEAN;
-pub const ErrorT: u32 = vmc.TYPE_ERROR;
-pub const StaticAstringT: u32 = vmc.TYPE_STATIC_ASTRING; // ASCII string.
-pub const StaticUstringT: u32 = vmc.TYPE_STATIC_USTRING; // UTF8 string.
-pub const EnumT: u32 = vmc.TYPE_ENUM;
-pub const SymbolT: u32 = vmc.TYPE_SYMBOL;
-pub const IntegerT: u32 = vmc.TYPE_INTEGER;
-pub const NumberT: u32 = vmc.TYPE_NUMBER;
 
 pub const StaticUstringHeader = struct {
     charLen: u32,
@@ -132,13 +124,13 @@ pub const Value = packed union {
     pub fn otherToF64(self: *const Value) linksection(cy.HotSection) !f64 {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
-            if (obj.head.typeId == cy.AstringT) {
+            if (obj.head.typeId == rt.AstringT) {
                 const str = obj.astring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
-            } else if (obj.head.typeId == cy.UstringT) {
+            } else if (obj.head.typeId == rt.UstringT) {
                 const str = obj.ustring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
-            } else if (obj.head.typeId == cy.StringSliceT) {
+            } else if (obj.head.typeId == rt.StringSliceT) {
                 const str = obj.stringSlice.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else {
@@ -174,13 +166,13 @@ pub const Value = packed union {
             return false;
         }
         const typeId = self.asHeapObject().head.typeId;
-        return typeId == cy.RawStringT or typeId == cy.RawStringSliceT;
+        return typeId == rt.RawstringT or typeId == rt.RawstringSliceT;
     }
 
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
-            return obj.head.typeId == cy.AstringT or obj.head.typeId == cy.UstringT;
+            return obj.head.typeId == rt.AstringT or obj.head.typeId == rt.UstringT or obj.head.typeId == rt.StringSliceT;
         } else {
             return self.assumeNotPtrIsStaticString();
         }
@@ -226,7 +218,7 @@ pub const Value = packed union {
 
     pub inline fn getPrimitiveTypeId(self: *const Value) u32 {
         if (self.isNumber()) {
-            return NumberT;
+            return rt.NumberT;
         } else {
             return self.getTag();
         }
@@ -259,27 +251,27 @@ pub const Value = packed union {
         return self.val & PointerMask == PointerMask;
     }
 
-    pub inline fn isObjectType(self: *const Value, typeId: cy.TypeId) bool {
+    pub inline fn isObjectType(self: *const Value, typeId: rt.TypeId) bool {
         return isPointer(self) and self.asHeapObject().head.typeId == typeId;
     }
 
     pub inline fn isPointerT(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == cy.PointerT;
+        return self.isPointer() and self.asHeapObject().head.typeId == rt.PointerT;
     }
 
     pub inline fn isMap(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == cy.MapS;
+        return self.isPointer() and self.asHeapObject().head.typeId == rt.MapT;
     }
 
     pub inline fn isList(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == cy.ListS;
+        return self.isPointer() and self.asHeapObject().head.typeId == rt.ListT;
     }
 
     pub inline fn asRawString(self: *const Value) []const u8 {
         const obj = self.asHeapObject();
-        if (obj.head.typeId == cy.RawStringT) {
+        if (obj.head.typeId == rt.RawstringT) {
             return obj.rawstring.getConstSlice();
-        } else if (obj.head.typeId == cy.RawStringSliceT) {
+        } else if (obj.head.typeId == rt.RawstringSliceT) {
             return obj.rawstringSlice.getConstSlice();
         } else unreachable;
     }
@@ -416,9 +408,9 @@ pub const Value = packed union {
             if (self.isPointer()) {
                 const obj = self.asHeapObject();
                 switch (obj.head.typeId) {
-                    cy.ListS => log.info("List {*} len={}", .{obj, obj.list.list.len}),
-                    cy.MapS => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
-                    cy.AstringT => {
+                    rt.ListT => log.info("List {*} len={}", .{obj, obj.list.list.len}),
+                    rt.MapT => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
+                    rt.AstringT => {
                         const str = obj.astring.getConstSlice();
                         if (str.len > 20) {
                             log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
@@ -426,7 +418,7 @@ pub const Value = packed union {
                             log.info("String {*} len={} str={s}", .{obj, str.len, str});
                         }
                     },
-                    cy.UstringT => {
+                    rt.UstringT => {
                         const str = obj.ustring.getConstSlice();
                         if (str.len > 20) {
                             log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
@@ -434,10 +426,10 @@ pub const Value = packed union {
                             log.info("String {*} len={} str={s}", .{obj, str.len, str});
                         }
                     },
-                    cy.LambdaS => log.info("Lambda {*}", .{obj}),
-                    cy.ClosureS => log.info("Closure {*}", .{obj}),
-                    cy.FiberS => log.info("Fiber {*}", .{obj}),
-                    cy.NativeFunc1S => return log.info("NativeFunc {*}", .{obj}),
+                    rt.LambdaT => log.info("Lambda {*}", .{obj}),
+                    rt.ClosureT => log.info("Closure {*}", .{obj}),
+                    rt.FiberT => log.info("Fiber {*}", .{obj}),
+                    rt.NativeFuncT => return log.info("NativeFunc {*}", .{obj}),
                     else => {
                         log.info("HeapObject {*} {}", .{obj, obj.head.typeId});
                     },
@@ -481,24 +473,24 @@ pub const Value = packed union {
             if (self.isPointer()) {
                 const obj = self.asHeapObject();
                 switch (obj.head.typeId) {
-                    cy.ListS => return .list,
-                    cy.MapS => return .map,
-                    cy.AstringT => return .string,
-                    cy.UstringT => return .string,
-                    cy.StringSliceT => return .string,
-                    cy.RawStringT => return .rawstring,
-                    cy.RawStringSliceT => return .rawstring,
-                    cy.ClosureS => return .closure,
-                    cy.LambdaS => return .lambda,
-                    cy.FiberS => return .fiber,
-                    cy.BoxS => return .box,
-                    cy.NativeFunc1S => return .nativeFunc,
-                    cy.TccStateS => return .tccState,
-                    cy.PointerT => return .pointer,
-                    cy.FileT => return .file,
-                    cy.DirT => return .dir,
-                    cy.DirIteratorT => return .dirIter,
-                    cy.MetaTypeT => return .metatype,
+                    rt.ListT => return .list,
+                    rt.MapT => return .map,
+                    rt.AstringT => return .string,
+                    rt.UstringT => return .string,
+                    rt.StringSliceT => return .string,
+                    rt.RawstringT => return .rawstring,
+                    rt.RawstringSliceT => return .rawstring,
+                    rt.ClosureT => return .closure,
+                    rt.LambdaT => return .lambda,
+                    rt.FiberT => return .fiber,
+                    rt.BoxT => return .box,
+                    rt.NativeFuncT => return .nativeFunc,
+                    rt.TccStateT => return .tccState,
+                    rt.PointerT => return .pointer,
+                    rt.FileT => return .file,
+                    rt.DirT => return .dir,
+                    rt.DirIteratorT => return .dirIter,
+                    rt.MetaTypeT => return .metatype,
                     else => {
                         return .object;
                     },
@@ -555,7 +547,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.head.typeId) {
-            cy.ListS => {
+            rt.ListT => {
                 const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
                 const new = cy.heap.allocList(vm, list.items()) catch stdx.fatal();
                 for (list.items()) |item| {
@@ -563,7 +555,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 }
                 return new;
             },
-            cy.MapS => {
+            rt.MapT => {
                 const new = cy.heap.allocEmptyMap(vm) catch stdx.fatal();
                 const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
 
@@ -576,41 +568,41 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 }
                 return new;
             },
-            cy.ClosureS => {
+            rt.ClosureT => {
                 fmt.panic("Unsupported copy closure.", &.{});
             },
-            cy.LambdaS => {
+            rt.LambdaT => {
                 fmt.panic("Unsupported copy closure.", &.{});
             },
-            cy.AstringT => {
+            rt.AstringT => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },
-            cy.UstringT => {
+            rt.UstringT => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },
-            cy.RawStringT => {
+            rt.RawstringT => {
                 cy.arc.retainObject(vm, obj);
                 return val;
             },
-            cy.FiberS => {
+            rt.FiberT => {
                 fmt.panic("Unsupported copy fiber.", &.{});
             },
-            cy.BoxS => {
+            rt.BoxT => {
                 fmt.panic("Unsupported copy box.", &.{});
             },
-            cy.NativeFunc1S => {
+            rt.NativeFuncT => {
                 fmt.panic("Unsupported copy native func.", &.{});
             },
-            cy.TccStateS => {
+            rt.TccStateT => {
                 fmt.panic("Unsupported copy tcc state.", &.{});
             },
-            cy.PointerT => {
+            rt.PointerT => {
                 fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
-                const numFields = @ptrCast(*const cy.VM, vm).structs.buf[obj.head.typeId].numFields;
+                const numFields = @ptrCast(*const cy.VM, vm).types.buf[obj.head.typeId].numFields;
                 const fields = obj.object.getValuesConstPtr()[0..numFields];
                 var new: Value = undefined;
                 if (numFields <= 4) {

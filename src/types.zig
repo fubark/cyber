@@ -1,6 +1,7 @@
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const sema = cy.sema;
 const ResolvedSymId = sema.ResolvedSymId;
 const fmt = @import("fmt.zig");
@@ -136,25 +137,25 @@ pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: 
     return isTypeSymCompat(c, target.retSymId, src.retSymId);
 }
 
-pub fn typeTagToExactTypeId(tag: TypeTag) ?cy.TypeId {
+pub fn typeTagToExactTypeId(tag: TypeTag) ?rt.TypeId {
     return switch (tag) {
         .any => null,
-        .number => cy.NumberT,
-        .int => cy.IntegerT,
-        .symbol => cy.SymbolT,
-        .list => cy.ListS,
-        .boolean => cy.BooleanT,
+        .number => rt.NumberT,
+        .int => rt.IntegerT,
+        .symbol => rt.SymbolT,
+        .list => rt.ListT,
+        .boolean => rt.BooleanT,
 
         // There are multiple string types.
         .string => null,
         .rawstring => null,
 
-        .map => cy.MapS,
-        .pointer => cy.PointerT,
-        .none => cy.NoneT,
-        .fiber => cy.FiberS,
-        .metatype => cy.MetaTypeT,
-        .err => cy.ErrorT,
+        .map => rt.MapT,
+        .pointer => rt.PointerT,
+        .none => rt.NoneT,
+        .fiber => rt.FiberT,
+        .metatype => rt.MetaTypeT,
+        .err => rt.ErrorT,
         else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };
 }

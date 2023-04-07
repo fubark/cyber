@@ -253,8 +253,8 @@ typedef struct VM {
     ZHashMap fieldTable;
     ZHashMap fieldSymSignatures;
 
-    ZCyList structs;
-    ZHashMap structSignatures;
+    ZCyList types;
+    ZHashMap typeSignatures;
 
     ZCyList enums;
     ZHashMap enumSignatures;

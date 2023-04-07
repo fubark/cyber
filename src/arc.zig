@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const log = stdx.log.scoped(.arc);
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 
 pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     if (cy.TraceEnabled) {
@@ -173,7 +174,7 @@ pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
         self.trace.numForceReleases += 1;
     }
     switch (obj.head.typeId) {
-        cy.ListS => {
+        rt.ListT => {
             const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
             list.deinit(self.alloc);
             cy.heap.freePoolObject(self, obj);
@@ -181,7 +182,7 @@ pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
                 self.refCounts -= obj.head.rc;
             }
         },
-        cy.MapS => {
+        rt.MapT => {
             const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
             map.deinit(self.alloc);
             cy.heap.freePoolObject(self, obj);
@@ -234,7 +235,7 @@ pub fn checkMemory(self: *cy.VM) !bool {
             node.entered = true;
 
             switch (obj.head.typeId) {
-                cy.ListS => {
+                rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
                     for (list.items()) |it| {
                         if (it.isPointer()) {
@@ -287,7 +288,7 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
             while (iter.next()) |it| {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
-                    const typeName = vm.structs.buf[it.key_ptr.*.head.typeId].name;
+                    const typeName = vm.types.buf[it.key_ptr.*.head.typeId].name;
                     const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc });
                     try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
                 }

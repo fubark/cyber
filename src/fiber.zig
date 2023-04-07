@@ -7,11 +7,12 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const log = stdx.log.scoped(.fiber);
 const Value = cy.Value;
 
 pub const Fiber = extern struct {
-    structId: cy.TypeId,
+    structId: rt.TypeId,
     rc: u32,
     prevFiber: ?*Fiber,
     stackPtr: [*]Value,
@@ -61,7 +62,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
     const obj = @ptrCast(*Fiber, try cy.heap.allocExternalObject(vm, @sizeOf(Fiber)));
     const parentDstLocal = cy.NullU8;
     obj.* = .{
-        .structId = cy.FiberS,
+        .structId = rt.FiberT,
         .rc = 1,
         .stackPtr = stack.ptr,
         .stackLen = @intCast(u32, stack.len),

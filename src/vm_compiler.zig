@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const vm_ = @import("vm.zig");
@@ -175,33 +176,33 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameMetatype);
 
         // Add builtins types as resolved syms.
-        id = try sema.addResolvedBuiltinSym(self, .any, "any");
+        id = try sema.addResolvedBuiltinSym(self, .any, "any", rt.AnyT);
         std.debug.assert(id == bt.Any);
-        id = try sema.addResolvedBuiltinSym(self, .boolean, "boolean");
+        id = try sema.addResolvedBuiltinSym(self, .boolean, "boolean", rt.BooleanT);
         std.debug.assert(id == bt.Boolean);
-        id = try sema.addResolvedBuiltinSym(self, .number, "number");
+        id = try sema.addResolvedBuiltinSym(self, .number, "number", rt.NumberT);
         std.debug.assert(id == bt.Number);
-        id = try sema.addResolvedBuiltinSym(self, .int, "int");
+        id = try sema.addResolvedBuiltinSym(self, .int, "int", rt.IntegerT);
         std.debug.assert(id == bt.Integer);
-        id = try sema.addResolvedBuiltinSym(self, .string, "string");
+        id = try sema.addResolvedBuiltinSym(self, .string, "string", rt.StringUnionT);
         std.debug.assert(id == bt.String);
-        id = try sema.addResolvedBuiltinSym(self, .rawstring, "rawstring");
+        id = try sema.addResolvedBuiltinSym(self, .rawstring, "rawstring", rt.RawstringUnionT);
         std.debug.assert(id == bt.Rawstring);
-        id = try sema.addResolvedBuiltinSym(self, .symbol, "symbol");
+        id = try sema.addResolvedBuiltinSym(self, .symbol, "symbol", rt.SymbolT);
         std.debug.assert(id == bt.Symbol);
-        id = try sema.addResolvedBuiltinSym(self, .list, "List");
+        id = try sema.addResolvedBuiltinSym(self, .list, "List", rt.ListT);
         std.debug.assert(id == bt.List);
-        id = try sema.addResolvedBuiltinSym(self, .map, "Map");
+        id = try sema.addResolvedBuiltinSym(self, .map, "Map", rt.MapT);
         std.debug.assert(id == bt.Map);
-        id = try sema.addResolvedBuiltinSym(self, .pointer, "pointer");
+        id = try sema.addResolvedBuiltinSym(self, .pointer, "pointer", rt.PointerT);
         std.debug.assert(id == bt.Pointer);
-        id = try sema.addResolvedBuiltinSym(self, .none, "none");
+        id = try sema.addResolvedBuiltinSym(self, .none, "none", rt.NoneT);
         std.debug.assert(id == bt.None);
-        id = try sema.addResolvedBuiltinSym(self, .err, "error");
+        id = try sema.addResolvedBuiltinSym(self, .err, "error", rt.ErrorT);
         std.debug.assert(id == bt.Error);
-        id = try sema.addResolvedBuiltinSym(self, .fiber, "fiber");
+        id = try sema.addResolvedBuiltinSym(self, .fiber, "fiber", rt.FiberT);
         std.debug.assert(id == bt.Fiber);
-        id = try sema.addResolvedBuiltinSym(self, .metatype, "metatype");
+        id = try sema.addResolvedBuiltinSym(self, .metatype, "metatype", rt.MetaTypeT);
         std.debug.assert(id == bt.MetaType);
     }
 
@@ -849,7 +850,7 @@ pub const CompileChunk = struct {
 
     /// Local syms is used as a cache to sema.resolvedSyms.
     /// It's useful to store imports, importAlls that are only visible to the module.
-    localSyms: std.HashMapUnmanaged(sema.RelLocalSymKey, sema.LocalSym, vm_.KeyU64Context, 80),
+    localSyms: std.HashMapUnmanaged(sema.RelLocalSymKey, sema.LocalSym, cy.hash.KeyU64Context, 80),
 
     ///
     /// Codegen pass

@@ -1471,7 +1471,7 @@ pub const VM = struct {
 
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callNativeFuncIC };
-                @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
 
                 self.pc = pc;
                 self.framePtr = newFramePtr;
@@ -1503,7 +1503,7 @@ pub const VM = struct {
                 // Optimize.
                 pc[0] = cy.OpData{ .code = .callFuncIC };
                 pc[4] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
-                @ptrCast(*align(1) u48, pc + 5).* = @intCast(u48, @ptrToInt(cy.fiber.toVmPc(self, sym.inner.func.pc)));
+                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(cy.fiber.toVmPc(self, sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + startLocal;
                 newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
@@ -3071,9 +3071,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     }
                     const retFramePtr = Value{ .retFramePtr = framePtr };
                     framePtr += startLocal;
-                    @ptrCast([*]u8, framePtr + 1)[0] = pc[3].arg;
-                    @ptrCast([*]u8, framePtr + 1)[1] = 0;
-                    framePtr[2] = Value{ .retPcPtr = pc + 16 };
+                    framePtr[1] = buildReturnInfo2(pc[3].arg, true, cy.bytecode.CallObjSymInstLen);
+                    framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
                     framePtr[3] = retFramePtr;
                     pc = vm.ops.ptr + @ptrCast(*align(1) u32, pc + 8).*;
                     continue;
@@ -3115,7 +3114,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                             },
                         }
                     }
-                    pc += 16;
+                    pc += cy.bytecode.CallObjSymInstLen;
                     // In the future, we might allow native functions to change the pc and framePtr.
                     // pc = vm.pc;
                     // framePtr = vm.framePtr;
@@ -3138,12 +3137,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 const retFramePtr = Value{ .retFramePtr = framePtr };
                 framePtr += startLocal;
-                @ptrCast([*]u8, framePtr + 1)[0] = pc[3].arg;
-                @ptrCast([*]u8, framePtr + 1)[1] = 0;
-                framePtr[2] = Value{ .retPcPtr = pc + 11 };
+                framePtr[1] = buildReturnInfo2(pc[3].arg, true, cy.bytecode.CallSymInstLen);
+                framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 framePtr[3] = retFramePtr;
 
-                pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 5).*));
+                pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
                 continue;
             },
             .callNativeFuncIC => {
@@ -3156,7 +3154,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const newFramePtr = framePtr + startLocal;
                 vm.pc = pc;
                 vm.framePtr = newFramePtr;
-                const func = @intToPtr(cy.NativeFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 5).*));
+                const func = @intToPtr(cy.NativeFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 6).*));
                 const res = func(@ptrCast(*UserVM, vm), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
                 if (res.isInterrupt()) {
                     return error.Panic;
@@ -3173,7 +3171,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         else => stdx.panic("unsupported"),
                     }
                 }
-                pc += 11;
+                pc += cy.bytecode.CallSymInstLen;
                 continue;
             },
             .ret1 => {
@@ -3888,7 +3886,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
                 const numRet = pc[3].arg;
-                const symId = pc[4].arg;
+                const symId = @ptrCast(*const align(1) u16, pc + 4).*;
                 const res = try @call(.never_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
                 pc = res.pc;
                 framePtr = res.sp;

@@ -259,7 +259,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, ex
             const startLocal = pc[1].arg;
             const numArgs = pc[2].arg;
             const numRet = pc[3].arg;
-            const symId = pc[4].arg;
+            const symId = @ptrCast(*const align(1) u16, pc + 4).*;
             fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
         },
         .closure => {
@@ -518,7 +518,7 @@ const DebugLabel = struct {
 };
 
 pub const CallObjSymInstLen = 16;
-pub const CallSymInstLen = 11;
+pub const CallSymInstLen = 12;
 pub const CallInstLen = 3;
 
 pub fn getInstLenAt(pc: [*]const OpData) u8 {

@@ -2103,12 +2103,10 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
 
                     const symId = try self.compiler.vm.ensureFuncSym(key.rParentSymId, key.nameId, rFuncSigId);
                     if (discardTopExprReg) {
-                        try self.pushDebugSym(nodeId);
-                        try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
+                        try pushCallSym(self, callStartLocal, numArgs, 0, symId, nodeId);
                         return GenValue.initTempValue(callStartLocal, funcSym.retType, false);
                     } else {
-                        try self.pushDebugSym(nodeId);
-                        try self.buf.pushOpSlice(.callSym, &.{ callStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, symId), 0, 0, 0, 0, 0, 0 });
+                        try pushCallSym(self, callStartLocal, numArgs, 1, symId, nodeId);
                         return GenValue.initTempValue(callStartLocal, funcSym.retType, true);
                     }
 
@@ -2182,11 +2180,9 @@ fn genCallExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, comptime di
                 if (crSymId.isFuncSymId) {
                     const rtSymId = try self.genEnsureRtFuncSym(crSymId.id);
                     if (discardTopExprReg) {
-                        try self.pushDebugSym(nodeId);
-                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, rtSymId), 0, 0, 0, 0, 0, 0 });
+                        try pushCallSym(self, genCallStartLocal, numArgs, 0, rtSymId, nodeId);
                     } else {
-                        try self.pushDebugSym(nodeId);
-                        try self.buf.pushOpSlice(.callSym, &.{ genCallStartLocal, @intCast(u8, numArgs), 1, @intCast(u8, rtSymId), 0, 0, 0, 0, 0, 0 });
+                        try pushCallSym(self, genCallStartLocal, numArgs, 1, rtSymId, nodeId);
                     }
                 }
 
@@ -2677,4 +2673,11 @@ fn pushCallObjSym(chunk: *cy.CompileChunk, startLocal: u8, numArgs: u8, numRet: 
     const start = chunk.buf.ops.items.len;
     try chunk.buf.pushOpSlice(.callObjSym, &.{ startLocal, numArgs, numRet, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
     chunk.buf.setOpArgU16(start + 5, rFuncSigId);
+}
+
+fn pushCallSym(c: *cy.CompileChunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {
+    try c.pushDebugSym(nodeId);
+    const start = c.buf.ops.items.len;
+    try c.buf.pushOpSlice(.callSym, &.{ startLocal, @intCast(u8, numArgs), numRet, 0, 0, 0, 0, 0, 0, 0, 0 });
+    c.buf.setOpArgU16(start + 4, @intCast(u16, symId));
 }

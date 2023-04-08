@@ -155,7 +155,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
         switch (vm.ops[pc].code) {
             .callFuncIC,
             .callSym => {
-                if (vm.ops[pc + 11].code == .coreturn) {
+                if (vm.ops[pc + cy.bytecode.CallSymInstLen].code == .coreturn) {
                     const numArgs = vm.ops[pc - 4].arg;
                     for (stack[fiber.fpOffset + 5..fiber.fpOffset + 5 + numArgs]) |arg| {
                         cy.arc.release(vm, arg);

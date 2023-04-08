@@ -3279,7 +3279,12 @@ fn resolveTypeSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: Na
             .userObject => {
                 return chunk.reportError("Unsupported module sym: userObject", &.{});
             },
-
+            .typeAlias => {
+                const srcChunk = &chunk.compiler.chunks.items[mod.chunkId];
+                const node = srcChunk.nodes[modSym.inner.typeAlias.declId];
+                const rSymId = try getOrResolveTypeSymFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
+                return rSymId;
+            },
             else => {},
         }
     }
@@ -3376,8 +3381,9 @@ fn resolveSymFromModule(chunk: *cy.CompileChunk, modId: ModuleId, nameId: NameSy
                 return CompactResolvedSymId.initSymId(id);
             },
             .typeAlias => {
-                const node = chunk.nodes[modSym.inner.typeAlias.declId];
-                const rSymId = try getOrResolveTypeSymFromSpecNode(chunk, node.head.typeAliasDecl.typeSpecHead);
+                const srcChunk = &chunk.compiler.chunks.items[mod.chunkId];
+                const node = srcChunk.nodes[modSym.inner.typeAlias.declId];
+                const rSymId = try getOrResolveTypeSymFromSpecNode(srcChunk, node.head.typeAliasDecl.typeSpecHead);
                 return CompactResolvedSymId.initSymId(rSymId);
             },
             .symToManyFuncs => {

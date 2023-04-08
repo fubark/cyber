@@ -54,6 +54,7 @@ type Vec2 object:
 
     func new(x, y):
         return Vec2{ x: x, y: y }
+type Vec2Alias Vec2
 
 type Bar object:
     a number

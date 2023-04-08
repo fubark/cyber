@@ -230,6 +230,9 @@ typedef struct VM {
 
     ZCyList heapPages;
     HeapObject* heapFreeHead;
+#if DEBUG
+    HeapObject* heapFreeTail;
+#endif
 
     ZCyList tryStack;
 

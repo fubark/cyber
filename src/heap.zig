@@ -510,7 +510,7 @@ fn initHeapPage(page: *HeapPage) *HeapObject {
 }
 
 /// Returns the first free HeapObject.
-pub fn growHeapPages(self: *cy.VM, numPages: usize) !*HeapObject {
+pub fn growHeapPages(self: *cy.VM, numPages: usize) !HeapObjectList {
     var idx = self.heapPages.len;
     try self.heapPages.resize(self.alloc, self.heapPages.len + numPages);
 
@@ -528,8 +528,16 @@ pub fn growHeapPages(self: *cy.VM, numPages: usize) !*HeapObject {
         last.freeSpan.next = first_;
         last = first_;
     }
-    return first;
+    return .{
+        .head = first,
+        .tail = last,
+    };
 }
+
+const HeapObjectList = struct {
+    head: *HeapObject,
+    tail: *HeapObject,
+};
 
 pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
     // Align with HeapObject so it can be casted.
@@ -552,12 +560,20 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
 /// Assumes new object will have an RC = 1.
 pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
     if (self.heapFreeHead == null) {
-        self.heapFreeHead = try growHeapPages(self, std.math.max(1, (self.heapPages.len * 15) / 10));
+        const list = try growHeapPages(self, std.math.max(1, (self.heapPages.len * 15) / 10));
+        self.heapFreeHead = list.head;
+        if (builtin.mode == .Debug) {
+            self.heapFreeTail = list.tail;
+        }
     }
     const ptr = self.heapFreeHead.?;
     defer {
         if (builtin.mode == .Debug) {
             traceAlloc(self, ptr);
+            if (self.heapFreeHead == null) {
+                // Ensure tail is updated if no more free objects.
+                self.heapFreeTail = null;
+            }
         }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
@@ -582,6 +598,12 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         const last = &@ptrCast([*]HeapObject, ptr)[ptr.freeSpan.len-1];
         last.freeSpan.start = next;
         self.heapFreeHead = next;
+        if (builtin.mode == .Debug) {
+            if (self.heapFreeTail == ptr) {
+                // Ensure tail is updated if it was the same segment as head.
+                self.heapFreeTail = self.heapFreeHead;
+            }
+        }
         return ptr;
     }
 }
@@ -618,14 +640,32 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
             obj.freeSpan.typeId = cy.NullId;
         }
     } else {
-        // Add single slot free span.
-        obj.freeSpan = .{
-            .typeId = if (builtin.mode == .Debug) NullId else undefined,
-            .len = 1,
-            .start = obj,
-            .next = vm.heapFreeHead,
-        };
-        vm.heapFreeHead = obj;
+        if (builtin.mode == .Debug) {
+            // Debug mode performs LRU allocation to surface double free errors better.
+            // When an object is constantly reused, the most recent traced alloc/free info
+            // can mask an earlier alloc/free on the same object pointer.
+            obj.freeSpan = .{
+                .typeId = if (builtin.mode == .Debug) NullId else undefined,
+                .len = 1,
+                .start = obj,
+                .next = null,
+            };
+            if (vm.heapFreeTail == null) {
+                vm.heapFreeTail = obj;
+                vm.heapFreeHead = obj;
+            } else {
+                vm.heapFreeTail.?.freeSpan.next = obj;
+            }
+        } else {
+            // Add single slot free span.
+            obj.freeSpan = .{
+                .typeId = if (builtin.mode == .Debug) NullId else undefined,
+                .len = 1,
+                .start = obj,
+                .next = vm.heapFreeHead,
+            };
+            vm.heapFreeHead = obj;
+        }
     }
 }
 

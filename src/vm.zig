@@ -71,6 +71,8 @@ pub const VM = struct {
     /// Object heap pages.
     heapPages: cy.List(*cy.heap.HeapPage),
     heapFreeHead: ?*HeapObject,
+    /// Tail is only used in debug mode.
+    heapFreeTail: if (builtin.mode == .Debug) ?*HeapObject else void,
 
     tryStack: cy.List(cy.fiber.TryFrame),
 
@@ -180,6 +182,7 @@ pub const VM = struct {
             .stackEndPtr = undefined,
             .heapPages = .{},
             .heapFreeHead = null,
+            .heapFreeTail = if (builtin.mode == .Debug) null else undefined,
             .pc = undefined,
             .framePtr = undefined,
             .tryStack = .{},
@@ -252,7 +255,11 @@ pub const VM = struct {
         try self.fieldSyms.ensureTotalCapacityPrecise(alloc, 170);
 
         // Initialize heap.
-        self.heapFreeHead = try cy.heap.growHeapPages(self, 1);
+        const list = try cy.heap.growHeapPages(self, 1);
+        self.heapFreeHead = list.head;
+        if (builtin.mode == .Debug) {
+            self.heapFreeTail = list.tail;
+        }
 
         // Force linksection order. Using `try` makes this work.
         try @call(.never_inline, cy.forceSectionDeps, .{});

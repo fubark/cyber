@@ -7,4 +7,3 @@
 
 *.cy linguist-language=Text
 **.cy linguist-language=Text
-cyber/examples/*.cy linguist-language=Text

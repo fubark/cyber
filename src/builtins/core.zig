@@ -435,40 +435,49 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseRe
         const entryMap = entry.asHeapObject().map.map();
         try entryMap.put(alloc, vm.internal(), try vm.allocAstring("type"), try vm.allocAstring(@tagName(decl.declT)));
         var name: []const u8 = undefined;
+        var pos: u32 = undefined;
         switch (decl.declT) {
             .variable => {
                 const node = nodes[decl.inner.variable];
                 const varSpec = nodes[node.head.varDecl.varSpec];
                 name = res.getFirstNodeString(varSpec.head.varSpec.name);
+                pos = res.tokens[node.start_token].pos();
             },
             .typeAlias => {
                 const node = nodes[decl.inner.typeAlias];
                 name = res.getFirstNodeString(node.head.typeAliasDecl.name);
+                pos = res.tokens[node.start_token].pos();
             },
             .func => {
                 const node = nodes[decl.inner.func];
                 const header = nodes[node.head.func.header];
                 name = res.getFirstNodeString(header.head.funcHeader.name);
+                pos = res.tokens[node.start_token].pos();
             },
             .funcInit => {
                 const node = nodes[decl.inner.funcInit];
                 const header = nodes[node.head.func.header];
                 name = res.getFirstNodeString(header.head.funcHeader.name);
+                pos = res.tokens[node.start_token].pos();
             },
             .import => {
                 const node = nodes[decl.inner.import];
                 name = res.getFirstNodeString(node.head.left_right.left);
+                pos = res.tokens[node.start_token].pos();
             },
             .object => {
                 const node = nodes[decl.inner.object];
                 name = res.getFirstNodeString(node.head.objectDecl.name);
+                pos = res.tokens[node.start_token].pos();
             },
             .enumT => {
                 const node = nodes[decl.inner.object];
                 name = res.getFirstNodeString(node.head.enumDecl.name);
+                pos = res.tokens[node.start_token].pos();
             }
         }
         try entryMap.put(alloc, vm.internal(), try vm.allocAstring("name"), try vm.allocAstring(name));
+        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("pos"), Value.initF64(@intToFloat(f64, pos)));
         try declsList.append(alloc, entry);
     }
     try map.put(alloc, vm.internal(), try vm.allocAstring("decls"), decls);
@@ -572,7 +581,13 @@ pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
-    const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch stdx.fatal();
+    const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch |err| {
+        if (err == error.FileNotFound) {
+            return prepareThrowSymbol(vm, .FileNotFound);
+        }
+        log.debug("readFile {}", .{err});
+        return prepareThrowSymbol(vm, .UnknownError);
+    };
     defer vm.allocator().free(content);
     // TODO: Use allocOwnedString.
     return vm.allocRawString(content) catch stdx.fatal();

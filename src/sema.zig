@@ -3727,7 +3727,7 @@ fn resolveSpecTemp(self: *cy.CompileChunk, spec: []const u8, outBuiltin: *bool) 
                 try self.tempBufU8.appendSlice(self.alloc, uri.scheme);
                 try self.tempBufU8.appendSlice(self.alloc, "://raw.githubusercontent.com");
                 try self.tempBufU8.appendSlice(self.alloc, uri.path);
-                try self.tempBufU8.appendSlice(self.alloc, "/master/mod.cys");
+                try self.tempBufU8.appendSlice(self.alloc, "/master/mod.cy");
                 std.debug.print("{s}\n", .{self.tempBufU8.items});
                 return self.tempBufU8.items;
             }

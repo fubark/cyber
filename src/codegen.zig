@@ -174,6 +174,7 @@ fn genStringTemplate(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, compt
     }
 
     if (dstIsUsed) {
+        try self.pushOptionalDebugSym(nodeId);
         try self.buf.pushOp3(.stringTemplate, argStartLocal, @intCast(u8, numExprs), dst);
         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
         return self.initGenValue(dst, types.StringType, true);
@@ -2042,7 +2043,9 @@ fn genIfExpr(self: *CompileChunk, nodeId: cy.NodeId, dst: LocalId, retain: bool,
     if (truev.vtype.typeT != falsev.vtype.typeT) {
         return self.initGenValue(dst, types.AnyType, retain);
     } else {
-        return self.initGenValue(dst, truev.vtype, retain and truev.vtype.rcCandidate);
+        // Even though types match, rcCandidate can differ.
+        const effType = if (truev.vtype.rcCandidate) truev.vtype else falsev.vtype;
+        return self.initGenValue(dst, effType, retain and effType.rcCandidate);
     }
 }
 

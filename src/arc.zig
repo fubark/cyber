@@ -283,13 +283,16 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
         std.debug.print("unreleased refcount: {}, expected: {}\n", .{rc, vm.expGlobalRC});
 
         if (builtin.mode == .Debug) {
-            var buf: [128]u8 = undefined;
+            var buf: [256]u8 = undefined;
             var iter = vm.objectTraceMap.iterator();
             while (iter.next()) |it| {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
                     const typeName = vm.types.buf[it.key_ptr.*.head.typeId].name;
-                    const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}", .{it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc });
+                    const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
+                        it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc,
+                        vm.valueToTempString(cy.Value.initPtr(it.key_ptr.*)),
+                    });
                     try cy.debug.printTraceAtPc(vm, trace.allocPc, msg);
                 }
             }

@@ -570,9 +570,9 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
     defer {
         if (builtin.mode == .Debug) {
             traceAlloc(self, ptr);
-            if (self.heapFreeHead == null) {
-                // Ensure tail is updated if no more free objects.
-                self.heapFreeTail = null;
+            if (self.heapFreeTail == ptr) {
+                // Ensure tail is updated if it was the same segment as head.
+                self.heapFreeTail = self.heapFreeHead;
             }
         }
         if (cy.TrackGlobalRC) {
@@ -598,12 +598,6 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         const last = &@ptrCast([*]HeapObject, ptr)[ptr.freeSpan.len-1];
         last.freeSpan.start = next;
         self.heapFreeHead = next;
-        if (builtin.mode == .Debug) {
-            if (self.heapFreeTail == ptr) {
-                // Ensure tail is updated if it was the same segment as head.
-                self.heapFreeTail = self.heapFreeHead;
-            }
-        }
         return ptr;
     }
 }
@@ -635,17 +629,14 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
         // Left is a free span. Extend length.
         prev.freeSpan.start.freeSpan.len += 1;
         obj.freeSpan.start = prev.freeSpan.start;
-        if (builtin.mode == .Debug) {
-            // Only invalidate in debug mode to surface double frees.
-            obj.freeSpan.typeId = cy.NullId;
-        }
+        obj.freeSpan.typeId = cy.NullId;
     } else {
         if (builtin.mode == .Debug) {
             // Debug mode performs LRU allocation to surface double free errors better.
             // When an object is constantly reused, the most recent traced alloc/free info
             // can mask an earlier alloc/free on the same object pointer.
             obj.freeSpan = .{
-                .typeId = if (builtin.mode == .Debug) NullId else undefined,
+                .typeId = NullId,
                 .len = 1,
                 .start = obj,
                 .next = null,
@@ -659,7 +650,7 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
         } else {
             // Add single slot free span.
             obj.freeSpan = .{
-                .typeId = if (builtin.mode == .Debug) NullId else undefined,
+                .typeId = NullId,
                 .len = 1,
                 .start = obj,
                 .next = vm.heapFreeHead,

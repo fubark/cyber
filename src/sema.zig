@@ -1515,26 +1515,29 @@ fn semaExpr2(c: *cy.CompileChunk, nodeId: cy.NodeId, reqType: Type, comptime dis
             } else if (literal[1] == 'b') {
                 val = try std.fmt.parseInt(u64, literal[2..], 2);
             } else if (literal[1] == 'u') {
-                var start: usize = 3;
                 if (literal[3] == '\\') {
-                    start = 4;
-                }
-                const len = std.unicode.utf8ByteSequenceLength(literal[start]) catch {
-                    return c.reportError("Invalid UTF-8 Rune.", &.{});
-                };
-                if (start == 3) {
-                    if (literal.len != @as(usize, 4) + len) {
+                    if (unescapeAsciiChar(literal[4])) |ch| {
+                        val = ch;
+                    } else {
+                        val = literal[4];
+                        if (val > 128) {
+                            return c.reportError("Invalid UTF-8 Rune.", &.{});
+                        }
+                    }
+                    if (literal.len != 6) {
                         return c.reportError("Invalid UTF-8 Rune.", &.{});
                     }
                 } else {
-                    if (literal.len != @as(usize, 5) + len) {
+                    const len = std.unicode.utf8ByteSequenceLength(literal[3]) catch {
+                        return c.reportError("Invalid UTF-8 Rune.", &.{});
+                    };
+                    if (literal.len != @as(usize, 4) + len) {
                         return c.reportError("Invalid UTF-8 Rune.", &.{});
                     }
+                    val = std.unicode.utf8Decode(literal[3..3+len]) catch {
+                        return c.reportError("Invalid UTF-8 Rune.", &.{});
+                    };
                 }
-                const cp = std.unicode.utf8Decode(literal[start..start+len]) catch {
-                    return c.reportError("Invalid UTF-8 Rune.", &.{});
-                };
-                val = cp;
             } else {
                 const char: []const u8 = &[_]u8{literal[1]};
                 return c.reportError("Unsupported integer notation: {}", &.{v(char)});
@@ -4451,6 +4454,52 @@ pub const U32SliceContext = struct {
         return std.mem.eql(u32, a, b);
     }
 };
+
+/// `buf` is assumed to be big enough.
+pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
+    var newIdx: u32 = 0; 
+    var i: u32 = 0;
+    while (i < literal.len) : (newIdx += 1) {
+        if (literal[i] == '\\') {
+            if (unescapeAsciiChar(literal[i + 1])) |ch| {
+                buf[newIdx] = ch;
+            } else {
+                buf[newIdx] = literal[i + 1];
+            }
+            i += 2;
+        } else {
+            buf[newIdx] = literal[i];
+            i += 1;
+        }
+    }
+    return buf[0..newIdx];
+}
+
+pub fn unescapeAsciiChar(ch: u8) ?u8 {
+    switch (ch) {
+        'a' => {
+            return 0x07;
+        },
+        'b' => {
+            return 0x08;
+        },
+        'e' => {
+            return 0x1b;
+        },
+        'n' => {
+            return '\n';
+        },
+        'r' => {
+            return '\r';
+        },
+        't' => {
+            return '\t';
+        },
+        else => {
+            return null;
+        }
+    }
+}
 
 test "Internals." {
     try t.eq(@sizeOf(LocalVar), 40);

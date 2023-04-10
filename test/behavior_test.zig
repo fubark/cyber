@@ -1829,20 +1829,6 @@ test "Numbers." {
         );
     }}.func);
 
-    // Can't use escape char other than single quote or backslash.
-    try eval(.{ .silent = true },
-        \\a = 0u'\a'
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.TokenError,
-            \\ParseError: Expected single quote or backslash.
-            \\
-            \\main:1:9:
-            \\a = 0u'\a'
-            \\        ^
-            \\
-        );
-    }}.func);
-
     // More than one rune in literal. 
     try eval(.{ .silent = true },
         \\a = 0u'🦊a'

@@ -17,13 +17,13 @@ pub const TokenType = parser.TokenType;
 
 pub const sema = @import("sema.zig");
 pub const Module = sema.Module;
+pub const unescapeString = sema.unescapeString;
 
 pub const types = @import("types.zig");
 
 const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
 pub const CompileChunk = vm_compiler.CompileChunk;
-pub const unescapeString = vm_compiler.unescapeString;
 pub const CompileResultView = vm_compiler.CompileResultView;
 pub const CompileConfig = vm_compiler.CompileConfig;
 pub const ValidateConfig = vm_compiler.ValidateConfig;

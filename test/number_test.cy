@@ -28,6 +28,7 @@ t.eq(0u'\'', 39)    -- Escape single quote.
 t.eq(0u'\\', 92)    -- Escape backslash.
 t.eq(0u'🐶', 128054)
 t.eq(0u'🦊', 129418)
+t.eq(0u'\n', 10)
 
 -- number.<call>()
 t.eq(number(100), 100)

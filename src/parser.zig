@@ -4674,12 +4674,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                                 if (isAtEndChar(p)) {
                                     return p.reportTokenError("Expected single quote or backslash.", &.{});
                                 }
-                                ch = peekChar(p);
-                                if (ch != '\'' and ch != '\\') {
-                                    return p.reportTokenError("Expected single quote or backslash.", &.{});
-                                } else {
-                                    advanceChar(p);
-                                }
+                                advanceChar(p);
                             } else {
                                 advanceChar(p);
                                 if (ch == '\'') {

@@ -729,44 +729,6 @@ fn willAlwaysRetainResolvedSym(c: *CompileChunk, crSymId: sema.CompactResolvedSy
     }
 }
 
-/// `buf` is assumed to be big enough.
-pub fn unescapeString(buf: []u8, literal: []const u8) []const u8 {
-    var newIdx: u32 = 0; 
-    var i: u32 = 0;
-    while (i < literal.len) : (newIdx += 1) {
-        if (literal[i] == '\\') {
-            switch (literal[i + 1]) {
-                'a' => {
-                    buf[newIdx] = 0x07;
-                },
-                'b' => {
-                    buf[newIdx] = 0x08;
-                },
-                'e' => {
-                    buf[newIdx] = 0x1b;
-                },
-                'n' => {
-                    buf[newIdx] = '\n';
-                },
-                'r' => {
-                    buf[newIdx] = '\r';
-                },
-                't' => {
-                    buf[newIdx] = '\t';
-                },
-                else => {
-                    buf[newIdx] = literal[i + 1];
-                }
-            }
-            i += 2;
-        } else {
-            buf[newIdx] = literal[i];
-            i += 1;
-        }
-    }
-    return buf[0..newIdx];
-}
-
 const ReservedTempLocal = struct {
     local: LocalId,
 };
@@ -1559,7 +1521,7 @@ pub const CompileChunk = struct {
 
     pub fn unescapeString(self: *CompileChunk, literal: []const u8) ![]const u8 {
         try self.tempBufU8.resize(self.alloc, literal.len);
-        return Root.unescapeString(self.tempBufU8.items, literal);
+        return cy.sema.unescapeString(self.tempBufU8.items, literal);
     }
 
     pub fn dumpLocals(self: *const CompileChunk, sblock: *sema.Block) !void {

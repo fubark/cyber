@@ -61,7 +61,7 @@ foo = func():
 foo()        -- &#39;123&#39;
 </code></pre><h3 id=static-variables>Static Variables.
 <a class=anchor href=#static-variables>#</a></h3><p>Unlike local variables, static variables are always available until the end of the script.
-When declared in the main block, they act as global variables and are visible from anywhere in the script without being captured by a closure.
+They act as global variables and are visible from anywhere in the script without being captured by a closure.
 You can declare static variables with the <code>var</code> keyword.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
 func foo():
     print a     -- &#39;123&#39;

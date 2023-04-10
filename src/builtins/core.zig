@@ -70,6 +70,7 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
         try b.setFunc("readFile", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
+    try b.setFunc("runestr", &.{ bt.Number }, bt.String, runestr);
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
     try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
     try b.setFunc("valtag", &.{ bt.Any }, bt.Symbol, valtag);
@@ -301,6 +302,21 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = vm.valueToTempString(args[0]);
     return vm.returnPanic(str);
+}
+
+fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const num = args[0].asF64toI64();
+    if (num < 0 or num >= 2 << 21) {
+        return prepareThrowSymbol(vm, .InvalidRune);
+    }
+    const rune = @intCast(u21, num);
+    if (std.unicode.utf8ValidCodepoint(rune)) {
+        var buf: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(rune, &buf) catch fatal();
+        return vm.allocStringInfer(buf[0..len]) catch fatal();
+    } else {
+        return prepareThrowSymbol(vm, .InvalidRune);
+    }
 }
 
 pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

@@ -119,6 +119,7 @@ print contents
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
 | `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
 | `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
+| `runestr(val number) string` | Converts a rune to a string. | 
 | `string(val any) string` | Converts a value to a string. | 
 | `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeof(any) metatype` | Returns the value's type as a `metatype` object. |

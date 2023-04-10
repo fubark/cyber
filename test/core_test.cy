@@ -136,6 +136,12 @@ t.eq(val['a'], 123)
 ptr = pointer(0xDEADBEEF)
 t.eq(ptr.value(), 3735928559)
 
+-- runestr()
+t.eq(runestr(0u'a'), 'a')
+t.eq(runestr(0u'🦊'), '🦊')
+t.eq(try runestr(2 ^ 22), error.InvalidRune)
+t.eq(try runestr(-1), error.InvalidRune)
+
 -- string()
 str = 'abcd'
 t.eq(string(str), 'abcd')

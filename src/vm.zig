@@ -3837,8 +3837,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const f = @intToFloat(f64, left.asF64toI32() << @intCast(u5, right.asF64toI32()));
-                    framePtr[pc[3].arg] = Value.initF64(f);
+                    const amt = @intCast(u5, @bitCast(u64, right.asF64toI64()) % 32);
+                    const res = @intToFloat(f64, left.asF64toI32() << amt);
+                    framePtr[pc[3].arg] = Value.initF64(res);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
                 }
@@ -3852,8 +3853,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const f = @intToFloat(f64, left.asF64toI32() >> @intCast(u5, right.asF64toI32()));
-                    framePtr[pc[3].arg] = Value.initF64(f);
+                    const amt = @intCast(u5, @bitCast(u64, right.asF64toI64()) % 32);
+                    const res = @intToFloat(f64, left.asF64toI32() >> amt);
+                    framePtr[pc[3].arg] = Value.initF64(res);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
                 }

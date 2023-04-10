@@ -95,7 +95,22 @@ pub const Value = packed union {
     }
 
     pub inline fn asF64toI32(self: *const Value) i32 {
-        return @floatToInt(i32, self.asF64());
+        const f = self.asF64();
+        if (self.val & 0x7ff0000000000000 != 0x7ff0000000000000) {
+            return @truncate(i32, @floatToInt(i64, f));
+        } else {
+            return 0;
+        }
+    }
+
+    pub inline fn asF64toI64(self: *const Value) i64 {
+        const f = self.asF64();
+        if (self.val & 0x7ff0000000000000 != 0x7ff0000000000000) {
+            // Not nan or inf.
+            return @floatToInt(i64, f);
+        } else {
+            return 0;
+        }
     }
 
     pub inline fn asF64toU32(self: *const Value) u32 {

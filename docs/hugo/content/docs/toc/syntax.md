@@ -95,7 +95,7 @@ foo()        -- '123'
 
 ### Static Variables.
 Unlike local variables, static variables are always available until the end of the script.
-When declared in the main block, they act as global variables and are visible from anywhere in the script without being captured by a closure. 
+They act as global variables and are visible from anywhere in the script without being captured by a closure. 
 You can declare static variables with the `var` keyword.
 ```cy
 var a: 123

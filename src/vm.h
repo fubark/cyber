@@ -77,6 +77,7 @@ typedef enum {
     CodeSetBoxValueRelease,
     CodeBoxValue,
     CodeBoxValueRetain,
+    CodeCaptured,
     CodeTag,
     CodeTagLiteral,
     CodeCast,

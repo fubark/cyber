@@ -236,8 +236,11 @@ pub const Closure = extern struct {
     numCaptured: u8,
     /// Includes locals, captured vars, and return info. Does not include params.
     numLocals: u8,
-    padding: u8,
+    /// Closure value is copied to this local to provide captured var lookup.
+    local: u8,
     rFuncSigId: u64,
+
+    // Begins array of `Box` values.
     firstCapturedVal: Value,
 
     pub inline fn getCapturedValuesPtr(self: *Closure) [*]Value {
@@ -815,7 +818,11 @@ pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Val
     return Value.initPtr(obj);
 }
 
-pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16, capturedVals: []const cy.InstDatum) !Value {
+/// Captured values are retained during alloc.
+pub fn allocClosure(
+    self: *cy.VM, fp: [*]Value, funcPc: usize, numParams: u8, numLocals: u8,
+    rFuncSigId: u16, capturedVals: []const cy.InstDatum, closureLocal: u8,
+) !Value {
     var obj: *HeapObject = undefined;
     if (capturedVals.len <= 2) {
         obj = try allocPoolObject(self);
@@ -829,13 +836,19 @@ pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: 
         .numParams = numParams,
         .numLocals = numLocals,
         .numCaptured = @intCast(u8, capturedVals.len),
-        .padding = undefined,
+        .local = closureLocal,
         .rFuncSigId = rFuncSigId,
         .firstCapturedVal = undefined,
     };
     const dst = obj.closure.getCapturedValuesPtr();
     for (capturedVals, 0..) |local, i| {
-        dst[i] = framePtr[local.arg];
+        if (builtin.mode == .Debug) {
+            if (!fp[local.arg].isBox()) {
+                stdx.panic("Expected box value.");
+            }
+        }
+        cy.arc.retain(self, fp[local.arg]);
+        dst[i] = fp[local.arg];
     }
     return Value.initPtr(obj);
 }

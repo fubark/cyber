@@ -1526,18 +1526,17 @@ pub const VM = struct {
                     return error.StackOverflow;
                 }
 
-                const newFramePtr = framePtr + startLocal;
-                newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
-                newFramePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
-                newFramePtr[3] = Value{ .retFramePtr = framePtr };
+                const newFp = framePtr + startLocal;
+                newFp[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
+                newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
+                newFp[3] = Value{ .retFramePtr = framePtr };
 
-                // Copy over captured vars to new call stack locals.
-                const src = sym.inner.closure.getCapturedValuesPtr()[0..sym.inner.closure.numCaptured];
-                std.mem.copy(Value, newFramePtr[numArgs + 4 + 1..numArgs + 4 + 1 + sym.inner.closure.numCaptured], src);
+                // Copy closure value to new frame pointer local.
+                newFp[sym.inner.closure.local] = Value.initPtr(sym.inner.closure);
 
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(self, sym.inner.closure.funcPc),
-                    .sp = newFramePtr,
+                    .sp = newFp,
                 };
             },
             .none => {
@@ -3469,11 +3468,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numCaptured = pc[3].arg;
                 const numLocals = pc[4].arg;
                 const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
-                const dst = pc[7].arg;
-                const capturedVals = pc[8..8+numCaptured];
-                pc += 8 + numCaptured;
+                const local = pc[7].arg;
+                const dst = pc[8].arg;
+                const capturedVals = pc[9..9+numCaptured];
+                pc += 9 + numCaptured;
 
-                framePtr[dst] = try @call(.never_inline, cy.heap.allocClosure, .{vm, framePtr, funcPc, numParams, numLocals, rFuncSigId, capturedVals});
+                framePtr[dst] = try @call(.never_inline, cy.heap.allocClosure, .{vm, framePtr, funcPc, numParams, numLocals, rFuncSigId, capturedVals, local});
                 continue;
             },
             .staticVar => {
@@ -3644,7 +3644,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const box = framePtr[pc[1].arg];
                 const rval = framePtr[pc[2].arg];
-                pc += 3;
                 if (builtin.mode == .Debug) {
                     std.debug.assert(box.isPointer());
                 }
@@ -3653,6 +3652,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     std.debug.assert(obj.head.typeId == rt.BoxT);
                 }
                 obj.box.val = rval;
+                pc += 3;
                 continue;
             },
             .setBoxValueRelease => {
@@ -3661,7 +3661,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const box = framePtr[pc[1].arg];
                 const rval = framePtr[pc[2].arg];
-                pc += 3;
                 if (builtin.mode == .Debug) {
                     std.debug.assert(box.isPointer());
                 }
@@ -3671,6 +3670,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
+                pc += 3;
                 continue;
             },
             .boxValue => {
@@ -3678,18 +3678,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpBoxValue:"::);
                 }
                 const box = framePtr[pc[1].arg];
-                if (box.isPointer()) {
-                    const obj = box.asHeapObject();
-                    if (builtin.mode == .Debug) {
-                        std.debug.assert(obj.head.typeId == rt.BoxT);
+                if (builtin.mode == .Debug) {
+                    if (!box.isBox()) {
+                        stdx.panic("Expected box value.");
                     }
-                    framePtr[pc[2].arg] = obj.box.val;
-                } else {
-                    if (builtin.mode == .Debug) {
-                        std.debug.assert(box.isNone());
-                    }
-                    framePtr[pc[2].arg] = Value.None;
                 }
+                framePtr[pc[2].arg] = box.asHeapObject().box.val;
                 pc += 3;
                 continue;
             },
@@ -3698,19 +3692,29 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpBoxValueRetain:"::);
                 }
                 const box = framePtr[pc[1].arg];
-                // if (builtin.mode == .Debug) {
-                //     std.debug.assert(box.isPointer());
-                // }
-                // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
-                // if (builtin.mode == .Debug) {
-                //     // const obj = stdx.ptrAlignCast(*HeapObject, box.asPointer().?);
-                //     std.debug.assert(obj.head.typeId == BoxS);
-                // }
-                // gvm.stack[gvm.framePtr + pc[2].arg] = obj.box.val;
-                // retain(vm, obj.box.val);
-                // pc += 3;
-                framePtr[pc[2].arg] = @call(.never_inline, boxValueRetain, .{vm, box});
+                if (builtin.mode == .Debug) {
+                    if (!box.isBox()) {
+                        stdx.panic("Expected box value.");
+                    }
+                }
+                const val = box.asHeapObject().box.val;
+                framePtr[pc[2].arg] = val;
+                retain(vm, val);
                 pc += 3;
+                continue;
+            },
+            .captured => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCaptured:"::);
+                }
+                const closure = framePtr[pc[1].arg];
+                if (builtin.mode == .Debug) {
+                    if (!closure.isClosure()) {
+                        stdx.panic("Expected closure value.");
+                    }
+                }
+                framePtr[pc[3].arg] = closure.asHeapObject().closure.getCapturedValuesPtr()[pc[2].arg];
+                pc += 4;
                 continue;
             },
             .tag => {
@@ -4067,9 +4071,8 @@ pub fn call(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: Value, s
                 framePtr.*[3] = retFramePtr;
                 pc.* = cy.fiber.toVmPc(vm, obj.closure.funcPc);
 
-                // Copy over captured vars to new call stack locals.
-                const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-                std.mem.copy(Value, framePtr.*[numArgs + 4 + 1..numArgs + 4 + 1 + obj.closure.numCaptured], src);
+                // Copy closure to local.
+                framePtr.*[obj.closure.local] = callee;
             },
             rt.LambdaT => {
                 if (numArgs != obj.lambda.numParams) {
@@ -4400,24 +4403,6 @@ pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
 
 pub inline fn toFramePtr(offset: usize) [*]Value {
     return @ptrCast([*]Value, &gvm.stack[offset]);
-}
-
-fn boxValueRetain(vm: *VM, box: Value) linksection(cy.HotSection) Value {
-    @setCold(true);
-    if (box.isPointer()) {
-        const obj = box.asHeapObject();
-        if (builtin.mode == .Debug) {
-            std.debug.assert(obj.head.typeId == rt.BoxT);
-        }
-        retain(vm, obj.box.val);
-        return obj.box.val;
-    } else {
-        // Box can be none if used before captured var was initialized.
-        if (builtin.mode == .Debug) {
-            std.debug.assert(box.isNone());
-        }
-        return Value.None;
-    }
 }
 
 /// Like Value.dump but shows heap values.

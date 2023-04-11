@@ -2088,13 +2088,11 @@ test "Static variable assignment." {
 
     run.deinit();
 
-    _ = try evalPass(.{}, @embedFile("staticvar_assign_test.cy"));
+    try evalPass(.{}, @embedFile("staticvar_assign_test.cy"));
 }
 
 test "Local variable declaration." {
-    const run = VMrunner.create();
-    defer run.destroy();
-    _ = try run.eval(@embedFile("localvar_decl_test.cy"));
+    try evalPass(.{}, @embedFile("localvar_decl_test.cy"));
 }
 
 test "Local variable assignment." {

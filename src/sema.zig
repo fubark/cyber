@@ -39,8 +39,8 @@ pub const LocalVar = struct {
     /// This is updated when there is a variable assignment or a child block returns.
     vtype: Type,
 
-    /// Whether this var is a captured function param.
-    isCaptured: bool = false,
+    /// If non-null, points to the captured var idx in the closure.
+    capturedIdx: u8 = cy.NullU8,
 
     /// Whether this var references a static variable.
     isStaticAlias: bool = false,
@@ -88,6 +88,10 @@ pub const LocalVar = struct {
     } = undefined,
 
     name: if (builtin.mode == .Debug) []const u8 else void,
+
+    pub inline fn isCaptured(self: LocalVar) bool {
+        return self.capturedIdx != cy.NullU8;
+    }
 };
 
 pub const CapVarDesc = packed union {
@@ -149,10 +153,12 @@ pub const Block = struct {
     /// Local vars defined in this block. Does not include function params.
     locals: std.ArrayListUnmanaged(LocalVarId),
 
-    /// Param vars for function blocks. Includes captured vars for closures.
-    /// Captured vars are always at the end since the function params are known from the start.
+    /// Param vars for function blocks.
     /// Codegen will reserve these first for the calling convention layout.
     params: std.ArrayListUnmanaged(LocalVarId),
+
+    /// Captured vars. 
+    captures: std.ArrayListUnmanaged(LocalVarId),
 
     /// Name to var.
     /// This can be deinited after ending the sema block.
@@ -184,6 +190,7 @@ pub const Block = struct {
             .firstSubBlockId = firstSubBlockId,
             .isStaticFuncBlock = isStaticFuncBlock,
             .deinitedTemps = false,
+            .captures = .{},
         };
     }
 
@@ -193,6 +200,8 @@ pub const Block = struct {
 
         // Deinit for CompileError during sema.
         self.deinitTemps(alloc);
+
+        self.captures.deinit(alloc);
     }
 
     fn deinitTemps(self: *Block, alloc: std.mem.Allocator) void {
@@ -1893,7 +1902,7 @@ fn semaExpr2(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type, comptime discardTop
                 try appendFuncParamVars(c, func);
                 try semaStmts(c, node.head.func.bodyHead, false);
 
-                try endFuncBlock(c, func.numParams);
+                try endFuncBlock(c);
 
                 const rFuncSigId = try ensureResolvedUntypedFuncSig(c.compiler, func.numParams);
                 func.inner.lambda.rFuncSigId = rFuncSigId;
@@ -1913,7 +1922,7 @@ fn semaExpr2(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type, comptime discardTop
                 try appendFuncParamVars(c, func);
                 _ = try semaExpr(c, node.head.func.bodyHead, false);
 
-                try endFuncBlock(c, func.numParams);
+                try endFuncBlock(c);
 
                 const rFuncSigId = try ensureResolvedUntypedFuncSig(c.compiler, func.numParams);
                 func.inner.lambda.rFuncSigId = rFuncSigId;
@@ -2141,13 +2150,17 @@ fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, crSymId: CompactResolvedSy
 }
 
 fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: Type) !LocalVarId {
+    const block = curBlock(self);
     const id = try pushLocalVar(self, name, vtype);
-    self.vars.items[id].isCaptured = true;
+    const capturedIdx = @intCast(u8, block.captures.items.len);
+    self.vars.items[id].capturedIdx = capturedIdx;
     self.vars.items[id].isBoxed = true;
+
     try self.capVarDescs.put(self.alloc, id, .{
         .user = parentVarId,
     });
-    try curBlock(self).params.append(self.alloc, id);
+
+    try block.captures.append(self.alloc, id);
     return id;
 }
 
@@ -2256,7 +2269,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                     } else {
                         return self.reportError("`{}` already references a static variable. The variable must be declared with `static` before assigning to it.", &.{v(name)});
                     }
-                } else if (svar.isCaptured) {
+                } else if (svar.isCaptured()) {
                     if (svar.hasCaptureOrStaticModifier) {
                         return VarLookupResult{
                             .id = varId,
@@ -2275,7 +2288,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                 }
             },
             .captureAssign => {
-                if (!svar.isCaptured) {
+                if (!svar.isCaptured()) {
                     // Previously not captured, update to captured.
                     return self.reportError("TODO: update to captured variable", &.{});
                 } else {
@@ -3580,7 +3593,7 @@ fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: Type, strat: VarLookupStr
     const res = try getOrLookupVar(self, name, strat);
     if (res.isLocal) {
         const svar = &self.vars.items[res.id];
-        if (svar.isCaptured) {
+        if (svar.isCaptured()) {
             if (!svar.isBoxed) {
                 // Becomes boxed so codegen knows ahead of time.
                 svar.isBoxed = true;
@@ -4115,20 +4128,15 @@ pub fn resolveLocalFuncSym(self: *cy.Chunk, rParentSymId: ?ResolvedSymId, nameId
     return res;
 }
 
-fn endFuncBlock(self: *cy.Chunk, numParams: u32) !void {
+fn endFuncBlock(self: *cy.Chunk) !void {
     const sblock = curBlock(self);
-    const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
-    if (numCaptured > 0) {
-        for (sblock.params.items) |varId| {
-            const svar = self.vars.items[varId];
-            if (svar.isCaptured) {
-                const pId = self.capVarDescs.get(varId).?.user;
-                const pvar = &self.vars.items[pId];
-
-                if (!pvar.isBoxed) {
-                    pvar.isBoxed = true;
-                    pvar.lifetimeRcCandidate = true;
-                }
+    if (sblock.captures.items.len > 0) {
+        for (sblock.captures.items) |varId| {
+            const pId = self.capVarDescs.get(varId).?.user;
+            const pvar = &self.vars.items[pId];
+            if (!pvar.isBoxed) {
+                pvar.isBoxed = true;
+                pvar.lifetimeRcCandidate = true;
             }
         }
     }

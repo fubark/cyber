@@ -587,7 +587,7 @@ pub const Chunk = struct {
 
         for (sblock.params.items) |varId| {
             const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and !svar.isCaptured) {
+            if (svar.lifetimeRcCandidate and !svar.isCaptured()) {
                 try self.operandStack.append(self.alloc, cy.InstDatum.initArg(svar.local));
             }
         }
@@ -793,16 +793,16 @@ pub const Chunk = struct {
             fmt.printStderr("Locals:\n", &.{});
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
-                fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
                     v(svar.name), v(svar.local), v(svar.vtype.typeT),
-                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
+                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
                 });
             }
             for (sblock.locals.items) |varId| {
                 const svar = self.vars.items[varId];
-                fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, cap: {}\n", &.{
+                fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
                     v(svar.name), v(svar.local), v(svar.vtype.typeT),
-                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.isCaptured),
+                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
                 });
             }
         }
@@ -943,6 +943,10 @@ const GenBlock = struct {
     /// Otherwise `ret0` is generated.
     requiresEndingRet1: bool,
 
+    /// If the function body belongs to a closure, this local
+    /// contains the closure's value which is then used to perform captured var lookup.
+    closureLocal: u8,
+
     fn init() GenBlock {
         return .{
             .numLocals = 0,
@@ -951,6 +955,7 @@ const GenBlock = struct {
             .firstFreeTempLocal = 0,
             .reservedTempLocalStart = 0,
             .requiresEndingRet1 = false,
+            .closureLocal = cy.NullU8,
         };
     }
 

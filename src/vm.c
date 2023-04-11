@@ -260,6 +260,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetBoxValueRelease),
         JENTRY(BoxValue),
         JENTRY(BoxValueRetain),
+        JENTRY(Captured),
         JENTRY(Tag),
         JENTRY(TagLiteral),
         JENTRY(Cast),
@@ -980,6 +981,7 @@ beginSwitch:
     CASE(SetBoxValueRelease):
     CASE(BoxValue):
     CASE(BoxValueRetain):
+    CASE(Captured):
     CASE(Tag):
     CASE(TagLiteral):
     CASE(Cast):

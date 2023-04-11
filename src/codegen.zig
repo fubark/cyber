@@ -72,14 +72,25 @@ fn genIdent(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, retain: bool) !GenVal
             } else {
                 if (retain and svar.vtype.rcCandidate) {
                     if (svar.isBoxed) {
-                        try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
+                        if (svar.isCaptured()) {
+                            try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, dst);
+                            try self.buf.pushOp2(.boxValueRetain, dst, dst);
+                        } else {
+                            try self.buf.pushOp2(.boxValueRetain, svar.local, dst);
+                        }
                     } else {
                         try self.buf.pushOp2(.copyRetainSrc, svar.local, dst);
                     }
                     return self.initGenValue(dst, svar.vtype, true);
                 } else {
                     if (svar.isBoxed) {
-                        try self.buf.pushOp2(.boxValue, svar.local, dst);
+                        if (svar.isCaptured()) {
+                            try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, dst);
+                            try self.buf.pushOp2(.boxValue, dst, dst);
+                        } else {
+                            try self.buf.pushOp2(.boxValue, svar.local, dst);
+                        }
+
                     } else {
                         try self.buf.pushOp2(.copy, svar.local, dst);
                     }
@@ -526,7 +537,8 @@ fn genLambdaMulti(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsU
 
         const sblock = sema.curBlock(self);
         const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
-        const numCaptured = @intCast(u8, sblock.params.items.len - func.numParams);
+        const numCaptured = @intCast(u8, sblock.captures.items.len);
+        const closureLocal = self.curBlock.closureLocal;
 
         self.patchBlockJumps(jumpStackStart);
         self.blockJumpStack.items.len = jumpStackStart;
@@ -546,22 +558,15 @@ fn genLambdaMulti(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsU
             defer self.operandStack.items.len = operandStart;
 
             // Retain captured vars.
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                if (svar.isCaptured) {
-                    const pId = self.capVarDescs.get(varId).?.user;
-                    const pvar = &self.vars.items[pId];
-
-                    if (svar.isBoxed) {
-                        try self.buf.pushOp1(.retain, pvar.local);
-                        try self.pushTempOperand(pvar.local);
-                    }
-                }
+            for (sblock.captures.items) |varId| {
+                const pId = self.capVarDescs.get(varId).?.user;
+                const pvar = &self.vars.items[pId];
+                try self.pushTempOperand(pvar.local);
             }
 
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             const start = self.buf.ops.items.len;
-            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, func.numParams, numCaptured, numLocals, 0, 0, dst });
+            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, func.numParams, numCaptured, numLocals, 0, 0, closureLocal, dst });
             self.buf.setOpArgU16(start + 5, @intCast(u16, func.inner.lambda.rFuncSigId));
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
             return self.initGenValue(dst, types.AnyType, true);
@@ -590,8 +595,8 @@ fn genLambdaExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsUs
 
         const sblock = sema.curBlock(self);
         const numLocals = @intCast(u8, self.curBlock.numLocals + self.curBlock.numTempLocals);
-        const numCaptured = @intCast(u8, sblock.params.items.len - func.numParams);
-
+        const numCaptured = @intCast(u8, sblock.captures.items.len);
+        const closureLocal = self.curBlock.closureLocal;
         self.popSemaBlock();
 
         if (numCaptured == 0) {
@@ -606,22 +611,15 @@ fn genLambdaExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsUs
             defer self.operandStack.items.len = operandStart;
 
             // Retain captured vars.
-            for (sblock.params.items) |varId| {
-                const svar = self.vars.items[varId];
-                if (svar.isCaptured) {
-                    const pId = self.capVarDescs.get(varId).?.user;
-                    const pvar = &self.vars.items[pId];
-
-                    if (svar.isBoxed) {
-                        try self.buf.pushOp1(.retain, pvar.local);
-                        try self.pushTempOperand(pvar.local);
-                    }
-                }
+            for (sblock.captures.items) |varId| {
+                const pId = self.capVarDescs.get(varId).?.user;
+                const pvar = &self.vars.items[pId];
+                try self.pushTempOperand(pvar.local);
             }
 
             const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
             const start = self.buf.ops.items.len;
-            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, func.numParams, numCaptured, numLocals, 0, 0, dst });
+            try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, func.numParams, numCaptured, numLocals, 0, 0, closureLocal, dst });
             self.buf.setOpArgU16(start + 5, @intCast(u16, func.inner.lambda.rFuncSigId));
             try self.buf.pushOperands(self.operandStack.items[operandStart..]);
             return self.initGenValue(dst, types.AnyType, true);
@@ -1264,12 +1262,23 @@ fn genStatement(self: *Chunk, nodeId: cy.NodeId, comptime discardTopExprReg: boo
                     const right = try self.genExpr(node.head.opAssignStmt.right, false);
                     if (svar.isBoxed) {
                         const tempLocal = try self.nextFreeTempLocal();
-                        try self.buf.pushOp2(.boxValue, svar.local, tempLocal);
+                        if (svar.isCaptured()) {
+                            try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, tempLocal);
+                            try self.buf.pushOp2(.boxValue, tempLocal, tempLocal);
+                        } else {
+                            try self.buf.pushOp2(.boxValue, svar.local, tempLocal);
+                        }
 
                         try self.pushDebugSym(nodeId);
                         try self.buf.pushOp3(genOp, tempLocal, right.local, tempLocal);
 
-                        try self.buf.pushOp2(.setBoxValue, svar.local, tempLocal);
+                        if (svar.isCaptured()) {
+                            const boxTemp = try self.nextFreeTempLocal();
+                            try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, boxTemp);
+                            try self.buf.pushOp2(.setBoxValue, boxTemp, tempLocal);
+                        } else {
+                            try self.buf.pushOp2(.setBoxValue, svar.local, tempLocal);
+                        }
                         return;
                     } else {
                         try self.pushDebugSym(nodeId);
@@ -2301,7 +2310,7 @@ fn genFuncDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId
     // Reserve another local for the call return info.
     const sblock = sema.curBlock(self);
     const numLocals = @intCast(u32, self.curBlock.numLocals + self.curBlock.numTempLocals);
-    const numCaptured = @intCast(u8, sblock.params.items.len - func.numParams);
+    const numCaptured = @intCast(u8, sblock.captures.items.len);
     std.debug.assert(numCaptured == 0);
 
     self.patchJumpToCurPc(jumpPc);
@@ -2633,15 +2642,37 @@ fn genSetBoxedVarToExpr(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
     svar.vtype = exprv.vtype;
     svar.genIsDefined = true;
     if (!svar.vtype.rcCandidate) {
-        try self.buf.pushOp2(.setBoxValue, svar.local, exprv.local);
+        if (svar.isCaptured()) {
+            const tempLocal = try self.nextFreeTempLocal();
+            try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, tempLocal);
+            try self.buf.pushOp2(.setBoxValue, tempLocal, exprv.local);
+        } else {
+            try self.buf.pushOp2(.setBoxValue, svar.local, exprv.local);
+        }
     } else {
-        try self.buf.pushOp2(.setBoxValueRelease, svar.local, exprv.local);
+        if (svar.isCaptured()) {
+            const tempLocal = try self.nextFreeTempLocal();
+            try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, tempLocal);
+            try self.buf.pushOp2(.setBoxValueRelease, tempLocal, exprv.local);
+        } else {
+            try self.buf.pushOp2(.setBoxValueRelease, svar.local, exprv.local);
+        }
     }
 }
 
 /// Reserve locals upfront if `genInitializer` is set.
 pub fn genInitLocals(self: *Chunk) !void {
     const sblock = sema.curBlock(self);
+
+    // Reserve closure local.
+    if (sblock.captures.items.len > 0) {
+        self.curBlock.closureLocal = try self.reserveLocal(self.curBlock);
+
+        // Captured vars are already defined.
+        for (sblock.captures.items) |varId| {
+            self.vars.items[varId].genIsDefined = true;
+        }
+    }
 
     // Reserve the locals.
     var numInitializers: u32 = 0;

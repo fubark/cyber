@@ -242,6 +242,12 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const dst = pc[2].arg;
             fmt.printStderr("{} {} local={}, dst={}", &.{v(pcOffset), v(code), v(local), v(dst)});
         },
+        .captured => {
+            const closureLocal = pc[1].arg;
+            const varIdx = pc[2].arg;
+            const dst = pc[3].arg;
+            fmt.printStderr("{} {} closureLocal={}, varIdx={}, dst={}", &.{v(pcOffset), v(code), v(closureLocal), v(varIdx), v(dst)});
+        },
         .boxValue => {
             const local = pc[1].arg;
             const dst = pc[2].arg;
@@ -262,15 +268,21 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const symId = @ptrCast(*const align(1) u16, pc + 4).*;
             fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
         },
+        .call1 => {
+            const startLocal = pc[1].arg;
+            const numArgs = pc[2].arg;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs)});
+        },
         .closure => {
             const negFuncPcOffset = pc[1].arg;
             const numParams = pc[2].arg;
             const numCaptured = pc[3].arg;
             const numLocals = pc[4].arg;
             const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
-            const dst = pc[7].arg;
-            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, rFuncSigId={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(rFuncSigId), v(dst)});
-            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[8..8+numCaptured])});
+            const local = pc[7].arg;
+            const dst = pc[8].arg;
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, rFuncSigId={}, closureLocal={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(rFuncSigId), v(local), v(dst)});
+            printStderr(" {any}", .{std.mem.sliceAsBytes(pc[9..9+numCaptured])});
         },
         .constI8 => {
             const val = @bitCast(i8, pc[1].arg);
@@ -567,6 +579,7 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .tagLiteral => {
             return 3;
         },
+        .captured,
         .constOp,
         .staticVar,
         .setStaticVar,
@@ -644,7 +657,7 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         },
         .closure => {
             const numCaptured = pc[3].arg;
-            return 8 + numCaptured;
+            return 9 + numCaptured;
         },
         .callSym,
         .callNativeFuncIC,
@@ -778,6 +791,7 @@ pub const OpCode = enum(u8) {
     setBoxValueRelease = vmc.CodeSetBoxValueRelease,
     boxValue = vmc.CodeBoxValue,
     boxValueRetain = vmc.CodeBoxValueRetain,
+    captured = vmc.CodeCaptured,
     /// TODO: Rename to enumOp.
     tag = vmc.CodeTag,
     /// TODO: Rename to symbol.
@@ -835,7 +849,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 97);
+    try t.eq(std.enums.values(OpCode).len, 98);
     try t.eq(@sizeOf(InstDatum), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

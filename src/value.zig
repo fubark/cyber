@@ -282,6 +282,14 @@ pub const Value = packed union {
         return self.isPointer() and self.asHeapObject().head.typeId == rt.ListT;
     }
 
+    pub inline fn isBox(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().head.typeId == rt.BoxT;
+    }
+
+    pub inline fn isClosure(self: *const Value) bool {
+        return self.isPointer() and self.asHeapObject().head.typeId == rt.ClosureT;
+    }
+
     pub inline fn asRawString(self: *const Value) []const u8 {
         const obj = self.asHeapObject();
         if (obj.head.typeId == rt.RawstringT) {

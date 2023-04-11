@@ -191,7 +191,7 @@ pub fn typeToResolvedSym(type_: Type) ResolvedSymId {
 }
 
 /// ResolvedSymId -> Type
-pub fn typeFromResolvedSym(chunk: *cy.CompileChunk, rSymId: ResolvedSymId) !Type {
+pub fn typeFromResolvedSym(chunk: *cy.Chunk, rSymId: ResolvedSymId) !Type {
     if (rSymId < BuiltinTypes.len) {
         return BuiltinTypes[rSymId];
     } else {

@@ -465,7 +465,7 @@ pub const ObjectTrace = struct {
     freeTypeId: rt.TypeId,
 };
 
-fn getOpCodeAtPc(ops: []const cy.OpData, atPc: u32) ?cy.OpCode {
+fn getOpCodeAtPc(ops: []const cy.InstDatum, atPc: u32) ?cy.OpCode {
     var i: usize = 0;
     while (i < ops.len) {
         if (i == atPc) {
@@ -626,7 +626,7 @@ const DumpContext = struct {
         self.symIdToVar.deinit(self.vm.alloc);
     }
 
-    fn dumpInst(self: *const DumpContext, pcOffset: u32, code: cy.OpCode, pc: [*]cy.OpData, len: u32) !void {
+    fn dumpInst(self: *const DumpContext, pcOffset: u32, code: cy.OpCode, pc: [*]cy.InstDatum, len: u32) !void {
         var buf: [1024]u8 = undefined;
         var extra: []const u8 = "";
         switch (code) {

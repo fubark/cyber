@@ -815,7 +815,7 @@ pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Val
     return Value.initPtr(obj);
 }
 
-pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16, capturedVals: []const cy.OpData) !Value {
+pub fn allocClosure(self: *cy.VM, framePtr: [*]Value, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16, capturedVals: []const cy.InstDatum) !Value {
     var obj: *HeapObject = undefined;
     if (capturedVals.len <= 2) {
         obj = try allocPoolObject(self);
@@ -853,7 +853,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8, rF
     return Value.initPtr(obj);
 }
 
-pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.OpData, vals: []const Value) !Value {
+pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.InstDatum, vals: []const Value) !Value {
     const firstStr = self.valueAsStaticString(Value.initRaw(self.consts[strs[0].arg].val));
     try self.u8Buf.resize(self.alloc, firstStr.len);
     std.mem.copy(u8, self.u8Buf.items(), firstStr);

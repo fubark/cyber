@@ -193,7 +193,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
 /// Unwind given stack starting at a pc, framePtr and release all locals.
 /// TODO: See if releaseFiberStack can resuse the same code.
-pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const Value, startPc: [*]const cy.OpData) !void {
+pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const Value, startPc: [*]const cy.InstDatum) !void {
     var pcOffset = getInstOffset(vm.ops.ptr, startPc);
     var fpOffset = getStackOffset(vm.stack.ptr, startFramePtr);
 
@@ -221,7 +221,7 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
 
 /// Performs ARC deinit for each frame starting at `start` but not including the target framePtr.
 /// Records minimal trace to reconstruct later.
-pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]const cy.OpData, targetFp: [*]const Value) !void {
+pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]const cy.InstDatum, targetFp: [*]const Value) !void {
     var pcOffset = getInstOffset(vm.ops.ptr, pc);
     var fpOffset = getStackOffset(vm.stack.ptr, startFp);
     const tFpOffset = getStackOffset(vm.stack.ptr, targetFp);
@@ -257,7 +257,7 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
 }
 
-pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.OpData, err: Value) !?PcSp {
+pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.InstDatum, err: Value) !?PcSp {
     if (vm.tryStack.len > 0) {
         const tframe = vm.tryStack.buf[vm.tryStack.len-1];
 
@@ -308,7 +308,7 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.OpData, err: Value) 
     }
 }
 
-pub inline fn getInstOffset(from: [*]const cy.OpData, to: [*]const cy.OpData) u32 {
+pub inline fn getInstOffset(from: [*]const cy.InstDatum, to: [*]const cy.InstDatum) u32 {
     return @intCast(u32, @ptrToInt(to) - @ptrToInt(from));
 }
 
@@ -362,7 +362,7 @@ pub fn stackGrowTotalCapacityPrecise(self: *cy.VM, newCap: usize) !void {
     }
 }
 
-pub inline fn toVmPc(self: *const cy.VM, offset: usize) [*]cy.OpData {
+pub inline fn toVmPc(self: *const cy.VM, offset: usize) [*]cy.InstDatum {
     return self.ops.ptr + offset;
 }
 
@@ -419,6 +419,6 @@ fn growStackPrecise(vm: *cy.VM, newCap: usize) !void {
 }
 
 pub const PcSp = struct {
-    pc: [*]cy.OpData,
+    pc: [*]cy.InstDatum,
     sp: [*]Value,
 };

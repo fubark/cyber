@@ -49,7 +49,7 @@ pub const VM = struct {
     alloc: std.mem.Allocator,
 
     /// Program counter. Pointer to the current instruction data in `ops`.
-    pc: [*]cy.OpData,
+    pc: [*]cy.InstDatum,
     /// Current stack frame ptr.
     framePtr: [*]Value,
 
@@ -57,7 +57,7 @@ pub const VM = struct {
     stack: []Value,
     stackEndPtr: [*]const Value,
 
-    ops: []cy.OpData,
+    ops: []cy.InstDatum,
     consts: []const cy.Const,
 
     /// Static string data.
@@ -648,7 +648,7 @@ pub const VM = struct {
         @call(.never_inline, self.prepareEvalCold, .{buf});
 
         // Set these last to hint location to cache before eval.
-        self.pc = @ptrCast([*]cy.OpData, buf.ops.items.ptr);
+        self.pc = @ptrCast([*]cy.InstDatum, buf.ops.items.ptr);
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
         self.framePtr = @ptrCast([*]Value, self.stack.ptr);
 
@@ -1470,14 +1470,14 @@ pub const VM = struct {
     }
 
     /// startLocal points to the first arg in the current stack frame.
-    fn callSym(self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(cy.HotSection) !cy.fiber.PcSp {
+    fn callSym(self: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(cy.HotSection) !cy.fiber.PcSp {
         const sym = self.funcSyms.buf[symId];
         switch (@intToEnum(FuncSymbolEntryType, sym.entryT)) {
             .nativeFunc1 => {
                 const newFramePtr = framePtr + startLocal;
 
                 // Optimize.
-                pc[0] = cy.OpData{ .code = .callNativeFuncIC };
+                pc[0] = cy.InstDatum{ .code = .callNativeFuncIC };
                 @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
 
                 self.pc = pc;
@@ -1508,8 +1508,8 @@ pub const VM = struct {
                 }
 
                 // Optimize.
-                pc[0] = cy.OpData{ .code = .callFuncIC };
-                pc[4] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
+                pc[0] = cy.InstDatum{ .code = .callFuncIC };
+                pc[4] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.numLocals) };
                 @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(cy.fiber.toVmPc(self, sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + startLocal;
@@ -1549,7 +1549,7 @@ pub const VM = struct {
         }
     }
 
-    fn reportMissingFuncSym(vm: *VM, pc: [*]const cy.OpData, rtSymId: SymbolId) error{Panic, OutOfMemory} {
+    fn reportMissingFuncSym(vm: *VM, pc: [*]const cy.InstDatum, rtSymId: SymbolId) error{Panic, OutOfMemory} {
         const relPc = getInstOffset(vm, pc);
         if (debug.getDebugSym(vm, relPc)) |sym| {
             const chunk = vm.compiler.chunks.items[sym.file];
@@ -1602,7 +1602,7 @@ pub const VM = struct {
     }
 
     fn callSymEntry(
-        self: *VM, pc: [*]cy.OpData, framePtr: [*]Value, sym: rt.MethodSym,
+        self: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, sym: rt.MethodSym,
         recv: Value, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8
     ) linksection(cy.HotSection) !cy.fiber.PcSp {
         switch (sym.entryT) {
@@ -1612,8 +1612,8 @@ pub const VM = struct {
                 }
 
                 // Optimize.
-                pc[0] = cy.OpData{ .code = .callObjFuncIC };
-                pc[7] = cy.OpData{ .arg = @intCast(u8, sym.inner.func.numLocals) };
+                pc[0] = cy.InstDatum{ .code = .callObjFuncIC };
+                pc[7] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.numLocals) };
                 @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
                 @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
 
@@ -1628,7 +1628,7 @@ pub const VM = struct {
             },
             .nativeFunc1 => {
                 // Optimize.
-                pc[0] = cy.OpData{ .code = .callObjNativeFuncIC };
+                pc[0] = cy.InstDatum{ .code = .callObjNativeFuncIC };
                 @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
                 @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
 
@@ -1736,7 +1736,7 @@ pub const VM = struct {
     /// Stack layout: arg0, arg1, ..., receiver
     /// numArgs includes the receiver.
     /// Return new pc to avoid deoptimization.
-    fn callObjSym(self: *VM, pc: [*]const cy.OpData, framePtr: [*]Value, recv: Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !cy.fiber.PcSp {
+    fn callObjSym(self: *VM, pc: [*]const cy.InstDatum, framePtr: [*]Value, recv: Value, symId: SymbolId, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2) linksection(cy.HotSection) !cy.fiber.PcSp {
         if (recv.isPointer()) {
             const obj = stdx.ptrAlignCast(*HeapObject, recv.asPointer().?);
             const map = self.methodSyms.buf[symId];
@@ -2612,7 +2612,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     return vm.getFieldMissingSymbolError();
                 }
                 // Deoptimize.
-                pc[0] = cy.OpData{ .code = .field };
+                pc[0] = cy.InstDatum{ .code = .field };
                 continue;
             },
             .copyRetainSrc => {
@@ -3086,7 +3086,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
 
                 // Deoptimize.
-                pc[0] = cy.OpData{ .code = .callObjSym };
+                pc[0] = cy.InstDatum{ .code = .callObjSym };
                 continue;
             },
             .callObjNativeFuncIC => {
@@ -3129,7 +3129,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
 
                 // Deoptimize.
-                pc[0] = cy.OpData{ .code = .callObjSym };
+                pc[0] = cy.InstDatum{ .code = .callObjSym };
                 continue;
             },
             .callFuncIC => {
@@ -3148,7 +3148,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 framePtr[3] = retFramePtr;
 
-                pc = @intToPtr([*]cy.OpData, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
+                pc = @intToPtr([*]cy.InstDatum, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
                 continue;
             },
             .callNativeFuncIC => {
@@ -3253,7 +3253,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     return vm.getFieldMissingSymbolError();
                 }
                 // Deoptimize.
-                pc[0] = cy.OpData{ .code = .setFieldRelease };
+                pc[0] = cy.InstDatum{ .code = .setFieldRelease };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
                 pc += 7;
@@ -3277,7 +3277,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     return vm.getFieldMissingSymbolError();
                 }
                 // Deoptimize.
-                pc[0] = cy.OpData{ .code = .fieldRetain };
+                pc[0] = cy.InstDatum{ .code = .fieldRetain };
                 continue;
             },
             .forRangeInit => {
@@ -3299,9 +3299,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[pc[5].arg] = Value.initF64(start);
                     const offset = @ptrCast(*const align(1) u16, pc + 6).*;
                     pc[offset] = if (start < end)
-                        cy.OpData{ .code = .forRange }
+                        cy.InstDatum{ .code = .forRange }
                     else
-                        cy.OpData{ .code = .forRangeReverse };
+                        cy.InstDatum{ .code = .forRangeReverse };
                     pc += 8;
                 }
                 continue;
@@ -3377,9 +3377,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
-                        pc[0] = cy.OpData{ .code = .fieldIC };
+                        pc[0] = cy.InstDatum{ .code = .fieldIC };
                         @ptrCast(*align (1) u16, pc + 5).* = @intCast(u16, obj.head.typeId);
-                        pc[7] = cy.OpData{ .arg = offset };
+                        pc[7] = cy.InstDatum{ .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
                         framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.nameId});
@@ -3404,9 +3404,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
-                        pc[0] = cy.OpData{ .code = .fieldRetainIC };
+                        pc[0] = cy.InstDatum{ .code = .fieldRetainIC };
                         @ptrCast(*align (1) u16, pc + 5).* = @intCast(u16, obj.head.typeId);
-                        pc[7] = cy.OpData { .arg = offset };
+                        pc[7] = cy.InstDatum { .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
                         framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.nameId});
@@ -3435,9 +3435,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         lastValue.* = val;
 
                         // Inline cache.
-                        pc[0] = cy.OpData{ .code = .setFieldReleaseIC };
+                        pc[0] = cy.InstDatum{ .code = .setFieldReleaseIC };
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.head.typeId);
-                        pc[6] = cy.OpData { .arg = offset };
+                        pc[6] = cy.InstDatum { .arg = offset };
                         pc += 7;
                         continue;
                     } else {
@@ -3940,7 +3940,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
     }
 }
 
-fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(cy.HotSection) bool {
+fn popStackFrameLocal0(pc: *[*]const cy.InstDatum, framePtr: *[*]Value) linksection(cy.HotSection) bool {
     const retFlag = framePtr.*[1].retInfo.retFlag;
     const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
     if (reqNumArgs == 0) {
@@ -3972,7 +3972,7 @@ fn popStackFrameLocal0(pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection
     }
 }
 
-fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) linksection(cy.HotSection) bool {
+fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.InstDatum, framePtr: *[*]Value) linksection(cy.HotSection) bool {
     const retFlag = framePtr.*[1].retInfo.retFlag;
     const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
     if (reqNumArgs == 1) {
@@ -4002,7 +4002,7 @@ fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.OpData, framePtr: *[*]Value) li
     }
 }
 
-fn dumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) !void {
+fn dumpEvalOp(vm: *const VM, pc: [*]const cy.InstDatum) !void {
     if (builtin.is_test and !debug.atLeastTestDebugLevel()) {
         return;
     }
@@ -4042,7 +4042,7 @@ const FieldEntry = struct {
 
 /// See `reserveFuncParams` for stack layout.
 /// numArgs does not include the callee.
-pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+pub fn call(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.head.typeId) {
@@ -4118,7 +4118,7 @@ pub fn call(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, star
     }
 }
 
-pub fn callNoInline(vm: *VM, pc: *[*]cy.OpData, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
+pub fn callNoInline(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
         switch (obj.head.typeId) {
@@ -4232,7 +4232,7 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: rt.TypeId, rtSymId: SymbolId, rF
     }
 }
 
-fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32, rtSymId: SymbolId, rFuncSigId: u16) !Value {
+fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.InstDatum, recv: Value, typeId: u32, rtSymId: SymbolId, rFuncSigId: u16) !Value {
     @setCold(true);
     // Map fallback is no longer supported since cleanup of recv is not auto generated by the compiler.
     // In the future, this may invoke the exact method signature or call a custom overloaded function.
@@ -4270,7 +4270,7 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.OpData, recv: Value, typeId: u32
 }
 
 /// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value, typeId: u32, symId: SymbolId, rFuncSigId: u16, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.Section) !cy.fiber.PcSp {
+fn callObjSymFallback(vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, recv: Value, typeId: u32, symId: SymbolId, rFuncSigId: u16, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.Section) !cy.fiber.PcSp {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
     const func = try getObjectFunctionFallback(vm, pc, recv, typeId, symId, rFuncSigId);
@@ -4292,7 +4292,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, recv: Value
 }
 
 fn callSymEntryNoInline(
-    vm: *VM, pc: [*]const cy.OpData, framePtr: [*]Value,
+    vm: *VM, pc: [*]const cy.InstDatum, framePtr: [*]Value,
     sym: rt.MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2
 ) linksection(cy.HotSection) !cy.fiber.PcSp {
     switch (sym.entryT) {
@@ -4390,7 +4390,7 @@ pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool, comp
     };
 }
 
-pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.OpData) u32 {
+pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.InstDatum) u32 {
     return @intCast(u32, cy.fiber.getInstOffset(vm.ops.ptr, to));
 }
 
@@ -4565,7 +4565,7 @@ pub const EvalConfig = struct {
     genAllDebugSyms: bool = false,
 };
 
-fn opMatch(vm: *const VM, pc: [*]const cy.OpData, framePtr: [*]const Value) u16 {
+fn opMatch(vm: *const VM, pc: [*]const cy.InstDatum, framePtr: [*]const Value) u16 {
     const expr = framePtr[pc[1].arg];
     const numCases = pc[2].arg;
     var i: u32 = 0;
@@ -4721,7 +4721,7 @@ export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
     return @tagName(@intToEnum(cy.OpCode, code));
 }
 
-export fn zCallSym(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.PcSp {
+export fn zCallSym(vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.PcSp {
     const res = @call(.always_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, reqNumRetVals)}) catch {
         stdx.fatal();
     };
@@ -4731,7 +4731,7 @@ export fn zCallSym(vm: *VM, pc: [*]cy.OpData, framePtr: [*]Value, symId: SymbolI
     };
 }
 
-export fn zDumpEvalOp(vm: *const VM, pc: [*]const cy.OpData) void {
+export fn zDumpEvalOp(vm: *const VM, pc: [*]const cy.InstDatum) void {
     dumpEvalOp(vm, pc) catch stdx.fatal();
 }
 
@@ -4739,7 +4739,7 @@ export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
     cy.heap.freeObject(vm, obj);
 } 
 
-export fn zEnd(vm: *cy.VM, pc: [*]const cy.OpData) void {
+export fn zEnd(vm: *cy.VM, pc: [*]const cy.InstDatum) void {
     vm.endLocal = pc[1].arg;
     vm.curFiber.pcOffset = @intCast(u32, getInstOffset(vm, pc + 2));
 }
@@ -4761,7 +4761,7 @@ export fn zOtherToF64(val: Value) f64 {
     return val.otherToF64() catch fatal();
 }
 
-export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.OpData, stack: [*]Value, recv: Value, typeId: rt.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
+export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.InstDatum, stack: [*]Value, recv: Value, typeId: rt.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
     if (vm.getCallObjSym(typeId, symId, rFuncSigId)) |sym| {
         const res = @call(.never_inline, vm.callSymEntry, .{pc, stack, sym, recv, typeId, startLocal, numArgs, numRet }) catch {
             return .{

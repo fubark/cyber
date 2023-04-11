@@ -23,16 +23,20 @@ pub const types = @import("types.zig");
 
 const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
-pub const CompileChunk = vm_compiler.CompileChunk;
 pub const CompileResultView = vm_compiler.CompileResultView;
 pub const CompileConfig = vm_compiler.CompileConfig;
 pub const ValidateConfig = vm_compiler.ValidateConfig;
 pub const CompileErrorType = vm_compiler.CompileErrorType;
 
+pub const chunk = @import("chunk.zig");
+pub const Chunk = chunk.Chunk;
+pub const ChunkId = chunk.ChunkId;
+
 pub const bindings = @import("builtins/bindings.zig");
 
 pub const hash = @import("hash.zig");
 pub const rt = @import("runtime.zig");
+pub const fmt = @import("fmt.zig");
 
 pub const codegen = @import("codegen.zig");
 
@@ -110,7 +114,7 @@ pub const utf8CodeAtNoCheck = string.utf8CodeAtNoCheck;
 pub const bytecode = @import("bytecode.zig");
 pub const ByteCodeBuffer = bytecode.ByteCodeBuffer;
 pub const OpCode = bytecode.OpCode;
-pub const OpData = bytecode.OpData;
+pub const InstDatum = bytecode.InstDatum;
 pub const Const = bytecode.Const;
 pub const DebugSym = bytecode.DebugSym;
 pub const getInstLenAt = bytecode.getInstLenAt;

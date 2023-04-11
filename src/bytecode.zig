@@ -14,7 +14,7 @@ pub const ByteCodeBuffer = struct {
     alloc: std.mem.Allocator,
     /// The required stack size for the main frame.
     mainStackSize: u32,
-    ops: std.ArrayListUnmanaged(OpData),
+    ops: std.ArrayListUnmanaged(InstDatum),
     consts: std.ArrayListUnmanaged(Const),
 
     /// After compilation, consts is merged into the ops buffer.
@@ -149,7 +149,7 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn pushOperands(self: *ByteCodeBuffer, operands: []const OpData) !void {
+    pub fn pushOperands(self: *ByteCodeBuffer, operands: []const InstDatum) !void {
         try self.ops.appendSlice(self.alloc, operands);
     }
 
@@ -229,7 +229,7 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
     }
 }
 
-pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const OpData, len: usize, extra: []const u8) void {
+pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize, extra: []const u8) void {
     switch (code) {
         .add => {
             const left = pc[1].arg;
@@ -478,12 +478,11 @@ pub const Const = packed union {
     }
 };
 
-/// TODO: Rename to InstData.
-pub const OpData = packed union {
+pub const InstDatum = packed union {
     code: OpCode,
     arg: u8,
 
-    pub fn initArg(arg: u8) OpData {
+    pub fn initArg(arg: u8) InstDatum {
         return .{
             .arg = arg,
         };
@@ -521,7 +520,7 @@ pub const CallObjSymInstLen = 16;
 pub const CallSymInstLen = 12;
 pub const CallInstLen = 3;
 
-pub fn getInstLenAt(pc: [*]const OpData) u8 {
+pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
     switch (pc[0].code) {
         .ret0,
         .ret1,
@@ -837,7 +836,7 @@ pub const OpCode = enum(u8) {
 
 test "Internals." {
     try t.eq(std.enums.values(OpCode).len, 97);
-    try t.eq(@sizeOf(OpData), 1);
+    try t.eq(@sizeOf(InstDatum), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);
 }

@@ -2911,16 +2911,16 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 5;
                 continue;
             },
-            .setInitN => {
+            .init => {
                 if (GenLabels) {
-                    _ = asm volatile ("LSetInitN:"::);
+                    _ = asm volatile ("LOpInit:"::);
                 }
-                const numLocals = pc[1].arg;
-                const locals = pc[2..2+numLocals];
-                pc += 2 + numLocals;
-                for (locals) |local| {
-                    framePtr[local.arg] = Value.None;
+                const start = pc[1].arg;
+                const numLocals = pc[2].arg;
+                for (start..start+numLocals) |i| {
+                    framePtr[i] = Value.None;
                 }
+                pc += 3;
                 continue;
             },
             .setIndex => {

@@ -672,7 +672,7 @@ test "Debug labels." {
         const vm = run.vm.internal();
         try t.eq(vm.compiler.buf.debugLabels.items.len, 1);
         const actLabel = vm.compiler.buf.debugLabels.items[0];
-        try t.eq(actLabel.pc, 3);
+        try t.eq(actLabel.pc, 6);
         try t.eqStr(actLabel.getName(), "MyLabel");
     }}.func);
 }

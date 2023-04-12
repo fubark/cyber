@@ -528,7 +528,7 @@ fn genLambdaMulti(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsU
 
         // Generate function body.
         try self.reserveFuncParams(func.numParams);
-        try genInitLocals(self);
+        try initVarLocals(self);
 
         try genStatements(self, node.head.func.bodyHead, false);
 
@@ -591,7 +591,9 @@ fn genLambdaExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsUs
 
         // Generate function body.
         try self.reserveFuncParams(func.numParams);
-        try genInitLocals(self);
+        try initVarLocals(self);
+
+        self.resetNextFreeTemp();
         _ = try self.genRetainedExprTo(node.head.func.bodyHead, 0, false);
         try self.endLocals();
         try self.buf.pushOp(.ret1);
@@ -2335,7 +2337,7 @@ fn genFuncDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId
 
     const opStart = @intCast(u32, self.buf.ops.items.len);
     try self.reserveFuncParams(func.numParams);
-    try genInitLocals(self);
+    try initVarLocals(self);
     try genStatements(self, node.head.func.bodyHead, false);
     // TODO: Check last statement to skip adding ret.
     try self.genBlockEnding();
@@ -2535,7 +2537,7 @@ fn genMethodDecl(self: *Chunk, structId: rt.TypeId, node: cy.Node, func: sema.Fu
 
     const opStart = @intCast(u32, self.buf.ops.items.len);
     try self.reserveFuncParams(func.numParams);
-    try genInitLocals(self);
+    try initVarLocals(self);
     try genStatements(self, node.head.func.bodyHead, false);
     // TODO: Check last statement to skip adding ret.
     try self.genBlockEnding();
@@ -2679,13 +2681,20 @@ fn genSetBoxedVarToExpr(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
     }
 }
 
-/// Reserve locals upfront if `genInitializer` is set.
-pub fn genInitLocals(self: *Chunk) !void {
+/// Reserve and initialize all var locals to `none`. 
+/// There are a few reasons why this is needed:
+/// 1. Since explicit initializers can fail (errors are thrown by default)
+///    the shared endLocals inst can still rely on the var locals having defined values.
+/// 2. By always generating this fixed sized `init` inst, it allows single-pass
+///    compilation and doesn't require copying a temp inst buffer after a dynamically sized prelude.
+/// 3. It allows variables first assigned in a loop construct to rely on a defined value for
+///    a release op before use. This also allows the lifetime of all var locals to the block end.
+pub fn initVarLocals(self: *Chunk) !void {
     const sblock = sema.curBlock(self);
 
-    // Reserve closure local.
+    // Use the callee local for closure.
     if (sblock.captures.items.len > 0) {
-        self.curBlock.closureLocal = try self.reserveLocal(self.curBlock);
+        self.curBlock.closureLocal = @intCast(u8, 4 + sblock.params.items.len);
 
         // Captured vars are already defined.
         for (sblock.captures.items) |varId| {
@@ -2694,28 +2703,20 @@ pub fn genInitLocals(self: *Chunk) !void {
     }
 
     // Reserve the locals.
-    var numInitializers: u32 = 0;
     for (sblock.locals.items) |varId| {
-        const svar = self.genGetVarPtr(varId).?;
         _ = try self.reserveLocalVar(varId);
-        if (svar.genInitializer) {
-            numInitializers += 1;
+
+        // Reset boxed.
+        const svar = &self.vars.items[varId];
+        if (!svar.isCaptured()) {
+            svar.isBoxed = false;
         }
         // log.debug("reserve {} {s}", .{local, self.getVarName(varId)});
     }
 
-    if (numInitializers > 0) {
-        try self.buf.pushOp1(.setInitN, @intCast(u8, numInitializers));
-        for (sblock.locals.items) |varId| {
-            const svar = self.genGetVar(varId).?;
-            if (svar.genInitializer) {
-                // log.debug("init {} {s}", .{svar.local, self.getVarName(varId)});
-                try self.buf.pushOperand(svar.local);
-            }
-        }
-    }
-
-    self.resetNextFreeTemp();
+    // Main block var locals start at 0 otherwise after the call return info and params.
+    const startLocal: u8 = if (self.semaBlockDepth() == 1) 0 else @intCast(u8, 4 + sblock.params.items.len + 1);
+    try self.buf.pushOp2(.init, startLocal, @intCast(u8, sblock.locals.items.len));
 }
 
 fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {

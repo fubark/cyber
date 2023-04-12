@@ -240,7 +240,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CompareNot),
         JENTRY(StringTemplate),
         JENTRY(Neg),
-        JENTRY(SetInitN),
+        JENTRY(Init),
         JENTRY(ObjectSmall),
         JENTRY(Object),
         JENTRY(SetField),
@@ -844,13 +844,14 @@ beginSwitch:
     CASE(Neg):
         printf("Unsupported %s\n", zOpCodeName(*pc));
         zFatal();
-    CASE(SetInitN): {
-        uint8_t numLocals = pc[1];
+    CASE(Init): {
+        uint8_t start = pc[1];
+        uint8_t numLocals = pc[2];
         uint8_t i;
-        for (i = 2; i < 2 + numLocals; i += 1) {
-            stack[pc[i]] = VALUE_NONE;
+        for (i = start; i < start + numLocals; i += 1) {
+            stack[i] = VALUE_NONE;
         }
-        pc += 2 + numLocals;
+        pc += 3;
         NEXT();
     }
     CASE(ObjectSmall): {

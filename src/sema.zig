@@ -60,17 +60,6 @@ pub const LocalVar = struct {
     /// which vars need a release.
     lifetimeRcCandidate: bool,
 
-    /// There are two cases where the compiler needs to implicitly generate var initializers.
-    /// 1. Var is first assigned in a branched block. eg. Assigned inside if block.
-    ///    Since the var needs to be released at the end of the root block,
-    ///    it needs to have a defined value.
-    /// 2. Var is first assigned in an iteration block.
-    /// 3. Var's lifetimeRcCandidate becomes true and is assigned on the main branch to 
-    ///    expression that can throw. If the expression throws, the var needs to be defined
-    ///    for the deinitializers. Currently, every expression is assumed to throw. 
-    /// At the beginning of codegen for this block, these vars will be inited to the `none` value.
-    genInitializer: bool = false,
-
     /// Local register offset assigned to this var.
     /// Locals are relative to the stack frame's start position.
     local: RegisterId = undefined,
@@ -969,11 +958,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId, comptime discardTopExprReg: boo
             if (node.head.for_iter_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
                 if (eachClause.head.eachClause.key != cy.NullId) {
-                    const keyv = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, types.AnyType);
-                    c.vars.items[keyv].genInitializer = true;
+                    _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, types.AnyType);
                 }
-                const valv = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, types.AnyType);
-                c.vars.items[valv].genInitializer = true;
+                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, types.AnyType);
             }
 
             try semaStmts(c, node.head.for_iter_stmt.body_head, false);
@@ -2418,9 +2405,6 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                 }
             }
             const id = try pushLocalBodyVar(self, name, types.UndefinedType);
-            if (sblock.subBlockDepth > 1) {
-                self.vars.items[id].genInitializer = true;
-            }
             return VarLookupResult{
                 .id = id,
                 .isLocal = true,
@@ -3614,9 +3598,6 @@ fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: Type, strat: VarLookupStr
             svar.vtype = toLocalType(vtype);
             if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
                 svar.lifetimeRcCandidate = true;
-
-                // Rule #3 for setting genInitializer. Assumes right expr throws for now.
-                svar.genInitializer = true;
             }
         }
 

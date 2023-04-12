@@ -57,7 +57,7 @@ typedef enum {
     CodeCompareNot,
     CodeStringTemplate,
     CodeNeg,
-    CodeSetInitN,
+    CodeInit,
     CodeObjectSmall,
     CodeObject,
     CodeSetField,

@@ -480,7 +480,7 @@ pub const VMcompiler = struct {
 
         if (id == 0) {
             // Main script performs gen for decls and the main block.
-            try gen.genInitLocals(chunk);
+            try gen.initVarLocals(chunk);
             const jumpStackStart = chunk.blockJumpStack.items.len;
             const root = chunk.nodes[0];
             try gen.genStatements(chunk, root.head.root.headStmt, true);

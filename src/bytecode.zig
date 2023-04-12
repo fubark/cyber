@@ -419,13 +419,10 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const right = pc[3].arg;
             fmt.printStderr("{} {} left={}, index={}, right={}", &.{v(pcOffset), v(code), v(left), v(index), v(right)});
         },
-        .setInitN => {
-            const numLocals = pc[1].arg;
-            const locals = pc[2..2+numLocals];
-            fmt.printStderr("{} {} numLocals={}, locals=", &.{v(pcOffset), v(code), v(numLocals) });
-            for (locals) |local| {
-                fmt.printStderr("{} ", &.{v(local.arg)});
-            }
+        .init => {
+            const start = pc[1].arg;
+            const numLocals = pc[2].arg;
+            fmt.printStderr("{} {} start={}, numLocals={}", &.{v(pcOffset), v(code), v(start), v(numLocals) });
         },
         .slice => {
             const recv = pc[1].arg;
@@ -549,8 +546,7 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .mapEmpty => {
             return 2;
         },
-        .releaseN,
-        .setInitN => {
+        .releaseN => {
             const numVars = pc[1].arg;
             return 2 + numVars;
         },
@@ -558,6 +554,7 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .call1 => {
             return CallInstLen;
         },
+        .init,
         .popTry,
         .copy,
         .not,
@@ -769,7 +766,11 @@ pub const OpCode = enum(u8) {
     /// [startLocal] [exprCount] [dst] [..string consts]
     stringTemplate = vmc.CodeStringTemplate,
     neg = vmc.CodeNeg,
-    setInitN = vmc.CodeSetInitN,
+
+    /// Initialize locals starting from `startLocal` to the `none` value.
+    /// init [startLocal] [numLocals]
+    init = vmc.CodeInit,
+
     objectSmall = vmc.CodeObjectSmall,
     object = vmc.CodeObject,
     setField = vmc.CodeSetField,

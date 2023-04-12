@@ -11,9 +11,9 @@ Fibers in Cyber allow representing execution contexts as first-class values. The
 
 The `coinit` creates a new fiber from a function call syntax. Using `coyield` inside a function pauses the current fiber and execution is returned to the fiber that invoked `coresume`.
 ```cy
-count = 0
-foo = func ():
-    capture count
+var count : 0
+func foo():
+    static count
     count += 1
     coyield
     count += 1

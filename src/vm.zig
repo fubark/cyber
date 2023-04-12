@@ -3633,7 +3633,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpBox:"::);
                 }
                 const value = framePtr[pc[1].arg];
-                retain(vm, value);
                 framePtr[pc[2].arg] = try cy.heap.allocBox(vm, value);
                 pc += 3;
                 continue;

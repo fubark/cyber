@@ -343,16 +343,15 @@ pub const UserVM = struct {
         return self.internal().strBuf[idx];
     }
 
-    pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value) u32 {
+    pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value, nargs: u8) u32 {
         const vm = @ptrCast(*const VM, self);
-        return @intCast(u32, cy.fiber.getStackOffset(vm.stack.ptr, args));
+        return @intCast(u32, cy.fiber.getStackOffset(vm.stack.ptr, args + nargs));
     }
 
     pub fn callFunc(self: *UserVM, framePtr: u32, func: Value, args: []const Value) !Value {
         const vm = self.internal();
 
         try cy.fiber.ensureTotalStackCapacity(vm, framePtr + args.len + 1 + 4);
-        const saveFramePtrOffset = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
         vm.framePtr = vm.stack.ptr + framePtr;
 
         self.retain(func);
@@ -367,10 +366,6 @@ pub const UserVM = struct {
         try @call(.never_inline, cy.vm.evalLoopGrowStack, .{vm});
 
         const res = vm.framePtr[0];
-
-        // Restore framePtr.
-        vm.framePtr = vm.stack.ptr + saveFramePtrOffset;
-
         return res;
     }
 };

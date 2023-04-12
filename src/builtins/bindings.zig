@@ -505,7 +505,7 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
     std.debug.assert(id == @enumToInt(sym));
 }
 
-fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
     const compare = args[0];
     defer {
@@ -521,7 +521,7 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksectio
     var lessCtx = LessContext{
         .lessFn = args[0],
         .vm = vm,
-        .newFramePtr = vm.getNewFramePtrOffset(args),
+        .newFramePtr = vm.getNewFramePtrOffset(args, nargs),
     };
 
     const S = struct {

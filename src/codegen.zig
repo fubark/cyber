@@ -557,10 +557,14 @@ fn genLambdaMulti(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsU
             const operandStart = self.operandStack.items.len;
             defer self.operandStack.items.len = operandStart;
 
-            // Retain captured vars.
             for (sblock.captures.items) |varId| {
                 const pId = self.capVarDescs.get(varId).?.user;
                 const pvar = &self.vars.items[pId];
+                if (!pvar.isBoxed) {
+                    // Ensure captured vars are boxed.
+                    try self.buf.pushOp2(.box, pvar.local, pvar.local);
+                    pvar.isBoxed = true;
+                }
                 try self.pushTempOperand(pvar.local);
             }
 
@@ -610,10 +614,14 @@ fn genLambdaExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime dstIsUs
             const operandStart = self.operandStack.items.len;
             defer self.operandStack.items.len = operandStart;
 
-            // Retain captured vars.
             for (sblock.captures.items) |varId| {
                 const pId = self.capVarDescs.get(varId).?.user;
                 const pvar = &self.vars.items[pId];
+                if (!pvar.isBoxed) {
+                    // Ensure captured vars are boxed.
+                    try self.buf.pushOp2(.box, pvar.local, pvar.local);
+                    pvar.isBoxed = true;
+                }
                 try self.pushTempOperand(pvar.local);
             }
 
@@ -2549,21 +2557,9 @@ fn genSetVarToExpr(self: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId, comptime 
     const expr = self.nodes[exprId];
     if (self.genGetVarPtr(varId)) |svar| {
         if (svar.isBoxed) {
-            if (!svar.genIsDefined) {
-                const exprv = try self.genExpr(exprId, false);
-                try self.buf.pushOp2(.box, @intCast(u8, exprv.local), svar.local);
-
-                // ARC cleanup.
-                try genReleaseIfRetainedTemp(self, exprv);
-
-                svar.vtype = exprv.vtype;
-
-                svar.genIsDefined = true;
-                return;
-            } else {
-                try genSetBoxedVarToExpr(self, svar, exprId);
-                return;
-            }
+            stdx.debug.dassert(svar.genIsDefined);
+            try genSetBoxedVarToExpr(self, svar, exprId);
+            return;
         }
 
         if (expr.node_t == .ident) {
@@ -2584,7 +2580,6 @@ fn genSetVarToExpr(self: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId, comptime 
             }
 
             const exprv = try self.genExpr(exprId, false);
-
             if (svar.genIsDefined) {
                 if (svar.vtype.rcCandidate) {
                     // log.debug("releaseSet {} {}", .{varId, svar.vtype.typeT});
@@ -2647,9 +2642,7 @@ fn genSetVarToExpr(self: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId, comptime 
         if (!svar.genIsDefined or !svar.vtype.rcCandidate) {
             const exprv = try self.genRetainedExprTo(exprId, svar.local, false);
             svar.vtype = exprv.vtype;
-            if (!svar.genIsDefined) {
-                svar.genIsDefined = true;
-            }
+            svar.genIsDefined = true;
         } else {
             const exprv = try self.genRetainedTempExpr(exprId, false);
             try self.pushOptionalDebugSym(leftId);

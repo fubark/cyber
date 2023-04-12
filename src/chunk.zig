@@ -489,8 +489,11 @@ pub const Chunk = struct {
     }
 
     /// Reserve params and captured vars.
-    /// Call convention stack layout:
-    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params...] [callee] [capturedParams...] [locals...]
+    /// Function stack layout:
+    /// [startLocal/retLocal] [retInfo] [retAddress] [prevFramePtr] [params...] [callee] [var locals...] [temp locals...]
+    /// `callee` is reserved so that function values can call static functions with the same call convention.
+    /// For this reason, `callee` isn't freed in the function body and a separate release inst is required for lambda calls.
+    /// A closure can also occupy the callee and is used to do captured var lookup.
     pub fn reserveFuncParams(self: *Chunk, numParams: u32) !void {
         // First local is reserved for a single return value.
         _ = try self.reserveLocal(self.curBlock);

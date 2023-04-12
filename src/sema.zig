@@ -2155,6 +2155,7 @@ fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, v
     const capturedIdx = @intCast(u8, block.captures.items.len);
     self.vars.items[id].capturedIdx = capturedIdx;
     self.vars.items[id].isBoxed = true;
+    self.vars.items[id].genIsDefined = true;
 
     try self.capVarDescs.put(self.alloc, id, .{
         .user = parentVarId,

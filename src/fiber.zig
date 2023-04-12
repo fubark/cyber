@@ -31,6 +31,10 @@ pub const Fiber = extern struct {
     throwTracePtr: [*]cy.debug.CompactFrame,
     throwTraceLen: u32,
 
+    /// Points to the first inst of the fiber.
+    /// This is used to find end locals pc if any.
+    initialPcOffset: u32,
+
     /// Where coyield and coreturn should copy the return value to.
     /// If this is the NullByteId, no value is copied and instead released.
     parentDstLocal: u8,
@@ -48,7 +52,7 @@ pub const TryFrame = extern struct {
 };
 
 test "Internals" {
-    try t.eq(@sizeOf(Fiber), 72);
+    try t.eq(@sizeOf(Fiber), 80);
     try t.eq(@sizeOf(TryFrame), 16);
 }
 
@@ -75,6 +79,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
         .throwTracePtr = undefined,
         .throwTraceCap = 0,
         .throwTraceLen = 0,
+        .initialPcOffset = @intCast(u32, pc),
         .prevFiber = undefined,
     };
 
@@ -155,7 +160,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
         switch (vm.ops[pc].code) {
             .callFuncIC,
             .callSym => {
-                if (vm.ops[pc + cy.bytecode.CallSymInstLen].code == .coreturn) {
+                if (pc >= 6 and vm.ops[pc - 6].code == .coinit) {
                     const numArgs = vm.ops[pc - 4].arg;
                     for (stack[fiber.fpOffset + 5..fiber.fpOffset + 5 + numArgs]) |arg| {
                         cy.arc.release(vm, arg);
@@ -184,6 +189,21 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
             if (endLocalsPc != cy.NullId) {
                 cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);
+            }
+        }
+
+        // Check to run extra release ops (eg. For call1 inst.)
+        if (vm.ops[pc].code != .coreturn) {
+            switch (vm.ops[fiber.initialPcOffset].code) {
+                .call0,
+                .call1 => {
+                    const endLocalsPc = fiber.initialPcOffset + cy.bytecode.CallInstLen;
+                    if (vm.ops[endLocalsPc].code == .release) {
+                        const local = vm.ops[endLocalsPc+1].arg;
+                        cy.arc.release(vm, stack[framePtr + local]);
+                    }
+                },
+                else => {},
             }
         }
     }

@@ -2141,7 +2141,7 @@ fn genCallExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime discardTo
                     //     _ = try self.genMaybeRetainExpr(left, false);
                     // }
                 } else {
-                    return genFuncValueCallExpr(self, nodeId, callStartLocal, discardTopExprReg);
+                    return genFuncValueCallExpr(self, nodeId, dst, callStartLocal, discardTopExprReg, startFiber);
                 }
             } else {
                 // Dynamic method call.
@@ -2152,7 +2152,7 @@ fn genCallExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime discardTo
             }
         } else if (callee.node_t == .ident) {
             if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
-                return genFuncValueCallExpr(self, nodeId, callStartLocal, discardTopExprReg);
+                return genFuncValueCallExpr(self, nodeId, dst, callStartLocal, discardTopExprReg, startFiber);
             } else {
                 var genArgs = false;
                 var numArgs: u32 = undefined;
@@ -2171,7 +2171,7 @@ fn genCallExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime discardTo
                     } else {
                         const rsym = self.compiler.sema.getResolvedSym(crSymId.id);
                         if (rsym.symT == .variable) {
-                            return genFuncValueCallExpr(self, nodeId, callStartLocal, discardTopExprReg);
+                            return genFuncValueCallExpr(self, nodeId, dst, callStartLocal, discardTopExprReg, startFiber);
                         } else {
                             return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
                         }
@@ -2219,7 +2219,7 @@ fn genCallExpr(self: *Chunk, nodeId: cy.NodeId, dst: LocalId, comptime discardTo
             }
         } else {
             // All other callees are treated as function value calls.
-            return genFuncValueCallExpr(self, nodeId, callStartLocal, discardTopExprReg);
+            return genFuncValueCallExpr(self, nodeId, dst, callStartLocal, discardTopExprReg, startFiber);
         }
     } else return self.reportError("Unsupported named args", &.{});
 }
@@ -2247,8 +2247,15 @@ fn genCallObjSym(self: *Chunk, callStartLocal: u8, leftId: cy.NodeId, identId: c
     }
 }
 
-fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, callStartLocal: u8, comptime discardTopExprReg: bool) !GenValue {
+fn release(self: *Chunk, local: u8, nodeId: cy.NodeId) !void {
+    try self.pushOptionalDebugSym(nodeId);
+    try self.buf.pushOp1(.release, local);
+}
+
+fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, dst: u8, callStartLocal: u8, comptime discardTopExprReg: bool, comptime startFiber: bool) !GenValue {
     const node = self.nodes[nodeId];
+
+    const genCallStartLocal = if (startFiber) 1 else callStartLocal;
 
     var numArgs: u32 = 0;
     var argId = node.head.callExpr.arg_head;
@@ -2262,21 +2269,40 @@ fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, callStartLocal: u8, com
     // If copied to temp, it should be after the last param so it can persist until the function returns.
     const calleev = try self.genRetainedTempExpr(node.head.callExpr.callee, false);
 
+    const coinitPc = self.buf.ops.items.len;
+    if (startFiber) {
+        // Precompute first arg local since coinit doesn't need the startLocal.
+        // numArgs + 4 (ret slots) + 1 (min call start local for main block)
+        var initialStackSize = numArgs + 4 + 1;
+        if (initialStackSize < 16) {
+            initialStackSize = 16;
+        }
+        try self.buf.pushOpSlice(.coinit, &.{ callStartLocal + 4, @intCast(u8, numArgs) + 1, 0, @intCast(u8, initialStackSize), dst });
+    }
+
     if (discardTopExprReg) {
         try self.pushDebugSym(nodeId);
-        try self.buf.pushOp2(.call0, callStartLocal, @intCast(u8, numArgs));
-
-        // ARC cleanup.
-        try genReleaseIfRetainedTemp(self, calleev);
-
-        return GenValue.initNoValue();
+        try self.buf.pushOp2(.call0, genCallStartLocal, @intCast(u8, numArgs));
     } else {
         try self.pushDebugSym(nodeId);
-        try self.buf.pushOp2(.call1, callStartLocal, @intCast(u8, numArgs));
+        try self.buf.pushOp2(.call1, genCallStartLocal, @intCast(u8, numArgs));
+    }
 
-        // ARC cleanup.
-        try genReleaseIfRetainedTemp(self, calleev);
+    // ARC cleanup.
+    if (startFiber) {
+        try release(self, @intCast(u8, 5 + numArgs), nodeId);
+    } else {
+        try release(self, calleev.local, nodeId);
+    }
 
+    if (startFiber) {
+        try self.buf.pushOp(.coreturn);
+        self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
+    }
+
+    if (discardTopExprReg) {
+        return GenValue.initNoValue();
+    } else {
         return GenValue.initTempValue(callStartLocal, types.AnyType, true);
     }
 }

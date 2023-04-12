@@ -86,3 +86,10 @@ func sum(n):
 f = coinit sum(20)
 res = coresume f
 t.eq(res, 210)
+
+-- coinit lambda
+foof = func (list):
+  list.append(123)
+f = coinit foof([])
+coresume f
+t.eq(list[0], 123)

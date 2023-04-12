@@ -10,7 +10,8 @@ The coinit creates a new fiber from a function call syntax. Using coyield inside
 <label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#fibers>Fibers.</a></li><li><a href=#gas-mileage>Gas mileage.</a></li><li><a href=#async>Async.</a></li><li><a href=#multi-thread>Multi-thread.</a></li></ul></nav></aside></header><article class=markdown><h1 id=concurrency>Concurrency.
 <a class=anchor href=#concurrency>#</a></h1><p>Cyber supports fibers as a concurrency mechanism. There are plans to support preemptive concurrency with async/await as well as multithreading.</p><h2 id=fibers>Fibers.
 <a class=anchor href=#fibers>#</a></h2><p>Fibers in Cyber allow representing execution contexts as first-class values. They contain their own call stack and program counters. Fibers by themselves do not enable parallelism.</p><p>The <code>coinit</code> creates a new fiber from a function call syntax. Using <code>coyield</code> inside a function pauses the current fiber and execution is returned to the fiber that invoked <code>coresume</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>count = 0
-func foo():
+foo = func ():
+    capture count
     count += 1
     coyield
     count += 1

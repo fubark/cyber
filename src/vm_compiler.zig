@@ -204,6 +204,11 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Fiber);
         id = try sema.addResolvedBuiltinSym(self, .metatype, "metatype", rt.MetaTypeT);
         std.debug.assert(id == bt.MetaType);
+
+        id = try sema.addResolvedInternalSym(self, "number");
+        std.debug.assert(id == bt.NumberLit);
+        id = try sema.addResolvedInternalSym(self, "undefined");
+        std.debug.assert(id == bt.Undefined);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {
@@ -387,7 +392,6 @@ pub const VMcompiler = struct {
                         try gen.genStaticInitializerDFS(chunk, crSymId);
                     }
                 }
-                chunk.resetNextFreeTemp();
             }
 
             for (self.chunks.items, 0..) |*chunk, i| {
@@ -446,7 +450,8 @@ pub const VMcompiler = struct {
         const root = chunk.nodes[chunk.parserAstRootId];
 
         chunk.mainSemaBlockId = try sema.pushBlock(chunk, cy.NullId);
-        sema.semaStmts(chunk, root.head.root.headStmt, true) catch |err| {
+        chunk.nodeTypes = try self.alloc.alloc(sema.ResolvedSymId, chunk.nodes.len);
+        sema.semaStmts(chunk, root.head.root.headStmt) catch |err| {
             try sema.endBlock(chunk);
             return err;
         };
@@ -486,12 +491,12 @@ pub const VMcompiler = struct {
             try gen.genStatements(chunk, root.head.root.headStmt, true);
             chunk.patchBlockJumps(jumpStackStart);
             chunk.blockJumpStack.items.len = jumpStackStart;
+            self.buf.mainStackSize = chunk.getMaxUsedRegisters();
             chunk.popBlock();
-            self.buf.mainStackSize = @intCast(u32, chunk.curBlock.getRequiredStackSize());
         } else {
             // Modules perform gen for only the top level declarations.
             const root = chunk.nodes[0];
-            try gen.genTopDeclStatements(chunk, root.head.root.headStmt);
+            try gen.topDeclStatements(chunk, root.head.root.headStmt);
             chunk.popBlock();
         }
     }

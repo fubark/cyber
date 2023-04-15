@@ -85,19 +85,26 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     }
 }
 
-pub fn runReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    if (vm.ops[startPc].code == .releaseN) {
-        const numLocals = vm.ops[startPc+1].arg;
-        for (vm.ops[startPc+2..startPc+2+numLocals]) |local| {
-            release(vm, stack[framePtr + local.arg]);
-        }
-    } else {
+pub fn runTempReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
+    if (vm.ops[startPc].code == .release) {
         var pc = startPc;
-        while (vm.ops[pc].code == .release) {
+        while (true) {
             const local = vm.ops[pc+1].arg;
             // stack[framePtr + local].dump();
             release(vm, stack[framePtr + local]);
             pc += 2;
+            if (vm.ops[pc].code != .release) {
+                break;
+            }
+        }
+    }
+}
+
+pub fn runBlockEndReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
+    if (vm.ops[startPc].code == .releaseN) {
+        const numLocals = vm.ops[startPc+1].arg;
+        for (vm.ops[startPc+2..startPc+2+numLocals]) |local| {
+            release(vm, stack[framePtr + local.arg]);
         }
     }
 }

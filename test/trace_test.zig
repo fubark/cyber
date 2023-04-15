@@ -13,13 +13,13 @@ test "ARC." {
 
     const trace = &run.trace;
 
-    // List literal does not escape expression. No ref count.
+    // Code is still generated for unused expr stmt.
     var val = try run.eval(
         \\[1, 2]
         \\return
     );
-    try t.eq(trace.numRetains, 0);
-    try t.eq(trace.numReleases, 0);
+    try t.eq(trace.numRetains, 1);
+    try t.eq(trace.numReleases, 1);
 
     // List literal is assigned to a local. Increase ref count.
     val = try run.eval(

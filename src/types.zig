@@ -6,6 +6,7 @@ const sema = cy.sema;
 const ResolvedSymId = sema.ResolvedSymId;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
+const log = stdx.log.scoped(.types);
 
 const bt = BuiltinTypeSymIds;
 pub const BuiltinTypeSymIds = struct {
@@ -23,6 +24,10 @@ pub const BuiltinTypeSymIds = struct {
     pub const Error: ResolvedSymId = 11;
     pub const Fiber: ResolvedSymId = 12;
     pub const MetaType: ResolvedSymId = 13;
+
+    // Internal types.
+    pub const NumberLit: ResolvedSymId = 14;
+    pub const Undefined: ResolvedSymId = 15;
 };
 
 test "Reserved names map to reserved sym ids." {
@@ -93,8 +98,8 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const Type, ret: Type, tar
     for (target.params(), args) |cstrSymId, sType| {
         const sTypeSymId = typeToResolvedSym(sType);
         if (!isTypeSymCompat(c, sTypeSymId, cstrSymId)) {
-            if (cstrSymId == bt.Integer) {
-                if (sType.typeT == .number and sType.inner.number.canRequestInteger) {
+            if (sType.typeT == .numberLit) {
+                if (cstrSymId == bt.Integer or cstrSymId == bt.Number) {
                     continue;
                 }
             }
@@ -177,6 +182,8 @@ pub fn typeTagToResolvedSym(tag: TypeTag) ResolvedSymId {
         .fiber => bt.Fiber,
         .metatype => bt.MetaType,
         .err => bt.Error,
+        .numberLit => bt.NumberLit,
+        .undefined => bt.Undefined,
         else => stdx.panicFmt("Unsupported type {}", .{tag}),
     };
 }
@@ -187,6 +194,18 @@ pub fn typeToResolvedSym(type_: Type) ResolvedSymId {
         return type_.inner.rsym.rSymId;
     } else {
         return typeTagToResolvedSym(type_.typeT);
+    }
+}
+
+pub fn typeToNonFlexResolvedSym(type_: Type) ResolvedSymId {
+    if (type_.typeT == .rsym) {
+        return type_.inner.rsym.rSymId;
+    } else {
+        if (type_.typeT == .numberLit) {
+            return bt.Number;
+        } else {
+            return typeTagToResolvedSym(type_.typeT);
+        }
     }
 }
 
@@ -236,6 +255,9 @@ pub const TypeTag = enum {
     /// Type from a resolved type sym.
     rsym,
 
+    /// Flexible types that haven't been decided.
+    numberLit,
+
     undefined,
 };
 
@@ -247,9 +269,6 @@ pub const Type = struct {
         enumT: packed struct {
             enumId: u8,
         },
-        number: packed struct {
-            canRequestInteger: bool,
-        },
         rsym: packed struct {
             rSymId: sema.ResolvedSymId,
         },
@@ -258,16 +277,11 @@ pub const Type = struct {
         },
     } = undefined,
 
-    fn isFlexibleType(self: Type) bool {
+    pub fn isFlexibleType(self: Type) bool {
         switch (self.typeT) {
-            .number => return self.inner.number.canRequestInteger,
-            .symbol => return true,
+            .numberLit => return true,
             else => return false,
         }
-    }
-
-    pub fn canBeInt(self: Type) bool {
-        return self.typeT == .int or (self.typeT == .number and self.inner.number.canRequestInteger);
     }
 };
 
@@ -304,23 +318,12 @@ pub const IntegerType = Type{
 pub const NumberType = Type{
     .typeT = .number,
     .rcCandidate = false,
-    .inner = .{
-        .number = .{
-            .canRequestInteger = false,
-        },
-    },
 };
 
-/// Number constants are numbers by default, but some constants can be requested as an integer during codegen.
-/// Once a constant has been assigned to a variable, it becomes a `NumberType`.
-pub const NumberOrRequestIntegerType = Type{
-    .typeT = .number,
+/// Number literals can represent a number or integer.
+pub const NumberLitType = Type{
+    .typeT = .numberLit,
     .rcCandidate = false,
-    .inner = .{
-        .number = .{
-            .canRequestInteger = true,
-        },
-    },
 };
 
 pub const StaticStringType = Type{

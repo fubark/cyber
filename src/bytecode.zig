@@ -268,6 +268,13 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const symId = @ptrCast(*const align(1) u16, pc + 4).*;
             fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
         },
+        .callFuncIC => {
+            const startLocal = pc[1].arg;
+            const numRet = pc[3].arg;
+            const stackSize = pc[4].arg;
+            const pcPtr = @intToPtr([*]cy.InstDatum, @intCast(usize, @ptrCast(*const align(1) u48, pc + 6).*));
+            fmt.printStderr("{} {} startLocal={}, numRet={}, stackSize={}, pcPtr={}", &.{v(pcOffset), v(code), v(startLocal), v(numRet), v(stackSize), v(pcPtr)});
+        },
         .call1 => {
             const startLocal = pc[1].arg;
             const numArgs = pc[2].arg;
@@ -359,7 +366,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
         },
         .jumpNotCond => {
             const jump = @ptrCast(*const align(1) u16, pc + 2).*;
-            fmt.printStderr("{} {} cond={}, offset={}}", &.{v(pcOffset), v(code), v(pc[1].arg), v(jump)});
+            fmt.printStderr("{} {} cond={}, offset={}", &.{v(pcOffset), v(code), v(pc[1].arg), v(jump)});
         },
         .jumpNotNone => {
             const jump = @ptrCast(*const align(1) i16, pc + 1).*;
@@ -423,6 +430,19 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const start = pc[1].arg;
             const numLocals = pc[2].arg;
             fmt.printStderr("{} {} start={}, numLocals={}", &.{v(pcOffset), v(code), v(start), v(numLocals) });
+        },
+        .coinit => {
+            const startArgs = pc[1].arg;
+            const numArgs = pc[2].arg;
+            const jump = pc[3].arg;
+            const initialStackSize = pc[4].arg;
+            const dst = pc[5].arg;
+            fmt.printStderr("{} {} startArgs={}, numArgs={}, jump={}, initialStackSize={}, dst={}", &.{v(pcOffset), v(code), v(startArgs), v(numArgs), v(jump), v(initialStackSize), v(dst)});
+        },
+        .coresume => {
+            const fiberLocal = pc[1].arg;
+            const retLocal = pc[2].arg;
+            fmt.printStderr("{} {} fiberLocal={}, retLocal={}", &.{v(pcOffset), v(code), v(fiberLocal), v(retLocal) });
         },
         .slice => {
             const recv = pc[1].arg;
@@ -536,6 +556,9 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .coreturn => {
             return 1;
         },
+        .neg,
+        .not,
+        .bitwiseNot,
         .throw,
         .retain,
         .end,
@@ -557,9 +580,6 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .init,
         .popTry,
         .copy,
-        .not,
-        .bitwiseNot,
-        .neg,
         .copyRetainSrc,
         .copyReleaseDst,
         .copyRetainRelease,
@@ -612,6 +632,8 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .add,
         .addInt,
         .tag,
+        .cast,
+        .castAbstract,
         .jumpNotCond => {
             return 4;
         },
@@ -623,8 +645,6 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
             const numEntries = pc[2].arg;
             return 4 + numEntries * 2;
         },
-        .cast,
-        .castAbstract,
         .slice,
         .object,
         .objectSmall => {
@@ -721,7 +741,10 @@ pub const OpCode = enum(u8) {
     jump = vmc.CodeJump,
 
     release = vmc.CodeRelease,
+
+    /// Exclusively used for block end to distinguish from temp releases.
     releaseN = vmc.CodeReleaseN,
+
     callObjSym = vmc.CodeCallObjSym,
     callObjNativeFuncIC = vmc.CodeCallObjNativeFuncIC,
     callObjFuncIC = vmc.CodeCallObjFuncIC,

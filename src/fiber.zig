@@ -175,7 +175,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
             log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
             // The yield statement already contains the end locals pc.
-            cy.arc.runReleaseOps(vm, stack, framePtr, pc + jump);
+            cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, pc + jump);
         }
 
         // Unwind stack and release all locals.
@@ -188,7 +188,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
             log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
             if (endLocalsPc != cy.NullId) {
-                cy.arc.runReleaseOps(vm, stack, framePtr, endLocalsPc);
+                cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, endLocalsPc);
             }
         }
 
@@ -221,12 +221,12 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
         log.debug("release frame at {}", .{pcOffset});
 
         // Release temporaries in the current frame.
-        cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+        cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset);
 
         const sym = cy.debug.getDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
         const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
         if (endLocalsPc != cy.NullId) {
-            cy.arc.runReleaseOps(vm, stack, fpOffset, endLocalsPc);
+            cy.arc.runBlockEndReleaseOps(vm, stack, fpOffset, endLocalsPc);
         }
         if (fpOffset == 0) {
             // Done, at main block.
@@ -252,12 +252,12 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
 
         // Release temporaries in the current frame.
         const instLen = cy.getInstLenAt(vm.ops.ptr + pcOffset);
-        cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
+        cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
 
         const sym = cy.debug.getDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
         const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
         if (endLocalsPc != cy.NullId) {
-            cy.arc.runReleaseOps(vm, vm.stack, fpOffset, endLocalsPc);
+            cy.arc.runBlockEndReleaseOps(vm, vm.stack, fpOffset, endLocalsPc);
         }
 
         // Record frame.
@@ -274,7 +274,7 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     // Release temporaries in the current frame.
     log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].code});
     const instLen = cy.getInstLenAt(vm.ops.ptr + pcOffset);
-    cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
+    cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
 }
 
 pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.InstDatum, err: Value) !?PcSp {
@@ -301,7 +301,7 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.InstDatum, err: Valu
 
             // Release temporaries in the current frame.
             log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].code});
-            cy.arc.runReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+            cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset);
 
             // Goto catch block in current frame.
             return PcSp{

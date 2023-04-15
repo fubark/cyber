@@ -272,22 +272,14 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     });
 
     if (optCb) |cb| {
-        try cb(run, res);
+        cb(run, res) catch |err| {
+            try printErrorReport(run.vm, err);
+            checkGlobalRC = false;
+            return err;
+        };
     }  else {
         _ = res catch |err| {
-            switch (err) {
-                error.Panic,
-                error.TokenError,
-                error.ParseError,
-                error.CompileError => {
-                    if (!cy.silentError) {
-                        const report = try run.vm.allocLastErrorReport();
-                        defer t.alloc.free(report);
-                        std.debug.print("{s}", .{report});
-                    }
-                },
-                else => {},
-            }
+            try printErrorReport(run.vm, err);
             checkGlobalRC = false;
             return err;
         };
@@ -299,6 +291,22 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
 
     if (config.checkGlobalRc) {
         try cy.arc.checkGlobalRC(run.vm.internal());
+    }
+}
+
+fn printErrorReport(vm: *cy.UserVM, err: anyerror) !void {
+    switch (err) {
+        error.Panic,
+        error.TokenError,
+        error.ParseError,
+        error.CompileError => {
+            if (!cy.silentError) {
+                const report = try vm.allocLastErrorReport();
+                defer t.alloc.free(report);
+                std.debug.print("{s}", .{report});
+            }
+        },
+        else => {},
     }
 }
 

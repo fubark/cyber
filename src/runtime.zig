@@ -78,8 +78,7 @@ const MethodInner = packed union {
     nativeFunc2: cy.NativeObjFunc2Ptr,
     func: packed struct {
         pc: u32,
-        /// Includes function params, locals, and return info slot.
-        numLocals: u32,
+        stackSize: u32,
     },
 };
 
@@ -95,7 +94,7 @@ pub const MethodSym = struct {
 
     inner: MethodInner,
 
-    pub fn initFuncOffset(rFuncSigId: sema.ResolvedFuncSigId, pc: usize, numLocals: u32) MethodSym {
+    pub fn initFuncOffset(rFuncSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32) MethodSym {
         return .{
             .entryT = .func,
             .mruTypeId = undefined,
@@ -103,7 +102,7 @@ pub const MethodSym = struct {
             .inner = .{
                 .func = .{
                     .pc = @intCast(u32, pc),
-                    .numLocals = numLocals,
+                    .stackSize = stackSize,
                 },
             },
         };

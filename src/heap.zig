@@ -234,8 +234,7 @@ pub const Closure = extern struct {
     funcPc: u32, 
     numParams: u8,
     numCaptured: u8,
-    /// Includes locals, captured vars, and return info. Does not include params.
-    numLocals: u8,
+    stackSize: u8,
     /// Closure value is copied to this local to provide captured var lookup.
     local: u8,
     rFuncSigId: u64,
@@ -253,8 +252,7 @@ const Lambda = extern struct {
     rc: u32,
     funcPc: u32, 
     numParams: u8,
-    /// Includes locals and return info. Does not include params.
-    numLocals: u8,
+    stackSize: u8,
     padding: u16 = 0,
     rFuncSigId: u64,
 };
@@ -820,7 +818,7 @@ pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Val
 
 /// Captured values are retained during alloc.
 pub fn allocClosure(
-    self: *cy.VM, fp: [*]Value, funcPc: usize, numParams: u8, numLocals: u8,
+    self: *cy.VM, fp: [*]Value, funcPc: usize, numParams: u8, stackSize: u8,
     rFuncSigId: u16, capturedVals: []const cy.InstDatum, closureLocal: u8,
 ) !Value {
     var obj: *HeapObject = undefined;
@@ -834,7 +832,7 @@ pub fn allocClosure(
         .rc = 1,
         .funcPc = @intCast(u32, funcPc),
         .numParams = numParams,
-        .numLocals = numLocals,
+        .stackSize = stackSize,
         .numCaptured = @intCast(u8, capturedVals.len),
         .local = closureLocal,
         .rFuncSigId = rFuncSigId,
@@ -853,14 +851,14 @@ pub fn allocClosure(
     return Value.initPtr(obj);
 }
 
-pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, numLocals: u8, rFuncSigId: u16) !Value {
+pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, rFuncSigId: u16) !Value {
     const obj = try allocPoolObject(self);
     obj.lambda = .{
         .structId = rt.LambdaT,
         .rc = 1,
         .funcPc = @intCast(u32, funcPc),
         .numParams = numParams,
-        .numLocals = numLocals,
+        .stackSize = stackSize,
         .rFuncSigId = rFuncSigId,
     };
     return Value.initPtr(obj);
@@ -1391,7 +1389,7 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
         .func => {
             return allocLambda(self, sym.inner.func.pc,
                 @intCast(u8, sym.inner.func.numParams),
-                @intCast(u8, sym.inner.func.numLocals),
+                @intCast(u8, sym.inner.func.stackSize),
                 @intCast(u16, sym.innerExtra.func.rFuncSigId)
             );
         },

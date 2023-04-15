@@ -2507,22 +2507,17 @@ test "Lambdas." {
 // }
 
 test "access expression" {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // One level of access from parent.
-    var val = try run.eval(
+    try evalPass(.{},
+        \\import t 'test'
+        \\
+        \\-- One level of access from parent.
         \\map = { a: 5 }
-        \\map.a
-    );
-    try t.eq(val.asF64toI32(), 5);
-
-    // Multiple levels of access from parent.
-    val = try run.eval(
+        \\t.eq(map.a, 5)
+        \\
+        \\-- Multiple levels of access from parent.
         \\map = { a: { b: 5 } }
-        \\map.a.b
+        \\t.eq(map.a.b, 5)
     );
-    try t.eq(val.asF64toI32(), 5);
 }
 
 test "Math module." {

@@ -2046,14 +2046,16 @@ pub const Parser = struct {
         self.advanceToken();
 
         const expr_start = self.nodes.items[left_id].start_token;
-        const expr_id = try self.pushNode(.callExpr, expr_start);
+        const callExpr = try self.pushNode(.callExpr, expr_start);
 
         var has_named_arg = false;
+        var numArgs: u32 = 0;
         var first: NodeId = NullId;
         inner: {
             first = (try self.parseCallArg()) orelse {
                 break :inner;
             };
+            numArgs += 1;
             if (self.nodes.items[first].node_t == .named_arg) {
                 has_named_arg = true;
             }
@@ -2067,6 +2069,7 @@ pub const Parser = struct {
                 const arg_id = (try self.parseCallArg()) orelse {
                     break;
                 };
+                numArgs += 1;
                 self.nodes.items[last_arg_id].next = arg_id;
                 last_arg_id = arg_id;
                 if (self.nodes.items[last_arg_id].node_t == .named_arg) {
@@ -2079,31 +2082,26 @@ pub const Parser = struct {
         const token = self.peekToken();
         if (token.tag() == .right_paren) {
             self.advanceToken();
-            self.nodes.items[expr_id].head = .{
+            self.nodes.items[callExpr].head = .{
                 .callExpr = .{
                     .callee = left_id,
                     .arg_head = first,
                     .has_named_arg = has_named_arg,
+                    .numArgs = @intCast(u8, numArgs),
                 },
             };
-            return expr_id;
+            return callExpr;
         } else return self.reportParseError("Expected closing parenthesis.", &.{});
     }
 
     /// Assumes first arg exists.
     fn parseNoParenCallExpression(self: *Parser, left_id: NodeId) !NodeId {
         const expr_start = self.nodes.items[left_id].start_token;
-        const expr_id = try self.pushNode(.callExpr, expr_start);
+        const callExpr = try self.pushNode(.callExpr, expr_start);
 
         const firstArg = try self.parseTightTermExpr();
+        var numArgs: u32 = 1;
         var last_arg_id = firstArg;
-        self.nodes.items[expr_id].head = .{
-            .callExpr = .{
-                .callee = left_id,
-                .arg_head = firstArg,
-                .has_named_arg = false,
-            },
-        };
 
         while (true) {
             const token = self.peekToken();
@@ -2114,10 +2112,20 @@ pub const Parser = struct {
                     const arg = try self.parseTightTermExpr();
                     self.nodes.items[last_arg_id].next = arg;
                     last_arg_id = arg;
+                    numArgs += 1;
                 },
             }
         }
-        return expr_id;
+
+        self.nodes.items[callExpr].head = .{
+            .callExpr = .{
+                .callee = left_id,
+                .arg_head = firstArg,
+                .has_named_arg = false,
+                .numArgs = @intCast(u8, numArgs),
+            },
+        };
+        return callExpr;
     }
 
     /// Parses the right expression of a BinaryExpression.
@@ -3485,7 +3493,6 @@ pub const Node = struct {
             left: NodeId,
             right: NodeId,
             op: BinaryExprOp,
-            semaCanRequestIntegerOperands: bool = false,
         },
         opAssignStmt: struct {
             left: NodeId,
@@ -3518,17 +3525,8 @@ pub const Node = struct {
         callExpr: struct {
             callee: NodeId,
             arg_head: NodeId,
+            numArgs: u8,
             has_named_arg: bool,
-
-            pub fn getNumArgs(self: @This(), nodes: []const Node) u32 {
-                var numArgs: u32 = 0;
-                var argId = self.arg_head;
-                while (argId != cy.NullId) : (numArgs += 1) {
-                    const arg = nodes[argId];
-                    argId = arg.next;
-                }
-                return numArgs;
-            }
         },
         ident: struct {
             semaVarId: u32 = NullId,

@@ -255,7 +255,7 @@ pub const Chunk = struct {
         return !self.isParamOrLocalVar(dst);
     }
 
-    pub fn initGenValue(self: *const Chunk, local: LocalId, vtype: types.Type, retained: bool) gen.GenValue {
+    pub fn initGenValue(self: *const Chunk, local: LocalId, vtype: types.TypeId, retained: bool) gen.GenValue {
         if (self.isTempLocal(local)) {
             return gen.GenValue.initTempValue(local, vtype, retained);
         } else {
@@ -649,15 +649,15 @@ pub const Chunk = struct {
             for (sblock.params.items) |varId| {
                 const svar = self.vars.items[varId];
                 fmt.printStderr("{} (param), local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
-                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
-                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
+                    v(svar.name), v(svar.local), v(svar.vtype),
+                    v(types.isRcCandidateType(self.compiler, svar.vtype)), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
                 });
             }
             for (sblock.locals.items) |varId| {
                 const svar = self.vars.items[varId];
                 fmt.printStderr("{}, local: {}, curType: {}, rc: {}, lrc: {}, boxed: {}, capIdx: {}\n", &.{
-                    v(svar.name), v(svar.local), v(svar.vtype.typeT),
-                    v(svar.vtype.rcCandidate), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
+                    v(svar.name), v(svar.local), v(svar.vtype),
+                    v(types.isRcCandidateType(self.compiler, svar.vtype)), v(svar.lifetimeRcCandidate), v(svar.isBoxed), v(svar.capturedIdx),
                 });
             }
         }

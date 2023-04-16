@@ -8,26 +8,35 @@ const fmt = @import("fmt.zig");
 const v = fmt.v;
 const log = stdx.log.scoped(.types);
 
+pub const TypeId = ResolvedSymId;
+
 const bt = BuiltinTypeSymIds;
 pub const BuiltinTypeSymIds = struct {
-    pub const Any: ResolvedSymId = 0;
-    pub const Boolean: ResolvedSymId = 1;
-    pub const Number: ResolvedSymId = 2;
-    pub const Integer: ResolvedSymId = 3;
-    pub const String: ResolvedSymId = 4;
-    pub const Rawstring: ResolvedSymId = 5;
-    pub const Symbol: ResolvedSymId = 6;
-    pub const List: ResolvedSymId = 7;
-    pub const Map: ResolvedSymId = 8;
-    pub const Pointer: ResolvedSymId = 9;
-    pub const None: ResolvedSymId = 10;
-    pub const Error: ResolvedSymId = 11;
-    pub const Fiber: ResolvedSymId = 12;
-    pub const MetaType: ResolvedSymId = 13;
+    /// Name ids are reserved to match type sym ids.
+    pub const Any: TypeId = 0;
+    pub const Boolean: TypeId = 1;
+    pub const Number: TypeId = 2;
+    pub const Integer: TypeId = 3;
+    pub const String: TypeId = 4;
+    pub const Rawstring: TypeId = 5;
+    pub const Symbol: TypeId = 6;
+    pub const List: TypeId = 7;
+    pub const Map: TypeId = 8;
+    pub const Pointer: TypeId = 9;
+    pub const None: TypeId = 10;
+    pub const Error: TypeId = 11;
+    pub const Fiber: TypeId = 12;
+    pub const MetaType: TypeId = 13;
 
-    // Internal types.
-    pub const NumberLit: ResolvedSymId = 14;
-    pub const Undefined: ResolvedSymId = 15;
+    /// Internal types.
+
+    /// Number literals can represent a number or integer.
+    pub const NumberLit: TypeId = 14;
+    pub const Undefined: TypeId = 15;
+    /// Strings that aren't retained.
+    pub const StaticString: TypeId = 16;
+
+    pub const End: TypeId = 17;
 };
 
 test "Reserved names map to reserved sym ids." {
@@ -47,44 +56,8 @@ test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NameMetatype, bt.MetaType);
 }
 
-/// Names and resolved builtin sym ids are reserved to index into `BuiltinTypes`.
-const BuiltinTypes = [_]Type{
-    AnyType,
-    BoolType,
-    NumberType,
-    IntegerType,
-    StringType,
-    RawstringType,
-    SymbolType,
-    ListType,
-    MapType,
-    PointerType,
-    NoneType,
-    ErrorType,
-    FiberType,
-    MetaTypeType,
-};
-
-/// Names and resolved builtin sym ids are reserved to index into `BuiltinTypeTags`.
-pub const BuiltinTypeTags = [_]TypeTag{
-    .any,
-    .boolean,
-    .number,
-    .int,
-    .string,
-    .rawstring,
-    .symbol,
-    .list,
-    .map,
-    .pointer,
-    .none,
-    .err,
-    .fiber,
-    .metatype,
-};
-
 /// Check type constraints on target func signature.
-pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const Type, ret: Type, targetId: sema.ResolvedFuncSigId) bool {
+pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const TypeId, ret: TypeId, targetId: sema.ResolvedFuncSigId) bool {
     const target = c.sema.getResolvedFuncSig(targetId);
     // const sigStr = try getResolvedFuncSigTempStr(chunk.compiler, rFuncSigId);
     // log.debug("matching against: {s}", .{sigStr});
@@ -95,11 +68,10 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const Type, ret: Type, tar
     }
 
     // Check each param type. Attempt to satisfy constraints.
-    for (target.params(), args) |cstrSymId, sType| {
-        const sTypeSymId = typeToResolvedSym(sType);
-        if (!isTypeSymCompat(c, sTypeSymId, cstrSymId)) {
-            if (sType.typeT == .numberLit) {
-                if (cstrSymId == bt.Integer or cstrSymId == bt.Number) {
+    for (target.params(), args) |cstrType, argType| {
+        if (!isTypeSymCompat(c, argType, cstrType)) {
+            if (argType == bt.NumberLit) {
+                if (cstrType == bt.Integer or cstrType == bt.Number) {
                     continue;
                 }
             }
@@ -108,14 +80,17 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const Type, ret: Type, tar
     }
 
     // Check return type. Target is the source return type.
-    return isTypeSymCompat(c, target.retSymId, typeToResolvedSym(ret));
+    return isTypeSymCompat(c, target.retSymId, ret);
 }
 
-pub fn isTypeSymCompat(_: *cy.VMcompiler, typeSymId: ResolvedSymId, cstrSymId: ResolvedSymId) bool {
-    if (typeSymId == cstrSymId) {
+pub fn isTypeSymCompat(_: *cy.VMcompiler, typeSymId: TypeId, cstrType: TypeId) bool {
+    if (typeSymId == cstrType) {
         return true;
     }
-    if (cstrSymId == bt.Any) {
+    if (cstrType == bt.Any) {
+        return true;
+    }
+    if (cstrType == bt.String and typeSymId == bt.StaticString) {
         return true;
     }
     return false;
@@ -142,269 +117,99 @@ pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: 
     return isTypeSymCompat(c, target.retSymId, src.retSymId);
 }
 
-pub fn typeTagToExactTypeId(tag: TypeTag) ?rt.TypeId {
-    return switch (tag) {
-        .any => null,
-        .number => rt.NumberT,
-        .int => rt.IntegerT,
-        .symbol => rt.SymbolT,
-        .list => rt.ListT,
-        .boolean => rt.BooleanT,
+pub fn toRtConcreteType(typeId: TypeId) ?rt.TypeId {
+    return switch (typeId) {
+        bt.Any => null,
+        bt.Number => rt.NumberT,
+        bt.Integer => rt.IntegerT,
+        bt.Symbol => rt.SymbolT,
+        bt.List => rt.ListT,
+        bt.Boolean => rt.BooleanT,
 
         // There are multiple string types.
-        .string => null,
-        .rawstring => null,
+        bt.String => null,
+        bt.Rawstring => null,
 
-        .map => rt.MapT,
-        .pointer => rt.PointerT,
-        .none => rt.NoneT,
-        .fiber => rt.FiberT,
-        .metatype => rt.MetaTypeT,
-        .err => rt.ErrorT,
-        else => stdx.panicFmt("Unsupported type {}", .{tag}),
+        bt.Map => rt.MapT,
+        bt.Pointer => rt.PointerT,
+        bt.None => rt.NoneT,
+        bt.Fiber => rt.FiberT,
+        bt.MetaType => rt.MetaTypeT,
+        bt.Error => rt.ErrorT,
+        else => stdx.panicFmt("Unsupported type {}", .{typeId}),
     };
 }
 
-pub fn typeTagToResolvedSym(tag: TypeTag) ResolvedSymId {
-    return switch (tag) {
-        .any => bt.Any,
-        .number => bt.Number,
-        .int => bt.Integer,
-        .symbol => bt.Symbol,
-        .list => bt.List,
-        .boolean => bt.Boolean,
-        .string => bt.String,
-        .rawstring => bt.Rawstring,
-        .map => bt.Map,
-        .enumT => bt.Any, // TODO: Handle tagtype.
-        .pointer => bt.Pointer,
-        .none => bt.None,
-        .fiber => bt.Fiber,
-        .metatype => bt.MetaType,
-        .err => bt.Error,
-        .numberLit => bt.NumberLit,
-        .undefined => bt.Undefined,
-        else => stdx.panicFmt("Unsupported type {}", .{tag}),
-    };
-}
-
-/// Type -> ResolvedSymId
-pub fn typeToResolvedSym(type_: Type) ResolvedSymId {
-    if (type_.typeT == .rsym) {
-        return type_.inner.rsym.rSymId;
+pub fn toNonFlexType(typeId: TypeId) TypeId {
+    if (typeId == bt.NumberLit) {
+        return bt.Number;
     } else {
-        return typeTagToResolvedSym(type_.typeT);
+        return typeId;
     }
 }
 
-pub fn typeToNonFlexResolvedSym(type_: Type) ResolvedSymId {
-    if (type_.typeT == .rsym) {
-        return type_.inner.rsym.rSymId;
+pub fn assertTypeSym(c: *cy.Chunk, symId: ResolvedSymId) !void {
+    if (symId < bt.End) {
+        return;
+    }
+    const sym = c.compiler.sema.getResolvedSym(symId);
+    if (sym.symT == .object) {
+        return;
     } else {
-        if (type_.typeT == .numberLit) {
-            return bt.Number;
-        } else {
-            return typeTagToResolvedSym(type_.typeT);
-        }
+        const name = sema.getName(c.compiler, sym.key.absResolvedSymKey.nameId);
+        return c.reportError("`{}` is not a valid type.", &.{v(name)});
     }
 }
 
-/// ResolvedSymId -> Type
-pub fn typeFromResolvedSym(chunk: *cy.Chunk, rSymId: ResolvedSymId) !Type {
-    if (rSymId < BuiltinTypes.len) {
-        return BuiltinTypes[rSymId];
-    } else {
-        const rSym = chunk.compiler.sema.resolvedSyms.items[rSymId];
-        if (rSym.symT == .object) {
-            return initResolvedSymType(rSymId);
-        } else {
-            const name = sema.getName(chunk.compiler, rSym.key.absResolvedSymKey.nameId);
-            return chunk.reportError("`{}` is not a valid type.", &.{v(name)});
-        }
-    }
+pub fn isSameType(t1: TypeId, t2: TypeId) bool {
+    return t1 == t2;
 }
 
-pub fn isSameType(t1: Type, t2: Type) bool {
-    if (t1.typeT != t2.typeT) {
+pub fn isEnumType(c: *cy.VMcompiler, typeId: TypeId) bool {
+    if (typeId < bt.End) {
         return false;
     }
-    if (t1.typeT == .rsym) {
-        return t1.inner.rsym.rSymId == t2.inner.rsym.rSymId;
-    }
-    return false;
+    return c.sema.getResolvedSym(typeId).symT == .enumType;
 }
 
-pub const TypeTag = enum {
-    any,
-    boolean,
-    number,
-    int,
-    list,
-    map,
-    fiber,
-    string,
-    rawstring,
-    box,
-    enumT,
-    symbol,
-    pointer,
-    none,
-    err,
-    metatype,
+pub fn isFlexibleType(typeId: TypeId) bool {
+    switch (typeId) {
+        bt.NumberLit => return true,
+        else => return false,
+    }
+}
 
-    /// Type from a resolved type sym.
-    rsym,
-
-    /// Flexible types that haven't been decided.
-    numberLit,
-
-    undefined,
-};
-
-/// TODO: Can rSymId replace typeT?
-pub const Type = struct {
-    typeT: TypeTag,
-    rcCandidate: bool,
-    inner: packed union {
-        enumT: packed struct {
-            enumId: u8,
-        },
-        rsym: packed struct {
-            rSymId: sema.ResolvedSymId,
-        },
-        string: packed struct {
-            isStaticString: bool,
-        },
-    } = undefined,
-
-    pub fn isFlexibleType(self: Type) bool {
-        switch (self.typeT) {
-            .numberLit => return true,
-            else => return false,
+pub fn isRcCandidateType(c: *cy.VMcompiler, symId: TypeId) bool {
+    switch (symId) {
+        bt.String,
+        bt.Rawstring,
+        bt.List,
+        bt.Map,
+        bt.Pointer,
+        bt.Fiber,
+        bt.MetaType,
+        bt.Any => return true,
+        bt.Integer,
+        bt.Number,
+        bt.StaticString,
+        bt.Symbol,
+        bt.None,
+        bt.Error,
+        bt.NumberLit,
+        bt.Undefined,
+        bt.Boolean => return false,
+        else => {
+            const sym = c.sema.getResolvedSym(symId);
+            if (sym.symT == .object) {
+                return true;
+            } else if (sym.symT == .enumType) {
+                return false;
+            } else {
+                stdx.panicFmt("Unexpected sym type: {} {}", .{symId, sym.symT});
+            }
         }
     }
-};
-
-pub const UndefinedType = Type{
-    .typeT = .undefined,
-    .rcCandidate = false,
-};
-
-pub const NoneType = Type{
-    .typeT = .none,
-    .rcCandidate = false,
-};
-
-pub const PointerType = Type{
-    .typeT = .pointer,
-    .rcCandidate = true,
-};
-
-pub const AnyType = Type{
-    .typeT = .any,
-    .rcCandidate = true,
-};
-
-pub const BoolType = Type{
-    .typeT = .boolean,
-    .rcCandidate = false,
-};
-
-pub const IntegerType = Type{
-    .typeT = .int,
-    .rcCandidate = false,
-};
-
-pub const NumberType = Type{
-    .typeT = .number,
-    .rcCandidate = false,
-};
-
-/// Number literals can represent a number or integer.
-pub const NumberLitType = Type{
-    .typeT = .numberLit,
-    .rcCandidate = false,
-};
-
-pub const StaticStringType = Type{
-    .typeT = .string,
-    .rcCandidate = false,
-    .inner = .{
-        .string = .{
-            .isStaticString = true,
-        }
-    },
-};
-
-pub const StringType = Type{
-    .typeT = .string,
-    .rcCandidate = true,
-    .inner = .{
-        .string = .{
-            .isStaticString = false,
-        }
-    },
-};
-
-pub const RawstringType = Type{
-    .typeT = .rawstring,
-    .rcCandidate = true,
-};
-
-pub const FiberType = Type{
-    .typeT = .fiber,
-    .rcCandidate = true,
-};
-
-pub const MetaTypeType = Type{
-    .typeT = .metatype,
-    .rcCandidate = true,
-};
-
-pub const ListType = Type{
-    .typeT = .list,
-    .rcCandidate = true,
-};
-
-pub const SymbolType = Type{
-    .typeT = .symbol,
-    .rcCandidate = false,
-};
-
-pub const ErrorType = Type{
-    .typeT = .err,
-    .rcCandidate = false,
-};
-
-pub fn initResolvedSymType(rSymId: ResolvedSymId) Type {
-    return .{
-        .typeT = .rsym,
-        .rcCandidate = true,
-        .inner = .{
-            .rsym = .{
-                .rSymId = rSymId,
-            },
-        },
-    };
 }
-
-pub fn initEnumType(enumId: u32) Type {
-    return .{
-        .typeT = .enumT,
-        .rcCandidate = false,
-        .inner = .{
-            .enumT = .{
-                .enumId = @intCast(u8, enumId),
-            },
-        },
-    };
-}
-
-pub const MapType = Type{
-    .typeT = .map,
-    .rcCandidate = true,
-};
 
 test "Internals." {
-    try t.eq(@sizeOf(Type), 8);
 }

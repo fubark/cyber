@@ -50,10 +50,7 @@ pub const VMcompiler = struct {
     importTasks: std.ArrayListUnmanaged(ImportTask),
 
     /// Stack for building func signatures. (eg. for nested func calls)
-    typeStack: std.ArrayListUnmanaged(types.Type),
-
-    /// Buffer for building func signatures.
-    tempTypes: std.ArrayListUnmanaged(types.Type),
+    typeStack: std.ArrayListUnmanaged(types.TypeId),
 
     /// Reused for SymIds.
     tempSyms: std.ArrayListUnmanaged(sema.ResolvedSymId),
@@ -74,7 +71,6 @@ pub const VMcompiler = struct {
             .importTasks = .{},
             .moduleLoaders = .{},
             .deinitedRtObjects = false,
-            .tempTypes = .{},
             .tempSyms = .{},
             .typeStack = .{},
         };
@@ -132,11 +128,9 @@ pub const VMcompiler = struct {
 
         if (reset) {
             self.typeStack.clearRetainingCapacity();
-            self.tempTypes.clearRetainingCapacity();
             self.tempSyms.clearRetainingCapacity();
         } else {
             self.typeStack.deinit(self.alloc);
-            self.tempTypes.deinit(self.alloc);
             self.tempSyms.deinit(self.alloc);
         }
     }
@@ -176,39 +170,41 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameMetatype);
 
         // Add builtins types as resolved syms.
-        id = try sema.addResolvedBuiltinSym(self, .any, "any", rt.AnyT);
+        id = try sema.addResolvedBuiltinSym(self, "any", rt.AnyT);
         std.debug.assert(id == bt.Any);
-        id = try sema.addResolvedBuiltinSym(self, .boolean, "boolean", rt.BooleanT);
+        id = try sema.addResolvedBuiltinSym(self, "boolean", rt.BooleanT);
         std.debug.assert(id == bt.Boolean);
-        id = try sema.addResolvedBuiltinSym(self, .number, "number", rt.NumberT);
+        id = try sema.addResolvedBuiltinSym(self, "number", rt.NumberT);
         std.debug.assert(id == bt.Number);
-        id = try sema.addResolvedBuiltinSym(self, .int, "int", rt.IntegerT);
+        id = try sema.addResolvedBuiltinSym(self, "int", rt.IntegerT);
         std.debug.assert(id == bt.Integer);
-        id = try sema.addResolvedBuiltinSym(self, .string, "string", rt.StringUnionT);
+        id = try sema.addResolvedBuiltinSym(self, "string", rt.StringUnionT);
         std.debug.assert(id == bt.String);
-        id = try sema.addResolvedBuiltinSym(self, .rawstring, "rawstring", rt.RawstringUnionT);
+        id = try sema.addResolvedBuiltinSym(self, "rawstring", rt.RawstringUnionT);
         std.debug.assert(id == bt.Rawstring);
-        id = try sema.addResolvedBuiltinSym(self, .symbol, "symbol", rt.SymbolT);
+        id = try sema.addResolvedBuiltinSym(self, "symbol", rt.SymbolT);
         std.debug.assert(id == bt.Symbol);
-        id = try sema.addResolvedBuiltinSym(self, .list, "List", rt.ListT);
+        id = try sema.addResolvedBuiltinSym(self, "List", rt.ListT);
         std.debug.assert(id == bt.List);
-        id = try sema.addResolvedBuiltinSym(self, .map, "Map", rt.MapT);
+        id = try sema.addResolvedBuiltinSym(self, "Map", rt.MapT);
         std.debug.assert(id == bt.Map);
-        id = try sema.addResolvedBuiltinSym(self, .pointer, "pointer", rt.PointerT);
+        id = try sema.addResolvedBuiltinSym(self, "pointer", rt.PointerT);
         std.debug.assert(id == bt.Pointer);
-        id = try sema.addResolvedBuiltinSym(self, .none, "none", rt.NoneT);
+        id = try sema.addResolvedBuiltinSym(self, "none", rt.NoneT);
         std.debug.assert(id == bt.None);
-        id = try sema.addResolvedBuiltinSym(self, .err, "error", rt.ErrorT);
+        id = try sema.addResolvedBuiltinSym(self, "error", rt.ErrorT);
         std.debug.assert(id == bt.Error);
-        id = try sema.addResolvedBuiltinSym(self, .fiber, "fiber", rt.FiberT);
+        id = try sema.addResolvedBuiltinSym(self, "fiber", rt.FiberT);
         std.debug.assert(id == bt.Fiber);
-        id = try sema.addResolvedBuiltinSym(self, .metatype, "metatype", rt.MetaTypeT);
+        id = try sema.addResolvedBuiltinSym(self, "metatype", rt.MetaTypeT);
         std.debug.assert(id == bt.MetaType);
 
         id = try sema.addResolvedInternalSym(self, "number");
         std.debug.assert(id == bt.NumberLit);
         id = try sema.addResolvedInternalSym(self, "undefined");
         std.debug.assert(id == bt.Undefined);
+        id = try sema.addResolvedInternalSym(self, "string");
+        std.debug.assert(id == bt.StaticString);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

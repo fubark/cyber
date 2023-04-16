@@ -5,11 +5,12 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const rt = cy.rt;
 const types = cy.types;
-const Type = types.Type;
 const bt = types.BuiltinTypeSymIds;
 const Nullable = cy.Nullable;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
+
+const TypeId = types.TypeId;
 
 const vm_ = @import("vm.zig");
 
@@ -37,7 +38,7 @@ pub const LocalVarId = u32;
 pub const LocalVar = struct {
     /// The current type of the var as the ast is traversed.
     /// This is updated when there is a variable assignment or a child block returns.
-    vtype: Type,
+    vtype: TypeId,
 
     /// If non-null, points to the captured var idx in the closure.
     capturedIdx: u8 = cy.NullU8,
@@ -90,7 +91,7 @@ pub const CapVarDesc = packed union {
 
 const VarAndType = struct {
     id: LocalVarId,
-    vtype: Type,
+    vtype: TypeId,
 };
 
 pub const SubBlockId = u32;
@@ -109,7 +110,7 @@ pub const SubBlock = struct {
     /// If the var was first assigned in a parent sub block, the type is saved in the map to
     /// be merged later with the ending var type.
     /// Can be freed after the end of block.
-    prevVarTypes: std.AutoHashMapUnmanaged(LocalVarId, Type),
+    prevVarTypes: std.AutoHashMapUnmanaged(LocalVarId, TypeId),
 
     /// Start of vars assigned in this block in `assignedVarStack`.
     /// When leaving this block, all assigned var types in this block are merged
@@ -200,11 +201,11 @@ pub const Block = struct {
         }
     }
 
-    fn getReturnType(self: *const Block, c: *cy.Chunk) !Type {
+    fn getReturnType(self: *const Block, c: *cy.Chunk) !TypeId {
         if (self.funcDeclId != cy.NullId) {
-            return c.semaFuncDecls.items[self.funcDeclId].getReturnType(c);
+            return c.semaFuncDecls.items[self.funcDeclId].getReturnType();
         } else {
-            return types.AnyType;
+            return bt.Any;
         }
     }
 };
@@ -258,7 +259,7 @@ pub const ResolvedFuncSym = struct {
     key: AbsResolvedFuncSymKey,
 
     /// Return type.
-    retType: Type,
+    retType: TypeId,
 
     /// Whether this func has a static initializer.
     hasStaticInitializer: bool,
@@ -307,6 +308,7 @@ const ResolvedSymData = extern union {
     },
     enumType: extern struct {
         modId: ModuleId,
+        enumId: u32,
     },
     enumMember: extern struct {
         enumId: u32,
@@ -318,8 +320,6 @@ const ResolvedSymData = extern union {
     builtinType: extern struct {
         modId: ModuleId,
         typeId: rt.TypeId,
-        // TypeTag.
-        typeT: u8,
     },
 };
 
@@ -883,7 +883,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 const rtype = try semaExpr(c, node.head.left_right.right);
                 _ = try assignVar(c, node.head.left_right.left, rtype, .captureAssign);
             } else {
-                _ = try assignVar(c, node.head.left_right.left, types.UndefinedType, .captureAssign);
+                _ = try assignVar(c, node.head.left_right.left, bt.Undefined, .captureAssign);
             }
         },
         .staticDecl => {
@@ -893,7 +893,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 const rtype = try semaExpr(c, node.head.left_right.right);
                 _ = try assignVar(c, node.head.left_right.left, rtype, .staticAssign);
             } else {
-                _ = try assignVar(c, node.head.left_right.left, types.UndefinedType, .staticAssign);
+                _ = try assignVar(c, node.head.left_right.left, bt.Undefined, .staticAssign);
             }
         },
         .typeAliasDecl => {
@@ -934,7 +934,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const optt = try semaExpr(c, node.head.whileOptStmt.opt);
             if (node.head.whileOptStmt.some != cy.NullId) {
-                _ = try ensureLocalBodyVar(c, node.head.whileOptStmt.some, types.AnyType);
+                _ = try ensureLocalBodyVar(c, node.head.whileOptStmt.some, bt.Any);
                 _ = try assignVar(c, node.head.whileOptStmt.some, optt, .assign);
             }
 
@@ -955,9 +955,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             if (node.head.for_iter_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
                 if (eachClause.head.eachClause.key != cy.NullId) {
-                    _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, types.AnyType);
+                    _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, bt.Any);
                 }
-                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, types.AnyType);
+                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, bt.Any);
             }
 
             try semaStmts(c, node.head.for_iter_stmt.body_head);
@@ -968,7 +968,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             if (node.head.for_range_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
-                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, types.NumberType);
+                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, bt.Number);
             }
 
             const range_clause = c.nodes[node.head.for_range_stmt.range_clause];
@@ -1013,7 +1013,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             try pushSubBlock(c);
             if (node.head.tryStmt.errorVar != cy.NullId) {
-                _ = try ensureLocalBodyVar(c, node.head.tryStmt.errorVar, types.ErrorType);
+                _ = try ensureLocalBodyVar(c, node.head.tryStmt.errorVar, bt.Error);
             }
             try semaStmts(c, node.head.tryStmt.catchFirstStmt);
             try endSubBlock(c);
@@ -1091,7 +1091,7 @@ fn setLocalSym(chunk: *cy.Chunk, nameId: NameSymId, sym: LocalSym) !void {
     try chunk.localSyms.put(chunk.alloc, key, sym);
 }
 
-fn matchBlock(c: *cy.Chunk, nodeId: cy.NodeId, canBreak: bool) !Type {
+fn matchBlock(c: *cy.Chunk, nodeId: cy.NodeId, canBreak: bool) !TypeId {
     const node = c.nodes[nodeId];
     _ = try semaExpr(c, node.head.matchBlock.expr);
 
@@ -1119,9 +1119,9 @@ fn matchBlock(c: *cy.Chunk, nodeId: cy.NodeId, canBreak: bool) !Type {
     }
 
     if (canBreak) {
-        return types.AnyType;
+        return bt.Any;
     } else {
-        return types.UndefinedType;
+        return bt.Undefined;
     }
 }
 
@@ -1423,41 +1423,41 @@ fn varDecl(c: *cy.Chunk, nodeId: cy.NodeId, exported: bool) !void {
     }
 }
 
-fn flexExpr(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!Type {
+fn flexExpr(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!TypeId {
     const node = c.nodes[nodeId];
     const reqType = switch (node.node_t) {
         .number,
-        .nonDecInt => types.NumberLitType,
-        else => types.AnyType,
+        .nonDecInt => bt.NumberLit,
+        else => bt.Any,
     };
     return semaExprType(c, nodeId, reqType);
 }
 
-fn semaExpr(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!Type {
-    const res = try semaExprInner(c, nodeId, types.AnyType);
-    c.nodeTypes[nodeId] = types.typeToResolvedSym(res);
+fn semaExpr(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!TypeId {
+    const res = try semaExprInner(c, nodeId, bt.Any);
+    c.nodeTypes[nodeId] = res;
     return res;
 }
 
-fn semaExprType(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
+fn semaExprType(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!TypeId {
     const res = try semaExprInner(c, nodeId, reqType);
-    c.nodeTypes[nodeId] = types.typeToResolvedSym(res);
+    c.nodeTypes[nodeId] = res;
     return res;
 }
 
-fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
+fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!TypeId {
     c.curNodeId = nodeId;
     const node = c.nodes[nodeId];
     // log.debug("sema expr {}", .{node.node_t});
     switch (node.node_t) {
         .true_literal => {
-            return types.BoolType;
+            return bt.Boolean;
         },
         .false_literal => {
-            return types.BoolType;
+            return bt.Boolean;
         },
         .none => {
-            return types.NoneType;
+            return bt.None;
         },
         .arr_literal => {
             var expr_id = node.head.child_head;
@@ -1467,13 +1467,13 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 _ = try semaExpr(c, expr_id);
                 expr_id = expr.next;
             }
-            return types.ListType;
+            return bt.List;
         },
         .symbolLit => {
-            return types.SymbolType;
+            return bt.Symbol;
         },
         .errorSymLit => {
-            return types.ErrorType;
+            return bt.Error;
         },
         .objectInit => {
             _ = try semaExpr(c, node.head.objectInit.name);
@@ -1497,7 +1497,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                         _ = try semaExpr(c, entry.head.mapEntry.right);
                         entry_id = entry.next;
                     }
-                    return types.initResolvedSymType(crSymId.id);
+                    return crSymId.id;
                 }
             }
 
@@ -1513,7 +1513,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 _ = try semaExpr(c, entry.head.mapEntry.right);
                 entry_id = entry.next;
             }
-            return types.MapType;
+            return bt.Map;
         },
         .nonDecInt => {
             const literal = c.getNodeTokenString(node);
@@ -1558,37 +1558,37 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 },
             };
             const canBeInt = std.math.cast(i32, val) != null;
-            if (reqType.typeT == .numberLit) {
-                return types.NumberLitType;
-            } else if (reqType.typeT == .int) {
+            if (reqType == bt.NumberLit) {
+                return bt.NumberLit;
+            } else if (reqType == bt.Integer) {
                 if (canBeInt) {
-                    return types.IntegerType;
+                    return bt.Integer;
                 } else {
                     return c.reportError("Number literal can not be an integer.", &.{});
                 }
             } else {
-                return types.NumberType;
+                return bt.Number;
             }
         },
         .number => {
-            if (reqType.typeT == .numberLit) {
-                return types.NumberLitType;
-            } else if (reqType.typeT == .int) {
+            if (reqType == bt.NumberLit) {
+                return bt.NumberLit;
+            } else if (reqType == bt.Integer) {
                 const literal = c.getNodeTokenString(node);
                 const val = try std.fmt.parseFloat(f64, literal);
                 if (cy.Value.floatCanBeInteger(val)) {
                     const int = @floatToInt(i64, val);
                     if (std.math.cast(i32, int) != null) {
-                        return types.IntegerType;
+                        return bt.Integer;
                     }
                 }
                 return c.reportError("Number literal can not be an integer.", &.{});
             } else {
-                return types.NumberType;
+                return bt.Number;
             }
         },
         .string => {
-            return types.StaticStringType;
+            return bt.StaticString;
         },
         .stringTemplate => {
             var expStringPart = true;
@@ -1601,7 +1601,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 curId = cur.next;
                 expStringPart = !expStringPart;
             }
-            return types.StringType;
+            return bt.String;
         },
         .ident => {
             return identifier(c, nodeId);
@@ -1615,7 +1615,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 const else_clause = c.nodes[node.head.if_expr.else_clause];
                 _ = try semaExpr(c, else_clause.head.child_head);
             }
-            return types.AnyType;
+            return bt.Any;
         },
         .sliceExpr => {
             _ = try semaExpr(c, node.head.sliceExpr.arr);
@@ -1631,7 +1631,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 _ = try semaExpr(c, node.head.sliceExpr.right);
             }
 
-            return types.ListType;
+            return bt.List;
         },
         .accessExpr => {
             return accessExpr(c, nodeId);
@@ -1645,33 +1645,33 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
             } else {
                 _ = try semaExpr(c, node.head.left_right.right);
             }
-            return types.AnyType;
+            return bt.Any;
         },
         .tryExpr => {
             _ = try semaExpr(c, node.head.tryExpr.expr);
             if (node.head.tryExpr.elseExpr != cy.NullId) {
                 _ = try semaExpr(c, node.head.tryExpr.elseExpr);
             }
-            return types.AnyType;
+            return bt.Any;
         },
         .throwExpr => {
             _ = try semaExpr(c, node.head.child_head);
-            return types.AnyType;
+            return bt.Any;
         },
         .unary_expr => {
             const op = node.head.unary.op;
             switch (op) {
                 .minus => {
                     _ = try semaExpr(c, node.head.unary.child);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .not => {
                     _ = try semaExpr(c, node.head.unary.child);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 .bitwiseNot => {
                     _ = try semaExpr(c, node.head.unary.child);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
             }
@@ -1683,8 +1683,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
             _ = try semaExpr(c, node.head.castExpr.expr);
             const rTypeSymId = try getOrResolveTypeSymFromSpecNode(c, node.head.castExpr.typeSpecHead);
             c.nodes[nodeId].head.castExpr.semaTypeSymId = rTypeSymId;
-            
-            return types.initResolvedSymType(rTypeSymId);
+            return rTypeSymId;
         },
         .binExpr => {
             const left = node.head.binExpr.left;
@@ -1697,106 +1696,106 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                 .percent => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .caret => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .plus,
                 .minus => {
                     const leftT = try semaExprType(c, left, reqType);
                     const rightT = try semaExprType(c, right, leftT);
 
-                    if (leftT.typeT == .int and rightT.typeT == .int) {
-                        return types.IntegerType;
+                    if (leftT == bt.Integer and rightT == bt.Integer) {
+                        return bt.Integer;
                     } else {
-                        return types.NumberType;
+                        return bt.Number;
                     }
                 },
                 .bitwiseAnd => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .bitwiseOr => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .bitwiseXor => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .bitwiseLeftShift => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .bitwiseRightShift => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.NumberType;
+                    return bt.Number;
                 },
                 .and_op => {
                     const ltype = try semaExpr(c, left);
                     const rtype = try semaExpr(c, right);
-                    if (ltype.typeT == rtype.typeT) {
+                    if (ltype == rtype) {
                         return ltype;
-                    } else return types.AnyType;
+                    } else return bt.Any;
                 },
                 .or_op => {
                     const ltype = try semaExpr(c, left);
                     const rtype = try semaExpr(c, right);
-                    if (ltype.typeT == rtype.typeT) {
+                    if (ltype == rtype) {
                         return ltype;
-                    } else return types.AnyType;
+                    } else return bt.Any;
                 },
                 .bang_equal => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 .equal_equal => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 .less => {
                     const leftT = try semaExpr(c, left);
                     _ = try semaExprType(c, right, leftT);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 .less_equal => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 .greater => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 .greater_equal => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return types.BoolType;
+                    return bt.Boolean;
                 },
                 else => return c.reportErrorAt("Unsupported binary op: {}", &.{fmt.v(op)}, nodeId),
             }
         },
         .coyield => {
-            return types.AnyType;
+            return bt.Any;
         },
         .coresume => {
             _ = try semaExpr(c, node.head.child_head);
-            return types.AnyType;
+            return bt.Any;
         },
         .coinit => {
             _ = try semaExpr(c, node.head.child_head);
-            return types.FiberType;
+            return bt.Fiber;
         },
         .callExpr => {
             const callee = c.nodes[node.head.callExpr.callee];
@@ -1808,10 +1807,10 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                     defer c.compiler.typeStack.items.len = callArgStart;
 
                     // Push Any in case it's a method sym. pushCallArgs will ignore the self param.
-                    try c.compiler.typeStack.append(c.alloc, types.AnyType);
+                    try c.compiler.typeStack.append(c.alloc, bt.Any);
 
                     const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
-                    const reqRet = try types.typeFromResolvedSym(c, bt.Any);
+                    const reqRet = bt.Any;
 
                     const left = c.nodes[callee.head.accessExpr.left];
                     var crLeftSym = CompactResolvedSymId.initNull();
@@ -1840,13 +1839,13 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
 
                     // Dynamic method call.
                     const selfCallArgs = c.compiler.typeStack.items[callArgStart..];
-                    const rFuncSigId = try ensureResolvedFuncSigNonFlexTypes(c.compiler, selfCallArgs, reqRet);
+                    const rFuncSigId = try ensureResolvedFuncSigNonFlex(c.compiler, selfCallArgs, reqRet);
                     if (callArgs.hasFlexArg) {
                         updateFlexSelfArgTypes(c, node.head.callExpr.arg_head, selfCallArgs, rFuncSigId);
                     }
                     c.nodes[callee.head.accessExpr.right].head.ident.semaMethodSigId = rFuncSigId;
 
-                    return types.AnyType;
+                    return bt.Any;
                 } else if (callee.node_t == .ident) {
                     const name = c.getNodeTokenString(callee);
                     const res = try getOrLookupVar(c, name, .readSkipStaticVar);
@@ -1860,7 +1859,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                             _ = try semaExpr(c, arg_id);
                             arg_id = arg.next;
                         }
-                        return types.AnyType;
+                        return bt.Any;
                     } else {
                         const callArgStart = c.compiler.typeStack.items.len;
                         defer c.compiler.typeStack.items.len = callArgStart;
@@ -1871,7 +1870,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                         // defer c.funcCandidateStack.items.len = funcCandStart;
                         // const funcCandidates = try pushFuncCandidates(c, c.semaResolvedRootSymId, nameId, node.head.callExpr.numArgs);
                         const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
-                        const reqRet = try types.typeFromResolvedSym(c, bt.Any);
+                        const reqRet = bt.Any;
 
                         c.curNodeId = node.head.callExpr.callee;
                         if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes, reqRet)) |callRes| {
@@ -1883,7 +1882,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                             return callRes.retType;
                         }
 
-                        return types.AnyType;
+                        return bt.Any;
                     }
                 } else {
                     // All other callees are treated as function value calls.
@@ -1896,7 +1895,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
                     }
 
                     _ = try semaExpr(c, node.head.callExpr.callee);
-                    return types.AnyType;
+                    return bt.Any;
                 }
             } else return c.reportErrorAt("Unsupported named args", &.{}, nodeId);
         },
@@ -1916,7 +1915,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
 
             const rFuncSigId = try ensureResolvedUntypedFuncSig(c.compiler, func.numParams);
             func.inner.lambda.rFuncSigId = rFuncSigId;
-            return types.AnyType;
+            return bt.Any;
         },
         .lambda_expr => {
             const declId = try appendFuncDecl(c, nodeId, false);
@@ -1934,13 +1933,13 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
 
             const rFuncSigId = try ensureResolvedUntypedFuncSig(c.compiler, func.numParams);
             func.inner.lambda.rFuncSigId = rFuncSigId;
-            return types.AnyType;
+            return bt.Any;
         },
         else => return c.reportErrorAt("Unsupported node", &.{}, nodeId),
     }
 }
 
-fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !Type {
+fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
     const node = c.nodes[nodeId];
     const name = c.getNodeTokenString(node);
     const res = try getOrLookupVar(c, name, .read);
@@ -1958,13 +1957,13 @@ fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !Type {
         const rSym = c.compiler.sema.getResolvedSym(symRes.rSymId);
         switch (rSym.symT) {
             .variable => {
-                return try types.typeFromResolvedSym(c, rSym.inner.variable.rTypeSymId);
+                return rSym.inner.variable.rTypeSymId;
             },
             .builtinType => {
-                return types.MetaTypeType;
+                return bt.MetaType;
             },
             else => {
-                return types.AnyType;
+                return bt.Any;
             },
         }
     }
@@ -2089,10 +2088,10 @@ fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
             const param = c.nodes[curNode];
             const name = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
 
-            const paramT = try types.typeFromResolvedSym(c, rParamSymId);
+            try types.assertTypeSym(c, rParamSymId);
 
             c.curNodeId = curNode;
-            const id = try pushLocalVar(c, name, paramT);
+            const id = try pushLocalVar(c, name, rParamSymId);
             try sblock.params.append(c.alloc, id);
 
             curNode = param.next;
@@ -2100,7 +2099,7 @@ fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
     }
 
     // Add self receiver param.
-    var id = try pushLocalVar(c, "self", types.AnyType);
+    var id = try pushLocalVar(c, "self", bt.Any);
     try sblock.params.append(c.alloc, id);
 }
 
@@ -2115,8 +2114,8 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
             const param = chunk.nodes[curNode];
             const name = chunk.getNodeTokenString(chunk.nodes[param.head.funcParam.name]);
 
-            const paramT = try types.typeFromResolvedSym(chunk, rParamSymId);
-            const id = try pushLocalVar(chunk, name, paramT);
+            try types.assertTypeSym(chunk, rParamSymId);
+            const id = try pushLocalVar(chunk, name, rParamSymId);
             try sblock.params.append(chunk.alloc, id);
 
             curNode = param.next;
@@ -2124,7 +2123,7 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
     }
 }
 
-fn pushLocalVar(c: *cy.Chunk, name: []const u8, vtype: Type) !LocalVarId {
+fn pushLocalVar(c: *cy.Chunk, name: []const u8, vtype: TypeId) !LocalVarId {
     const sblock = curBlock(c);
     const id = @intCast(u32, c.vars.items.len);
     const res = try sblock.nameToVar.getOrPut(c.alloc, name);
@@ -2135,7 +2134,7 @@ fn pushLocalVar(c: *cy.Chunk, name: []const u8, vtype: Type) !LocalVarId {
         try c.vars.append(c.alloc, .{
             .name = if (builtin.mode == .Debug) name else {},
             .vtype = toLocalType(vtype),
-            .lifetimeRcCandidate = vtype.rcCandidate,
+            .lifetimeRcCandidate = types.isRcCandidateType(c.compiler, vtype),
         });
         return id;
     }
@@ -2148,7 +2147,7 @@ fn getVarPtr(self: *cy.Chunk, name: []const u8) ?*LocalVar {
 }
 
 fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, crSymId: CompactResolvedSymId) !LocalVarId {
-    const id = try pushLocalVar(c, name, types.AnyType);
+    const id = try pushLocalVar(c, name, bt.Any);
     c.vars.items[id].isStaticAlias = true;
     c.vars.items[id].inner.staticAlias = .{
         .crSymId = crSymId,
@@ -2156,7 +2155,7 @@ fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, crSymId: CompactResolvedSy
     return id;
 }
 
-fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: Type) !LocalVarId {
+fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: TypeId) !LocalVarId {
     const block = curBlock(self);
     const id = try pushLocalVar(self, name, vtype);
     const capturedIdx = @intCast(u8, block.captures.items.len);
@@ -2172,13 +2171,13 @@ fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, v
     return id;
 }
 
-fn pushLocalBodyVar(self: *cy.Chunk, name: []const u8, vtype: Type) !LocalVarId {
+fn pushLocalBodyVar(self: *cy.Chunk, name: []const u8, vtype: TypeId) !LocalVarId {
     const id = try pushLocalVar(self, name, vtype);
     try curBlock(self).locals.append(self.alloc, id);
     return id;
 }
 
-fn ensureLocalBodyVar(self: *cy.Chunk, ident: cy.NodeId, vtype: Type) !LocalVarId {
+fn ensureLocalBodyVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !LocalVarId {
     const node = self.nodes[ident];
     const name = self.getNodeTokenString(node);
     if (curBlock(self).nameToVar.get(name)) |varId| {
@@ -2424,7 +2423,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                     };
                 }
             }
-            const id = try pushLocalBodyVar(self, name, types.UndefinedType);
+            const id = try pushLocalBodyVar(self, name, bt.Undefined);
             return VarLookupResult{
                 .id = id,
                 .isLocal = true,
@@ -2458,21 +2457,20 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) ?LookupParentLocalResult {
     return null;
 }
 
-fn getTypeForResolvedValueSym(chunk: *cy.Chunk, crSymId: CompactResolvedSymId) !Type {
+fn getTypeForResolvedValueSym(chunk: *cy.Chunk, crSymId: CompactResolvedSymId) !TypeId {
     if (crSymId.isFuncSymId) {
-        return types.AnyType;
+        return bt.Any;
     } else {
         const rSym = chunk.compiler.sema.getResolvedSym(crSymId.id);
         switch (rSym.symT) {
             .variable => {
-                return types.typeFromResolvedSym(chunk, rSym.inner.variable.rTypeSymId);
+                return rSym.inner.variable.rTypeSymId;
             },
             .enumMember => {
-                const enumId = rSym.inner.enumMember.enumId;
-                return types.initEnumType(enumId);
+                return rSym.key.absResolvedSymKey.rParentSymId;
             },
             else => {
-                return types.AnyType;
+                return bt.Any;
             },
         }
     }
@@ -2496,7 +2494,7 @@ pub fn addResolvedInternalSym(c: *cy.VMcompiler, name: []const u8) !ResolvedSymI
     return id;
 }
 
-pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []const u8, typeId: rt.TypeId) !ResolvedSymId {
+pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, name: []const u8, typeId: rt.TypeId) !ResolvedSymId {
     const nameId = try ensureNameSym(c, name);
     const key = AbsResolvedSymKey{
         .absResolvedSymKey = .{
@@ -2515,7 +2513,6 @@ pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []co
         .inner = .{
             .builtinType = .{
                 .modId = modId,
-                .typeT = @enumToInt(typeT),
                 .typeId = typeId,
             },
         },
@@ -2528,11 +2525,11 @@ pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, typeT: types.TypeTag, name: []co
 
 fn addResolvedUntypedFuncSig(c: *cy.VMcompiler, numParams: u32) !ResolvedFuncSigId {
     // AnyType for params and return.
-    try c.tempTypes.resize(c.alloc, numParams);
-    for (c.tempTypes.items) |*stype| {
-        stype.* = types.AnyType;
+    try c.tempSyms.resize(c.alloc, numParams);
+    for (c.tempSyms.items) |*stype| {
+        stype.* = bt.Any;
     }
-    return ensureResolvedFuncSigTypes(c, c.tempTypes.items, types.AnyType);
+    return ensureResolvedFuncSig(c, c.tempSyms.items, bt.Any);
 }
 
 pub fn ensureResolvedUntypedFuncSig(c: *cy.VMcompiler, numParams: u32) !ResolvedFuncSigId {
@@ -2554,27 +2551,16 @@ pub fn ensureResolvedUntypedFuncSig(c: *cy.VMcompiler, numParams: u32) !Resolved
     return rFuncSigId;
 }
 
-fn ensureResolvedFuncSigNonFlexTypes(c: *cy.VMcompiler, params: []const Type, ret: Type) !ResolvedFuncSigId {
+fn ensureResolvedFuncSigNonFlex(c: *cy.VMcompiler, params: []const TypeId, ret: TypeId) !ResolvedFuncSigId {
     try c.tempSyms.resize(c.alloc, params.len);
     for (params, 0..) |param, i| {
-        const rSymId = types.typeToNonFlexResolvedSym(param);
+        const rSymId = types.toNonFlexType(param);
         c.tempSyms.items[i] = rSymId;
     }
-    const retSymId = types.typeToResolvedSym(ret);
-    return ensureResolvedFuncSig(c, c.tempSyms.items, retSymId);
+    return ensureResolvedFuncSig(c, c.tempSyms.items, ret);
 }
 
-fn ensureResolvedFuncSigTypes(c: *cy.VMcompiler, params: []const Type, ret: Type) !ResolvedFuncSigId {
-    try c.tempSyms.resize(c.alloc, params.len);
-    for (params, 0..) |param, i| {
-        const rSymId = types.typeToResolvedSym(param);
-        c.tempSyms.items[i] = rSymId;
-    }
-    const retSymId = types.typeToResolvedSym(ret);
-    return ensureResolvedFuncSig(c, c.tempSyms.items, retSymId);
-}
-
-pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const ResolvedSymId, ret: ResolvedSymId) !ResolvedFuncSigId {
+pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const TypeId, ret: TypeId) !ResolvedFuncSigId {
     const res = try c.sema.resolvedFuncSigMap.getOrPut(c.alloc, .{
         .paramPtr = params.ptr,
         .paramLen = @intCast(u32, params.len),
@@ -2588,13 +2574,13 @@ pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const ResolvedSymId, r
         var isTyped = false;
         for (params) |rSymId| {
             const rSym = c.sema.getResolvedSym(rSymId);
-            if (rSym.symT != .builtinType or rSym.inner.builtinType.typeT != @enumToInt(types.TypeTag.any)) {
+            if (rSym.symT != .builtinType or rSymId != bt.Any) {
                 isTyped = true;
                 break;
             }
         }
         const rRetSym = c.sema.getResolvedSym(ret);
-        if (rRetSym.symT != .builtinType or rRetSym.inner.builtinType.typeT != @enumToInt(types.TypeTag.any)) {
+        if (rRetSym.symT != .builtinType or ret != bt.Any) {
             isTyped = true;
         }
         try c.sema.resolvedFuncSigs.append(c.alloc, .{
@@ -2758,7 +2744,7 @@ fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: NameSymId) !
 // }
 
 /// Finds the first function that matches the constrained signature.
-fn findModuleSymForFuncCall(chunk: *cy.Chunk, modId: ModuleId, nameId: NameSymId, args: []const Type, ret: Type) !?ResolvedFuncSigId {
+fn findModuleSymForFuncCall(chunk: *cy.Chunk, modId: ModuleId, nameId: NameSymId, args: []const TypeId, ret: TypeId) !?ResolvedFuncSigId {
     const relKey = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
@@ -2819,7 +2805,7 @@ fn checkTypeSym(c: *cy.Chunk, rSymId: ResolvedSymId, nameId: NameSymId) !void {
 fn getOrResolveTypeSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: NameSymId) !ResolvedSymId {
     // Check builtin types.
     if (rParentSymId == chunk.semaResolvedRootSymId) {
-        if (nameId < types.BuiltinTypeTags.len) {
+        if (nameId < NameBuiltinTypeEnd) {
             return @intCast(ResolvedSymId, nameId);
         }
     }
@@ -3003,7 +2989,7 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId
         } else {
             // Check builtin types.
             if (rParentSymId == chunk.semaResolvedRootSymId) {
-                if (nameId < types.BuiltinTypeTags.len) {
+                if (nameId < NameBuiltinTypeEnd) {
                     return ResolvedSymResult{
                         .rSymId = @intCast(ResolvedSymId, nameId),
                         .rFuncSymId = cy.NullId,
@@ -3081,16 +3067,16 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId
 const FuncCallSymResult = struct {
     crSymId: CompactResolvedSymId,
     funcSigId: ResolvedFuncSigId,
-    retType: Type,
+    retType: TypeId,
 };
 
 /// Assumes rParentSymId is not null.
 /// Returns CompileError if the symbol exists but can't be used for a function call.
 /// Returns null if the symbol is missing but can still be used as an accessor.
 fn getOrResolveSymForFuncCall(
-    chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: NameSymId, args: []const Type, ret: Type
+    chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: NameSymId, args: []const TypeId, ret: TypeId
 ) !?FuncCallSymResult {
-    const rFuncSigId = try ensureResolvedFuncSigTypes(chunk.compiler, args, ret);
+    const rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, args, ret);
     log.debug("getFuncCallSym {}.{s}, sig: {s}", .{rParentSymId, getName(chunk.compiler, nameId), try getResolvedFuncSigTempStr(chunk.compiler, rFuncSigId)} );
 
     // TODO: Cache lookup by rSymId and rFuncSigId.
@@ -3108,7 +3094,7 @@ fn getOrResolveSymForFuncCall(
         if (chunk.localSyms.get(key)) |sym| {
             rParentSymIdFinal = sym.rParentSymId;
         } else {
-            if (nameId < types.BuiltinTypeTags.len) {
+            if (nameId < NameBuiltinTypeEnd) {
                 rParentSymIdFinal = cy.NullId;
             }
         }
@@ -3130,7 +3116,7 @@ fn getOrResolveSymForFuncCall(
                 return FuncCallSymResult{
                     .crSymId = CompactResolvedSymId.initSymId(rSymId),
                     .funcSigId = rFuncSigId,
-                    .retType = types.AnyType,
+                    .retType = bt.Any,
                 };
             },
             .builtinType,
@@ -3194,7 +3180,7 @@ fn getOrResolveSymForFuncCall(
                 } else {
                     return FuncCallSymResult{
                         .crSymId = crSymId,
-                        .retType = types.AnyType,
+                        .retType = bt.Any,
                         .funcSigId = mod_rFuncSigId,
                     };
                 }
@@ -3523,8 +3509,11 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: ModuleId, nameId: NameSymId, rF
                 const id = try self.sema.addResolvedSym(key, .enumType, .{
                     .enumType = .{
                         .modId = modSym.inner.enumType.modId,
+                        .enumId = modSym.inner.enumType.rtEnumId,
                     },
                 });
+                const enumMod = self.sema.getModulePtr(modSym.inner.enumType.modId);
+                enumMod.resolvedRootSymId = id;
                 return CompactResolvedSymId.initSymId(id);
             },
             .enumMember => {
@@ -3624,30 +3613,28 @@ pub fn endBlock(self: *cy.Chunk) !void {
     self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
 }
 
-pub fn getAccessExprType(c: *cy.Chunk, ltype: Type, rightName: []const u8) !Type {
-    if (ltype.typeT == .rsym) {
-        const sym = c.compiler.sema.getResolvedSym(ltype.inner.rsym.rSymId);
-        if (sym.symT == .object) {
-            const typeId = sym.inner.object.typeId;
-            const rtFieldId = try c.compiler.vm.ensureFieldSym(rightName);
-            var offset: u8 = undefined;
-            const symMap = c.compiler.vm.fieldSyms.buf[rtFieldId];
-            if (typeId == symMap.mruTypeId) {
-                offset = @intCast(u8, symMap.mruOffset);
-            } else {
-                offset = @call(.never_inline, c.compiler.vm.getFieldOffsetFromTable, .{typeId, rtFieldId});
-            }
-            if (offset == cy.NullU8) {
-                const name = c.compiler.vm.types.buf[typeId].name;
-                return c.reportError("Missing field `{}` for type: {}", &.{v(rightName), v(name)});
-            }
-            return types.typeFromResolvedSym(c, c.compiler.vm.fieldSyms.buf[rtFieldId].mruFieldTypeSymId);
+pub fn getAccessExprType(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !TypeId {
+    const sym = c.compiler.sema.getResolvedSym(ltype);
+    if (sym.symT == .object) {
+        const typeId = sym.inner.object.typeId;
+        const rtFieldId = try c.compiler.vm.ensureFieldSym(rightName);
+        var offset: u8 = undefined;
+        const symMap = c.compiler.vm.fieldSyms.buf[rtFieldId];
+        if (typeId == symMap.mruTypeId) {
+            offset = @intCast(u8, symMap.mruOffset);
+        } else {
+            offset = @call(.never_inline, c.compiler.vm.getFieldOffsetFromTable, .{typeId, rtFieldId});
         }
+        if (offset == cy.NullU8) {
+            const name = c.compiler.vm.types.buf[typeId].name;
+            return c.reportError("Missing field `{}` for type: {}", &.{v(rightName), v(name)});
+        }
+        return c.compiler.vm.fieldSyms.buf[rtFieldId].mruFieldTypeSymId;
     }
-    return types.AnyType;
+    return bt.Any;
 }
 
-fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !Type {
+fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
     const node = self.nodes[nodeId];
     const right = self.nodes[node.head.accessExpr.right];
 
@@ -3676,7 +3663,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !Type {
                 } else {
                     const leftSym = self.compiler.sema.getResolvedSym(leftSymRes.rSymId);
                     if (leftSym.symT == .variable) {
-                        const vtype = types.initResolvedSymType(leftSym.inner.variable.rTypeSymId);
+                        const vtype = leftSym.inner.variable.rTypeSymId;
                         return getAccessExprType(self, vtype, rightName);
                     }
                 }
@@ -3708,7 +3695,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !Type {
             _ = try semaExpr(self, node.head.accessExpr.left);
         }
     }
-    return types.AnyType;
+    return bt.Any;
 }
 
 const VarResult = struct {
@@ -3717,12 +3704,12 @@ const VarResult = struct {
 };
 
 /// To a local type before assigning to a local variable.
-fn toLocalType(vtype: Type) Type {
-    stdx.debug.dassert(vtype.typeT != .numberLit);
+fn toLocalType(vtype: TypeId) TypeId {
+    stdx.debug.dassert(vtype != bt.NumberLit);
     return vtype;
 }
 
-fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: Type, strat: VarLookupStrategy) !void {
+fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId, strat: VarLookupStrategy) !void {
     // log.debug("set var {s}", .{name});
     const node = self.nodes[ident];
     const name = self.getNodeTokenString(node);
@@ -3748,7 +3735,7 @@ fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: Type, strat: VarLookupStr
         // Update current type after checking for branched assignment.
         if (!types.isSameType(svar.vtype, vtype)) {
             svar.vtype = toLocalType(vtype);
-            if (!svar.lifetimeRcCandidate and vtype.rcCandidate) {
+            if (!svar.lifetimeRcCandidate and types.isRcCandidateType(self.compiler, vtype)) {
                 svar.lifetimeRcCandidate = true;
             }
         }
@@ -3780,8 +3767,8 @@ fn endSubBlock(self: *cy.Chunk) !void {
             // log.debug("merging {s}", .{self.getVarName(varId)});
             if (ssblock.prevVarTypes.get(varId)) |prevt| {
                 // Update current var type by merging.
-                if (svar.vtype.typeT != prevt.typeT) {
-                    svar.vtype = types.AnyType;
+                if (svar.vtype != prevt) {
+                    svar.vtype = bt.Any;
 
                     // Previous sub block hasn't recorded the var assignment.
                     if (!pssblock.prevVarTypes.contains(varId)) {
@@ -3815,11 +3802,11 @@ fn endIterSubBlock(self: *cy.Chunk) !void {
     for (self.assignedVarStack.items[ssblock.assignedVarStart..]) |varId| {
         const svar = self.vars.items[varId];
         if (ssblock.prevVarTypes.get(varId)) |prevt| {
-            if (svar.vtype.typeT != prevt.typeT) {
+            if (svar.vtype != prevt) {
                 // Type differs from prev scope type. Record change for iter block codegen.
                 try ssblock.iterVarBeginTypes.append(self.alloc, .{
                     .id = varId,
-                    .vtype = types.AnyType,
+                    .vtype = bt.Any,
                 });
             }
         } else {
@@ -4196,11 +4183,12 @@ fn setResolvedFunc(self: *cy.Chunk, key: AbsResolvedSymKey, rFuncSigId: Resolved
     const retSymId = rFuncSig.getRetTypeSymId();
 
     const rfsymId = @intCast(u32, c.sema.resolvedFuncSyms.items.len);
+    try types.assertTypeSym(self, retSymId);
     try c.sema.resolvedFuncSyms.append(c.alloc, .{
         .chunkId = self.id,
         .declId = declId,
         .key = funcKey,
-        .retType = try types.typeFromResolvedSym(self, retSymId),
+        .retType = retSymId,
         .hasStaticInitializer = false,
     });
     try @call(.never_inline, c.sema.resolvedFuncSymMap.put, .{c.alloc, funcKey, rfsymId});
@@ -4287,27 +4275,27 @@ fn endFuncSymBlock(self: *cy.Chunk, numParams: u32) !void {
 }
 
 const PushCallArgsResult = struct {
-    argTypes: []const Type,
+    argTypes: []const TypeId,
     hasFlexArg: bool,
 };
 
-fn updateFlexSelfArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const Type, funcSigId: ResolvedFuncSigId) void {
+fn updateFlexSelfArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeId, funcSigId: ResolvedFuncSigId) void {
     const funcSig = c.compiler.sema.getResolvedFuncSig(funcSigId);
     updateFlexArgTypes2(c, argHead, argTypes[1..], funcSig.params()[1..]);
 }
 
-fn updateFlexArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const Type, funcSigId: ResolvedFuncSigId) void {
+fn updateFlexArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeId, funcSigId: ResolvedFuncSigId) void {
     const funcSig = c.compiler.sema.getResolvedFuncSig(funcSigId);
     updateFlexArgTypes2(c, argHead, argTypes, funcSig.params());
 }
 
-fn updateFlexArgTypes2(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const Type, paramTypes: []const ResolvedSymId) void {
+fn updateFlexArgTypes2(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeId, paramTypes: []const TypeId) void {
     var cur = argHead;
     for (paramTypes, 0..) |param, i| {
         const arg = c.nodes[cur];
-        if (argTypes[i].isFlexibleType()) {
-            switch (argTypes[i].typeT) {
-                .numberLit => {
+        if (types.isFlexibleType(argTypes[i])) {
+            switch (argTypes[i]) {
+                bt.NumberLit => {
                     if (param == bt.Integer) {
                         c.nodeTypes[cur] = bt.Integer;
                     } else {
@@ -4328,7 +4316,7 @@ fn pushCallArgs(c: *cy.Chunk, argHead: cy.NodeId) !PushCallArgsResult {
     while (nodeId != cy.NullId) {
         const arg = c.nodes[nodeId];
         const argT = try flexExpr(c, nodeId);
-        hasFlexArg = hasFlexArg or argT.isFlexibleType();
+        hasFlexArg = hasFlexArg or types.isFlexibleType(argT);
         try c.compiler.typeStack.append(c.alloc, argT);
         nodeId = arg.next;
     }
@@ -4377,6 +4365,7 @@ pub const NameNone = 10;
 pub const NameError = 11;
 pub const NameFiber = 12;
 pub const NameMetatype = 13;
+pub const NameBuiltinTypeEnd = 14;
 
 pub const FuncDeclId = u32;
 
@@ -4423,11 +4412,11 @@ pub const FuncDecl = struct {
         return self.rRetTypeSymId != cy.NullId;
     }
 
-    fn getReturnType(self: *const FuncDecl, c: *cy.Chunk) !Type {
+    fn getReturnType(self: *const FuncDecl) !TypeId {
         if (!self.hasReturnTypeSpec()) {
-            return types.AnyType;
+            return bt.Any;
         } else {
-            return try types.typeFromResolvedSym(c, self.rRetTypeSymId);
+            return self.rRetTypeSymId;
         }
     }
 
@@ -4686,8 +4675,8 @@ pub fn unescapeAsciiChar(ch: u8) ?u8 {
 }
 
 test "Internals." {
-    try t.eq(@sizeOf(LocalVar), 40);
-    try t.eq(@sizeOf(ResolvedFuncSym), 32);
+    try t.eq(@sizeOf(LocalVar), 32);
+    try t.eq(@sizeOf(ResolvedFuncSym), 24);
     try t.eq(@sizeOf(ResolvedFuncSig), 16);
     try t.eq(@sizeOf(ResolvedSym), 24);
     try t.eq(@sizeOf(Name), 16);

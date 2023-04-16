@@ -2660,9 +2660,9 @@ pub const Parser = struct {
                         token = self.peekToken();
                         if (token.tag() == .right_bracket) {
                             self.advanceToken();
-                            const res = try self.pushNode(.arr_range_expr, start);
+                            const res = try self.pushNode(.sliceExpr, start);
                             self.nodes.items[res].head = .{
-                                .arr_range_expr = .{
+                                .sliceExpr = .{
                                     .arr = left_id,
                                     .left = NullId,
                                     .right = right_range,
@@ -2681,7 +2681,7 @@ pub const Parser = struct {
                         token = self.peekToken();
                         if (token.tag() == .right_bracket) {
                             self.advanceToken();
-                            const access_id = try self.pushNode(.arr_access_expr, start);
+                            const access_id = try self.pushNode(.indexExpr, start);
                             self.nodes.items[access_id].head = .{
                                 .left_right = .{
                                     .left = left_id,
@@ -2696,9 +2696,9 @@ pub const Parser = struct {
                             if (token.tag() == .right_bracket) {
                                 // Start index to end of list slice.
                                 self.advanceToken();
-                                const res = try self.pushNode(.arr_range_expr, start);
+                                const res = try self.pushNode(.sliceExpr, start);
                                 self.nodes.items[res].head = .{
-                                    .arr_range_expr = .{
+                                    .sliceExpr = .{
                                         .arr = left_id,
                                         .left = expr_id,
                                         .right = NullId,
@@ -2713,9 +2713,9 @@ pub const Parser = struct {
                                 token = self.peekToken();
                                 if (token.tag() == .right_bracket) {
                                     self.advanceToken();
-                                    const res = try self.pushNode(.arr_range_expr, start);
+                                    const res = try self.pushNode(.sliceExpr, start);
                                     self.nodes.items[res].head = .{
-                                        .arr_range_expr = .{
+                                        .sliceExpr = .{
                                             .arr = left_id,
                                             .left = expr_id,
                                             .right = right_expr,
@@ -2786,7 +2786,7 @@ pub const Parser = struct {
     fn returnLeftAssignExpr(self: *Parser, leftId: NodeId, outIsAssignStmt: *bool) !NodeId {
         switch (self.nodes.items[leftId].node_t) {
             .accessExpr,
-            .arr_access_expr,
+            .indexExpr,
             .ident => {
                 outIsAssignStmt.* = true;
                 return leftId;
@@ -3384,8 +3384,8 @@ pub const NodeType = enum {
     stringTemplate,
     await_expr,
     accessExpr,
-    arr_access_expr,
-    arr_range_expr,
+    indexExpr,
+    sliceExpr,
     callExpr,
     named_arg,
     binExpr,
@@ -3629,7 +3629,7 @@ pub const Node = struct {
             value: NodeId,
             key: NodeId,
         },
-        arr_range_expr: struct {
+        sliceExpr: struct {
             arr: NodeId,
             left: NodeId,
             right: NodeId,

@@ -1788,13 +1788,10 @@ test "Indentation." {
 }
 
 test "Integers." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    _ = try run.eval(
+    try evalPass(.{}, 
         \\import t 'test'
         \\
-        \\-- Once a int requestable number constant is assigned to a local, it loses that trait and becomes a number.
+        \\-- Once a number literal is assigned to untyped local, it becomes a number.
         \\a = 10
         \\t.eq(a < 4, false) -- This should generate less op. If lessInt is generated this would be `true` because the @bitCast(i32, lower a) == 0.
     );
@@ -1938,31 +1935,8 @@ test "Maps" {
     try evalPass(.{}, @embedFile("map_test.cy"));
 }
 
-test "Assignment statements" {
-    try evalPass(.{},
-        \\import t 'test'
-        \\
-        \\-- Assign to variable.
-        \\a = 1
-        \\a += 10
-        \\t.eq(a, 11)
-        \\
-        \\-- Assign to field.
-        \\type S object:
-        \\  foo
-        \\s = S{ foo: 1 }
-        \\s.foo += 10
-        \\t.eq(s.foo, 11)
-        \\
-        \\-- Other operator assignments.
-        \\a = 100
-        \\a *= 2
-        \\t.eq(a, 200)
-        \\a /= 4
-        \\t.eq(a, 50)
-        \\a -= 1
-        \\t.eq(a, 49)
-    );
+test "Op assignment statement." {
+    try evalPass(.{}, @embedFile("opassign_test.cy"));
 }
 
 test "Undefined variable references." {

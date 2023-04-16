@@ -661,7 +661,7 @@ fn listInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     return self.initGenValue(dst, types.ListType, true);
 }
 
-fn arrayRangeExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
+fn sliceExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
     const node = self.nodes[nodeId];
 
     const dst = try self.rega.selectFromNonLocalVar(cstr, true);
@@ -671,14 +671,14 @@ fn arrayRangeExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue
     var canUseDst = self.canUseDstAsTempForBinOp(dst);
 
     // Parent value.
-    const parentv = try expression(self, node.head.arr_range_expr.arr, RegisterCstr.preferIf(dst, canUseDst));
+    const parentv = try expression(self, node.head.sliceExpr.arr, RegisterCstr.preferIf(dst, canUseDst));
     if (parentv.local == dst) {
         canUseDst = false;
     }
 
     // Range left value.
     var leftv: GenValue = undefined;
-    if (node.head.arr_range_expr.left == cy.NullId) {
+    if (node.head.sliceExpr.left == cy.NullId) {
         if (canUseDst) {
             leftv = try constNumber(self, 0, dst);
             canUseDst = false;
@@ -687,7 +687,7 @@ fn arrayRangeExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue
             leftv = try constNumber(self, 0, leftDst);
         }
     } else {
-        leftv = try expression(self, node.head.arr_range_expr.left, RegisterCstr.preferIf(dst, canUseDst));
+        leftv = try expression(self, node.head.sliceExpr.left, RegisterCstr.preferIf(dst, canUseDst));
         if (leftv.local == dst) {
             canUseDst = false;
         }
@@ -695,7 +695,7 @@ fn arrayRangeExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue
 
     // Range right value.
     var rightv: GenValue = undefined;
-    if (node.head.arr_range_expr.right == cy.NullId) {
+    if (node.head.sliceExpr.right == cy.NullId) {
         if (canUseDst) {
             rightv = try genNone(self, dst);
             canUseDst = false;
@@ -704,7 +704,7 @@ fn arrayRangeExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue
             rightv = try genNone(self, rightDst);
         }
     } else {
-        rightv = try expression(self, node.head.arr_range_expr.right, RegisterCstr.preferIf(dst, canUseDst));
+        rightv = try expression(self, node.head.sliceExpr.right, RegisterCstr.preferIf(dst, canUseDst));
     }
 
     try self.pushDebugSym(nodeId);
@@ -718,7 +718,7 @@ fn arrayRangeExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue
     return self.initGenValue(dst, types.ListType, true);
 }
 
-fn arrayIndexExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
+fn indexExpr(self: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
     const node = self.nodes[nodeId];
 
     const dst = try self.rega.selectFromNonLocalVar(cstr, true);
@@ -1280,6 +1280,8 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         }
     } else if (left.node_t == .accessExpr) {
         try binOpAssignToField(c, genOp, node.head.opAssignStmt.left, node.head.opAssignStmt.right);
+    } else if (left.node_t == .indexExpr) {
+        try binOpAssignToIndex(c, genOp, node.head.opAssignStmt.left, node.head.opAssignStmt.right);
     } else {
         return c.reportErrorAt("Unsupported assignment to left: {}", &.{v(left.node_t)}, nodeId);
     }
@@ -1305,7 +1307,7 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 return c.reportError("Unsupported", &.{});
             }
         }
-    } else if (left.node_t == .arr_access_expr) {
+    } else if (left.node_t == .indexExpr) {
         const leftv = try expression(c, left.head.left_right.left, RegisterCstr.simple);
         const indexv = try expression(c, left.head.left_right.right, RegisterCstr.simple);
         const rightv = try expression(c, node.head.left_right.right, RegisterCstr.simpleMustRetain);
@@ -2357,11 +2359,11 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
         .coinit => {
             return callExpr(c, node.head.child_head, cstr, true);
         },
-        .arr_range_expr => {
-            return arrayRangeExpr(c, nodeId, cstr);
+        .sliceExpr => {
+            return sliceExpr(c, nodeId, cstr);
         },
-        .arr_access_expr => {
-            return arrayIndexExpr(c, nodeId, cstr);
+        .indexExpr => {
+            return indexExpr(c, nodeId, cstr);
         },
         .accessExpr => {
             return accessExpr(c, nodeId, cstr);
@@ -2462,6 +2464,27 @@ fn exprStmt(c: *Chunk, stmtId: cy.NodeId, retain: bool) !LocalId {
     }
 
     return val.local;
+}
+
+fn binOpAssignToIndex(c: *Chunk, code: cy.OpCode, leftId: cy.NodeId, rightId: cy.NodeId) !void {
+    const left = c.nodes[leftId];
+
+    const leftv = try expression(c, left.head.left_right.left, RegisterCstr.simple);
+    const indexv = try expression(c, left.head.left_right.right, RegisterCstr.simple);
+    const temp = try c.rega.consumeNextTemp();
+
+    try c.pushDebugSym(leftId);
+    try c.buf.pushOp3(.index, leftv.local, indexv.local, temp);
+
+    const rightv = try expression(c, rightId, RegisterCstr.simpleMustRetain);
+    try c.buf.pushOp3(code, temp, rightv.local, temp);
+
+    try c.pushDebugSym(leftId);
+    try c.buf.pushOp3(.setIndexRelease, leftv.local, indexv.local, temp);
+
+    // ARC cleanup. Right is not released since it's being assigned to the index.
+    try releaseIfRetainedTempAt(c, leftv, left.head.left_right.left);
+    try releaseIfRetainedTempAt(c, indexv, left.head.left_right.right);
 }
 
 fn binOpAssignToField(self: *Chunk, code: cy.OpCode, leftId: cy.NodeId, rightId: cy.NodeId) !void {

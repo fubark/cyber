@@ -844,6 +844,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             } else if (left.node_t == .accessExpr) {
                 _ = try accessExpr(c, node.head.opAssignStmt.left);
                 _ = try semaExpr(c, node.head.opAssignStmt.right);
+            } else if (left.node_t == .indexExpr) {
+                _ = try semaExpr(c, node.head.opAssignStmt.left);
+                _ = try semaExpr(c, node.head.opAssignStmt.right);
             } else {
                 return c.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
             }
@@ -859,7 +862,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     const rtype = try semaExpr(c, node.head.left_right.right);
                     _ = try assignVar(c, node.head.left_right.left, rtype, .assign);
                 }
-            } else if (left.node_t == .arr_access_expr) {
+            } else if (left.node_t == .indexExpr) {
                 _ = try semaExpr(c, left.head.left_right.left);
                 _ = try semaExpr(c, left.head.left_right.right);
                 _ = try semaExpr(c, node.head.left_right.right);
@@ -1614,18 +1617,18 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
             }
             return types.AnyType;
         },
-        .arr_range_expr => {
-            _ = try semaExpr(c, node.head.arr_range_expr.arr);
+        .sliceExpr => {
+            _ = try semaExpr(c, node.head.sliceExpr.arr);
 
-            if (node.head.arr_range_expr.left == cy.NullId) {
+            if (node.head.sliceExpr.left == cy.NullId) {
                 // nop
             } else {
-                _ = try semaExpr(c, node.head.arr_range_expr.left);
+                _ = try semaExpr(c, node.head.sliceExpr.left);
             }
-            if (node.head.arr_range_expr.right == cy.NullId) {
+            if (node.head.sliceExpr.right == cy.NullId) {
                 // nop
             } else {
-                _ = try semaExpr(c, node.head.arr_range_expr.right);
+                _ = try semaExpr(c, node.head.sliceExpr.right);
             }
 
             return types.ListType;
@@ -1633,7 +1636,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: Type) anyerror!Type {
         .accessExpr => {
             return accessExpr(c, nodeId);
         },
-        .arr_access_expr => {
+        .indexExpr => {
             _ = try semaExpr(c, node.head.left_right.left);
 
             const index = c.nodes[node.head.left_right.right];

@@ -127,11 +127,14 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    _ = vm.compile(path, src) catch |err| {
+    const res = vm.compile(path, src) catch |err| {
+        fmt.panic("unexpected {}\n", &.{fmt.v(err)});
+    };
+    if (res.err) |err| {
         switch (err) {
-            error.TokenError,
-            error.ParseError,
-            error.CompileError => {
+            .tokenize,
+            .parse,
+            .compile, => {
                 if (!cy.silentError) {
                     const report = try vm.allocLastErrorReport();
                     defer alloc.free(report);
@@ -139,11 +142,8 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
                 }
                 exit(1);
             },
-            else => {
-                fmt.panic("unexpected {}\n", &.{fmt.v(err)});
-            },
         }
-    };
+    }
     try cy.debug.dumpBytecode(vm.constInternal(), pc);
 }
 

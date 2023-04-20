@@ -2236,15 +2236,15 @@ pub fn allocResolvedFuncSigTypesStr(c: *cy.VMcompiler, params: []const TypeId, r
 pub fn writeResolvedFuncSigTypesStr(c: *cy.VMcompiler, w: anytype, params: []const TypeId, ret: TypeId) !void {
     try w.writeAll("(");
 
-    if (rFuncSig.numParams() > 0) {
-        var rParamSym = c.sema.getResolvedSym(rFuncSig.paramPtr[0]);
+    if (params.len > 0) {
+        var rParamSym = c.sema.getResolvedSym(params[0]);
         var name = getName(c, rParamSym.key.absResolvedSymKey.nameId);
         try w.writeAll(name);
 
-        if (rFuncSig.numParams() > 1) {
-            for (rFuncSig.params()[1..]) |rParamSymId| {
+        if (params.len > 1) {
+            for (params[1..]) |rParamSymId| {
                 try w.writeAll(", ");
-                rParamSym = c.sema.resolvedSyms.items[rParamSymId];
+                rParamSym = c.sema.getResolvedSym(rParamSymId);
                 name = getName(c, rParamSym.key.absResolvedSymKey.nameId);
                 try w.writeAll(name);
             }
@@ -2252,7 +2252,7 @@ pub fn writeResolvedFuncSigTypesStr(c: *cy.VMcompiler, w: anytype, params: []con
     }
     try w.writeAll(") ");
 
-    var rRetSym = c.sema.resolvedSyms.items[rFuncSig.retSymId];
+    var rRetSym = c.sema.getResolvedSym(ret);
     var name = getName(c, rRetSym.key.absResolvedSymKey.nameId);
     try w.writeAll(name);
 }

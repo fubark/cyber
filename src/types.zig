@@ -35,8 +35,9 @@ pub const BuiltinTypeSymIds = struct {
     pub const Undefined: TypeId = 15;
     /// Strings that aren't retained.
     pub const StaticString: TypeId = 16;
+    pub const File: TypeId = 17;
 
-    pub const End: TypeId = 17;
+    pub const End: TypeId = 18;
 };
 
 test "Reserved names map to reserved sym ids." {

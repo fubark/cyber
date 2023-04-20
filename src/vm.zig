@@ -853,9 +853,9 @@ pub const VM = struct {
         return id;
     }
 
-    pub fn addBuiltinType(self: *VM, name: []const u8) !rt.TypeId {
+    pub fn addBuiltinType(self: *VM, name: []const u8, semaTypeId: types.TypeId) !rt.TypeId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
-        return self.addObjectTypeExt(cy.NullId, nameId, name, cy.NullId);
+        return self.addObjectTypeExt(cy.NullId, nameId, name, semaTypeId);
     }
 
     pub inline fn getFuncSym(self: *const VM, rParentSymId: u32, nameId: u32, rFuncSigId: sema.ResolvedFuncSigId) ?SymbolId {
@@ -986,7 +986,7 @@ pub const VM = struct {
             const id = @intCast(u32, self.methodSyms.len);
 
             try self.methodSyms.append(self.alloc, .{
-                .entryT = undefined,
+                .mruEntryType = undefined,
                 .mruTypeId = cy.NullId,
                 .rFuncSigId = cy.NullId,
                 .inner = undefined,
@@ -1057,26 +1057,26 @@ pub const VM = struct {
             const prev = rt.MethodTableKey.initMethodTableKey(sym.mruTypeId, symId);
             if (!self.methodTable.contains(prev)) {
                 try self.methodTable.putNoClobber(self.alloc, prev, .{
-                    .entryT = sym.entryT,
+                    .type = sym.mruEntryType,
                     .rFuncSigId = sym.rFuncSigId,
                     .inner = sym.inner,
                 });
             }
             const key = rt.MethodTableKey.initMethodTableKey(id, symId);
             try self.methodTable.putNoClobber(self.alloc, key, .{
-                .entryT = entry.entryT,
+                .type = entry.mruEntryType,
                 .rFuncSigId = entry.rFuncSigId,
                 .inner = entry.inner,
             });
             sym.* = .{
-                .entryT = entry.entryT,
+                .mruEntryType = entry.mruEntryType,
                 .mruTypeId = id,
                 .rFuncSigId = entry.rFuncSigId,
                 .inner = entry.inner,
             };
         } else {
             sym.* = .{
-                .entryT = entry.entryT,
+                .mruEntryType = entry.mruEntryType,
                 .mruTypeId = id,
                 .rFuncSigId = entry.rFuncSigId,
                 .inner = entry.inner,
@@ -1601,135 +1601,30 @@ pub const VM = struct {
         }
     }
 
-    fn callSymEntry(
-        self: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, sym: rt.MethodSym,
-        recv: Value, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8
-    ) linksection(cy.HotSection) !cy.fiber.PcSp {
-        switch (sym.entryT) {
-            .func => {
-                if (@ptrToInt(framePtr + startLocal + sym.inner.func.stackSize) >= @ptrToInt(self.stackEndPtr)) {
-                    return error.StackOverflow;
-                }
-
-                // Optimize.
-                pc[0] = cy.InstDatum{ .code = .callObjFuncIC };
-                pc[7] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.stackSize) };
-                @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
-                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
-
-                const newFp = framePtr + startLocal;
-                newFp[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
-                newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
-                newFp[3] = Value{ .retFramePtr = framePtr };
-                return cy.fiber.PcSp{
-                    .pc = cy.fiber.toVmPc(self, sym.inner.func.pc),
-                    .sp = newFp,
-                };
-            },
-            .nativeFunc1 => {
-                // Optimize.
-                pc[0] = cy.InstDatum{ .code = .callObjNativeFuncIC };
-                @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
-                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
-
-                self.framePtr = framePtr;
-                const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
-                if (res.isInterrupt()) {
-                    return error.Panic;
-                }
-                if (reqNumRetVals == 1) {
-                    framePtr[startLocal] = res;
-                } else {
-                    switch (reqNumRetVals) {
-                        0 => {
-                            // Nop.
-                        },
-                        1 => stdx.panic("not possible"),
-                        else => {
-                            stdx.panic("unsupported");
-                        },
-                    }
-                }
-                return cy.fiber.PcSp{
-                    .pc = pc + cy.bytecode.CallObjSymInstLen,
-                    .sp = framePtr,
-                };
-            },
-            .nativeFunc2 => {
-                self.framePtr = framePtr;
-                const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, self), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
-                if (res.left.isInterrupt()) {
-                    return error.Panic;
-                }
-                if (reqNumRetVals == 2) {
-                    framePtr[startLocal] = res.left;
-                    framePtr[startLocal+1] = res.right;
-                } else {
-                    switch (reqNumRetVals) {
-                        0 => {
-                            release(self, res.left);
-                            release(self, res.right);
-                        },
-                        1 => {
-                            framePtr[startLocal] = res.left;
-                            release(self, res.right);
-                        },
-                        else => {
-                            stdx.panic("unsupported");
-                        },
-                    }
-                }
-                return cy.fiber.PcSp{
-                    .pc = pc + cy.bytecode.CallObjSymInstLen,
-                    .sp = framePtr,
-                };
-            },
-            // else => {
-            //     // stdx.panicFmt("unsupported {}", .{sym.entryT});
-            //     unreachable;
-            // },
-        }
-    }
-
-    fn getCallObjSymFallback(
-        self: *VM, typeId: rt.TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId
-    ) ?rt.MethodSym {
-        const sym = self.methodSyms.buf[symId];
-        if (sym.mruTypeId == typeId) {
-            // Types match, but function signatures don't. Try to fit type constraints.
-            if (types.isFuncSigCompat(&self.compiler, rFuncSigId, sym.rFuncSigId)) {
-                return sym;
-            }
-        }
-        // Lookup from table.
-        return getCallObjSymFromTable(self, typeId, symId, rFuncSigId);
-    }
-
     fn getCallObjSymFromTable(
-        self: *VM, typeId: rt.TypeId, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId
+        self: *VM, typeId: rt.TypeId, symId: SymbolId,
     ) ?rt.MethodSym {
         const key = rt.MethodTableKey.initMethodTableKey(typeId, symId);
         if (self.methodTable.get(key)) |entry| {
-            if (types.isFuncSigCompat(&self.compiler, rFuncSigId, entry.rFuncSigId)) {
-                const sym = &self.methodSyms.buf[symId];
-                sym.* = .{
-                    .entryT = entry.entryT,
-                    .mruTypeId = typeId,
-                    .rFuncSigId = entry.rFuncSigId,
-                    .inner = entry.inner,
-                };
-                return sym.*;
-            }
+            const sym = &self.methodSyms.buf[symId];
+            sym.* = .{
+                .mruEntryType = entry.type,
+                .mruTypeId = typeId,
+                .rFuncSigId = entry.rFuncSigId,
+                .inner = entry.inner,
+            };
+            return sym.*;
         }
         return null;
     }
 
-    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) linksection(cy.HotSection) ?rt.MethodSym {
+    fn getCallObjSym(self: *VM, typeId: u32, symId: SymbolId) linksection(cy.HotSection) ?rt.MethodSym {
         const entry = self.methodSyms.buf[symId];
-        if (entry.mruTypeId == typeId and entry.rFuncSigId == rFuncSigId) {
+        if (entry.mruTypeId == typeId) {
             return entry;
         } else {
-            return @call(.never_inline, self.getCallObjSymFallback, .{typeId, symId, rFuncSigId});
+            // Lookup from table.
+            return @call(.never_inline, getCallObjSymFromTable, .{self, typeId, symId});
         }
     }
 
@@ -1743,12 +1638,12 @@ pub const VM = struct {
             switch (map.mapT) {
                 .one => {
                     if (obj.head.typeId == map.inner.one.id) {
-                        return try @call(.{.modifier = .never_inline }, callSymEntryNoInline, .{pc, framePtr, map.inner.one.sym, obj, startLocal, numArgs, reqNumRetVals});
+                        return try @call(.{.modifier = .never_inline }, callMethodEntryNoInline, .{pc, framePtr, map.inner.one.sym, obj, startLocal, numArgs, reqNumRetVals});
                     } else return self.panic("Symbol does not exist for receiver.");
                 },
                 .many => {
                     if (map.inner.many.mruTypeId == obj.head.typeId) {
-                        return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, map.inner.many.mruSym, obj, startLocal, numArgs, reqNumRetVals});
+                        return try @call(.never_inline, callMethodEntryNoInline, .{pc, framePtr, map.inner.many.mruSym, obj, startLocal, numArgs, reqNumRetVals});
                     } else {
                         const sym = self.methodTable.get(.{ .structId = obj.head.typeId, .methodId = symId }) orelse {
                             log.debug("Symbol does not exist for receiver.", .{});
@@ -1758,7 +1653,7 @@ pub const VM = struct {
                             .mruTypeId = obj.head.typeId,
                             .mruSym = sym,
                         };
-                        return try @call(.never_inline, callSymEntryNoInline, .{pc, framePtr, sym, obj, startLocal, numArgs, reqNumRetVals});
+                        return try @call(.never_inline, callMethodEntryNoInline, .{pc, framePtr, sym, obj, startLocal, numArgs, reqNumRetVals});
                     }
                 },
                 .empty => {
@@ -3741,15 +3636,15 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const val = framePtr[pc[1].arg];
                 const expTypeSymId = @ptrCast(*const align(1) u16, pc + 2).*;
-                if (expTypeSymId == cy.types.BuiltinTypeSymIds.Any) {
+                if (expTypeSymId == bt.Any) {
                     pc += 4;
                     continue;
-                } else if (expTypeSymId == cy.types.BuiltinTypeSymIds.String) {
+                } else if (expTypeSymId == bt.String) {
                     if (val.isString()) {
                         pc += 4;
                         continue;
                     }
-                } else if (expTypeSymId == cy.types.BuiltinTypeSymIds.Rawstring) {
+                } else if (expTypeSymId == bt.Rawstring) {
                     if (val.isRawString()) {
                         pc += 4;
                         continue;
@@ -3857,18 +3752,22 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numArgs = pc[2].arg;
 
                 const numRet = pc[3].arg;
-                const symId = pc[4].arg;
-                const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+                const methodId = pc[4].arg;
+                const anySelfFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
 
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
 
-                if (vm.getCallObjSym(typeId, symId, rFuncSigId)) |sym| {
-                    const res = try @call(.never_inline, vm.callSymEntry, .{pc, framePtr, sym, recv, typeId, startLocal, numArgs, numRet });
+                if (vm.getCallObjSym(typeId, methodId)) |sym| {
+                    const res = try @call(.never_inline, callMethodEntry, .{
+                        vm, pc, framePtr, methodId, sym, recv, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
+                    });
                     pc = res.pc;
                     framePtr = res.sp;
                 } else {
-                    const res = try @call(.never_inline, callObjSymFallback, .{vm, pc, framePtr, recv, typeId, symId, rFuncSigId, startLocal, numArgs, numRet});
+                    const res = try @call(.never_inline, callObjSymFallback, .{
+                        vm, pc, framePtr, recv, typeId, methodId, startLocal, numArgs, numRet
+                    });
                     pc = res.pc;
                     framePtr = res.sp;
                 }
@@ -4172,12 +4071,30 @@ fn panicCastError(vm: *cy.VM, val: Value, expTypeId: rt.TypeId) !void {
     });
 }
 
+fn allocMethodCallSemaTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.types.TypeId {
+    const semaTypeIds = try vm.alloc.alloc(cy.types.TypeId, vals.len + 1);
+    semaTypeIds[0] = bt.Any;
+    for (vals, 1..) |val, i| {
+        const typeId = val.getTypeId();
+        semaTypeIds[i] = vm.types.buf[typeId].rTypeSymId;
+    }
+    return semaTypeIds;
+}
+
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
-fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: rt.TypeId, rtSymId: SymbolId, rFuncSigId: sema.ResolvedFuncSigId) !Value {
-    const name = vm.methodSymExtras.buf[rtSymId].getName();
-    const methodSym = vm.methodSyms.buf[rtSymId];
+fn panicIncompatibleMethodSig(vm: *cy.VM, typeId: rt.TypeId, methodId: rt.MethodId, recv: Value, args: []const Value) error{Panic, OutOfMemory} {
+    release(vm, recv);
+    for (args) |arg| {
+        release(vm, arg);
+    }
+
+    const semaTypeIds = try allocMethodCallSemaTypeIds(vm, args);
+    defer vm.alloc.free(semaTypeIds);
+
+    const name = vm.methodSymExtras.buf[methodId].getName();
+    const methodSym = vm.methodSyms.buf[methodId];
     if (methodSym.mruTypeId == typeId) {
-        const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
+        const sigStr = try sema.allocResolvedFuncSigTypesStr(&vm.compiler, semaTypeIds, bt.Any);
         const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, methodSym.rFuncSigId);
         defer {
             vm.alloc.free(sigStr);
@@ -4192,9 +4109,9 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: rt.TypeId, rtSymId: SymbolId, rF
             },
         );
     } else {
-        const key = rt.MethodTableKey.initMethodTableKey(typeId, rtSymId);
+        const key = rt.MethodTableKey.initMethodTableKey(typeId, methodId);
         if (vm.methodTable.get(key)) |entry| {
-            const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
+            const sigStr = try sema.allocResolvedFuncSigTypesStr(&vm.compiler, semaTypeIds, bt.Any);
             const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, entry.rFuncSigId);
             defer {
                 vm.alloc.free(sigStr);
@@ -4209,7 +4126,7 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: rt.TypeId, rtSymId: SymbolId, rF
                 },
             );
         } else {
-            const sigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, rFuncSigId);
+            const sigStr = try sema.allocResolvedFuncSigTypesStr(&vm.compiler, semaTypeIds, bt.Any);
             defer vm.alloc.free(sigStr);
             return vm.panicFmt("`func {}{}` can not be found in `{}`.", &.{
                  v(name), v(sigStr), v(vm.types.buf[typeId].name), 
@@ -4218,7 +4135,9 @@ fn panicIncompatibleFuncSig(vm: *cy.VM, typeId: rt.TypeId, rtSymId: SymbolId, rF
     }
 }
 
-fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.InstDatum, recv: Value, typeId: u32, rtSymId: SymbolId, rFuncSigId: u16) !Value {
+fn getObjectFunctionFallback(
+    vm: *VM, pc: [*]cy.InstDatum, recv: Value, typeId: u32, rtSymId: SymbolId, vals: []const Value,
+) !Value {
     @setCold(true);
     // Map fallback is no longer supported since cleanup of recv is not auto generated by the compiler.
     // In the future, this may invoke the exact method signature or call a custom overloaded function.
@@ -4235,14 +4154,14 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.InstDatum, recv: Value, typeId: 
     // - a method with the name is missing.
     // - a method exists with the name but the call signature doesn't match up
     // - multiple methods exist with the name but the call signature doesn't match up
-    release(vm, recv);
     const relPc = getInstOffset(vm, pc);
     if (debug.getDebugSym(vm, relPc)) |sym| {
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.loc];
         if (node.node_t == .callExpr) {
-            return try panicIncompatibleFuncSig(vm, typeId, rtSymId, rFuncSigId);
+            return panicIncompatibleMethodSig(vm, typeId, rtSymId, recv, vals);
         } else {
+            release(vm, recv);
             // Debug node is from:
             // `for [iterable]:`
             const name = vm.methodSymExtras.buf[rtSymId].getName();
@@ -4256,10 +4175,14 @@ fn getObjectFunctionFallback(vm: *VM, pc: [*]cy.InstDatum, recv: Value, typeId: 
 }
 
 /// Use new pc local to avoid deoptimization.
-fn callObjSymFallback(vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, recv: Value, typeId: u32, symId: SymbolId, rFuncSigId: u16, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.Section) !cy.fiber.PcSp {
+fn callObjSymFallback(
+    vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, recv: Value, typeId: u32, methodId: rt.MethodId, 
+    startLocal: u8, numArgs: u8, reqNumRetVals: u8
+) linksection(cy.Section) !cy.fiber.PcSp {
     @setCold(true);
     // const func = try @call(.never_inline, getObjectFunctionFallback, .{obj, symId});
-    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, symId, rFuncSigId);
+    const vals = framePtr[startLocal+4..startLocal+4+numArgs-1];
+    const func = try getObjectFunctionFallback(vm, pc, recv, typeId, methodId, vals);
 
     retain(vm, func);
     cy.arc.releaseObject(vm, recv.asHeapObject());
@@ -4277,7 +4200,7 @@ fn callObjSymFallback(vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, recv: Va
     };
 }
 
-fn callSymEntryNoInline(
+fn callMethodEntryNoInline(
     vm: *VM, pc: [*]const cy.InstDatum, framePtr: [*]Value,
     sym: rt.MethodSym, obj: *HeapObject, startLocal: u8, numArgs: u8, comptime reqNumRetVals: u2
 ) linksection(cy.HotSection) !cy.fiber.PcSp {
@@ -4667,6 +4590,167 @@ fn getResolvedFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.ResolvedFuncSi
     }
 }
 
+fn callMethodEntry(
+    vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, methodId: rt.MethodId, sym: rt.MethodSym,
+    recv: Value, typeId: u32, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.ResolvedFuncSigId,
+) linksection(cy.HotSection) !cy.fiber.PcSp {
+    switch (sym.mruEntryType) {
+        .singleUntypedFunc => {
+            if (@ptrToInt(framePtr + startLocal + sym.inner.func.stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+                return error.StackOverflow;
+            }
+
+            // Optimize.
+            pc[0] = cy.InstDatum{ .code = .callObjFuncIC };
+            pc[7] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.stackSize) };
+            @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
+            @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+
+            const newFp = framePtr + startLocal;
+            newFp[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
+            newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
+            newFp[3] = Value{ .retFramePtr = framePtr };
+            return cy.fiber.PcSp{
+                .pc = cy.fiber.toVmPc(vm, sym.inner.func.pc),
+                .sp = newFp,
+            };
+        },
+        .singleUntypedNativeFunc1 => {
+            // Optimize.
+            pc[0] = cy.InstDatum{ .code = .callObjNativeFuncIC };
+            @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+            @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+
+            vm.framePtr = framePtr;
+            const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+            if (res.isInterrupt()) {
+                return error.Panic;
+            }
+            if (reqNumRetVals == 1) {
+                framePtr[startLocal] = res;
+            } else {
+                switch (reqNumRetVals) {
+                    0 => {
+                        // Nop.
+                    },
+                    1 => stdx.panic("not possible"),
+                    else => {
+                        stdx.panic("unsupported");
+                    },
+                }
+            }
+            return cy.fiber.PcSp{
+                .pc = pc + cy.bytecode.CallObjSymInstLen,
+                .sp = framePtr,
+            };
+        },
+        .singleUntypedNativeFunc2 => {
+            vm.framePtr = framePtr;
+            const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+            if (res.left.isInterrupt()) {
+                return error.Panic;
+            }
+            if (reqNumRetVals == 2) {
+                framePtr[startLocal] = res.left;
+                framePtr[startLocal+1] = res.right;
+            } else {
+                switch (reqNumRetVals) {
+                    0 => {
+                        release(vm, res.left);
+                        release(vm, res.right);
+                    },
+                    1 => {
+                        framePtr[startLocal] = res.left;
+                        release(vm, res.right);
+                    },
+                    else => {
+                        stdx.panic("unsupported");
+                    },
+                }
+            }
+            return cy.fiber.PcSp{
+                .pc = pc + cy.bytecode.CallObjSymInstLen,
+                .sp = framePtr,
+            };
+        },
+        .singleTypedFunc => {
+            // Perform type check on args.
+            const vals = framePtr[startLocal+4..startLocal+4+numArgs-1];
+            const targetFuncSig = vm.compiler.sema.getResolvedFuncSig(sym.rFuncSigId);
+            for (vals, targetFuncSig.params()[1..]) |val, cstrTypeId| {
+                const valTypeId = val.getTypeId();
+                const semaTypeId = vm.types.buf[valTypeId].rTypeSymId;
+                if (!types.isTypeSymCompat(&vm.compiler, semaTypeId, cstrTypeId)) {
+                    return panicIncompatibleMethodSig(vm, typeId, methodId, recv, vals);
+                }
+            }
+
+            if (@ptrToInt(framePtr + startLocal + sym.inner.func.stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+                return error.StackOverflow;
+            }
+
+            // Optimize only if anySelfFuncSigId matches.
+            if (anySelfFuncSigId == sym.rFuncSigId) {
+                pc[0] = cy.InstDatum{ .code = .callObjFuncIC };
+                pc[7] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.stackSize) };
+                @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
+                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+            }
+
+            const newFp = framePtr + startLocal;
+            newFp[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
+            newFp[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
+            newFp[3] = Value{ .retFramePtr = framePtr };
+            return cy.fiber.PcSp{
+                .pc = cy.fiber.toVmPc(vm, sym.inner.func.pc),
+                .sp = newFp,
+            };
+        },
+        .singleTypedNativeFunc => {
+            // Perform type check on args.
+            const vals = framePtr[startLocal+4..startLocal+4+numArgs-1];
+            const targetFuncSig = vm.compiler.sema.getResolvedFuncSig(sym.rFuncSigId);
+            for (vals, targetFuncSig.params()[1..]) |val, cstrTypeId| {
+                const valTypeId = val.getTypeId();
+                const semaTypeId = vm.types.buf[valTypeId].rTypeSymId;
+                if (!types.isTypeSymCompat(&vm.compiler, semaTypeId, cstrTypeId)) {
+                    return panicIncompatibleMethodSig(vm, typeId, methodId, recv, vals);
+                }
+            }
+
+            // Optimize only if anySelfFuncSigId matches.
+            if (anySelfFuncSigId == sym.rFuncSigId) {
+                pc[0] = cy.InstDatum{ .code = .callObjNativeFuncIC };
+                @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+            }
+
+            vm.framePtr = framePtr;
+            const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+            if (res.isInterrupt()) {
+                return error.Panic;
+            }
+            if (reqNumRetVals == 1) {
+                framePtr[startLocal] = res;
+            } else {
+                switch (reqNumRetVals) {
+                    0 => {
+                        // Nop.
+                    },
+                    1 => stdx.panic("not possible"),
+                    else => {
+                        stdx.panic("unsupported");
+                    },
+                }
+            }
+            return cy.fiber.PcSp{
+                .pc = pc + cy.bytecode.CallObjSymInstLen,
+                .sp = framePtr,
+            };
+        },
+    }
+}
+
 const MethodSymExtra = struct {
     namePtr: [*]const u8,
     nameLen: u32,
@@ -4729,9 +4813,14 @@ export fn zOtherToF64(val: Value) f64 {
     return val.otherToF64() catch fatal();
 }
 
-export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.InstDatum, stack: [*]Value, recv: Value, typeId: rt.TypeId, symId: u8, rFuncSigId: u16, startLocal: u8, numArgs: u8, numRet: u8) vmc.CallObjSymResult {
-    if (vm.getCallObjSym(typeId, symId, rFuncSigId)) |sym| {
-        const res = @call(.never_inline, vm.callSymEntry, .{pc, stack, sym, recv, typeId, startLocal, numArgs, numRet }) catch {
+export fn zCallObjSym(
+    vm: *cy.VM, pc: [*]cy.InstDatum, stack: [*]Value, recv: Value,
+    typeId: rt.TypeId, methodId: u8, startLocal: u8, numArgs: u8, numRet: u8, anySelfFuncSigId: u16,
+) vmc.CallObjSymResult {
+    if (vm.getCallObjSym(typeId, methodId)) |sym| {
+        const res = @call(.never_inline, callMethodEntry, .{
+            vm, pc, stack, methodId, sym, recv, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
+        }) catch {
             return .{
                 .pc = undefined,
                 .stack = undefined,
@@ -4744,7 +4833,7 @@ export fn zCallObjSym(vm: *cy.VM, pc: [*]cy.InstDatum, stack: [*]Value, recv: Va
             .code = vmc.RES_CODE_SUCCESS,
         };
     } else {
-        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, symId, rFuncSigId, startLocal, numArgs, numRet}) catch {
+        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, methodId, startLocal, numArgs, numRet}) catch {
             return .{
                 .pc = undefined,
                 .stack = undefined,

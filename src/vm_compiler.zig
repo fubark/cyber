@@ -205,6 +205,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Undefined);
         id = try sema.addResolvedInternalSym(self, "string");
         std.debug.assert(id == bt.StaticString);
+        id = try sema.addResolvedInternalSym(self, "File");
+        std.debug.assert(id == bt.File);
     }
 
     pub fn compile(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !CompileResultView {

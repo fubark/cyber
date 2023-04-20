@@ -57,15 +57,21 @@ pub const MethodKey = cy.hash.KeyU64;
 pub const MethodTableKey = cy.hash.KeyU64;
 pub const MethodId = u32;
 
-const MethodSymType = enum {
-    func,
-    nativeFunc1,
-    nativeFunc2,
+const MethodEntryType = enum {
+    singleUntypedFunc,
+    singleUntypedNativeFunc1,
+    singleUntypedNativeFunc2,
+
+    /// Single typed func.
+    singleTypedFunc,
+
+    /// Single typed native func.
+    singleTypedNativeFunc,
 };
 
 /// Stored in `methodTable`.
 pub const MethodEntry = struct {
-    entryT: MethodSymType,
+    type: MethodEntryType,
 
     /// The full signature of the function.
     rFuncSigId: u32,
@@ -85,20 +91,21 @@ const MethodInner = packed union {
 /// Keeping this small is better for function calls.
 /// Secondary symbol data should be moved to `methodSymExtras`.
 pub const MethodSym = struct {
-    entryT: MethodSymType,
+    mruEntryType: MethodEntryType,
     /// Most recent sym used is cached avoid hashmap lookup. 
     mruTypeId: TypeId,
 
     /// The full signature of the function.
+    /// This is only used for `singleTypedFunc` which do runtime type checks on the arguments.
     rFuncSigId: u32,
 
     inner: MethodInner,
 
-    pub fn initFuncOffset(rFuncSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32) MethodSym {
+    pub fn initSingleUntypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32) MethodSym {
         return .{
-            .entryT = .func,
+            .mruEntryType = .singleUntypedFunc,
             .mruTypeId = undefined,
-            .rFuncSigId = rFuncSigId,
+            .rFuncSigId = funcSigId,
             .inner = .{
                 .func = .{
                     .pc = @intCast(u32, pc),
@@ -108,24 +115,49 @@ pub const MethodSym = struct {
         };
     }
 
-    pub fn initNativeFunc1(rFuncSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
+    pub fn initSingleUntypedNativeFunc1(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
         return .{
-            .entryT = .nativeFunc1,
+            .mruEntryType = .singleUntypedNativeFunc1,
             .mruTypeId = undefined,
-            .rFuncSigId = rFuncSigId,
+            .rFuncSigId = funcSigId,
             .inner = .{
                 .nativeFunc1 = func,
             },
         };
     }
 
-    pub fn initNativeFunc2(rFuncSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr) MethodSym {
+    pub fn initSingleUntypedNativeFunc2(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr) MethodSym {
         return .{
-            .entryT = .nativeFunc2,
+            .mruEntryType = .singleUntypedNativeFunc2,
             .mruTypeId = undefined,
-            .rFuncSigId = rFuncSigId,
+            .rFuncSigId = funcSigId,
             .inner = .{
                 .nativeFunc2 = func,
+            },
+        };
+    }
+
+    pub fn initSingleTypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32) MethodSym {
+        return .{
+            .mruEntryType = .singleTypedFunc,
+            .mruTypeId = undefined,
+            .rFuncSigId = funcSigId,
+            .inner = .{
+                .func = .{
+                    .pc = @intCast(u32, pc),
+                    .stackSize = stackSize,
+                },
+            },
+        };
+    }
+
+    pub fn initSingleTypedNativeFunc(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
+        return .{
+            .mruEntryType = .singleTypedNativeFunc,
+            .mruTypeId = undefined,
+            .rFuncSigId = funcSigId,
+            .inner = .{
+                .nativeFunc1 = func,
             },
         };
     }

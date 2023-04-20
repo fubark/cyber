@@ -801,7 +801,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
 
             const methodSym = try ivm.ensureMethodSym(sym, @intCast(u32, cargs.len));
-            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, rt.MethodSym.initNativeFunc1(cfunc.rFuncSigId, func) });
+            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, rt.MethodSym.initSingleTypedNativeFunc(cfunc.rFuncSigId, func) });
         }
         var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
@@ -818,7 +818,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             defer alloc.free(methodName);
             const methodSym = try ivm.ensureMethodSym2(methodName, 1, true);
             const rFuncSigId = try sema.ensureResolvedFuncSig(&ivm.compiler, &.{ bt.Any, bt.Pointer }, rtType.rTypeSymId);
-            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, rt.MethodSym.initNativeFunc1(rFuncSigId, func) });
+            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, rt.MethodSym.initSingleTypedNativeFunc(rFuncSigId, func) });
         }
         success = true;
         return try vm.allocObjectSmall(sid, &.{cyState});

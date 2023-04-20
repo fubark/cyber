@@ -167,23 +167,23 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     // Init compile time builtins.
 
     // Builtin types.
-    var id = try self.addBuiltinType("none");
+    var id = try self.addBuiltinType("none", bt.None);
     std.debug.assert(id == rt.NoneT);
 
-    id = try self.addBuiltinType("boolean");
+    id = try self.addBuiltinType("boolean", bt.Boolean);
     std.debug.assert(id == rt.BooleanT);
     var rsym = self.compiler.sema.getResolvedSym(bt.Boolean);
     var sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Boolean, booleanCall);
 
-    id = try self.addBuiltinType("error");
+    id = try self.addBuiltinType("error", bt.Error);
     std.debug.assert(id == rt.ErrorT);
     rsym = self.compiler.sema.getResolvedSym(bt.Error);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Error, errorCall);
     try b.addMethod(rt.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
-    id = try self.addBuiltinType("StaticAstring");
+    id = try self.addBuiltinType("StaticAstring", bt.String);
     std.debug.assert(id == rt.StaticAstringT);
 
     // string type module.
@@ -191,28 +191,28 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.String, stringCall);
 
-    id = try self.addBuiltinType("StaticUstring");
+    id = try self.addBuiltinType("StaticUstring", bt.String);
     std.debug.assert(id == rt.StaticUstringT);
 
-    id = try self.addBuiltinType("enum");
+    id = try self.addBuiltinType("enum", cy.NullId);
     std.debug.assert(id == rt.EnumT);
 
-    id = try self.addBuiltinType("symbol");
+    id = try self.addBuiltinType("symbol", bt.Symbol);
     std.debug.assert(id == rt.SymbolT);
 
-    id = try self.addBuiltinType("integer");
+    id = try self.addBuiltinType("integer", bt.Integer);
     std.debug.assert(id == rt.IntegerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Integer);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Integer, integerCall);
 
-    id = try self.addBuiltinType("number");
+    id = try self.addBuiltinType("number", bt.Number);
     std.debug.assert(id == rt.NumberT);
     rsym = self.compiler.sema.getResolvedSym(bt.Number);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Number, numberCall);
 
-    id = try self.addBuiltinType("List");
+    id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
 
     try b.addMethod(rt.ListT, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
@@ -227,36 +227,36 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Number}, bt.Any, listResize);
     try b.addMethod(rt.ListT, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
 
-    id = try self.addBuiltinType("ListIterator");
+    id = try self.addBuiltinType("ListIterator", cy.NullId);
     std.debug.assert(id == rt.ListIteratorT);
     try b.addMethod(rt.ListIteratorT, self.nextObjSym, &.{bt.Any}, bt.Any, listIteratorNext);
     try b.addMethod2(rt.ListIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, listIteratorNextPair);
 
-    id = try self.addBuiltinType("Map");
+    id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
     try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
     try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Number, mapSize);
     try b.addMethod(rt.MapT, self.iteratorObjSym,     &.{ bt.Any }, bt.Any, mapIterator);
     try b.addMethod(rt.MapT, self.pairIteratorObjSym, &.{ bt.Any }, bt.Any, mapIterator);
 
-    id = try self.addBuiltinType("MapIterator");
+    id = try self.addBuiltinType("MapIterator", cy.NullId);
     std.debug.assert(id == rt.MapIteratorT);
     try b.addMethod(rt.MapIteratorT, self.nextObjSym,     &.{bt.Any}, bt.Any, mapIteratorNext);
     try b.addMethod2(rt.MapIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, mapIteratorNextPair);
 
-    id = try self.addBuiltinType("Closure");
+    id = try self.addBuiltinType("Closure", cy.NullId);
     std.debug.assert(id == rt.ClosureT);
 
-    id = try self.addBuiltinType("Lambda");
+    id = try self.addBuiltinType("Lambda", cy.NullId);
     std.debug.assert(id == rt.LambdaT);
 
-    id = try self.addBuiltinType("Astring");
+    id = try self.addBuiltinType("Astring", bt.String);
     std.debug.assert(id == rt.AstringT);
 
-    id = try self.addBuiltinType("Ustring");
+    id = try self.addBuiltinType("Ustring", bt.String);
     std.debug.assert(id == rt.UstringT);
 
-    id = try self.addBuiltinType("StringSlice");
+    id = try self.addBuiltinType("StringSlice", bt.String);
     std.debug.assert(id == rt.StringSliceT);
 
     const StringTypes = &[_]rt.TypeId{ rt.StaticAstringT, rt.StaticUstringT, rt.AstringT, rt.UstringT, rt.StringSliceT };
@@ -297,7 +297,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(typeId, upper,        &.{ bt.Any }, bt.String, stringUpper(tag));
     }
 
-    id = try self.addBuiltinType("Rawstring");
+    id = try self.addBuiltinType("Rawstring", bt.Rawstring);
     std.debug.assert(id == rt.RawstringT);
 
     // rawstring type module.
@@ -305,7 +305,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Rawstring, rawstringCall);
 
-    id = try self.addBuiltinType("RawstringSlice");
+    id = try self.addBuiltinType("RawstringSlice", bt.Rawstring);
     std.debug.assert(id == rt.RawstringSliceT);
 
     const RawstringTypes = &[_]rt.TypeId{ rt.RawstringT, rt.RawstringSliceT };
@@ -351,27 +351,27 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             if (tag == .rawstring) rawStringUtf8 else rawStringSliceUtf8);
     }
 
-    id = try self.addBuiltinType("Fiber");
+    id = try self.addBuiltinType("Fiber", bt.Fiber);
     std.debug.assert(id == rt.FiberT);
     try b.addMethod(rt.FiberT, status, &.{ bt.Any }, bt.Symbol, fiberStatus);
 
-    id = try self.addBuiltinType("Box");
+    id = try self.addBuiltinType("Box", cy.NullId);
     std.debug.assert(id == rt.BoxT);
 
-    id = try self.addBuiltinType("NativeFunc1");
+    id = try self.addBuiltinType("NativeFunc1", cy.NullId);
     std.debug.assert(id == rt.NativeFuncT);
 
-    id = try self.addBuiltinType("TccState");
+    id = try self.addBuiltinType("TccState", cy.NullId);
     std.debug.assert(id == rt.TccStateT);
 
-    id = try self.addBuiltinType("pointer");
+    id = try self.addBuiltinType("pointer", bt.Pointer);
     std.debug.assert(id == rt.PointerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Pointer);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Pointer, pointerCall);
     try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
 
-    id = try self.addBuiltinType("File");
+    id = try self.addBuiltinType("File", bt.File);
     std.debug.assert(id == rt.FileT);
     if (cy.hasStdFiles) {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
@@ -401,7 +401,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
     }
 
-    id = try self.addBuiltinType("Dir");
+    id = try self.addBuiltinType("Dir", cy.NullId);
     std.debug.assert(id == rt.DirT);
     if (cy.hasStdFiles) {
         try b.addMethod(rt.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, dirIterator);
@@ -413,7 +413,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, objNop0);
     }
 
-    id = try self.addBuiltinType("DirIterator");
+    id = try self.addBuiltinType("DirIterator", cy.NullId);
     std.debug.assert(id == rt.DirIteratorT);
     if (cy.hasStdFiles) {
         try b.addMethod(rt.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, dirIteratorNext);
@@ -421,17 +421,17 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
     }
 
-    id = try self.addBuiltinType("MetaType");
+    id = try self.addBuiltinType("MetaType", bt.MetaType);
     std.debug.assert(id == rt.MetaTypeT);
     try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Number, metatypeId);
 
-    id = try self.addBuiltinType("any");
+    id = try self.addBuiltinType("any", bt.Any);
     std.debug.assert(id == rt.AnyT);
 
-    id = try self.addBuiltinType("string");
+    id = try self.addBuiltinType("string", bt.String);
     std.debug.assert(id == rt.StringUnionT);
 
-    id = try self.addBuiltinType("rawstring");
+    id = try self.addBuiltinType("rawstring", bt.Rawstring);
     std.debug.assert(id == rt.RawstringUnionT);
 
     try ensureSymbol(self, "bool", .bool);
@@ -2566,9 +2566,24 @@ pub const ModuleBuilder = struct {
         return self.vm.ensureMethodSym(name, numParams);
     }
 
-    pub fn addMethod(self: *const ModuleBuilder, typeId: rt.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
-        const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
-        try self.vm.addMethodSym(typeId, symId, rt.MethodSym.initNativeFunc1(rFuncSigId, ptr));
+    pub fn addMethod(self: *const ModuleBuilder, typeId: rt.TypeId, methodId: rt.MethodId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
+        const funcSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
+        const funcSig = self.compiler.sema.getResolvedFuncSig(funcSigId);
+        if (funcSig.isTyped) {
+            try self.vm.addMethodSym(typeId, methodId, rt.MethodSym.initSingleTypedNativeFunc(funcSigId, ptr));
+        } else {
+            try self.vm.addMethodSym(typeId, methodId, rt.MethodSym.initSingleUntypedNativeFunc1(funcSigId, ptr));
+        }
+    }
+
+    pub fn addMethod2(self: *const ModuleBuilder, typeId: rt.TypeId, methodId: rt.MethodId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
+        const funcSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
+        const funcSig = self.compiler.sema.getResolvedFuncSig(funcSigId);
+        if (funcSig.isTyped) {
+            return error.Unsupported;
+        } else {
+            try self.vm.addMethodSym(typeId, methodId, rt.MethodSym.initSingleUntypedNativeFunc2(funcSigId, ptr));
+        }
     }
 
     pub fn mod(self: *const ModuleBuilder) *cy.Module {

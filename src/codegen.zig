@@ -2509,7 +2509,7 @@ fn binOpAssignToField(self: *Chunk, code: cy.OpCode, leftId: cy.NodeId, rightId:
     try releaseIfRetainedTempAt(self, accessLeftv, left.head.accessExpr.left);
 }
 
-fn genMethodDecl(self: *Chunk, structId: rt.TypeId, node: cy.Node, func: sema.FuncDecl, name: []const u8) !void {
+fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.FuncDecl, name: []const u8) !void {
     // log.debug("gen method {s}", .{name});
     const methodId = try self.compiler.vm.ensureMethodSym(name, func.numParams - 1);
 
@@ -2529,8 +2529,14 @@ fn genMethodDecl(self: *Chunk, structId: rt.TypeId, node: cy.Node, func: sema.Fu
 
     self.patchJumpToCurPc(jumpPc);
 
-    const sym = rt.MethodSym.initFuncOffset(func.rFuncSigId, opStart, stackSize);
-    try self.compiler.vm.addMethodSym(structId, methodId, sym);
+    const funcSig = self.compiler.sema.getResolvedFuncSig(func.rFuncSigId);
+    if (funcSig.isTyped) {
+        const sym = rt.MethodSym.initSingleTypedFunc(func.rFuncSigId, opStart, stackSize);
+        try self.compiler.vm.addMethodSym(typeId, methodId, sym);
+    } else {
+        const sym = rt.MethodSym.initSingleUntypedFunc(func.rFuncSigId, opStart, stackSize);
+        try self.compiler.vm.addMethodSym(typeId, methodId, sym);
+    }
 }
 
 fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {

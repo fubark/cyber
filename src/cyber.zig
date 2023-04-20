@@ -16,10 +16,12 @@ pub const TokenizeState = parser.TokenizeState;
 pub const TokenType = parser.TokenType;
 
 pub const sema = @import("sema.zig");
-pub const Module = sema.Module;
 pub const unescapeString = sema.unescapeString;
 
 pub const types = @import("types.zig");
+pub const module = @import("module.zig");
+pub const ModuleId = module.ModuleId;
+pub const Module = module.Module;
 
 const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
@@ -189,4 +191,4 @@ pub const NativeObjFuncPtr = *const fn (*UserVM, Value, [*]const Value, u8) Valu
 pub const NativeObjFunc2Ptr = *const fn (*UserVM, Value, [*]const Value, u8) ValuePair;
 pub const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const NativeErrorFunc = fn (*UserVM, [*]const Value, u8) anyerror!Value;
-pub const ModuleLoaderFunc = *const fn (*UserVM, *Module) bool;
+pub const ModuleLoaderFunc = *const fn (*UserVM, ModuleId) bool;

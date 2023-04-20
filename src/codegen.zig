@@ -1164,13 +1164,13 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                 try c.endLocals();
                 try c.buf.pushOp1(.end, @intCast(u8, val.local));
             } else {
-                if (c.curBlock.rFuncSymId != cy.NullId) {
+                // if (c.curBlock.rFuncSymId != cy.NullId) {
                 //     const retType = c.compiler.sema.resolvedFuncSyms.items[c.curBlock.rFuncSymId].retType;
                 //     _ = try genExprTo2(c, node.head.child_head, 0, retType, true, true);
+                    // _ = try expression(c, node.head.child_head, RegisterCstr.exactMustRetain(0));
+                // } else {
                     _ = try expression(c, node.head.child_head, RegisterCstr.exactMustRetain(0));
-                } else {
-                    _ = try expression(c, node.head.child_head, RegisterCstr.exactMustRetain(0));
-                }
+                // }
                 try c.endLocals();
                 try c.buf.pushOp(.ret1);
             }
@@ -2064,18 +2064,14 @@ fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, fiberDst: u8, startLoca
 fn funcDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !void {
     const node = self.nodes[nodeId];
     const func = &self.semaFuncDecls.items[node.head.func.semaDeclId];
-    const rsym = self.compiler.sema.resolvedSyms.items[func.inner.staticFunc.semaResolvedSymId];
-    const rFuncSym = self.compiler.sema.resolvedFuncSyms.items[func.inner.staticFunc.semaResolvedFuncSymId];
-    const key = rsym.key.absResolvedSymKey;
-
-    const rFuncSigId = rFuncSym.getResolvedFuncSigId();
-    const symId = try self.compiler.vm.ensureFuncSym(rParentSymId, key.nameId, rFuncSigId);
+    const name = func.getName(self);
+    const nameId = try sema.ensureNameSym(self.compiler, name);
+    const symId = try self.compiler.vm.ensureFuncSym(rParentSymId, nameId, func.rFuncSigId);
 
     const jumpPc = try self.pushEmptyJump();
 
     try self.pushSemaBlock(func.semaBlockId);
     self.curBlock.frameLoc = nodeId;
-    self.curBlock.rFuncSymId = func.inner.staticFunc.semaResolvedFuncSymId;
 
     const jumpStackStart = self.blockJumpStack.items.len;
 
@@ -2100,7 +2096,7 @@ fn funcDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !
     const stackSize = self.getMaxUsedRegisters();
     self.popSemaBlock();
     
-    const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, stackSize), func.numParams, rFuncSigId);
+    const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, stackSize), func.numParams, func.rFuncSigId);
     self.compiler.vm.setFuncSym(symId, rtSym);
 }
 

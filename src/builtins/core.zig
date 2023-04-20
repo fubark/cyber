@@ -16,10 +16,9 @@ const bt = cy.types.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.core);
 
-pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) !void {
-    try mod.syms.ensureTotalCapacity(self.alloc, 13);
-
-    const b = bindings.ModuleBuilder.init(self, mod);
+pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) !void {
+    const b = bindings.ModuleBuilder.init(self, modId);
+    try b.mod().syms.ensureTotalCapacity(self.alloc, 13);
 
     // Funcs.
     try b.setFunc("arrayFill", &.{bt.Any, bt.Number}, bt.List, arrayFill);

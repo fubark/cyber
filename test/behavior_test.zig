@@ -548,12 +548,13 @@ test "Custom modules." {
     };
 
     try run.vm.addModuleLoader("mod1", struct {
-        fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
+        fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
             // Test dangling pointer.
             const s1 = allocString("test");
             const s2 = allocString("test2");
             defer t.alloc.free(s1);
             defer t.alloc.free(s2);
+            const mod = vm.internal().compiler.sema.getModulePtr(modId);
             mod.setNativeFuncExt(&vm.internal().compiler, s1, true, 0, S.test1) catch fatal();
             mod.setNativeFuncExt(&vm.internal().compiler, s2, true, 0, S.test2) catch fatal();
             return true;
@@ -561,10 +562,11 @@ test "Custom modules." {
     }.loader);
 
     try run.vm.addModuleLoader("mod2", struct {
-        fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
+        fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
             // Test dangling pointer.
             const s1 = allocString("test");
             defer t.alloc.free(s1);
+            const mod = vm.internal().compiler.sema.getModulePtr(modId);
             mod.setNativeFuncExt(&vm.internal().compiler, s1, true, 0, S.test3) catch fatal();
             return true;
         }
@@ -608,8 +610,9 @@ test "Multiple evals persisting state." {
     run.vm.setUserData(&global);
 
     try run.vm.addModuleLoader("core", struct {
-        fn loader(vm: *cy.UserVM, mod: *cy.Module) bool {
+        fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
             const g = stdx.ptrAlignCast(*cy.Value, vm.getUserData()).*;
+            const mod = vm.internal().compiler.sema.getModulePtr(modId);
             mod.setVar(&vm.internal().compiler, "g", g) catch fatal();
             return true;
         }

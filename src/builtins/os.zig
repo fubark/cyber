@@ -20,8 +20,8 @@ pub var CFuncT: rt.TypeId = undefined;
 pub var CStructT: rt.TypeId = undefined;
 pub var CArrayT: rt.TypeId = undefined;
 
-pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
-    const b = bindings.ModuleBuilder.init(self, mod);
+pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) !void {
+    const b = bindings.ModuleBuilder.init(self, modId);
 
     // Object Types.
     CFuncT = try b.createAndSetTypeObject("CFunc", &.{"sym", "args", "ret"});
@@ -29,33 +29,33 @@ pub fn initModule(self: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSect
     CArrayT = try b.createAndSetTypeObject("CArray", &.{"n", "elem"});
 
     // Variables.
-    try mod.setVar(self, "cpu", try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
+    try b.setVar("cpu", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
     if (builtin.cpu.arch.endian() == .Little) {
-        try mod.setVar(self, "endian", cy.Value.initSymbol(@enumToInt(Symbol.little)));
+        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@enumToInt(Symbol.little)));
     } else {
-        try mod.setVar(self, "endian", cy.Value.initSymbol(@enumToInt(Symbol.big)));
+        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@enumToInt(Symbol.big)));
     }
     if (cy.hasStdFiles) {
         const stdin = try cy.heap.allocFile(self.vm, std.io.getStdIn().handle);
-        try mod.setVar(self, "stdin", stdin);
+        try b.setVar("stdin", bt.Any, stdin);
         const stdout = try cy.heap.allocFile(self.vm, std.io.getStdOut().handle);
-        try mod.setVar(self, "stdout", stdout);
+        try b.setVar("stdout", bt.Any, stdout);
         const stderr = try cy.heap.allocFile(self.vm, std.io.getStdErr().handle);
-        try mod.setVar(self, "stderr", stderr);
+        try b.setVar("stderr", bt.Any, stderr);
     } else {
-        try mod.setVar(self, "stdin", Value.None);
-        try mod.setVar(self, "stdout", Value.None);
-        try mod.setVar(self, "stderr", Value.None);
+        try b.setVar("stdin", bt.Any, Value.None);
+        try b.setVar("stdout", bt.Any, Value.None);
+        try b.setVar("stderr", bt.Any, Value.None);
     }
     if (builtin.cpu.arch.isWasm()) {
-        try mod.setVar(self, "system", try self.buf.getOrPushStringValue("wasm"));
+        try b.setVar("system", bt.String, try self.buf.getOrPushStringValue("wasm"));
     } else {
-        try mod.setVar(self, "system", try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
+        try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
     }
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        try mod.setVar(self, "vecBitSize", cy.Value.initF64(VecSize * 8));
+        try b.setVar("vecBitSize", bt.Number, cy.Value.initF64(VecSize * 8));
     } else {
-        try mod.setVar(self, "vecBitSize", cy.Value.initF64(0));
+        try b.setVar("vecBitSize", bt.Number, cy.Value.initF64(0));
     }
 
     // Functions.

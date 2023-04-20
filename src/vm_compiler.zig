@@ -261,7 +261,7 @@ pub const VMcompiler = struct {
         }
 
         // Main chunk.
-        const mainModId = try sema.appendRootModule(self, finalSrcUri);
+        const mainModId = try sema.appendResolvedRootModule(self, finalSrcUri);
         const mainMod = self.sema.getModulePtr(mainModId);
         const nextId = @intCast(u32, self.chunks.items.len);
         var mainChunk = try cy.Chunk.init(self, nextId, mainMod.absSpec, src);
@@ -270,7 +270,7 @@ pub const VMcompiler = struct {
         try self.chunks.append(self.alloc, mainChunk);
 
         // Load core module first since the members are imported into each user module.
-        const coreModId = try sema.appendRootModule(self, "core");
+        const coreModId = try sema.appendResolvedRootModule(self, "core");
         const importCore = ImportTask{
             .chunkId = nextId,
             .nodeId = cy.NullId,
@@ -355,6 +355,7 @@ pub const VMcompiler = struct {
         }
 
         // Perform sema on all chunks.
+        // TODO: Single pass sema/codegen.
         id = 0;
         while (id < self.chunks.items.len) : (id += 1) {
             try self.performChunkSema(id);
@@ -384,7 +385,7 @@ pub const VMcompiler = struct {
                         const node = chunk.nodes[decl.inner.funcInit];
                         const declId = node.head.func.semaDeclId;
                         const func = chunk.semaFuncDecls.items[declId];
-                        const crSymId = sema.CompactResolvedSymId.initFuncSymId(func.rFuncSymId);
+                        const crSymId = sema.CompactResolvedSymId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
                         try gen.genStaticInitializerDFS(chunk, crSymId);
                     }
                 }
@@ -500,9 +501,8 @@ pub const VMcompiler = struct {
     fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
         if (task.builtin) {
             if (self.moduleLoaders.get(task.absSpec)) |loaders| {
-                const mod = self.sema.getModulePtr(task.modId);
                 for (loaders.items) |loader| {
-                    if (!loader(@ptrCast(*cy.UserVM, self.vm), mod)) {
+                    if (!loader(@ptrCast(*cy.UserVM, self.vm), task.modId)) {
                         return error.LoadModuleError;
                     }
                 }
@@ -674,14 +674,14 @@ const ImportTask = struct {
     chunkId: cy.ChunkId,
     nodeId: cy.NodeId,
     absSpec: []const u8,
-    modId: sema.ModuleId,
+    modId: cy.ModuleId,
     builtin: bool,
 };
 
-pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, mod: *cy.Module) anyerror!void) cy.ModuleLoaderFunc {
+pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {
     return struct {
-        fn initCompat(vm: *cy.UserVM, mod: *cy.Module) bool {
-            initFn(&vm.internal().compiler, mod) catch |err| {
+        fn initCompat(vm: *cy.UserVM, modId: cy.ModuleId) bool {
+            initFn(&vm.internal().compiler, modId) catch |err| {
                 log.debug("Init module `{s}` failed: {}", .{name, err});
                 return false;
             };

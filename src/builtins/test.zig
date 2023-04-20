@@ -12,8 +12,8 @@ const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const bt = cy.types.BuiltinTypeSymIds;
 const v = fmt.v;
 
-pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) linksection(cy.InitSection) !void {
-    const b = bindings.ModuleBuilder.init(c, mod);
+pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) !void {
+    const b = bindings.ModuleBuilder.init(c, modId);
 
     try b.setFunc("eq", &.{bt.Any, bt.Any}, bt.Any, eq);
     try b.setFunc("eqList", &.{bt.Any, bt.Any}, bt.Any, eqList);

@@ -123,13 +123,15 @@ export fn cyVmAddModuleLoader(vm: *cy.UserVM, cspec: c.CStr, func: c.CyLoadModul
     vm.addModuleLoader(absSpec, @ptrCast(cy.ModuleLoaderFunc, func)) catch fatal();
 }
 
-export fn cyVmSetModuleFunc(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, numParams: u32, func: c.CyFunc) void {
+export fn cyVmSetModuleFunc(vm: *cy.UserVM, modId: cy.ModuleId, cname: c.CStr, numParams: u32, func: c.CyFunc) void {
     const symName = cname.charz[0..cname.len];
+    const mod = vm.internal().compiler.sema.getModulePtr(modId);
     mod.setNativeFuncExt(&vm.internal().compiler, symName, true, numParams, @ptrCast(cy.NativeFuncPtr, func)) catch fatal();
 }
 
-export fn cyVmSetModuleVar(vm: *cy.UserVM, mod: *cy.Module, cname: c.CStr, val: c.CyValue) void {
+export fn cyVmSetModuleVar(vm: *cy.UserVM, modId: cy.ModuleId, cname: c.CStr, val: c.CyValue) void {
     const symName = cname.charz[0..cname.len];
+    const mod = vm.internal().compiler.sema.getModulePtr(modId);
     mod.setVarExt(&vm.internal().compiler, symName, true, bt.Any, @bitCast(cy.Value, val)) catch fatal();
 }
 

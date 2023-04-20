@@ -11,6 +11,7 @@ const vmc = @import("vm_c.zig");
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
+const bt = cy.types.BuiltinTypeSymIds;
 const rt = cy.rt;
 const sema = cy.sema;
 const types = cy.types;
@@ -1569,7 +1570,7 @@ pub const VM = struct {
             const func = funcChunk.semaFuncDecls.items[rFuncSym.declId];
 
             const name = func.getName(funcChunk);
-            const rSym = chunk.compiler.sema.resolvedSyms.items[func.rSymId];
+            const rSym = chunk.compiler.sema.resolvedSyms.items[func.inner.staticFunc.semaSymId];
 
             if (rSym.symT == .func) {
                 const rtSym = vm.funcSyms.buf[rtSymId];

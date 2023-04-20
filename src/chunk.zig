@@ -106,7 +106,7 @@ pub const Chunk = struct {
 
     /// Points to this chunk's `Module`.
     /// Its exported members will be populated in the Module as sema encounters them.
-    modId: sema.ModuleId,
+    modId: cy.ModuleId,
 
     pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
@@ -699,7 +699,7 @@ pub const Chunk = struct {
         try self.buf.pushDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc);
     }
 
-    pub fn getModule(self: *Chunk) *sema.Module {
+    pub fn getModule(self: *Chunk) *cy.Module {
         return &self.compiler.sema.modules.items[self.modId];
     }
 };
@@ -718,7 +718,6 @@ const GenBlock = struct {
     /// Does not include temp locals.
     numLocals: u32,
     frameLoc: cy.NodeId = cy.NullId,
-    rFuncSymId: sema.ResolvedFuncSymId = cy.NullId,
     endLocalsPc: u32,
 
     /// Whether codegen should create an ending that returns 1 arg.

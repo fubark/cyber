@@ -3,41 +3,41 @@ const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypeSymIds;
 
-pub fn initModule(c: *cy.VMcompiler, mod: *cy.Module) !void {
+pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
+    const b = cy.bindings.ModuleBuilder.init(c, modId);
+
     // Euler's number and the base of natural logarithms; approximately 2.718.
-    try mod.setTypedVar(c, "e", bt.Number, Value.initF64(std.math.e));
+    try b.setVar("e", bt.Number, Value.initF64(std.math.e));
 
     // Infinity.
-    try mod.setTypedVar(c, "inf", bt.Number, Value.initF64(std.math.inf_f64));
+    try b.setVar("inf", bt.Number, Value.initF64(std.math.inf_f64));
 
     // Base-10 logarithm of E; approximately 0.434.
-    try mod.setTypedVar(c, "log10e", bt.Number, Value.initF64(std.math.log10e));
+    try b.setVar("log10e", bt.Number, Value.initF64(std.math.log10e));
 
     // Base-2 logarithm of E; approximately 1.443.
-    try mod.setTypedVar(c, "log2e", bt.Number, Value.initF64(std.math.log2e));
+    try b.setVar("log2e", bt.Number, Value.initF64(std.math.log2e));
 
     // Natural logarithm of 10; approximately 2.303.
-    try mod.setTypedVar(c, "ln10", bt.Number, Value.initF64(std.math.ln10));
+    try b.setVar("ln10", bt.Number, Value.initF64(std.math.ln10));
 
     // Natural logarithm of 2; approximately 0.693.
-    try mod.setTypedVar(c, "ln2", bt.Number, Value.initF64(std.math.ln2));
+    try b.setVar("ln2", bt.Number, Value.initF64(std.math.ln2));
 
     // Not a number.
-    try mod.setTypedVar(c, "nan", bt.Number, Value.initF64(-std.math.nan_f64));
+    try b.setVar("nan", bt.Number, Value.initF64(-std.math.nan_f64));
 
     // Neg infinity.
-    try mod.setTypedVar(c, "neginf", bt.Number, Value.initF64(-std.math.inf_f64));
+    try b.setVar("neginf", bt.Number, Value.initF64(-std.math.inf_f64));
 
     // Ratio of a circle's circumference to its diameter; approximately 3.14159.
-    try mod.setTypedVar(c, "pi", bt.Number, Value.initF64(std.math.pi));
+    try b.setVar("pi", bt.Number, Value.initF64(std.math.pi));
 
     // Square root of ½; approximately 0.707.
-    try mod.setTypedVar(c, "sqrt1_2", bt.Number, Value.initF64(std.math.sqrt1_2));
+    try b.setVar("sqrt1_2", bt.Number, Value.initF64(std.math.sqrt1_2));
 
     // Square root of 2; approximately 1.414.
-    try mod.setTypedVar(c, "sqrt2", bt.Number, Value.initF64(std.math.sqrt2));
-
-    const b = cy.bindings.ModuleBuilder.init(c, mod);
+    try b.setVar("sqrt2", bt.Number, Value.initF64(std.math.sqrt2));
 
     const num1: []const cy.sema.ResolvedSymId = &.{bt.Number};
     const num2: []const cy.sema.ResolvedSymId = &.{bt.Number, bt.Number};

@@ -173,13 +173,13 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("boolean");
     std.debug.assert(id == rt.BooleanT);
     var rsym = self.compiler.sema.getResolvedSym(bt.Boolean);
-    var sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    var sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Boolean, booleanCall);
 
     id = try self.addBuiltinType("error");
     std.debug.assert(id == rt.ErrorT);
     rsym = self.compiler.sema.getResolvedSym(bt.Error);
-    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Error, errorCall);
     try b.addMethod(rt.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
@@ -188,7 +188,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     // string type module.
     rsym = self.compiler.sema.getResolvedSym(bt.String);
-    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.String, stringCall);
 
     id = try self.addBuiltinType("StaticUstring");
@@ -203,13 +203,13 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("integer");
     std.debug.assert(id == rt.IntegerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Integer);
-    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Integer, integerCall);
 
     id = try self.addBuiltinType("number");
     std.debug.assert(id == rt.NumberT);
     rsym = self.compiler.sema.getResolvedSym(bt.Number);
-    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Number, numberCall);
 
     id = try self.addBuiltinType("List");
@@ -302,7 +302,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     // rawstring type module.
     rsym = self.compiler.sema.getResolvedSym(bt.Rawstring);
-    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Rawstring, rawstringCall);
 
     id = try self.addBuiltinType("RawstringSlice");
@@ -367,7 +367,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("pointer");
     std.debug.assert(id == rt.PointerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Pointer);
-    sb = ModuleBuilder.initModId(&self.compiler, rsym.inner.builtinType.modId);
+    sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Pointer, pointerCall);
     try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
 
@@ -2542,28 +2542,24 @@ pub fn fromUnsupportedError(vm: *cy.UserVM, msg: []const u8, err: anyerror, trac
 }
 
 pub const ModuleBuilder = struct {
-    mod: *cy.Module,
+    modId: cy.ModuleId,
     compiler: *cy.VMcompiler,
     vm: *cy.VM,
 
-    pub fn initModId(c: *cy.VMcompiler, modId: sema.ModuleId) ModuleBuilder {
-        return init(c, c.sema.getModulePtr(modId));
-    }
-
-    pub fn init(c: *cy.VMcompiler, mod: *cy.Module) ModuleBuilder {
+    pub fn init(c: *cy.VMcompiler, modId: cy.ModuleId) ModuleBuilder {
         return .{
-            .mod = mod,
+            .modId = modId,
             .compiler = c,
             .vm = c.vm,
         };
     }
 
     pub fn setVar(self: *const ModuleBuilder, name: []const u8, typeSymId: sema.ResolvedSymId, val: Value) !void {
-        try self.mod.setTypedVar(self.compiler, name, typeSymId, val);
+        try self.mod().setTypedVar(self.compiler, name, typeSymId, val);
     }
 
     pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeFuncPtr) !void {
-        try self.mod.setNativeTypedFunc(self.compiler, name, params, ret, ptr);
+        try self.mod().setNativeTypedFunc(self.compiler, name, params, ret, ptr);
     }
 
     pub fn ensureMethodSym(self: *const ModuleBuilder, name: []const u8, numParams: u32) !u32 {
@@ -2575,21 +2571,27 @@ pub const ModuleBuilder = struct {
         try self.vm.addMethodSym(typeId, symId, rt.MethodSym.initNativeFunc1(rFuncSigId, ptr));
     }
 
-    pub fn addMethod2(self: *const ModuleBuilder, typeId: rt.TypeId, symId: u32, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
-        const rFuncSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
-        try self.vm.addMethodSym(typeId, symId, rt.MethodSym.initNativeFunc2(rFuncSigId, ptr));
+    pub fn mod(self: *const ModuleBuilder) *cy.Module {
+        return self.compiler.sema.getModulePtr(self.modId);
     }
 
     pub fn createAndSetTypeObject(self: *const ModuleBuilder, name: []const u8, fields: []const []const u8) !rt.TypeId {
         const nameId = try cy.sema.ensureNameSym(self.compiler, name);
-        const typeId = try self.vm.addObjectTypeExt(self.mod.resolvedRootSymId, nameId, name, cy.NullId);
-        const rSymId = try cy.sema.resolveObjectSym(self.compiler, self.mod.resolvedRootSymId, name, typeId, self.mod.id);
-        self.vm.types.buf[typeId].rTypeSymId = rSymId;
+        const key = sema.AbsResolvedSymKey{
+            .absResolvedSymKey = .{
+                .rParentSymId = self.mod().resolvedRootSymId,
+                .nameId = nameId,
+            },
+        };
+        const modId = try cy.module.declareTypeObject(self.compiler, self.modId, name, cy.NullId, cy.NullId);
+        const symId = try cy.sema.resolveObjectSym(self.compiler, key, modId);
+        const sym = self.compiler.sema.getResolvedSym(symId);
+        const typeId = sym.inner.object.typeId;
+
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
             try self.vm.addFieldSym(typeId, id, @intCast(u16, i), bt.Any);
         }
-        try self.mod.setTypeObject(self.compiler, name, typeId, cy.NullId);
         self.vm.types.buf[typeId].numFields = @intCast(u32, fields.len);
         return typeId;
     }

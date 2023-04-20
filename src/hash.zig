@@ -56,6 +56,15 @@ pub const KeyU64 = extern union {
         };
     }
 
+    pub fn initAbsResolvedSymKey(parentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) KeyU64 {
+        return .{
+            .absResolvedSymKey = .{
+                .rParentSymId = parentSymId,
+                .nameId = nameId,
+            },
+        };
+    }
+
     pub fn initMethodTableKey(typeId: rt.TypeId, methodId: rt.MethodId) KeyU64 {
         return .{
             .rtMethodTableKey = .{

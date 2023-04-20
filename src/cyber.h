@@ -58,9 +58,10 @@ typedef struct CStr {
 #define cstr(X) (CStr){ X, strlen(X) }
 
 typedef uint32_t CyTypeId;
+typedef uint32_t CyModuleId;
 
 typedef CyValue (*CyFunc)(CyVM* vm, CyValue* args, uint8_t nargs);
-typedef bool (*CyLoadModuleFunc)(CyVM* vm, CyModule* mod);
+typedef bool (*CyLoadModuleFunc)(CyVM* vm, CyModuleId modId);
 
 typedef union CyHeapObject {
     struct {
@@ -89,8 +90,8 @@ void cyVmSetUserData(CyVM* vm, void* userData);
 
 // Modules.
 void cyVmAddModuleLoader(CyVM* vm, CStr name, CyLoadModuleFunc func);
-void cyVmSetModuleFunc(CyVM* vm, CyModule* mod, CStr name, uint32_t numParams, CyFunc func);
-void cyVmSetModuleVar(CyVM* vm, CyModule* mod, CStr name, CyValue val);
+void cyVmSetModuleFunc(CyVM* vm, CyModuleId modId, CStr name, uint32_t numParams, CyFunc func);
+void cyVmSetModuleVar(CyVM* vm, CyModuleId modId, CStr name, CyValue val);
 
 // Intended to be used to manage accessible buffers when embedding WASM.
 void* cyVmAlloc(CyVM* vm, size_t size);

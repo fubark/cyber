@@ -1886,18 +1886,21 @@ fn callExpr2(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr, comptime startF
                     const rFuncSigId = funcSym.getResolvedFuncSigId();
 
                     // Func sym.
-                    var numArgs: u32 = undefined;
+                    var callArgsRes: CallArgsResult = undefined;
                     if (funcSym.declId != cy.NullId) {
                         const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
-                        numArgs = try callArgs2(self, rFuncSig, node.head.callExpr.arg_head);
+                        callArgsRes = try callArgs2(self, rFuncSig, node.head.callExpr.arg_head);
                     } else {
-                        numArgs = try callArgs(self, node.head.callExpr.arg_head);
+                        callArgsRes = try callArgs(self, node.head.callExpr.arg_head);
+                    }
+
+                    if (callArgsRes.hasDynamicArgs) {
+                        try genCallTypeCheck(self, callStartLocal, node.head.callExpr.numArgs, rFuncSigId, nodeId);
                     }
 
                     const key = rsym.key.absResolvedSymKey;
-
                     const symId = try self.compiler.vm.ensureFuncSym(key.rParentSymId, key.nameId, rFuncSigId);
-                    try pushCallSym(self, callStartLocal, numArgs, 1, symId, nodeId);
+                    try pushCallSym(self, callStartLocal, node.head.callExpr.numArgs, 1, symId, nodeId);
                     return GenValue.initTempValue(callStartLocal, funcSym.retType, true);
                 } else {
                     return genFuncValueCallExpr(self, nodeId, fiberDst,
@@ -1908,57 +1911,59 @@ fn callExpr2(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr, comptime startF
                 // Assume left child is a valid reference from sema. Generate callObjSym.
                 const right = self.nodes[callee.head.accessExpr.right];
                 std.debug.assert(right.node_t == .ident);
-                return callObjSym(self, callStartLocal, callee.head.accessExpr.left, callee.head.accessExpr.right, node.head.callExpr.arg_head, nodeId);
+                return callObjSym(self, callStartLocal, nodeId);
             }
         } else if (callee.node_t == .ident) {
             if (self.genGetVar(callee.head.ident.semaVarId)) |_| {
                 return genFuncValueCallExpr(self, nodeId, fiberDst,
                     if (startFiber) fiberStartLocal else callStartLocal, startFiber);
             } else {
-                var genArgs = false;
-                var numArgs: u32 = undefined;
                 const crSymId = callee.head.ident.sema_crSymId;
+                stdx.debug.dassert(crSymId.isPresent());
                 var rFuncSym: ?sema.ResolvedFuncSym = null;
-                if (crSymId.isPresent()) {
-                    if (crSymId.isFuncSymId) {
-                        const funcSym = self.compiler.sema.getResolvedFuncSym(crSymId.id);
-                        const rFuncSigId = funcSym.getResolvedFuncSigId();
-                        rFuncSym = funcSym;
-                        if (funcSym.declId != cy.NullId) {
-                            const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
-                            numArgs = try callArgs2(self, rFuncSig, node.head.callExpr.arg_head);
-                            genArgs = true;
-                        }
-                    } else {
-                        const rsym = self.compiler.sema.getResolvedSym(crSymId.id);
-                        if (rsym.symT == .variable) {
-                            return genFuncValueCallExpr(self, nodeId, fiberDst,
-                                if (startFiber) fiberStartLocal else callStartLocal, startFiber);
-                        } else {
-                            return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
-                        }
-                    }
-                }
+                if (crSymId.isFuncSymId) {
+                    const funcSym = self.compiler.sema.getResolvedFuncSym(crSymId.id);
+                    const rFuncSigId = funcSym.getResolvedFuncSigId();
+                    rFuncSym = funcSym;
 
-                if (!genArgs) {
-                    numArgs = try callArgs(self, node.head.callExpr.arg_head);
+                    var callArgsRes: CallArgsResult = undefined;
+                    if (funcSym.declId != cy.NullId) {
+                        const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
+                        callArgsRes = try callArgs2(self, rFuncSig, node.head.callExpr.arg_head);
+                    } else {
+                        callArgsRes = try callArgs(self, node.head.callExpr.arg_head);
+                    }
+            
+                    if (callArgsRes.hasDynamicArgs) {
+                        try genCallTypeCheck(self, callStartLocal, node.head.callExpr.numArgs, rFuncSigId, nodeId);
+                    }
+                } else {
+                    const rsym = self.compiler.sema.getResolvedSym(crSymId.id);
+                    if (rsym.symT == .variable) {
+                        return genFuncValueCallExpr(self, nodeId, fiberDst,
+                            if (startFiber) fiberStartLocal else callStartLocal, startFiber);
+                    } else {
+                        return self.reportErrorAt("Unsupported callee", &.{}, nodeId);
+                    }
                 }
 
                 const coinitPc = self.buf.ops.items.len;
                 if (startFiber) {
                     // Precompute first arg local since coinit doesn't need the startLocal.
                     // numArgs + 4 (ret slots) + 1 (min call start local for main block)
-                    var initialStackSize = numArgs + 4 + 1;
+                    var initialStackSize = node.head.callExpr.numArgs + 4 + 1;
                     if (initialStackSize < 16) {
                         initialStackSize = 16;
                     }
                     try self.pushOptionalDebugSym(nodeId);
-                    try self.buf.pushOpSlice(.coinit, &.{ fiberStartLocal, @intCast(u8, numArgs), 0, @intCast(u8, initialStackSize), fiberDst });
+                    try self.buf.pushOpSlice(.coinit, &.{ fiberStartLocal, node.head.callExpr.numArgs, 0, @intCast(u8, initialStackSize), fiberDst });
                 }
 
                 if (crSymId.isFuncSymId) {
                     const rtSymId = try self.genEnsureRtFuncSym(crSymId.id);
-                    try pushCallSym(self, callStartLocal, numArgs, 1, rtSymId, nodeId);
+                    try pushCallSym(self, callStartLocal, node.head.callExpr.numArgs, 1, rtSymId, nodeId);
+                } else {
+                    return self.reportError("Unsupported coinit func call.", &.{});
                 }
 
                 if (startFiber) {
@@ -1985,20 +1990,25 @@ fn callExpr2(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr, comptime startF
     } else return self.reportError("Unsupported named args", &.{});
 }
 
-fn callObjSym(self: *Chunk, callStartLocal: u8, leftId: cy.NodeId, identId: cy.NodeId, firstArgId: cy.NodeId, debugNodeId: cy.NodeId) !GenValue {
+fn callObjSym(self: *Chunk, callStartLocal: u8, callExprId: cy.NodeId) !GenValue {
+    const node = self.nodes[callExprId];
+    const callee = self.nodes[node.head.callExpr.callee];
+    const firstArgId = node.head.callExpr.arg_head;
+    const ident = self.nodes[callee.head.accessExpr.right];
+
     // One more arg for receiver.
-    const numArgs = 1 + try callArgs(self, firstArgId);
+    _ = try callArgs(self, firstArgId);
+    const numArgs = 1 + node.head.callExpr.numArgs;
         
-    const ident = self.nodes[identId];
     const name = self.getNodeTokenString(ident);
 
     const methodSymId = try self.compiler.vm.ensureMethodSym(name, numArgs - 1);
 
-    _ = try expression(self, leftId, RegisterCstr.tempMustRetain);
+    _ = try expression(self, callee.head.accessExpr.left, RegisterCstr.tempMustRetain);
 
     const rFuncSigId = @intCast(u16, ident.head.ident.semaMethodSigId);
     try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 1,
-        @intCast(u8, methodSymId), rFuncSigId, debugNodeId);
+        @intCast(u8, methodSymId), rFuncSigId, callExprId);
     return GenValue.initTempValue(callStartLocal, bt.Any, true);
 }
 
@@ -2096,35 +2106,44 @@ fn funcDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !
     const stackSize = self.getMaxUsedRegisters();
     self.popSemaBlock();
     
-    const rtSym = cy.FuncSymbolEntry.initFunc(opStart, @intCast(u16, stackSize), func.numParams, func.rFuncSigId);
+    const rtSym = rt.FuncSymbolEntry.initFunc(opStart, @intCast(u16, stackSize), func.numParams, func.rFuncSigId);
     self.compiler.vm.setFuncSym(symId, rtSym);
 }
 
-fn callArgs2(c: *Chunk, rFuncSig: sema.ResolvedFuncSig, first: cy.NodeId) !u32 {
+const CallArgsResult = struct {
+    hasDynamicArgs: bool,
+};
+
+fn callArgs2(c: *Chunk, rFuncSig: sema.ResolvedFuncSig, first: cy.NodeId) !CallArgsResult {
     const params = rFuncSig.params();
-    var numArgs: u32 = 0;
+    var i: u32 = 0;
     var argId = first;
-    while (argId != cy.NullId) : (numArgs += 1) {
+    var hasDynamicArgs = false;
+    while (argId != cy.NullId) : (i += 1) {
         const arg = c.nodes[argId];
-        const rParamTypeSymId = params[numArgs];
-        const reqType = rParamTypeSymId;
-        _ = reqType;
-        // _ = try c.genRetainedTempExpr2(argId, reqType, false);
-        _ = try expression(c, argId, RegisterCstr.tempMustRetain);
+        const cstrType = params[i];
+        _ = cstrType;
+        const argv = try expression(c, argId, RegisterCstr.tempMustRetain);
+        hasDynamicArgs = hasDynamicArgs or argv.vtype == bt.Dynamic;
         argId = arg.next;
     }
-    return numArgs;
+    return CallArgsResult{
+        .hasDynamicArgs = hasDynamicArgs,
+    };
 }
 
-fn callArgs(c: *Chunk, first: cy.NodeId) !u32 {
-    var numArgs: u32 = 0;
+fn callArgs(c: *Chunk, first: cy.NodeId) !CallArgsResult {
     var argId = first;
-    while (argId != cy.NullId) : (numArgs += 1) {
+    var hasDynamicArgs = false;
+    while (argId != cy.NullId) {
         const arg = c.nodes[argId];
-        _ = try expression(c, argId, RegisterCstr.tempMustRetain);
+        const argv = try expression(c, argId, RegisterCstr.tempMustRetain);
+        hasDynamicArgs = hasDynamicArgs or argv.vtype == bt.Dynamic;
         argId = arg.next;
     }
-    return numArgs;
+    return CallArgsResult{
+        .hasDynamicArgs = hasDynamicArgs,
+    };
 }
 
 fn genStaticInitializerDeps(c: *Chunk, crSymId: sema.CompactResolvedSymId) !void {
@@ -2718,4 +2737,11 @@ fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u3
     const start = c.buf.ops.items.len;
     try c.buf.pushOpSlice(.callSym, &.{ startLocal, @intCast(u8, numArgs), numRet, 0, 0, 0, 0, 0, 0, 0, 0 });
     c.buf.setOpArgU16(start + 4, @intCast(u16, symId));
+}
+
+fn genCallTypeCheck(c: *cy.Chunk, startLocal: u8, numArgs: u32, funcSigId: sema.ResolvedFuncSigId, nodeId: cy.NodeId) !void {
+    try c.pushDebugSym(nodeId);
+    const start = c.buf.ops.items.len;
+    try c.buf.pushOpSlice(.callTypeCheck, &.{ startLocal, @intCast(u8, numArgs), 0, 0, });
+    c.buf.setOpArgU16(start + 3, @intCast(u16, funcSigId));
 }

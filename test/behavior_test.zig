@@ -19,6 +19,27 @@ const Config = setup.Config;
 const eqUserError = setup.eqUserError;
 const EvalResult = setup.EvalResult;
 
+test "Call typed function with dynamic arg." {
+    // Runtime type check.
+    try eval(.{ .silent = true },
+        \\import t 'test'
+        \\a = foo(123)
+        \\a = foo(a)
+        \\func foo(a number):
+        \\  return 'foo'
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Can not find compatible function for `foo(string) any`.
+            \\Only `func foo(number) any` exists.
+            \\
+            \\main:3:5 main:
+            \\a = foo(a)
+            \\    ^
+            \\
+        );
+    }}.func);
+}
+
 test "Specific ARC cases." {
     try evalPass(.{}, @embedFile("arc_cases_test.cy"));
 }

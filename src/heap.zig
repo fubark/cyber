@@ -1380,7 +1380,7 @@ pub fn allocEmptyObjectSmall(self: *cy.VM, sid: rt.TypeId) !Value {
 
 pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
     const sym = self.funcSyms.buf[symId];
-    switch (@intToEnum(cy.vm.FuncSymbolEntryType, sym.entryT)) {
+    switch (@intToEnum(cy.rt.FuncSymbolEntryType, sym.entryT)) {
         .nativeFunc1 => {
             const rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
             const numParams = sym.innerExtra.nativeFunc1.numParams();

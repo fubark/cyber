@@ -522,6 +522,32 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
 //     }
 // }
 
+pub fn findModuleSymForDynamicFuncCall(
+    chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId,
+) !?sema.ResolvedFuncSigId {
+    const relKey = RelModuleSymKey{
+        .relModuleSymKey = .{
+            .nameId = nameId,
+            .rFuncSigId = cy.NullId,
+        },
+    };
+
+    const mod = chunk.compiler.sema.modules.items[modId];
+    if (mod.syms.get(relKey)) |modSym| {
+        switch (modSym.symT) {
+            .symToManyFuncs => {
+                return chunk.reportError("Unsupported dynamic call to overloaded symbol.", &.{});
+            },
+            .symToOneFunc => {
+                return modSym.inner.symToOneFunc.rFuncSigId;
+            },
+            else => {
+            },
+        }
+    }
+    return null;
+}
+
 /// Finds the first function that matches the constrained signature.
 pub fn findModuleSymForFuncCall(
     chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId,

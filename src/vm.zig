@@ -89,15 +89,15 @@ pub const VM = struct {
     methodSymSigs: std.HashMapUnmanaged(rt.MethodKey, rt.MethodId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
-    funcSyms: cy.List(FuncSymbolEntry),
+    funcSyms: cy.List(rt.FuncSymbolEntry),
     funcSymSigs: std.HashMapUnmanaged(AbsFuncSigKey, SymbolId, KeyU96Context, 80),
-    funcSymDetails: cy.List(FuncSymDetail),
+    funcSymDetails: cy.List(rt.FuncSymDetail),
 
-    varSyms: cy.List(VarSym),
+    varSyms: cy.List(rt.VarSym),
     varSymSigs: std.HashMapUnmanaged(rt.VarKey, SymbolId, cy.hash.KeyU64Context, 80),
 
     /// Struct fields symbol table.
-    fieldSyms: cy.List(FieldSymbolMap),
+    fieldSyms: cy.List(rt.FieldSymbolMap),
     fieldTable: std.HashMapUnmanaged(rt.FieldTableKey, FieldEntry, cy.hash.KeyU64Context, 80),
     fieldSymSignatures: std.StringHashMapUnmanaged(rt.FieldId),
 
@@ -120,7 +120,7 @@ pub const VM = struct {
 
     /// Since func syms can be reassigned, track any RC dependencies.
     funcSymDeps: std.AutoHashMapUnmanaged(SymbolId, Value),
-    methodSymExtras: cy.List(MethodSymExtra),
+    methodSymExtras: cy.List(rt.MethodSymExtra),
     debugTable: []const cy.DebugSym,
 
     curFiber: *cy.Fiber,
@@ -271,7 +271,7 @@ pub const VM = struct {
             return;
         }
         for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == @enumToInt(FuncSymbolEntryType.closure)) {
+            if (sym.entryT == @enumToInt(rt.FuncSymbolEntryType.closure)) {
                 cy.arc.releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
             }
         }
@@ -339,9 +339,6 @@ pub const VM = struct {
             self.methodTable.deinit(self.alloc);
         }
 
-        for (self.funcSymDetails.items()) |detail| {
-            self.alloc.free(detail.name);
-        }
         if (reset) {
             self.funcSyms.clearRetainingCapacity();
             self.funcSymSigs.clearRetainingCapacity();
@@ -879,7 +876,7 @@ pub const VM = struct {
         const res = try self.varSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
             const id = @intCast(u32, self.varSyms.len);
-            try self.varSyms.append(self.alloc, VarSym.init(Value.None));
+            try self.varSyms.append(self.alloc, rt.VarSym.init(Value.None));
             res.value_ptr.* = id;
             return id;
         } else {
@@ -902,7 +899,7 @@ pub const VM = struct {
             // const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
             // const typedFlag: u16 = if (rFuncSig.isTyped) 1 << 15 else 0;
             try self.funcSyms.append(self.alloc, .{
-                .entryT = @enumToInt(FuncSymbolEntryType.none),
+                .entryT = @enumToInt(rt.FuncSymbolEntryType.none),
                 .innerExtra = .{
                     .none = .{
                         // .typedFlagNumParams = typedFlag | rFuncSig.numParams(),
@@ -911,6 +908,9 @@ pub const VM = struct {
                     },
                 },
                 .inner = undefined,
+            });
+            try self.funcSymDetails.append(self.alloc, .{
+                .nameId = nameId,
             });
             res.value_ptr.* = id;
             return id;
@@ -1043,11 +1043,11 @@ pub const VM = struct {
         };
     }
 
-    pub inline fn setVarSym(self: *VM, symId: SymbolId, sym: VarSym) void {
+    pub inline fn setVarSym(self: *VM, symId: SymbolId, sym: rt.VarSym) void {
         self.varSyms.buf[symId] = sym;
     }
 
-    pub inline fn setFuncSym(self: *VM, symId: SymbolId, sym: FuncSymbolEntry) void {
+    pub inline fn setFuncSym(self: *VM, symId: SymbolId, sym: rt.FuncSymbolEntry) void {
         self.funcSyms.buf[symId] = sym;
     }
 
@@ -1471,9 +1471,12 @@ pub const VM = struct {
     }
 
     /// startLocal points to the first arg in the current stack frame.
-    fn callSym(self: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u2) linksection(cy.HotSection) !cy.fiber.PcSp {
+    fn callSym(
+        self: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, symId: SymbolId, startLocal: u8,
+        numArgs: u8, reqNumRetVals: u2
+    ) linksection(cy.HotSection) !cy.fiber.PcSp {
         const sym = self.funcSyms.buf[symId];
-        switch (@intToEnum(FuncSymbolEntryType, sym.entryT)) {
+        switch (@intToEnum(rt.FuncSymbolEntryType, sym.entryT)) {
             .nativeFunc1 => {
                 const newFramePtr = framePtr + startLocal;
 
@@ -2146,20 +2149,10 @@ const Symbol = struct {
     nameOwned: bool,
 };
 
-const FieldSymbolMap = vmc.FieldSymbolMap;
-
 test "Internals." {
     try t.eq(@alignOf(VM), 8);
 
-    try t.eq(@sizeOf(FuncSymbolEntry), 16);
-    var funcSymEntry: FuncSymbolEntry = undefined;
-    try t.eq(@ptrToInt(&funcSymEntry.entryT), @ptrToInt(&funcSymEntry));
-    try t.eq(@ptrToInt(&funcSymEntry.innerExtra), @ptrToInt(&funcSymEntry) + 4);
-    try t.eq(@ptrToInt(&funcSymEntry.inner), @ptrToInt(&funcSymEntry) + 8);
-
     try t.eq(@sizeOf(AbsFuncSigKey), 16);
-
-    try t.eq(@sizeOf(FieldSymbolMap), 16);
 
     // Check Zig/C structs.
     try t.eq(@offsetOf(VM, "alloc"), @offsetOf(vmc.VM, "alloc"));
@@ -2203,103 +2196,6 @@ test "Internals." {
     try t.eq(@offsetOf(VM, "curFiber"), @offsetOf(vmc.VM, "curFiber"));
     try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
 }
-
-pub const VarSym = struct {
-    value: Value,
-
-    pub fn init(val: Value) VarSym {
-        return .{
-            .value = val,
-        };
-    }
-};
-
-pub const FuncSymbolEntryType = enum {
-    nativeFunc1,
-    func,
-    closure,
-    none,
-};
-
-pub const FuncSymDetail = struct {
-    name: []const u8,
-};
-
-/// TODO: Rename to FuncSymbol.
-pub const FuncSymbolEntry = extern struct {
-    entryT: u32,
-    innerExtra: extern union {
-        nativeFunc1: extern struct {
-            /// Used to wrap a native func as a function value.
-            typedFlagNumParams: u16,
-            rFuncSigId: u16,
-
-            pub fn numParams(self: @This()) u16 {
-                return self.typedFlagNumParams & ~(@as(u16, 1) << 15);
-            }
-        },
-        none: extern struct {
-            rFuncSigId: u32,
-        },
-        func: extern struct {
-            rFuncSigId: u32,
-        },
-    } = undefined,
-    inner: extern union {
-        nativeFunc1: *const fn (*UserVM, [*]const Value, u8) Value,
-        func: packed struct {
-            pc: u32,
-            /// Stack size required by the func.
-            stackSize: u16,
-            /// Num params used to wrap as function value.
-            numParams: u16,
-        },
-        closure: *cy.Closure,
-    },
-
-    pub fn initNativeFunc1(func: *const fn (*UserVM, [*]const Value, u8) Value, isTyped: bool, numParams: u32, rFuncSigId: sema.ResolvedFuncSigId) FuncSymbolEntry {
-        const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
-        return .{
-            .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
-            .innerExtra = .{
-                .nativeFunc1 = .{
-                    .typedFlagNumParams = isTypedMask | @intCast(u16, numParams),
-                    .rFuncSigId = @intCast(u16, rFuncSigId),
-                }
-            },
-            .inner = .{
-                .nativeFunc1 = func,
-            },
-        };
-    }
-
-    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, rFuncSigId: cy.sema.ResolvedFuncSigId) FuncSymbolEntry {
-        return .{
-            .entryT = @enumToInt(FuncSymbolEntryType.func),
-            .innerExtra = .{
-                .func = .{
-                    .rFuncSigId = rFuncSigId,
-                },
-            },
-            .inner = .{
-                .func = .{
-                    .pc = @intCast(u32, pc),
-                    .stackSize = stackSize,
-                    .numParams = numParams,
-                },
-            },
-        };
-    }
-
-    pub fn initClosure(closure: *cy.Closure) FuncSymbolEntry {
-        return .{
-            .entryT = @enumToInt(FuncSymbolEntryType.closure),
-            .inner = .{
-                .closure = closure,
-            },
-        };
-    }
-};
 
 const EnumId = u32;
 const Enum = struct {
@@ -3774,6 +3670,35 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 continue;
             },
+            .callTypeCheck => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpCallTypeCheck:"::);
+                }
+                const argStartReg = pc[1].arg;
+                const numArgs = pc[2].arg;
+                const funcSigId = @ptrCast(*const align(1) u16, pc + 3).*;
+                const funcSig = vm.compiler.sema.getResolvedFuncSig(funcSigId);
+                const args = framePtr[argStartReg .. argStartReg + funcSig.numParams()];
+
+                // TODO: numArgs and this check can be removed if overloaded symbols are grouped by numParams.
+                if (numArgs != funcSig.numParams()) {
+                    const funcId = @ptrCast(*const align(1) u16, pc + 5 + 4).*;
+                    return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
+                }
+
+                // Perform type check on args.
+                for (funcSig.params(), 0..) |cstrTypeId, i| {
+                    const argTypeId = args[i].getTypeId();
+                    const argSemaTypeId = vm.types.buf[argTypeId].rTypeSymId;
+                    if (!types.isTypeSymCompat(&vm.compiler, argSemaTypeId, cstrTypeId)) {
+                        // Assumes next inst is callSym/callNativeFuncIC/callFuncIC.
+                        const funcId = @ptrCast(*const align(1) u16, pc + 5 + 4).*;
+                        return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
+                    }
+                }
+                pc += 5;
+                continue;
+            },
             .callSym => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpCallSym:"::);
@@ -4071,6 +3996,15 @@ fn panicCastError(vm: *cy.VM, val: Value, expTypeId: rt.TypeId) !void {
     });
 }
 
+fn allocFuncCallSemaTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.types.TypeId {
+    const semaTypeIds = try vm.alloc.alloc(cy.types.TypeId, vals.len);
+    for (vals, 0..) |val, i| {
+        const typeId = val.getTypeId();
+        semaTypeIds[i] = vm.types.buf[typeId].rTypeSymId;
+    }
+    return semaTypeIds;
+}
+
 fn allocMethodCallSemaTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.types.TypeId {
     const semaTypeIds = try vm.alloc.alloc(cy.types.TypeId, vals.len + 1);
     semaTypeIds[0] = bt.Any;
@@ -4081,12 +4015,40 @@ fn allocMethodCallSemaTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.types
     return semaTypeIds;
 }
 
+fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, targetFuncSigId: sema.ResolvedFuncSigId) error{Panic, OutOfMemory} {
+    for (args) |arg| {
+        release(vm, arg);
+    }
+
+    const semaTypeIds = try allocFuncCallSemaTypeIds(vm, args);
+    defer vm.alloc.free(semaTypeIds);
+
+    const nameId = vm.funcSymDetails.buf[funcId].nameId;
+    const name = sema.getName(&vm.compiler, nameId);
+    const sigStr = try sema.allocResolvedFuncSigTypesStr(&vm.compiler, semaTypeIds, bt.Any);
+    const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, targetFuncSigId);
+    defer {
+        vm.alloc.free(sigStr);
+        vm.alloc.free(existingSigStr);
+    }
+    return vm.panicFmt(
+        \\Can not find compatible function for `{}{}`.
+        \\Only `func {}{}` exists.
+        , &.{
+            v(name), v(sigStr),
+            v(name), v(existingSigStr),
+        },
+    );
+}
+
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
-fn panicIncompatibleMethodSig(vm: *cy.VM, typeId: rt.TypeId, methodId: rt.MethodId, recv: Value, args: []const Value) error{Panic, OutOfMemory} {
+fn panicIncompatibleMethodSig(vm: *cy.VM, methodId: rt.MethodId, recv: Value, args: []const Value) error{Panic, OutOfMemory} {
     release(vm, recv);
     for (args) |arg| {
         release(vm, arg);
     }
+
+    const typeId = recv.getTypeId();
 
     const semaTypeIds = try allocMethodCallSemaTypeIds(vm, args);
     defer vm.alloc.free(semaTypeIds);
@@ -4159,7 +4121,7 @@ fn getObjectFunctionFallback(
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.loc];
         if (node.node_t == .callExpr) {
-            return panicIncompatibleMethodSig(vm, typeId, rtSymId, recv, vals);
+            return panicIncompatibleMethodSig(vm, rtSymId, recv, vals);
         } else {
             release(vm, recv);
             // Debug node is from:
@@ -4476,7 +4438,7 @@ fn opMatch(vm: *const VM, pc: [*]const cy.InstDatum, framePtr: [*]const Value) u
 
 fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
     const entry = vm.funcSyms.buf[symId];
-    switch (@intToEnum(FuncSymbolEntryType, entry.entryT)) {
+    switch (@intToEnum(rt.FuncSymbolEntryType, entry.entryT)) {
         .closure => {
             cy.arc.releaseObject(vm, @ptrCast(*cy.HeapObject, entry.inner.closure));
         },
@@ -4502,6 +4464,32 @@ fn reportAssignFuncSigMismatch(vm: *VM, srcFuncSigId: u32, dstFuncSigId: u32) er
     );
 }
 
+fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.ResolvedFuncSigId, dstFuncSigId: sema.ResolvedFuncSigId) bool {
+    if (srcFuncSigId == dstFuncSigId) {
+        return true;
+    }
+    const srcFuncSig = vm.compiler.sema.getResolvedFuncSig(srcFuncSigId);
+    const dstFuncSig = vm.compiler.sema.getResolvedFuncSig(dstFuncSigId);
+    if (srcFuncSig.numParams() != dstFuncSig.numParams()) {
+        return false;
+    }
+    const dstParams = dstFuncSig.params();
+    for (srcFuncSig.params(), 0..) |srcParam, i| {
+        const dstParam = dstParams[i];
+        if (srcParam == dstParam) {
+            continue;
+        }
+        if (srcParam == bt.Any and dstParam == bt.Dynamic) {
+            continue;
+        }
+        if (srcParam == bt.Dynamic and dstParam == bt.Any) {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
 fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
     errdefer {
         // TODO: This should be taken care of by panic stack unwinding.
@@ -4512,14 +4500,14 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
         switch (obj.head.typeId) {
             rt.NativeFuncT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
-                if (dstRFuncSigId != obj.nativeFunc1.rFuncSigId) {
+                if (!isAssignFuncSigCompat(vm, obj.nativeFunc1.rFuncSigId, dstRFuncSigId)) {
                     return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, obj.nativeFunc1.rFuncSigId, dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
 
                 const rFuncSig = vm.compiler.sema.resolvedFuncSigs.items[dstRFuncSigId];
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
+                    .entryT = @enumToInt(rt.FuncSymbolEntryType.nativeFunc1),
                     .innerExtra = .{
                         .nativeFunc1 = .{
                             .typedFlagNumParams = rFuncSig.numParams(),
@@ -4534,12 +4522,12 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
             },
             rt.LambdaT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
-                if (dstRFuncSigId != obj.lambda.rFuncSigId) {
+                if (!isAssignFuncSigCompat(vm, @intCast(u32, obj.lambda.rFuncSigId), dstRFuncSigId)) {
                     return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.lambda.rFuncSigId), dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @enumToInt(FuncSymbolEntryType.func),
+                    .entryT = @enumToInt(rt.FuncSymbolEntryType.func),
                     .inner = .{
                         .func = .{
                             .pc = obj.lambda.funcPc,
@@ -4552,12 +4540,12 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
             },
             rt.ClosureT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
-                if (dstRFuncSigId != obj.closure.rFuncSigId) {
+                if (!isAssignFuncSigCompat(vm, @intCast(u32, obj.closure.rFuncSigId), dstRFuncSigId)) {
                     return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.closure.rFuncSigId), dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @enumToInt(FuncSymbolEntryType.closure),
+                    .entryT = @enumToInt(rt.FuncSymbolEntryType.closure),
                     .inner = .{
                         .closure = val.asPointer(*cy.heap.Closure),
                     },
@@ -4574,7 +4562,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
 }
 
 fn getResolvedFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.ResolvedFuncSigId {
-    switch (@intToEnum(FuncSymbolEntryType, vm.funcSyms.buf[symId].entryT)) {
+    switch (@intToEnum(rt.FuncSymbolEntryType, vm.funcSyms.buf[symId].entryT)) {
         .nativeFunc1 => {
             return vm.funcSyms.buf[symId].innerExtra.nativeFunc1.rFuncSigId;
         },
@@ -4681,7 +4669,7 @@ fn callMethodEntry(
                 const valTypeId = val.getTypeId();
                 const semaTypeId = vm.types.buf[valTypeId].rTypeSymId;
                 if (!types.isTypeSymCompat(&vm.compiler, semaTypeId, cstrTypeId)) {
-                    return panicIncompatibleMethodSig(vm, typeId, methodId, recv, vals);
+                    return panicIncompatibleMethodSig(vm, methodId, recv, vals);
                 }
             }
 
@@ -4714,7 +4702,7 @@ fn callMethodEntry(
                 const valTypeId = val.getTypeId();
                 const semaTypeId = vm.types.buf[valTypeId].rTypeSymId;
                 if (!types.isTypeSymCompat(&vm.compiler, semaTypeId, cstrTypeId)) {
-                    return panicIncompatibleMethodSig(vm, typeId, methodId, recv, vals);
+                    return panicIncompatibleMethodSig(vm, methodId, recv, vals);
                 }
             }
 
@@ -4750,16 +4738,6 @@ fn callMethodEntry(
         },
     }
 }
-
-const MethodSymExtra = struct {
-    namePtr: [*]const u8,
-    nameLen: u32,
-    nameIsOwned: bool,
-
-    pub fn getName(self: *const MethodSymExtra) []const u8 {
-        return self.namePtr[0..self.nameLen];
-    }
-};
 
 pub const ValidateResult = struct {
     err: ?cy.CompileErrorType,

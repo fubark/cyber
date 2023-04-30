@@ -163,11 +163,135 @@ pub const MethodSym = struct {
     }
 };
 
+pub const MethodSymExtra = struct {
+    namePtr: [*]const u8,
+    nameLen: u32,
+    nameIsOwned: bool,
+
+    pub fn getName(self: *const MethodSymExtra) []const u8 {
+        return self.namePtr[0..self.nameLen];
+    }
+};
+
+pub const FuncId = u32;
+
+pub const FuncSymbolEntryType = enum {
+    nativeFunc1,
+    func,
+    closure,
+
+    /// Placeholder for a func symbol that contains a linked list of overloaded functions.
+    /// The arg types are checked at runtime.
+    // multiple,
+
+    none,
+};
+
+pub const FuncSymDetail = struct {
+    nameId: sema.NameSymId,
+};
+
+/// TODO: Rename to FuncSymbol.
+pub const FuncSymbolEntry = extern struct {
+    entryT: u32,
+    innerExtra: extern union {
+        nativeFunc1: extern struct {
+            /// Used to wrap a native func as a function value.
+            typedFlagNumParams: u16,
+            rFuncSigId: u16,
+
+            pub fn numParams(self: @This()) u16 {
+                return self.typedFlagNumParams & ~(@as(u16, 1) << 15);
+            }
+        },
+        none: extern struct {
+            rFuncSigId: u32,
+        },
+        func: extern struct {
+            rFuncSigId: u32,
+        },
+    } = undefined,
+    inner: extern union {
+        nativeFunc1: cy.NativeFuncPtr,
+        func: packed struct {
+            pc: u32,
+            /// Stack size required by the func.
+            stackSize: u16,
+            /// Num params used to wrap as function value.
+            numParams: u16,
+        },
+        closure: *cy.Closure,
+    },
+
+    pub fn initNativeFunc1(func: cy.NativeFuncPtr, isTyped: bool, numParams: u32, rFuncSigId: sema.ResolvedFuncSigId) FuncSymbolEntry {
+        const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
+        return .{
+            .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
+            .innerExtra = .{
+                .nativeFunc1 = .{
+                    .typedFlagNumParams = isTypedMask | @intCast(u16, numParams),
+                    .rFuncSigId = @intCast(u16, rFuncSigId),
+                }
+            },
+            .inner = .{
+                .nativeFunc1 = func,
+            },
+        };
+    }
+
+    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, rFuncSigId: cy.sema.ResolvedFuncSigId) FuncSymbolEntry {
+        return .{
+            .entryT = @enumToInt(FuncSymbolEntryType.func),
+            .innerExtra = .{
+                .func = .{
+                    .rFuncSigId = rFuncSigId,
+                },
+            },
+            .inner = .{
+                .func = .{
+                    .pc = @intCast(u32, pc),
+                    .stackSize = stackSize,
+                    .numParams = numParams,
+                },
+            },
+        };
+    }
+
+    pub fn initClosure(closure: *cy.Closure) FuncSymbolEntry {
+        return .{
+            .entryT = @enumToInt(FuncSymbolEntryType.closure),
+            .inner = .{
+                .closure = closure,
+            },
+        };
+    }
+};
+
 pub const VarKey = cy.hash.KeyU64;
+
+pub const VarSym = struct {
+    value: cy.Value,
+
+    pub fn init(val: cy.Value) VarSym {
+        return .{
+            .value = val,
+        };
+    }
+};
+
+pub const FieldSymbolMap = vmc.FieldSymbolMap;
 
 test "Internals." {
     try t.eq(@alignOf(MethodSym), 8);
     try t.eq(@sizeOf(MethodSym), 24);
+
+    try t.eq(@sizeOf(FuncSymbolEntry), 16);
+    var funcSymEntry: FuncSymbolEntry = undefined;
+    try t.eq(@ptrToInt(&funcSymEntry.entryT), @ptrToInt(&funcSymEntry));
+    try t.eq(@ptrToInt(&funcSymEntry.innerExtra), @ptrToInt(&funcSymEntry) + 4);
+    try t.eq(@ptrToInt(&funcSymEntry.inner), @ptrToInt(&funcSymEntry) + 8);
+
+    try t.eq(@sizeOf(FieldSymbolMap), 16);
 
     try t.eq(@sizeOf(Type), 24);
 }

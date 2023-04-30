@@ -36,8 +36,9 @@ pub const BuiltinTypeSymIds = struct {
     /// Strings that aren't retained.
     pub const StaticString: TypeId = 16;
     pub const File: TypeId = 17;
+    pub const Dynamic: TypeId = 18;
 
-    pub const End: TypeId = 18;
+    pub const End: TypeId = 19;
 };
 
 test "Reserved names map to reserved sym ids." {
@@ -88,7 +89,7 @@ pub fn isTypeSymCompat(_: *cy.VMcompiler, typeSymId: TypeId, cstrType: TypeId) b
     if (typeSymId == cstrType) {
         return true;
     }
-    if (cstrType == bt.Any) {
+    if (cstrType == bt.Any or cstrType == bt.Dynamic) {
         return true;
     }
     if (cstrType == bt.String and typeSymId == bt.StaticString) {
@@ -189,6 +190,7 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, symId: TypeId) bool {
         bt.Pointer,
         bt.Fiber,
         bt.MetaType,
+        bt.Dynamic,
         bt.Any => return true,
         bt.Integer,
         bt.Number,

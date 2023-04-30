@@ -645,6 +645,7 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
             const numEntries = pc[2].arg;
             return 4 + numEntries * 2;
         },
+        .callTypeCheck,
         .slice,
         .object,
         .objectSmall => {
@@ -748,6 +749,10 @@ pub const OpCode = enum(u8) {
     callObjSym = vmc.CodeCallObjSym,
     callObjNativeFuncIC = vmc.CodeCallObjNativeFuncIC,
     callObjFuncIC = vmc.CodeCallObjFuncIC,
+
+    /// Runtime type check.
+    callTypeCheck = vmc.CodeCallTypeCheck,
+
     callSym = vmc.CodeCallSym,
     callFuncIC = vmc.CodeCallFuncIC,
     callNativeFuncIC = vmc.CodeCallNativeFuncIC,
@@ -873,7 +878,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 98);
+    try t.eq(std.enums.values(OpCode).len, 99);
     try t.eq(@sizeOf(InstDatum), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

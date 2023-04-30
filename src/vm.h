@@ -32,6 +32,7 @@ typedef enum {
     CodeCallObjSym,
     CodeCallObjNativeFuncIC,
     CodeCallObjFuncIC,
+    CodeCallTypeCheck,
     CodeCallSym,
     CodeCallFuncIC,
     CodeCallNativeFuncIC,

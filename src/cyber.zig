@@ -55,15 +55,12 @@ pub const vm = @import("vm.zig");
 pub const EvalConfig = vm.EvalConfig;
 pub const getUserVM = vm.getUserVM;
 pub const VM = vm.VM;
-pub const FuncSymbolEntry = vm.FuncSymbolEntry;
-pub const VarSym = vm.VarSym;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;
 pub const EvalError = vm.EvalError;
 pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
 pub const getInstOffset = vm.getInstOffset;
-pub const FuncSymDetail = vm.FuncSymDetail;
 pub const StringType = vm.StringType;
 
 const api = @import("api.zig");

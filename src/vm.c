@@ -215,6 +215,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallObjSym),
         JENTRY(CallObjNativeFuncIC),
         JENTRY(CallObjFuncIC),
+        JENTRY(CallTypeCheck),
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
@@ -513,6 +514,10 @@ beginSwitch:
         // Deoptimize.
         pc[0] = CodeCallObjSym;
         NEXT();
+    }
+    CASE(CallTypeCheck): {
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
     }
     CASE(CallSym): {
         uint8_t startLocal = pc[1];

@@ -1405,106 +1405,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
             return bt.Fiber;
         },
         .callExpr => {
-            const callee = c.nodes[node.head.callExpr.callee];
-            if (!node.head.callExpr.has_named_arg) {
-                if (callee.node_t == .accessExpr) {
-                    _ = try semaExpr(c, callee.head.accessExpr.left);
-
-                    const callArgStart = c.compiler.typeStack.items.len;
-                    defer c.compiler.typeStack.items.len = callArgStart;
-
-                    // Push Any in case it's a method sym. pushCallArgs will ignore the self param.
-                    try c.compiler.typeStack.append(c.alloc, bt.Any);
-
-                    const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
-                    const reqRet = bt.Any;
-
-                    const left = c.nodes[callee.head.accessExpr.left];
-                    var crLeftSym = CompactResolvedSymId.initNull();
-                    if (left.node_t == .ident) {
-                        crLeftSym = left.head.ident.sema_crSymId;
-                    } else if (left.node_t == .accessExpr) {
-                        crLeftSym = left.head.accessExpr.sema_crSymId;
-                    }
-                    if (crLeftSym.isPresent()) {
-                        // Calling a symbol.
-                        if (!crLeftSym.isFuncSymId) {
-                            const right = c.nodes[callee.head.accessExpr.right];
-                            const name = c.getNodeTokenString(right);
-                            const nameId = try ensureNameSym(c.compiler, name);
-
-                            if (try getOrResolveSymForFuncCall(c, crLeftSym.id, nameId, callArgs.argTypes, reqRet)) |callRes| {
-                                if (callArgs.hasFlexArg) {
-                                    updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
-                                }
-                                try referenceSym(c, callRes.crSymId, true);
-                                c.nodes[node.head.callExpr.callee].head.accessExpr.sema_crSymId = callRes.crSymId;
-                                return callRes.retType;
-                            }
-                        }
-                    }
-
-                    // Dynamic method call.
-                    const selfCallArgs = c.compiler.typeStack.items[callArgStart..];
-                    const rFuncSigId = try ensureResolvedFuncSigNonFlex(c.compiler, selfCallArgs, reqRet);
-                    if (callArgs.hasFlexArg) {
-                        updateFlexSelfArgTypes(c, node.head.callExpr.arg_head, selfCallArgs, rFuncSigId);
-                    }
-                    c.nodes[callee.head.accessExpr.right].head.ident.semaMethodSigId = rFuncSigId;
-
-                    return bt.Any;
-                } else if (callee.node_t == .ident) {
-                    const name = c.getNodeTokenString(callee);
-                    const res = try getOrLookupVar(c, name, .readSkipStaticVar);
-                    if (res.isLocal) {
-                        c.nodes[node.head.callExpr.callee].head.ident.semaVarId = res.id;
-
-                        var numArgs: u32 = 1;
-                        var arg_id = node.head.callExpr.arg_head;
-                        while (arg_id != cy.NullId) : (numArgs += 1) {
-                            const arg = c.nodes[arg_id];
-                            _ = try semaExpr(c, arg_id);
-                            arg_id = arg.next;
-                        }
-                        return bt.Any;
-                    } else {
-                        const callArgStart = c.compiler.typeStack.items.len;
-                        defer c.compiler.typeStack.items.len = callArgStart;
-
-                        const nameId = try ensureNameSym(c.compiler, name);
-
-                        // const funcCandStart = c.funcCandidateStack.items.len;
-                        // defer c.funcCandidateStack.items.len = funcCandStart;
-                        // const funcCandidates = try pushFuncCandidates(c, c.semaResolvedRootSymId, nameId, node.head.callExpr.numArgs);
-                        const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
-                        const reqRet = bt.Any;
-
-                        c.curNodeId = node.head.callExpr.callee;
-                        if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes, reqRet)) |callRes| {
-                            if (callArgs.hasFlexArg) {
-                                updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
-                            }
-                            try referenceSym(c, callRes.crSymId, true);
-                            c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
-                            return callRes.retType;
-                        }
-
-                        return bt.Any;
-                    }
-                } else {
-                    // All other callees are treated as function value calls.
-                    var numArgs: u32 = 0;
-                    var arg_id = node.head.callExpr.arg_head;
-                    while (arg_id != cy.NullId) : (numArgs += 1) {
-                        const arg = c.nodes[arg_id];
-                        _ = try semaExpr(c, arg_id);
-                        arg_id = arg.next;
-                    }
-
-                    _ = try semaExpr(c, node.head.callExpr.callee);
-                    return bt.Any;
-                }
-            } else return c.reportErrorAt("Unsupported named args", &.{}, nodeId);
+            return callExpr(c, nodeId);
         },
         .lambda_multi => {
             const declId = try appendFuncDecl(c, nodeId, false);
@@ -1544,6 +1445,136 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
         },
         else => return c.reportErrorAt("Unsupported node", &.{}, nodeId),
     }
+}
+
+fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
+    const node = c.nodes[nodeId];
+    const callee = c.nodes[node.head.callExpr.callee];
+    if (!node.head.callExpr.has_named_arg) {
+        if (callee.node_t == .accessExpr) {
+            _ = try semaExpr(c, callee.head.accessExpr.left);
+
+            const callArgStart = c.compiler.typeStack.items.len;
+            defer c.compiler.typeStack.items.len = callArgStart;
+
+            // Push Any in case it's a method sym. pushCallArgs will ignore the self param.
+            try c.compiler.typeStack.append(c.alloc, bt.Any);
+
+            const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
+            const reqRet = bt.Any;
+
+            const left = c.nodes[callee.head.accessExpr.left];
+            var crLeftSym = CompactResolvedSymId.initNull();
+            if (left.node_t == .ident) {
+                crLeftSym = left.head.ident.sema_crSymId;
+            } else if (left.node_t == .accessExpr) {
+                crLeftSym = left.head.accessExpr.sema_crSymId;
+            }
+            if (crLeftSym.isPresent()) {
+                // Calling a symbol.
+                if (!crLeftSym.isFuncSymId) {
+                    const right = c.nodes[callee.head.accessExpr.right];
+                    const name = c.getNodeTokenString(right);
+                    const nameId = try ensureNameSym(c.compiler, name);
+
+                    if (callArgs.hasDynamicArg) {
+                        // Runtime type check.
+                        if (try getOrResolveSymForDynamicFuncCall(c, crLeftSym.id, nameId, callArgs.argTypes)) |callRes| {
+                            if (callArgs.hasFlexArg) {
+                                updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
+                            }
+                            try referenceSym(c, callRes.crSymId, true);
+                            c.nodes[node.head.callExpr.callee].head.accessExpr.sema_crSymId = callRes.crSymId;
+                            return callRes.retType;
+                        }
+                    } else {
+                        // Compile-time type check.
+                        if (try getOrResolveSymForFuncCall(c, crLeftSym.id, nameId, callArgs.argTypes, reqRet)) |callRes| {
+                            if (callArgs.hasFlexArg) {
+                                updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
+                            }
+                            try referenceSym(c, callRes.crSymId, true);
+                            c.nodes[node.head.callExpr.callee].head.accessExpr.sema_crSymId = callRes.crSymId;
+                            return callRes.retType;
+                        }
+                    }
+                }
+            }
+
+            // Dynamic method call.
+            const selfCallArgs = c.compiler.typeStack.items[callArgStart..];
+            const rFuncSigId = try ensureResolvedFuncSigNonFlex(c.compiler, selfCallArgs, reqRet);
+            if (callArgs.hasFlexArg) {
+                updateFlexSelfArgTypes(c, node.head.callExpr.arg_head, selfCallArgs, rFuncSigId);
+            }
+            c.nodes[callee.head.accessExpr.right].head.ident.semaMethodSigId = rFuncSigId;
+
+            return bt.Dynamic;
+        } else if (callee.node_t == .ident) {
+            const name = c.getNodeTokenString(callee);
+            const res = try getOrLookupVar(c, name, .readSkipStaticVar);
+            if (res.isLocal) {
+                c.nodes[node.head.callExpr.callee].head.ident.semaVarId = res.id;
+
+                var numArgs: u32 = 1;
+                var arg_id = node.head.callExpr.arg_head;
+                while (arg_id != cy.NullId) : (numArgs += 1) {
+                    const arg = c.nodes[arg_id];
+                    _ = try semaExpr(c, arg_id);
+                    arg_id = arg.next;
+                }
+                return bt.Any;
+            } else {
+                const callArgStart = c.compiler.typeStack.items.len;
+                defer c.compiler.typeStack.items.len = callArgStart;
+
+                const nameId = try ensureNameSym(c.compiler, name);
+
+                // const funcCandStart = c.funcCandidateStack.items.len;
+                // defer c.funcCandidateStack.items.len = funcCandStart;
+                // const funcCandidates = try pushFuncCandidates(c, c.semaResolvedRootSymId, nameId, node.head.callExpr.numArgs);
+                const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
+                const reqRet = bt.Any;
+
+                c.curNodeId = node.head.callExpr.callee;
+                if (callArgs.hasDynamicArg) {
+                    // Runtime type check.
+                    if (try getOrResolveSymForDynamicFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes)) |callRes| {
+                        if (callArgs.hasFlexArg) {
+                            updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
+                        }
+                        try referenceSym(c, callRes.crSymId, true);
+                        c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
+                        return callRes.retType;
+                    }
+                } else {
+                    // Compile-time type check.
+                    if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes, reqRet)) |callRes| {
+                        if (callArgs.hasFlexArg) {
+                            updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
+                        }
+                        try referenceSym(c, callRes.crSymId, true);
+                        c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
+                        return callRes.retType;
+                    }
+                }
+
+                return c.reportError("No such symbol: `{}`", &.{v(name)});
+            }
+        } else {
+            // All other callees are treated as function value calls.
+            var numArgs: u32 = 0;
+            var arg_id = node.head.callExpr.arg_head;
+            while (arg_id != cy.NullId) : (numArgs += 1) {
+                const arg = c.nodes[arg_id];
+                _ = try semaExpr(c, arg_id);
+                arg_id = arg.next;
+            }
+
+            _ = try semaExpr(c, node.head.callExpr.callee);
+            return bt.Any;
+        }
+    } else return c.reportErrorAt("Unsupported named args", &.{}, nodeId);
 }
 
 fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
@@ -1640,16 +1671,16 @@ fn appendFuncDecl(chunk: *cy.Chunk, nodeId: cy.NodeId, isStatic: bool) !FuncDecl
     decl.numParams = numParams;
 
     // Get return type.
-    var retSymId: ResolvedSymId = undefined;
+    var retType: TypeId = undefined;
     if (header.head.funcHeader.ret != cy.NullId) {
-        retSymId = try getOrResolveTypeSymFromSpecNode(chunk, header.head.funcHeader.ret);
+        retType = try getOrResolveTypeSymFromSpecNode(chunk, header.head.funcHeader.ret);
     } else {
-        retSymId = bt.Any;
+        retType = bt.Dynamic;
     }
 
     // Resolve func signature.
-    decl.rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, chunk.compiler.tempSyms.items, retSymId);
-    decl.rRetTypeSymId = retSymId;
+    decl.rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, chunk.compiler.tempSyms.items, retType);
+    decl.rRetTypeSymId = retType;
 
     const declId = @intCast(u32, chunk.semaFuncDecls.items.len);
     try chunk.semaFuncDecls.append(chunk.alloc, decl);
@@ -2562,6 +2593,143 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId
 //     );
 // }
 
+const DynamicFuncCallSymResult = struct {
+    crSymId: CompactResolvedSymId,
+    funcSigId: ResolvedFuncSigId,
+    retType: TypeId,
+    overloaded: bool,
+};
+
+fn getOrResolveSymForDynamicFuncCall(
+    chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: NameSymId, args: []const TypeId,
+) !?DynamicFuncCallSymResult {
+    var rParentSymIdFinal = rParentSymId;
+
+    var key: cy.hash.KeyU64 = undefined;
+    if (rParentSymId == chunk.semaResolvedRootSymId) {
+        key = RelLocalSymKey{
+            .relLocalSymKey = .{
+                .nameId = nameId,
+                .rFuncSigId = cy.NullId,
+            },
+        };
+        if (chunk.localSyms.get(key)) |sym| {
+            rParentSymIdFinal = sym.rParentSymId;
+        } else {
+            if (nameId < NameBuiltinTypeEnd) {
+                rParentSymIdFinal = cy.NullId;
+            }
+        }
+    }
+
+    key = AbsResolvedSymKey{
+        .absResolvedSymKey = .{
+            .rParentSymId = rParentSymIdFinal,
+            .nameId = nameId,
+        },
+    };
+    const rSymId = chunk.compiler.sema.resolvedSymMap.get(key) orelse cy.NullId;
+
+    if (rParentSymIdFinal != cy.NullId) {
+        const parentSym = chunk.compiler.sema.getResolvedSym(rParentSymIdFinal);
+        const modId = parentSym.getModuleId() orelse return null;
+
+        if (try cy.module.findModuleSymForDynamicFuncCall(chunk, modId, nameId)) |mod_rFuncSigId| {
+            if (rSymId != cy.NullId) {
+                key = AbsResolvedFuncSymKey{
+                    .absResolvedFuncSymKey = .{
+                        .rSymId = rSymId,
+                        .rFuncSigId = mod_rFuncSigId,
+                    },
+                };
+                if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
+                    return DynamicFuncCallSymResult{
+                        .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
+                        .funcSigId = mod_rFuncSigId,
+                        .retType = rFuncSym.retType,
+                        .overloaded = false,
+                    };
+                }
+            }
+
+            if (try resolveSymFromModule(chunk, modId, nameId, mod_rFuncSigId)) |crSymId| {
+                if (crSymId.isFuncSymId) {
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(crSymId.id);
+                    return DynamicFuncCallSymResult{
+                        .crSymId = crSymId,
+                        .funcSigId = mod_rFuncSigId,
+                        .retType = rFuncSym.retType,
+                        .overloaded = false,
+                    };
+                } else {
+                    return DynamicFuncCallSymResult{
+                        .crSymId = crSymId,
+                        .funcSigId = mod_rFuncSigId,
+                        .retType = bt.Any,
+                        .overloaded = false,
+                    };
+                }
+            } else {
+                stdx.panic("unexpected");
+            }
+        } else {
+            const rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, args, bt.Any);
+            try reportIncompatibleFuncSig(chunk, nameId, rFuncSigId, modId);
+        }
+    }
+
+    // Look for <call> magic function.
+    if (rSymId != cy.NullId) {
+        const sym = chunk.compiler.sema.getResolvedSym(rSymId);
+        if (sym.getModuleId()) |symModId| {
+            const callNameId = try ensureNameSym(chunk.compiler, "<call>");
+            if (try cy.module.findModuleSymForDynamicFuncCall(chunk, symModId, callNameId)) |funcSigId| {
+                // Check if already resolved.
+                key = AbsResolvedSymKey{
+                    .absResolvedSymKey = .{
+                        .rParentSymId = rSymId,
+                        .nameId = callNameId,
+                    },
+                };
+                if (chunk.compiler.sema.resolvedSymMap.get(key)) |callSymId| {
+                    key = AbsResolvedFuncSymKey{
+                        .absResolvedFuncSymKey = .{
+                            .rSymId = callSymId,
+                            .rFuncSigId = funcSigId,
+                        },
+                    };
+                    if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |rFuncSymId| {
+                        const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(rFuncSymId);
+                        return DynamicFuncCallSymResult{
+                            .crSymId = CompactResolvedSymId.initFuncSymId(rFuncSymId),
+                            .retType = rFuncSym.retType,
+                            .funcSigId = funcSigId,
+                            .overloaded = false,
+                        };
+                    }
+                }
+
+                if (try resolveSymFromModule(chunk, symModId, callNameId, funcSigId)) |crSymId| {
+                    std.debug.assert(crSymId.isFuncSymId);
+
+                    const rFuncSym = chunk.compiler.sema.getResolvedFuncSym(crSymId.id);
+                    return DynamicFuncCallSymResult{
+                        .crSymId = crSymId,
+                        .retType = rFuncSym.retType,
+                        .funcSigId = funcSigId,
+                        .overloaded = false,
+                    };
+                } else {
+                    stdx.panic("unexpected");
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
 const FuncCallSymResult = struct {
     crSymId: CompactResolvedSymId,
     funcSigId: ResolvedFuncSigId,
@@ -2897,7 +3065,7 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
             },
             .variable => {
                 const rtSymId = try self.vm.ensureVarSym(mod.resolvedRootSymId, nameId);
-                const rtSym = cy.VarSym.init(modSym.inner.variable.val);
+                const rtSym = rt.VarSym.init(modSym.inner.variable.val);
                 cy.arc.retain(self.vm, rtSym.value);
                 self.vm.setVarSym(rtSymId, rtSym);
                 const id = try self.sema.addResolvedSym(key, .variable, .{
@@ -3501,7 +3669,7 @@ fn resolveNativeFunc(
     const rtSymId = try c.compiler.vm.ensureFuncSym(parentSymId, nameId, funcSigId);
 
     const funcSig = c.compiler.sema.getResolvedFuncSig(funcSigId);
-    const rtSym = cy.FuncSymbolEntry.initNativeFunc1(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
+    const rtSym = rt.FuncSymbolEntry.initNativeFunc1(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
     c.compiler.vm.setFuncSym(rtSymId, rtSym);
     return try resolveFunc(c, key, funcSigId, cy.NullId);
 }
@@ -3631,6 +3799,7 @@ fn endFuncSymBlock(self: *cy.Chunk, numParams: u32) !void {
 const PushCallArgsResult = struct {
     argTypes: []const TypeId,
     hasFlexArg: bool,
+    hasDynamicArg: bool,
 };
 
 fn updateFlexSelfArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeId, funcSigId: ResolvedFuncSigId) void {
@@ -3663,20 +3832,39 @@ fn updateFlexArgTypes2(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeI
     }
 }
 
+fn defaultFlexArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeId) void {
+    var cur = argHead;
+    for (argTypes, 0..) |argT, i| {
+        const arg = c.nodes[cur];
+        if (types.isFlexibleType(argT)) {
+            switch (argTypes[i]) {
+                bt.NumberLit => {
+                    c.nodeTypes[cur] = bt.Number;
+                },
+                else => unreachable,
+            }
+        }
+        cur = arg.next;
+    }
+}
+
 fn pushCallArgs(c: *cy.Chunk, argHead: cy.NodeId) !PushCallArgsResult {
     const start = c.compiler.typeStack.items.len;
     var nodeId = argHead;
     var hasFlexArg = false;
+    var hasDynamicArg = false;
     while (nodeId != cy.NullId) {
         const arg = c.nodes[nodeId];
         const argT = try flexExpr(c, nodeId);
         hasFlexArg = hasFlexArg or types.isFlexibleType(argT);
+        hasDynamicArg = hasDynamicArg or (argT == bt.Dynamic);
         try c.compiler.typeStack.append(c.alloc, argT);
         nodeId = arg.next;
     }
     return PushCallArgsResult{
         .argTypes = c.compiler.typeStack.items[start..],
         .hasFlexArg = hasFlexArg,
+        .hasDynamicArg = hasDynamicArg,
     };
 }
 
@@ -3688,15 +3876,15 @@ pub const ResolvedFuncSig = struct {
     paramLen: u16,
     isTyped: bool,
 
-    pub fn params(self: ResolvedFuncSig) []const ResolvedSymId {
+    pub inline fn params(self: ResolvedFuncSig) []const ResolvedSymId {
         return self.paramPtr[0..self.paramLen];
     }
 
-    pub fn numParams(self: ResolvedFuncSig) u8 {
+    pub inline fn numParams(self: ResolvedFuncSig) u8 {
         return @intCast(u8, self.paramLen);
     }
 
-    pub fn getRetTypeSymId(self: ResolvedFuncSig) ResolvedSymId {
+    pub inline fn getRetTypeSymId(self: ResolvedFuncSig) ResolvedSymId {
         return self.retSymId;
     }
 
@@ -3915,7 +4103,7 @@ pub const Model = struct {
         }
     }
 
-    pub fn getResolvedSym(self: *Model, id: ResolvedSymId) ResolvedSym {
+    pub inline fn getResolvedSym(self: *Model, id: ResolvedSymId) ResolvedSym {
         return self.resolvedSyms.items[id];
     }
 
@@ -3931,27 +4119,27 @@ pub const Model = struct {
         return id;
     }
 
-    pub fn getResolvedSymPtr(self: *Model, id: ResolvedSymId) *ResolvedSym {
+    pub inline fn getResolvedSymPtr(self: *Model, id: ResolvedSymId) *ResolvedSym {
         return &self.resolvedSyms.items[id];
     }
 
-    pub fn getResolvedFuncSym(self: *Model, id: ResolvedFuncSymId) ResolvedFuncSym {
+    pub inline fn getResolvedFuncSym(self: *Model, id: ResolvedFuncSymId) ResolvedFuncSym {
         return self.resolvedFuncSyms.items[id];
     }
 
-    pub fn getResolvedFuncSymPtr(self: *Model, id: ResolvedFuncSymId) *ResolvedFuncSym {
+    pub inline fn getResolvedFuncSymPtr(self: *Model, id: ResolvedFuncSymId) *ResolvedFuncSym {
         return &self.resolvedFuncSyms.items[id];
     }
 
-    pub fn getResolvedFuncSig(self: *Model, id: ResolvedFuncSigId) ResolvedFuncSig {
+    pub inline fn getResolvedFuncSig(self: *Model, id: ResolvedFuncSigId) ResolvedFuncSig {
         return self.resolvedFuncSigs.items[id];
     }
 
-    pub fn getModule(self: *Model, id: cy.ModuleId) cy.Module {
+    pub inline fn getModule(self: *Model, id: cy.ModuleId) cy.Module {
         return self.modules.items[id];
     }
 
-    pub fn getModulePtr(self: *Model, id: cy.ModuleId) *cy.Module {
+    pub inline fn getModulePtr(self: *Model, id: cy.ModuleId) *cy.Module {
         return &self.modules.items[id];
     }
 };

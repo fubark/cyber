@@ -451,8 +451,16 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 _ = try semaExpr(c, left.head.left_right.right);
                 _ = try semaExpr(c, node.head.left_right.right);
             } else if (left.node_t == .accessExpr) {
-                _ = try accessExpr(c, node.head.left_right.left);
-                _ = try semaExpr(c, node.head.left_right.right);
+                const res = try accessExpr(c, node.head.left_right.left);
+                const rightT = try semaExpr(c, node.head.left_right.right);
+                if (rightT != bt.Dynamic and res.recvT != bt.Any) {
+                    // Compile-time type check on the field.
+                    if (!types.isTypeSymCompat(c.compiler, rightT, res.exprT)) {
+                        const fieldTypeName = getSymName(c.compiler, res.exprT);
+                        const rightTypeName = getSymName(c.compiler, rightT);
+                        return c.reportError("Assigning to `{}` member with incompatible type `{}`.", &.{v(fieldTypeName), v(rightTypeName)});
+                    }
+                }
             } else {
                 return c.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
             }
@@ -1241,7 +1249,8 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
             return bt.List;
         },
         .accessExpr => {
-            return accessExpr(c, nodeId);
+            const res = try accessExpr(c, nodeId);
+            return res.exprT;
         },
         .indexExpr => {
             _ = try semaExpr(c, node.head.left_right.left);
@@ -3206,7 +3215,7 @@ pub fn endBlock(self: *cy.Chunk) !void {
     self.curSemaBlockId = self.semaBlockStack.items[self.semaBlockStack.items.len-1];
 }
 
-pub fn getAccessExprType(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !TypeId {
+pub fn getAccessExprResult(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !AccessExprResult {
     const sym = c.compiler.sema.getResolvedSym(ltype);
     if (sym.symT == .object) {
         const typeId = sym.inner.object.typeId;
@@ -3222,12 +3231,23 @@ pub fn getAccessExprType(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !Ty
             const name = c.compiler.vm.types.buf[typeId].name;
             return c.reportError("Missing field `{}` for type: {}", &.{v(rightName), v(name)});
         }
-        return c.compiler.vm.fieldSyms.buf[rtFieldId].mruFieldTypeSymId;
+        return AccessExprResult{
+            .recvT = ltype,
+            .exprT = c.compiler.vm.fieldSyms.buf[rtFieldId].mruFieldTypeSymId,
+        };
     }
-    return bt.Any;
+    return AccessExprResult{
+        .recvT = ltype,
+        .exprT = bt.Any,
+    };
 }
 
-fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
+const AccessExprResult = struct {
+    recvT: TypeId,
+    exprT: TypeId,
+};
+
+fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
     const node = self.nodes[nodeId];
     const right = self.nodes[node.head.accessExpr.right];
 
@@ -3241,7 +3261,7 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
             const rightName = self.getNodeTokenString(right);
             const rightNameId = try ensureNameSym(self.compiler, rightName);
             if (!res.isLocal) {
-                // Static var.
+                // Static symbol.
                 const leftSymRes = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
                 const crLeftSym = leftSymRes.toCompactId();
                 try referenceSym(self, crLeftSym, true);
@@ -3252,24 +3272,31 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                     const crRightSym = symRes.toCompactId();
                     try referenceSym(self, crRightSym, true);
                     self.nodes[nodeId].head.accessExpr.sema_crSymId = crRightSym;
-                    return try getTypeForResolvedValueSym(self, crRightSym);
+
+                    const exprT = try getTypeForResolvedValueSym(self, crRightSym);
+                    return AccessExprResult{
+                        .recvT = getSymType(self.compiler, crLeftSym.id),
+                        .exprT = exprT,
+                    };
                 } else {
                     const leftSym = self.compiler.sema.getResolvedSym(leftSymRes.rSymId);
                     if (leftSym.symT == .variable) {
                         const vtype = leftSym.inner.variable.rTypeSymId;
-                        return getAccessExprType(self, vtype, rightName);
+                        return getAccessExprResult(self, vtype, rightName);
                     }
                 }
             } else {
                 self.nodes[node.head.accessExpr.left].head.ident.semaVarId = res.id;
                 const svar = self.vars.items[res.id];
-                return getAccessExprType(self, svar.vtype, rightName);
+                self.nodeTypes[node.head.accessExpr.left] = svar.vtype;
+                return getAccessExprResult(self, svar.vtype, rightName);
             }
         } else if (left.node_t == .accessExpr) {
-            const leftv = try accessExpr(self, node.head.accessExpr.left);
+            const res = try accessExpr(self, node.head.accessExpr.left);
 
             left = self.nodes[node.head.accessExpr.left];
             if (left.head.accessExpr.sema_crSymId.isPresent()) {
+                // Static var.
                 const crLeftSym = left.head.accessExpr.sema_crSymId;
                 if (!crLeftSym.isFuncSymId) {
                     const rightName = self.getNodeTokenString(right);
@@ -3282,13 +3309,22 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
                 }
             } else {
                 const rightName = self.getNodeTokenString(right);
-                return getAccessExprType(self, leftv, rightName);
+                return getAccessExprResult(self, res.exprT, rightName);
             }
         } else {
-            _ = try semaExpr(self, node.head.accessExpr.left);
+            const recvT = try semaExpr(self, node.head.accessExpr.left);
+            return AccessExprResult{
+                .recvT = recvT,
+                .exprT = bt.Any,
+            };
         }
+    } else {
+        return self.reportError("Unsupported access expression with: {}", &.{v(right.node_t)});
     }
-    return bt.Any;
+    return AccessExprResult{
+        .recvT = bt.Any,
+        .exprT = bt.Any,
+    };
 }
 
 const VarResult = struct {
@@ -3614,6 +3650,27 @@ fn resolveLocalVarSym(self: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: Name
     try @call(.never_inline, self.compiler.sema.resolvedSymMap.put, .{self.alloc, key, resolvedId});
 
     return resolvedId;
+}
+
+pub fn getSymType(c: *cy.VMcompiler, id: ResolvedSymId) TypeId {
+    const sym = c.sema.getResolvedSym(id);
+    switch (sym.symT) {
+        .variable => {
+            return sym.inner.variable.rTypeSymId;
+        },
+        .enumType,
+        .module => {
+            return bt.Any;
+        },
+        else => {
+            stdx.panicFmt("Unsupported sym: {}", .{sym.symT});
+        }
+    }
+}
+
+pub fn getSymName(c: *cy.VMcompiler, id: ResolvedSymId) []const u8 {
+    const sym = c.sema.getResolvedSym(id);
+    return getName(c, sym.key.absResolvedSymKey.nameId);
 }
 
 /// Dump the full path of a resolved sym.

@@ -847,7 +847,7 @@ fn field(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     const name = self.getNodeTokenString(right);
     const fieldId = try self.compiler.vm.ensureFieldSym(name);
 
-    const newtype = try sema.getAccessExprType(self, leftv.vtype, name);
+    const newtype = (try sema.getAccessExprResult(self, leftv.vtype, name)).exprT;
 
     try self.pushDebugSym(nodeId);
     const leftIsTempRetained = leftv.retained and leftv.isTempLocal;
@@ -1330,8 +1330,16 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         const fieldName = c.getNodeTokenString(accessRight);
         const fieldId = try c.compiler.vm.ensureFieldSym(fieldName);
-        try c.pushDebugSym(nodeId);
-        try c.buf.pushOpSlice(.setFieldRelease, &.{ leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
+
+        const recvT = c.nodeTypes[left.head.accessExpr.left];
+        if (rightv.vtype == bt.Dynamic or types.isAnyOrDynamic(recvT)) {
+            // Runtime type check on dynamic right or any/dynamic receiver.
+            try c.pushDebugSym(nodeId);
+            try c.buf.pushOpSlice(.setCheckFieldRelease, &.{ leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
+        } else {
+            try c.pushDebugSym(nodeId);
+            try c.buf.pushOpSlice(.setFieldRelease, &.{ leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
+        }
 
         // ARC cleanup. Right is not released since it's being assigned to the field.
         try releaseIfRetainedTempAt(c, leftv, left.head.accessExpr.left);

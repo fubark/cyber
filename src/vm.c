@@ -216,6 +216,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallObjNativeFuncIC),
         JENTRY(CallObjFuncIC),
         JENTRY(CallTypeCheck),
+        JENTRY(TypeCheck),
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
@@ -923,6 +924,10 @@ beginSwitch:
             // return vm.getFieldMissingSymbolError();
             return RES_CODE_UNKNOWN;
         }
+    }
+    CASE(SetCheckFieldRelease): {
+        printf("Unsupported %s\n", zOpCodeName(*pc));
+        zFatal();
     }
     CASE(PushTry):
     CASE(PopTry):

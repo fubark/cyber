@@ -64,6 +64,7 @@ typedef enum {
     CodeSetField,
     CodeSetFieldRelease,
     CodeSetFieldReleaseIC,
+    CodeSetCheckFieldRelease,
     CodePushTry,
     CodePopTry,
     CodeThrow,

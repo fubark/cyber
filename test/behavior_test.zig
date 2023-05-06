@@ -1284,7 +1284,64 @@ test "Objects." {
             \\
         );
     }}.func);
+}
 
+test "Object fields." {
+    // Compile time type check.
+    try eval(.{ .silent = true },
+        \\type S object:
+        \\  a number
+        \\o = S{}
+        \\o.a = []
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Assigning to `number` member with incompatible type `List`.
+            \\
+            \\main:4:7:
+            \\o.a = []
+            \\      ^
+            \\
+        );
+    }}.func);
+
+    // Runtime type check when right is dynamic.
+    try eval(.{ .silent = false },
+        \\type S object:
+        \\  a number
+        \\func foo(): return []
+        \\o = S{}
+        \\o.a = foo()
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Assigning to `number` member with incompatible type `List`.
+            \\
+            \\main:5:1 main:
+            \\o.a = foo()
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Runtime type check when receiver is `any`.
+    try eval(.{ .silent = false },
+        \\import t 'test'
+        \\type S object:
+        \\  a number
+        \\o = t.erase(S{})
+        \\o.a = []
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: Assigning to `number` member with incompatible type `List`.
+            \\
+            \\main:5:1 main:
+            \\o.a = []
+            \\^
+            \\
+        );
+    }}.func);
+}
+
+test "Object funcs/methods." {
     // Calling a missing method name.
     try eval(.{ .silent = true },
         \\type S object:
@@ -1320,74 +1377,45 @@ test "Objects." {
             \\
         );
     }}.func);
-}
 
-test "Object methods." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // self param.
-    var val = try run.eval(
+    try evalPass(.{},
+        \\import t 'test'
         \\type Node object:
         \\  value
         \\  func get(self):
         \\    return self.value
-        \\n = Node{ value: 123 }
-        \\n.get()
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // self param with regular param.
-    val = try run.eval(
-        \\type Node object:
-        \\  value
-        \\  func get(self, param):
+        \\  func get2(self, param):
         \\    return self.value + param
-        \\n = Node{ value: 123 }
-        \\n.get(321)
-    );
-    try t.eq(val.asF64toI32(), 444);
-
-    // self param with many regular param.
-    val = try run.eval(
-        \\type Node object:
-        \\  value
-        \\  func get(self, param, param2):
+        \\  func get3(self, param, param2):
         \\    return self.value + param - param2
-        \\n = Node{ value: 123 }
-        \\n.get(321, 1)
-    );
-    try t.eq(val.asF64toI32(), 443);
-
-    // Static method, no params.
-    val = try run.eval(
-        \\type Node object:
-        \\  value
-        \\  func get():
+        \\  func get4():
         \\    return 123
-        \\Node.get()
-    );
-    try t.eq(val.asF64toI32(), 123);
-
-    // Static method, one params.
-    val = try run.eval(
-        \\type Node object:
-        \\  value
-        \\  func get(param):
+        \\  func get5(param):
         \\    return 123 + param
-        \\Node.get(321)
-    );
-    try t.eq(val.asF64toI32(), 444);
-
-    // Static method, many params.
-    val = try run.eval(
-        \\type Node object:
-        \\  value
-        \\  func get(param, param2):
+        \\  func get6(param, param2):
         \\    return 123 + param - param2
-        \\Node.get(321, 1)
+        \\n = Node{ value: 123 }
+        \\
+        \\-- self param.
+        \\t.eq(n.get(), 123)
+        \\
+        \\-- self param with regular param.
+        \\n = Node{ value: 123 }
+        \\t.eq(n.get2(321), 444)
+        \\
+        \\-- self param with many regular param.
+        \\n = Node{ value: 123 }
+        \\t.eq(n.get3(321, 1), 443)
+        \\
+        \\-- Static method, no params.
+        \\t.eq(Node.get4(), 123)
+        \\
+        \\-- Static method, one params.
+        \\t.eq(Node.get5(321), 444)
+        \\
+        \\-- Static method, many params.
+        \\t.eq(Node.get6(321, 1), 443)
     );
-    try t.eq(val.asF64toI32(), 443);
 }
 
 test "must()" {

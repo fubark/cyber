@@ -58,6 +58,10 @@ test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NameMetatype, bt.MetaType);
 }
 
+pub fn isAnyOrDynamic(id: TypeId) bool {
+    return id == bt.Any or id == bt.Dynamic;
+}
+
 /// Check type constraints on target func signature.
 pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const TypeId, ret: TypeId, targetId: sema.ResolvedFuncSigId) bool {
     const target = c.sema.getResolvedFuncSig(targetId);

@@ -662,6 +662,7 @@ pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
         .sym,
         .forRange,
         .forRangeReverse,
+        .setCheckFieldRelease,
         .setFieldRelease,
         .setFieldReleaseIC => {
             return 7;
@@ -804,6 +805,10 @@ pub const OpCode = enum(u8) {
     setField = vmc.CodeSetField,
     setFieldRelease = vmc.CodeSetFieldRelease,
     setFieldReleaseIC = vmc.CodeSetFieldReleaseIC,
+
+    /// set field with runtime type check.
+    setCheckFieldRelease = vmc.CodeSetCheckFieldRelease,
+
     coinit = vmc.CodeCoinit,
     coyield = vmc.CodeCoyield,
     coresume = vmc.CodeCoresume,
@@ -878,7 +883,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 99);
+    try t.eq(std.enums.values(OpCode).len, 100);
     try t.eq(@sizeOf(InstDatum), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

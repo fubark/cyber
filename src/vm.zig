@@ -3204,7 +3204,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const symId = pc[3].arg;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
                     const offset = vm.getFieldOffset(obj, symId);
                     if (offset != cy.NullU8) {
                         const lastValue = obj.object.getValuePtr(offset);
@@ -3215,6 +3214,38 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         pc[0] = cy.InstDatum{ .code = .setFieldReleaseIC };
                         @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.head.typeId);
                         pc[6] = cy.InstDatum { .arg = offset };
+                        pc += 7;
+                        continue;
+                    } else {
+                        return vm.getFieldMissingSymbolError();
+                    }
+                } else {
+                    return vm.setFieldNotObjectError();
+                }
+            },
+            .setCheckFieldRelease => {
+                if (GenLabels) {
+                    _ = asm volatile ("LOpSetFieldRelease:"::);
+                }
+                const recv = framePtr[pc[1].arg];
+                const val = framePtr[pc[2].arg];
+                const symId = pc[3].arg;
+                if (recv.isPointer()) {
+                    const obj = recv.asHeapObject();
+                    const offset = vm.getFieldOffset(obj, symId);
+                    if (offset != cy.NullU8) {
+                        const fieldSemaTypeId = vm.fieldSyms.buf[symId].mruFieldTypeSymId;
+                        const rightTypeId = val.getTypeId();
+                        const rightSemaTypeId = vm.types.buf[rightTypeId].rTypeSymId;
+                        if (!types.isTypeSymCompat(&vm.compiler, rightSemaTypeId, fieldSemaTypeId)) {
+                            return panicIncompatibleFieldType(vm, fieldSemaTypeId, val);
+                        }
+
+                        const lastValue = obj.object.getValuePtr(offset);
+                        release(vm, lastValue.*);
+                        lastValue.* = val;
+
+                        // TODO: Inline cache.
                         pc += 7;
                         continue;
                     } else {
@@ -4013,6 +4044,21 @@ fn allocMethodCallSemaTypeIds(vm: *cy.VM, vals: []const Value) ![]const cy.types
         semaTypeIds[i] = vm.types.buf[typeId].rTypeSymId;
     }
     return semaTypeIds;
+}
+
+fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv: Value) error{Panic, OutOfMemory} {
+    defer release(vm, rightv);
+
+    const fieldTypeName = sema.getSymName(&vm.compiler, fieldSemaTypeId);
+    const rightTypeId = rightv.getTypeId();
+    const rightSemaTypeId = vm.types.buf[rightTypeId].rTypeSymId;
+    const rightTypeName = sema.getSymName(&vm.compiler, rightSemaTypeId);
+    return vm.panicFmt(
+        \\Assigning to `{}` member with incompatible type `{}`.
+        , &.{
+            v(fieldTypeName), v(rightTypeName),
+        },
+    );
 }
 
 fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, targetFuncSigId: sema.ResolvedFuncSigId) error{Panic, OutOfMemory} {

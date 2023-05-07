@@ -52,6 +52,8 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) !void {
     } else {
         try b.setFunc("getInput", &.{}, bt.Any, bindings.nop0);
     }
+    try b.setFunc("isAlpha", &.{ bt.Number }, bt.Boolean, isAlpha);
+    try b.setFunc("isDigit", &.{ bt.Number }, bt.Boolean, isDigit);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
@@ -301,6 +303,30 @@ pub fn coreOpaque(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = vm.valueToTempString(args[0]);
     return vm.returnPanic(str);
+}
+
+fn isAlpha(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const num = args[0].asF64toI64();
+    if (num < 0 or num >= 2 << 21) {
+        return prepareThrowSymbol(vm, .InvalidRune);
+    }
+    if (num > 255) {
+        return Value.False;
+    } else {
+        return Value.initBool(std.ascii.isAlphabetic(@intCast(u8, num)));
+    }
+}
+
+fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const num = args[0].asF64toI64();
+    if (num < 0 or num >= 2 << 21) {
+        return prepareThrowSymbol(vm, .InvalidRune);
+    }
+    if (num > 255) {
+        return Value.False;
+    } else {
+        return Value.initBool(std.ascii.isDigit(@intCast(u8, num)));
+    }
 }
 
 fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

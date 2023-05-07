@@ -82,6 +82,16 @@ t.eq(number(int(100.1)), 100)
 t.eq(number(int('100')), 100)
 t.eq(number(int('100.1')), 100)
 
+-- isAlpha()
+t.eq(isAlpha(0u'3'), false)
+t.eq(isAlpha(0u'a'), true)
+t.eq(isAlpha(0u'A'), true)
+
+-- isDigit()
+t.eq(isDigit(0u'3'), true)
+t.eq(isDigit(0u'a'), false)
+t.eq(isDigit(0u'A'), false)
+
 -- number(), see number_test.cy
 
 -- parseCyber()

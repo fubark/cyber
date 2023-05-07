@@ -108,6 +108,8 @@ print contents
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
+| `isAlpha(val number) boolean` | Returns whether a rune is an alphabetic letter. | 
+| `isDigit(val number) boolean` | Returns whether a rune is a digit. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `number(val any) number` | Casts or converts the value to a `number`. Panics if type conversion fails. | 
 | `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |

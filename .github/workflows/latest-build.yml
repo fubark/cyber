@@ -39,11 +39,11 @@ jobs:
             mode: release
             cmd: cli
           - host: macos-12
-            target: x86_64-macos.12-none
+            target: x86_64-macos-none
             mode: release
             cmd: cli
           - host: macos-12
-            target: aarch64-macos.12-none
+            target: aarch64-macos-none
             mode: release
             cmd: cli
           - host: windows-2022
@@ -63,11 +63,11 @@ jobs:
             mode: release
             cmd: lib
           - host: macos-12
-            target: x86_64-macos.12-none
+            target: x86_64-macos-none
             mode: release
             cmd: lib
           - host: macos-12
-            target: aarch64-macos.12-none
+            target: aarch64-macos-none
             mode: release
             cmd: lib
     env:
@@ -76,8 +76,8 @@ jobs:
           "x86_64-windows-gnu": "cyber-windows-x64.zip",
           "x86_64-linux-gnu": "cyber-linux-x64.tar.gz",
           "x86_64-selinux-gnu": "cyber-selinux-x64.tar.gz",
-          "x86_64-macos.12-none": "cyber-macos-x64.tar.gz",
-          "aarch64-macos.12-none": "cyber-macos-arm64.tar.gz",
+          "x86_64-macos-none": "cyber-macos-x64.tar.gz",
+          "aarch64-macos-none": "cyber-macos-arm64.tar.gz",
           "wasm32-freestanding": "cyber.wasm",
         }')[matrix.config.target] }}
       ZIG_TARGET_FLAG: >-
@@ -85,8 +85,8 @@ jobs:
           "x86_64-windows-gnu": "-Dtarget=x86_64-windows-gnu -Dcpu=baseline",
           "x86_64-linux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline",
           "x86_64-selinux-gnu": "-Dtarget=x86_64-linux-gnu -Dcpu=baseline -Dselinux",
-          "x86_64-macos.12-none": "-Dtarget=x86_64-macos.12-none -Dcpu=baseline",
-          "aarch64-macos.12-none": "-Dtarget=aarch64-macos.12-none -Dcpu=baseline",
+          "x86_64-macos-none": "-Dtarget=x86_64-macos-none -Dcpu=baseline",
+          "aarch64-macos-none": "-Dtarget=aarch64-macos-none -Dcpu=baseline",
           "wasm32-freestanding": "-Dtarget=wasm32-freestanding",
         }')[matrix.config.target] }}
       BUILD_HOST: ${{ matrix.config.host }}
@@ -182,11 +182,11 @@ jobs:
             build-${{ env.BUILD_TARGET }}-${{ env.BUILD_MODE }}-1
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'aarch64-macos.12-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD != 'lib'
+        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD != 'lib'
         run: zig build test ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
-        if: env.BUILD_TARGET != 'aarch64-macos.12-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
+        if: env.BUILD_TARGET != 'aarch64-macos-none' && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'lib'
         run: zig build test-lib ${{ env.ZIG_TARGET_FLAG }} 
 
       - name: Run tests.
@@ -207,14 +207,14 @@ jobs:
       # # Don't strip aarch64 since it was already code signed.
       # # TODO: Look for way to make zig strip before doing the codesign.
       # - name: Strip (macOS)
-      #   if: env.BUILD_TARGET == 'x86_64-macos.12-none' && env.BUILD_MODE == 'release'
+      #   if: env.BUILD_TARGET == 'x86_64-macos-none' && env.BUILD_MODE == 'release'
       #   run: |
       #     strip zig-out/${{ env.BUILD_TARGET }}/main/main
 
       # # Currently just ad hoc signing.
       # # aarch64 build is automatically signed by zig.
       # - name: Codesign (macOS)
-      #   if: env.BUILD_TARGET == 'x86_64-macos.12-none' && env.BUILD_MODE == 'release'
+      #   if: env.BUILD_TARGET == 'x86_64-macos-none' && env.BUILD_MODE == 'release'
       #   run: |
       #     codesign --force --deep -s - zig-out/${{ env.BUILD_TARGET }}/main/main
 
@@ -245,12 +245,12 @@ jobs:
           mv zig-out/lib/libcyber.so libcyber.so
 
       - name: Move. (macos lib)
-        if: env.BUILD_TARGET == 'x86_64-macos.12-none' && env.BUILD_CMD == 'lib'
+        if: env.BUILD_TARGET == 'x86_64-macos-none' && env.BUILD_CMD == 'lib'
         run: |
           mv zig-out/lib/libcyber.dylib libcyber.dylib
 
       - name: Move. (macos lib)
-        if: env.BUILD_TARGET == 'aarch64-macos.12-none' && env.BUILD_CMD == 'lib'
+        if: env.BUILD_TARGET == 'aarch64-macos-none' && env.BUILD_CMD == 'lib'
         run: |
           mv zig-out/lib/libcyber.dylib libcyber-arm64.dylib
 

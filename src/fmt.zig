@@ -98,7 +98,7 @@ pub fn v(val: anytype) FmtValue {
             return .{
                 .valT = .i8,
                 .inner = .{
-                    .u8 = @bitCast(u8, val),
+                    .u8 = @bitCast(val),
                 }
             };
         },
@@ -114,7 +114,7 @@ pub fn v(val: anytype) FmtValue {
             return .{
                 .valT = .i16,
                 .inner = .{
-                    .u16 = @bitCast(u16, val),
+                    .u16 = @bitCast(val),
                 }
             };
         },
@@ -130,7 +130,7 @@ pub fn v(val: anytype) FmtValue {
             return .{
                 .valT = .i32,
                 .inner = .{
-                    .u32 = @bitCast(u32, val),
+                    .u32 = @bitCast(val),
                 }
             };
         },
@@ -155,7 +155,7 @@ pub fn v(val: anytype) FmtValue {
         .ptr =>  return .{
             .valT = .ptr,
             .inner = .{
-                .ptr = @intToPtr(?*anyopaque, @ptrToInt(val)),
+                .ptr = @ptrFromInt(@intFromPtr(val)),
             }
         },
     }
@@ -210,13 +210,13 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
             try writer.writeByte(val.inner.char);
         },
         .i8 => {
-            try std.fmt.formatInt(@bitCast(i8, val.inner.u8), 10, .lower, .{}, writer);
+            try std.fmt.formatInt(@as(i8, @bitCast(val.inner.u8)), 10, .lower, .{}, writer);
         },
         .u8 => {
             try std.fmt.formatInt(val.inner.u8, 10, .lower, .{}, writer);
         },
         .i16 => {
-            try std.fmt.formatInt(@bitCast(i16, val.inner.u16), 10, .lower, .{}, writer);
+            try std.fmt.formatInt(@as(i16, @bitCast(val.inner.u16)), 10, .lower, .{}, writer);
         },
         .u16 => {
             try std.fmt.formatInt(val.inner.u16, 10, .lower, .{}, writer);
@@ -225,7 +225,7 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
             try std.fmt.formatInt(val.inner.u32, 10, .lower, .{}, writer);
         },
         .i32 => {
-            try std.fmt.formatInt(@bitCast(i32, val.inner.u32), 10, .lower, .{}, writer);
+            try std.fmt.formatInt(@as(i32, @bitCast(val.inner.u32)), 10, .lower, .{}, writer);
         },
         .u64 => {
             try std.fmt.formatInt(val.inner.u64, 10, .lower, .{}, writer);
@@ -240,7 +240,7 @@ fn formatValue(writer: anytype, val: FmtValue) !void {
         },
         .ptr => {
             try writer.writeByte('@');
-            try std.fmt.formatInt(@ptrToInt(val.inner.ptr), 16, .lower, .{}, writer);
+            try std.fmt.formatInt(@intFromPtr(val.inner.ptr), 16, .lower, .{}, writer);
         },
         // else => stdx.panicFmt("unsupported {}", .{val.valT}),
     }
@@ -299,7 +299,7 @@ pub fn printStdoutOrErr(fmt: []const u8, vals: []const FmtValue) !void {
     defer printMutex.unlock();
     const w = std.io.getStdOut().writer();
     if (builtin.is_test) {
-        if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
+        if (@intFromEnum(std.log.Level.debug) <= @intFromEnum(std.testing.log_level)) {
             try format(w, fmt, vals);
         }
     } else {
@@ -350,7 +350,7 @@ const HostFileWriter = struct {
     pub const Error = error{};
 
     pub fn writeByte(self: HostFileWriter, byte: u8) linksection(cy.Section) Error!void {
-        core.hostFileWrite(self.fid, @ptrCast([*]const u8, &byte), 1);
+        core.hostFileWrite(self.fid, @ptrCast(&byte), 1);
     }
 
     pub fn writeAll(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
@@ -363,11 +363,11 @@ const HostFileWriter = struct {
 
     pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {
         var bytes: [256]u8 = undefined;
-        std.mem.set(u8, bytes[0..], byte);
+        @memset(bytes[0..], byte);
 
         var remaining = n;
         while (remaining > 0) {
-            const to_write = std.math.min(remaining, bytes.len);
+            const to_write = @min(remaining, bytes.len);
             try self.writeAll(bytes[0..to_write]);
             remaining -= to_write;
         }

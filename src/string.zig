@@ -36,8 +36,8 @@ pub const HeapStringBuilder = struct {
         };
     }
 
-    fn getHeapObject(self: *const HeapStringBuilder) *cy.HeapObject {
-        return @ptrCast(*cy.HeapObject, @alignCast(@alignOf(cy.HeapObject), self.buf.ptr - @offsetOf(cy.Astring, "bufStart")));
+    fn getHeapObject(self: *const HeapStringBuilder) * align(@alignOf(cy.HeapObject)) cy.HeapObject {
+        return @ptrCast(self.buf.ptr - @offsetOf(cy.Astring, "bufStart"));
     }
 
     pub fn deinit(self: *HeapStringBuilder) void {
@@ -64,7 +64,7 @@ pub const HeapStringBuilder = struct {
     pub fn appendString(self: *HeapStringBuilder, alloc: std.mem.Allocator, str: []const u8, utf8: bool) !void {
         try self.ensureTotalCapacity(alloc, self.len + str.len);
         const oldLen = self.len;
-        self.len += @intCast(u32, str.len);
+        self.len += @intCast(str.len);
         std.mem.copy(u8, self.buf[oldLen..self.len], str);
         if (self.isAstring and utf8) {
             // Upgrade to Ustring.
@@ -88,7 +88,7 @@ pub const HeapStringBuilder = struct {
             } else {
                 const old = self.buf;
                 const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
-                const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
+                const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
                 obj.astring = .{
                     .structId = if (self.isAstring) rt.AstringT else rt.UstringT,
                     .rc = 1,
@@ -103,7 +103,7 @@ pub const HeapStringBuilder = struct {
             const oldObj = self.getHeapObject();
             const old = self.buf;
             const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
-            const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
+            const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
             obj.astring = .{
                 .structId = if (self.isAstring) rt.AstringT else rt.UstringT,
                 .rc = 1,
@@ -154,7 +154,7 @@ pub const HeapRawStringBuilder = struct {
     }
 
     fn getHeapObject(self: *const HeapRawStringBuilder) *cy.HeapObject {
-        return @ptrCast(*cy.HeapObject, @alignCast(@alignOf(cy.HeapObject), self.buf.ptr - cy.RawString.BufOffset));
+        return @ptrCast(@alignCast(self.buf.ptr - cy.RawString.BufOffset));
     }
 
     pub fn deinit(self: *HeapRawStringBuilder) void {
@@ -181,7 +181,7 @@ pub const HeapRawStringBuilder = struct {
     pub fn appendString(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, str: []const u8) !void {
         try self.ensureTotalCapacity(alloc, self.len + str.len);
         const oldLen = self.len;
-        self.len += @intCast(u32, str.len);
+        self.len += @intCast(str.len);
         std.mem.copy(u8, self.buf[oldLen..self.len], str);
     }
 
@@ -193,13 +193,13 @@ pub const HeapRawStringBuilder = struct {
 
     pub fn growTotalCapacityPrecise(self: *HeapRawStringBuilder, alloc: std.mem.Allocator, newCap: usize) !void {
         if (self.buf.len < cy.MaxPoolObjectRawStringByteLen) {
-            const oldHead = @alignCast(@alignOf(cy.HeapObject), (self.buf.ptr - cy.RawString.BufOffset)[0..self.buf.len + cy.RawString.BufOffset]);
+            const oldHead = @as([*] align (@alignOf(cy.HeapObject)) u8, @alignCast(self.buf.ptr - cy.RawString.BufOffset))[0..self.buf.len + cy.RawString.BufOffset];
             if (alloc.resize(oldHead, cy.RawString.BufOffset + newCap)) {
                 self.buf.len = newCap;
             } else {
                 const old = self.buf;
                 const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
-                const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
+                const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
                 obj.rawstring = .{
                     .structId = rt.RawstringT,
                     .rc = 1,
@@ -214,7 +214,7 @@ pub const HeapRawStringBuilder = struct {
             const oldObj = self.getHeapObject();
             const old = self.buf;
             const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
-            const obj = @ptrCast(*cy.HeapObject, objSlice.ptr);
+            const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
             obj.rawstring = .{
                 .structId = rt.RawstringT,
                 .rc = 1,
@@ -351,8 +351,8 @@ fn indexOfCharScalar(buf: []const u8, needle: u8) linksection(cy.Section) ?usize
 fn indexOfCharSimdRemain(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
     const vbuf = cy.simd.load(VecSize, u8, buf);
-    const mask: MaskInt = (@as(MaskInt, 1) << @intCast(std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt))), buf.len)) - 1;
-    const hitMask = @bitCast(MaskInt, vbuf == @splat(VecSize, needle)) & mask;
+    const mask: MaskInt = (@as(MaskInt, 1) << @intCast(buf.len)) - 1;
+    const hitMask = @as(MaskInt, @bitCast(vbuf == @splat(VecSize, needle))) & mask;
     if (hitMask > 0) {
         return @ctz(hitMask);
     }
@@ -425,7 +425,7 @@ fn indexOfCharSimdFixed(comptime VecSize: usize, buf: []const u8, needle: u8) ?u
     var i: usize = 0;
     while (i + VecSize <= buf.len) : (i += VecSize) {
         vbuf = buf[i..i+VecSize][0..VecSize].*;
-        const hitMask = @bitCast(MaskInt, vbuf == vneedle);
+        const hitMask: MaskInt = @bitCast(vbuf == vneedle);
         if (hitMask > 0) {
             const bitIdx = @ctz(hitMask);
             return i + bitIdx;
@@ -455,16 +455,16 @@ fn indexOfSimdFixed(comptime VecSize: usize, str: []const u8, needle: []const u8
     var i: usize = 0;
     while (i + VecSize <= str.len) : (i += VecSize) {
         const buf1: @Vector(VecSize, u8) = str[i..i + VecSize][0..VecSize].*;
-        const firstMask = @bitCast(MaskInt, buf1 == first);
+        const firstMask: MaskInt = @bitCast(buf1 == first);
         if (firstMask > 0) {
-            const buf2: @Vector(VecSize, u8) = @ptrCast([*]const u8, str.ptr + i + offset)[0..VecSize].*;
-            const lastMask = @bitCast(MaskInt, buf2 == last);
+            const buf2: @Vector(VecSize, u8) = @as([*]const u8, @ptrCast(str.ptr + i + offset))[0..VecSize].*;
+            const lastMask: MaskInt = @bitCast(buf2 == last);
             if (lastMask > 0) {
                 var hitMask = firstMask & lastMask;
                 // Visit each potential substring match until a match is found.
                 while (hitMask > 0) {
                     const idx = @ctz(hitMask);
-                    if (std.mem.eql(u8, @ptrCast([*]const u8, str.ptr + i + idx)[0..needle.len], needle)) {
+                    if (std.mem.eql(u8, @as([*]const u8, @ptrCast(str.ptr + i + idx))[0..needle.len], needle)) {
                         return i + idx;
                     }
                     hitMask = unsetLowestBit(hitMask, idx);
@@ -492,16 +492,16 @@ fn indexOfSimdRemain(comptime VecSize: usize, str_: []const u8, needle: []const 
 
     // Don't need a remainMask since the eq op on `first` and `last` will be false.
     const buf1 = cy.simd.load(VecSize, u8, str);
-    const firstMask = @bitCast(MaskInt, buf1 == first);
+    const firstMask: MaskInt = @bitCast(buf1 == first);
     if (firstMask > 0) {
         const buf2 = cy.simd.load(VecSize, u8, str_[offset..]);
-        const lastMask = @bitCast(MaskInt, buf2 == last);
+        const lastMask: MaskInt = @bitCast(buf2 == last);
         if (lastMask > 0) {
             var hitMask = firstMask & lastMask;
             // Visit each potential substring match until a match is found.
             while (hitMask > 0) {
                 const idx = @ctz(hitMask);
-                if (std.mem.eql(u8, @ptrCast([*]const u8, str.ptr + idx)[0..needle.len], needle)) {
+                if (std.mem.eql(u8, @as([*]const u8, @ptrCast(str.ptr + idx))[0..needle.len], needle)) {
                     return idx;
                 }
                 hitMask = unsetLowestBit(hitMask, idx);
@@ -513,8 +513,8 @@ fn indexOfSimdRemain(comptime VecSize: usize, str_: []const u8, needle: []const 
 
 inline fn unsetLowestBit(mask: anytype, idx: anytype) @TypeOf(mask) {
     const Mask = @TypeOf(mask);
-    const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(Mask)));
-    return mask & ~(@as(Mask, 1) << @intCast(MaskShiftInt, idx));
+    // const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(Mask)));
+    return mask & ~(@as(Mask, 1) << @intCast(idx));
 }
 
 /// `needle.len` is assumed to be at most `str.len`.
@@ -551,7 +551,7 @@ fn indexOfAsciiSetScalar(str: []const u8, set: []const u8) linksection(cy.StdSec
 
 pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: []const u8) linksection(cy.StdSection) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
-    const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
+    // const MaskShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(MaskInt)));
 
     if (VecSize == 32 and hasAvx2) {
         // Same as SimdFixed version with a mask at the end.
@@ -562,9 +562,9 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
         for (set) |code| {
             const lower = code & 0xF;
             const upper = code >> 4; // At most 7.
-            lut[lower] = @as(u8, 1) << @intCast(u3, upper);
+            lut[lower] = @as(u8, 1) << @intCast(upper);
             // Dupe to upper offset 128 for 256bit vpshufb.
-            lut[16 + lower] = @as(u8, 1) << @intCast(u3, upper);
+            lut[16 + lower] = @as(u8, 1) << @intCast(upper);
         }
 
         var upperMaskLut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
@@ -595,8 +595,8 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
               [upper] "{ymm4}" (upper),
         );
 
-        const remainMask: MaskInt = (@as(MaskInt, 1) << @intCast(MaskShiftInt, str.len)) - 1;
-        var hitMask = @bitCast(MaskInt, (needle & upperMask) == upperMask) & remainMask;
+        const remainMask: MaskInt = (@as(MaskInt, 1) << @intCast(str.len)) - 1;
+        var hitMask = @as(MaskInt, @bitCast((needle & upperMask) == upperMask)) & remainMask;
         if (hitMask > 0) {
             var res = @ctz(hitMask);
             if (str[res] & 0x80 == 0) {
@@ -631,9 +631,9 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
         for (set) |code| {
             const lower = code & 0xF;
             const upper = code >> 4; // At most 7.
-            lut[lower] = @as(u8, 1) << @intCast(u3, upper);
+            lut[lower] = @as(u8, 1) << @intCast(upper);
             // Dupe to upper offset 128 for 256bit vpshufb.
-            lut[16 + lower] = @as(u8, 1) << @intCast(u3, upper);
+            lut[16 + lower] = @as(u8, 1) << @intCast(upper);
         }
 
         var upperMaskLut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
@@ -668,7 +668,7 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
                   [upper] "{ymm4}" (upper),
             );
 
-            var hitMask = @bitCast(MaskInt, (needle & upperMask) == upperMask);
+            var hitMask: MaskInt = @bitCast((needle & upperMask) == upperMask);
             if (hitMask > 0) {
                 var res = i + @ctz(hitMask);
                 if (str[res] & 0x80 == 0) {
@@ -802,8 +802,8 @@ pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
         var i: usize = 0;
         while (i + VecSize <= buf.len) : (i += VecSize) {
             vbuf = buf[i..i+VecSize][0..VecSize].*;
-            const lfHits = @bitCast(MaskInt, vbuf == lfNeedle);
-            const crHits = @bitCast(MaskInt, vbuf == crNeedle);
+            const lfHits: MaskInt = @bitCast(vbuf == lfNeedle);
+            const crHits: MaskInt = @bitCast(vbuf == crNeedle);
             const bitIdx = @ctz(lfHits | crHits);
             if (bitIdx > 0) {
                 // Found.
@@ -841,7 +841,7 @@ pub fn prepReplacement(str: []const u8, needle: []const u8, replacement: []const
     while (i < str.len) {
         if (std.mem.startsWith(u8, str[i..], needle)) {
             size = size - needle.len + replacement.len;
-            _ = try idxesWriter.write(std.mem.asBytes(&@intCast(u32, i)));
+            _ = try idxesWriter.write(std.mem.asBytes(&@as(u32, @intCast(i))));
             i += needle.len;
         } else {
             i += 1;
@@ -920,17 +920,17 @@ pub const StringConcat3Context = struct {
 
 fn computeStringConcat3Hash(str1: []const u8, str2: []const u8, str3: []const u8) u64 {
     var c = std.hash.Wyhash.init(0);
-    @call(.always_inline, c.update, .{str1});
-    @call(.always_inline, c.update, .{str2});
-    @call(.always_inline, c.update, .{str3});
-    return @call(.always_inline, c.final, .{});
+    @call(.always_inline, std.hash.Wyhash.update, .{&c, str1});
+    @call(.always_inline, std.hash.Wyhash.update, .{&c, str2});
+    @call(.always_inline, std.hash.Wyhash.update, .{&c, str3});
+    return @call(.always_inline, std.hash.Wyhash.final, .{&c});
 }
 
 fn computeStringConcatHash(left: []const u8, right: []const u8) u64 {
     var c = std.hash.Wyhash.init(0);
-    @call(.always_inline, c.update, .{left});
-    @call(.always_inline, c.update, .{right});
-    return @call(.always_inline, c.final, .{});
+    @call(.always_inline, std.hash.Wyhash.update, .{&c, left});
+    @call(.always_inline, std.hash.Wyhash.update, .{&c, right});
+    return @call(.always_inline, std.hash.Wyhash.final, .{&c});
 }
 
 test "computeStringConcatHash() matches the concated string hash." {
@@ -940,5 +940,5 @@ test "computeStringConcatHash() matches the concated string hash." {
 }
 
 pub fn getStaticUstringHeader(vm: *cy.VM, start: usize) *align(1) cy.StaticUstringHeader {
-    return @ptrCast(*align (1) cy.StaticUstringHeader, vm.strBuf.ptr + start - 12);
+    return @ptrCast(vm.strBuf.ptr + start - 12);
 }

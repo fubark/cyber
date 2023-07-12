@@ -44,7 +44,6 @@ pub fn build(b: *std.build.Builder) !void {
             exe.strip = true;
         }
         exe.addIncludePath(thisDir() ++ "/src");
-        exe.setOutputDir("zig-out/cyber");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         exe.addRPath(".");
@@ -67,6 +66,7 @@ pub fn build(b: *std.build.Builder) !void {
             .selinux = selinux,
         });
         step.dependOn(&exe.step);
+        step.dependOn(&b.addInstallArtifact(exe).step);
     }
 
     {
@@ -80,7 +80,6 @@ pub fn build(b: *std.build.Builder) !void {
         if (lib.optimize != .Debug) {
             lib.strip = true;
         }
-        lib.setOutputDir("zig-out/lib");
         lib.addIncludePath(thisDir() ++ "/src");
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
@@ -110,6 +109,7 @@ pub fn build(b: *std.build.Builder) !void {
             lib.stack_protector = false;
         }
         step.dependOn(&lib.step);
+        step.dependOn(&b.addInstallArtifact(lib).step);
     }
 
     {
@@ -123,7 +123,6 @@ pub fn build(b: *std.build.Builder) !void {
         if (lib.optimize != .Debug) {
             lib.strip = true;
         }
-        lib.setOutputDir("zig-out/test");
         lib.setMainPkgPath(".");
         lib.addIncludePath(thisDir() ++ "/src");
 
@@ -154,6 +153,7 @@ pub fn build(b: *std.build.Builder) !void {
             lib.stack_protector = false;
         }
         step.dependOn(&lib.step);
+        step.dependOn(&b.addInstallArtifact(lib).step);
     }
 
     {
@@ -163,9 +163,9 @@ pub fn build(b: *std.build.Builder) !void {
             .root_source_file = .{ .path = "./test/main_test.zig" },
             .target = target,
             .optimize = optimize,
+            .filter = testFilter,
         });
         step.setMainPkgPath(".");
-        step.setFilter(testFilter);
         step.addIncludePath(thisDir() ++ "/src");
 
         try addBuildOptions(b, step, opts);
@@ -180,10 +180,10 @@ pub fn build(b: *std.build.Builder) !void {
         tcc_lib.buildAndLink(b, step, .{
             .selinux = opts.selinux,
         });
-        mainStep.dependOn(&step.run().step);
+        mainStep.dependOn(&b.addRunArtifact(step).step);
 
         step = try addTraceTest(b, opts);
-        mainStep.dependOn(&step.run().step);
+        mainStep.dependOn(&b.addRunArtifact(step).step);
     }
 
     {
@@ -192,10 +192,10 @@ pub fn build(b: *std.build.Builder) !void {
             .root_source_file = .{ .path = "./test/lib_test.zig" },
             .target = target,
             .optimize = optimize,
+            .filter = testFilter,
         });
         step.setMainPkgPath(".");
         step.addIncludePath(thisDir() ++ "/src");
-        step.setFilter(testFilter);
 
         try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
@@ -205,17 +205,17 @@ pub fn build(b: *std.build.Builder) !void {
         tcc_lib.buildAndLink(b, step, .{
             .selinux = opts.selinux,
         });
-        mainStep.dependOn(&step.run().step);
+        mainStep.dependOn(&b.addRunArtifact(step).step);
 
         step = try addTraceTest(b, opts);
-        mainStep.dependOn(&step.run().step);
+        mainStep.dependOn(&b.addRunArtifact(step).step);
     }
 
     {
         // Just trace test.
         const mainStep = b.step("test-trace", "Run trace tests.");
         const step = try addTraceTest(b, opts);
-        mainStep.dependOn(&step.run().step);
+        mainStep.dependOn(&b.addRunArtifact(step).step);
     }
 
     const printStep = b.allocator.create(PrintStep) catch unreachable;
@@ -276,8 +276,8 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
         .root_source_file = .{ .path = "./test/trace_test.zig" },
         .optimize = opts.optimize,
         .target = opts.target,
+        .filter = testFilter,
     });
-    step.setFilter(testFilter);
     step.setMainPkgPath(".");
     step.addIncludePath(thisDir() ++ "/src");
 

@@ -123,7 +123,7 @@ pub const SubBlock = struct {
 
     pub fn init(prevSubBlockId: SubBlockId, assignedVarStart: usize) SubBlock {
         return .{
-            .assignedVarStart = @intCast(u32, assignedVarStart),
+            .assignedVarStart = @intCast(assignedVarStart),
             .iterVarBeginTypes = .{},
             .endMergeTypes = .{},
             .prevVarTypes = .{},
@@ -804,7 +804,7 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             fieldType = bt.Any;
         }
 
-        try c.compiler.vm.addFieldSym(rtTypeId, fieldSymId, @intCast(u16, i), fieldType);
+        try c.compiler.vm.addFieldSym(rtTypeId, fieldSymId, @intCast(i), fieldType);
         fieldId = field.next;
     }
     c.compiler.vm.types.buf[rtTypeId].numFields = i;
@@ -1169,7 +1169,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
             }
             c.nodes[nodeId].head = .{
                 .nonDecInt = .{
-                    .semaNumberVal = @intToFloat(f64, val),
+                    .semaNumberVal = @floatFromInt(val),
                 },
             };
             const canBeInt = std.math.cast(i32, val) != null;
@@ -1192,7 +1192,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                 const literal = c.getNodeTokenString(node);
                 const val = try std.fmt.parseFloat(f64, literal);
                 if (cy.Value.floatCanBeInteger(val)) {
-                    const int = @floatToInt(i64, val);
+                    const int: i64 = @intFromFloat(val);
                     if (std.math.cast(i32, int) != null) {
                         return bt.Integer;
                     }
@@ -1691,14 +1691,14 @@ fn appendFuncDecl(chunk: *cy.Chunk, nodeId: cy.NodeId, isStatic: bool) !FuncDecl
     decl.rFuncSigId = try ensureResolvedFuncSig(chunk.compiler, chunk.compiler.tempSyms.items, retType);
     decl.rRetTypeSymId = retType;
 
-    const declId = @intCast(u32, chunk.semaFuncDecls.items.len);
+    const declId: u32 = @intCast(chunk.semaFuncDecls.items.len);
     try chunk.semaFuncDecls.append(chunk.alloc, decl);
     return declId;
 }
 
 pub fn pushBlock(self: *cy.Chunk, funcDeclId: u32) !BlockId {
-    self.curSemaBlockId = @intCast(u32, self.semaBlocks.items.len);
-    const nextSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
+    self.curSemaBlockId = @intCast(self.semaBlocks.items.len);
+    const nextSubBlockId: u32 = @intCast(self.semaSubBlocks.items.len);
     var isStaticFuncBlock = false;
     if (funcDeclId != cy.NullId) {
         isStaticFuncBlock = self.semaFuncDecls.items[funcDeclId].isStatic;
@@ -1712,7 +1712,7 @@ pub fn pushBlock(self: *cy.Chunk, funcDeclId: u32) !BlockId {
 fn pushSubBlock(self: *cy.Chunk) !void {
     curBlock(self).subBlockDepth += 1;
     const prev = self.curSemaSubBlockId;
-    self.curSemaSubBlockId = @intCast(u32, self.semaSubBlocks.items.len);
+    self.curSemaSubBlockId = @intCast(self.semaSubBlocks.items.len);
     try self.semaSubBlocks.append(self.alloc, SubBlock.init(prev, self.assignedVarStack.items.len));
 }
 
@@ -1771,7 +1771,7 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
 
 fn pushLocalVar(c: *cy.Chunk, name: []const u8, vtype: TypeId) !LocalVarId {
     const sblock = curBlock(c);
-    const id = @intCast(u32, c.vars.items.len);
+    const id: u32 = @intCast(c.vars.items.len);
     const res = try sblock.nameToVar.getOrPut(c.alloc, name);
     if (res.found_existing) {
         return c.reportError("Var `{}` already exists", &.{v(name)});
@@ -1804,7 +1804,7 @@ fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, crSymId: CompactResolvedSy
 fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: TypeId) !LocalVarId {
     const block = curBlock(self);
     const id = try pushLocalVar(self, name, vtype);
-    const capturedIdx = @intCast(u8, block.captures.items.len);
+    const capturedIdx: u8 = @intCast(block.captures.items.len);
     self.vars.items[id].capturedIdx = capturedIdx;
     self.vars.items[id].isBoxed = true;
     self.vars.items[id].genIsDefined = true;
@@ -1844,16 +1844,16 @@ fn referenceSym(c: *cy.Chunk, rSymId: CompactResolvedSymId, trackDep: bool) !voi
             if (res.found_existing) {
                 const depRes = try c.semaVarDeclDeps.getOrPut(c.alloc, rSymId);
                 if (!depRes.found_existing) {
-                    try c.bufU32.append(c.alloc, @bitCast(u32, rSymId));
-                    res.value_ptr.*.depsEnd = @intCast(u32, c.bufU32.items.len);
+                    try c.bufU32.append(c.alloc, @bitCast(rSymId));
+                    res.value_ptr.*.depsEnd = @intCast(c.bufU32.items.len);
                     depRes.value_ptr.* = {};
                 }
             } else {
-                const start = @intCast(u32, c.bufU32.items.len);
-                try c.bufU32.append(c.alloc, @bitCast(u32, rSymId));
+                const start: u32 = @intCast(c.bufU32.items.len);
+                try c.bufU32.append(c.alloc, @bitCast(rSymId));
                 res.value_ptr.* = .{
                     .depsStart = start,
-                    .depsEnd = @intCast(u32, c.bufU32.items.len),
+                    .depsEnd = @intCast(c.bufU32.items.len),
                 };
             }
         }
@@ -1904,7 +1904,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                     };
                 } else {
                     return VarLookupResult{
-                        .id = @bitCast(u32, svar.inner.staticAlias.crSymId),
+                        .id = @bitCast(svar.inner.staticAlias.crSymId),
                         .isLocal = false,
                         .created = false,
                     };
@@ -1915,7 +1915,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                     // Assumes static variables can only exist in the main block.
                     if (svar.hasCaptureOrStaticModifier or self.semaBlockDepth() == 1) {
                         return VarLookupResult{
-                            .id = @bitCast(u32, svar.inner.staticAlias.crSymId),
+                            .id = @bitCast(svar.inner.staticAlias.crSymId),
                             .isLocal = false,
                             .created = false,
                         };
@@ -2007,7 +2007,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
                     const res = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
                     _ = try pushStaticVarAlias(self, name, res.toCompactId());
                     return VarLookupResult{
-                        .id = @bitCast(u32, res.toCompactId()),
+                        .id = @bitCast(res.toCompactId()),
                         .isLocal = false,
                         .created = false,
                     };
@@ -2026,7 +2026,7 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !
             const id = try pushStaticVarAlias(self, name, res.toCompactId());
             self.vars.items[id].hasCaptureOrStaticModifier = true;
             return VarLookupResult{
-                .id = @bitCast(u32, res.toCompactId()),
+                .id = @bitCast(res.toCompactId()),
                 .isLocal = false,
                 .created = true,
             };
@@ -2125,7 +2125,7 @@ fn getTypeForResolvedValueSym(chunk: *cy.Chunk, crSymId: CompactResolvedSymId) !
 /// Give a name to the internal sym for formatting.
 pub fn addResolvedInternalSym(c: *cy.VMcompiler, name: []const u8) !ResolvedSymId {
     const nameId = try ensureNameSym(c, name);
-    const id = @intCast(u32, c.sema.resolvedSyms.items.len);
+    const id: u32 = @intCast(c.sema.resolvedSyms.items.len);
     try c.sema.resolvedSyms.append(c.alloc, .{
         .key = AbsResolvedSymKey{
             .absResolvedSymKey = .{
@@ -2154,7 +2154,7 @@ pub fn addResolvedBuiltinSym(c: *cy.VMcompiler, name: []const u8, typeId: rt.Typ
     const modId = try cy.module.appendModule(c, spec);
     const mod = c.sema.getModulePtr(modId);
 
-    const id = @intCast(u32, c.sema.resolvedSyms.items.len);
+    const id: u32 = @intCast(c.sema.resolvedSyms.items.len);
     try c.sema.resolvedSyms.append(c.alloc, .{
         .key = key,
         .symT = .builtinType,
@@ -2211,13 +2211,13 @@ fn ensureResolvedFuncSigNonFlex(c: *cy.VMcompiler, params: []const TypeId, ret: 
 pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const TypeId, ret: TypeId) !ResolvedFuncSigId {
     const res = try c.sema.resolvedFuncSigMap.getOrPut(c.alloc, .{
         .paramPtr = params.ptr,
-        .paramLen = @intCast(u32, params.len),
+        .paramLen = @intCast(params.len),
         .retSymId = ret,
     });
     if (res.found_existing) {
         return res.value_ptr.*;
     } else {
-        const id = @intCast(u32, c.sema.resolvedFuncSigs.items.len);
+        const id: u32 = @intCast(c.sema.resolvedFuncSigs.items.len);
         const new = try c.alloc.dupe(ResolvedSymId, params);
         var isTyped = false;
         for (params) |rSymId| {
@@ -2231,14 +2231,14 @@ pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const TypeId, ret: Typ
         }
         try c.sema.resolvedFuncSigs.append(c.alloc, .{
             .paramPtr = new.ptr,
-            .paramLen = @intCast(u16, new.len),
+            .paramLen = @intCast(new.len),
             .retSymId = ret,
             .isTyped = isTyped,
         });
         res.value_ptr.* = id;
         res.key_ptr.* = .{
             .paramPtr = new.ptr,
-            .paramLen = @intCast(u32, new.len),
+            .paramLen = @intCast(new.len),
             .retSymId = ret,
         };
         return id;
@@ -2302,29 +2302,29 @@ pub const CompactResolvedSymId = packed struct {
     isFuncSymId: bool,
 
     pub fn initNull() CompactResolvedSymId {
-        return @bitCast(CompactResolvedSymId, @as(u32, cy.NullId));
+        return @bitCast(@as(u32, cy.NullId));
     }
 
     pub fn initSymId(id: ResolvedSymId) CompactResolvedSymId {
         return .{
-            .id = @intCast(u31, id),
+            .id = @intCast(id),
             .isFuncSymId = false,
         };
     }
 
     pub fn initFuncSymId(id: ResolvedFuncSymId) CompactResolvedSymId {
         return .{
-            .id = @intCast(u31, id),
+            .id = @intCast(id),
             .isFuncSymId = true,
         };
     }
 
     fn isNull(self: CompactResolvedSymId) bool {
-        return @bitCast(u32, self) == cy.NullId;
+        return cy.NullId == @as(u32, @bitCast(self));
     }
 
     pub fn isPresent(self: CompactResolvedSymId) bool {
-        return @bitCast(u32, self) != cy.NullId;
+        return cy.NullId != @as(u32, @bitCast(self));
     }
 };
 
@@ -2344,7 +2344,7 @@ fn getOrResolveTypeSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: Na
     // Check builtin types.
     if (rParentSymId == chunk.semaResolvedRootSymId) {
         if (nameId < NameBuiltinTypeEnd) {
-            return @intCast(ResolvedSymId, nameId);
+            return @intCast(nameId);
         }
     }
 
@@ -2529,7 +2529,7 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId
             if (rParentSymId == chunk.semaResolvedRootSymId) {
                 if (nameId < NameBuiltinTypeEnd) {
                     return ResolvedSymResult{
-                        .rSymId = @intCast(ResolvedSymId, nameId),
+                        .rSymId = @intCast(nameId),
                         .rFuncSymId = cy.NullId,
                     };
                 }
@@ -2597,8 +2597,8 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId
 //     }
 
 //     return stdx.IndexSlice(u32).init(
-//         @intCast(u32, start),
-//         @intCast(u32, c.funcCandidateStack.items.len)
+//         @intCast(start),
+//         @intCast(c.funcCandidateStack.items.len)
 //     );
 // }
 
@@ -3155,23 +3155,23 @@ pub fn ensureNameSym(c: *cy.VMcompiler, name: []const u8) !NameSymId {
 }
 
 pub fn ensureNameSymExt(c: *cy.VMcompiler, name: []const u8, dupe: bool) !NameSymId {
-    const res = try @call(.never_inline, c.sema.nameSymMap.getOrPut, .{c.alloc, name});
+    const res = try @call(.never_inline, std.StringHashMapUnmanaged(NameSymId).getOrPut, .{ &c.sema.nameSymMap, c.alloc, name});
     if (res.found_existing) {
         return res.value_ptr.*;
     } else {
-        const id = @intCast(u32, c.sema.nameSyms.items.len);
+        const id: u32 = @intCast(c.sema.nameSyms.items.len);
         if (dupe) {
             const new = try c.alloc.dupe(u8, name);
             try c.sema.nameSyms.append(c.alloc, .{
                 .ptr = new.ptr,
-                .len = @intCast(u32, new.len),
+                .len = @intCast(new.len),
                 .owned = true,
             });
             res.key_ptr.* = new;
         } else {
             try c.sema.nameSyms.append(c.alloc, .{
                 .ptr = name.ptr,
-                .len = @intCast(u32, name.len),
+                .len = @intCast(name.len),
                 .owned = false,
             });
         }
@@ -3223,9 +3223,9 @@ pub fn getAccessExprResult(c: *cy.Chunk, ltype: TypeId, rightName: []const u8) !
         var offset: u8 = undefined;
         const symMap = c.compiler.vm.fieldSyms.buf[rtFieldId];
         if (typeId == symMap.mruTypeId) {
-            offset = @intCast(u8, symMap.mruOffset);
+            offset = @intCast(symMap.mruOffset);
         } else {
-            offset = @call(.never_inline, c.compiler.vm.getFieldOffsetFromTable, .{typeId, rtFieldId});
+            offset = @call(.never_inline, cy.VM.getFieldOffsetFromTable, .{c.compiler.vm, typeId, rtFieldId});
         }
         if (offset == cy.NullU8) {
             const name = c.compiler.vm.types.buf[typeId].name;
@@ -3539,7 +3539,7 @@ pub fn resolveEnumSym(c: *cy.VMcompiler, rParentSymId: ResolvedSymId, name: []co
     }
 
     // Resolve the symbol.
-    const rSymId = @intCast(u32, c.sema.resolvedSyms.items.len);
+    const rSymId: u32 = @intCast(c.sema.resolvedSyms.items.len);
     try c.sema.resolvedSyms.append(c.alloc, .{
         .symT = .enumT,
         .key = key,
@@ -3563,7 +3563,7 @@ pub fn resolveObjectSym(c: *cy.VMcompiler, key: AbsResolvedSymKey, modId: cy.Mod
             .typeId = rtTypeId,
         },
     });
-    try @call(.never_inline, c.sema.resolvedSymMap.put, .{c.alloc, key, symId});
+    try @call(.never_inline, @TypeOf(c.sema.resolvedSymMap).put, .{&c.sema.resolvedSymMap, c.alloc, key, symId});
 
     c.vm.types.buf[rtTypeId].rTypeSymId = symId;
     const mod = c.sema.getModulePtr(modId);
@@ -3587,7 +3587,7 @@ pub fn resolveRootModuleSym(self: *cy.VMcompiler, name: []const u8, modId: cy.Mo
     }
 
     // Resolve the symbol.
-    const resolvedId = @intCast(u32, self.sema.resolvedSyms.items.len);
+    const resolvedId: u32 = @intCast(self.sema.resolvedSyms.items.len);
     try self.sema.resolvedSyms.append(self.alloc, .{
         .symT = .module,
         .key = key,
@@ -3598,7 +3598,7 @@ pub fn resolveRootModuleSym(self: *cy.VMcompiler, name: []const u8, modId: cy.Mo
         },
         .exported = true,
     });
-    try @call(.never_inline, self.sema.resolvedSymMap.put, .{self.alloc, key, resolvedId});
+    try @call(.never_inline, @TypeOf(self.sema.resolvedSymMap).put, .{&self.sema.resolvedSymMap, self.alloc, key, resolvedId});
 
     return resolvedId;
 }
@@ -3633,7 +3633,7 @@ fn resolveLocalVarSym(self: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: Name
     }
 
     // Resolve the symbol.
-    const resolvedId = @intCast(u32, self.compiler.sema.resolvedSyms.items.len);
+    const resolvedId: u32 = @intCast(self.compiler.sema.resolvedSyms.items.len);
     try self.compiler.sema.resolvedSyms.append(self.alloc, .{
         .symT = .variable,
         .key = key,
@@ -3647,7 +3647,7 @@ fn resolveLocalVarSym(self: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: Name
         .exported = exported,
     });
 
-    try @call(.never_inline, self.compiler.sema.resolvedSymMap.put, .{self.alloc, key, resolvedId});
+    try @call(.never_inline, @TypeOf(self.compiler.sema.resolvedSymMap).put, .{&self.compiler.sema.resolvedSymMap, self.alloc, key, resolvedId});
 
     return resolvedId;
 }
@@ -3768,7 +3768,7 @@ fn resolveFunc(
         }
         rsymId = id;
     } else {
-        rsymId = @intCast(u32, c.sema.resolvedSyms.items.len);
+        rsymId = @intCast(c.sema.resolvedSyms.items.len);
         try c.sema.resolvedSyms.append(c.alloc, .{
             .symT = .func,
             .key = key,
@@ -3779,7 +3779,7 @@ fn resolveFunc(
             },
             .exported = true,
         });
-        try @call(.never_inline, c.sema.resolvedSymMap.put, .{c.alloc, key, rsymId});
+        try @call(.never_inline, @TypeOf(c.sema.resolvedSymMap).put, .{&c.sema.resolvedSymMap, c.alloc, key, rsymId});
         createdSym = true;
     }
 
@@ -3798,7 +3798,7 @@ fn resolveFunc(
     const rFuncSig = c.sema.getResolvedFuncSig(rFuncSigId);
     const retSymId = rFuncSig.getRetTypeSymId();
 
-    const rfsymId = @intCast(u32, c.sema.resolvedFuncSyms.items.len);
+    const rfsymId: u32 = @intCast(c.sema.resolvedFuncSyms.items.len);
     try types.assertTypeSym(self, retSymId);
     try c.sema.resolvedFuncSyms.append(c.alloc, .{
         .chunkId = self.id,
@@ -3807,7 +3807,7 @@ fn resolveFunc(
         .retType = retSymId,
         .hasStaticInitializer = false,
     });
-    try @call(.never_inline, c.sema.resolvedFuncSymMap.put, .{c.alloc, funcKey, rfsymId});
+    try @call(.never_inline, @TypeOf(c.sema.resolvedFuncSymMap).put, .{&c.sema.resolvedFuncSymMap, c.alloc, funcKey, rfsymId});
 
     if (createdSym) {
         c.sema.resolvedSyms.items[rsymId].inner.func.rFuncSymId = rfsymId;
@@ -3846,7 +3846,7 @@ fn endFuncBlock(self: *cy.Chunk) !void {
 
 fn endFuncSymBlock(self: *cy.Chunk, numParams: u32) !void {
     const sblock = curBlock(self);
-    const numCaptured = @intCast(u8, sblock.params.items.len - numParams);
+    const numCaptured: u8 = @intCast(sblock.params.items.len - numParams);
     if (builtin.mode == .Debug and numCaptured > 0) {
         stdx.panicFmt("Captured var in static func.", .{});
     }
@@ -3938,7 +3938,7 @@ pub const ResolvedFuncSig = struct {
     }
 
     pub inline fn numParams(self: ResolvedFuncSig) u8 {
-        return @intCast(u8, self.paramLen);
+        return @intCast(self.paramLen);
     }
 
     pub inline fn getRetTypeSymId(self: ResolvedFuncSig) ResolvedSymId {
@@ -4165,7 +4165,7 @@ pub const Model = struct {
     }
 
     pub fn addResolvedSym(self: *Model, key: AbsResolvedSymKey, symT: ResolvedSymType, data: ResolvedSymData) !ResolvedSymId {
-        const id = @intCast(u32, self.resolvedSyms.items.len);
+        const id: u32 = @intCast(self.resolvedSyms.items.len);
         try self.resolvedSyms.append(self.alloc, .{
             .symT = symT,
             .key = key,
@@ -4204,7 +4204,8 @@ pub const Model = struct {
 pub const ResolvedFuncSigKeyContext = struct {
     pub fn hash(_: @This(), key: ResolvedFuncSigKey) u64 {
         var c = std.hash.Wyhash.init(0);
-        c.update(@ptrCast([*]const u8, key.paramPtr)[0..key.paramLen*4]);
+        const bytes: [*]const u8 = @ptrCast(key.paramPtr);
+        c.update(bytes[0..key.paramLen*4]);
         c.update(std.mem.asBytes(&key.retSymId));
         return c.final();
     }
@@ -4216,7 +4217,8 @@ pub const ResolvedFuncSigKeyContext = struct {
 pub const U32SliceContext = struct {
     pub fn hash(_: @This(), key: []const u32) u64 {
         var c = std.hash.Wyhash.init(0);
-        c.update(@ptrCast([*]const u8, key.ptr)[0..key.len*4]);
+        const bytes: [*]const u8 = @ptrCast(key.ptr);
+        c.update(bytes[0..key.len*4]);
         return c.final();
     }
     pub fn eql(_: @This(), a: []const u32, b: []const u32) bool {

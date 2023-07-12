@@ -164,7 +164,7 @@ const WasmDefaultAllocator = struct {
 
     inline fn wasmMemorySize(self: *WasmDefaultAllocator) u32 {
         if (builtin.is_test) {
-            return @intCast(u32, @divTrunc(@ptrToInt(self.mem.buf.ptr) + self.mem.len - 1, PageSize) + 1);
+            return @intCast(@divTrunc(@intFromPtr(self.mem.buf.ptr) + self.mem.len - 1, PageSize) + 1);
         } else {
             // TODO: Can't pass var into @wasmMemorySize atm.
             return @wasmMemorySize(0);
@@ -173,10 +173,10 @@ const WasmDefaultAllocator = struct {
 
     inline fn wasmMemoryGrow(self: *WasmDefaultAllocator, delta: usize) i32 {
         if (builtin.is_test) {
-            const delta_size = delta * PageSize - @ptrToInt(self.mem.buf.ptr);
+            const delta_size = delta * PageSize - @intFromPtr(self.mem.buf.ptr);
             if (self.mem.len + delta_size <= self.mem.buf.len) {
                 self.mem.len += delta_size;
-                return @intCast(i32, @divExact(self.mem.len, PageSize));
+                return @intCast(@divExact(self.mem.len, PageSize));
             } else return -1;
         } else {
             // TODO: Can't pass var into @wasmMemoryGrow atm.
@@ -193,7 +193,7 @@ const WasmDefaultAllocator = struct {
     ) std.mem.Allocator.Error![]u8 {
         _ = ret_addr;
 
-        const self = @ptrCast(*WasmDefaultAllocator, @alignCast(@sizeOf(usize), ptr));
+        const self: * align(@sizeOf(usize)) WasmDefaultAllocator = @ptrCast(ptr);
         if (len == 0) {
             stdx.panic("TODO: len 0");
         }
@@ -231,17 +231,17 @@ const WasmDefaultAllocator = struct {
             const first = try self.allocContiguousPages(req_num_pages);
 
             // Assumes node addr has no offset from it's base frame addr.
-            const user_addr = std.mem.alignForward(@ptrToInt(first) + @sizeOf(Node), alignment);
+            const user_addr = std.mem.alignForward(@intFromPtr(first) + @sizeOf(Node), alignment);
 
             // Node is initialized from an offset depending on alignment.
-            const user_node = @intToPtr(*Node, user_addr - @sizeOf(Node));
+            const user_node: *Node = @ptrFromInt(user_addr - @sizeOf(Node));
             user_node.* = .{
                 .user_size = payload_size,
                 .next = .{
                     .seg_size = seg_size,
                 },
             };
-            return @intToPtr([*]u8, user_addr)[0..payload_size];
+            return @as([*]u8, @ptrFromInt(user_addr))[0..payload_size];
         }
     }
 
@@ -258,13 +258,13 @@ const WasmDefaultAllocator = struct {
             return first;
         }
 
-        var next_cont_addr = @ptrToInt(first) + PageSize;
+        var next_cont_addr = @intFromPtr(first) + PageSize;
         var i: u32 = 1;
         var first_prev: *Node = undefined;
         var prev: *Node = first;
         var mb_cur: ?*Node = first.next.node;
         while (mb_cur) |cur| {
-            if (@ptrToInt(cur) == next_cont_addr) {
+            if (@intFromPtr(cur) == next_cont_addr) {
                 i += 1;
                 if (i == num_pages) {
                     if (first == self.main_free_list) {
@@ -272,7 +272,7 @@ const WasmDefaultAllocator = struct {
                     } else {
                         first_prev.next.node = cur.next.node;
                     }
-                    self.num_free_pages -= @intCast(u32, num_pages);
+                    self.num_free_pages -= @intCast(num_pages);
                     return first;
                 }
             } else {
@@ -280,7 +280,7 @@ const WasmDefaultAllocator = struct {
                 first = cur;
                 i = 1;
             }
-            next_cont_addr = @ptrToInt(cur) + PageSize;
+            next_cont_addr = @intFromPtr(cur) + PageSize;
             prev = cur;
             mb_cur = cur.next.node;
         }
@@ -293,10 +293,10 @@ const WasmDefaultAllocator = struct {
     fn allocToNode(self: *WasmDefaultAllocator, node: *Node, seg_size: usize, payload_size: usize, alignment: u29) []u8 {
         _ = self;
         // Assumes node addr has no offset from it's base frame addr.
-        const user_addr = std.mem.alignForward(@ptrToInt(node) + @sizeOf(Node), alignment);
+        const user_addr = std.mem.alignForward(@intFromPtr(node) + @sizeOf(Node), alignment);
         
         // Node is initialized from an offset depending on alignment.
-        const user_node = @intToPtr(*Node, user_addr - @sizeOf(Node));
+        const user_node: *Node = @ptrFromInt(user_addr - @sizeOf(Node));
         user_node.* = .{
             .user_size = payload_size,
             .next = .{
@@ -304,7 +304,7 @@ const WasmDefaultAllocator = struct {
             },
         };
         // log.debug("returned memory {}", .{user_addr});
-        return @intToPtr([*]u8, user_addr)[0..payload_size];
+        return @as([*]u8, @ptrFromInt(user_addr))[0..payload_size];
     }
 
     /// Grows the wasm memory by number of pages.
@@ -321,7 +321,7 @@ const WasmDefaultAllocator = struct {
 
         // Add reserved pages into free list.
         const first_addr = first_new_page_idx * PageSize;
-        const first = @intToPtr(*Node, first_addr);
+        const first: *Node = @ptrFromInt(first_addr);
         first.* = .{
             .user_size = 0,
             .next = .{
@@ -339,7 +339,7 @@ const WasmDefaultAllocator = struct {
         var i: u32 = 1;
         while (i < num_pages) : (i += 1) {
             const node_addr = (first_new_page_idx + i) * PageSize;
-            const node = @intToPtr(*Node, node_addr);
+            const node: *Node = @ptrFromInt(node_addr);
             node.* = .{
                 .user_size = 0,
                 .next = .{
@@ -360,7 +360,7 @@ const WasmDefaultAllocator = struct {
         const node = self.main_free_list.?;
         self.main_free_list = node.next.node;
 
-        const header = @ptrCast(*PageHeader, node);
+        const header: *PageHeader = @ptrCast(node);
         header.* = .{
             // Assumes no previous free node.
             .prev_page_last_free_node = null,
@@ -370,8 +370,8 @@ const WasmDefaultAllocator = struct {
         // Initialize empty nodes.
         const seg_byte_size = seg_size * WordSize;
         const num_free_nodes = @divTrunc(PageSize - @sizeOf(PageHeader), seg_byte_size);
-        const first_addr = @ptrToInt(header) + @sizeOf(PageHeader);
-        const first = @intToPtr(*Node, first_addr);
+        const first_addr = @intFromPtr(header) + @sizeOf(PageHeader);
+        const first: *Node = @ptrFromInt(first_addr);
         first.* = .{
             .user_size = 0,
             .next = .{
@@ -384,7 +384,7 @@ const WasmDefaultAllocator = struct {
         var prev = first;
         var i: u32 = 1;
         while (i < num_free_nodes) : (i += 1) {
-            const seg_node = @intToPtr(*Node, first_addr + (i * seg_byte_size));
+            const seg_node: *Node = @ptrFromInt(first_addr + (i * seg_byte_size));
             seg_node.* = .{
                 .user_size = 0,
                 .next = .{
@@ -406,7 +406,7 @@ const WasmDefaultAllocator = struct {
     ) ?usize {
         _ = ret_addr;
         _ = buf_align;
-        const self = @ptrCast(*WasmDefaultAllocator, @alignCast(@sizeOf(usize), ptr));
+        const self: * align(@sizeOf(usize)) WasmDefaultAllocator = @ptrCast(ptr);
         _ = self;
         if (new_len == 0) {
             stdx.panic("TODO: new_len 0");
@@ -421,10 +421,10 @@ const WasmDefaultAllocator = struct {
             }
         };
 
-        const user_node_addr = @ptrToInt(buf.ptr) - @sizeOf(Node);
-        const user_node = @intToPtr(*Node, user_node_addr);
+        const user_node_addr = @intFromPtr(buf.ptr) - @sizeOf(Node);
+        const user_node: *Node = @ptrFromInt(user_node_addr);
 
-        // log.debug("resize {} {} {} {}", .{@ptrToInt(buf.ptr), buf_align, new_len, len_align});
+        // log.debug("resize {} {} {} {}", .{@intFromPtr(buf.ptr), buf_align, new_len, len_align});
 
         if (new_payload_size <= user_node.user_size) {
             // TODO: If this is a big allocation, check to free unused pages.
@@ -444,10 +444,10 @@ const WasmDefaultAllocator = struct {
     ) void {
         _ = ret_addr;
         _ = buf_align;
-        const self = @ptrCast(*WasmDefaultAllocator, @alignCast(@sizeOf(usize), ptr));
+        const self: * align(@sizeOf(usize)) WasmDefaultAllocator = @ptrCast(ptr);
 
-        const user_node_addr = @ptrToInt(buf.ptr) - @sizeOf(Node);
-        const user_node = @intToPtr(*Node, user_node_addr);
+        const user_node_addr = @intFromPtr(buf.ptr) - @sizeOf(Node);
+        const user_node: *Node = @ptrFromInt(user_node_addr);
 
         // Save the user seg_size before writing to Node overwrites it.
         const seg_size = user_node.next.seg_size;
@@ -455,21 +455,21 @@ const WasmDefaultAllocator = struct {
             // Small allocation.
             // TODO: Free empty pages.
 
-            const page_idx = @divTrunc(@ptrToInt(buf.ptr), PageSize);
+            const page_idx = @divTrunc(@intFromPtr(buf.ptr), PageSize);
             const page_addr = page_idx * PageSize;
 
             const frame_size = seg_size * WordSize;
-            const frame_idx = @divTrunc(@ptrToInt(buf.ptr) - page_addr - @sizeOf(PageHeader), frame_size);
-            // log.debug("free small {} {} {}", .{@ptrToInt(buf.ptr), page_idx, frame_idx});
+            const frame_idx = @divTrunc(@intFromPtr(buf.ptr) - page_addr - @sizeOf(PageHeader), frame_size);
+            // log.debug("free small {} {} {}", .{@intFromPtr(buf.ptr), page_idx, frame_idx});
 
             const node_addr = page_addr + @sizeOf(PageHeader) + frame_idx * frame_size;
-            const node = @intToPtr(*Node, node_addr);
+            const node: *Node = @ptrFromInt(node_addr);
 
             // Find the prev node to insert in order.
             var mb_prev: ?*Node = null;
             var mb_cur = self.segments[seg_size-1];
             while (mb_cur) |cur| {
-                if (@ptrToInt(cur) > node_addr) {
+                if (@intFromPtr(cur) > node_addr) {
                     break;
                 }
                 mb_prev = cur;
@@ -495,17 +495,17 @@ const WasmDefaultAllocator = struct {
             }
         } else {
             // Big allocation.
-            const page_idx = @divTrunc(@ptrToInt(buf.ptr), PageSize);
+            const page_idx = @divTrunc(@intFromPtr(buf.ptr), PageSize);
             const base_node_addr = page_idx * PageSize;
-            const base_node = @intToPtr(*Node, base_node_addr);
+            const base_node: *Node = @ptrFromInt(base_node_addr);
             const num_pages = @divTrunc(seg_size - 1, PageWordSize) + 1;
-            // log.debug("large free {} {} {} {}", .{@ptrToInt(buf.ptr), buf.len, page_idx, num_pages});
+            // log.debug("large free {} {} {} {}", .{@intFromPtr(buf.ptr), buf.len, page_idx, num_pages});
 
             // Find the prev node to insert in order.
             var mb_prev: ?*Node = null;
             var mb_cur = self.main_free_list;
             while (mb_cur) |cur| {
-                if (@ptrToInt(cur) > base_node_addr) {
+                if (@intFromPtr(cur) > base_node_addr) {
                     break;
                 }
                 mb_prev = cur;
@@ -516,7 +516,7 @@ const WasmDefaultAllocator = struct {
             var i: u32 = 1;
             var tmp_prev = base_node;
             while (i < num_pages) : (i += 1) {
-                const node = @intToPtr(*Node, base_node_addr + i * PageSize);
+                const node: *Node = @ptrFromInt(base_node_addr + i * PageSize);
                 node.* = .{
                     .user_size = 0,
                     .next = .{
@@ -539,7 +539,7 @@ const WasmDefaultAllocator = struct {
                 self.main_free_list = base_node;
             }
 
-            self.num_free_pages += @intCast(u32, num_pages);
+            self.num_free_pages += @intCast(num_pages);
         }
     }
 };
@@ -550,20 +550,20 @@ test "WasmDefaultAllocator" {
     defer wgpa.deinit();
 
     const alloc = wgpa.allocator();
-    const start_addr = @ptrToInt(wgpa.mem.buf.ptr);
+    const start_addr = @intFromPtr(wgpa.mem.buf.ptr);
 
     // Small allocations using the same segment.
     const small1 = try alloc.alloc(u8, 16);
-    try t.expect(@ptrToInt(small1.ptr) >= start_addr and @ptrToInt(small1.ptr) < start_addr + wgpa.mem.len);
+    try t.expect(@intFromPtr(small1.ptr) >= start_addr and @intFromPtr(small1.ptr) < start_addr + wgpa.mem.len);
     const small2 = try alloc.alloc(u8, 16);
-    try t.expect(@ptrToInt(small2.ptr) >= start_addr and @ptrToInt(small2.ptr) < start_addr + wgpa.mem.len);
-    try t.eq(@ptrToInt(small2.ptr), @ptrToInt(small1.ptr) + 32);
+    try t.expect(@intFromPtr(small2.ptr) >= start_addr and @intFromPtr(small2.ptr) < start_addr + wgpa.mem.len);
+    try t.eq(@intFromPtr(small2.ptr), @intFromPtr(small1.ptr) + 32);
 
     // Small allocation reuses freed slot.
-    const small_addr = @ptrToInt(small1.ptr);
+    const small_addr = @intFromPtr(small1.ptr);
     alloc.free(small1);
     const small3 = try alloc.alloc(u8, 16);
-    try t.eq(@ptrToInt(small3.ptr), small_addr);
+    try t.eq(@intFromPtr(small3.ptr), small_addr);
 }
 
 test "WasmDefaultAllocator.growMemory large allocation/free." {
@@ -654,7 +654,7 @@ pub const TraceAllocator = struct {
         len_align: u29,
         ret_addr: usize,
     ) std.mem.Allocator.Error![]u8 {
-        const self = @ptrCast(*TraceAllocator, @alignCast(@sizeOf(usize), ptr));
+        const self: * align (@sizeOf(usize)) TraceAllocator = @ptrCast(ptr);
         const res = try self.child.rawAlloc(len, alignment, len_align, ret_addr);
         self.allocMem += res.len;
         if (self.allocMem - self.freedMem > self.peakMem) {
@@ -671,7 +671,7 @@ pub const TraceAllocator = struct {
         len_align: u29,
         ret_addr: usize,
     ) ?usize {
-        const self = @ptrCast(*TraceAllocator, @alignCast(@sizeOf(usize), ptr));
+        const self: *align (@sizeOf(usize)) TraceAllocator = @ptrCast(ptr);
         if (self.child.rawResize(buf, buf_align, new_len, len_align, ret_addr)) |newSize| {
             if (newSize > buf.len) {
                 self.resizeMem += newSize - buf.len;
@@ -686,7 +686,7 @@ pub const TraceAllocator = struct {
         buf_align: u29,
         ret_addr: usize,
     ) void {
-        const self = @ptrCast(*TraceAllocator, @alignCast(@sizeOf(usize), ptr));
+        const self: *align(@sizeOf(usize)) TraceAllocator = @ptrCast(ptr);
         self.child.rawFree(buf, buf_align, ret_addr);
         self.freedMem += buf.len;
     }

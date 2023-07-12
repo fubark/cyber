@@ -18,10 +18,10 @@ pub const Timer = struct {
 };
 
 pub fn getMilliTimestamp() i64 {
-    return @floatToInt(i64, hostMilliTimestamp());
+    return @intFromFloat(hostMilliTimestamp());
 }
 
 fn getNanoTime() u64 {
     // TODO: Separate extern for accurate timer. On web: performance.now()
-    return @floatToInt(u64, hostMilliTimestamp() * 1e6);
+    return @intFromFloat(hostMilliTimestamp() * 1e6);
 }

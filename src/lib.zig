@@ -110,7 +110,7 @@ export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
     if (report.len > tempBuf.len - 1) {
         stdx.panic("Buffer too small.");
     }
-    @memcpy(&tempBuf, report.ptr, report.len);
+    @memcpy(tempBuf[0..report.len], report);
     tempBuf[report.len] = 0;
     return c.CStr{
         .charz = &tempBuf,
@@ -120,19 +120,19 @@ export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
 
 export fn cyVmAddModuleLoader(vm: *cy.UserVM, cspec: c.CStr, func: c.CyLoadModuleFunc) void {
     const absSpec = cspec.charz[0..cspec.len];
-    vm.addModuleLoader(absSpec, @ptrCast(cy.ModuleLoaderFunc, func)) catch fatal();
+    vm.addModuleLoader(absSpec, @ptrCast(func)) catch fatal();
 }
 
 export fn cyVmSetModuleFunc(vm: *cy.UserVM, modId: cy.ModuleId, cname: c.CStr, numParams: u32, func: c.CyFunc) void {
     const symName = cname.charz[0..cname.len];
     const mod = vm.internal().compiler.sema.getModulePtr(modId);
-    mod.setNativeFuncExt(&vm.internal().compiler, symName, true, numParams, @ptrCast(cy.NativeFuncPtr, func)) catch fatal();
+    mod.setNativeFuncExt(&vm.internal().compiler, symName, true, numParams, @ptrCast(func)) catch fatal();
 }
 
 export fn cyVmSetModuleVar(vm: *cy.UserVM, modId: cy.ModuleId, cname: c.CStr, val: c.CyValue) void {
     const symName = cname.charz[0..cname.len];
     const mod = vm.internal().compiler.sema.getModulePtr(modId);
-    mod.setVarExt(&vm.internal().compiler, symName, true, bt.Any, @bitCast(cy.Value, val)) catch fatal();
+    mod.setVarExt(&vm.internal().compiler, symName, true, bt.Any, @bitCast(val)) catch fatal();
 }
 
 export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {
@@ -197,19 +197,19 @@ export fn cyValueAllocMap(vm: *cy.UserVM) Value {
 
 export fn cyValueAllocNativeFunc(vm: *cy.UserVM, func: c.CyFunc, numParams: u32) Value {
     const rFuncSigId = vm.ensureUntypedFuncSig(numParams) catch fatal();
-    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(cy.NativeFuncPtr, func), numParams, rFuncSigId, null) catch fatal();
+    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(func), numParams, rFuncSigId, null) catch fatal();
 }
 
 export fn cyValueTagLiteral(vm: *cy.UserVM, str: c.CStr) Value {
     const id = vm.internal().ensureSymbolExt(str.charz[0..str.len], true) catch fatal();
-    return Value.initSymbol(@intCast(u8, id));
+    return Value.initSymbol(@intCast(id));
 }
 
 test "cyValueAllocNativeFunc()" {
     const vm = c.cyVmCreate();
     defer c.cyVmDestroy(vm);
 
-    const val = c.cyValueAllocNativeFunc(vm, @intToPtr(c.CyFunc, 0), 2);
+    const val = c.cyValueAllocNativeFunc(vm, @ptrFromInt(8), 2);
     try t.eq(c.cyValueGetTypeId(val), rt.NativeFuncT);
 }
 
@@ -221,20 +221,20 @@ test "cyValueAllocPointer()" {
     const vm = c.cyVmCreate();
     defer c.cyVmDestroy(vm);
 
-    const val = c.cyValueAllocPointer(vm, @intToPtr(?*anyopaque, 123));
+    const val = c.cyValueAllocPointer(vm, @ptrFromInt(123));
     try t.eq(c.cyValueGetTypeId(val), rt.PointerT);
 
     const obj = c.cyValueAsHeapObject(val)[0];
-    try t.eq(@ptrToInt(obj.pointer.ptr), 123);
+    try t.eq(@intFromPtr(obj.pointer.ptr), 123);
 }
 
 export fn cyValueAsHeapObject(val: Value) *c.CyHeapObject {
-    return @ptrCast(*c.CyHeapObject, val.asHeapObject());
+    return @ptrCast(val.asHeapObject());
 }
 
 test "cyValueAsHeapObject()" {
-    const o = c.cyValueAsHeapObject(c.cyValueHeapObject(@intToPtr(*c.CyHeapObject, 80)));
-    try t.eq(@ptrToInt(o), 80);
+    const o = c.cyValueAsHeapObject(c.cyValueHeapObject(@ptrFromInt(80)));
+    try t.eq(@intFromPtr(o), 80);
 }
 
 export fn cyValueAsNumber(val: Value) f64 {
@@ -298,7 +298,7 @@ test "cyValueAsTagLiteralId()" {
 export fn cyValueToTempString(vm: *cy.UserVM, val: Value) c.CStr {
     const str = vm.valueToTempString(val);
     vm.internal().u8Buf.resize(vm.allocator(), str.len + 1) catch fatal();
-    @memcpy(vm.internal().u8Buf.buf.ptr, str.ptr, str.len);
+    @memcpy(vm.internal().u8Buf.buf[0..str.len], str);
     vm.internal().u8Buf.buf[str.len] = 0;
     return .{
         .charz = vm.internal().u8Buf.buf.ptr,
@@ -309,7 +309,7 @@ export fn cyValueToTempString(vm: *cy.UserVM, val: Value) c.CStr {
 export fn cyValueToTempRawString(vm: *cy.UserVM, val: Value) c.CStr {
     const str = vm.valueToTempRawString(val);
     vm.internal().u8Buf.resize(vm.allocator(), str.len + 1) catch fatal();
-    @memcpy(vm.internal().u8Buf.buf.ptr, str.ptr, str.len);
+    @memcpy(vm.internal().u8Buf.buf[0..str.len], str);
     vm.internal().u8Buf.buf[str.len] = 0;
     return .{
         .charz = vm.internal().u8Buf.buf.ptr,

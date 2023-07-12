@@ -31,9 +31,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
     // Variables.
     try b.setVar("cpu", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
     if (builtin.cpu.arch.endian() == .Little) {
-        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@enumToInt(Symbol.little)));
+        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@intFromEnum(Symbol.little)));
     } else {
-        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@enumToInt(Symbol.big)));
+        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@intFromEnum(Symbol.big)));
     }
     if (cy.hasStdFiles) {
         const stdin = try cy.heap.allocFile(self.vm, std.io.getStdIn().handle);
@@ -251,7 +251,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
 
-    const mode = @intToEnum(Symbol, args[1].asSymbolId());
+    const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
         .read => .read_only,
         .write => .write_only,
@@ -275,7 +275,7 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
-    const mode = @intToEnum(Symbol, args[1].asSymbolId());
+    const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
         .read => .read_only,
         .write => .write_only,
@@ -474,28 +474,28 @@ pub fn free(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 }
 
 pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const size = @floatToInt(usize, args[0].asF64());
+    const size: usize = @intFromFloat(args[0].asF64());
     const ptr = std.c.malloc(size);
     return cy.heap.allocPointer(vm.internal(), ptr) catch stdx.fatal();
 }
 
 fn fromCstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
-    const bytes = std.mem.span(@ptrCast([*:0]const u8, args[0].asHeapObject().pointer.ptr));
+    const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(args[0].asHeapObject().pointer.ptr)));
     return vm.allocRawString(bytes) catch fatal();
 }
 
 fn cstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     const bytes = vm.valueToTempRawString(args[0]);
-    const new = @ptrCast([*]u8, std.c.malloc(bytes.len + 1));
-    @memcpy(new, bytes.ptr, bytes.len);
+    const new: [*]u8 = @ptrCast(std.c.malloc(bytes.len + 1));
+    @memcpy(new[0..bytes.len], bytes);
     new[bytes.len] = 0;
     return cy.heap.allocPointer(vm.internal(), new) catch fatal();
 }
 
 pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return Value.initF64(@intToFloat(f64, stdx.time.getMilliTimestamp()));
+    return Value.initF64(@floatFromInt(stdx.time.getMilliTimestamp()));
 }
 
 pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -521,11 +521,11 @@ pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const key = vm.valueToTempRawString(args[0]);
-    const keyz = std.cstr.addNullByte(vm.allocator(), key) catch stdx.fatal();
+    const keyz = vm.allocator().dupeZ(u8, key) catch stdx.fatal();
     defer vm.allocator().free(keyz);
 
     const value = vm.valueToTempRawString(args[1]);
-    const valuez = std.cstr.addNullByte(vm.allocator(), value) catch stdx.fatal();
+    const valuez = vm.allocator().dupeZ(u8, value) catch stdx.fatal();
     defer vm.allocator().free(valuez);
     _ = setenv(keyz, valuez, 1);
     return Value.None;
@@ -535,12 +535,12 @@ pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c
 pub fn sleep(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     if (builtin.os.tag == .windows) {
-        const ms = @floatToInt(u32, args[0].asF64());
+        const ms: u32 = @intFromFloat(args[0].asF64());
         std.os.windows.kernel32.Sleep(ms);
     } else {
         const ms = args[0].asF64();
-        const secs = @floatToInt(u64, @divFloor(ms, 1000));
-        const nsecs = @floatToInt(u64, 1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
+        const secs: u64 = @intFromFloat(@divFloor(ms, 1000));
+        const nsecs: u64 = @intFromFloat(1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
         if (cy.isWasm) {
             hostSleep(secs, nsecs);
         } else {
@@ -554,7 +554,7 @@ extern fn hostSleep(secs: u64, nsecs: u64) void;
 
 pub fn unsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const key = vm.valueToTempRawString(args[0]);
-    const keyz = std.cstr.addNullByte(vm.allocator(), key) catch stdx.fatal();
+    const keyz = vm.allocator().dupeZ(u8, key) catch stdx.fatal();
     defer vm.allocator().free(keyz);
     _ = unsetenv(keyz);
     return Value.None;

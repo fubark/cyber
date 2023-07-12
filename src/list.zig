@@ -153,11 +153,11 @@ pub fn ListAligned(comptime T: type, comptime Align: ?u29) type {
 
             pub fn writeByteNTimes(self: WriterT, byte: u8, n: usize) linksection(cy.Section) Error!void {
                 var bytes: [256]u8 = undefined;
-                std.mem.set(u8, bytes[0..], byte);
+                @memset(bytes[0..], byte);
 
                 var remaining = n;
                 while (remaining > 0) {
-                    const to_write = std.math.min(remaining, bytes.len);
+                    const to_write = @min(remaining, bytes.len);
                     try self.writeAll(bytes[0..to_write]);
                     remaining -= to_write;
                 }

@@ -91,13 +91,13 @@ pub const Value = packed union {
     pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
 
     pub inline fn asInteger(self: *const Value) i32 {
-        return @bitCast(i32, @intCast(u32, self.val & 0xffffffff));
+        return @bitCast(@as(u32, @intCast(self.val & 0xffffffff)));
     }
 
     pub inline fn asF64toI32(self: *const Value) i32 {
         const f = self.asF64();
         if (self.val & 0x7ff0000000000000 != 0x7ff0000000000000) {
-            return @truncate(i32, @floatToInt(i64, f));
+            return @truncate(@as(i64, @intFromFloat(f)));
         } else {
             return 0;
         }
@@ -107,7 +107,7 @@ pub const Value = packed union {
         const f = self.asF64();
         if (self.val & 0x7ff0000000000000 != 0x7ff0000000000000) {
             // Not nan or inf.
-            return @floatToInt(i64, f);
+            return @intFromFloat(f);
         } else {
             return 0;
         }
@@ -115,16 +115,16 @@ pub const Value = packed union {
 
     pub inline fn asF64toU32(self: *const Value) u32 {
         @setRuntimeSafety(debug);
-        return @floatToInt(u32, self.asF64());
+        return @intFromFloat(self.asF64());
     }
 
     pub inline fn asF64(self: *const Value) f64 {
         @setRuntimeSafety(debug);
-        return @bitCast(f64, self.val);
+        return @bitCast(self.val);
     }
 
     pub inline fn asSymbolId(self: *const Value) u32 {
-        return @intCast(u32, self.val & @as(u64, 0xFFFFFFFF));
+        return @intCast(self.val & @as(u64, 0xFFFFFFFF));
     }
 
     pub inline fn toF64(self: *const Value) linksection(cy.HotSection) f64 {
@@ -156,7 +156,7 @@ pub const Value = packed union {
             switch (self.getTag()) {
                 TagNone => return 0,
                 TagBoolean => return if (self.asBool()) 1 else 0,
-                TagInteger => return @intToFloat(f64, self.asInteger()),
+                TagInteger => return @floatFromInt(self.asInteger()),
                 else => {
                     log.debug("unsupported conv to number: {}", .{self.getTag()});
                     return error.Unsupported;
@@ -300,15 +300,15 @@ pub const Value = packed union {
     }
 
     pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
-        return @intToPtr(*cy.HeapObject, @intCast(usize, self.val & ~PointerMask));
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~PointerMask)));
     }
 
     pub inline fn asPointer(self: *const Value, comptime Ptr: type) Ptr {
-        return @intToPtr(Ptr, @intCast(usize, self.val & ~PointerMask));
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~PointerMask)));
     }
 
     pub inline fn asAnyOpaque(self: *const Value) ?*anyopaque {
-        return @intToPtr(?*anyopaque, @intCast(usize, self.val & ~PointerMask));
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~PointerMask)));
     }
 
     pub inline fn asBool(self: *const Value) linksection(cy.HotSection) bool {
@@ -336,7 +336,7 @@ pub const Value = packed union {
     }
 
     pub inline fn getTag(self: *const Value) u3 {
-        return @intCast(u3, @intCast(u32, self.val >> 32) & TagMask);
+        return @intCast(@as(u32, @intCast(self.val >> 32)) & TagMask);
     }
 
     pub inline fn initEnum(tag: u8, val: u8) Value {
@@ -345,8 +345,8 @@ pub const Value = packed union {
 
     pub inline fn asEnum(self: *const Value) EnumValue {
         return .{
-            .enumId = @intCast(u16, (0xff00 & self.val) >> 8),
-            .memberId = @intCast(u16, 0xff & self.val),
+            .enumId = @intCast((0xff00 & self.val) >> 8),
+            .memberId = @intCast(0xff & self.val),
         };
     }
 
@@ -359,11 +359,11 @@ pub const Value = packed union {
     }
 
     pub inline fn initF64(val: f64) Value {
-        return .{ .val = @bitCast(u64, val) };
+        return .{ .val = @as(u64, @bitCast(val)) };
     }
 
     pub inline fn initI32(val: i32) Value {
-        return .{ .val = IntegerMask | @bitCast(u32, val) };
+        return .{ .val = IntegerMask | @as(u32, @bitCast(val)) };
     }
 
     pub inline fn initRaw(val: u64) Value {
@@ -381,7 +381,7 @@ pub const Value = packed union {
 
     pub inline fn initPtr(ptr: ?*anyopaque) Value {
         @setRuntimeSafety(debug);
-        return .{ .val = PointerMask | @ptrToInt(ptr) };
+        return .{ .val = PointerMask | @intFromPtr(ptr) };
     }
 
     pub inline fn initStaticAstring(start: u32, len: u15) Value {
@@ -393,8 +393,8 @@ pub const Value = packed union {
     }
 
     pub inline fn asStaticStringSlice(self: *const Value) stdx.IndexSlice(u32) {
-        const len = (@intCast(u32, self.val >> 32) & BeforeTagMask) >> 3;
-        const start = @intCast(u32, self.val & 0xffffffff);
+        const len = (@as(u32, @intCast(self.val >> 32)) & BeforeTagMask) >> 3;
+        const start: u32 = @intCast(self.val & 0xffffffff);
         return stdx.IndexSlice(u32).init(start, start + len);
     }
 
@@ -421,7 +421,7 @@ pub const Value = packed union {
     }
 
     pub inline fn asErrorSymbol(self: *const Value) u8 {
-        return @intCast(u8, self.val & 0xff);
+        return @intCast(self.val & 0xff);
     }
 
     pub fn dump(self: *const Value) void {
@@ -587,7 +587,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 while (iter.next()) |entry| {
                     cy.arc.retain(vm, entry.key);
                     cy.arc.retain(vm, entry.value);
-                    newMap.put(vm.alloc, @ptrCast(*const cy.VM, vm), entry.key, entry.value) catch stdx.fatal();
+                    newMap.put(vm.alloc, @ptrCast(vm), entry.key, entry.value) catch stdx.fatal();
                 }
                 return new;
             },
@@ -625,7 +625,7 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
-                const numFields = @ptrCast(*const cy.VM, vm).types.buf[obj.head.typeId].numFields;
+                const numFields = @as(*const cy.VM, @ptrCast(vm)).types.buf[obj.head.typeId].numFields;
                 const fields = obj.object.getValuesConstPtr()[0..numFields];
                 var new: Value = undefined;
                 if (numFields <= 4) {
@@ -656,11 +656,11 @@ test "floatCanBeInteger" {
 test "asF64" {
     // +Inf.
     var val = Value{ .val = 0x7ff0000000000000 };
-    try t.eq(val.asF64(), std.math.inf_f64);
+    try t.eq(val.asF64(), std.math.inf(f64));
 
     // -Inf.
     val = Value{ .val = 0xfff0000000000000 };
-    try t.eq(val.asF64(), -std.math.inf_f64);
+    try t.eq(val.asF64(), -std.math.inf(f64));
 }
 
 test "Internals." {

@@ -30,7 +30,7 @@ pub fn Stack(comptime T: type) type {
             while (i < vals.len) : (i += 1) {
                 self.buf[self.top + i] = vals[i];
             }
-            self.top += @intCast(u32, vals.len);
+            self.top += @intCast(vals.len);
         }
 
         pub inline fn pop(self: *StackT) T {

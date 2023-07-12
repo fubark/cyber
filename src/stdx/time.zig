@@ -17,12 +17,12 @@ pub const Duration = struct {
 
     pub fn initSecsF(secs: f32) Self {
         return .{
-            .ns = @floatToInt(u64, secs * 1e9),
+            .ns = @intFromFloat(secs * 1e9),
         };
     }
 
     pub fn toMillis(self: Self) u32 {
-        return @intCast(u32, self.ns / 1000000);
+        return @intCast(self.ns / 1000000);
     }
 };
 

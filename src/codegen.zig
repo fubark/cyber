@@ -126,7 +126,7 @@ fn symbolTo(self: *Chunk, crSymId: sema.CompactResolvedSymId, req: RegisterCstr)
 
         try self.pushOptionalDebugSym(self.curNodeId);
         try self.buf.pushOp3(.staticFunc, 0, 0, dst);
-        self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+        self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
         return self.initGenValue(dst, bt.Any, true);
     } else {
         const rSym = self.compiler.sema.getResolvedSym(crSymId.id);
@@ -139,7 +139,7 @@ fn symbolTo(self: *Chunk, crSymId: sema.CompactResolvedSymId, req: RegisterCstr)
                 try self.pushOptionalDebugSym(self.curNodeId);       
                 const pc = self.buf.len();
                 try self.buf.pushOp3(.staticVar, 0, 0, dst);
-                self.buf.setOpArgU16(pc + 1, @intCast(u16, varId));
+                self.buf.setOpArgU16(pc + 1, @intCast(varId));
 
                 const stype = rSym.inner.variable.rTypeSymId;
                 return self.initGenValue(dst, stype, true);
@@ -147,7 +147,7 @@ fn symbolTo(self: *Chunk, crSymId: sema.CompactResolvedSymId, req: RegisterCstr)
             .builtinType => {
                 const typeId = rSym.inner.builtinType.typeId;
                 const dst = try self.rega.selectFromNonLocalVar(req, true);
-                try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
+                try self.buf.pushOp1(.sym, @intFromEnum(cy.heap.MetaTypeKind.object));
                 try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
                 try self.buf.pushOperand(dst);
                 return self.initGenValue(dst, bt.MetaType, true);
@@ -155,7 +155,7 @@ fn symbolTo(self: *Chunk, crSymId: sema.CompactResolvedSymId, req: RegisterCstr)
             .object => {
                 const typeId = rSym.inner.object.typeId;
                 const dst = try self.rega.selectFromNonLocalVar(req, true);
-                try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
+                try self.buf.pushOp1(.sym, @intFromEnum(cy.heap.MetaTypeKind.object));
                 try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
                 try self.buf.pushOperand(dst);
                 return self.initGenValue(dst, bt.MetaType, true);
@@ -186,7 +186,7 @@ fn stringTemplate(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue 
             const raw = self.getNodeTokenString(cur);
             const str = try self.unescapeString(raw);
             const idx = try self.buf.getOrPushStringConst(str);
-            try self.operandStack.append(self.alloc, cy.InstDatum.initArg(@intCast(u8, idx)));
+            try self.operandStack.append(self.alloc, cy.InstDatum.initArg(@intCast(idx)));
         } else {
             _ = try expression(self, curId, RegisterCstr.tempMustRetain);
             numExprs += 1;
@@ -196,7 +196,7 @@ fn stringTemplate(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue 
     }
 
     try self.pushOptionalDebugSym(nodeId);
-    try self.buf.pushOp3(.stringTemplate, tempStart, @intCast(u8, numExprs), dst);
+    try self.buf.pushOp3(.stringTemplate, tempStart, @intCast(numExprs), dst);
     try self.buf.pushOperands(self.operandStack.items[operandStart..]);
     return self.initGenValue(dst, bt.String, true);
 }
@@ -226,7 +226,7 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
             // Initially set to NullId so leftovers are defaulted to `none`.
             const initFields = self.assignedVarStack.items[sortedFieldsStart..];
-            std.mem.set(u32, initFields, cy.NullId);
+            @memset(initFields, cy.NullId);
 
             const dst = try self.rega.selectFromNonLocalVar(req, true);
             const tempStart = self.rega.getNextTemp();
@@ -262,9 +262,9 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
             if (self.compiler.vm.types.buf[typeId].numFields <= 4) {
                 try self.pushOptionalDebugSym(nodeId);
-                try self.buf.pushOpSlice(.objectSmall, &.{ @intCast(u8, typeId), tempStart, @intCast(u8, numFields), dst });
+                try self.buf.pushOpSlice(.objectSmall, &[_]u8{ @intCast(typeId), tempStart, @intCast(numFields), dst });
             } else {
-                try self.buf.pushOpSlice(.object, &.{ @intCast(u8, typeId), tempStart, @intCast(u8, numFields), dst });
+                try self.buf.pushOpSlice(.object, &[_]u8{ @intCast(typeId), tempStart, @intCast(numFields), dst });
             }
             const type_ = node.head.objectInit.sema_rSymId;
             return GenValue.initTempValue(dst, type_, true);
@@ -296,14 +296,14 @@ fn mapInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 const idx = try self.buf.getOrPushStringConst(name);
 
                 try self.operandStack.ensureUnusedCapacity(self.alloc, 2);
-                @ptrCast(*align (1) u16, self.operandStack.items.ptr + self.operandStack.items.len).* = @intCast(u16, idx);
+                @as(*align (1) u16, @ptrCast(self.operandStack.items.ptr + self.operandStack.items.len)).* = @intCast(idx);
                 self.operandStack.items.len += 2;
             },
             .string => {
                 const name = self.getNodeTokenString(key);
                 const idx = try self.buf.getOrPushStringConst(name);
                 try self.operandStack.ensureUnusedCapacity(self.alloc, 2);
-                @ptrCast(*align (1) u16, self.operandStack.items.ptr + self.operandStack.items.len).* = @intCast(u16, idx);
+                @as(*align (1) u16, @ptrCast(self.operandStack.items.ptr + self.operandStack.items.len)).* = @intCast(idx);
                 self.operandStack.items.len += 2;
             },
             else => stdx.panicFmt("unsupported key {}", .{key.node_t}),
@@ -316,7 +316,7 @@ fn mapInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     if (i == 0) {
         try self.buf.pushOp1(.mapEmpty, dst);
     } else {
-        try self.buf.pushOp3(.map, tempStart, @intCast(u8, i), dst);
+        try self.buf.pushOp3(.map, tempStart, @intCast(i), dst);
         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
     }
     return self.initGenValue(dst, bt.Map, true);
@@ -529,7 +529,7 @@ fn lambdaMulti(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     self.curBlock.frameLoc = nodeId;
 
     const jumpStackStart = self.blockJumpStack.items.len;
-    const opStart = @intCast(u32, self.buf.ops.items.len);
+    const opStart: u32 = @intCast(self.buf.ops.items.len);
 
     // Generate function body.
     try self.reserveFuncParams(func.numParams);
@@ -541,7 +541,7 @@ fn lambdaMulti(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     self.patchJumpToCurPc(jumpPc);
 
     const sblock = sema.curBlock(self);
-    const numCaptured = @intCast(u8, sblock.captures.items.len);
+    const numCaptured: u8 = @intCast(sblock.captures.items.len);
     const closureLocal = self.curBlock.closureLocal;
 
     self.patchBlockJumps(jumpStackStart);
@@ -553,12 +553,12 @@ fn lambdaMulti(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     const dst = try self.rega.selectFromNonLocalVar(req, true);
 
     if (numCaptured == 0) {
-        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+        const funcPcOffset: u8 = @intCast(self.buf.ops.items.len - opStart);
         try self.pushOptionalDebugSym(nodeId);
 
         const start = self.buf.ops.items.len;
         try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, func.numParams, stackSize, 0, 0, dst });
-        self.buf.setOpArgU16(start + 4, @intCast(u16, func.inner.lambda.rFuncSigId));
+        self.buf.setOpArgU16(start + 4, @intCast(func.inner.lambda.rFuncSigId));
         return self.initGenValue(dst, bt.Any, true);
     } else {
         const operandStart = self.operandStack.items.len;
@@ -575,10 +575,10 @@ fn lambdaMulti(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
             try self.pushTempOperand(pvar.local);
         }
 
-        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+        const funcPcOffset: u8 = @intCast(self.buf.ops.items.len - opStart);
         const start = self.buf.ops.items.len;
         try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, func.numParams, numCaptured, stackSize, 0, 0, closureLocal, dst });
-        self.buf.setOpArgU16(start + 5, @intCast(u16, func.inner.lambda.rFuncSigId));
+        self.buf.setOpArgU16(start + 5, @intCast(func.inner.lambda.rFuncSigId));
         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
         return self.initGenValue(dst, bt.Any, true);
     }
@@ -591,7 +591,7 @@ fn lambdaExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
     const func = self.semaFuncDecls.items[node.head.func.semaDeclId];
     try self.pushSemaBlock(func.semaBlockId);
-    const opStart = @intCast(u32, self.buf.ops.items.len);
+    const opStart: u32 = @intCast(self.buf.ops.items.len);
 
     // Generate function body.
     try self.reserveFuncParams(func.numParams);
@@ -603,7 +603,7 @@ fn lambdaExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     self.patchJumpToCurPc(jumpPc);
 
     const sblock = sema.curBlock(self);
-    const numCaptured = @intCast(u8, sblock.captures.items.len);
+    const numCaptured: u8 = @intCast(sblock.captures.items.len);
     const closureLocal = self.curBlock.closureLocal;
     const stackSize = self.getMaxUsedRegisters();
     self.popSemaBlock();
@@ -611,11 +611,11 @@ fn lambdaExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     const dst = try self.rega.selectFromNonLocalVar(req, true);
 
     if (numCaptured == 0) {
-        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+        const funcPcOffset: u8 = @intCast(self.buf.ops.items.len - opStart);
         try self.pushOptionalDebugSym(nodeId);
         const start = self.buf.ops.items.len;
         try self.buf.pushOpSlice(.lambda, &.{ funcPcOffset, func.numParams, stackSize, 0, 0, dst });
-        self.buf.setOpArgU16(start + 4, @intCast(u16, func.inner.lambda.rFuncSigId));
+        self.buf.setOpArgU16(start + 4, @intCast(func.inner.lambda.rFuncSigId));
         return self.initGenValue(dst, bt.Any, true);
     } else {
         const operandStart = self.operandStack.items.len;
@@ -632,10 +632,10 @@ fn lambdaExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
             try self.pushTempOperand(pvar.local);
         }
 
-        const funcPcOffset = @intCast(u8, self.buf.ops.items.len - opStart);
+        const funcPcOffset: u8 = @intCast(self.buf.ops.items.len - opStart);
         const start = self.buf.ops.items.len;
         try self.buf.pushOpSlice(.closure, &.{ funcPcOffset, func.numParams, numCaptured, stackSize, 0, 0, closureLocal, dst });
-        self.buf.setOpArgU16(start + 5, @intCast(u16, func.inner.lambda.rFuncSigId));
+        self.buf.setOpArgU16(start + 5, @intCast(func.inner.lambda.rFuncSigId));
         try self.buf.pushOperands(self.operandStack.items[operandStart..]);
         return self.initGenValue(dst, bt.Any, true);
     }
@@ -657,7 +657,7 @@ fn listInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     }
 
     try self.pushDebugSym(nodeId);
-    try self.buf.pushOp3(.list, tempStart, @intCast(u8, i), dst);
+    try self.buf.pushOp3(.list, tempStart, @intCast(i), dst);
     return self.initGenValue(dst, bt.List, true);
 }
 
@@ -766,7 +766,7 @@ fn accessExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
             const pc = self.buf.len();
             const dst = try self.rega.selectFromNonLocalVar(req, true);
             try self.buf.pushOp3(.staticFunc, 0, 0, dst);
-            self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+            self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
             return self.initGenValue(dst, bt.Any, true);
         } else {
             const rSym = self.compiler.sema.getResolvedSym(crSymId.id);
@@ -780,14 +780,14 @@ fn accessExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
                     const dst = try self.rega.selectFromNonLocalVar(req, true);
                     try self.buf.pushOp3(.staticVar, 0, 0, dst);
-                    self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+                    self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
 
                     const vtype = rSym.inner.variable.rTypeSymId;
                     return self.initGenValue(dst, vtype, true);
                 },
                 .enumMember => {
                     const enumId = rSym.inner.enumMember.enumId;
-                    const val = cy.Value.initEnum(@intCast(u8, enumId), @intCast(u8, rSym.inner.enumMember.memberId));
+                    const val = cy.Value.initEnum(@intCast(enumId), @intCast(rSym.inner.enumMember.memberId));
                     const idx = try self.buf.pushConst(cy.Const.init(val.val));
                     const dst = try self.rega.selectFromNonLocalVar(req, false);
                     try constOp(self, idx, dst);
@@ -798,7 +798,7 @@ fn accessExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 .object => {
                     const typeId = rSym.getObjectTypeId(self.compiler.vm).?;
                     const dst = try self.rega.selectFromNonLocalVar(req, true);
-                    try self.buf.pushOp1(.sym, @enumToInt(cy.heap.MetaTypeKind.object));
+                    try self.buf.pushOp1(.sym, @intFromEnum(cy.heap.MetaTypeKind.object));
                     try self.buf.pushOperandsRaw(std.mem.asBytes(&typeId));
                     try self.buf.pushOperand(dst);
                     return self.initGenValue(dst, bt.MetaType, true);
@@ -816,7 +816,7 @@ fn accessExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 fn constOp(c: *cy.Chunk, idx: usize, dst: u8) !void {
     const pc = c.buf.len();
     try c.buf.pushOp3(.constOp, 0, 0, dst);
-    c.buf.setOpArgU16(pc + 1, @intCast(u16, idx));
+    c.buf.setOpArgU16(pc + 1, @intCast(idx));
 }
 
 fn releaseIfRetainedTempAt(c: *cy.Chunk, val: GenValue, nodeId: cy.NodeId) !void {
@@ -854,7 +854,7 @@ fn field(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     if (req.mustRetain or leftIsTempRetained) {
         const pc = self.buf.len();
         try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
-        self.buf.setOpArgU16(pc + 3, @intCast(u16, fieldId));
+        self.buf.setOpArgU16(pc + 3, @intCast(fieldId));
 
         // ARC cleanup.
         try releaseIfRetainedTemp(self, leftv);
@@ -863,7 +863,7 @@ fn field(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     } else {
         const pc = self.buf.len();
         try self.buf.pushOpSlice(.field, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
-        self.buf.setOpArgU16(pc + 3, @intCast(u16, fieldId));
+        self.buf.setOpArgU16(pc + 3, @intCast(fieldId));
 
         // ARC cleanup.
         try releaseIfRetainedTemp(self, leftv);
@@ -910,7 +910,7 @@ pub fn genStatements(self: *Chunk, head: cy.NodeId, comptime attachEnd: bool) an
         if (attachEnd) {
             const local = try exprStmt(self, cur_id, true);
             if (shouldGenMainScopeReleaseOps(self.compiler)) {
-                self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+                self.curBlock.endLocalsPc = @intCast(self.buf.ops.items.len);
                 self.nodes[0].head.root.genEndLocalsPc = self.curBlock.endLocalsPc;
                 try self.endLocals();
             }
@@ -922,7 +922,7 @@ pub fn genStatements(self: *Chunk, head: cy.NodeId, comptime attachEnd: bool) an
         if (attachEnd) {
             try statement(self, cur_id);
             if (shouldGenMainScopeReleaseOps(self.compiler)) {
-                self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+                self.curBlock.endLocalsPc = @intCast(self.buf.ops.items.len);
                 self.nodes[0].head.root.genEndLocalsPc = self.curBlock.endLocalsPc;
                 try self.endLocals();
             }
@@ -1052,14 +1052,14 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             // pop try block.
             const popTryPc = c.buf.ops.items.len;
             try c.buf.pushOp2(.popTry, 0, 0);
-            c.buf.setOpArgU16(pushTryPc + 2, @intCast(u16, c.buf.ops.items.len - pushTryPc));
+            c.buf.setOpArgU16(pushTryPc + 2, @intCast(c.buf.ops.items.len - pushTryPc));
 
             // catch body.
             c.nextSemaSubBlock();
             try genStatements(c, node.head.tryStmt.catchFirstStmt, false);
             c.prevSemaSubBlock();
 
-            c.buf.setOpArgU16(popTryPc + 1, @intCast(u16, c.buf.ops.items.len - popTryPc));
+            c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
         },
         .varDecl => {
             // Nop. Static variables are hoisted and initialized at the start of the program.
@@ -1083,7 +1083,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
 
                     const pc = c.buf.len();
                     try c.buf.pushOp3(.setStaticVar, 0, 0, rightv.local);
-                    c.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+                    c.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
                 } else {
                     stdx.fatal();
                 }
@@ -1095,8 +1095,8 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
         .whileInfStmt => {
             c.nextSemaSubBlock();
 
-            const pcSave = @intCast(u32, c.buf.ops.items.len);
-            const jumpStackSave = @intCast(u32, c.subBlockJumpStack.items.len);
+            const pcSave: u32 = @intCast(c.buf.ops.items.len);
+            const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
             defer c.subBlockJumpStack.items.len = jumpStackSave;
 
             // TODO: generate gas meter checks.
@@ -1118,8 +1118,8 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
         .whileCondStmt => {
             c.nextSemaSubBlock();
 
-            const topPc = @intCast(u32, c.buf.ops.items.len);
-            const jumpStackSave = @intCast(u32, c.subBlockJumpStack.items.len);
+            const topPc: u32 = @intCast(c.buf.ops.items.len);
+            const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
             defer c.subBlockJumpStack.items.len = jumpStackSave;
 
             const condv = try expression(c, node.head.whileCondStmt.cond, RegisterCstr.simple);
@@ -1162,7 +1162,7 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                 // Main block.
                 const val = try expression(c, node.head.child_head, RegisterCstr.simpleMustRetain);
                 try c.endLocals();
-                try c.buf.pushOp1(.end, @intCast(u8, val.local));
+                try c.buf.pushOp1(.end, @intCast(val.local));
             } else {
                 // if (c.curBlock.rFuncSymId != cy.NullId) {
                 //     const retType = c.compiler.sema.resolvedFuncSyms.items[c.curBlock.rFuncSymId].retType;
@@ -1188,8 +1188,8 @@ fn whileOptStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     c.nextSemaSubBlock();
 
-    const topPc = @intCast(u32, c.buf.ops.items.len);
-    const jumpStackSave = @intCast(u32, c.subBlockJumpStack.items.len);
+    const topPc: u32 = @intCast(c.buf.ops.items.len);
+    const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
     defer c.subBlockJumpStack.items.len = jumpStackSave;
 
     var optLocal: LocalId = undefined;
@@ -1266,14 +1266,14 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 try c.pushOptionalDebugSym(nodeId);       
                 var pc = c.buf.len();
                 try c.buf.pushOp3(.staticVar, 0, 0, temp);
-                c.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+                c.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
 
                 try c.pushDebugSym(nodeId);
                 try c.buf.pushOp3(genOp, temp, rightv.local, temp);
 
                 pc = c.buf.ops.items.len;
                 try c.buf.pushOp3(.setStaticVar, 0, 0, temp);
-                c.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+                c.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
             } else {
                 stdx.fatal();
             }
@@ -1302,7 +1302,7 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
                 const pc = c.buf.len();
                 try c.buf.pushOp3(.setStaticVar, 0, 0, rightv.local);
-                c.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+                c.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
             } else {
                 return c.reportError("Unsupported", &.{});
             }
@@ -1335,10 +1335,10 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         if (rightv.vtype == bt.Dynamic or types.isAnyOrDynamic(recvT)) {
             // Runtime type check on dynamic right or any/dynamic receiver.
             try c.pushDebugSym(nodeId);
-            try c.buf.pushOpSlice(.setCheckFieldRelease, &.{ leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
+            try c.buf.pushOpSlice(.setCheckFieldRelease, &[_]u8{ leftv.local, rightv.local, @intCast(fieldId), 0, 0, 0 });
         } else {
             try c.pushDebugSym(nodeId);
-            try c.buf.pushOpSlice(.setFieldRelease, &.{ leftv.local, rightv.local, @intCast(u8, fieldId), 0, 0, 0 });
+            try c.buf.pushOpSlice(.setFieldRelease, &[_]u8{ leftv.local, rightv.local, @intCast(fieldId), 0, 0, 0 });
         }
 
         // ARC cleanup. Right is not released since it's being assigned to the field.
@@ -1486,18 +1486,18 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     _ = try expression(c, node.head.for_iter_stmt.iterable, RegisterCstr.exactMustRetain(iterLocal + 4));
     if (pairIter) {
         try pushCallObjSym(c, iterLocal, 1, 1,
-            @intCast(u8, c.compiler.vm.pairIteratorObjSym), @intCast(u16, rFuncSigId),
+            @intCast(c.compiler.vm.pairIteratorObjSym), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
     } else {
         try pushCallObjSym(c, iterLocal, 1, 1,
-            @intCast(u8, c.compiler.vm.iteratorObjSym), @intCast(u16, rFuncSigId),
+            @intCast(c.compiler.vm.iteratorObjSym), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
     }
 
     try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
     if (pairIter) {
         try pushCallObjSym(c, iterLocal + 1, 1, 2,
-            @intCast(u8, c.compiler.vm.nextPairObjSym), @intCast(u16, rFuncSigId),
+            @intCast(c.compiler.vm.nextPairObjSym), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1507,7 +1507,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         }
     } else {
         try pushCallObjSym(c, iterLocal + 1, 1, 1,
-            @intCast(u8, c.compiler.vm.nextObjSym), @intCast(u16, rFuncSigId),
+            @intCast(c.compiler.vm.nextObjSym), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1520,7 +1520,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     c.patchJumpNotNoneToCurPc(skipSkipJump);
 
     const bodyPc = c.buf.ops.items.len;
-    const jumpStackSave = @intCast(u32, c.subBlockJumpStack.items.len);
+    const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
     defer c.subBlockJumpStack.items.len = jumpStackSave;
     try genStatements(c, node.head.for_iter_stmt.body_head, false);
 
@@ -1529,7 +1529,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
     if (pairIter) {
         try pushCallObjSym(c, iterLocal + 1, 1, 2,
-            @intCast(u8, c.compiler.vm.nextPairObjSym), @intCast(u16, rFuncSigId),
+            @intCast(c.compiler.vm.nextPairObjSym), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1539,7 +1539,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         }
     } else {
         try pushCallObjSym(c, iterLocal + 1, 1, 1,
-            @intCast(u8, c.compiler.vm.nextObjSym), @intCast(u16, rFuncSigId),
+            @intCast(c.compiler.vm.nextObjSym), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1609,15 +1609,15 @@ fn forRangeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     try c.buf.pushOpSlice(.forRangeInit, &.{ rangeStart.local, rangeEnd, rangeStep, counter, local, 0, 0 });
 
     const bodyPc = c.buf.ops.items.len;
-    const jumpStackSave = @intCast(u32, c.subBlockJumpStack.items.len);
+    const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
     defer c.subBlockJumpStack.items.len = jumpStackSave;
     try genStatements(c, node.head.for_range_stmt.body_head, false);
 
     // Perform counter update and perform check against end range.
-    const jumpBackOffset = @intCast(u16, c.buf.ops.items.len - bodyPc);
+    const jumpBackOffset: u16 = @intCast(c.buf.ops.items.len - bodyPc);
     const forRangeOp = c.buf.ops.items.len;
     // The forRange op is patched by forRangeInit at runtime.
-    c.buf.setOpArgU16(initPc + 6, @intCast(u16, c.buf.ops.items.len - initPc));
+    c.buf.setOpArgU16(initPc + 6, @intCast(c.buf.ops.items.len - initPc));
     try c.buf.pushOpSlice(.forRange, &.{ counter, rangeStep, rangeEnd, local, 0, 0 });
     c.buf.setOpArgU16(forRangeOp + 5, jumpBackOffset);
 
@@ -1665,7 +1665,7 @@ fn matchBlock(self: *Chunk, nodeId: cy.NodeId, cstr: ?RegisterCstr) !GenValue {
     }
     const condJumpStart = self.buf.ops.items.len + 4;
     const matchPc = self.buf.ops.items.len;
-    try self.buf.pushOp2(.match, expr.local, @intCast(u8, numConds));
+    try self.buf.pushOp2(.match, expr.local, @intCast(numConds));
     try self.buf.pushOperands(self.operandStack.items[operandStart..]);
     // Reserve last jump for `else` case.
     try self.buf.pushOperand(0);
@@ -1715,9 +1715,9 @@ fn matchBlock(self: *Chunk, nodeId: cy.NodeId, cstr: ?RegisterCstr) !GenValue {
             const cond = self.nodes[curCond];
             // Patch jump.
             if (cond.node_t == .elseCase) {
-                self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, blockPc - matchPc));
+                self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(blockPc - matchPc));
             } else {
-                self.buf.setOpArgU16(condJumpStart + condOffset * 3, @intCast(u16, blockPc - matchPc));
+                self.buf.setOpArgU16(condJumpStart + condOffset * 3, @intCast(blockPc - matchPc));
             }
             condOffset += 1;
             curCond = cond.next;
@@ -1727,7 +1727,7 @@ fn matchBlock(self: *Chunk, nodeId: cy.NodeId, cstr: ?RegisterCstr) !GenValue {
     }
     if (!hasElse) {
         // When missing an else case, patch else jump to end of the block.
-        self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(u16, self.buf.ops.items.len - matchPc));
+        self.buf.setOpArgU16(condJumpStart + numConds * 3 - 1, @intCast(self.buf.ops.items.len - matchPc));
     }
 
     if (!isStmt) {
@@ -1753,15 +1753,15 @@ fn string(c: *Chunk, str: []const u8, dst: LocalId) !GenValue {
 
 fn constInt(self: *Chunk, val: f64, dst: LocalId) !GenValue {
     if (cy.Value.floatCanBeInteger(val)) {
-        const i = @floatToInt(i64, val);
+        const i: i64 = @intFromFloat(val);
         if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
-            try self.buf.pushOp2(.constI8Int, @bitCast(u8, @intCast(i8, i)), dst);
+            try self.buf.pushOp2(.constI8Int, @bitCast(@as(i8, @intCast(i))), dst);
             return self.initGenValue(dst, bt.Integer, false);
         }
     } else {
         return self.reportError("TODO: coerce", &.{});
     }
-    const int = @floatToInt(i32, val);
+    const int: i32 = @intFromFloat(val);
     const idx = try self.buf.pushConst(cy.Const.init(cy.Value.initI32(int).val));
     try constOp(self, idx, dst);
     return self.initGenValue(dst, bt.Integer, false);
@@ -1769,13 +1769,13 @@ fn constInt(self: *Chunk, val: f64, dst: LocalId) !GenValue {
 
 fn constNumber(self: *Chunk, val: f64, dst: LocalId) !GenValue {
     if (cy.Value.floatCanBeInteger(val)) {
-        const i = @floatToInt(i64, val);
+        const i: i64 = @intFromFloat(val);
         if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
-            try self.buf.pushOp2(.constI8, @bitCast(u8, @intCast(i8, i)), dst);
+            try self.buf.pushOp2(.constI8, @bitCast(@as(i8, @intCast(i))), dst);
             return self.initGenValue(dst, bt.Number, false);
         }
     }
-    const idx = try self.buf.pushConst(cy.Const.init(@bitCast(u64, val)));
+    const idx = try self.buf.pushConst(cy.Const.init(@bitCast(val)));
     try constOp(self, idx, dst);
     return self.initGenValue(dst, bt.Number, false);
 }
@@ -1964,7 +1964,7 @@ fn callExpr2(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr, comptime startF
                         initialStackSize = 16;
                     }
                     try self.pushOptionalDebugSym(nodeId);
-                    try self.buf.pushOpSlice(.coinit, &.{ fiberStartLocal, node.head.callExpr.numArgs, 0, @intCast(u8, initialStackSize), fiberDst });
+                    try self.buf.pushOpSlice(.coinit, &[_]u8{ fiberStartLocal, node.head.callExpr.numArgs, 0, @intCast(initialStackSize), fiberDst });
                 }
 
                 if (crSymId.isFuncSymId) {
@@ -1976,7 +1976,7 @@ fn callExpr2(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr, comptime startF
 
                 if (startFiber) {
                     try self.buf.pushOp(.coreturn);
-                    self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
+                    self.buf.setOpArgs1(coinitPc + 3, @intCast(self.buf.ops.items.len - coinitPc));
                     return GenValue.initTempValue(fiberDst, bt.Fiber, true);
                 } else {
                     if (crSymId.isPresent()) {
@@ -2014,9 +2014,9 @@ fn callObjSym(self: *Chunk, callStartLocal: u8, callExprId: cy.NodeId) !GenValue
 
     _ = try expression(self, callee.head.accessExpr.left, RegisterCstr.tempMustRetain);
 
-    const rFuncSigId = @intCast(u16, ident.head.ident.semaMethodSigId);
-    try pushCallObjSym(self, callStartLocal, @intCast(u8, numArgs), 1,
-        @intCast(u8, methodSymId), rFuncSigId, callExprId);
+    const rFuncSigId: u16 = @intCast(ident.head.ident.semaMethodSigId);
+    try pushCallObjSym(self, callStartLocal, @intCast(numArgs), 1,
+        @intCast(methodSymId), rFuncSigId, callExprId);
     return GenValue.initTempValue(callStartLocal, bt.Any, true);
 }
 
@@ -2057,22 +2057,22 @@ fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, fiberDst: u8, startLoca
         if (initialStackSize < 16) {
             initialStackSize = 16;
         }
-        try self.buf.pushOpSlice(.coinit, &.{ fiberStartLocal, @intCast(u8, numArgs) + 1, 0, @intCast(u8, initialStackSize), fiberDst });
+        try self.buf.pushOpSlice(.coinit, &[_]u8{ fiberStartLocal, @as(u8, @intCast(numArgs)) + 1, 0, @intCast(initialStackSize), fiberDst });
     }
 
     try self.pushDebugSym(nodeId);
-    try self.buf.pushOp2(.call1, callStartLocal, @intCast(u8, numArgs));
+    try self.buf.pushOp2(.call1, callStartLocal, @intCast(numArgs));
 
     // ARC cleanup.
     if (startFiber) {
-        try release(self, @intCast(u8, 5 + numArgs), nodeId);
+        try release(self, @intCast(5 + numArgs), nodeId);
     } else {
         try release(self, calleev.local, nodeId);
     }
 
     if (startFiber) {
         try self.buf.pushOp(.coreturn);
-        self.buf.setOpArgs1(coinitPc + 3, @intCast(u8, self.buf.ops.items.len - coinitPc));
+        self.buf.setOpArgs1(coinitPc + 3, @intCast(self.buf.ops.items.len - coinitPc));
         return GenValue.initTempValue(fiberDst, bt.Fiber, true);
     } else {
         return GenValue.initTempValue(callStartLocal, bt.Any, true);
@@ -2093,7 +2093,7 @@ fn funcDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !
 
     const jumpStackStart = self.blockJumpStack.items.len;
 
-    const opStart = @intCast(u32, self.buf.ops.items.len);
+    const opStart: u32 = @intCast(self.buf.ops.items.len);
     try self.reserveFuncParams(func.numParams);
     try initVarLocals(self);
     try genStatements(self, node.head.func.bodyHead, false);
@@ -2103,7 +2103,7 @@ fn funcDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !
 
     // Reserve another local for the call return info.
     const sblock = sema.curBlock(self);
-    const numCaptured = @intCast(u8, sblock.captures.items.len);
+    const numCaptured: u8 = @intCast(sblock.captures.items.len);
     std.debug.assert(numCaptured == 0);
 
     self.patchJumpToCurPc(jumpPc);
@@ -2114,7 +2114,7 @@ fn funcDecl(self: *Chunk, rParentSymId: sema.ResolvedSymId, nodeId: cy.NodeId) !
     const stackSize = self.getMaxUsedRegisters();
     self.popSemaBlock();
     
-    const rtSym = rt.FuncSymbolEntry.initFunc(opStart, @intCast(u16, stackSize), func.numParams, func.rFuncSigId);
+    const rtSym = rt.FuncSymbolEntry.initFunc(opStart, @intCast(stackSize), func.numParams, func.rFuncSigId);
     self.compiler.vm.setFuncSym(symId, rtSym);
 }
 
@@ -2159,7 +2159,7 @@ fn genStaticInitializerDeps(c: *Chunk, crSymId: sema.CompactResolvedSymId) !void
         // Contains dependencies. Generate initializers for them first.
         const deps = c.bufU32.items[ref.depsStart..ref.depsEnd];
         for (deps) |dep| {
-            const crDepSym = @bitCast(sema.CompactResolvedSymId, dep);
+            const crDepSym: sema.CompactResolvedSymId = @bitCast(dep);
             // Only if it has a static initializer and hasn't been visited.
             if (sema.symHasStaticInitializer(c, crDepSym)) {
                 try genStaticInitializerDFS(c, crDepSym);
@@ -2199,7 +2199,7 @@ pub fn genStaticInitializerDFS(self: *Chunk, crSymId: sema.CompactResolvedSymId)
         try chunk.pushDebugSym(node.head.func.bodyHead);
         const pc = self.buf.len();
         try self.buf.pushOp3(.setStaticFunc, 0, 0, exprv.local);
-        self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+        self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
     } else {
         const rSym = self.compiler.sema.getResolvedSymPtr(crSymId.id);
         if (rSym.genStaticInitVisited) {
@@ -2225,7 +2225,7 @@ pub fn genStaticInitializerDFS(self: *Chunk, crSymId: sema.CompactResolvedSymId)
 
             const pc = self.buf.len();
             try self.buf.pushOp3(.setStaticVar, 0, 0, exprv.local);
-            self.buf.setOpArgU16(pc + 1, @intCast(u16, rtSymId));
+            self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
         } else {
             stdx.panicFmt("Unsupported sym {}", .{rSym.symT});
         }
@@ -2282,14 +2282,14 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             const name = c.getNodeTokenString(node);
             const symId = try c.compiler.vm.ensureSymbol(name);
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
-            try c.buf.pushOp2(.tagLiteral, @intCast(u8, symId), dst);
+            try c.buf.pushOp2(.tagLiteral, @intCast(symId), dst);
             return c.initGenValue(dst, bt.Symbol, false);
         },
         .errorSymLit => {
             const symN = c.nodes[node.head.errorSymLit.symbol];
             const name = c.getNodeTokenString(symN);
             const symId = try c.compiler.vm.ensureSymbol(name);
-            const val = cy.Value.initErrorSymbol(@intCast(u8, symId));
+            const val = cy.Value.initErrorSymbol(@intCast(symId));
             const idx = try c.buf.pushConst(cy.Const.init(val.val));
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
             try constOp(c, idx, dst);
@@ -2373,7 +2373,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
         .coyield => {
             const pc = c.buf.ops.items.len;
             try c.buf.pushOp2(.coyield, 0, 0);
-            try c.blockJumpStack.append(c.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(u32, pc), .pcOffset = 1 });
+            try c.blockJumpStack.append(c.alloc, .{ .jumpT = .jumpToEndLocals, .pc = @intCast(pc), .pcOffset = 1 });
 
             // TODO: return coyield expression.
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -2404,19 +2404,19 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                 try c.pushDebugSym(nodeId);
                 const pc = c.buf.ops.items.len;
                 try c.buf.pushOpSlice(.cast, &.{ child.local, 0, 0 });
-                c.buf.setOpArgU16(pc + 2, @intCast(u16, typeId));
+                c.buf.setOpArgU16(pc + 2, @intCast(typeId));
             } else if (tSym.symT == .builtinType) {
                 if (types.toRtConcreteType(tSymId)) |typeId| {
                     try c.pushDebugSym(nodeId);
                     const pc = c.buf.ops.items.len;
                     try c.buf.pushOpSlice(.cast, &.{ child.local, 0, 0 });
-                    c.buf.setOpArgU16(pc + 2, @intCast(u16, typeId));
+                    c.buf.setOpArgU16(pc + 2, @intCast(typeId));
                 } else {
                     // Cast to abstract type.
                     try c.pushDebugSym(nodeId);
                     const pc = c.buf.ops.items.len;
                     try c.buf.pushOpSlice(.castAbstract, &.{ child.local, 0, 0 });
-                    c.buf.setOpArgU16(pc + 2, @intCast(u16, tSymId));
+                    c.buf.setOpArgU16(pc + 2, @intCast(tSymId));
                 }
             }
 
@@ -2450,7 +2450,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
 
             const popTryPc = c.buf.ops.items.len;
             try c.buf.pushOp2(.popTry, 0, 0);
-            c.buf.setOpArgU16(pushTryPc + 2, @intCast(u16, c.buf.ops.items.len - pushTryPc));
+            c.buf.setOpArgU16(pushTryPc + 2, @intCast(c.buf.ops.items.len - pushTryPc));
 
             // Generate else clause.
             var elsev: GenValue = undefined;
@@ -2464,7 +2464,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                 elsev = c.initGenValue(dst, bt.Error, false);
             }
 
-            c.buf.setOpArgU16(popTryPc + 1, @intCast(u16, c.buf.ops.items.len - popTryPc));
+            c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
 
             return c.initGenValue(dst, bt.Any, child.retained or elsev.retained);
         },
@@ -2524,13 +2524,13 @@ fn binOpAssignToField(self: *Chunk, code: cy.OpCode, leftId: cy.NodeId, rightId:
 
     const pc = self.buf.len();
     try self.buf.pushOpSlice(.field, &.{ accessLeftv.local, accessLocal, 0, 0, 0, 0, 0 });
-    self.buf.setOpArgU16(pc + 3, @intCast(u16, fieldId));
+    self.buf.setOpArgU16(pc + 3, @intCast(fieldId));
 
     const rightv = try expression(self, rightId, RegisterCstr.simple);
     try self.buf.pushOp3(code, accessLocal, rightv.local, accessLocal);
 
     try self.pushDebugSym(leftId);
-    try self.buf.pushOp3(.setField, @intCast(u8, fieldId), accessLeftv.local, accessLocal);
+    try self.buf.pushOp3(.setField, @intCast(fieldId), accessLeftv.local, accessLocal);
 
     // ARC cleanup. Right is not released since it's being assigned to the index.
     try releaseIfRetainedTempAt(self, accessLeftv, left.head.accessExpr.left);
@@ -2544,7 +2544,7 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
 
     try self.pushSemaBlock(func.semaBlockId);
 
-    const opStart = @intCast(u32, self.buf.ops.items.len);
+    const opStart: u32 = @intCast(self.buf.ops.items.len);
     try self.reserveFuncParams(func.numParams);
     try initVarLocals(self);
     try genStatements(self, node.head.func.bodyHead, false);
@@ -2632,7 +2632,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
 
             for (enumSym.members, 0..) |mNameId, i| {
                 if (nameId == mNameId) {
-                    const val = cy.Value.initEnum(@intCast(u8, sym.inner.enumType.enumId), @intCast(u8, i));
+                    const val = cy.Value.initEnum(@intCast(sym.inner.enumType.enumId), @intCast(i));
                     const idx = try c.buf.pushConst(cy.Const.init(val.val));
                     try constOp(c, idx, svar.local);
                     return;
@@ -2701,7 +2701,7 @@ pub fn initVarLocals(self: *Chunk) !void {
 
     // Use the callee local for closure.
     if (sblock.captures.items.len > 0) {
-        self.curBlock.closureLocal = @intCast(u8, 4 + sblock.params.items.len);
+        self.curBlock.closureLocal = @intCast(4 + sblock.params.items.len);
 
         // Captured vars are already defined.
         for (sblock.captures.items) |varId| {
@@ -2722,8 +2722,8 @@ pub fn initVarLocals(self: *Chunk) !void {
     }
 
     // Main block var locals start at 0 otherwise after the call return info and params.
-    const startLocal: u8 = if (self.semaBlockDepth() == 1) 0 else @intCast(u8, 4 + sblock.params.items.len + 1);
-    try self.buf.pushOp2(.init, startLocal, @intCast(u8, sblock.locals.items.len));
+    const startLocal: u8 = if (self.semaBlockDepth() == 1) 0 else @intCast(4 + sblock.params.items.len + 1);
+    try self.buf.pushOp2(.init, startLocal, @intCast(sblock.locals.items.len));
 }
 
 fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
@@ -2743,13 +2743,13 @@ fn pushCallObjSym(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, numRet: u8, sym
 fn pushCallSym(c: *cy.Chunk, startLocal: u8, numArgs: u32, numRet: u8, symId: u32, nodeId: cy.NodeId) !void {
     try c.pushDebugSym(nodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.callSym, &.{ startLocal, @intCast(u8, numArgs), numRet, 0, 0, 0, 0, 0, 0, 0, 0 });
-    c.buf.setOpArgU16(start + 4, @intCast(u16, symId));
+    try c.buf.pushOpSlice(.callSym, &[_]u8{ startLocal, @intCast(numArgs), numRet, 0, 0, 0, 0, 0, 0, 0, 0 });
+    c.buf.setOpArgU16(start + 4, @intCast(symId));
 }
 
 fn genCallTypeCheck(c: *cy.Chunk, startLocal: u8, numArgs: u32, funcSigId: sema.ResolvedFuncSigId, nodeId: cy.NodeId) !void {
     try c.pushDebugSym(nodeId);
     const start = c.buf.ops.items.len;
-    try c.buf.pushOpSlice(.callTypeCheck, &.{ startLocal, @intCast(u8, numArgs), 0, 0, });
-    c.buf.setOpArgU16(start + 3, @intCast(u16, funcSigId));
+    try c.buf.pushOpSlice(.callTypeCheck, &[_]u8{ startLocal, @intCast(numArgs), 0, 0, });
+    c.buf.setOpArgU16(start + 3, @intCast(funcSigId));
 }

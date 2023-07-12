@@ -1,18 +1,17 @@
 const std = @import("std");
 
 pub inline fn ptrAlignCast(comptime Ptr: type, ptr: anytype) Ptr {
-    const alignment = comptime @typeInfo(Ptr).Pointer.alignment;
-    return @ptrCast(Ptr, @alignCast(alignment, ptr));
+    return @ptrCast(@alignCast(ptr));
 }
 
 // Shared opaque type.
 pub const Opaque = opaque {
     pub fn fromPtr(comptime T: type, ptr: T) *Opaque {
-        return @ptrCast(*Opaque, ptr);
+        return @ptrCast(ptr);
     }
 
     pub fn toPtr(comptime T: type, ptr: *Opaque) T {
-        return @intToPtr(T, @ptrToInt(ptr));
+        return @ptrFromInt(@intFromPtr(ptr));
     }
 };
 

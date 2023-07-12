@@ -22,7 +22,7 @@ pub fn computeLinePos(src: []const u8, pos: u32, outLine: *u32, outCol: *u32, ou
         }
         if (ch == '\n') {
             line += 1;
-            lineStart = @intCast(u32, i + 1);
+            lineStart = @intCast(i + 1);
         }
     }
     // This also handles the case where target pos is at the end of source.
@@ -114,7 +114,7 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, msg: []const u8) !void {
 }
 
 pub inline fn atLeastTestDebugLevel() bool {
-    return @enumToInt(std.testing.log_level) >= @enumToInt(std.log.Level.debug);
+    return @intFromEnum(std.testing.log_level) >= @intFromEnum(std.log.Level.debug);
 }
 
 pub fn allocLastUserPanicError(vm: *const cy.VM) ![]const u8 {
@@ -276,9 +276,9 @@ pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
             return try fmt.allocFormat(vm.alloc, "{}", &.{v(str)});
         },
         .msg => {
-            const ptr = @intCast(usize, vm.panicPayload & ((1 << 48) - 1));
-            const len = @intCast(usize, vm.panicPayload >> 48);
-            return vm.alloc.dupe(u8, @intToPtr([*]const u8, ptr)[0..len]);
+            const ptr: usize = @intCast(vm.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.panicPayload >> 48);
+            return vm.alloc.dupe(u8, @as([*]const u8, @ptrFromInt(ptr))[0..len]);
         },
         .nativeThrow,
         .none => {
@@ -291,9 +291,9 @@ pub fn freePanicPayload(vm: *const cy.VM) void {
     switch (vm.panicType) {
         .uncaughtError => {},
         .msg => {
-            const ptr = @intCast(usize, vm.panicPayload & ((1 << 48) - 1));
-            const len = @intCast(usize, vm.panicPayload >> 48);
-            vm.alloc.free(@intToPtr([*]const u8, ptr)[0..len]);
+            const ptr: usize = @intCast(vm.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.panicPayload >> 48);
+            vm.alloc.free(@as([*]const u8, @ptrFromInt(ptr))[0..len]);
         },
         .nativeThrow,
         .none => {},
@@ -631,7 +631,7 @@ const DumpContext = struct {
         var extra: []const u8 = "";
         switch (code) {
             .staticVar => {
-                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
                 const nameId = self.symIdToVar.get(symId).?.rtVarKey.nameId;
                 const name = cy.sema.getName(&self.vm.compiler, nameId);
                 extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});

@@ -55,7 +55,7 @@ fn runTest(src: [:0]const u8) void {
     var val: cy.CyValue = undefined;
 
     const csrc = cy.CStr{
-        .charz = @intToPtr([*c]u8, @ptrToInt(src.ptr)),
+        .charz = @ptrFromInt(@intFromPtr(src.ptr)),
         .len = src.len,
     };
     const res = cy.cyVmEval(vm, csrc, &val);

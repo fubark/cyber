@@ -10,7 +10,7 @@ pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
     try b.setVar("e", bt.Number, Value.initF64(std.math.e));
 
     // Infinity.
-    try b.setVar("inf", bt.Number, Value.initF64(std.math.inf_f64));
+    try b.setVar("inf", bt.Number, Value.initF64(std.math.inf(f64)));
 
     // Base-10 logarithm of E; approximately 0.434.
     try b.setVar("log10e", bt.Number, Value.initF64(std.math.log10e));
@@ -28,7 +28,7 @@ pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
     try b.setVar("nan", bt.Number, Value.initF64(-std.math.nan_f64));
 
     // Neg infinity.
-    try b.setVar("neginf", bt.Number, Value.initF64(-std.math.inf_f64));
+    try b.setVar("neginf", bt.Number, Value.initF64(-std.math.inf(f64)));
 
     // Ratio of a circle's circumference to its diameter; approximately 3.14159.
     try b.setVar("pi", bt.Number, Value.initF64(std.math.pi));
@@ -132,7 +132,7 @@ pub fn ceil(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 /// Returns the number of leading zero bits of the 32-bit integer x.
 pub fn clz32(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(@intToFloat(f64, @clz(@floatToInt(i32, args[0].asF64()))));
+    return Value.initF64(@floatFromInt(@clz(@as(i32, @intFromFloat(args[0].asF64())))));
 }
 
 /// Returns the cosine of x.
@@ -197,17 +197,17 @@ pub fn log2(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 /// Returns the largest of two numbers.
 pub fn max(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(std.math.max(args[0].asF64(), args[1].asF64()));
+    return Value.initF64(@max(args[0].asF64(), args[1].asF64()));
 }
 
 /// Returns the smallest of two numbers.
 pub fn min(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(std.math.min(args[0].asF64(), args[1].asF64()));
+    return Value.initF64(@min(args[0].asF64(), args[1].asF64()));
 }
 
 /// Returns the result of the 32-bit integer multiplication of x and y. Integer overflow is allowed.
 pub fn mul32(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(@intToFloat(f64, @floatToInt(i32, args[0].asF64()) *% @floatToInt(i32, args[1].asF64())));
+    return Value.initF64(@floatFromInt(@as(i32, @intFromFloat(args[0].asF64())) *% @as(i32, @intFromFloat(args[1].asF64()))));
 }
 
 /// Returns base x to the exponent power y (that is, x^y).

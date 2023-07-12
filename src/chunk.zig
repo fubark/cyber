@@ -136,7 +136,7 @@ pub const Chunk = struct {
             .nextSemaSubBlockId = undefined,
             .buf = undefined,
             .curNodeId = cy.NullId,
-            .curSemaInitingSym = @bitCast(sema.CompactResolvedSymId, @as(u32, cy.NullId)),
+            .curSemaInitingSym = @bitCast(@as(u32, cy.NullId)),
             .semaVarDeclDeps = .{},
             .bufU32 = .{},
             .dataNodes = .{},
@@ -202,7 +202,7 @@ pub const Chunk = struct {
 
     /// Assumes `semaBlockStack` has a dummy head element. Main block starts at 1.
     pub inline fn semaBlockDepth(self: *Chunk) u32 {
-        return @intCast(u32, self.semaBlockStack.items.len-1);
+        return @intCast(self.semaBlockStack.items.len-1);
     }
 
     pub fn pushSemaBlock(self: *Chunk, id: sema.BlockId) !void {
@@ -211,10 +211,10 @@ pub const Chunk = struct {
 
         const sblock = self.semaBlocks.items[id];
         if (self.blocks.items.len == 1) {
-            const tempStart = @intCast(u8, sblock.locals.items.len);
+            const tempStart: u8 = @intCast(sblock.locals.items.len);
             self.rega.resetState(tempStart);
         } else {
-            const tempStart = @intCast(u8, sblock.params.items.len + sblock.locals.items.len + 5);
+            const tempStart: u8 = @intCast(sblock.params.items.len + sblock.locals.items.len + 5);
             self.rega.resetState(tempStart);
         }
 
@@ -324,7 +324,7 @@ pub const Chunk = struct {
         const idx = block.numLocals;
         block.numLocals += 1;
         if (idx <= std.math.maxInt(u8)) {
-            return @intCast(u8, idx);
+            return @intCast(idx);
         } else {
             return self.reportError("Exceeded max local count: {}", &.{v(@as(u8, std.math.maxInt(u8)))});
         }
@@ -415,7 +415,7 @@ pub const Chunk = struct {
     }
 
     pub fn genBlockEnding(self: *Chunk) !void {
-        self.curBlock.endLocalsPc = @intCast(u32, self.buf.ops.items.len);
+        self.curBlock.endLocalsPc = @intCast(self.buf.ops.items.len);
         try self.endLocals();
         if (self.curBlock.requiresEndingRet1) {
             try self.buf.pushOp(.ret1);
@@ -449,7 +449,7 @@ pub const Chunk = struct {
             try self.pushOptionalDebugSym(nodeId);
 
             // For now always use `releaseN` to distinguish between temp release ops.
-            try self.buf.pushOp1(.releaseN, @intCast(u8, locals.len));
+            try self.buf.pushOp1(.releaseN, @intCast(locals.len));
             try self.buf.pushOperands(locals);
         }
     }
@@ -457,17 +457,17 @@ pub const Chunk = struct {
     pub fn pushJumpBackNotNone(self: *Chunk, toPc: usize, condLocal: LocalId) !void {
         const pc = self.buf.ops.items.len;
         try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
-        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+        self.buf.setOpArgU16(pc + 1, @bitCast(-@as(i16, @intCast(pc - toPc))));
     }
 
     pub fn pushEmptyJumpNotNone(self: *Chunk, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
+        const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
         return start;
     }
 
     pub fn pushEmptyJumpNotCond(self: *Chunk, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
+        const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpNotCond, condLocal, 0, 0);
         return start;
     }
@@ -475,41 +475,41 @@ pub const Chunk = struct {
     pub fn pushJumpBackCond(self: *Chunk, toPc: usize, condLocal: LocalId) !void {
         const pc = self.buf.ops.items.len;
         try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
-        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+        self.buf.setOpArgU16(pc + 1, @bitCast(-@as(i16, @intCast(pc - toPc))));
     }
 
     pub fn pushJumpBackTo(self: *Chunk, toPc: usize) !void {
         const pc = self.buf.ops.items.len;
         try self.buf.pushOp2(.jump, 0, 0);
-        self.buf.setOpArgU16(pc + 1, @bitCast(u16, -@intCast(i16, pc - toPc)));
+        self.buf.setOpArgU16(pc + 1, @bitCast(-@as(i16, @intCast(pc - toPc))));
     }
 
     pub fn pushEmptyJump(self: *Chunk) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
+        const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp2(.jump, 0, 0);
         return start;
     }
 
     pub fn pushEmptyJumpCond(self: *Chunk, condLocal: LocalId) !u32 {
-        const start = @intCast(u32, self.buf.ops.items.len);
+        const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpCond, 0, 0, condLocal);
         return start;
     }
 
     pub fn patchJumpToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     pub fn patchJumpCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     pub fn patchJumpNotCondToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 2, @intCast(u16, self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     pub fn patchJumpNotNoneToCurPc(self: *Chunk, jumpPc: u32) void {
-        self.buf.setOpArgU16(jumpPc + 1, @intCast(u16, self.buf.ops.items.len - jumpPc));
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     /// Patches sub block breaks. For `if` and `match` blocks.
@@ -519,7 +519,7 @@ pub const Chunk = struct {
         var propagateIdx = jumpStackStart;
         for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
             if (jump.jumpT == .subBlockBreak) {
-                self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
+                self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
             } else {
                 self.subBlockJumpStack.items[propagateIdx] = jump;
                 propagateIdx += 1;
@@ -536,16 +536,16 @@ pub const Chunk = struct {
                 },
                 .brk => {
                     if (breakPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, breakPc - jump.pc));
+                        self.buf.setOpArgU16(jump.pc + 1, @intCast(breakPc - jump.pc));
                     } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - breakPc)));
+                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - breakPc))));
                     }
                 },
                 .cont => {
                     if (contPc > jump.pc) {
-                        self.buf.setOpArgU16(jump.pc + 1, @intCast(u16, contPc - jump.pc));
+                        self.buf.setOpArgU16(jump.pc + 1, @intCast(contPc - jump.pc));
                     } else {
-                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(u16, -@intCast(i16, jump.pc - contPc)));
+                        self.buf.setOpArgU16(jump.pc + 1, @bitCast(-@as(i16, @intCast(jump.pc - contPc))));
                     }
                 },
             }
@@ -556,7 +556,7 @@ pub const Chunk = struct {
         for (self.blockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .jumpToEndLocals => {
-                    self.buf.setOpArgU16(jump.pc + jump.pcOffset, @intCast(u16, self.curBlock.endLocalsPc - jump.pc));
+                    self.buf.setOpArgU16(jump.pc + jump.pcOffset, @intCast(self.curBlock.endLocalsPc - jump.pc));
                 }
             }
         }

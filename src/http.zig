@@ -11,24 +11,41 @@ pub const HttpClient = struct {
     vtable: *const VTable,
 
     const VTable = struct {
-        // request: *const fn (ptr: *anyopaque, uri: std.Uri) RequestError!Request,
         // Using `anyerror` because of dependency loop issue with zig master.
-        request: *const fn (ptr: *anyopaque, uri: std.Uri) anyerror!Request,
-        // readAll: *const fn (ptr: *anyopaque, req: *Request, buf: []u8) RequestError!usize,
+        request: *const fn (ptr: *anyopaque, method: std.http.Method, uri: std.Uri, headers: std.http.Headers) anyerror!Request,
         readAll: *const fn (ptr: *anyopaque, req: *Request, buf: []u8) anyerror!usize,
+        deinit: *const fn (ptr: *anyopaque) void,
+        deinitRequest: *const fn (ptr: *anyopaque, req: *Request) void,
+        startRequest: *const fn (ptr: *anyopaque, req: *Request) anyerror!void,
+        waitRequest: *const fn (ptr: *anyopaque, req: *Request) anyerror!void,
     };
 
-    pub fn request(self: HttpClient, uri: std.Uri) !Request {
-        return self.vtable.request(self.ptr, uri);
+    pub fn request(self: HttpClient, method: std.http.Method, uri: std.Uri, headers: std.http.Headers) !Request {
+        return self.vtable.request(self.ptr, method, uri, headers);
     }
 
-    // pub fn readAll(self: HttpClient, req: *Request, buf: []u8) RequestError!usize {
+    pub fn deinit(self: HttpClient) void {
+        return self.vtable.deinit(self.ptr);
+    }
+
+    pub fn deinitRequest(self: HttpClient, req: *Request) void {
+        return self.vtable.deinitRequest(self.ptr, req);
+    }
+
+    pub fn startRequest(self: HttpClient, req: *Request) anyerror!void {
+        try self.vtable.startRequest(self.ptr, req);
+    }
+
+    pub fn waitRequest(self: HttpClient, req: *Request) anyerror!void {
+        try self.vtable.waitRequest(self.ptr, req);
+    }
+
     pub fn readAll(self: HttpClient, req: *Request, buf: []u8) anyerror!usize {
         return self.vtable.readAll(self.ptr, req, buf);
     }
 };
 
-const RequestError = std.http.Client.Request.ReadError;
+const RequestError = std.http.Client.RequestError;
 
 pub const StdHttpClient = struct {
     client: std.http.Client,
@@ -41,27 +58,44 @@ pub const StdHttpClient = struct {
         };
     }
     
-    pub fn deinit(self: *StdHttpClient) void {
-        self.client.deinit();
-    }
-
     pub fn iface(self: *StdHttpClient) HttpClient {
         return HttpClient{
             .ptr = self,
             .vtable = &.{
                 .request = request,
+                .deinit = deinit,
+                .deinitRequest = deinitRequest,
+                .startRequest = startRequest,
+                .waitRequest = waitRequest,
                 .readAll = readAll,
             },
         };
     }
 
-    fn request(ptr: *anyopaque, uri: std.Uri) RequestError!Request {
+    fn request(ptr: *anyopaque, method: std.http.Method, uri: std.Uri, headers: std.http.Headers) RequestError!Request {
         const self = stdx.ptrAlignCast(*StdHttpClient, ptr);
-        return stdRequest(&self.client, uri, .{}, .{});
+        return stdRequest(&self.client, method, uri, headers, .{});
     }
 
-    fn readAll(_: *anyopaque, req: *Request, buf: []u8) RequestError!usize {
-        return req.readAll(buf);
+    fn deinit(ptr: *anyopaque) void {
+        const self: *StdHttpClient = @ptrCast(@alignCast(ptr));
+        self.client.deinit();
+    }
+
+    fn deinitRequest(_: *anyopaque, req: *Request) void {
+        req.deinit();
+    }
+
+    fn startRequest(_: *anyopaque, req: *Request) anyerror!void {
+        try req.start();
+    }
+
+    fn waitRequest(_: *anyopaque, req: *Request) anyerror!void {
+        try req.wait();
+    }
+
+    fn readAll(_: *anyopaque, req: *Request, buf: []u8) anyerror!usize {
+        return req.reader().readAll(buf);
     }
 };
 
@@ -70,10 +104,10 @@ pub const MockHttpClient = struct {
     retStatusCode: ?std.http.Status = null,
     retBody: []const u8 = "Hello.",
     retBodyIdx: usize = undefined,
-    readResponseHeaders: bool = undefined, 
+    client: std.http.Client,
 
-    pub fn init() MockHttpClient {
-        return .{};
+    pub fn init(alloc: std.mem.Allocator) MockHttpClient {
+        return .{ .client = .{ .allocator = alloc } };
     }
     
     pub fn iface(self: *MockHttpClient) HttpClient {
@@ -81,50 +115,76 @@ pub const MockHttpClient = struct {
             .ptr = self,
             .vtable = &.{
                 .request = request,
+                .deinit = deinit,
+                .deinitRequest = deinitRequest,
+                .startRequest = startRequest,
+                .waitRequest = waitRequest,
                 .readAll = readAll,
             },
         };
     }
 
-    fn request(ptr: *anyopaque, uri: std.Uri) RequestError!Request {
+    fn request(ptr: *anyopaque, method: std.http.Method, uri: std.Uri, headers: std.http.Headers) RequestError!Request {
         const self = stdx.ptrAlignCast(*MockHttpClient, ptr);
-        self.readResponseHeaders = false;
         if (self.retReqError) |err| {
             return err;
         } else {
             self.retBodyIdx = 0;
+            const options: std.http.Client.Options = .{};
             var req = Request{
                 .uri = uri,
-                .client = undefined,
+                .client = &self.client,
                 .connection = undefined,
                 .redirects_left = undefined,
-                .response = undefined,
-                .headers = undefined,
+                .headers = headers,
+                .method = method,
                 .handle_redirects = undefined,
-                .compression_init = undefined,
                 .arena = undefined,
+                .response = .{
+                    .status = undefined,
+                    .reason = undefined,
+                    .version = undefined,
+                    .headers = std.http.Headers{ .allocator = self.client.allocator, .owned = false },
+                    .parser = switch (options.header_strategy) {
+                        .dynamic => |max| std.http.protocol.HeadersParser.initDynamic(max),
+                        .static => |buf| std.http.protocol.HeadersParser.initStatic(buf),
+                    },
+                },
             };
             req.response.compression = .none;
-            req.response.done = true;
+            req.response.parser.done = true;
+            req.response.parser.state = .finished;
 
             req.arena = std.heap.ArenaAllocator.init(undefined);
             return req;
         }
     }
 
-    fn readAll(ptr: *anyopaque, req: *Request, buf: []u8) RequestError!usize {
-        const self = stdx.ptrAlignCast(*MockHttpClient, ptr);
-        if (!self.readResponseHeaders) {
-            // First read consumes response headers.
-            if (self.retStatusCode) |code| {
-                req.response.headers.status = code;
-            } else {
-                req.response.headers.status = .ok;
-            }
-            self.readResponseHeaders = true;
+    fn deinit(ptr: *anyopaque) void {
+        _ = ptr;
+    }
+
+    fn deinitRequest(_: *anyopaque, req: *Request) void {
+        _ = req;
+    }
+
+    fn startRequest(_: *anyopaque, req: *Request) anyerror!void {
+        _ = req;
+    }
+
+    fn waitRequest(ptr: *anyopaque, req: *Request) anyerror!void {
+        const self: *MockHttpClient = @ptrCast(@alignCast(ptr));
+        if (self.retStatusCode) |code| {
+            req.response.status = code;
+        } else {
+            req.response.status = .ok;
         }
+    }
+
+    fn readAll(ptr: *anyopaque, _: *Request, buf: []u8) anyerror!usize {
+        const self: *MockHttpClient = @ptrCast(@alignCast(ptr));
         if (self.retBodyIdx < self.retBody.len) {
-            const n = std.math.min(buf.len, self.retBody.len - self.retBodyIdx);
+            const n = @min(buf.len, self.retBody.len - self.retBodyIdx);
             std.mem.copy(u8, buf, self.retBody[self.retBodyIdx..self.retBodyIdx+n]);
             self.retBodyIdx += n;
             return n;
@@ -142,8 +202,11 @@ const Response = struct {
 /// HTTP GET, always cosumes body.
 pub fn get(alloc: std.mem.Allocator, client: HttpClient, url: []const u8) !Response {
     const uri = try std.Uri.parse(url);
-    var req = try client.request(uri);
+    var req = try client.request(.GET, uri, .{ .allocator = alloc });
     defer req.deinit();
+
+    try client.startRequest(&req);
+    try client.waitRequest(&req);
 
     var buf: std.ArrayListUnmanaged(u8) = .{};
     errdefer buf.deinit(alloc);
@@ -152,24 +215,19 @@ pub fn get(alloc: std.mem.Allocator, client: HttpClient, url: []const u8) !Respo
     while (true) {
         const read = try client.readAll(&req, &readBuf);
         try buf.appendSlice(alloc, readBuf[0..read]);
-        if (read == 0) {
+        if (read < readBuf.len) {
             break;
         }
     }
     return Response{
-        .status = req.response.headers.status,
+        .status = req.response.status,
         .body = try buf.toOwnedSlice(alloc),
     };
 }
 
 /// std/http/Client.request
-fn stdRequest(client: *std.http.Client, uri: std.Uri, headers: std.http.Client.Request.Headers, options: std.http.Client.Request.Options) !std.http.Client.Request {
-    const protocol: std.http.Client.Connection.Protocol = if (std.mem.eql(u8, uri.scheme, "http"))
-        .plain
-    else if (std.mem.eql(u8, uri.scheme, "https"))
-        .tls
-    else
-        return error.UnsupportedUrlScheme;
+fn stdRequest(client: *std.http.Client, method: std.http.Method, uri: std.Uri, headers: std.http.Headers, options: std.http.Client.Options) !std.http.Client.Request {
+    const protocol = std.http.Client.protocol_map.get(uri.scheme) orelse return error.UnsupportedUrlScheme;
 
     const port: u16 = uri.port orelse switch (protocol) {
         .plain => 80,
@@ -178,91 +236,42 @@ fn stdRequest(client: *std.http.Client, uri: std.Uri, headers: std.http.Client.R
 
     const host = uri.host orelse return error.UriMissingHost;
 
-    if (client.next_https_rescan_certs and protocol == .tls) {
-        client.connection_pool.mutex.lock(); // TODO: this could be so much better than reusing the connection pool mutex.
-        defer client.connection_pool.mutex.unlock();
+    if (protocol == .tls and @atomicLoad(bool, &client.next_https_rescan_certs, .Acquire)) {
+        client.ca_bundle_mutex.lock();
+        defer client.ca_bundle_mutex.unlock();
 
         if (client.next_https_rescan_certs) {
-            try client.ca_bundle.rescan(client.allocator);
-            client.next_https_rescan_certs = false;
+            client.ca_bundle.rescan(client.allocator) catch return error.CertificateBundleLoadFailure;
+            @atomicStore(bool, &client.next_https_rescan_certs, false, .Release);
         }
     }
+
+    const conn = options.connection orelse try client.connect(host, port, protocol);
 
     var req: Request = .{
         .uri = uri,
         .client = client,
+        .connection = conn,
         .headers = headers,
-        .connection = try client.connect(host, port, protocol),
+        .method = method,
+        .version = options.version,
         .redirects_left = options.max_redirects,
         .handle_redirects = options.handle_redirects,
-        .compression_init = false,
-        .response = switch (options.header_strategy) {
-            .dynamic => |max| StdResponse.initDynamic(max),
-            .static => |buf| StdResponse.initStatic(buf),
+        .response = .{
+            .status = undefined,
+            .reason = undefined,
+            .version = undefined,
+            .headers = std.http.Headers{ .allocator = client.allocator, .owned = false },
+            .parser = switch (options.header_strategy) {
+                .dynamic => |max| std.http.protocol.HeadersParser.initDynamic(max),
+                .static => |buf| std.http.protocol.HeadersParser.initStatic(buf),
+            },
         },
         .arena = undefined,
     };
+    errdefer req.deinit();
 
     req.arena = std.heap.ArenaAllocator.init(client.allocator);
-
-    {
-        var buffered = std.io.bufferedWriter(req.connection.data.writer());
-        const writer = buffered.writer();
-
-        const escaped_path = try std.Uri.escapePath(client.allocator, uri.path);
-        defer client.allocator.free(escaped_path);
-
-        const escaped_query = if (uri.query) |q| try std.Uri.escapeQuery(client.allocator, q) else null;
-        defer if (escaped_query) |q| client.allocator.free(q);
-
-        const escaped_fragment = if (uri.fragment) |f| try std.Uri.escapeQuery(client.allocator, f) else null;
-        defer if (escaped_fragment) |f| client.allocator.free(f);
-
-        try writer.writeAll(@tagName(headers.method));
-        try writer.writeByte(' ');
-        if (escaped_path.len == 0) {
-            try writer.writeByte('/');
-        } else {
-            try writer.writeAll(escaped_path);
-        }
-        if (escaped_query) |q| {
-            try writer.writeByte('?');
-            try writer.writeAll(q);
-        }
-        if (escaped_fragment) |f| {
-            try writer.writeByte('#');
-            try writer.writeAll(f);
-        }
-        try writer.writeByte(' ');
-        try writer.writeAll(@tagName(headers.version));
-        try writer.writeAll("\r\nHost: ");
-        try writer.writeAll(host);
-        try writer.writeAll("\r\nUser-Agent: ");
-        try writer.writeAll(headers.user_agent);
-        if (headers.connection == .close) {
-            try writer.writeAll("\r\nConnection: close");
-        } else {
-            try writer.writeAll("\r\nConnection: keep-alive");
-        }
-        try writer.writeAll("\r\nAccept-Encoding: gzip, deflate, zstd");
-
-        switch (headers.transfer_encoding) {
-            .chunked => try writer.writeAll("\r\nTransfer-Encoding: chunked"),
-            .content_length => |content_length| try writer.print("\r\nContent-Length: {d}", .{content_length}),
-            .none => {},
-        }
-
-        for (headers.custom) |header| {
-            try writer.writeAll("\r\n");
-            try writer.writeAll(header.name);
-            try writer.writeAll(": ");
-            try writer.writeAll(header.value);
-        }
-
-        try writer.writeAll("\r\n\r\n");
-
-        try buffered.flush();
-    }
 
     return req;
 }

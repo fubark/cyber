@@ -43,7 +43,7 @@ var tempU8Writer = SliceWriter{ .buf = &tempU8Buf, .idx = &tempU8BufIdx };
 pub var gvm: VM = undefined;
 
 pub fn getUserVM() *UserVM {
-    return @ptrCast(*UserVM, &gvm);
+    return @ptrCast(&gvm);
 }
 
 pub const VM = struct {
@@ -271,8 +271,8 @@ pub const VM = struct {
             return;
         }
         for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == @enumToInt(rt.FuncSymbolEntryType.closure)) {
-                cy.arc.releaseObject(self, @ptrCast(*HeapObject, sym.inner.closure));
+            if (sym.entryT == @intFromEnum(rt.FuncSymbolEntryType.closure)) {
+                cy.arc.releaseObject(self, @ptrCast(sym.inner.closure));
             }
         }
 
@@ -427,7 +427,7 @@ pub const VM = struct {
 
         if (!reset) {
             if (!cy.isWasm) {
-                self.stdHttpClient.deinit();
+                self.httpClient.deinit();
             }
         }
 
@@ -643,12 +643,12 @@ pub const VM = struct {
             return error.NoEndOp;
         }
 
-        @call(.never_inline, self.prepareEvalCold, .{buf});
+        @call(.never_inline, VM.prepareEvalCold, .{self, buf});
 
         // Set these last to hint location to cache before eval.
-        self.pc = @ptrCast([*]cy.InstDatum, buf.ops.items.ptr);
+        self.pc = @ptrCast(buf.ops.items.ptr);
         try cy.fiber.stackEnsureTotalCapacity(self, buf.mainStackSize);
-        self.framePtr = @ptrCast([*]Value, self.stack.ptr);
+        self.framePtr = @ptrCast(self.stack.ptr);
 
         self.ops = buf.ops.items;
         self.consts = buf.mconsts;
@@ -678,13 +678,13 @@ pub const VM = struct {
             const res = switch (obj.head.typeId) {
                 rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    var start = @floatToInt(i32, startV.toF64());
+                    var start: i32 = @intFromFloat(startV.toF64());
                     if (start < 0) {
-                        start = @intCast(i32, list.len) + start;
+                        start = @as(i32, @intCast(list.len)) + start;
                     }
-                    var end = if (endV.isNone()) @intCast(i32, list.len) else @floatToInt(i32, endV.toF64());
+                    var end: i32 = if (endV.isNone()) @intCast(list.len) else @intFromFloat(endV.toF64());
                     if (end < 0) {
-                        end = @intCast(i32, list.len) + end;
+                        end = @as(i32, @intCast(list.len)) + end;
                     }
                     if (start < 0 or start > list.len) {
                         return self.interruptThrowSymbol(.OutOfBounds);
@@ -693,7 +693,7 @@ pub const VM = struct {
                         return self.interruptThrowSymbol(.OutOfBounds);
                     }
 
-                    const elems = list.buf[@intCast(u32, start) .. @intCast(u32, end)];
+                    const elems = list.buf[@intCast(start) .. @intCast(end)];
                     for (elems) |elem| {
                         retain(self, elem);
                     }
@@ -701,23 +701,23 @@ pub const VM = struct {
                 },
                 rt.AstringT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSlice(.astring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
+                    break :b bindings.stringSlice(.astring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 rt.UstringT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSlice(.ustring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
+                    break :b bindings.stringSlice(.ustring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 rt.StringSliceT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSlice(.slice)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
+                    break :b bindings.stringSlice(.slice)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 rt.RawstringT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSlice(.rawstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
+                    break :b bindings.stringSlice(.rawstring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 rt.RawstringSliceT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSlice(.rawSlice)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2);
+                    break :b bindings.stringSlice(.rawSlice)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
                 },
                 else => {
                     return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(self.types.buf[obj.head.typeId].name)});
@@ -732,10 +732,10 @@ pub const VM = struct {
                 return self.panic("Unsupported slice operation on type `number`.");
             } else {
                 const res = switch (recv.getTag()) {
-                    rt.StaticAstringT => bindings.stringSlice(.staticAstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2),
-                    rt.StaticUstringT => bindings.stringSlice(.staticUstring)(@ptrCast(*UserVM, self), recv.*, &[_]Value{startV, endV}, 2),
+                    rt.StaticAstringT => bindings.stringSlice(.staticAstring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2),
+                    rt.StaticUstringT => bindings.stringSlice(.staticUstring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2),
                     else => {
-                        return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@intCast(u8, recv.getTag()))});
+                        return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@as(u8, @intCast(recv.getTag())))});
                     },
                 };
                 if (res.isInterrupt()) {
@@ -790,7 +790,7 @@ pub const VM = struct {
         self: *VM, rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId, rSymId: sema.ResolvedSymId
     ) !rt.TypeId {
         const key = rt.TypeKey.initTypeKey(rParentSymId, nameId);
-        const res = try @call(.never_inline, self.typeSignatures.getOrPut, .{self.alloc, key });
+        const res = try @call(.never_inline, @TypeOf(self.typeSignatures).getOrPut, .{&self.typeSignatures, self.alloc, key });
         if (!res.found_existing) {
             const name = sema.getName(&self.compiler, nameId);
             return self.addObjectTypeExt(rParentSymId, nameId, name, rSymId);
@@ -820,7 +820,7 @@ pub const VM = struct {
             .name = name,
             .members = &.{},
         };
-        const id = @intCast(u32, self.enums.len);
+        const id: u32 = @intCast(self.enums.len);
         try self.enums.append(self.alloc, s);
         try self.enumSignatures.put(self.alloc, name, id);
         return id;
@@ -843,7 +843,7 @@ pub const VM = struct {
             .numFields = 0,
             .rTypeSymId = rTypeSymId,
         };
-        const id = @intCast(u32, self.types.len);
+        const id: u32 = @intCast(self.types.len);
         try self.types.append(self.alloc, s);
         const key = rt.TypeKey.initTypeKey(rParentSymId, nameId);
         try self.typeSignatures.put(self.alloc, key, id);
@@ -875,7 +875,7 @@ pub const VM = struct {
         const key = rt.VarKey.initVarKey(rParentSymId, nameId);
         const res = try self.varSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.varSyms.len);
+            const id: u32 = @intCast(self.varSyms.len);
             try self.varSyms.append(self.alloc, rt.VarSym.init(Value.None));
             res.value_ptr.* = id;
             return id;
@@ -894,12 +894,12 @@ pub const VM = struct {
         };
         const res = try self.funcSymSigs.getOrPut(self.alloc, key);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.funcSyms.len);
+            const id: u32 = @intCast(self.funcSyms.len);
 
             // const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[rFuncSigId];
             // const typedFlag: u16 = if (rFuncSig.isTyped) 1 << 15 else 0;
             try self.funcSyms.append(self.alloc, .{
-                .entryT = @enumToInt(rt.FuncSymbolEntryType.none),
+                .entryT = @intFromEnum(rt.FuncSymbolEntryType.none),
                 .innerExtra = .{
                     .none = .{
                         // .typedFlagNumParams = typedFlag | rFuncSig.numParams(),
@@ -930,7 +930,7 @@ pub const VM = struct {
     pub fn ensureSymbolExt(self: *VM, name: []const u8, owned: bool) !SymbolId {
         const res = try self.symSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.syms.len);
+            const id: u32 = @intCast(self.syms.len);
             var effName = name;
             if (owned) {
                 effName = try self.alloc.dupe(u8, name);
@@ -952,7 +952,7 @@ pub const VM = struct {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
         const res = try self.fieldSymSignatures.getOrPut(self.alloc, name);
         if (!res.found_existing) {
-            const id = @intCast(u32, self.fieldSyms.len);
+            const id: u32 = @intCast(self.fieldSyms.len);
             try self.fieldSyms.append(self.alloc, .{
                 .mruTypeId = cy.NullId,
                 .mruOffset = undefined,
@@ -981,9 +981,9 @@ pub const VM = struct {
     pub fn ensureMethodSym2(self: *VM, name: []const u8, numParams: u32, dupeName: bool) !SymbolId {
         const nameId = try sema.ensureNameSym(&self.compiler, name);
         const key = rt.MethodKey.initMethodKey(nameId, numParams);
-        const res = try @call(.never_inline, self.methodSymSigs.getOrPut, .{self.alloc, key});
+        const res = try @call(.never_inline, @TypeOf(self.methodSymSigs).getOrPut, .{&self.methodSymSigs, self.alloc, key});
         if (!res.found_existing) {
-            const id = @intCast(u32, self.methodSyms.len);
+            const id: u32 = @intCast(self.methodSyms.len);
 
             try self.methodSyms.append(self.alloc, .{
                 .mruEntryType = undefined,
@@ -997,7 +997,7 @@ pub const VM = struct {
             }
             try self.methodSymExtras.append(self.alloc, .{
                 .namePtr = newName.ptr,
-                .nameLen = @intCast(u32, newName.len),
+                .nameLen = @intCast(newName.len),
                 .nameIsOwned = dupeName,
             });
             res.value_ptr.* = id;
@@ -1090,7 +1090,7 @@ pub const VM = struct {
             switch (obj.head.typeId) {
                 rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx = @floatToInt(u32, index.toF64());
+                    const idx: u32 = @intFromFloat(index.toF64());
                     if (idx < list.len) {
                         release(self, list.buf[idx]);
                         list.buf[idx] = right;
@@ -1130,7 +1130,7 @@ pub const VM = struct {
             switch (obj.head.typeId) {
                 rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx = @floatToInt(u32, index.toF64());
+                    const idx: u32 = @intFromFloat(index.toF64());
                     if (idx < list.len) {
                         list.buf[idx] = right;
                     } else {
@@ -1168,9 +1168,9 @@ pub const VM = struct {
             const res = switch (obj.head.typeId) {
                 rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx = @intCast(i32, list.len) + @floatToInt(i32, index.toF64());
+                    const idx: i32 = @as(i32, @intCast(list.len)) + @as(i32, @intFromFloat(index.toF64()));
                     if (idx < list.len) {
-                        const res = list.buf[@intCast(u32, idx)];
+                        const res = list.buf[@intCast(idx)];
                         retain(self, res);
                         return res;
                     } else {
@@ -1186,35 +1186,35 @@ pub const VM = struct {
                     } else return Value.None;
                 },
                 rt.AstringT => b: {
-                    const idx = @intToFloat(f64, @intCast(i32, obj.astring.len) + @floatToInt(i32, index.toF64()));
+                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.astring.len)) + @as(i32, @intFromFloat(index.toF64())));
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    break :b bindings.stringSliceAt(.astring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 rt.UstringT => b: {
-                    const idx = @intToFloat(f64, @intCast(i32, obj.ustring.charLen) + @floatToInt(i32, index.toF64()));
+                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.ustring.charLen)) + @as(i32, @intFromFloat(index.toF64())));
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    break :b bindings.stringSliceAt(.ustring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 rt.StringSliceT => b: {
                     if (obj.stringSlice.isAstring()) {
-                        const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.len) + @floatToInt(i32, index.toF64()));
+                        const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.stringSlice.len)) + @as(i32, @intFromFloat(index.toF64())));
                         retainObject(self, obj);
-                        break :b bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        break :b bindings.stringSliceAt(.slice)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     } else {
-                        const idx = @intToFloat(f64, @intCast(i32, obj.stringSlice.uCharLen) + @floatToInt(i32, index.toF64()));
+                        const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.stringSlice.uCharLen)) + @as(i32, @intFromFloat(index.toF64())));
                         retainObject(self, obj);
-                        break :b bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        break :b bindings.stringSliceAt(.slice)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     }
                 },
                 rt.RawstringT => b: {
-                    const idx = @intToFloat(f64, @intCast(i32, obj.rawstring.len) + @floatToInt(i32, index.toF64()));
+                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.rawstring.len)) + @as(i32, @intFromFloat(index.toF64())));
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    break :b bindings.stringSliceAt(.rawstring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 rt.RawstringSliceT => b: {
-                    const idx = @intToFloat(f64, @intCast(i32, obj.rawstringSlice.len) + @floatToInt(i32, index.toF64()));
+                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.rawstringSlice.len)) + @as(i32, @intFromFloat(index.toF64())));
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                    break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                 },
                 else => {
                     return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(self.types.buf[obj.head.typeId].name)});
@@ -1230,16 +1230,16 @@ pub const VM = struct {
             } else {
                 const res = switch (left.getTag()) {
                     rt.StaticAstringT => {
-                        const idx = @intToFloat(f64, @intCast(i32, left.asStaticStringSlice().len()) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        const idx: f64 = @floatFromInt(@as(i32, @intCast(left.asStaticStringSlice().len())) + @as(i32, @intFromFloat(index.toF64())));
+                        return bindings.stringSliceAt(.staticAstring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     rt.StaticUstringT => {
                         const start = left.asStaticStringSlice().start;
-                        const idx = @intToFloat(f64, @intCast(i32, cy.string.getStaticUstringHeader(self, start).charLen) + @floatToInt(i32, index.toF64()));
-                        return bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{Value.initF64(idx)}, 1);
+                        const idx: f64 = @floatFromInt(@as(i32, @intCast(cy.string.getStaticUstringHeader(self, start).charLen)) + @as(i32, @intFromFloat(index.toF64())));
+                        return bindings.stringSliceAt(.staticUstring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
                     },
                     else => {
-                        return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
+                        return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@as(u8, @intCast(left.getTag())))});
                     },
                 };
                 if (res.isInterrupt()) {
@@ -1256,7 +1256,7 @@ pub const VM = struct {
             const res = switch (obj.head.typeId) {
                 rt.ListT => {
                     const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx = @floatToInt(u32, index.toF64());
+                    const idx: u32 = @intFromFloat(index.toF64());
                     if (idx < list.len) {
                         retain(self, list.buf[idx]);
                         return list.buf[idx];
@@ -1266,30 +1266,30 @@ pub const VM = struct {
                 },
                 rt.MapT => {
                     const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                    if (@call(.never_inline, map.get, .{self, index})) |val| {
+                    if (@call(.never_inline, cy.MapInner.get, .{map.*, self, index})) |val| {
                         retain(self, val);
                         return val;
                     } else return Value.None;
                 },
                 rt.AstringT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.astring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    break :b bindings.stringSliceAt(.astring)(@ptrCast(self), left.*, &[_]Value{index}, 1);
                 },
                 rt.UstringT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.ustring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    break :b bindings.stringSliceAt(.ustring)(@ptrCast(self), left.*, &[_]Value{index}, 1);
                 },
                 rt.StringSliceT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.slice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    break :b bindings.stringSliceAt(.slice)(@ptrCast(self), left.*, &[_]Value{index}, 1);
                 },
                 rt.RawstringT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    break :b bindings.stringSliceAt(.rawstring)(@ptrCast(self), left.*, &[_]Value{index}, 1);
                 },
                 rt.RawstringSliceT => b: {
                     retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1);
+                    break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(self), left.*, &[_]Value{index}, 1);
                 },
                 else => {
                     return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(self.types.buf[obj.head.typeId].name)});
@@ -1304,10 +1304,10 @@ pub const VM = struct {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 const res = switch (left.getTag()) {
-                    rt.StaticAstringT => bindings.stringSliceAt(.staticAstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
-                    rt.StaticUstringT => bindings.stringSliceAt(.staticUstring)(@ptrCast(*UserVM, self), left.*, &[_]Value{index}, 1),
+                    rt.StaticAstringT => bindings.stringSliceAt(.staticAstring)(@ptrCast(self), left.*, &[_]Value{index}, 1),
+                    rt.StaticUstringT => bindings.stringSliceAt(.staticUstring)(@ptrCast(self), left.*, &[_]Value{index}, 1),
                     else => {
-                        return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@intCast(u8, left.getTag()))});
+                        return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@as(u8, @intCast(left.getTag())))});
                     },
                 };
                 if (res.isInterrupt()) {
@@ -1327,14 +1327,14 @@ pub const VM = struct {
                 stdx.panic("unexpected");
             }
         };
-        self.panicPayload = @intCast(u64, @ptrToInt(msg.ptr)) | (@as(u64, msg.len) << 48);
+        self.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
         self.panicType = .msg;
         log.debug("{s}", .{msg});
         return error.Panic;
     }
 
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
-        self.panicPayload = Value.initErrorSymbol(@enumToInt(sym)).val;
+        self.panicPayload = Value.initErrorSymbol(@intFromEnum(sym)).val;
         self.panicType = .nativeThrow;
         return error.Panic;
     }
@@ -1349,7 +1349,7 @@ pub const VM = struct {
     fn panic(self: *VM, comptime msg: []const u8) error{Panic, OutOfMemory} {
         @setCold(true);
         const dupe = try self.alloc.dupe(u8, msg);
-        self.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (@as(u64, dupe.len) << 48);
+        self.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
         self.panicType = .msg;
         log.debug("{s}", .{dupe});
         return error.Panic;
@@ -1394,7 +1394,7 @@ pub const VM = struct {
             sym.mruTypeId = typeId;
             sym.mruOffset = res.offset;
             sym.mruFieldTypeSymId = res.typeSymId;
-            return @intCast(u8, res.offset);
+            return @intCast(res.offset);
         } else {
             return cy.NullU8;
         }
@@ -1403,9 +1403,9 @@ pub const VM = struct {
     pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
         const symMap = self.fieldSyms.buf[symId];
         if (obj.head.typeId == symMap.mruTypeId) {
-            return @intCast(u8, symMap.mruOffset);
+            return @intCast(symMap.mruOffset);
         } else {
-            return @call(.never_inline, self.getFieldOffsetFromTable, .{obj.head.typeId, symId});
+            return @call(.never_inline, VM.getFieldOffsetFromTable, .{self, obj.head.typeId, symId});
         }
     }
 
@@ -1476,17 +1476,17 @@ pub const VM = struct {
         numArgs: u8, reqNumRetVals: u2
     ) linksection(cy.HotSection) !cy.fiber.PcSp {
         const sym = self.funcSyms.buf[symId];
-        switch (@intToEnum(rt.FuncSymbolEntryType, sym.entryT)) {
+        switch (@as(rt.FuncSymbolEntryType, @enumFromInt(sym.entryT))) {
             .nativeFunc1 => {
                 const newFramePtr = framePtr + startLocal;
 
                 // Optimize.
                 pc[0] = cy.InstDatum{ .code = .callNativeFuncIC };
-                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
+                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(sym.inner.nativeFunc1));
 
                 self.pc = pc;
                 self.framePtr = newFramePtr;
-                const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, self), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                const res = sym.inner.nativeFunc1(@ptrCast(self), @ptrCast(newFramePtr + 4), numArgs);
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
@@ -1507,14 +1507,14 @@ pub const VM = struct {
                 };
             },
             .func => {
-                if (@ptrToInt(framePtr + startLocal + sym.inner.func.stackSize) >= @ptrToInt(self.stackEndPtr)) {
+                if (@intFromPtr(framePtr + startLocal + sym.inner.func.stackSize) >= @intFromPtr(self.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
                 // Optimize.
                 pc[0] = cy.InstDatum{ .code = .callFuncIC };
-                pc[4] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.stackSize) };
-                @ptrCast(*align(1) u48, pc + 6).* = @intCast(u48, @ptrToInt(cy.fiber.toVmPc(self, sym.inner.func.pc)));
+                pc[4] = cy.InstDatum{ .arg = @intCast(sym.inner.func.stackSize) };
+                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(cy.fiber.toVmPc(self, sym.inner.func.pc)));
 
                 const newFramePtr = framePtr + startLocal;
                 newFramePtr[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallSymInstLen);
@@ -1526,7 +1526,7 @@ pub const VM = struct {
                 };
             },
             .closure => {
-                if (@ptrToInt(framePtr + startLocal + sym.inner.closure.stackSize) >= @ptrToInt(self.stackEndPtr)) {
+                if (@intFromPtr(framePtr + startLocal + sym.inner.closure.stackSize) >= @intFromPtr(self.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -1560,9 +1560,9 @@ pub const VM = struct {
             const callee = chunk.nodes[callExpr.head.callExpr.callee];
             var crSymId: sema.CompactResolvedSymId = undefined;
             if (callee.node_t == .accessExpr) {
-                crSymId = @bitCast(sema.CompactResolvedSymId, callee.head.accessExpr.sema_crSymId);
+                crSymId = @bitCast(callee.head.accessExpr.sema_crSymId);
             } else if (callee.node_t == .ident) {
-                crSymId = @bitCast(sema.CompactResolvedSymId, callee.head.ident.sema_crSymId);
+                crSymId = @bitCast(callee.head.ident.sema_crSymId);
             } else {
                 return vm.panic("Failed to generate error report.");
             }
@@ -1804,7 +1804,7 @@ pub const VM = struct {
             }
             const slice = writer.sliceFrom(start);
             if (getCharLen) {
-                outCharLen.* = @intCast(u32, slice.len);
+                outCharLen.* = @intCast(slice.len);
             }
             return slice;
         } else {
@@ -1814,7 +1814,7 @@ pub const VM = struct {
                     rt.AstringT => {
                         const res = obj.astring.getConstSlice();
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, res.len);
+                            outCharLen.* = @intCast(res.len);
                         }
                         return res;
                     },
@@ -1839,7 +1839,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "rawstring ({})", .{obj.rawstring.len}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -1848,7 +1848,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "rawstring ({})", .{obj.rawstringSlice.len}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -1857,7 +1857,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "List ({})", .{obj.list.list.len}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -1866,13 +1866,13 @@ pub const VM = struct {
                         std.fmt.format(writer, "Map ({})", .{obj.map.inner.size}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
                     rt.MetaTypeT => {
                         const start = writer.pos();
-                        const symType = @intToEnum(cy.heap.MetaTypeKind, obj.metatype.type);
+                        const symType: cy.heap.MetaTypeKind = @enumFromInt(obj.metatype.type);
                         var slice: []const u8 = undefined;
                         if (symType == .object) {
                             const name = self.types.buf[obj.metatype.symId].name;
@@ -1882,14 +1882,14 @@ pub const VM = struct {
                             slice = "Unknown Symbol";
                         }
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
                     else => {
                         const buf = self.types.buf[obj.head.typeId].name;
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, buf.len);
+                            outCharLen.* = @intCast(buf.len);
                         }
                         return buf;
                     }
@@ -1921,7 +1921,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "error.{s}", .{self.getSymbolName(symId)}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -1929,14 +1929,14 @@ pub const VM = struct {
                         const slice = val.asStaticStringSlice();
                         const buf = self.strBuf[slice.start..slice.end];
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, buf.len);
+                            outCharLen.* = @intCast(buf.len);
                         }
                         return buf;
                     },
                     rt.StaticUstringT => {
                         const slice = val.asStaticStringSlice();
                         if (getCharLen) {
-                            outCharLen.* = @ptrCast(*align (1) cy.StaticUstringHeader, self.strBuf.ptr + slice.start - 12).charLen;
+                            outCharLen.* = @as(*align (1) cy.StaticUstringHeader, @ptrCast(self.strBuf.ptr + slice.start - 12)).charLen;
                         }
                         return self.strBuf[slice.start..slice.end];
                     },
@@ -1948,7 +1948,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "{s}.{s}", .{enumSym.name, memberName}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -1958,7 +1958,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "#{s}", .{self.getSymbolName(litId)}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -1967,7 +1967,7 @@ pub const VM = struct {
                         std.fmt.format(writer, "{}", .{val.asInteger()}) catch stdx.fatal();
                         const slice = writer.sliceFrom(start);
                         if (getCharLen) {
-                            outCharLen.* = @intCast(u32, slice.len);
+                            outCharLen.* = @intCast(slice.len);
                         }
                         return slice;
                     },
@@ -2080,7 +2080,7 @@ fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
     if (val.isNumber()) {
         return val.asF64();
     } else if (val.isInteger()) {
-        return @intToFloat(f64, val.asInteger());
+        return @floatFromInt(val.asInteger());
     } else {
         return @call(.never_inline, panicConvertNumberError, .{vm, val});
     }
@@ -2114,7 +2114,7 @@ fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
         switch (val.getTag()) {
             rt.NoneT => return 0,
             rt.BooleanT => return if (val.asBool()) 1 else 0,
-            rt.IntegerT => return @intToFloat(f64, val.asI32()),
+            rt.IntegerT => return @floatFromInt(val.asI32()),
             rt.ErrorT => stdx.fatal(),
             rt.StaticAstringT => {
                 const slice = val.asStaticStringSlice();
@@ -2258,7 +2258,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
         }
     } else if (comptime build_options.engine == .c) {
         while (true) {
-            const res = vmc.execBytecode(@ptrCast(*vmc.VM, vm));
+            const res = vmc.execBytecode(@ptrCast(vm));
             if (res != vmc.RES_CODE_SUCCESS) {
                 return error.Panic;
             }
@@ -2292,7 +2292,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
     while (true) {
         if (TraceEnabled) {
             const op = pc[0].code;
-            vm.trace.opCounts[@enumToInt(op)].count += 1;
+            vm.trace.opCounts[@intFromEnum(op)].count += 1;
             vm.trace.totalOpCounts += 1;
         }
         if (builtin.mode == .Debug) {
@@ -2324,7 +2324,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpConstOp:"::);
                 }
-                const idx = @ptrCast(*align (1) u16, pc + 1).*;
+                const idx = @as(*align (1) u16, @ptrCast(pc + 1)).*;
                 framePtr[pc[3].arg] = Value.initRaw(vm.consts[idx].val);
                 pc += 4;
                 continue;
@@ -2333,7 +2333,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpConstI8:"::);
                 }
-                framePtr[pc[2].arg] = Value.initF64(@intToFloat(f64, @bitCast(i8, pc[1].arg)));
+                framePtr[pc[2].arg] = Value.initF64(@floatFromInt(@as(i8, @bitCast(pc[1].arg))));
                 pc += 3;
                 continue;
             },
@@ -2341,7 +2341,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpConstI8Int:"::);
                 }
-                framePtr[pc[2].arg] = Value.initI32(@intCast(i32, @bitCast(i8, pc[1].arg)));
+                framePtr[pc[2].arg] = Value.initI32(@intCast(@as(i8, @bitCast(pc[1].arg))));
                 pc += 3;
                 continue;
             },
@@ -2372,7 +2372,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[2].arg;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.head.typeId == @ptrCast(*align (1) u16, pc + 5).*) {
+                    if (obj.head.typeId == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
                         framePtr[dst] = obj.object.getValue(pc[7].arg);
                         pc += 8;
                         continue;
@@ -2405,7 +2405,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     break :b cond.assumeNotBoolToBool();
                 };
                 if (!condVal) {
-                    pc += @ptrCast(*const align(1) u16, pc + 2).*;
+                    pc += @as(*const align(1) u16, @ptrCast(pc + 2)).*;
                 } else {
                     pc += 4;
                 }
@@ -2672,7 +2672,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[1].arg;
                 const numEntries = pc[2].arg;
                 const dst = pc[3].arg;
-                const keyIdxes = @ptrCast([*]const align(1) u16, pc + 4)[0..numEntries];
+                const keyIdxes = @as([*]const align(1) u16, @ptrCast(pc + 4))[0..numEntries];
                 const vals = framePtr[startLocal .. startLocal + numEntries];
                 framePtr[dst] = try cy.heap.allocMap(vm, keyIdxes, vals);
                 pc += 4 + numEntries * 2;
@@ -2685,7 +2685,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const slice = &framePtr[pc[1].arg];
                 const start = framePtr[pc[2].arg];
                 const end = framePtr[pc[3].arg];
-                framePtr[pc[4].arg] = try @call(.never_inline, vm.sliceOp, .{slice, start, end});
+                framePtr[pc[4].arg] = try @call(.never_inline, VM.sliceOp, .{vm, slice, start, end});
                 pc += 5;
                 continue;
             },
@@ -2708,7 +2708,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const leftv = framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
                 const rightv = framePtr[pc[3].arg];
-                try @call(.never_inline, vm.setIndex, .{leftv, indexv, rightv});
+                try @call(.never_inline, VM.setIndex, .{vm, leftv, indexv, rightv});
                 pc += 4;
                 continue;
             },
@@ -2719,7 +2719,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const leftv = framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
                 const rightv = framePtr[pc[3].arg];
-                try @call(.never_inline, vm.setIndexRelease, .{leftv, indexv, rightv});
+                try @call(.never_inline, VM.setIndexRelease, .{vm, leftv, indexv, rightv});
                 pc += 4;
                 continue;
             },
@@ -2767,7 +2767,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const recv = &framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = try @call(.never_inline, vm.getIndex, .{recv, indexv});
+                framePtr[pc[3].arg] = try @call(.never_inline, VM.getIndex, .{vm, recv, indexv});
                 pc += 4;
                 continue;
             },
@@ -2777,7 +2777,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const recv = &framePtr[pc[1].arg];
                 const indexv = framePtr[pc[2].arg];
-                framePtr[pc[3].arg] = try @call(.never_inline, vm.getReverseIndex, .{recv, indexv});
+                framePtr[pc[3].arg] = try @call(.never_inline, VM.getReverseIndex, .{vm, recv, indexv});
                 pc += 4;
                 continue;
             },
@@ -2786,14 +2786,14 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpJump:"::);
                 }
                 @setRuntimeSafety(false);
-                pc += @intCast(usize, @ptrCast(*const align(1) i16, &pc[1]).*);
+                pc += @as(usize, @intCast(@as(*const align(1) i16, @ptrCast(&pc[1])).*));
                 continue;
             },
             .jumpCond => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpJumpCond:"::);
                 }
-                const jump = @ptrCast(*const align(1) i16, pc + 1).*;
+                const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
                 const cond = framePtr[pc[3].arg];
                 const condVal = if (cond.isBool()) b: {
                     break :b cond.asBool();
@@ -2802,7 +2802,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 };
                 if (condVal) {
                     @setRuntimeSafety(false);
-                    pc += @intCast(usize, jump);
+                    pc += @as(usize, @intCast(jump));
                 } else {
                     pc += 4;
                 }
@@ -2847,10 +2847,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
 
-                const cachedStruct = @ptrCast(*align (1) u16, pc + 14).*;
+                const cachedStruct = @as(*align (1) u16, @ptrCast(pc + 14)).*;
                 if (typeId == cachedStruct) {
                     const stackSize = pc[7].arg;
-                    if (@ptrToInt(framePtr + startLocal + stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+                    if (@intFromPtr(framePtr + startLocal + stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                         return error.StackOverflow;
                     }
                     const retFramePtr = Value{ .retFramePtr = framePtr };
@@ -2858,7 +2858,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[1] = buildReturnInfo2(pc[3].arg, true, cy.bytecode.CallObjSymInstLen);
                     framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallObjSymInstLen };
                     framePtr[3] = retFramePtr;
-                    pc = vm.ops.ptr + @ptrCast(*align(1) u32, pc + 8).*;
+                    pc = vm.ops.ptr + @as(*align(1) u32, @ptrCast(pc + 8)).*;
                     continue;
                 }
 
@@ -2875,12 +2875,12 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
 
-                const cachedStruct = @ptrCast(*align (1) u16, pc + 14).*;
+                const cachedStruct = @as(*align (1) u16, @ptrCast(pc + 14)).*;
                 if (typeId == cachedStruct) {
                     // const newFramePtr = framePtr + startLocal;
                     vm.framePtr = framePtr;
-                    const func = @intToPtr(cy.NativeObjFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 8).*));
-                    const res = func(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+                    const func: cy.NativeObjFuncPtr = @ptrFromInt(@as(usize, @intCast(@as(*align (1) u48, @ptrCast(pc + 8)).*)));
+                    const res = func(@ptrCast(vm), recv, @ptrCast(framePtr + startLocal + 4), numArgs);
                     if (res.isInterrupt()) {
                         return error.Panic;
                     }
@@ -2915,7 +2915,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const startLocal = pc[1].arg;
                 const stackSize = pc[4].arg;
-                if (@ptrToInt(framePtr + startLocal + stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr + startLocal + stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -2925,7 +2925,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 framePtr[2] = Value{ .retPcPtr = pc + cy.bytecode.CallSymInstLen };
                 framePtr[3] = retFramePtr;
 
-                pc = @intToPtr([*]cy.InstDatum, @intCast(usize, @ptrCast(*align(1) u48, pc + 6).*));
+                pc = @ptrFromInt(@as(usize, @intCast(@as(*align(1) u48, @ptrCast(pc + 6)).*)));
                 continue;
             },
             .callNativeFuncIC => {
@@ -2938,8 +2938,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const newFramePtr = framePtr + startLocal;
                 vm.pc = pc;
                 vm.framePtr = newFramePtr;
-                const func = @intToPtr(cy.NativeFuncPtr, @intCast(usize, @ptrCast(*align (1) u48, pc + 6).*));
-                const res = func(@ptrCast(*UserVM, vm), @ptrCast([*]const Value, newFramePtr + 4), numArgs);
+                const func: cy.NativeFuncPtr = @ptrFromInt(@as(usize, @intCast(@as(*align (1) u48, @ptrCast(pc + 6)).*)));
+                const res = func(@ptrCast(vm), @ptrCast(newFramePtr + 4), numArgs);
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
@@ -2980,9 +2980,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             },
             .pushTry => {
                 const errDst = pc[1].arg;
-                const catchPcOffset = @ptrCast(*align (1) u16, pc + 2).*;
+                const catchPcOffset = @as(*align (1) u16, @ptrCast(pc + 2)).*;
                 if (vm.tryStack.len == vm.tryStack.buf.len) {
-                    try @call(.never_inline, vm.tryStack.growTotalCapacity, .{vm.alloc, vm.tryStack.len + 1});
+                    try @call(.never_inline, @TypeOf(vm.tryStack).growTotalCapacity, .{&vm.tryStack, vm.alloc, vm.tryStack.len + 1});
                 }
                 vm.tryStack.appendAssumeCapacity(.{
                     .fp = framePtr,
@@ -2994,7 +2994,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             },
             .popTry => {
                 vm.tryStack.len -= 1;
-                pc += @ptrCast(*align (1) u16, pc + 1).*;
+                pc += @as(*align (1) u16, @ptrCast(pc + 1)).*;
                 continue;
             },
             .throw => {
@@ -3009,7 +3009,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     }
                 } else {
                     // Not an error.
-                    return @call(.never_inline, vm.panic, .{"Not an error."});
+                    return @call(.never_inline, VM.panic, .{vm, "Not an error."});
                 }
             },
             .setFieldReleaseIC => {
@@ -3019,7 +3019,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[pc[1].arg];
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.head.typeId == @ptrCast(*align (1) u16, pc + 4).*) {
+                    if (obj.head.typeId == @as(*align (1) u16, @ptrCast(pc + 4)).*) {
                         const lastValue = obj.object.getValuePtr(pc[6].arg);
                         release(vm, lastValue.*);
                         lastValue.* = framePtr[pc[2].arg];
@@ -3032,7 +3032,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 // Deoptimize.
                 pc[0] = cy.InstDatum{ .code = .setFieldRelease };
                 // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
-                try @call(.never_inline, gvm.setFieldRelease, .{ recv, pc[3].arg, framePtr[pc[2].arg] });
+                try @call(.never_inline, VM.setFieldRelease, .{ vm, recv, pc[3].arg, framePtr[pc[2].arg] });
                 pc += 7;
                 continue;
             },
@@ -3044,7 +3044,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[2].arg;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.head.typeId == @ptrCast(*align (1) u16, pc + 5).*) {
+                    if (obj.head.typeId == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
                         framePtr[dst] = obj.object.getValue(pc[7].arg);
                         retain(vm, framePtr[dst]);
                         pc += 8;
@@ -3070,11 +3070,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 framePtr[pc[3].arg] = Value.initF64(step);
                 if (start == end) {
-                    pc += @ptrCast(*const align(1) u16, pc + 6).* + 7;
+                    pc += @as(*const align(1) u16, @ptrCast(pc + 6)).* + 7;
                 } else {
                     framePtr[pc[4].arg] = Value.initF64(start);
                     framePtr[pc[5].arg] = Value.initF64(start);
-                    const offset = @ptrCast(*const align(1) u16, pc + 6).*;
+                    const offset = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
                     pc[offset] = if (start < end)
                         cy.InstDatum{ .code = .forRange }
                     else
@@ -3091,7 +3091,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (counter < framePtr[pc[3].arg].asF64()) {
                     framePtr[pc[1].arg] = Value.initF64(counter);
                     framePtr[pc[4].arg] = Value.initF64(counter);
-                    pc -= @ptrCast(*const align(1) u16, pc + 5).*;
+                    pc -= @as(*const align(1) u16, @ptrCast(pc + 5)).*;
                 } else {
                     pc += 7;
                 }
@@ -3105,7 +3105,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (counter > framePtr[pc[3].arg].asF64()) {
                     framePtr[pc[1].arg] = Value.initF64(counter);
                     framePtr[pc[4].arg] = Value.initF64(counter);
-                    pc -= @ptrCast(*const align(1) u16, pc + 5).*;
+                    pc -= @as(*const align(1) u16, @ptrCast(pc + 5)).*;
                 } else {
                     pc += 7;
                 }
@@ -3115,10 +3115,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpJumpNotNone:"::);
                 }
-                const offset = @ptrCast(*const align(1) i16, &pc[1]).*;
+                const offset = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
                 if (!framePtr[pc[3].arg].isNone()) {
                     @setRuntimeSafety(false);
-                    pc += @intCast(usize, offset);
+                    pc += @as(usize, @intCast(offset));
                 } else {
                     pc += 4;
                 }
@@ -3145,7 +3145,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = pc[1].arg;
                 const dst = pc[2].arg;
-                const symId = @ptrCast(*align (1) u16, pc + 3).*;
+                const symId = @as(*align (1) u16, @ptrCast(pc + 3)).*;
                 const recv = framePtr[left];
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
@@ -3155,11 +3155,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.InstDatum{ .code = .fieldIC };
-                        @ptrCast(*align (1) u16, pc + 5).* = @intCast(u16, obj.head.typeId);
+                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.head.typeId);
                         pc[7] = cy.InstDatum{ .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
-                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.nameId});
+                        framePtr[dst] = @call(.never_inline, VM.getFieldFallback, .{vm, obj, sym.nameId});
                     }
                     pc += 8;
                     continue;
@@ -3173,7 +3173,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const recv = framePtr[pc[1].arg];
                 const dst = pc[2].arg;
-                const symId = @ptrCast(*align (1) u16, pc + 3).*;
+                const symId = @as(*align (1) u16, @ptrCast(pc + 3)).*;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
                     // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
@@ -3182,11 +3182,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.InstDatum{ .code = .fieldRetainIC };
-                        @ptrCast(*align (1) u16, pc + 5).* = @intCast(u16, obj.head.typeId);
+                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.head.typeId);
                         pc[7] = cy.InstDatum { .arg = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
-                        framePtr[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, sym.nameId});
+                        framePtr[dst] = @call(.never_inline, VM.getFieldFallback, .{vm, obj, sym.nameId});
                     }
                     retain(vm, framePtr[dst]);
                     pc += 8;
@@ -3212,7 +3212,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                         // Inline cache.
                         pc[0] = cy.InstDatum{ .code = .setFieldReleaseIC };
-                        @ptrCast(*align (1) u16, pc + 4).* = @intCast(u16, obj.head.typeId);
+                        @as(*align (1) u16, @ptrCast(pc + 4)).* = @intCast(obj.head.typeId);
                         pc[6] = cy.InstDatum { .arg = offset };
                         pc += 7;
                         continue;
@@ -3262,7 +3262,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const funcPc = getInstOffset(vm, pc) - pc[1].arg;
                 const numParams = pc[2].arg;
                 const stackSize = pc[3].arg;
-                const rFuncSigId = @ptrCast(*const align(1) u16, pc + 4).*;
+                const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
                 const dst = pc[6].arg;
                 pc += 7;
                 framePtr[dst] = try @call(.never_inline, cy.heap.allocLambda, .{vm, funcPc, numParams, stackSize, rFuncSigId });
@@ -3276,7 +3276,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const numParams = pc[2].arg;
                 const numCaptured = pc[3].arg;
                 const stackSize = pc[4].arg;
-                const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+                const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
                 const local = pc[7].arg;
                 const dst = pc[8].arg;
                 const capturedVals = pc[9..9+numCaptured];
@@ -3289,7 +3289,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpStaticVar:"::);
                 }
-                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
                 const sym = vm.varSyms.buf[symId];
                 retain(vm, sym.value);
                 framePtr[pc[3].arg] = sym.value;
@@ -3300,7 +3300,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpSetStaticVar:"::);
                 }
-                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
                 const prev = vm.varSyms.buf[symId].value;
                 vm.varSyms.buf[symId].value = framePtr[pc[3].arg];
                 release(vm, prev);
@@ -3311,7 +3311,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpStaticFunc:"::);
                 }
-                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
                 framePtr[pc[3].arg] = try cy.heap.allocFuncFromSym(vm, symId);
                 pc += 4;
                 continue;
@@ -3549,7 +3549,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpCast:"::);
                 }
                 const val = framePtr[pc[1].arg];
-                const expTypeId = @ptrCast(*const align(1) u16, pc + 2).*;
+                const expTypeId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
                 if (val.getTypeId() == expTypeId) {
                     pc += 4;
                     continue;
@@ -3562,7 +3562,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpCastAbstract:"::);
                 }
                 const val = framePtr[pc[1].arg];
-                const expTypeSymId = @ptrCast(*const align(1) u16, pc + 2).*;
+                const expTypeSymId = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
                 if (expTypeSymId == bt.Any) {
                     pc += 4;
                     continue;
@@ -3586,7 +3586,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const f = @intToFloat(f64, left.asF64toI32() & right.asF64toI32());
+                    const f: f64 = @floatFromInt(left.asF64toI32() & right.asF64toI32());
                     framePtr[pc[3].arg] = Value.initF64(f);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
@@ -3601,7 +3601,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const f = @intToFloat(f64, left.asF64toI32() | right.asF64toI32());
+                    const f: f64 = @floatFromInt(left.asF64toI32() | right.asF64toI32());
                     framePtr[pc[3].arg] = Value.initF64(f);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
@@ -3616,7 +3616,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const f = @intToFloat(f64, left.asF64toI32() ^ right.asF64toI32());
+                    const f: f64 = @floatFromInt(left.asF64toI32() ^ right.asF64toI32());
                     framePtr[pc[3].arg] = Value.initF64(f);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
@@ -3631,7 +3631,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = &framePtr[pc[1].arg];
                 const val = dst.*;
                 if (val.isNumber()) {
-                    const f = @intToFloat(f64, ~val.asF64toI32());
+                    const f: f64 = @floatFromInt(~val.asF64toI32());
                     dst.* = Value.initF64(f);
                     pc += 2;
                     continue;
@@ -3646,8 +3646,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const amt = @intCast(u5, @bitCast(u64, right.asF64toI64()) % 32);
-                    const res = @intToFloat(f64, left.asF64toI32() << amt);
+                    const mod: u64 = @bitCast(@mod(right.asF64toI64(), 32));
+                    const amt: u5 = @intCast(mod);
+                    const res: f64 = @floatFromInt(left.asF64toI32() << amt);
                     framePtr[pc[3].arg] = Value.initF64(res);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
@@ -3662,8 +3663,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const left = framePtr[pc[1].arg];
                 const right = framePtr[pc[2].arg];
                 if (Value.bothNumbers(left, right)) {
-                    const amt = @intCast(u5, @bitCast(u64, right.asF64toI64()) % 32);
-                    const res = @intToFloat(f64, left.asF64toI32() >> amt);
+                    const mod: u64 = @bitCast(@mod(right.asF64toI64(), 32));
+                    const amt: u5 = @intCast(mod);
+                    const res: f64 = @floatFromInt(left.asF64toI32() >> amt);
                     framePtr[pc[3].arg] = Value.initF64(res);
                 } else {
                     return @call(.never_inline, panicExpectedNumber, .{vm});
@@ -3680,7 +3682,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 const numRet = pc[3].arg;
                 const methodId = pc[4].arg;
-                const anySelfFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+                const anySelfFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
 
                 const recv = framePtr[startLocal + numArgs + 4 - 1];
                 const typeId = recv.getTypeId();
@@ -3707,13 +3709,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const argStartReg = pc[1].arg;
                 const numArgs = pc[2].arg;
-                const funcSigId = @ptrCast(*const align(1) u16, pc + 3).*;
+                const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
                 const funcSig = vm.compiler.sema.getResolvedFuncSig(funcSigId);
                 const args = framePtr[argStartReg .. argStartReg + funcSig.numParams()];
 
                 // TODO: numArgs and this check can be removed if overloaded symbols are grouped by numParams.
                 if (numArgs != funcSig.numParams()) {
-                    const funcId = @ptrCast(*const align(1) u16, pc + 5 + 4).*;
+                    const funcId = @as(*const align(1) u16, @ptrCast(pc + 5 + 4)).*;
                     return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
                 }
 
@@ -3723,7 +3725,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     const argSemaTypeId = vm.types.buf[argTypeId].rTypeSymId;
                     if (!types.isTypeSymCompat(&vm.compiler, argSemaTypeId, cstrTypeId)) {
                         // Assumes next inst is callSym/callNativeFuncIC/callFuncIC.
-                        const funcId = @ptrCast(*const align(1) u16, pc + 5 + 4).*;
+                        const funcId = @as(*const align(1) u16, @ptrCast(pc + 5 + 4)).*;
                         return panicIncompatibleFuncSig(vm, funcId, args, funcSigId);
                     }
                 }
@@ -3736,9 +3738,9 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const startLocal = pc[1].arg;
                 const numArgs = pc[2].arg;
-                const numRet = pc[3].arg;
-                const symId = @ptrCast(*const align(1) u16, pc + 4).*;
-                const res = try @call(.never_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, numRet)});
+                const numRet: u2 = @intCast(pc[3].arg);
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+                const res = try @call(.never_inline, VM.callSym, .{vm, pc, framePtr, symId, startLocal, numArgs, numRet});
                 pc = res.pc;
                 framePtr = res.sp;
                 continue;
@@ -3755,7 +3757,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     _ = asm volatile ("LOpSym:"::);
                 }
                 const symType = pc[1].arg;
-                const symId = @ptrCast(*const align(1) u32, pc + 2).*;
+                const symId = @as(*const align(1) u32, @ptrCast(pc + 2)).*;
                 framePtr[pc[6].arg] = try cy.heap.allocMetaType(vm, symType, symId);
                 pc += 7;
                 continue;
@@ -3764,7 +3766,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpSetStaticFunc:"::);
                 }
-                const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
                 try @call(.never_inline, setStaticFunc, .{vm, symId, framePtr[pc[3].arg]});
                 pc += 4;
                 continue;
@@ -3775,7 +3777,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 vm.endLocal = pc[1].arg;
                 pc += 2;
-                vm.curFiber.pcOffset = @intCast(u32, getInstOffset(vm, pc));
+                vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc));
                 return error.End;
             },
         }
@@ -3854,7 +3856,7 @@ fn dumpEvalOp(vm: *const VM, pc: [*]const cy.InstDatum) !void {
     const offset = getInstOffset(vm, pc);
     switch (pc[0].code) {
         .constOp => {
-            const idx = @ptrCast(*const align (1) u16, pc + 1).*;
+            const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].arg;
             _ = dst;
             const val = Value{ .val = vm.consts[idx].val };
@@ -3898,7 +3900,7 @@ pub fn call(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: Value, s
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.closure.stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr.* + startLocal + obj.closure.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -3922,7 +3924,7 @@ pub fn call(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: Value, s
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.lambda.stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+                if (@intFromPtr(framePtr.* + startLocal + obj.lambda.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                     return error.StackOverflow;
                 }
 
@@ -3945,7 +3947,7 @@ pub fn call(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: Value, s
                 vm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
                 vm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func(@ptrCast(*UserVM, vm), newFramePtr + 4, numArgs);
+                const res = obj.nativeFunc1.func(@ptrCast(vm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
             },
             else => {
@@ -3968,7 +3970,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: 
                     stdx.panic("params/args mismatch");
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.closure.stackSize) >= @ptrToInt(vm.stack.ptr) + (vm.stack.len << 3)) {
+                if (@intFromPtr(framePtr.* + startLocal + obj.closure.stackSize) >= @intFromPtr(vm.stack.ptr) + (vm.stack.len << 3)) {
                     return error.StackOverflow;
                 }
 
@@ -3986,7 +3988,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: 
                     stdx.fatal();
                 }
 
-                if (@ptrToInt(framePtr.* + startLocal + obj.lambda.stackSize) >= @ptrToInt(vm.stack.ptr) + (vm.stack.len << 3)) {
+                if (@intFromPtr(framePtr.* + startLocal + obj.lambda.stackSize) >= @intFromPtr(vm.stack.ptr) + (vm.stack.len << 3)) {
                     return error.StackOverflow;
                 }
 
@@ -4001,7 +4003,7 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.InstDatum, framePtr: *[*]Value, callee: 
                 vm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
                 vm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func(@ptrCast(*UserVM, vm), newFramePtr + 4, numArgs);
+                const res = obj.nativeFunc1.func(@ptrCast(vm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
                 cy.arc.releaseObject(vm, obj);
                 pc.* += 14;
@@ -4214,7 +4216,7 @@ fn callMethodEntryNoInline(
 ) linksection(cy.HotSection) !cy.fiber.PcSp {
     switch (sym.entryT) {
         .func => {
-            if (@ptrToInt(framePtr + startLocal + sym.inner.func.numLocals) >= @ptrToInt(vm.stack.ptr) + 8 * vm.stack.len) {
+            if (@intFromPtr(framePtr + startLocal + sym.inner.func.numLocals) >= @intFromPtr(vm.stack.ptr) + 8 * vm.stack.len) {
                 return error.StackOverflow;
             }
 
@@ -4232,7 +4234,7 @@ fn callMethodEntryNoInline(
             const newFramePtr = framePtr + startLocal;
             gvm.pc = pc;
             gvm.framePtr = framePtr;
-            const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, &gvm), obj, newFramePtr+4, numArgs);
+            const res = sym.inner.nativeFunc1(@ptrCast(&gvm), obj, newFramePtr+4, numArgs);
             if (reqNumRetVals == 1) {
                 newFramePtr[0] = res;
             } else {
@@ -4258,7 +4260,7 @@ fn callMethodEntryNoInline(
             // gvm.pc += 3;
             const newFramePtr = gvm.framePtr + startLocal;
             gvm.pc = pc;
-            const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, &gvm), obj, @ptrCast([*]const Value, newFramePtr+4), numArgs);
+            const res = sym.inner.nativeFunc2(@ptrCast(&gvm), obj, @ptrCast(newFramePtr+4), numArgs);
             if (reqNumRetVals == 2) {
                 gvm.stack[newFramePtr] = res.left;
                 gvm.stack[newFramePtr+1] = res.right;
@@ -4308,15 +4310,15 @@ pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool, comp
 }
 
 pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.InstDatum) u32 {
-    return @intCast(u32, cy.fiber.getInstOffset(vm.ops.ptr, to));
+    return @intCast(cy.fiber.getInstOffset(vm.ops.ptr, to));
 }
 
 pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
-    return @intCast(u32, cy.fiber.getStackOffset(vm.stack.ptr, to));
+    return @intCast(cy.fiber.getStackOffset(vm.stack.ptr, to));
 }
 
 pub inline fn toFramePtr(offset: usize) [*]Value {
-    return @ptrCast([*]Value, &gvm.stack[offset]);
+    return @ptrCast(&gvm.stack[offset]);
 }
 
 /// Like Value.dump but shows heap values.
@@ -4394,8 +4396,8 @@ pub const KeyU96 = extern union {
 pub const KeyU96Context = struct {
     pub fn hash(_: @This(), key: KeyU96) u64 {
         var hasher = std.hash.Wyhash.init(0);
-        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.val.a)});
-        @call(.always_inline, hasher.update, .{std.mem.asBytes(&key.val.b)});
+        @call(.always_inline, std.hash.Wyhash.update, .{&hasher, std.mem.asBytes(&key.val.a)});
+        @call(.always_inline, std.hash.Wyhash.update, .{&hasher, std.mem.asBytes(&key.val.b)});
         return hasher.final();
     }
     pub fn eql(_: @This(), a: KeyU96, b: KeyU96) bool {
@@ -4431,7 +4433,7 @@ const SliceWriter = struct {
             }
         }
         std.mem.copy(u8, self.buf[self.idx.*..self.idx.*+data.len], data);
-        self.idx.* += @intCast(u32, data.len);
+        self.idx.* += @intCast(data.len);
         return data.len;
     }
 
@@ -4445,8 +4447,8 @@ const SliceWriter = struct {
                 return Error.OutOfMemory;
             }
         }
-        std.mem.set(u8, self.buf[self.idx.*..self.idx.*+n], byte);
-        self.idx.* += @intCast(u32, n);
+        @memset(self.buf[self.idx.*..self.idx.*+n], byte);
+        self.idx.* += @intCast(n);
     }
 };
 
@@ -4475,18 +4477,18 @@ fn opMatch(vm: *const VM, pc: [*]const cy.InstDatum, framePtr: [*]const Value) u
             @call(.never_inline, evalCompareBool, .{vm, expr, right});
         if (cond) {
             // Jump.
-            return @ptrCast(*const align (1) u16, pc + 4 + i * 3).*;
+            return @as(*const align (1) u16, @ptrCast(pc + 4 + i * 3)).*;
         }
     }
     // else case
-    return @ptrCast(*const align (1) u16, pc + 4 + i * 3 - 1).*;
+    return @as(*const align (1) u16, @ptrCast(pc + 4 + i * 3 - 1)).*;
 }
 
 fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
     const entry = vm.funcSyms.buf[symId];
-    switch (@intToEnum(rt.FuncSymbolEntryType, entry.entryT)) {
+    switch (@as(rt.FuncSymbolEntryType, @enumFromInt(entry.entryT))) {
         .closure => {
-            cy.arc.releaseObject(vm, @ptrCast(*cy.HeapObject, entry.inner.closure));
+            cy.arc.releaseObject(vm, @ptrCast(entry.inner.closure));
         },
         else => {
             // Check to cleanup previous dep.
@@ -4553,11 +4555,11 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
 
                 const rFuncSig = vm.compiler.sema.resolvedFuncSigs.items[dstRFuncSigId];
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @enumToInt(rt.FuncSymbolEntryType.nativeFunc1),
+                    .entryT = @intFromEnum(rt.FuncSymbolEntryType.nativeFunc1),
                     .innerExtra = .{
                         .nativeFunc1 = .{
                             .typedFlagNumParams = rFuncSig.numParams(),
-                            .rFuncSigId = @intCast(u16, dstRFuncSigId),
+                            .rFuncSigId = @intCast(dstRFuncSigId),
                         }
                     },
                     .inner = .{
@@ -4568,12 +4570,13 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
             },
             rt.LambdaT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
-                if (!isAssignFuncSigCompat(vm, @intCast(u32, obj.lambda.rFuncSigId), dstRFuncSigId)) {
-                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.lambda.rFuncSigId), dstRFuncSigId});
+                if (!isAssignFuncSigCompat(vm, @intCast(obj.lambda.rFuncSigId), dstRFuncSigId)) {
+                    const sigId: u32 = @intCast(obj.lambda.rFuncSigId);
+                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, sigId, dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @enumToInt(rt.FuncSymbolEntryType.func),
+                    .entryT = @intFromEnum(rt.FuncSymbolEntryType.func),
                     .inner = .{
                         .func = .{
                             .pc = obj.lambda.funcPc,
@@ -4586,12 +4589,13 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
             },
             rt.ClosureT => {
                 const dstRFuncSigId = getResolvedFuncSigIdOfSym(vm, symId);
-                if (!isAssignFuncSigCompat(vm, @intCast(u32, obj.closure.rFuncSigId), dstRFuncSigId)) {
-                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, @intCast(u32, obj.closure.rFuncSigId), dstRFuncSigId});
+                if (!isAssignFuncSigCompat(vm, @intCast(obj.closure.rFuncSigId), dstRFuncSigId)) {
+                    const sigId: u32 = @intCast(obj.closure.rFuncSigId);
+                    return @call(.never_inline, reportAssignFuncSigMismatch, .{vm, sigId, dstRFuncSigId});
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @enumToInt(rt.FuncSymbolEntryType.closure),
+                    .entryT = @intFromEnum(rt.FuncSymbolEntryType.closure),
                     .inner = .{
                         .closure = val.asPointer(*cy.heap.Closure),
                     },
@@ -4608,7 +4612,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
 }
 
 fn getResolvedFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.ResolvedFuncSigId {
-    switch (@intToEnum(rt.FuncSymbolEntryType, vm.funcSyms.buf[symId].entryT)) {
+    switch (@as(rt.FuncSymbolEntryType, @enumFromInt(vm.funcSyms.buf[symId].entryT))) {
         .nativeFunc1 => {
             return vm.funcSyms.buf[symId].innerExtra.nativeFunc1.rFuncSigId;
         },
@@ -4616,7 +4620,7 @@ fn getResolvedFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.ResolvedFuncSi
             return vm.funcSyms.buf[symId].innerExtra.func.rFuncSigId;
         },
         .closure => {
-            return @intCast(u32, vm.funcSyms.buf[symId].inner.closure.rFuncSigId);
+            return @intCast(vm.funcSyms.buf[symId].inner.closure.rFuncSigId);
         },
         .none => {
             return vm.funcSyms.buf[symId].innerExtra.none.rFuncSigId;
@@ -4630,15 +4634,15 @@ fn callMethodEntry(
 ) linksection(cy.HotSection) !cy.fiber.PcSp {
     switch (sym.mruEntryType) {
         .singleUntypedFunc => {
-            if (@ptrToInt(framePtr + startLocal + sym.inner.func.stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+            if (@intFromPtr(framePtr + startLocal + sym.inner.func.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
             // Optimize.
             pc[0] = cy.InstDatum{ .code = .callObjFuncIC };
-            pc[7] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.stackSize) };
-            @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
-            @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+            pc[7] = cy.InstDatum{ .arg = @intCast(sym.inner.func.stackSize) };
+            @as(*align(1) u32, @ptrCast(pc + 8)).* = sym.inner.func.pc;
+            @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
             const newFp = framePtr + startLocal;
             newFp[1] = buildReturnInfo2(reqNumRetVals, true, cy.bytecode.CallObjSymInstLen);
@@ -4652,11 +4656,11 @@ fn callMethodEntry(
         .singleUntypedNativeFunc1 => {
             // Optimize.
             pc[0] = cy.InstDatum{ .code = .callObjNativeFuncIC };
-            @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
-            @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+            @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(sym.inner.nativeFunc1));
+            @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
             vm.framePtr = framePtr;
-            const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+            const res = sym.inner.nativeFunc1(@ptrCast(vm), recv, @ptrCast(framePtr + startLocal + 4), numArgs);
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -4680,7 +4684,7 @@ fn callMethodEntry(
         },
         .singleUntypedNativeFunc2 => {
             vm.framePtr = framePtr;
-            const res = sym.inner.nativeFunc2(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+            const res = sym.inner.nativeFunc2(@ptrCast(vm), recv, @ptrCast(framePtr + startLocal + 4), numArgs);
             if (res.left.isInterrupt()) {
                 return error.Panic;
             }
@@ -4719,16 +4723,16 @@ fn callMethodEntry(
                 }
             }
 
-            if (@ptrToInt(framePtr + startLocal + sym.inner.func.stackSize) >= @ptrToInt(vm.stackEndPtr)) {
+            if (@intFromPtr(framePtr + startLocal + sym.inner.func.stackSize) >= @intFromPtr(vm.stackEndPtr)) {
                 return error.StackOverflow;
             }
 
             // Optimize only if anySelfFuncSigId matches.
             if (anySelfFuncSigId == sym.rFuncSigId) {
                 pc[0] = cy.InstDatum{ .code = .callObjFuncIC };
-                pc[7] = cy.InstDatum{ .arg = @intCast(u8, sym.inner.func.stackSize) };
-                @ptrCast(*align(1) u32, pc + 8).* = sym.inner.func.pc;
-                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+                pc[7] = cy.InstDatum{ .arg = @intCast(sym.inner.func.stackSize) };
+                @as(*align(1) u32, @ptrCast(pc + 8)).* = sym.inner.func.pc;
+                @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
             }
 
             const newFp = framePtr + startLocal;
@@ -4755,12 +4759,12 @@ fn callMethodEntry(
             // Optimize only if anySelfFuncSigId matches.
             if (anySelfFuncSigId == sym.rFuncSigId) {
                 pc[0] = cy.InstDatum{ .code = .callObjNativeFuncIC };
-                @ptrCast(*align(1) u48, pc + 8).* = @intCast(u48, @ptrToInt(sym.inner.nativeFunc1));
-                @ptrCast(*align(1) u16, pc + 14).* = @intCast(u16, typeId);
+                @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(sym.inner.nativeFunc1));
+                @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
             }
 
             vm.framePtr = framePtr;
-            const res = sym.inner.nativeFunc1(@ptrCast(*UserVM, vm), recv, @ptrCast([*]const Value, framePtr + startLocal + 4), numArgs);
+            const res = sym.inner.nativeFunc1(@ptrCast(vm), recv, @ptrCast(framePtr + startLocal + 4), numArgs);
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -4794,16 +4798,18 @@ export fn zFatal() void {
 }
 
 export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
-    return @tagName(@intToEnum(cy.OpCode, code));
+    const ecode: cy.OpCode = @enumFromInt(code);
+    return @tagName(ecode);
 }
 
 export fn zCallSym(vm: *VM, pc: [*]cy.InstDatum, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.PcSp {
-    const res = @call(.always_inline, vm.callSym, .{pc, framePtr, symId, startLocal, numArgs, @intCast(u2, reqNumRetVals)}) catch {
+    const numRetVals: u2 = @intCast(reqNumRetVals);
+    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, symId, startLocal, numArgs, numRetVals}) catch {
         stdx.fatal();
     };
     return .{
-        .pc = @ptrCast([*c]u8, res.pc),
-        .sp = @ptrCast([*c]u64, res.sp),
+        .pc = @ptrCast(res.pc),
+        .sp = @ptrCast(res.sp),
     };
 }
 
@@ -4817,7 +4823,7 @@ export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
 
 export fn zEnd(vm: *cy.VM, pc: [*]const cy.InstDatum) void {
     vm.endLocal = pc[1].arg;
-    vm.curFiber.pcOffset = @intCast(u32, getInstOffset(vm, pc + 2));
+    vm.curFiber.pcOffset = @intCast(getInstOffset(vm, pc + 2));
 }
 
 export fn zAllocList(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.ValueResult {
@@ -4828,7 +4834,7 @@ export fn zAllocList(vm: *cy.VM, elemStart: [*]const Value, nElems: u8) vmc.Valu
         };
     };
     return .{
-        .val = @bitCast(vmc.Value, list),
+        .val = @bitCast(list),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
@@ -4852,8 +4858,8 @@ export fn zCallObjSym(
             };
         };
         return .{
-            .pc = @ptrCast([*c]u8, res.pc),
-            .stack = @ptrCast([*c]u64, res.sp),
+            .pc = @ptrCast(res.pc),
+            .stack = @ptrCast(res.sp),
             .code = vmc.RES_CODE_SUCCESS,
         };
     } else {
@@ -4865,8 +4871,8 @@ export fn zCallObjSym(
             };
         };
         return .{
-            .pc = @ptrCast([*c]u8, res.pc),
-            .stack = @ptrCast([*c]u64, res.sp),
+            .pc = @ptrCast(res.pc),
+            .stack = @ptrCast(res.sp),
             .code = vmc.RES_CODE_SUCCESS,
         };
     }
@@ -4880,7 +4886,7 @@ export fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, init
         };
     };
     return .{
-        .val = @bitCast(vmc.Value, fiber),
+        .val = @bitCast(fiber),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
@@ -4888,16 +4894,16 @@ export fn zAllocFiber(vm: *cy.VM, pc: u32, args: [*]const Value, nargs: u8, init
 export fn zPushFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) vmc.PcSp {
     const res = cy.fiber.pushFiber(vm, curFiberEndPc, curStack, fiber, parentDstLocal);
     return .{
-        .pc = @ptrCast([*c]u8, res.pc),
-        .sp = @ptrCast([*c]u64, res.sp),
+        .pc = @ptrCast(res.pc),
+        .sp = @ptrCast(res.sp),
     };
 }
 
 export fn zPopFiber(vm: *cy.VM, curFiberEndPc: usize, curStack: [*]Value, retValue: Value) vmc.PcSp {
     const res = cy.fiber.popFiber(vm, curFiberEndPc, curStack, retValue);
     return .{
-        .pc = @ptrCast([*c]u8, res.pc),
-        .sp = @ptrCast([*c]u64, res.sp),
+        .pc = @ptrCast(res.pc),
+        .sp = @ptrCast(res.sp),
     };
 }
 
@@ -4909,7 +4915,7 @@ export fn zAllocObjectSmall(vm: *cy.VM, typeId: rt.TypeId, fields: [*]const Valu
         };
     };
     return .{
-        .val = @bitCast(vmc.Value, res),
+        .val = @bitCast(res),
         .code = vmc.RES_CODE_SUCCESS,
     };
 }
@@ -4919,9 +4925,9 @@ export fn zGetFieldOffsetFromTable(vm: *VM, typeId: rt.TypeId, symId: SymbolId) 
 }
 
 export fn zEvalCompare(vm: *VM, left: Value, right: Value) vmc.Value {
-    return @bitCast(vmc.Value, evalCompare(vm, left, right));
+    return @bitCast(evalCompare(vm, left, right));
 }
 
 export fn zEvalCompareNot(vm: *VM, left: Value, right: Value) vmc.Value {
-    return @bitCast(vmc.Value, evalCompareNot(vm, left, right));
+    return @bitCast(evalCompareNot(vm, left, right));
 }

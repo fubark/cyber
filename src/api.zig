@@ -28,11 +28,11 @@ pub const UserVM = struct {
     }
 
     pub inline fn internal(self: *UserVM) *cy.VM {
-        return @ptrCast(*cy.VM, self);
+        return @ptrCast(self);
     }
 
     pub inline fn constInternal(self: *const UserVM) *const cy.VM {
-        return @ptrCast(*const cy.VM, self);
+        return @ptrCast(self);
     }
 
     pub fn ensureUntypedFuncSig(self: *UserVM, numParams: u32) !cy.sema.ResolvedFuncSigId {
@@ -59,11 +59,11 @@ pub const UserVM = struct {
     }
 
     pub fn getStackTrace(self: *UserVM) *const cy.StackTrace {
-        return @ptrCast(*const VM, self).getStackTrace();
+        return @as(*const VM, @ptrCast(self)).getStackTrace();
     }
 
     pub fn getParserErrorMsg(self: *const UserVM) []const u8 {
-        const vm = @ptrCast(*const VM, self);
+        const vm: *const VM = @ptrCast(self);
         const chunk = vm.compiler.chunks.items[vm.compiler.lastErrChunk];
         return chunk.parser.last_err;
     }
@@ -111,7 +111,7 @@ pub const UserVM = struct {
     }
 
     pub fn fillUndefinedStackSpace(self: *UserVM, val: Value) void {
-        std.mem.set(Value, self.internal().stack, val);
+        @memset(self.internal().stack, val);
     }
 
     pub inline fn releaseObject(self: *UserVM, obj: *cy.HeapObject) void {
@@ -131,7 +131,7 @@ pub const UserVM = struct {
     }
 
     pub inline fn getGlobalRC(self: *const UserVM) usize {
-        return cy.arc.getGlobalRC(@ptrCast(*const VM, self));
+        return cy.arc.getGlobalRC(@ptrCast(self));
     }
 
     pub inline fn checkMemory(self: *UserVM) !bool {
@@ -151,7 +151,7 @@ pub const UserVM = struct {
     }
 
     pub inline fn allocator(self: *const UserVM) std.mem.Allocator {
-        return @ptrCast(*const VM, self).alloc;
+        return @as(*const VM, @ptrCast(self)).alloc;
     }
 
     pub inline fn allocEmptyList(self: *UserVM) !Value {
@@ -211,7 +211,7 @@ pub const UserVM = struct {
             if (runeLen == str.len) {
                 return self.allocAstring(str);
             } else {
-                return self.allocUstring(str, @intCast(u32, runeLen));
+                return self.allocUstring(str, @intCast(runeLen));
             }
         } else {
             return self.allocRawString(str);
@@ -283,7 +283,7 @@ pub const UserVM = struct {
     }
 
     pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {
-        return @ptrCast(*const VM, self).valueAsString(val);
+        return @as(*const VM, @ptrCast(self)).valueAsString(val);
     }
 
     pub inline fn getOrWriteValueString(self: *UserVM, writer: anytype, val: Value, charLen: *u32) []const u8 {
@@ -299,19 +299,19 @@ pub const UserVM = struct {
     }
 
     pub inline fn valueToTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
-        return @ptrCast(*const VM, self).valueToTempString2(val, outCharLen);
+        return @as(*const VM, @ptrCast(self)).valueToTempString2(val, outCharLen);
     }
 
     pub inline fn valueToNextTempString(self: *UserVM, val: Value) []const u8 {
-        return @ptrCast(*const VM, self).valueToNextTempString(val);
+        return @as(*const VM, @ptrCast(self)).valueToNextTempString(val);
     }
 
     pub inline fn valueToNextTempString2(self: *UserVM, val: Value, outCharLen: *u32) []const u8 {
-        return @ptrCast(*const VM, self).valueToNextTempString2(val, outCharLen);
+        return @as(*const VM, @ptrCast(self)).valueToNextTempString2(val, outCharLen);
     }
 
     pub inline fn valueToString(self: *UserVM, val: Value) ![]const u8 {
-        return @ptrCast(*const VM, self).valueToString(val);
+        return @as(*const VM, @ptrCast(self)).valueToString(val);
     }
 
     /// Used to return a panic from a native function body.
@@ -319,7 +319,7 @@ pub const UserVM = struct {
         @setCold(true);
         const vm = self.internal();
         const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
-        vm.panicPayload = @intCast(u64, @ptrToInt(dupe.ptr)) | (@as(u64, dupe.len) << 48);
+        vm.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
         vm.panicType = .msg;
         return Value.Interrupt;
     }
@@ -344,8 +344,8 @@ pub const UserVM = struct {
     }
 
     pub fn getNewFramePtrOffset(self: *UserVM, args: [*]const Value, nargs: u8) u32 {
-        const vm = @ptrCast(*const VM, self);
-        return @intCast(u32, cy.fiber.getStackOffset(vm.stack.ptr, args + nargs));
+        const vm: *const VM = @ptrCast(self);
+        return @intCast(cy.fiber.getStackOffset(vm.stack.ptr, args + nargs));
     }
 
     pub fn callFunc(self: *UserVM, framePtr: u32, func: Value, args: []const Value) !Value {
@@ -362,7 +362,7 @@ pub const UserVM = struct {
             vm.framePtr[4 + i] = arg;
         }
         const retInfo = cy.vm.buildReturnInfo(1, false, 0);
-        try cy.vm.callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(u8, args.len), retInfo);
+        try cy.vm.callNoInline(vm, &vm.pc, &vm.framePtr, func, 0, @intCast(args.len), retInfo);
         try @call(.never_inline, cy.vm.evalLoopGrowStack, .{vm});
 
         const res = vm.framePtr[0];

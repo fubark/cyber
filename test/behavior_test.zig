@@ -768,7 +768,7 @@ test "Import http spec." {
 
     // Import error.UnknownHostName.
     try run.resetEnv();
-    var client = http.MockHttpClient.init();
+    var client = http.MockHttpClient.init(t.alloc);
     client.retReqError = error.UnknownHostName;
     run.vm.internal().httpClient = client.iface();
     var res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
@@ -788,7 +788,7 @@ test "Import http spec." {
 
     // Import NotFound response code.
     try run.resetEnv();
-    client = http.MockHttpClient.init();
+    client = http.MockHttpClient.init(t.alloc);
     client.retStatusCode = std.http.Status.not_found;
     run.vm.internal().httpClient = client.iface();
     res = run.evalExtNoReset(Config.initFileModules("./test/import_test.cy").withSilent(),
@@ -808,7 +808,7 @@ test "Import http spec." {
 
     // Successful import.
     try run.resetEnv();
-    client = http.MockHttpClient.init();
+    client = http.MockHttpClient.init(t.alloc);
     client.retBody =
         \\var foo: 123
         ;
@@ -961,9 +961,9 @@ test "os module" {
         \\os.endian
     );
     if (builtin.cpu.arch.endian() == .Little) {
-        try t.eq(val.asSymbolId(), @enumToInt(bindings.Symbol.little));
+        try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.little));
     } else {
-        try t.eq(val.asSymbolId(), @enumToInt(bindings.Symbol.big));
+        try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.big));
     }
 
     run.deinit();
@@ -1195,7 +1195,7 @@ test "Symbols." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
         const id = try run.vm.internal().ensureSymbol("Tiger");
-        try t.eq(val.asF64toI32(), @intCast(i32, id));
+        try t.eq(val.asF64toI32(), @as(i32, @intCast(id)));
     }}.func);
 }
 
@@ -2560,7 +2560,7 @@ test "Arithmetic operators." {
         \\1 / 0
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
-        try run.valueIsF64(val, std.math.inf_f64);
+        try run.valueIsF64(val, std.math.inf(f64));
     }}.func);
 
     // NaN.

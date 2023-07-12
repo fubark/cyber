@@ -48,7 +48,7 @@ pub const ValueMap = struct {
     fn load(self: *const ValueMap) u32 {
         const maxLoad = (self.cap * MaxLoadPercentage) / 100;
         std.debug.assert(maxLoad >= self.available);
-        return @truncate(u32, maxLoad - self.available);
+        return @truncate(maxLoad - self.available);
     }
 
     pub fn getOrPut(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, key: cy.Value) linksection(cy.Section) std.mem.Allocator.Error!GetOrPutResult {
@@ -71,7 +71,7 @@ pub const ValueMap = struct {
         const mask = self.cap - 1;
         const fingerprint = Metadata.takeFingerprint(hash);
         var limit = self.cap;
-        var idx = @truncate(usize, hash & mask);
+        var idx: usize = @truncate(hash & mask);
 
         var first_tombstone_idx: usize = self.cap; // invalid index
         var md = self.metadata.?[idx];
@@ -117,7 +117,7 @@ pub const ValueMap = struct {
 
         const hash = computeHash(vm, key);
         const mask = self.cap - 1;
-        var idx = @truncate(usize, hash & mask);
+        var idx: usize = @truncate(hash & mask);
 
         var md = self.metadata.?[idx];
         while (md.isUsed()) {
@@ -174,7 +174,7 @@ pub const ValueMap = struct {
     }
 
     fn capacityForSize(size: u32) linksection(cy.Section) u32 {
-        var newCap = @truncate(u32, (@as(u64, size) * 100) / MaxLoadPercentage + 1);
+        var newCap: u32 = @truncate((@as(u64, size) * 100) / MaxLoadPercentage + 1);
         newCap = std.math.ceilPowerOfTwo(u32, newCap) catch unreachable;
         return newCap;
     }
@@ -192,7 +192,7 @@ pub const ValueMap = struct {
 
         // Don't loop indefinitely when there are no empty slots.
         var limit = self.cap;
-        var idx = @truncate(usize, hash & mask);
+        var idx: usize = @truncate(hash & mask);
 
         var md = self.metadata.?[idx];
         while (!md.isFree() and limit != 0) {
@@ -229,7 +229,7 @@ pub const ValueMap = struct {
 
         // Don't loop indefinitely when there are no empty slots.
         var limit = self.cap;
-        var idx = @truncate(usize, hash & mask);
+        var idx: usize = @truncate(hash & mask);
 
         var md = self.metadata.?[idx];
         while (!md.isFree() and limit != 0) {
@@ -248,23 +248,23 @@ pub const ValueMap = struct {
     }
 
     fn grow(self: *ValueMap, alloc: std.mem.Allocator, vm: *const cy.VM, newCap: u32) std.mem.Allocator.Error!void {
-        const finalCap = std.math.max(newCap, 8);
+        const finalCap = @max(newCap, 8);
         std.debug.assert(finalCap > self.cap);
         std.debug.assert(std.math.isPowerOfTwo(newCap));
 
         const metaSize = finalCap;
-        const entriesStart = std.mem.alignForward(metaSize, 8);
+        const entriesStart = std.mem.alignForward(usize, metaSize, 8);
         const totalSize = entriesStart + finalCap * @sizeOf(ValueMapEntry);
 
         const newBuf = try alloc.alignedAlloc(u8, 8, totalSize);
         var newMap = ValueMap{
-            .metadata = @ptrCast([*] align(8) Metadata, newBuf.ptr),
-            .entries = @intToPtr([*]ValueMapEntry, @ptrToInt(newBuf.ptr) + entriesStart),
+            .metadata = @ptrCast(newBuf.ptr),
+            .entries = @ptrFromInt(@intFromPtr(newBuf.ptr) + entriesStart),
             .size = 0,
             .cap = finalCap,
-            .available = @truncate(u32, (finalCap * MaxLoadPercentage) / 100),
+            .available = @truncate((finalCap * MaxLoadPercentage) / 100),
         };
-        @memset(@ptrCast([*] align(8) u8, newMap.metadata), 0, finalCap);
+        @memset(@as([*] align (8) u8, @ptrCast(newMap.metadata))[0..finalCap], 0);
 
         if (self.size != 0) {
             // Rehash into new map.
@@ -290,7 +290,7 @@ pub const ValueMap = struct {
         }
 
         const metaSize = self.cap;
-        const entriesStart = std.mem.alignForward(metaSize, 8);
+        const entriesStart = std.mem.alignForward(usize, metaSize, 8);
         const totalSize = entriesStart + self.cap * @sizeOf(ValueMapEntry);
 
         alloc.free(self.metadata.?[0..totalSize]);
@@ -367,8 +367,8 @@ const Metadata = packed struct {
     const FingerPrint = u7;
     const Free: FingerPrint = 0;
     const Tombstone: FingerPrint = 1;
-    const SlotFree = @bitCast(u8, Metadata{ .fingerprint = Free });
-    const SlotTombstone = @bitCast(u8, Metadata{ .fingerprint = Tombstone });
+    const SlotFree: u8 = @bitCast(Metadata{ .fingerprint = Free });
+    const SlotTombstone: u8 = @bitCast(Metadata{ .fingerprint = Tombstone });
 
     pub inline fn isUsed(self: Metadata) bool {
         return self.used == 1;
@@ -377,11 +377,11 @@ const Metadata = packed struct {
     pub inline fn takeFingerprint(hash: u64) FingerPrint {
         const hashBits = comptime @typeInfo(u64).Int.bits;
         const fpBits = comptime @typeInfo(FingerPrint).Int.bits;
-        return @truncate(FingerPrint, hash >> (hashBits - fpBits));
+        return @truncate(hash >> (hashBits - fpBits));
     }
 
     pub inline fn isFree(self: Metadata) bool {
-        return @bitCast(u8, self) == SlotFree;
+        return @as(u8, @bitCast(self)) == SlotFree;
     }
 
     pub inline fn fill(self: *Metadata, fp: FingerPrint) void {
@@ -395,7 +395,7 @@ const Metadata = packed struct {
     }
 
     pub inline fn isTombstone(self: Metadata) bool {
-        return @bitCast(u8, self) == SlotTombstone;
+        return @as(u8, @bitCast(self)) == SlotTombstone;
     }
 };
 

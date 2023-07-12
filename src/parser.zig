@@ -1821,7 +1821,7 @@ pub const Parser = struct {
         self.alloc.free(self.last_err);
         self.last_err = try fmt.allocFormat(self.alloc, format, args);
         if (tokenPos >= self.tokens.items.len) {
-            self.last_err_pos = @intCast(u32, self.src.len);
+            self.last_err_pos = @intCast(self.src.len);
         } else {
             self.last_err_pos = self.tokens.items[tokenPos].pos();
         }
@@ -2087,7 +2087,7 @@ pub const Parser = struct {
                     .callee = left_id,
                     .arg_head = first,
                     .has_named_arg = has_named_arg,
-                    .numArgs = @intCast(u8, numArgs),
+                    .numArgs = @intCast(numArgs),
                 },
             };
             return callExpr;
@@ -2122,7 +2122,7 @@ pub const Parser = struct {
                 .callee = left_id,
                 .arg_head = firstArg,
                 .has_named_arg = false,
-                .numArgs = @intCast(u8, numArgs),
+                .numArgs = @intCast(numArgs),
             },
         };
         return callExpr;
@@ -3097,7 +3097,7 @@ pub const Parser = struct {
             .next = NullId,
             .head = undefined,
         });
-        return @intCast(NodeId, id);
+        return @intCast(id);
     }
 
     fn pushIdentNode(self: *Parser, start: u32) !NodeId {
@@ -3111,7 +3111,7 @@ pub const Parser = struct {
     inline fn pushSymbolToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .symbol,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = end_pos,
             },
@@ -3121,7 +3121,7 @@ pub const Parser = struct {
     inline fn pushIdentToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .ident,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = end_pos,
             },
@@ -3131,7 +3131,7 @@ pub const Parser = struct {
     inline fn pushNonDecimalIntegerToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .nonDecInt,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = end_pos,
             },
@@ -3141,7 +3141,7 @@ pub const Parser = struct {
     inline fn pushNumberToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .number,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = end_pos,
             },
@@ -3151,7 +3151,7 @@ pub const Parser = struct {
     inline fn pushTemplateStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .templateString,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = end_pos,
             },
@@ -3161,7 +3161,7 @@ pub const Parser = struct {
     inline fn pushStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .string,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = end_pos,
             },
@@ -3171,7 +3171,7 @@ pub const Parser = struct {
     inline fn pushOpToken(self: *Parser, operator_t: OperatorType, start_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = .operator,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .operator_t = operator_t,
             },
@@ -3181,7 +3181,7 @@ pub const Parser = struct {
     inline fn pushIndentToken(self: *Parser, num_spaces: u32, start_pos: u32, spaces: bool) void {
         self.tokens.append(self.alloc, .{
             .token_t = .indent,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .indent = if (spaces) num_spaces else num_spaces + 100,
             },
@@ -3191,7 +3191,7 @@ pub const Parser = struct {
     inline fn pushToken(self: *Parser, token_t: TokenType, start_pos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = token_t,
-            .start_pos = @intCast(u26, start_pos),
+            .start_pos = @intCast(start_pos),
             .data = .{
                 .end_pos = NullId,
             },
@@ -3201,7 +3201,7 @@ pub const Parser = struct {
     inline fn pushKeywordToken(self: *Parser, token_t: TokenType, startPos: u32, endPos: u32) !void {
         try self.tokens.append(self.alloc, .{
             .token_t = token_t,
-            .start_pos = @intCast(u26, startPos),
+            .start_pos = @intCast(startPos),
             .data = .{
                 .end_pos = endPos,
             },
@@ -3215,7 +3215,7 @@ pub const Parser = struct {
         } else {
             return Token{
                 .token_t = .none,
-                .start_pos = @intCast(u26, self.next_pos),
+                .start_pos = @intCast(self.next_pos),
                 .data = .{
                     .end_pos = NullId,
                 },
@@ -3229,7 +3229,7 @@ pub const Parser = struct {
         } else {
             return Token{
                 .token_t = .none,
-                .start_pos = @intCast(u26, self.next_pos),
+                .start_pos = @intCast(self.next_pos),
                 .data = .{
                     .end_pos = NullId,
                 },
@@ -3669,7 +3669,7 @@ pub const Result = struct {
         var iter = view.deps.iterator();
         while (iter.next()) |entry| {
             const dep = entry.key_ptr.*;
-            const offset = @ptrToInt(dep.ptr) - @ptrToInt(view.src.ptr);
+            const offset = @intFromPtr(dep.ptr) - @intFromPtr(view.src.ptr);
             try deps.put(alloc, new_src[offset..offset+dep.len], entry.value_ptr.*);
         }
 
@@ -3850,7 +3850,7 @@ pub fn pushNodeToList(alloc: std.mem.Allocator, nodes: *std.ArrayListUnmanaged(N
         .next = NullId,
         .head = undefined,
     }) catch fatal();
-    return @intCast(NodeId, id);
+    return @intCast(id);
 }
 
 test "Parse dependency variables" {

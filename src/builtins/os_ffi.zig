@@ -47,7 +47,7 @@ const Context = struct {
     }
 
     fn ensureArray(self: *Context, bindT: Value) !void {
-        const n = @floatToInt(u32, (try self.ivm.getField(bindT, self.nField)).asF64());
+        const n: u32 = @intFromFloat((try self.ivm.getField(bindT, self.nField)).asF64());
         const elem = try self.ivm.getField(bindT, self.elemField);
         const elemName = try self.getTempBaseTypeName(elem);
         const key = try std.fmt.bufPrint(&Context.buf, "{s}[{}]", .{elemName, n});
@@ -66,7 +66,7 @@ const Context = struct {
                 try w.print("  icyRelease(vm, args[{}]);\n", .{i});
             } else {
                 const argTag = carg.asSymbolId();
-                switch (@intToEnum(Symbol, argTag)) {
+                switch (@as(Symbol, @enumFromInt(argTag))) {
                     .charPtr => {
                         try w.print("  icyRelease(vm, args[{}]);\n", .{i});
                     },
@@ -85,7 +85,7 @@ const Context = struct {
             const n = (try self.ivm.getField(val, self.nField)).asF64();
             const elem = try self.ivm.getField(val, self.elemField);
             try self.genCType(w, elem);
-            try w.print(" {s}[{}]", .{ name, @floatToInt(u32, n) });
+            try w.print(" {s}[{}]", .{ name, @as(u32, @intFromFloat(n)) });
         } else {
             try self.genCType(w, val);
             try w.print(" {s}", .{name});
@@ -106,11 +106,11 @@ const Context = struct {
             const n = (try self.ivm.getField(val, self.nField)).asF64();
             const elem = try self.ivm.getField(val, self.elemField);
             try self.genCType(w, elem);
-            try w.print("[{}]", .{ @floatToInt(u32, n) });
+            try w.print("[{}]", .{ @as(u32, @intFromFloat(n)) });
         } else {
             if (val.isSymbol()) {
                 const tag = val.asSymbolId();
-                const str = switch (@intToEnum(Symbol, tag)) {
+                const str = switch (@as(Symbol, @enumFromInt(tag))) {
                     .bool => "bool",
                     .char => "int8_t",
                     .uchar => "uint8_t",
@@ -156,7 +156,7 @@ const Context = struct {
         } else {
             if (val.isSymbol()) {
                 const tag = val.asSymbolId();
-                return switch (@intToEnum(Symbol, tag)) {
+                return switch (@as(Symbol, @enumFromInt(tag))) {
                     .bool => "Bool",
                     .char => "I8",
                     .uchar => "U8",
@@ -189,13 +189,13 @@ const Context = struct {
             const objType = argType.asPointer(*cy.heap.MetaType);
             try w.print("fromStruct{}(vm, {s})", .{ objType.symId, cval });
         } else if (argType.isObjectType(os.CArrayT)) {
-            const n = @floatToInt(u32, (try self.ivm.getField(argType, self.nField)).asF64());
+            const n: u32 = @intFromFloat((try self.ivm.getField(argType, self.nField)).asF64());
             const elem = try self.ivm.getField(argType, self.elemField);
             const elemName = try self.getTempBaseTypeName(elem);
             try w.print("from{s}Array{}(vm, {s})", .{elemName, n, cval});
         } else {
             const tag = argType.asSymbolId();
-            switch (@intToEnum(Symbol, tag)) {
+            switch (@as(Symbol, @enumFromInt(tag))) {
                 .char,
                 .uchar,
                 .short,
@@ -238,7 +238,7 @@ const Context = struct {
         } else {
             if (argType.isSymbol()) {
                 const tag = argType.asSymbolId();
-                switch (@intToEnum(Symbol, tag)) {
+                switch (@as(Symbol, @enumFromInt(tag))) {
                     .bool => {
                         try w.print("(args[{}] == 0x7FFC000100000001)?1:0", .{i});
                     },
@@ -297,7 +297,7 @@ const Context = struct {
 fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.ResolvedSymId {
     if (val.isSymbol()) {
         const tag = val.asSymbolId();
-        switch (@intToEnum(Symbol, tag)) {
+        switch (@as(Symbol, @enumFromInt(tag))) {
             .bool => return bt.Boolean,
             .char => return bt.Number,
             .uchar => return bt.Number,
@@ -326,7 +326,7 @@ fn toResolvedParamTypeSymId(ivm: *cy.VM, val: Value) !cy.sema.ResolvedSymId {
 
 fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
     const tag = val.asSymbolId();
-    switch (@intToEnum(Symbol, tag)) {
+    switch (@as(Symbol, @enumFromInt(tag))) {
         .bool => return bt.Boolean,
         .char => return bt.Number,
         .uchar => return bt.Number,
@@ -349,7 +349,7 @@ fn toResolvedReturnTypeSymId(ivm: *cy.VM, val: Value) cy.sema.ResolvedSymId {
 pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Value {
     const path = args[0];
     const alloc = vm.allocator();
-    const ivm = @ptrCast(*cy.VM, vm);
+    const ivm: *cy.VM = @ptrCast(vm);
 
     var success = false;
 
@@ -409,7 +409,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     for (decls.items()) |decl| {
         if (decl.isObjectType(os.CFuncT)) {
             const sym = vm.valueToTempString(try ivm.getField(decl, symF));
-            const symz = try std.cstr.addNullByte(alloc, sym);
+            const symz = try alloc.dupeZ(u8, sym);
             defer alloc.free(symz);
             if (lib.lookup(*anyopaque, symz)) |ptr| {
                 // Build function signature.
@@ -465,7 +465,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const val = try ivm.getField(decl, typeF);
             if (val.isObjectType(rt.MetaTypeT)) {
                 const objType = val.asPointer(*cy.heap.MetaType);
-                if (objType.type == @enumToInt(cy.heap.MetaTypeKind.object)) {
+                if (objType.type == @intFromEnum(cy.heap.MetaTypeKind.object)) {
                     if (!ctx.symToCStructFields.contains(objType.symId)) {
                         const fields = try ivm.getField(decl, fieldsF);
                         try ctx.symToCStructFields.put(alloc, objType.symId, fields.asPointer(*cy.CyList));
@@ -541,7 +541,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         var iter = ctx.arrays.iterator();
         while (iter.next()) |entry| {
             const carr = entry.value_ptr.*;
-            const n = @floatToInt(u32, (try ivm.getField(carr, ctx.nField)).asF64());
+            const n: u32 = @intFromFloat((try ivm.getField(carr, ctx.nField)).asF64());
             const elem = try ivm.getField(carr, ctx.elemField);
             const elemName = try ctx.getTempBaseTypeName(elem);
 
@@ -569,7 +569,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             try w.print("  Struct{} res;\n", .{objSymId, });
             for (fields.items(), 0..) |field, i| {
                 if (field.isObjectType(os.CArrayT)) {
-                    const n = @floatToInt(u32, (try ivm.getField(field, ctx.nField)).asF64());
+                    const n: u32 = @intFromFloat((try ivm.getField(field, ctx.nField)).asF64());
                     const elem = try ivm.getField(field, ctx.elemField);
                     const elemName = try ctx.getTempBaseTypeName(elem);
                     try w.print("  to{s}Array{}(vm, args[{}], &res.f{}[0]);", .{elemName, n, i, i});
@@ -590,7 +590,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             for (fields.items(), 0..) |field, i| {
                 if (field.isSymbol()) {
                     const fieldTag = field.asSymbolId();
-                    switch (@intToEnum(Symbol, fieldTag)) {
+                    switch (@as(Symbol, @enumFromInt(fieldTag))) {
                         .char,
                         .uchar,
                         .short,
@@ -644,7 +644,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         var iter = ctx.arrays.iterator();
         while (iter.next()) |entry| {
             const carr = entry.value_ptr.*;
-            const n = @floatToInt(u32, (try ivm.getField(carr, ctx.nField)).asF64());
+            const n: u32 = @intFromFloat((try ivm.getField(carr, ctx.nField)).asF64());
             const elem = try ivm.getField(carr, ctx.elemField);
             const elemName = try ctx.getTempBaseTypeName(elem);
 
@@ -655,7 +655,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             try w.print("  uint64_t* args = (uint64_t*)*((uint64_t*)(val & ~PointerMask) + 1);\n", .{});
             for (0..n) |i| {
                 if (elem.isObjectType(os.CArrayT)) {
-                    const subn = @floatToInt(u32, (try ivm.getField(elem, ctx.nField)).asF64());
+                    const subn: u32 = @intFromFloat((try ivm.getField(elem, ctx.nField)).asF64());
                     const subelem = try ivm.getField(elem, ctx.elemField);
                     const subelemName = try ctx.getTempBaseTypeName(subelem);
                     try w.print("  to{s}Array{}(vm, args[{}], &out[0]);", .{subelemName, subn, i});
@@ -725,7 +725,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     // Add binded symbols.
     for (cfuncs.items) |cfunc| {
         const sym = vm.valueToTempString(try ivm.getField(cfunc.decl, symF));
-        const symz = try std.cstr.addNullByte(alloc, sym);
+        const symz = try alloc.dupeZ(u8, sym);
         defer alloc.free(symz);
         _ = tcc.tcc_add_symbol(state, symz.ptr, cfunc.symPtr);
     }
@@ -739,7 +739,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         const map = vm.allocEmptyMap() catch stdx.fatal();
 
         const cyState = try cy.heap.allocTccState(ivm, state.?, lib);
-        cy.arc.retainInc(ivm, cyState, @intCast(u32, cfuncs.items.len + ctx.symToCStructFields.count() - 1));
+        cy.arc.retainInc(ivm, cyState, @intCast(cfuncs.items.len + ctx.symToCStructFields.count() - 1));
 
         for (cfuncs.items) |cfunc| {
             const sym = vm.valueToTempString(try ivm.getField2(cfunc.decl, symF));
@@ -754,7 +754,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const cargs = cargsv.asPointer(*cy.CyList).items();
             const func = stdx.ptrAlignCast(*const fn (*cy.UserVM, [*]const Value, u8) Value, funcPtr);
 
-            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(u32, cargs.len),
+            const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(cargs.len),
                 cfunc.rFuncSigId, cyState) catch stdx.fatal();
             ivm.setIndex(map, symKey, funcVal) catch stdx.fatal();
             vm.release(symKey);
@@ -800,8 +800,8 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
             const func = stdx.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
 
-            const methodSym = try ivm.ensureMethodSym(sym, @intCast(u32, cargs.len));
-            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, rt.MethodSym.initSingleTypedNativeFunc(cfunc.rFuncSigId, func) });
+            const methodSym = try ivm.ensureMethodSym(sym, @intCast(cargs.len));
+            try @call(.never_inline, cy.VM.addMethodSym, .{ivm, sid, methodSym, rt.MethodSym.initSingleTypedNativeFunc(cfunc.rFuncSigId, func) });
         }
         var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
@@ -818,7 +818,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             defer alloc.free(methodName);
             const methodSym = try ivm.ensureMethodSym2(methodName, 1, true);
             const rFuncSigId = try sema.ensureResolvedFuncSig(&ivm.compiler, &.{ bt.Any, bt.Pointer }, rtType.rTypeSymId);
-            try @call(.never_inline, ivm.addMethodSym, .{sid, methodSym, rt.MethodSym.initSingleTypedNativeFunc(rFuncSigId, func) });
+            try @call(.never_inline, cy.VM.addMethodSym, .{ivm, sid, methodSym, rt.MethodSym.initSingleTypedNativeFunc(rFuncSigId, func) });
         }
         success = true;
         return try vm.allocObjectSmall(sid, &.{cyState});
@@ -868,7 +868,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         for (cargs, 0..) |carg, i| {
             if (carg.isObjectType(os.CArrayT)) {
-                const n = @floatToInt(u32, (try ivm.getField(carg, ctx.nField)).asF64());
+                const n: u32 = @intFromFloat((try ivm.getField(carg, ctx.nField)).asF64());
                 const elem = try ivm.getField(carg, ctx.elemField);
                 const elemName = try ctx.getTempBaseTypeName(elem);
 
@@ -895,7 +895,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
         }
     } else {
         const retTag = ret.asSymbolId();
-        switch (@intToEnum(Symbol, retTag)) {
+        switch (@as(Symbol, @enumFromInt(retTag))) {
             .char,
             .uchar,
             .short,

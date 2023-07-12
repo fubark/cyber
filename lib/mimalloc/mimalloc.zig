@@ -14,8 +14,6 @@ pub fn collect(force: bool) void {
 const kb = 1024;
 const BigSize = 4 * kb;
 
-const usizeShiftInt = std.meta.Int(.unsigned, std.math.log2(@bitSizeOf(usize)));
-
 // Uses page allocator for objects > 4kb, otherwise mimalloc is used.
 pub const Allocator = struct {
     dummy: bool,
@@ -53,12 +51,12 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) ?[*]u8 {
         _ = ptr;
-        const alignment = @as(usize, 1) << @intCast(usizeShiftInt, log2_align);
+        const alignment = @as(usize, 1) << @intCast(log2_align);
         const effLen = len + alignment - 1;
         if (effLen > BigSize) {
             return std.heap.page_allocator.rawAlloc(len, log2_align, ret_addr);
         } else {
-            return @ptrCast(?[*]u8, c.mi_malloc_aligned(len, alignment));
+            return @ptrCast(c.mi_malloc_aligned(len, alignment));
         }
     }
 
@@ -70,7 +68,7 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) bool {
         _ = ptr;
-        const alignment = @as(usize, 1) << @intCast(usizeShiftInt, log2_align);
+        const alignment = @as(usize, 1) << @intCast(log2_align);
         const effLen = buf.len + alignment - 1;
         if (effLen > BigSize) {
             if (new_len > buf.len) {
@@ -99,7 +97,7 @@ pub const Allocator = struct {
         ret_addr: usize,
     ) void {
         _ = ptr;
-        const alignment = @as(usize, 1) << @intCast(usizeShiftInt, log2_align);
+        const alignment = @as(usize, 1) << @intCast(log2_align);
         const effLen = buf.len + alignment - 1;
         if (effLen > BigSize) {
             std.heap.page_allocator.rawFree(buf, log2_align, ret_addr);

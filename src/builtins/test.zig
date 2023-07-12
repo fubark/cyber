@@ -169,7 +169,7 @@ pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
     if (eq2(vm, act, exp)) {
         return Value.True;
     } else {
-        return vm.prepareThrowSymbol(@enumToInt(Symbol.AssertError));
+        return vm.prepareThrowSymbol(@intFromEnum(Symbol.AssertError));
     }
 }
 

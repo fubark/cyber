@@ -96,7 +96,7 @@ fn getBuiltinSymbol(id: u32) ?Symbol {
 }
 
 pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
-    return vm.prepareThrowSymbol(@enumToInt(sym));
+    return vm.prepareThrowSymbol(@intFromEnum(sym));
 }  
 
 const StdSection = cy.StdSection;
@@ -502,7 +502,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
 fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
     const id = try vm.ensureSymbol(name);
-    std.debug.assert(id == @enumToInt(sym));
+    std.debug.assert(id == @intFromEnum(sym));
 }
 
 fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -533,25 +533,25 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linkse
             return res.toBool();
         }
     };
-    std.sort.sort(Value, list.items(), &lessCtx, S.less);
+    std.sort.pdq(Value, list.items(), &lessCtx, S.less);
     return Value.None;
 }
 
 fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index = @floatToInt(i64, args[0].asF64());
+    const index: i64 = @intFromFloat(args[0].asF64());
     const list = recv.asHeapObject();
     defer vm.releaseObject(list);
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     } 
-    vm.release(inner.buf[@intCast(usize, index)]);
-    inner.remove(@intCast(usize, index));
+    vm.release(inner.buf[@intCast(index)]);
+    inner.remove(@intCast(index));
     return Value.None;
 }
 
 fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index = @floatToInt(i64, args[0].asF64());
+    const index: i64 = @intFromFloat(args[0].asF64());
     const value = args[1];
     const list = recv.asHeapObject();
     defer vm.releaseObject(list);
@@ -560,7 +560,7 @@ fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
         return prepareThrowSymbol(vm, .OutOfBounds);
     } 
     inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
-    inner.insertAssumeCapacity(@intCast(usize, index), value);
+    inner.insertAssumeCapacity(@intCast(index), value);
     return Value.None;
 }
 
@@ -588,9 +588,9 @@ fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) link
         const sep = vm.valueToTempString2(args[0], &sepCharLen);
 
         const alloc = vm.allocator();
-        const tempSlices = &@ptrCast(*cy.VM, vm).u8Buf2;
+        const tempSlices = &@as(*cy.VM, @ptrCast(vm)).u8Buf2;
         tempSlices.clearRetainingCapacity();
-        const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+        const tempBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
         tempBuf.clearRetainingCapacity();
         const tempBufWriter = tempBuf.writer(alloc);
         defer {
@@ -606,17 +606,17 @@ fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) link
         var str = vm.getOrWriteValueString(tempBufWriter, items[0], &charLen);
         tempSlices.appendSlice(alloc, std.mem.asBytes(&str)) catch fatal();
         charLenSum += charLen;
-        byteLen += @intCast(u32, str.len);
+        byteLen += @intCast(str.len);
 
         // Record other string parts.
         for (items[1..]) |item| {
             str = vm.getOrWriteValueString(tempBufWriter, item, &charLen);
             tempSlices.appendSlice(alloc, std.mem.asBytes(&str)) catch fatal();
             charLenSum += charLen;
-            byteLen += @intCast(u32, str.len);
+            byteLen += @intCast(str.len);
         }
-        charLenSum += @intCast(u32, sepCharLen * (items.len-1));
-        byteLen += @intCast(u32, sep.len * (items.len-1));
+        charLenSum += @intCast(sepCharLen * (items.len-1));
+        byteLen += @intCast(sep.len * (items.len-1));
 
         // Allocate final buffer and perform join.
         var newObj: *cy.HeapObject = undefined;
@@ -628,7 +628,7 @@ fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) link
             newObj = vm.allocUnsetUstringObject(byteLen, charLenSum) catch fatal();
             buf = newObj.ustring.getSlice();
         }
-        const slices = @ptrCast([*][]const u8, tempSlices.buf.ptr)[0..items.len];
+        const slices = @as([*][]const u8, @ptrCast(tempSlices.buf.ptr))[0..items.len];
         std.mem.copy(u8, buf[0..slices[0].len], slices[0]);
         var dst: usize = slices[0].len;
         for (slices[1..]) |slice| {
@@ -668,7 +668,7 @@ fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
         const val = list.list.ptr[obj.listIter.nextIdx];
         vm.retain(val);
         return .{
-            .left = Value.initF64(@intToFloat(f64, obj.listIter.nextIdx)),
+            .left = Value.initF64(@floatFromInt(obj.listIter.nextIdx)),
             .right = val,
         };
     } else return .{
@@ -699,7 +699,7 @@ fn listIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
 fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const list = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size = @floatToInt(u32, args[0].asF64());
+    const size: u32 = @intFromFloat(args[0].asF64());
     if (inner.len < size) {
         const oldLen = inner.len;
         inner.resize(vm.allocator(), size) catch stdx.fatal();
@@ -726,7 +726,7 @@ fn mapIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksectio
 fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
+    const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
@@ -743,7 +743,7 @@ fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
 fn mapIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    const map = @ptrCast(*cy.ValueMap, &obj.mapIter.map.inner);
+    const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.value);
         return entry.value;
@@ -754,7 +754,7 @@ fn mapSize(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy
     const obj = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, inner.size));
+    return Value.initF64(@floatFromInt(inner.size));
 }
 
 fn mapRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -764,7 +764,7 @@ fn mapRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksecti
         vm.release(args[0]);
     }
     const inner = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    _ = inner.remove(@ptrCast(*cy.VM, vm), args[0]);
+    _ = inner.remove(@ptrCast(vm), args[0]);
     return Value.None;
 }
 
@@ -772,7 +772,7 @@ fn listLen(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy
     const list = recv.asHeapObject();
     const inner = stdx.ptrAlignCast(*cy.List(Value), &list.list.list);
     vm.releaseObject(list);
-    return Value.initF64(@intToFloat(f64, inner.len));
+    return Value.initF64(@floatFromInt(inner.len));
 }
 
 // Keep as reference in case resume should be a function call.
@@ -787,9 +787,9 @@ fn listLen(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy
 //             // Obtain the startLocal from looking at previous inst operand.
 //             const startLocal = (@ptrCast(*cy.VM, vm).pc - 14 + 1)[0].arg;
 //             // Obtain previous framePtr by subtracting from args pointer.
-//             const prevFramePtr = @intToPtr([*]Value, @ptrToInt(args - startLocal - 4));
+//             const prevFramePtr = @intToPtr([*]Value, @intFromPtr(args - startLocal - 4));
 
-//             const pcOffset = @intCast(u32, @ptrToInt(@ptrCast(*cy.VM, vm).pc) - @ptrToInt(@ptrCast(*cy.VM, vm).ops.ptr));
+//             const pcOffset = @intCast(u32, @intFromPtr(@ptrCast(*cy.VM, vm).pc) - @intFromPtr(@ptrCast(*cy.VM, vm).ops.ptr));
 //             const res = cy.pushFiber(@ptrCast(*cy.VM, vm), pcOffset, prevFramePtr, &obj.fiber, startLocal);
 //             @ptrCast(*cy.VM, vm).pc = res.pc;
 //             @ptrCast(*cy.VM, vm).framePtr = res.framePtr;
@@ -813,7 +813,7 @@ fn errorValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
 fn pointerValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, @ptrToInt(obj.pointer.ptr)));
+    return Value.initF64(@floatFromInt(@intFromPtr(obj.pointer.ptr)));
 }
 
 fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
@@ -821,13 +821,13 @@ fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     defer vm.releaseObject(stdx.ptrAlignCast(*cy.HeapObject, fiber));
 
     if (vm.internal().curFiber == fiber) {
-        return Value.initSymbol(@enumToInt(Symbol.running));
+        return Value.initSymbol(@intFromEnum(Symbol.running));
     } else {
         // Check if done.
         if (fiber.pcOffset == NullId) {
-            return Value.initSymbol(@enumToInt(Symbol.done));
+            return Value.initSymbol(@intFromEnum(Symbol.done));
         } else {
-            return Value.initSymbol(@enumToInt(Symbol.paused));
+            return Value.initSymbol(@intFromEnum(Symbol.paused));
         }
     }
 }
@@ -925,18 +925,18 @@ pub fn stringLen(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             }
             if (isAstringObject(T, obj)) {
                 if (T == .astring) {
-                    return Value.initF64(@intToFloat(f64, obj.astring.len));
+                    return Value.initF64(@floatFromInt(obj.astring.len));
                 } else if (T == .staticAstring) {
-                    return Value.initF64(@intToFloat(f64, obj.len()));
+                    return Value.initF64(@floatFromInt(obj.len()));
                 } else if (T == .slice) {
-                    return Value.initF64(@intToFloat(f64, obj.stringSlice.len));
+                    return Value.initF64(@floatFromInt(obj.stringSlice.len));
                 } else fatal();
             } else if (isUstringObject(T, obj)) {
-                return Value.initF64(@intToFloat(f64, getStringCharLen(T, vm, obj)));
+                return Value.initF64(@floatFromInt(getStringCharLen(T, vm, obj)));
             } else if (T == .rawstring) {
-                return Value.initF64(@intToFloat(f64, obj.rawstring.len));
+                return Value.initF64(@floatFromInt(obj.rawstring.len));
             } else if (T == .rawSlice) {
-                return Value.initF64(@intToFloat(f64, obj.rawstringSlice.len));
+                return Value.initF64(@floatFromInt(obj.rawstringSlice.len));
             } else fatal();
         }
     };
@@ -962,13 +962,13 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 vm.release(args[0]);
             }
             const str = getStringSlice(T, vm, obj);
-            const idx = @floatToInt(i32, args[0].toF64());
+            const idx: i32 = @intFromFloat(args[0].toF64());
 
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 if (T == .staticAstring) {
                     return Value.initStaticAstring(obj.start + uidx, 1);
                 } else {
@@ -979,9 +979,9 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 const mru = getUstringMruChar(T, vm, obj);
-                const start = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+                const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
                 const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
 
                 setUstringMruChar(T, vm, obj, uidx, start);
@@ -998,7 +998,7 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
                     if (slice.len == 1) {
                         return vm.allocAstring(slice) catch fatal();
@@ -1030,32 +1030,32 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const obj = getStringObject(T, recv);
             defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
-            const idx = @floatToInt(i32, args[0].asF64());
+            const idx: i32 = @intFromFloat(args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                return Value.initF64(@intToFloat(f64, str[@intCast(u32, idx)]));
+                return Value.initF64(@floatFromInt(str[@intCast(idx)]));
             } else if (isUstringObject(T, obj)) {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 const mru = getUstringMruChar(T, vm, obj);
-                const start = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+                const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
                 const slice = cy.string.utf8CharSliceAtNoCheck(str, start);
 
                 const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
                 setUstringMruChar(T, vm, obj, uidx, start);
-                return Value.initF64(@intToFloat(f64, cp));
+                return Value.initF64(@floatFromInt(cp));
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
                     const cp = std.unicode.utf8Decode(slice) catch stdx.fatal();
-                    return Value.initF64(@intToFloat(f64, cp));
+                    return Value.initF64(@floatFromInt(cp));
                 } else {
                     return prepareThrowSymbol(vm, .InvalidRune);
                 }
@@ -1066,14 +1066,14 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 }
 
 fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
-    const index = @floatToInt(i64, indexv.asF64());
+    const index: i64 = @intFromFloat(indexv.asF64());
     if (index < 0 or index > str.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     } 
-    const byte = @floatToInt(u8, val.asF64());
+    const byte: u8 = @intFromFloat(val.asF64());
     const new = vm.allocUnsetRawStringObject(str.len + 1) catch stdx.fatal();
     const buf = new.rawstring.getSlice();
-    const uidx = @intCast(u32, index);
+    const uidx: u32 = @intCast(index);
     std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
     buf[uidx] = byte;
     std.mem.copy(u8, buf[uidx+1..], str[uidx..]);
@@ -1100,16 +1100,16 @@ fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     var rcharLen: u32 = undefined;
     const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
 
-    const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+    const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
     defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
     const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
     const numIdxes = @divExact(idxBuf.len, 4);
     if (numIdxes > 0) {
-        const new = vm.allocUnsetUstringObject(newLen, @intCast(u32, str.len + idxBuf.len * rcharLen - idxBuf.len * ncharLen)) catch fatal();
+        const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * ncharLen)) catch fatal();
         const newBuf = new.ustring.getSlice();
-        const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
-        cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
+        const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+        cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
         return vm.allocOwnedUstring(new) catch fatal();
     } else {
         return null;
@@ -1139,12 +1139,12 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             }
             const str = getStringSlice(T, vm, obj);
 
-            const n = @floatToInt(i32, args[0].asF64());
+            const n: i32 = @intFromFloat(args[0].asF64());
             if (n < 0) {
                 return prepareThrowSymbol(vm, .InvalidArgument);
             }
 
-            var un = @intCast(u32, n);
+            var un: u32 = @intCast(n);
             const len = un * str.len;
             if (un > 1 and len > 0) {
                 var new: *cy.HeapObject = undefined;
@@ -1166,7 +1166,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 var dst: u32 = 0;
                 while (i < un) : (i += 1) {
                     std.mem.copy(u8, buf[dst..dst + str.len], str);
-                    dst += @intCast(u32, str.len);
+                    dst += @intCast(str.len);
                 }
 
                 return Value.initPtr(new);
@@ -1325,8 +1325,8 @@ fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         list.list.append(vm.allocator(), slice);
                     },
                     .staticAstring => {
-                        const offset = @intCast(u32, @ptrToInt(part.ptr) - @ptrToInt(str.ptr));
-                        const partv = Value.initStaticAstring(obj.start + offset, @intCast(u15, part.len));
+                        const offset: u32 = @intCast(@intFromPtr(part.ptr) - @intFromPtr(str.ptr));
+                        const partv = Value.initStaticAstring(obj.start + offset, @intCast(part.len));
                         list.list.append(vm.allocator(), partv);
                     },
                     .astring => {
@@ -1335,13 +1335,13 @@ fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         list.list.append(vm.allocator(), partv);
                     },
                     .staticUstring => {
-                        const runeLen = @intCast(u32, cy.string.utf8Len(part));
+                        const runeLen: u32 = @intCast(cy.string.utf8Len(part));
                         const partv = vm.allocUstringSlice(part, runeLen, null) catch fatal();
                         list.list.append(vm.allocator(), partv);
                     },
                     .ustring => {
                         vm.retainObject(obj);
-                        const runeLen = @intCast(u32, cy.string.utf8Len(part));
+                        const runeLen: u32 = @intCast(cy.string.utf8Len(part));
                         const partv = vm.allocUstringSlice(part, runeLen, obj) catch fatal();
                         list.list.append(vm.allocator(), partv);
                     },
@@ -1351,7 +1351,7 @@ fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                             const partv = vm.allocAstringSlice(part, obj) catch fatal();
                             list.list.append(vm.allocator(), partv);
                         } else {
-                            const runeLen = @intCast(u32, cy.string.utf8Len(part));
+                            const runeLen: u32 = @intCast(cy.string.utf8Len(part));
                             vm.retainObject(obj);
                             const partv = vm.allocUstringSlice(part, runeLen, obj) catch fatal();
                             list.list.append(vm.allocator(), partv);
@@ -1393,7 +1393,7 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             if (isAstringObject(T, obj)) {
                 return vm.allocAstring(res) catch fatal();
             } else if (isUstringObject(T, obj)) {
-                const runeLen = @intCast(u32, cy.string.utf8Len(res));
+                const runeLen: u32 = @intCast(cy.string.utf8Len(res));
                 return vm.allocUstring(res, runeLen) catch fatal();
             } else if (isRawStringObject(T)) {
                 return vm.allocRawString(res) catch fatal();
@@ -1439,7 +1439,7 @@ fn stringReplace(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 const needle = vm.valueToTempString(args[0]);
                 const replacement = vm.valueToNextTempString(args[1]);
 
-                const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+                const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
                 idxBuf.clearRetainingCapacity();
                 defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
                 const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
@@ -1447,8 +1447,8 @@ fn stringReplace(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (numIdxes > 0) {
                     const new = vm.allocUnsetRawStringObject(newLen) catch fatal();
                     const newBuf = new.rawstring.getSlice();
-                    const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
-                    cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
+                    const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+                    cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
                     return Value.initPtr(new);
                 } else {
                     vm.retainObject(obj);
@@ -1464,7 +1464,7 @@ fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     const needle = vm.valueToTempString(needlev);
     var rcharLen: u32 = undefined;
     const replacement = vm.valueToNextTempString2(replacev, &rcharLen);
-    const idxBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+    const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
     idxBuf.clearRetainingCapacity();
     defer idxBuf.ensureMaxCapOrClear(vm.allocator(), 4096) catch fatal();
     const newLen = cy.prepReplacement(str, needle, replacement, idxBuf.writer(vm.allocator())) catch fatal();
@@ -1473,14 +1473,14 @@ fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
         if (rcharLen == replacement.len) {
             const new = vm.allocUnsetAstringObject(newLen) catch fatal();
             const newBuf = new.astring.getSlice();
-            const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
-            cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
+            const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+            cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return vm.allocOwnedAstring(new) catch fatal();
         } else {
-            const new = vm.allocUnsetUstringObject(newLen, @intCast(u32, str.len + idxBuf.len * rcharLen - idxBuf.len * needle.len)) catch fatal();
+            const new = vm.allocUnsetUstringObject(newLen, @intCast(str.len + idxBuf.len * rcharLen - idxBuf.len * needle.len)) catch fatal();
             const newBuf = new.ustring.getSlice();
-            const idxes = @ptrCast([*]const u32, idxBuf.buf.ptr)[0..numIdxes];
-            cy.replaceAtIdxes(newBuf, str, @intCast(u32, needle.len), replacement, idxes);
+            const idxes = @as([*]const u32, @ptrCast(idxBuf.buf.ptr))[0..numIdxes];
+            cy.replaceAtIdxes(newBuf, str, @intCast(needle.len), replacement, idxes);
             return vm.allocOwnedUstring(new) catch fatal();
         }
     } else {
@@ -1496,46 +1496,46 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const str = getStringSlice(T, vm, obj);
 
             if (isAstringObject(T, obj)) {
-                var start = @floatToInt(i32, args[0].asF64());
+                var start: i32 = @intFromFloat(args[0].asF64());
                 if (start < 0) {
-                    start = @intCast(i32, str.len) + start;
+                    start = @as(i32, @intCast(str.len)) + start;
                 }
-                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].asF64());
+                var end: i32 = if (args[1].isNone()) @intCast(str.len) else @intFromFloat(args[1].asF64());
                 if (end < 0) {
-                    end = @intCast(i32, str.len) + end;
+                    end = @as(i32, @intCast(str.len)) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const ustart = @intCast(u32, start);
-                const uend = @intCast(u32, end);
+                const ustart: u32 = @intCast(start);
+                const uend: u32 = @intCast(end);
 
                 if (T == .staticAstring) {
-                    return Value.initStaticAstring(obj.start + ustart, @intCast(u15, uend - ustart));
+                    return Value.initStaticAstring(obj.start + ustart, @intCast(uend - ustart));
                 } else {
                     vm.retainObject(obj);
                     return vm.allocAstringSlice(str[ustart..uend], obj) catch fatal();
                 }
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
-                var start = @floatToInt(i32, args[0].asF64());
+                var start: i32 = @intFromFloat(args[0].asF64());
                 if (start < 0) {
-                    start = @intCast(i32, charLen) + start;
+                    start = @as(i32, @intCast(charLen)) + start;
                 }
-                var end = if (args[1].isNone()) @intCast(i32, charLen) else @floatToInt(i32, args[1].asF64());
+                var end: i32 = if (args[1].isNone()) @intCast(charLen) else @intFromFloat(args[1].asF64());
                 if (end < 0) {
-                    end = @intCast(i32, charLen) + end;
+                    end = @as(i32, @intCast(charLen)) + end;
                 }
                 if (start < 0 or end > charLen or end < start) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                const ustart = @intCast(u32, start);
-                const uend = @intCast(u32, end);
+                const ustart: u32 = @intCast(start);
+                const uend: u32 = @intCast(end);
 
                 const mru = getUstringMruChar(T, vm, obj);
-                const startByteIdx = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, ustart));
+                const startByteIdx: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, ustart));
                 setUstringMruChar(T, vm, obj, ustart, startByteIdx);
-                const endByteIdx = @intCast(u32, cy.string.ustringSeekByCharIndex(str, startByteIdx, ustart, uend));
+                const endByteIdx: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, startByteIdx, ustart, uend));
 
                 if (T == .staticUstring) {
                     return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, null) catch fatal();
@@ -1544,20 +1544,20 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, obj) catch fatal();
                 }
             } else if (isRawStringObject(T)) {
-                var start = @floatToInt(i32, args[0].asF64());
+                var start: i32 = @intFromFloat(args[0].asF64());
                 if (start < 0) {
-                    start = @intCast(i32, str.len) + start;
+                    start = @as(i32, @intCast(str.len)) + start;
                 }
-                var end = if (args[1].isNone()) @intCast(i32, str.len) else @floatToInt(i32, args[1].asF64());
+                var end: i32 = if (args[1].isNone()) @intCast(str.len) else @intFromFloat(args[1].asF64());
                 if (end < 0) {
-                    end = @intCast(i32, str.len) + end;
+                    end = @as(i32, @intCast(str.len)) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
 
                 vm.retainObject(obj);
-                return vm.allocRawStringSlice(str[@intCast(u32, start)..@intCast(u32, end)], obj) catch fatal();
+                return vm.allocRawStringSlice(str[@intCast(start)..@intCast(end)], obj) catch fatal();
             } else fatal();
         }
     };
@@ -1589,7 +1589,7 @@ fn stringConcat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (rcharLen == rstr.len) {
                     return vm.allocAstringConcat(str, rstr) catch fatal();
                 } else {
-                    return vm.allocUstringConcat(str, rstr, @intCast(u32, str.len + rcharLen)) catch fatal();
+                    return vm.allocUstringConcat(str, rstr, @intCast(str.len + rcharLen)) catch fatal();
                 }
             } else if (isUstringObject(T, obj)) {
                 var rcharLen: u32 = undefined;
@@ -1614,18 +1614,18 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 vm.release(args[1]);
             }
             const str = getStringSlice(T, vm, obj);
-            const idx = @floatToInt(i32, args[0].asF64());
+            const idx: i32 = @intFromFloat(args[0].asF64());
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx > str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 var insertCharLen: u32 = undefined;
                 const insert = vm.valueToTempString2(args[1], &insertCharLen);
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 if (insertCharLen == insert.len) {
                     return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
                 } else {
-                    return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..], @intCast(u32, str.len + insertCharLen)) catch fatal();
+                    return vm.allocUstringConcat3(str[0..uidx], insert, str[uidx..], @intCast(str.len + insertCharLen)) catch fatal();
                 }
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
@@ -1634,12 +1634,12 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
                 var insertCharLen: u32 = undefined;
                 const insert = vm.valueToTempString2(args[1], &insertCharLen);
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 const mru = getUstringMruChar(T, vm, obj);
-                const start = @intCast(u32, cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
+                const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
 
                 setUstringMruChar(T, vm, obj, uidx, start);
-                return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(u32, charLen + insertCharLen)) catch fatal();
+                return vm.allocUstringConcat3(str[0..start], insert, str[start..], @intCast(charLen + insertCharLen)) catch fatal();
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx > str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1647,7 +1647,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 const insert = vm.valueToTempString(args[1]);
                 const new = vm.allocUnsetRawStringObject(str.len + insert.len) catch stdx.fatal();
                 const buf = new.rawstring.getSlice();
-                const uidx = @intCast(u32, idx);
+                const uidx: u32 = @intCast(idx);
                 std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
                 std.mem.copy(u8, buf[uidx..uidx+insert.len], insert);
                 std.mem.copy(u8, buf[uidx+insert.len..], str[uidx..]);
@@ -1684,18 +1684,18 @@ fn stringFind(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     if (cy.string.indexOfChar(str, needle[0])) |idx| {
                         if (isUstringObject(T, obj)) {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@intToFloat(f64, charIdx));
+                            return Value.initF64(@floatFromInt(charIdx));
                         } else {
-                            return Value.initF64(@intToFloat(f64, idx));
+                            return Value.initF64(@floatFromInt(idx));
                         }
                     }
                 }
                 if (cy.string.indexOf(str, needle)) |idx| {
                     if (isUstringObject(T, obj)) {
                         const charIdx = cy.toUtf8CharIdx(str, idx);
-                        return Value.initF64(@intToFloat(f64, charIdx));
+                        return Value.initF64(@floatFromInt(charIdx));
                     } else {
-                        return Value.initF64(@intToFloat(f64, idx));
+                        return Value.initF64(@floatFromInt(idx));
                     }
                 }
             }
@@ -1750,7 +1750,7 @@ fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) lin
         if (size == str.len) {
             return vm.allocAstring(str) catch fatal();
         } else {
-            return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
+            return vm.allocUstring(str, @intCast(size)) catch fatal();
         }
     } else {
         return prepareThrowSymbol(vm, .InvalidRune);
@@ -1770,7 +1770,7 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
         if (size == str.len) {
             return vm.allocAstring(str) catch fatal();
         } else {
-            return vm.allocUstring(str, @intCast(u32, size)) catch fatal();
+            return vm.allocUstring(str, @intCast(size)) catch fatal();
         }
     } else {
         return prepareThrowSymbol(vm, .InvalidRune);
@@ -1780,25 +1780,25 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
 fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    const idx = @floatToInt(i32, args[0].asF64());
+    const idx: i32 = @intFromFloat(args[0].asF64());
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     }
     const str = obj.rawstringSlice.getConstSlice();
-    const uidx = @intCast(u32, idx);
-    return Value.initF64(@intToFloat(f64, str[uidx]));
+    const uidx: u32 = @intCast(idx);
+    return Value.initF64(@floatFromInt(str[uidx]));
 }
 
 fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    const idx = @floatToInt(i32, args[0].asF64());
+    const idx: i32 = @intFromFloat(args[0].asF64());
     if (idx < 0 or idx >= obj.rawstring.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     }
     const str = obj.rawstring.getConstSlice();
-    const uidx = @intCast(u32, idx);
-    return Value.initF64(@intToFloat(f64, str[uidx]));
+    const uidx: u32 = @intCast(idx);
+    return Value.initF64(@floatFromInt(str[uidx]));
 }
 
 fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
@@ -1810,7 +1810,7 @@ fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
             return 0;
         }
     } else {
-       return @floatToInt(u8, val.toF64());
+       return @intFromFloat(val.toF64());
     }
 }
 
@@ -1864,12 +1864,12 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (isAstringObject(T, obj)) {
                     if (setIsAscii) {
                         if (@call(.never_inline, cy.indexOfAsciiSet, .{str, set})) |idx| {
-                            return Value.initF64(@intToFloat(f64, idx));
+                            return Value.initF64(@floatFromInt(idx));
                         }
                     } else {
                         // Filter ascii codepoints.
                         const alloc = vm.allocator();
-                        const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+                        const tempBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
                         tempBuf.clearRetainingCapacity();
                         defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
                         var iter = std.unicode.Utf8Iterator{
@@ -1878,12 +1878,12 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         };
                         while (iter.nextCodepoint()) |cp| {
                             if (cp < 128) {
-                                tempBuf.append(alloc, @intCast(u8, cp)) catch fatal();
+                                tempBuf.append(alloc, @intCast(cp)) catch fatal();
                             }
                         }
                         if (tempBuf.len > 0) {
                             if (cy.indexOfAsciiSet(str, tempBuf.items())) |idx| {
-                                return Value.initF64(@intToFloat(f64, idx));
+                                return Value.initF64(@floatFromInt(idx));
                             }
                         }
                     }
@@ -1891,7 +1891,7 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     if (setIsAscii) {
                         if (cy.indexOfAsciiSet(str, set)) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@intToFloat(f64, charIdx));
+                            return Value.initF64(@floatFromInt(charIdx));
                         }
                     } else {
                         // Slow. Checks every utf8 code and applies min.
@@ -1903,18 +1903,18 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         while (iter.nextCodepoint()) |cp| {
                             if (cy.charIndexOfCodepoint(str, cp)) |idx| {
                                 if (idx < minIndex) {
-                                    minIndex = @intCast(u32, idx);
+                                    minIndex = @intCast(idx);
                                 }
                             }
                         }
                         if (minIndex != NullId) {
-                            return Value.initF64(@intToFloat(f64, minIndex));
+                            return Value.initF64(@floatFromInt(minIndex));
                         }
                     }
                 } else if (isRawStringObject(T)) {
                     if (setIsAscii) {
                         if (cy.indexOfAsciiSet(str, set)) |idx| {
-                            return Value.initF64(@intToFloat(f64, idx));
+                            return Value.initF64(@floatFromInt(idx));
                         }
                     } else {
                         // Slow. Checks every utf8 code and applies min.
@@ -1926,12 +1926,12 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         while (iter.nextCodepointSlice()) |slice| {
                             if (std.mem.indexOf(u8, str, slice)) |idx| {
                                 if (idx < minIndex) {
-                                    minIndex = @intCast(u32, idx);
+                                    minIndex = @intCast(idx);
                                 }
                             }
                         }
                         if (minIndex != NullId) {
-                            return Value.initF64(@intToFloat(f64, minIndex));
+                            return Value.initF64(@floatFromInt(minIndex));
                         }
                     }
                 } else fatal();
@@ -1958,41 +1958,41 @@ fn stringFindRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const obj = getStringObject(T, recv);
             defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
-            const needle = @floatToInt(i32, args[0].asF64());
+            const needle: i32 = @intFromFloat(args[0].asF64());
 
             if (needle > 0) {
-                const code = @intCast(u21, needle);
+                const code: u21 = @intCast(needle);
                 const needleIsAscii = code < 128;
                 if (isAstringObject(T, obj)) {
                     if (needleIsAscii) {
-                        if (cy.string.indexOfChar(str, @intCast(u8, code))) |idx| {
-                            return Value.initF64(@intToFloat(f64, idx));
+                        if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
+                            return Value.initF64(@floatFromInt(idx));
                         }
                     }
                 } else if (isUstringObject(T, obj)) {
                     if (needleIsAscii) {
-                        if (cy.string.indexOfChar(str, @intCast(u8, code))) |idx| {
+                        if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@intToFloat(f64, charIdx));
+                            return Value.initF64(@floatFromInt(charIdx));
                         }
                     } else {
                         var slice: [4]u8 = undefined;
                         _ = std.unicode.utf8Encode(code, &slice) catch fatal();
                         if (cy.string.indexOf(str, &slice)) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@intToFloat(f64, charIdx));
+                            return Value.initF64(@floatFromInt(charIdx));
                         }
                     }
                 } else if (isRawStringObject(T)) {
                     if (needleIsAscii) {
-                        if (cy.indexOfChar(str, @intCast(u8, code))) |idx| {
-                            return Value.initF64(@intToFloat(f64, idx));
+                        if (cy.indexOfChar(str, @intCast(code))) |idx| {
+                            return Value.initF64(@floatFromInt(idx));
                         }
                     } else {
                         var slice: [4]u8 = undefined;
                         _ = std.unicode.utf8Encode(code, &slice) catch fatal();
                         if (cy.string.indexOf(str, &slice)) |idx| {
-                            return Value.initF64(@intToFloat(f64, idx));
+                            return Value.initF64(@floatFromInt(idx));
                         }
                     }
                 } else fatal();
@@ -2011,7 +2011,7 @@ fn stringIndexChar(comptime T: cy.StringType) cy.NativeObjFuncPtr {
             const needle = vm.valueToTempString(args[0]);
             if (needle.len > 0) {
                 const cp = cy.string.utf8CodeAtNoCheck(needle, 0);
-                return @call(.never_inline, stringFindRune(T), .{vm, recv, &[_]Value{Value.initF64(@intToFloat(f64, cp))}, 1});
+                return @call(.never_inline, stringFindRune(T), .{vm, recv, &[_]Value{Value.initF64(@floatFromInt(cp))}, 1});
             }
             return Value.None;
         }
@@ -2020,13 +2020,13 @@ fn stringIndexChar(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 }
 
 pub fn fileStreamLines(vm: *cy.UserVM, recv: Value, _: [*]const Value, nargs: u8) linksection(StdSection) Value {
-    return fileStreamLines1(vm, recv, &[_]Value{ Value.initF64(@intToFloat(f64, 4096)) }, nargs);
+    return fileStreamLines1(vm, recv, &[_]Value{ Value.initF64(@floatFromInt(4096)) }, nargs);
 }
 
 pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
     const obj = recv.asHeapObject();
-    const bufSize = @floatToInt(u32, args[0].asF64());
+    const bufSize: u32 = @intFromFloat(args[0].asF64());
     var createReadBuf = true;
     if (obj.file.hasReadBuf) {
         if (bufSize != obj.file.readBufCap) {
@@ -2041,7 +2041,7 @@ pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
     if (createReadBuf) {
         const readBuf = vm.allocator().alloc(u8, bufSize) catch stdx.fatal();
         obj.file.readBuf = readBuf.ptr;
-        obj.file.readBufCap = @intCast(u32, readBuf.len);
+        obj.file.readBufCap = @intCast(readBuf.len);
         obj.file.hasReadBuf = true;
     }
     return recv;
@@ -2052,7 +2052,7 @@ pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksectio
     defer vm.releaseObject(obj);
     if (obj.dir.iterable) {
         vm.retainObject(obj);
-        return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), true) catch fatal();
+        return vm.allocDirIterator(@ptrCast(obj), true) catch fatal();
     } else {
         return prepareThrowSymbol(vm, .NotAllowed);
     }
@@ -2063,7 +2063,7 @@ pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
     defer vm.releaseObject(obj);
     if (obj.dir.iterable) {
         vm.retainObject(obj);
-        return vm.allocDirIterator(@ptrCast(*cy.Dir, obj), false) catch fatal();
+        return vm.allocDirIterator(@ptrCast(obj), false) catch fatal();
     } else {
         return prepareThrowSymbol(vm, .NotAllowed);
     }
@@ -2085,7 +2085,7 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = @floatToInt(i32, args[0].asF64());
+    const numBytes: i32 = @intFromFloat(args[0].asF64());
     if (numBytes > 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
@@ -2105,7 +2105,7 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = @floatToInt(i32, args[0].asF64());
+    const numBytes: i32 = @intFromFloat(args[0].asF64());
 
     const file = obj.file.getStdFile();
     file.seekBy(numBytes) catch |err| {
@@ -2122,13 +2122,13 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = @floatToInt(i32, args[0].asF64());
+    const numBytes: i32 = @intFromFloat(args[0].asF64());
     if (numBytes < 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
 
     const file = obj.file.getStdFile();
-    const unumBytes = @intCast(u32, numBytes);
+    const unumBytes: u32 = @intCast(numBytes);
     file.seekTo(unumBytes) catch |err| {
         return fromUnsupportedError(vm, "seek", err, @errorReturnTrace());
     };
@@ -2152,7 +2152,7 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
         return fromUnsupportedError(vm, "write", err, @errorReturnTrace());
     };
 
-    return Value.initF64(@intToFloat(f64, numWritten));
+    return Value.initF64(@floatFromInt(numWritten));
 }
 
 pub fn fileClose(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
@@ -2170,15 +2170,16 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = @floatToInt(i32, args[0].asF64());
+    const numBytes: i32 = @intFromFloat(args[0].asF64());
     if (numBytes <= 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
-    const unumBytes = @intCast(u32, numBytes);
+    const unumBytes: u32 = @intCast(numBytes);
     const file = obj.file.getStdFile();
 
     const alloc = vm.allocator();
-    const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+    const ivm: *cy.VM = @ptrCast(vm);
+    const tempBuf = &ivm.u8Buf;
     tempBuf.clearRetainingCapacity();
     defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
     tempBuf.ensureTotalCapacityPrecise(alloc, unumBytes) catch fatal();
@@ -2201,7 +2202,8 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     const file = obj.file.getStdFile();
 
     const alloc = vm.allocator();
-    const tempBuf = &@ptrCast(*cy.VM, vm).u8Buf;
+    const ivm: *cy.VM = @ptrCast(vm);
+    const tempBuf = &ivm.u8Buf;
     tempBuf.clearRetainingCapacity();
     defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
 
@@ -2262,24 +2264,24 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
         vm.release(ctimeKey);
         vm.release(mtimeKey);
     }
-    ivm.setIndex(map, sizeKey, Value.initF64(@intToFloat(f64, stat.size))) catch fatal();
-    ivm.setIndex(map, modeKey, Value.initF64(@intToFloat(f64, stat.mode))) catch fatal();
+    ivm.setIndex(map, sizeKey, Value.initF64(@floatFromInt(stat.size))) catch fatal();
+    ivm.setIndex(map, modeKey, Value.initF64(@floatFromInt(stat.mode))) catch fatal();
     const typeTag: Symbol = switch (stat.kind) {
-        .File => .file,
-        .Directory => .dir,
+        .file => .file,
+        .directory => .dir,
         else => .unknown,
     };
-    ivm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
-    ivm.setIndex(map, atimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.atime, 1000000)))) catch fatal();
-    ivm.setIndex(map, ctimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.ctime, 1000000)))) catch fatal();
-    ivm.setIndex(map, mtimeKey, Value.initF64(@intToFloat(f64, @divTrunc(stat.mtime, 1000000)))) catch fatal();
+    ivm.setIndex(map, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
+    ivm.setIndex(map, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000)))) catch fatal();
+    ivm.setIndex(map, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000)))) catch fatal();
+    ivm.setIndex(map, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000)))) catch fatal();
     return map;
 }
 
 pub fn metatypeId(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
     defer vm.releaseObject(obj);
-    return Value.initF64(@intToFloat(f64, obj.metatype.symId));
+    return Value.initF64(@floatFromInt(obj.metatype.symId));
 }
 
 pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
@@ -2287,7 +2289,7 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     defer vm.releaseObject(obj);
 
     const ivm = vm.internal();
-    const iter = @ptrCast(*cy.DirIterator, obj);
+    const iter: *cy.DirIterator = @ptrCast(obj);
     if (iter.recursive) {
         const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
         const entryOpt = walker.next() catch |err| {
@@ -2306,11 +2308,11 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
             ivm.setIndex(map, pathKey, vm.allocRawString(entry.path) catch fatal()) catch fatal();
             ivm.setIndex(map, nameKey, vm.allocRawString(entry.basename) catch fatal()) catch fatal();
             const typeTag: Symbol = switch (entry.kind) {
-                .File => .file,
-                .Directory => .dir,
+                .file => .file,
+                .directory => .dir,
                 else => .unknown,
             };
-            ivm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
+            ivm.setIndex(map, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2330,11 +2332,11 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
             }
             ivm.setIndex(map, nameKey, vm.allocRawString(entry.name) catch fatal()) catch fatal();
             const typeTag: Symbol = switch (entry.kind) {
-                .File => .file,
-                .Directory => .dir,
+                .file => .file,
+                .directory => .dir,
                 else => .unknown,
             };
-            ivm.setIndex(map, typeKey, Value.initSymbol(@enumToInt(typeTag))) catch fatal();
+            ivm.setIndex(map, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2353,12 +2355,12 @@ pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
             const line = vm.allocRawString(readBuf[obj.file.curPos..obj.file.curPos+end]) catch stdx.fatal();
 
             // Advance pos.
-            obj.file.curPos += @intCast(u32, end);
+            obj.file.curPos += @intCast(end);
 
             return line;
         }
 
-        var lineBuf = cy.HeapRawStringBuilder.init(@ptrCast(*cy.VM, vm)) catch fatal();
+        var lineBuf = cy.HeapRawStringBuilder.init(@ptrCast(vm)) catch fatal();
         defer lineBuf.deinit();
         // Start with previous string without line delimiter.
         lineBuf.appendString(alloc, readBuf[obj.file.curPos..obj.file.readBufEnd]) catch stdx.fatal();
@@ -2383,16 +2385,16 @@ pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
                 lineBuf.appendString(alloc, readBuf[0..end]) catch stdx.fatal();
 
                 // Advance pos.
-                obj.file.curPos = @intCast(u32, end);
-                obj.file.readBufEnd = @intCast(u32, bytesRead);
+                obj.file.curPos = @intCast(end);
+                obj.file.readBufEnd = @intCast(bytesRead);
 
                 return Value.initPtr(lineBuf.ownObject(alloc));
             } else {
                 lineBuf.appendString(alloc, readBuf[0..bytesRead]) catch stdx.fatal();
 
                 // Advance pos.
-                obj.file.curPos = @intCast(u32, bytesRead);
-                obj.file.readBufEnd = @intCast(u32, bytesRead);
+                obj.file.curPos = @intCast(bytesRead);
+                obj.file.readBufEnd = @intCast(bytesRead);
             }
         }
     } else {
@@ -2409,7 +2411,7 @@ pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .number => {
-            return Value.initI32(@floatToInt(i32, @trunc(val.asF64())));
+            return Value.initI32(@intFromFloat(@trunc(val.asF64())));
         },
         .string => {
             var str = vm.valueToTempString(val);
@@ -2438,9 +2440,9 @@ pub fn numberCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
             };
             return Value.initF64(res);
         },
-        .enumT => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-        .symbol => return Value.initF64(@intToFloat(f64, val.val & @as(u64, 0xFF))),
-        .int => return Value.initF64(@intToFloat(f64, val.asInteger())),
+        .enumT => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
+        .symbol => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
+        .int => return Value.initF64(@floatFromInt(val.asInteger())),
         else => {
             vm.release(val);
             return vm.returnPanic("Not a type that can be converted to `number`.");
@@ -2453,7 +2455,8 @@ pub fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (val.isPointerT()) {
         return val;
     } else if (val.isNumber()) {
-        return cy.heap.allocPointer(vm.internal(), @intToPtr(?*anyopaque, @floatToInt(usize, val.asF64()))) catch fatal();
+        const i: usize = @intFromFloat(val.asF64());
+        return cy.heap.allocPointer(vm.internal(), @ptrFromInt(i)) catch fatal();
     } else {
         vm.release(val);
         return vm.returnPanic("Not a `pointer`.");
@@ -2483,10 +2486,10 @@ pub fn errorCall(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
         return prepareThrowSymbol(vm, .InvalidArgument);
     } else {
         if (val.assumeNotPtrIsSymbol()) {
-            return Value.initErrorSymbol(@intCast(u8, val.asSymbolId()));
+            return Value.initErrorSymbol(@intCast(val.asSymbolId()));
         } else if (val.assumeNotPtrIsEnum()) {
             const enumv = val.asEnum();
-            return Value.initErrorEnum(@intCast(u8, enumv.enumId), @intCast(u8, enumv.memberId));
+            return Value.initErrorEnum(@intCast(enumv.enumId), @intCast(enumv.memberId));
         } else {
             return prepareThrowSymbol(vm, .InvalidArgument);
         }
@@ -2605,9 +2608,9 @@ pub const ModuleBuilder = struct {
 
         for (fields, 0..) |field, i| {
             const id = try self.vm.ensureFieldSym(field);
-            try self.vm.addFieldSym(typeId, id, @intCast(u16, i), bt.Any);
+            try self.vm.addFieldSym(typeId, id, @intCast(i), bt.Any);
         }
-        self.vm.types.buf[typeId].numFields = @intCast(u32, fields.len);
+        self.vm.types.buf[typeId].numFields = @intCast(fields.len);
         return typeId;
     }
 };

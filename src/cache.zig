@@ -49,7 +49,7 @@ pub fn saveNewSpecFile(alloc: std.mem.Allocator, specGroup: SpecHashGroup, spec:
     const cacheSpec = try toCacheSpec(spec);
     const cyberPath = try getCyberPath(alloc);
 
-    const now = @intCast(u64, std.time.timestamp());
+    const now: u64 = @intCast(std.time.timestamp());
 
     const filePath = try std.fs.path.join(alloc, &.{cyberPath, cacheSpec});
     defer alloc.free(filePath);

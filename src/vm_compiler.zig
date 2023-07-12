@@ -267,7 +267,7 @@ pub const VMcompiler = struct {
         // Main chunk.
         const mainModId = try sema.appendResolvedRootModule(self, finalSrcUri);
         const mainMod = self.sema.getModulePtr(mainModId);
-        const nextId = @intCast(u32, self.chunks.items.len);
+        const nextId: u32 = @intCast(self.chunks.items.len);
         var mainChunk = try cy.Chunk.init(self, nextId, mainMod.absSpec, src);
         mainChunk.modId = mainModId;
         mainMod.chunkId = nextId;
@@ -405,8 +405,8 @@ pub const VMcompiler = struct {
             if (self.buf.ops.capacity < reqLen) {
                 try self.buf.ops.ensureTotalCapacityPrecise(self.alloc, reqLen);
             }
-            const constAddr = std.mem.alignForward(@ptrToInt(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
-            const constDst = @intToPtr([*]cy.Const, constAddr)[0..self.buf.consts.items.len];
+            const constAddr = std.mem.alignForward(usize, @intFromPtr(self.buf.ops.items.ptr) + self.buf.ops.items.len, @alignOf(cy.Const));
+            const constDst = @as([*]cy.Const, @ptrFromInt(constAddr))[0..self.buf.consts.items.len];
             const constSrc = try self.buf.consts.toOwnedSlice(self.alloc);
             std.mem.copy(cy.Const, constDst, constSrc);
             self.alloc.free(constSrc);
@@ -506,7 +506,7 @@ pub const VMcompiler = struct {
         if (task.builtin) {
             if (self.moduleLoaders.get(task.absSpec)) |loaders| {
                 for (loaders.items) |loader| {
-                    if (!loader(@ptrCast(*cy.UserVM, self.vm), task.modId)) {
+                    if (!loader(@ptrCast(self.vm), task.modId)) {
                         return error.LoadModuleError;
                     }
                 }
@@ -529,7 +529,7 @@ pub const VMcompiler = struct {
             }
 
             // Push another chunk.
-            const newChunkId = @intCast(u32, self.chunks.items.len);
+            const newChunkId: u32 = @intCast(self.chunks.items.len);
             var newChunk = try cy.Chunk.init(self, newChunkId, task.absSpec, src);
             newChunk.srcOwned = true;
             newChunk.modId = task.modId;
@@ -585,7 +585,7 @@ pub const VMcompiler = struct {
         const client = self.vm.httpClient;
 
         const uri = try std.Uri.parse(task.absSpec);
-        var req = client.request(uri) catch |err| {
+        var req = client.request(.GET, uri, .{ .allocator = self.alloc }) catch |err| {
             if (err == error.UnknownHostName) {
                 const chunk = &self.chunks.items[task.chunkId];
                 const stmt = chunk.nodes[task.nodeId];
@@ -594,17 +594,12 @@ pub const VMcompiler = struct {
                 return err;
             }
         };
-        defer req.deinit();
+        defer client.deinitRequest(&req);
 
-        var buf: std.ArrayListUnmanaged(u8) = .{};
-        errdefer buf.deinit(self.alloc);
-        var readBuf: [4096]u8 = undefined;
+        try client.startRequest(&req);
+        try client.waitRequest(&req);
 
-        // First read should consume the status code.
-        var read = try client.readAll(&req, &readBuf);
-        try buf.appendSlice(self.alloc, readBuf[0..read]);
-
-        switch (req.response.headers.status) {
+        switch (req.response.status) {
             .ok => {
                 // Whitelisted status codes.
             },
@@ -612,11 +607,16 @@ pub const VMcompiler = struct {
                 // Stop immediately.
                 const chunk = &self.chunks.items[task.chunkId];
                 const stmt = chunk.nodes[task.nodeId];
-                return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.headers.status)}, stmt.head.left_right.right);
+                return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.status)}, stmt.head.left_right.right);
             },
         }
 
-        while (read > 0) {
+        var buf: std.ArrayListUnmanaged(u8) = .{};
+        errdefer buf.deinit(self.alloc);
+        var readBuf: [4096]u8 = undefined;
+        var read: usize = readBuf.len;
+
+        while (read == readBuf.len) {
             read = try client.readAll(&req, &readBuf);
             try buf.appendSlice(self.alloc, readBuf[0..read]);
         }

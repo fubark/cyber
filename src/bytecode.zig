@@ -73,7 +73,7 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn pushConst(self: *ByteCodeBuffer, val: Const) !u32 {
-        const start = @intCast(u32, self.consts.items.len);
+        const start: u32 = @intCast(self.consts.items.len);
         try self.consts.resize(self.alloc, self.consts.items.len + 1);
         self.consts.items[start] = val;
         return start;
@@ -81,15 +81,15 @@ pub const ByteCodeBuffer = struct {
 
     pub fn pushDebugLabel(self: *ByteCodeBuffer, pc: usize, name: []const u8) !void {
         try self.debugLabels.append(self.alloc, .{
-            .pc = @intCast(u32, pc),
+            .pc = @intCast(pc),
             .namePtr = name.ptr,
-            .nameLen = @intCast(u32, name.len),
+            .nameLen = @intCast(name.len),
         });
     }
 
     pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32) !void {
         try self.debugTable.append(self.alloc, .{
-            .pc = @intCast(u32, pc),
+            .pc = @intCast(pc),
             .loc = loc,
             .file = file,
             .frameLoc = frameLoc,
@@ -154,7 +154,7 @@ pub const ByteCodeBuffer = struct {
     }
 
     pub fn setOpArgU16(self: *ByteCodeBuffer, idx: usize, arg: u16) void {
-        @ptrCast(*align(1) u16, &self.ops.items[idx]).* = arg;
+        @as(*align(1) u16, @ptrCast(&self.ops.items[idx])).* = arg;
     }
 
     pub fn setOpArgs1(self: *ByteCodeBuffer, idx: usize, arg: u8) void {
@@ -163,7 +163,7 @@ pub const ByteCodeBuffer = struct {
 
     pub fn getOrPushStringConst(self: *ByteCodeBuffer, str: []const u8) !u32 {
         const val = try self.getOrPushStringValue(str);
-        const idx = @intCast(u32, self.consts.items.len);
+        const idx: u32 = @intCast(self.consts.items.len);
         try self.consts.append(self.alloc, Const.init(val.val));
         return idx;
     }
@@ -177,13 +177,13 @@ pub const ByteCodeBuffer = struct {
         } else {
             // Reserve 12 bytes for charLen, mruIdx, mruCharIdx.
             try self.strBuf.ensureUnusedCapacity(self.alloc, 12);
-            const start = @intCast(u32, self.strBuf.items.len);
-            @ptrCast(*align(1) u32, self.strBuf.items.ptr + start).* = charLen;
-            @ptrCast(*align(1) u32, self.strBuf.items.ptr + start + 4).* = 0;
-            @ptrCast(*align(1) u32, self.strBuf.items.ptr + start + 8).* = 0;
+            const start: u32 = @intCast(self.strBuf.items.len);
+            @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start)).* = charLen;
+            @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start + 4)).* = 0;
+            @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start + 8)).* = 0;
             self.strBuf.items.len += 12;
             try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = stdx.IndexSlice(u32).init(start + 12, @intCast(u32, self.strBuf.items.len));
+            res.key_ptr.* = stdx.IndexSlice(u32).init(start + 12, @intCast(self.strBuf.items.len));
             return res.key_ptr.*;
         }
     }
@@ -195,9 +195,9 @@ pub const ByteCodeBuffer = struct {
         if (res.found_existing) {
             return res.key_ptr.*;
         } else {
-            const start = @intCast(u32, self.strBuf.items.len);
+            const start: u32 = @intCast(self.strBuf.items.len);
             try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = stdx.IndexSlice(u32).init(start, @intCast(u32, self.strBuf.items.len));
+            res.key_ptr.* = stdx.IndexSlice(u32).init(start, @intCast(self.strBuf.items.len));
             return res.key_ptr.*;
         }
     }
@@ -206,10 +206,10 @@ pub const ByteCodeBuffer = struct {
         if (cy.validateUtf8(str)) |charLen| {
             if (charLen == str.len) {
                 const slice = try self.getOrPushAstring(str);
-                return cy.Value.initStaticAstring(slice.start, @intCast(u15, slice.end - slice.start));
+                return cy.Value.initStaticAstring(slice.start, @intCast(slice.end - slice.start));
             } else {
-                const slice = try self.getOrPushUstring(str, @intCast(u32, charLen));
-                return cy.Value.initStaticUstring(slice.start, @intCast(u15, slice.end - slice.start));
+                const slice = try self.getOrPushUstring(str, @intCast(charLen));
+                return cy.Value.initStaticUstring(slice.start, @intCast(slice.end - slice.start));
             }
         } else {
             return error.InvalidUtf8;
@@ -219,7 +219,7 @@ pub const ByteCodeBuffer = struct {
 
 fn printStderr(comptime format: []const u8, args: anytype) void {
     if (builtin.is_test) {
-        if (@enumToInt(std.log.Level.debug) <= @enumToInt(std.testing.log_level)) {
+        if (@intFromEnum(std.log.Level.debug) <= @intFromEnum(std.testing.log_level)) {
             std.debug.print(format, args);
         }
     } else {
@@ -258,21 +258,21 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const numArgs = pc[2].arg;
             const numRet = pc[3].arg;
             const symId = pc[4].arg;
-            const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+            const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}, rFuncSigId={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId), v(rFuncSigId)});
         },
         .callSym => {
             const startLocal = pc[1].arg;
             const numArgs = pc[2].arg;
             const numRet = pc[3].arg;
-            const symId = @ptrCast(*const align(1) u16, pc + 4).*;
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
             fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId)});
         },
         .callFuncIC => {
             const startLocal = pc[1].arg;
             const numRet = pc[3].arg;
             const stackSize = pc[4].arg;
-            const pcPtr = @intToPtr([*]cy.InstDatum, @intCast(usize, @ptrCast(*const align(1) u48, pc + 6).*));
+            const pcPtr: [*]cy.InstDatum = @ptrFromInt(@as(usize, @intCast(@as(*const align(1) u48, @ptrCast(pc + 6)).*)));
             fmt.printStderr("{} {} startLocal={}, numRet={}, stackSize={}, pcPtr={}", &.{v(pcOffset), v(code), v(startLocal), v(numRet), v(stackSize), v(pcPtr)});
         },
         .call1 => {
@@ -285,19 +285,19 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const numParams = pc[2].arg;
             const numCaptured = pc[3].arg;
             const numLocals = pc[4].arg;
-            const rFuncSigId = @ptrCast(*const align(1) u16, pc + 5).*;
+            const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             const local = pc[7].arg;
             const dst = pc[8].arg;
             fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, rFuncSigId={}, closureLocal={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(rFuncSigId), v(local), v(dst)});
             printStderr(" {any}", .{std.mem.sliceAsBytes(pc[9..9+numCaptured])});
         },
         .constI8 => {
-            const val = @bitCast(i8, pc[1].arg);
+            const val: i8 = @bitCast(pc[1].arg);
             const dst = pc[2].arg;
             fmt.printStderr("{} {} val={} dst={}", &.{v(pcOffset), v(code), v(val), v(dst)});
         },
         .constOp => {
-            const idx = @ptrCast(*const align (1) u16, pc + 1).*;
+            const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].arg;
             fmt.printStderr("{} {} constIdx={} dst={}", &.{v(pcOffset), v(code), v(idx), v(dst)});
         },
@@ -329,20 +329,20 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
         .field => {
             const recv = pc[1].arg;
             const dst = pc[2].arg;
-            const symId = @ptrCast(*const align(1) u16, pc + 3).*;
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
             fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
         },
         .fieldRetain => {
             const recv = pc[1].arg;
             const dst = pc[2].arg;
-            const symId = @ptrCast(*const align(1) u16, pc + 3).*;
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 3)).*;
             fmt.printStderr("{} {} recv={}, dst={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(dst), v(symId)});
         },
         .forRangeInit => {
             const start = pc[1].arg;
             const end = pc[2].arg;
             const step = pc[3].arg;
-            const forRangeInstOffset = @ptrCast(*const align(1) u16, pc + 6).*;
+            const forRangeInstOffset = @as(*const align(1) u16, @ptrCast(pc + 6)).*;
             fmt.printStderr("{} {} start={}, end={}, step={}, forRangeInstOffset={}", &.{v(pcOffset), v(code), v(start), v(end), v(step), v(forRangeInstOffset)});
         },
         .forRangeReverse,
@@ -351,7 +351,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const step = pc[2].arg;
             const end = pc[3].arg;
             const userCounter = pc[4].arg;
-            const negOffset = @ptrCast(*const align(1) u16, pc + 5).*;
+            const negOffset = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             fmt.printStderr("{} {} counter={}, step={}, end={}, userCounter={}, negOffset={}", &.{v(pcOffset), v(code), v(counter), v(step), v(end), v(userCounter), v(negOffset)});
         },
         .index => {
@@ -361,22 +361,22 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             fmt.printStderr("{} {} recv={}, index={}, dst={}", &.{v(pcOffset), v(code), v(recv), v(index), v(dst)});
         },
         .jump => {
-            const jump = @ptrCast(*const align(1) i16, pc + 1).*;
+            const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             fmt.printStderr("{} {} offset={}", &.{v(pcOffset), v(code), v(jump)});
         },
         .jumpNotCond => {
-            const jump = @ptrCast(*const align(1) u16, pc + 2).*;
+            const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             fmt.printStderr("{} {} cond={}, offset={}", &.{v(pcOffset), v(code), v(pc[1].arg), v(jump)});
         },
         .jumpNotNone => {
-            const jump = @ptrCast(*const align(1) i16, pc + 1).*;
+            const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].arg)});
         },
         .lambda => {
             const negFuncPcOffset = pc[1].arg;
             const numParams = pc[2].arg;
             const numLocals = pc[3].arg;
-            const rFuncSigId = @ptrCast(*const align(1) u16, pc + 4).*;
+            const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
             const dst = pc[6].arg;
             fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numLocals={}, rFuncSigId={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numLocals), v(rFuncSigId), v(dst)});
         },
@@ -452,7 +452,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             fmt.printStderr("{} {} recv={}, start={}, end={}, dst={}", &.{v(pcOffset), v(code), v(recv), v(start), v(end), v(dst)});
         },
         .staticVar => {
-            const symId = @ptrCast(*const align(1) u16, pc + 1).*;
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].arg;
             fmt.printStderr("{} {} sym={} dst={}", &.{v(pcOffset), v(code), v(symId), v(dst)});
         },

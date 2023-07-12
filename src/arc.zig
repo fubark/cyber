@@ -267,7 +267,7 @@ pub fn checkMemory(self: *cy.VM) !bool {
         if (S.visit(self.alloc, &nodes, &cycleRoots, entry.key_ptr.*, entry.value_ptr)) {
             if (cy.TraceEnabled) {
                 self.trace.numRetainCycles = 1;
-                self.trace.numRetainCycleRoots = @intCast(u32, cycleRoots.items.len);
+                self.trace.numRetainCycleRoots = @intCast(cycleRoots.items.len);
             }
             for (cycleRoots.items) |root| {
                 // Force release.

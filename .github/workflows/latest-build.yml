@@ -96,7 +96,7 @@ jobs:
       BIN_NAME: cyber
       BIN_EXT: ${{ contains(matrix.config.target, 'windows') && '.exe' || '' }}
       ZIG_MODE_FLAG: ${{ (matrix.config.mode == 'release' && '-Doptimize=ReleaseFast') || '' }}
-      ZIG_VERSION: 0.11.0-dev.2317+46b2f1f70
+      ZIG_VERSION: 0.11.0-dev.3937+78eb3c561
     steps:
       - name: Install Linux deps.
         if: env.BUILD_HOST == 'ubuntu-22.04' && env.BUILD_TARGET == 'x86_64-linux-gnu'
@@ -193,7 +193,7 @@ jobs:
         if: env.BUILD_TARGET == 'wasm32-freestanding'
         run: |
           zig build wasm-test ${{ env.ZIG_TARGET_FLAG }} ${{ env.ZIG_MODE_FLAG }} 
-          wasm3/build/wasm3 zig-out/test/test.wasm
+          wasm3/build/wasm3 zig-out/lib/test.wasm
 
       - name: Build.
         run: zig build ${{ env.BUILD_CMD }} ${{ env.ZIG_MODE_FLAG }} ${{ env.ZIG_TARGET_FLAG }}
@@ -202,7 +202,7 @@ jobs:
       - name: Strip (Linux)
         if: env.BUILD_TARGET == 'x86_64-linux-gnu' && env.BUILD_MODE == 'release' && env.BUILD_CMD == 'cli'
         run: |
-          strip zig-out/cyber/cyber
+          strip zig-out/bin/cyber
 
       # # Don't strip aarch64 since it was already code signed.
       # # TODO: Look for way to make zig strip before doing the codesign.
@@ -226,13 +226,13 @@ jobs:
       - name: Zip. (linux/macos)
         if: (env.BUILD_HOST == 'ubuntu-22.04' || env.BUILD_HOST == 'macos-12') && env.BUILD_TARGET != 'wasm32-freestanding' && env.BUILD_CMD == 'cli'
         run: |
-           tar -C zig-out/cyber -czvf ${{ env.BIN_ZIP }} cyber
+           tar -C zig-out/bin -czvf ${{ env.BIN_ZIP }} cyber
 
       - name: Zip. (windows)
         if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'cli'
         shell: bash
         run: |
-          cd zig-out/cyber && 7z a ../../${{env.BIN_ZIP}} cyber.exe
+          cd zig-out/bin && 7z a ../../${{env.BIN_ZIP}} cyber.exe
 
       - name: Move. (windows lib)
         if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'lib'

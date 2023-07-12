@@ -60,7 +60,7 @@ const TimerTrace = struct {
     pub fn end(self: *TimerTrace) void {
         if (EnableTimerTrace) {
             const now = self.timer.read();
-            log.info("time: {d:.3}ms", .{ @intToFloat(f32, now) / 1e6 });
+            log.info("time: {d:.3}ms", .{ @as(f32, @floatFromInt(now)) / 1e6 });
         }
     }
 
@@ -68,9 +68,9 @@ const TimerTrace = struct {
         if (EnableTimerTrace) {
             const now = self.timer.read();
             if (builtin.mode == .ReleaseFast) {
-                std.debug.print("{s}: {d:.3}ms\n", .{ msg, @intToFloat(f32, now) / 1e6 });
+                std.debug.print("{s}: {d:.3}ms\n", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
             } else {
-                log.info("{s}: {d:.3}ms", .{ msg, @intToFloat(f32, now) / 1e6 });
+                log.info("{s}: {d:.3}ms", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
             }
         }
     }

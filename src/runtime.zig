@@ -108,7 +108,7 @@ pub const MethodSym = struct {
             .rFuncSigId = funcSigId,
             .inner = .{
                 .func = .{
-                    .pc = @intCast(u32, pc),
+                    .pc = @intCast(pc),
                     .stackSize = stackSize,
                 },
             },
@@ -144,7 +144,7 @@ pub const MethodSym = struct {
             .rFuncSigId = funcSigId,
             .inner = .{
                 .func = .{
-                    .pc = @intCast(u32, pc),
+                    .pc = @intCast(pc),
                     .stackSize = stackSize,
                 },
             },
@@ -226,11 +226,11 @@ pub const FuncSymbolEntry = extern struct {
     pub fn initNativeFunc1(func: cy.NativeFuncPtr, isTyped: bool, numParams: u32, rFuncSigId: sema.ResolvedFuncSigId) FuncSymbolEntry {
         const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
-            .entryT = @enumToInt(FuncSymbolEntryType.nativeFunc1),
+            .entryT = @intFromEnum(FuncSymbolEntryType.nativeFunc1),
             .innerExtra = .{
                 .nativeFunc1 = .{
-                    .typedFlagNumParams = isTypedMask | @intCast(u16, numParams),
-                    .rFuncSigId = @intCast(u16, rFuncSigId),
+                    .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
+                    .rFuncSigId = @intCast(rFuncSigId),
                 }
             },
             .inner = .{
@@ -241,7 +241,7 @@ pub const FuncSymbolEntry = extern struct {
 
     pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, rFuncSigId: cy.sema.ResolvedFuncSigId) FuncSymbolEntry {
         return .{
-            .entryT = @enumToInt(FuncSymbolEntryType.func),
+            .entryT = @intFromEnum(FuncSymbolEntryType.func),
             .innerExtra = .{
                 .func = .{
                     .rFuncSigId = rFuncSigId,
@@ -249,7 +249,7 @@ pub const FuncSymbolEntry = extern struct {
             },
             .inner = .{
                 .func = .{
-                    .pc = @intCast(u32, pc),
+                    .pc = @intCast(pc),
                     .stackSize = stackSize,
                     .numParams = numParams,
                 },
@@ -259,7 +259,7 @@ pub const FuncSymbolEntry = extern struct {
 
     pub fn initClosure(closure: *cy.Closure) FuncSymbolEntry {
         return .{
-            .entryT = @enumToInt(FuncSymbolEntryType.closure),
+            .entryT = @intFromEnum(FuncSymbolEntryType.closure),
             .inner = .{
                 .closure = closure,
             },
@@ -287,9 +287,9 @@ test "Internals." {
 
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
     var funcSymEntry: FuncSymbolEntry = undefined;
-    try t.eq(@ptrToInt(&funcSymEntry.entryT), @ptrToInt(&funcSymEntry));
-    try t.eq(@ptrToInt(&funcSymEntry.innerExtra), @ptrToInt(&funcSymEntry) + 4);
-    try t.eq(@ptrToInt(&funcSymEntry.inner), @ptrToInt(&funcSymEntry) + 8);
+    try t.eq(@intFromPtr(&funcSymEntry.entryT), @intFromPtr(&funcSymEntry));
+    try t.eq(@intFromPtr(&funcSymEntry.innerExtra), @intFromPtr(&funcSymEntry) + 4);
+    try t.eq(@intFromPtr(&funcSymEntry.inner), @intFromPtr(&funcSymEntry) + 8);
 
     try t.eq(@sizeOf(FieldSymbolMap), 16);
 

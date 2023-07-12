@@ -86,7 +86,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) !void {
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
-    return vm.allocListFill(args[0], @floatToInt(u32, args[1].asF64())) catch stdx.fatal();
+    return vm.allocListFill(args[0], @intFromFloat(args[1].asF64())) catch stdx.fatal();
 }
 
 pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -94,7 +94,7 @@ pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     defer vm.release(args[0]);
     const str = vm.valueToTempString(args[0]);
     if (str.len > 0) {
-        return Value.initF64(@intToFloat(f64, str[0]));
+        return Value.initF64(@floatFromInt(str[0]));
     } else {
         return Value.None;
     }
@@ -159,7 +159,7 @@ pub fn char(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
 pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = args[0];
     defer vm.release(val);
-    return cy.value.shallowCopy(@ptrCast(*cy.VM, vm), val);
+    return cy.value.shallowCopy(@ptrCast(vm), val);
 }
 
 pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -246,13 +246,13 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     if (res.term == .Exited) {
         const exitedKey = vm.allocAstring("exited") catch stdx.fatal();
         defer vm.release(exitedKey);
-        ivm.setIndex(map, exitedKey, Value.initF64(@intToFloat(f64, res.term.Exited))) catch stdx.fatal();
+        ivm.setIndex(map, exitedKey, Value.initF64(@floatFromInt(res.term.Exited))) catch stdx.fatal();
     }
     return map;
 }
 
 pub fn exit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const status = @floatToInt(u8, args[0].asF64());
+    const status: u8 = @intFromFloat(args[0].asF64());
     std.os.exit(status);
 }
 
@@ -313,7 +313,7 @@ fn isAlpha(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     if (num > 255) {
         return Value.False;
     } else {
-        return Value.initBool(std.ascii.isAlphabetic(@intCast(u8, num)));
+        return Value.initBool(std.ascii.isAlphabetic(@intCast(num)));
     }
 }
 
@@ -325,7 +325,7 @@ fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     if (num > 255) {
         return Value.False;
     } else {
-        return Value.initBool(std.ascii.isDigit(@intCast(u8, num)));
+        return Value.initBool(std.ascii.isDigit(@intCast(num)));
     }
 }
 
@@ -334,7 +334,7 @@ fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
     if (num < 0 or num >= 2 << 21) {
         return prepareThrowSymbol(vm, .InvalidRune);
     }
-    const rune = @intCast(u21, num);
+    const rune: u21 = @intCast(num);
     if (std.unicode.utf8ValidCodepoint(rune)) {
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(rune, &buf) catch fatal();
@@ -518,7 +518,7 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseRe
             }
         }
         try entryMap.put(alloc, vm.internal(), try vm.allocAstring("name"), try vm.allocAstring(name));
-        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("pos"), Value.initF64(@intToFloat(f64, pos)));
+        try entryMap.put(alloc, vm.internal(), try vm.allocAstring("pos"), Value.initF64(@floatFromInt(pos)));
         try declsList.append(alloc, entry);
     }
     try map.put(alloc, vm.internal(), try vm.allocAstring("decls"), decls);
@@ -642,7 +642,7 @@ pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
 pub fn typeid(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(args[0]);
     fmt.printDeprecated("typeid", "0.2", "Use metatype.id() instead.", &.{});
-    return Value.initF64(@intToFloat(f64, args[0].getTypeId()));
+    return Value.initF64(@floatFromInt(args[0].getTypeId()));
 }
 
 fn valtag(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -655,30 +655,30 @@ fn typeof(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     defer vm.release(val);
 
     const typeId = val.getTypeId();
-    return cy.heap.allocMetaType(vm.internal(), @enumToInt(cy.heap.MetaTypeKind.object), typeId) catch fatal();
+    return cy.heap.allocMetaType(vm.internal(), @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();
 }
 
 pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     defer vm.release(val);
     switch (val.getUserTag()) {
-        .number => return Value.initSymbol(@enumToInt(Symbol.number)),
-        .object => return Value.initSymbol(@enumToInt(Symbol.object)),
-        .err => return Value.initSymbol(@enumToInt(Symbol.err)),
-        .boolean => return Value.initSymbol(@enumToInt(Symbol.boolean)),
-        .map => return Value.initSymbol(@enumToInt(Symbol.map)),
-        .int => return Value.initSymbol(@enumToInt(Symbol.int)),
-        .list => return Value.initSymbol(@enumToInt(Symbol.list)),
-        .string => return Value.initSymbol(@enumToInt(Symbol.string)),
-        .rawstring => return Value.initSymbol(@enumToInt(Symbol.rawstring)),
-        .fiber => return Value.initSymbol(@enumToInt(Symbol.fiber)),
+        .number => return Value.initSymbol(@intFromEnum(Symbol.number)),
+        .object => return Value.initSymbol(@intFromEnum(Symbol.object)),
+        .err => return Value.initSymbol(@intFromEnum(Symbol.err)),
+        .boolean => return Value.initSymbol(@intFromEnum(Symbol.boolean)),
+        .map => return Value.initSymbol(@intFromEnum(Symbol.map)),
+        .int => return Value.initSymbol(@intFromEnum(Symbol.int)),
+        .list => return Value.initSymbol(@intFromEnum(Symbol.list)),
+        .string => return Value.initSymbol(@intFromEnum(Symbol.string)),
+        .rawstring => return Value.initSymbol(@intFromEnum(Symbol.rawstring)),
+        .fiber => return Value.initSymbol(@intFromEnum(Symbol.fiber)),
         .nativeFunc,
         .closure,
-        .lambda => return Value.initSymbol(@enumToInt(Symbol.function)),
-        .none => return Value.initSymbol(@enumToInt(Symbol.none)),
-        .symbol => return Value.initSymbol(@enumToInt(Symbol.symbol)),
-        .metatype => return Value.initSymbol(@enumToInt(Symbol.metatype)),
-        .pointer => return Value.initSymbol(@enumToInt(Symbol.pointer)),
+        .lambda => return Value.initSymbol(@intFromEnum(Symbol.function)),
+        .none => return Value.initSymbol(@intFromEnum(Symbol.none)),
+        .symbol => return Value.initSymbol(@intFromEnum(Symbol.symbol)),
+        .metatype => return Value.initSymbol(@intFromEnum(Symbol.metatype)),
+        .pointer => return Value.initSymbol(@intFromEnum(Symbol.pointer)),
         else => fmt.panic("Unsupported {}", &.{fmt.v(val.getUserTag())}),
     }
 }

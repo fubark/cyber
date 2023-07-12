@@ -589,7 +589,7 @@ pub fn appendModule(c: *cy.VMcompiler, name: []const u8) !ModuleId {
     const nameDupe = try c.alloc.dupe(u8, name);
 
     // Add empty module placeholder.
-    const id = @intCast(u32, c.sema.modules.items.len);
+    const id: u32 = @intCast(c.sema.modules.items.len);
     try c.sema.modules.append(c.alloc, .{
         .id = id,
         .syms = .{},

@@ -63,14 +63,14 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
     // Assumes call start local is at 1.
     std.mem.copy(Value, stack[5..5+args.len], args);
 
-    const obj = @ptrCast(*Fiber, try cy.heap.allocExternalObject(vm, @sizeOf(Fiber)));
+    const obj: *Fiber = @ptrCast(try cy.heap.allocExternalObject(vm, @sizeOf(Fiber)));
     const parentDstLocal = cy.NullU8;
     obj.* = .{
         .structId = rt.FiberT,
         .rc = 1,
         .stackPtr = stack.ptr,
-        .stackLen = @intCast(u32, stack.len),
-        .pcOffset = @intCast(u32, pc),
+        .stackLen = @intCast(stack.len),
+        .pcOffset = @intCast(pc),
         .fpOffset = 0,
         .parentDstLocal = parentDstLocal,
         .tryStackCap = 0,
@@ -79,7 +79,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
         .throwTracePtr = undefined,
         .throwTraceCap = 0,
         .throwTraceLen = 0,
-        .initialPcOffset = @intCast(u32, pc),
+        .initialPcOffset = @intCast(pc),
         .prevFiber = undefined,
     };
 
@@ -90,9 +90,9 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
 pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) PcSp {
     // Save current fiber.
     vm.curFiber.stackPtr = vm.stack.ptr;
-    vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
-    vm.curFiber.pcOffset = @intCast(u32, curFiberEndPc);
-    vm.curFiber.fpOffset = @intCast(u32, getStackOffset(vm.stack.ptr, curFramePtr));
+    vm.curFiber.stackLen = @intCast(vm.stack.len);
+    vm.curFiber.pcOffset = @intCast(curFiberEndPc);
+    vm.curFiber.fpOffset = @intCast(getStackOffset(vm.stack.ptr, curFramePtr));
 
     // Push new fiber.
     fiber.prevFiber = vm.curFiber;
@@ -118,9 +118,9 @@ pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber:
 
 pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Value) PcSp {
     vm.curFiber.stackPtr = vm.stack.ptr;
-    vm.curFiber.stackLen = @intCast(u32, vm.stack.len);
-    vm.curFiber.pcOffset = @intCast(u32, curFiberEndPc);
-    vm.curFiber.fpOffset = @intCast(u32, getStackOffset(vm.stack.ptr, curFp));
+    vm.curFiber.stackLen = @intCast(vm.stack.len);
+    vm.curFiber.pcOffset = @intCast(curFiberEndPc);
+    vm.curFiber.fpOffset = @intCast(getStackOffset(vm.stack.ptr, curFp));
     const dstLocal = vm.curFiber.parentDstLocal;
 
     // Release current fiber.
@@ -172,7 +172,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
         // Check if fiber was previously on a yield op.
         if (vm.ops[pc].code == .coyield) {
-            const jump = @ptrCast(*const align(1) u16, &vm.ops[pc+1]).*;
+            const jump = @as(*const align(1) u16, @ptrCast(&vm.ops[pc+1])).*;
             log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
             // The yield statement already contains the end locals pc.
             cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, pc + jump);
@@ -180,10 +180,10 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
         // Unwind stack and release all locals.
         while (framePtr > 0) {
-            pc = @intCast(u32, getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfo.callInstOffset);
+            pc = @intCast(getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfo.callInstOffset);
 
             // Compute next frame ptr offset.
-            framePtr = @intCast(u32, getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
+            framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
             const sym = cy.debug.getDebugSym(vm, pc) orelse return error.NoDebugSym;
             const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
             log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
@@ -329,17 +329,17 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.InstDatum, err: Valu
 }
 
 pub inline fn getInstOffset(from: [*]const cy.InstDatum, to: [*]const cy.InstDatum) u32 {
-    return @intCast(u32, @ptrToInt(to) - @ptrToInt(from));
+    return @intCast(@intFromPtr(to) - @intFromPtr(from));
 }
 
 pub inline fn getStackOffset(from: [*]const Value, to: [*]const Value) u32 {
     // Divide by eight.
-    return @intCast(u32, (@ptrToInt(to) - @ptrToInt(from)) >> 3);
+    return @intCast((@intFromPtr(to) - @intFromPtr(from)) >> 3);
 }
 
 pub inline fn stackEnsureUnusedCapacity(self: *cy.VM, unused: u32) !void {
-    if (@ptrToInt(self.framePtr) + 8 * unused >= @ptrToInt(self.stack.ptr + self.stack.len)) {
-        try self.stackGrowTotalCapacity((@ptrToInt(self.framePtr) + 8 * unused) / 8);
+    if (@intFromPtr(self.framePtr) + 8 * unused >= @intFromPtr(self.stack.ptr + self.stack.len)) {
+        try self.stackGrowTotalCapacity((@intFromPtr(self.framePtr) + 8 * unused) / 8);
     }
 }
 

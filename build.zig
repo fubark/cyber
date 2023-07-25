@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const config = @import("src/config.zig");
 const mimalloc_lib = @import("lib/mimalloc/lib.zig");
 const tcc_lib = @import("lib/tcc/lib.zig");
@@ -121,7 +122,12 @@ pub fn build(b: *std.build.Builder) !void {
             .optimize = optimize,
         });
         if (lib.optimize != .Debug) {
-            lib.strip = true;
+            // Currently there is a limit to @embedFile in wasm_test.zig before strip=true crashes on linux.
+            if (builtin.os.tag == .linux) {
+                lib.strip = false;
+            } else {
+                lib.strip = true;
+            }
         }
         lib.setMainPkgPath(".");
         lib.addIncludePath(thisDir() ++ "/src");

@@ -122,7 +122,7 @@ fn getPathXdg(allocator: std.mem.Allocator, arena: *std.heap.ArenaAllocator, fol
 
                 var subdir = line[start..end];
 
-                env_opt = try std.mem.concat(arena.allocator(), u8, &[_][]const u8{ home, subdir });
+                env_opt = try std.mem.concatWithSentinel(arena.allocator(), u8, &[_][]const u8{ home, subdir }, 0);
                 break;
             }
         }

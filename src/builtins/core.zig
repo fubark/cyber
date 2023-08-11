@@ -16,19 +16,19 @@ const bt = cy.types.BuiltinTypeSymIds;
 
 const log = stdx.log.scoped(.core);
 
-pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) !void {
+pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     const b = bindings.ModuleBuilder.init(self, modId);
     try b.mod().syms.ensureTotalCapacity(self.alloc, 13);
 
     // Funcs.
     try b.setFunc("arrayFill", &.{bt.Any, bt.Number}, bt.List, arrayFill);
     try b.setFunc("asciiCode", &.{bt.Any}, bt.Any, asciiCode);
-    if (cy.isWasm) {
-        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
-        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
-    } else {
+    if (cy.hasJit) {
         try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
         try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
+    } else {
+        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
     }
     try b.setFunc("bool", &.{ bt.Any }, bt.Boolean, coreBool);
     if (cy.isWasm) {
@@ -346,7 +346,7 @@ fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 
 pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const S = struct {
-        fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) !void {
+        fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) anyerror!void {
             const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
             var iter = val.asHeapObject().map.map().iterator();
             while (iter.next()) |e| {
@@ -374,7 +374,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
                 }
             }
         }
-        fn encodeList(ctx: *cy.EncodeListContext, val: cy.Value) !void {
+        fn encodeList(ctx: *cy.EncodeListContext, val: cy.Value) anyerror!void {
             const items = val.asHeapObject().list.items();
             for (items) |it| {
                 switch (it.getUserTag()) {

@@ -9,7 +9,7 @@ pub fn createModule(b: *std.Build) *std.build.Module {
 
 pub fn addModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
     step.addModule(name, mod);
-    step.addIncludePath(thisDir() ++ "/vendor/include");
+    step.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
 }
 
 const BuildOptions = struct {
@@ -22,7 +22,7 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
         .target = step.target,
         .optimize = step.optimize,
     });
-    lib.addIncludePath(thisDir() ++ "/vendor/include");
+    lib.addIncludePath(.{ .path = thisDir() ++ "/vendor/include" });
     lib.linkLibC();
     // lib.disable_sanitize_c = true;
 
@@ -31,9 +31,9 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
     if (lib.target.getOsTag() == .windows) {
     } else if (lib.target.getOsTag() == .macos) {
         // Github macos-12 runner (https://github.com/actions/runner-images/blob/main/images/macos/macos-12-Readme.md).
-        lib.addSystemIncludePath("/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include");
-        lib.addSystemIncludePath("/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include");
-        lib.addSystemIncludePath("/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include");
+        lib.addSystemIncludePath(.{ .path = "/Applications/Xcode_14.0.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include" });
+        lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.1.sdk/usr/include" });
+        lib.addSystemIncludePath(.{ .path = "/Library/Developer/CommandLineTools/SDKs/MacOSX12.3.sdk/usr/include" });
     }
     if (lib.optimize == .Debug) {
         // For debugging:
@@ -73,7 +73,10 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
         "/vendor/src/stats.c",
     }) catch @panic("error");
     for (sources.items) |src| {
-        lib.addCSourceFile(b.fmt("{s}{s}", .{thisDir(), src}), c_flags.items);
+        lib.addCSourceFile(.{
+            .file = .{ .path = b.fmt("{s}{s}", .{thisDir(), src}) },
+            .flags = c_flags.items,
+        });
     }
     step.linkLibrary(lib);
 }

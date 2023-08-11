@@ -633,17 +633,17 @@ test "encode" {
     };
 
     const S = struct {
-        fn encodeRoot(ctx: *EncodeMapContext, val: TestRoot) !void {
+        fn encodeRoot(ctx: *EncodeMapContext, val: TestRoot) anyerror!void {
             try ctx.encodeString("name", val.name);
             try ctx.encodeSlice("list", val.list, encodeValue);
             try ctx.encodeMap("map", val.map, encodeMap);
         }
-        fn encodeMap(ctx: *EncodeMapContext, val: []const TestMapItem) !void {
+        fn encodeMap(ctx: *EncodeMapContext, val: []const TestMapItem) anyerror!void {
             for (val) |it| {
                 try ctx.encodeAnyToString(it.id, it.val);
             }
         }
-        fn encodeItem(ctx: *EncodeMapContext, val: TestListItem) !void {
+        fn encodeItem(ctx: *EncodeMapContext, val: TestListItem) anyerror!void {
             try ctx.encode("field", val.field);
         }
         fn encodeValue(ctx: *EncodeValueContext, val: anytype) !void {
@@ -686,7 +686,7 @@ test "encode" {
 
 test "decodeMap" {
     const S = struct {
-        fn decodeRoot(map: DecodeMapIR, _: void, root: *TestRoot) !void {
+        fn decodeRoot(map: DecodeMapIR, _: void, root: *TestRoot) anyerror!void {
             root.name = try map.allocString("name");
 
             var list: std.ArrayListUnmanaged(TestListItem) = .{};

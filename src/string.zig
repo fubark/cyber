@@ -352,7 +352,7 @@ fn indexOfCharSimdRemain(comptime VecSize: usize, buf: []const u8, needle: u8) ?
     const MaskInt = std.meta.Int(.unsigned, VecSize);
     const vbuf = cy.simd.load(VecSize, u8, buf);
     const mask: MaskInt = (@as(MaskInt, 1) << @intCast(buf.len)) - 1;
-    const hitMask = @as(MaskInt, @bitCast(vbuf == @splat(VecSize, needle))) & mask;
+    const hitMask = @as(MaskInt, @bitCast(vbuf == @as(@Vector(VecSize, u8), @splat(needle)))) & mask;
     if (hitMask > 0) {
         return @ctz(hitMask);
     }
@@ -362,7 +362,7 @@ fn indexOfCharSimdRemain(comptime VecSize: usize, buf: []const u8, needle: u8) ?
 fn indexOfCharSimdFixed4(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
     if (VecSize == 32 and hasAvx2 and builtin.cpu.arch == .x86_64) {
         // const MaskInt = std.meta.Int(.unsigned, VecSize);
-        const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
+        const vneedle: @Vector(VecSize, u8) = @splat(needle);
         var i: usize = 0;
         while (i + VecSize * 4 <= buf.len) : (i += VecSize * 4) {
             // Inline asm to avoid extra vpmovmskb.
@@ -421,7 +421,7 @@ fn indexOfCharSimdFixed4(comptime VecSize: usize, buf: []const u8, needle: u8) ?
 fn indexOfCharSimdFixed(comptime VecSize: usize, buf: []const u8, needle: u8) ?usize {
     const MaskInt = std.meta.Int(.unsigned, VecSize);
     var vbuf: @Vector(VecSize, u8) = undefined;
-    const vneedle: @Vector(VecSize, u8) = @splat(VecSize, needle);
+    const vneedle: @Vector(VecSize, u8) = @splat(needle);
     var i: usize = 0;
     while (i + VecSize <= buf.len) : (i += VecSize) {
         vbuf = buf[i..i+VecSize][0..VecSize].*;
@@ -449,8 +449,8 @@ fn indexOfSimdFixed(comptime VecSize: usize, str: []const u8, needle: []const u8
 
     // Set up hashing. Hash end is currently always the last char position in needle.
     const offset = needle.len - 1;
-    const first: @Vector(VecSize, u8) = @splat(VecSize, needle[0]);
-    const last: @Vector(VecSize, u8) = @splat(VecSize, needle[needle.len-1]);
+    const first: @Vector(VecSize, u8) = @splat(needle[0]);
+    const last: @Vector(VecSize, u8) = @splat(needle[needle.len-1]);
 
     var i: usize = 0;
     while (i + VecSize <= str.len) : (i += VecSize) {
@@ -487,8 +487,8 @@ fn indexOfSimdRemain(comptime VecSize: usize, str_: []const u8, needle: []const 
 
     // Set up hashing. Hash end is currently always the last char position in needle.
     const offset = needle.len - 1;
-    const first: @Vector(VecSize, u8) = @splat(VecSize, needle[0]);
-    const last: @Vector(VecSize, u8) = @splat(VecSize, needle[needle.len-1]);
+    const first: @Vector(VecSize, u8) = @splat(needle[0]);
+    const last: @Vector(VecSize, u8) = @splat(needle[needle.len-1]);
 
     // Don't need a remainMask since the eq op on `first` and `last` will be false.
     const buf1 = cy.simd.load(VecSize, u8, str);
@@ -558,7 +558,7 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
 
         // Construct the LUT.
         // Since it's ASCII, the upper needle mask can have at most 8 bits.
-        var lut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        var lut: @Vector(VecSize, u8) = @splat(@as(u8, 0));
         for (set) |code| {
             const lower = code & 0xF;
             const upper = code >> 4; // At most 7.
@@ -567,7 +567,7 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
             lut[16 + lower] = @as(u8, 1) << @intCast(upper);
         }
 
-        var upperMaskLut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        var upperMaskLut: @Vector(VecSize, u8) = @splat(@as(u8, 0));
         comptime var j = 0;
         inline while (j < 8) : (j += 1) {
             upperMaskLut[j] = 1 << j;
@@ -578,8 +578,8 @@ pub fn indexOfAsciiSetSimdRemain(comptime VecSize: usize, str: []const u8, set: 
         }
 
         const buf = cy.simd.load(VecSize, u8, str);
-        const lower: @Vector(VecSize, u8) = buf & @splat(VecSize, @as(u8, 0xF));
-        const upper: @Vector(VecSize, u8) = buf >> @splat(VecSize, @as(u8, 4));
+        const lower: @Vector(VecSize, u8) = buf & @as(@Vector(VecSize, u8), @splat(@as(u8, 0xF)));
+        const upper: @Vector(VecSize, u8) = buf >> @splat(@as(u8, 4));
 
         const needle = asm (
             \\vpshufb %%ymm3, %%ymm0, %%ymm5
@@ -627,7 +627,7 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
 
         // Construct the LUT.
         // Since it's ASCII, the upper needle mask can have at most 8 bits.
-        var lut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        var lut: @Vector(VecSize, u8) = @splat(@as(u8, 0));
         for (set) |code| {
             const lower = code & 0xF;
             const upper = code >> 4; // At most 7.
@@ -636,7 +636,7 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
             lut[16 + lower] = @as(u8, 1) << @intCast(upper);
         }
 
-        var upperMaskLut: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, 0));
+        var upperMaskLut: @Vector(VecSize, u8) = @splat(@as(u8, 0));
         comptime var j = 0;
         inline while (j < 8) : (j += 1) {
             upperMaskLut[j] = 1 << j;
@@ -651,8 +651,8 @@ pub fn indexOfAsciiSetSimdFixed(comptime VecSize: usize, str: []const u8, set: [
         var i: usize = 0;
         while (i + VecSize <= str.len) : (i += VecSize) {
             const buf: @Vector(VecSize, u8) = str[i..i+VecSize][0..VecSize].*;
-            const lower: @Vector(VecSize, u8) = buf & @splat(VecSize, @as(u8, 0xF));
-            const upper: @Vector(VecSize, u8) = buf >> @splat(VecSize, @as(u8, 4));
+            const lower: @Vector(VecSize, u8) = buf & @as(@Vector(VecSize, u8), @splat(@as(u8, 0xF)));
+            const upper: @Vector(VecSize, u8) = buf >> @splat(@as(u8, 4));
 
             const needle = asm (
                 \\vpshufb %%ymm3, %%ymm0, %%ymm5
@@ -797,8 +797,8 @@ pub fn getLineEnd(buf: []const u8) linksection(cy.StdSection) ?usize {
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         const MaskInt = std.meta.Int(.unsigned, VecSize);
         var vbuf: @Vector(VecSize, u8) = undefined;
-        const lfNeedle: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, '\n'));
-        const crNeedle: @Vector(VecSize, u8) = @splat(VecSize, @as(u8, '\r'));
+        const lfNeedle: @Vector(VecSize, u8) = @splat(@as(u8, '\n'));
+        const crNeedle: @Vector(VecSize, u8) = @splat(@as(u8, '\r'));
         var i: usize = 0;
         while (i + VecSize <= buf.len) : (i += VecSize) {
             vbuf = buf[i..i+VecSize][0..VecSize].*;

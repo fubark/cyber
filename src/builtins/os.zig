@@ -20,7 +20,7 @@ pub var CFuncT: rt.TypeId = undefined;
 pub var CStructT: rt.TypeId = undefined;
 pub var CArrayT: rt.TypeId = undefined;
 
-pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) !void {
+pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) anyerror!void {
     const b = bindings.ModuleBuilder.init(self, modId);
 
     // Object Types.
@@ -66,8 +66,17 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
     }
     if (cy.isWasm) {
         try b.setFunc("args", &.{}, bt.List, bindings.nop0);
+    } else {
+        try b.setFunc("args", &.{}, bt.List, osArgs);
+    }
+    if (cy.hasJit) {
+        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
+        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
+    } else {
         try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindings.nop2);
         try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindings.nop3);
+    }
+    if (cy.isWasm) {
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, bindings.nop2);
         try b.setFunc("createDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
@@ -81,9 +90,6 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
         try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
         try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
     } else {
-        try b.setFunc("args", &.{}, bt.List, osArgs);
-        try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
-        try b.setFunc("bindLib", &.{bt.Any, bt.List, bt.Map}, bt.Any, bindLibExt);
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
         try b.setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
         try b.setFunc("createFile", &.{bt.Any, bt.Boolean}, bt.Any, createFile);

@@ -44,10 +44,10 @@ pub fn build(b: *std.build.Builder) !void {
         if (exe.optimize != .Debug) {
             exe.strip = true;
         }
-        exe.addIncludePath(thisDir() ++ "/src");
+        exe.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
-        exe.addRPath(".");
+        exe.addRPath(.{ .path = "." });
 
         // Allow exported symbols in exe to be visible to dlopen.
         exe.rdynamic = true;
@@ -67,7 +67,7 @@ pub fn build(b: *std.build.Builder) !void {
             .selinux = selinux,
         });
         step.dependOn(&exe.step);
-        step.dependOn(&b.addInstallArtifact(exe).step);
+        step.dependOn(&b.addInstallArtifact(exe, .{}).step);
     }
 
     {
@@ -81,7 +81,7 @@ pub fn build(b: *std.build.Builder) !void {
         if (lib.optimize != .Debug) {
             lib.strip = true;
         }
-        lib.addIncludePath(thisDir() ++ "/src");
+        lib.addIncludePath(.{. path = thisDir() ++ "/src" });
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         // lib.addRPath(".");
@@ -110,7 +110,7 @@ pub fn build(b: *std.build.Builder) !void {
             lib.stack_protector = false;
         }
         step.dependOn(&lib.step);
-        step.dependOn(&b.addInstallArtifact(lib).step);
+        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
     {
@@ -120,6 +120,7 @@ pub fn build(b: *std.build.Builder) !void {
             .root_source_file = .{ .path = "test/wasm_test.zig" },
             .target = target,
             .optimize = optimize,
+            .main_pkg_path = .{ .path = "." },
         });
         if (lib.optimize != .Debug) {
             // Currently there is a limit to @embedFile in wasm_test.zig before strip=true crashes on linux.
@@ -129,8 +130,7 @@ pub fn build(b: *std.build.Builder) !void {
                 lib.strip = true;
             }
         }
-        lib.setMainPkgPath(".");
-        lib.addIncludePath(thisDir() ++ "/src");
+        lib.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
         // Allow dynamic libraries to be loaded by filename in the cwd.
         // lib.addRPath(".");
@@ -159,7 +159,7 @@ pub fn build(b: *std.build.Builder) !void {
             lib.stack_protector = false;
         }
         step.dependOn(&lib.step);
-        step.dependOn(&b.addInstallArtifact(lib).step);
+        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
     }
 
     {
@@ -170,9 +170,9 @@ pub fn build(b: *std.build.Builder) !void {
             .target = target,
             .optimize = optimize,
             .filter = testFilter,
+            .main_pkg_path = .{ .path = "." },
         });
-        step.setMainPkgPath(".");
-        step.addIncludePath(thisDir() ++ "/src");
+        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
         try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
@@ -199,9 +199,9 @@ pub fn build(b: *std.build.Builder) !void {
             .target = target,
             .optimize = optimize,
             .filter = testFilter,
+            .main_pkg_path = .{ .path = "." },
         });
-        step.setMainPkgPath(".");
-        step.addIncludePath(thisDir() ++ "/src");
+        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
         try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
@@ -283,9 +283,9 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
         .optimize = opts.optimize,
         .target = opts.target,
         .filter = testFilter,
+        .main_pkg_path = .{ .path = "." },
     });
-    step.setMainPkgPath(".");
-    step.addIncludePath(thisDir() ++ "/src");
+    step.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
     var newOpts = opts;
     newOpts.trace = true;
@@ -344,6 +344,9 @@ pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Op
     if (opts.trackGlobalRc) {
         try cflags.append("-DTRACK_GLOBAL_RC=1");
     }
-    step.addIncludePath(thisDir() ++ "/src");
-    step.addCSourceFile(thisDir() ++ "/src/vm.c", cflags.items);
+    step.addIncludePath(.{ .path = thisDir() ++ "/src"});
+    step.addCSourceFile(.{
+        .file = .{ .path = thisDir() ++ "/src/vm.c" },
+        .flags = cflags.items
+    });
 }

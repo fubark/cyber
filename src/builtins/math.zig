@@ -3,7 +3,7 @@ const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypeSymIds;
 
-pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
+pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     const b = cy.bindings.ModuleBuilder.init(c, modId);
 
     // Euler's number and the base of natural logarithms; approximately 2.718.
@@ -172,7 +172,7 @@ pub fn isNaN(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 /// Returns the natural logarithm (㏒e; also, ㏑) of x.
 pub fn ln(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    return Value.initF64(std.math.ln(args[0].asF64()));
+    return Value.initF64(@log(args[0].asF64()));
 }
 
 /// Returns the logarithm of y with base x.

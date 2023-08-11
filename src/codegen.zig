@@ -2240,7 +2240,7 @@ fn genNone(self: *Chunk, dst: LocalId) !GenValue {
 /// When `cstr` contains an exact dst, this ensures that the resulting value is copied to the dst.
 /// This does not care about what is already at the dst, so assign statements need
 /// to consider that (for ARC correctness).
-fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
+fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValue {
     const node = c.nodes[nodeId];
     // log.debug("gen expr: {}", .{node.node_t});
     c.curNodeId = nodeId;

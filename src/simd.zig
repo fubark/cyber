@@ -1,7 +1,7 @@
 // Copyright (c) 2023 Cyber (See LICENSE)
 
 pub fn load(comptime Size: usize, comptime T: type, buf: []const T) @Vector(Size, T) {
-    var v = @splat(Size, @as(T, 0));
+    var v: @Vector(Size, T) = @splat(@as(T, 0));
     for (buf, 0..) |it, i| {
         v[i] = it;
     }

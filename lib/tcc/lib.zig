@@ -8,7 +8,7 @@ pub fn createModule(b: *std.Build) *std.build.Module {
 
 pub fn addModule(step: *std.build.CompileStep, name: []const u8, mod: *std.build.Module) void {
     step.addModule(name, mod);
-    step.addIncludePath(thisDir() ++ "/vendor");
+    step.addIncludePath(.{ .path = thisDir() ++ "/vendor" });
 }
 
 const BuildOptions = struct {
@@ -21,7 +21,7 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
         .target = step.target,
         .optimize = step.optimize,
     });
-    lib.addIncludePath(thisDir() ++ "/vendor");
+    lib.addIncludePath(.{ .path = thisDir() ++ "/vendor" });
     lib.linkLibC();
     lib.disable_sanitize_c = true;
 
@@ -43,7 +43,10 @@ pub fn buildAndLink(b: *std.Build, step: *std.build.CompileStep, opts: BuildOpti
         // "/vendor/lib/libtcc1.c",
     }) catch @panic("error");
     for (sources.items) |src| {
-        lib.addCSourceFile(b.fmt("{s}{s}", .{thisDir(), src}), c_flags.items);
+        lib.addCSourceFile(.{
+            .file = .{ .path = b.fmt("{s}{s}", .{thisDir(), src}) },
+            .flags = c_flags.items,
+        });
     }
     step.linkLibrary(lib);
 }

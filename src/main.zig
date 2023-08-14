@@ -14,6 +14,9 @@ var pc: ?u32 = null;
 const CP_UTF8 = 65001;
 var prevWinConsoleOutputCP: u32 = undefined;
 
+// Default VM.
+var vm: cy.VM = undefined;
+
 pub fn main() !void {
     if (builtin.os.tag == .windows) {
         prevWinConsoleOutputCP = std.os.windows.kernel32.GetConsoleOutputCP();
@@ -121,7 +124,6 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
     defer alloc.free(src);
 
-    const vm = cy.getUserVM();
     try vm.init(alloc);
     defer vm.deinit();
 
@@ -153,7 +155,6 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
 
     cy.verbose = verbose;
 
-    const vm = cy.getUserVM();
     try vm.init(alloc);
     defer vm.deinit();
 

@@ -4,7 +4,6 @@ const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
-const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
@@ -105,7 +104,8 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 if (actv == expv) {
                     return true;
                 } else {
-                    printStderr("actual: {} != {}\n", &.{v(gvm.syms.buf[actv].name), v(gvm.syms.buf[expv].name)});
+                    const ivm = vm.internal();
+                    printStderr("actual: {} != {}\n", &.{v(ivm.syms.buf[actv].name), v(ivm.syms.buf[expv].name)});
                     return false;
                 }
             },

@@ -12,7 +12,6 @@ const bt = cy.types.BuiltinTypeSymIds;
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const TrackGlobalRC = vm_.TrackGlobalRC;
-const gvm = &vm_.gvm;
 const fmt = @import("../fmt.zig");
 
 const debug = builtin.mode == .Debug;

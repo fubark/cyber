@@ -38,14 +38,6 @@ var tempU8Buf: [256]u8 = undefined;
 var tempU8BufIdx: u32 = undefined;
 var tempU8Writer = SliceWriter{ .buf = &tempU8Buf, .idx = &tempU8BufIdx };
 
-/// Going forward, references to gvm should be replaced with pointer access to allow multiple VMs.
-/// Once all references are replaced, gvm can be removed and the default VM can be allocated from the heap.
-pub var gvm: VM = undefined;
-
-pub fn getUserVM() *UserVM {
-    return @ptrCast(&gvm);
-}
-
 pub const VM = struct {
     alloc: std.mem.Allocator,
 
@@ -234,8 +226,7 @@ pub const VM = struct {
             .userData = null,
             .expGlobalRC = 0,
         };
-        // Pointer offset from gvm to avoid deoptimization.
-        self.curFiber = &gvm.mainFiber;
+        self.curFiber = &self.mainFiber;
         try self.compiler.init(self);
 
         if (!cy.isWasm) {
@@ -2417,11 +2408,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
             },
             // .lessNumber => {
             //     @setRuntimeSafety(debug);
-            //     const left = gvm.stack[gvm.framePtr + pc[1].arg];
-            //     const right = gvm.stack[gvm.framePtr + pc[2].arg];
+            //     const left = vm.stack[vm.framePtr + pc[1].arg];
+            //     const right = vm.stack[vm.framePtr + pc[2].arg];
             //     const dst = pc[3].arg;
             //     pc += 4;
-            //     gvm.stack[gvm.framePtr + dst] = Value.initBool(left.asF64() < right.asF64());
+            //     vm.stack[vm.framePtr + dst] = Value.initBool(left.asF64() < right.asF64());
             //     continue;
             // },
             .add => {
@@ -2784,8 +2775,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 const callee = framePtr[startLocal + numArgs + 4];
                 const retInfo = buildReturnInfo(0, true, cy.bytecode.CallInstLen);
-                // const retInfo = buildReturnInfo(getInstOffset(pc), framePtrOffset(framePtr), 0, true);
-                // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
@@ -2799,8 +2788,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 const callee = framePtr[startLocal + numArgs + 4];
                 const retInfo = buildReturnInfo(1, true, cy.bytecode.CallInstLen);
-                // const retInfo = buildReturnInfo(getInstOffset(pc), framePtrOffset(framePtr), 1, true);
-                // try @call(.never_inline, gvm.call, .{&pc, callee, numArgs, retInfo});
                 try @call(.always_inline, call, .{vm, &pc, &framePtr, callee, startLocal, numArgs, retInfo});
                 continue;
             },
@@ -2997,7 +2984,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 // Deoptimize.
                 pc[0] = cy.InstDatum{ .code = .setFieldRelease };
-                // framePtr[dst] = try gvm.getField(recv, pc[3].arg);
                 try @call(.never_inline, VM.setFieldRelease, .{ vm, recv, pc[3].arg, framePtr[pc[2].arg] });
                 pc += 7;
                 continue;
@@ -3101,8 +3087,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[left];
                 const val = framePtr[right];
                 try vm.setField(recv, fieldId, val);
+                // try @call(.never_inline, vm.setField, .{recv, fieldId, val});
                 pc += 4;
-                // try @call(.never_inline, gvm.setField, .{recv, fieldId, val});
                 continue;
             },
             .field => {
@@ -3115,7 +3101,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[left];
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
+                    // const offset = @call(.never_inline, vm.getFieldOffset, .{obj, symId });
                     const offset = vm.getFieldOffset(obj, symId);
                     if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
@@ -3142,7 +3128,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const symId = @as(*align (1) u16, @ptrCast(pc + 3)).*;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    // const offset = @call(.never_inline, gvm.getFieldOffset, .{obj, symId });
+                    // const offset = @call(.never_inline, vm.getFieldOffset, .{obj, symId });
                     const offset = vm.getFieldOffset(obj, symId);
                     if (offset != cy.NullU8) {
                         framePtr[dst] = obj.object.getValue(offset);
@@ -4196,11 +4182,10 @@ fn callMethodEntryNoInline(
             };
         },
         .nativeFunc1 => {
-            // gvm.pc += 3;
             const newFramePtr = framePtr + startLocal;
-            gvm.pc = pc;
-            gvm.framePtr = framePtr;
-            const res = sym.inner.nativeFunc1(@ptrCast(&gvm), obj, newFramePtr+4, numArgs);
+            vm.pc = pc;
+            vm.framePtr = framePtr;
+            const res = sym.inner.nativeFunc1(vm, obj, newFramePtr+4, numArgs);
             if (reqNumRetVals == 1) {
                 newFramePtr[0] = res;
             } else {
@@ -4218,18 +4203,17 @@ fn callMethodEntryNoInline(
                 }
             }
             return cy.fiber.PcSp{
-                .pc = gvm.pc,
+                .pc = vm.pc,
                 .framePtr = framePtr,
             };
         },
         .nativeFunc2 => {
-            // gvm.pc += 3;
-            const newFramePtr = gvm.framePtr + startLocal;
-            gvm.pc = pc;
-            const res = sym.inner.nativeFunc2(@ptrCast(&gvm), obj, @ptrCast(newFramePtr+4), numArgs);
+            const newFramePtr = vm.framePtr + startLocal;
+            vm.pc = pc;
+            const res = sym.inner.nativeFunc2(vm, obj, @ptrCast(newFramePtr+4), numArgs);
             if (reqNumRetVals == 2) {
-                gvm.stack[newFramePtr] = res.left;
-                gvm.stack[newFramePtr+1] = res.right;
+                vm.stack[newFramePtr] = res.left;
+                vm.stack[newFramePtr+1] = res.right;
             } else {
                 switch (reqNumRetVals) {
                     0 => {
@@ -4281,10 +4265,6 @@ pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.InstDatum) u32 {
 
 pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
     return @intCast(cy.fiber.getStackOffset(vm.stack.ptr, to));
-}
-
-pub inline fn toFramePtr(offset: usize) [*]Value {
-    return @ptrCast(&gvm.stack[offset]);
 }
 
 /// Like Value.dump but shows heap values.

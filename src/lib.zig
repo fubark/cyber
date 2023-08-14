@@ -17,12 +17,12 @@ const c = @cImport({
 
 export fn cyVmCreate() *cy.UserVM {
     const alloc = cy.heap.getAllocator();
-    const vm = cy.getUserVM();
+    const vm = alloc.create(cy.VM) catch fatal();
     vm.init(alloc) catch fatal();
     if (cy.isWasm) {
         stdx.log.wasm.init(alloc);
     }
-    return vm;
+    return @ptrCast(vm);
 }
 
 export fn cyVmDestroy(vm: *cy.UserVM) void {

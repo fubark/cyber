@@ -53,7 +53,6 @@ pub const ValueUserTag = value.ValueUserTag;
 
 pub const vm = @import("vm.zig");
 pub const EvalConfig = vm.EvalConfig;
-pub const getUserVM = vm.getUserVM;
 pub const VM = vm.VM;
 pub const TraceInfo = vm.TraceInfo;
 pub const OpCount = vm.OpCount;

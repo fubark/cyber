@@ -301,13 +301,15 @@ test "ARC in loops." {
     try t.eq(trace.numReleases, 10);
 }
 
+var testVm: cy.VM = undefined;
+
 const VMrunner = struct {
     vm: *cy.UserVM,
     trace: cy.TraceInfo,
 
     fn init(self: *VMrunner) void {
         self.* = .{
-            .vm = cy.getUserVM(),
+            .vm = @ptrCast(&testVm),
             .trace = undefined,
         };
         self.trace.opCounts = &.{};

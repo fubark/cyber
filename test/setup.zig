@@ -42,6 +42,8 @@ pub const Config = struct {
     }
 };
 
+var testVm: cy.VM = undefined;
+
 pub const VMrunner = struct {
     vm: *cy.UserVM,
     trace: cy.TraceInfo,
@@ -59,7 +61,7 @@ pub const VMrunner = struct {
 
     fn init(self: *VMrunner) !void {
         self.* = .{
-            .vm = cy.getUserVM(),
+            .vm = @ptrCast(&testVm),
             .trace = .{},
         };
         self.vm.init(t.alloc) catch fatal();

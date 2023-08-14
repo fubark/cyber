@@ -2436,13 +2436,15 @@ pub fn numberCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .string => {
             defer vm.release(val);
             const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
-                return Value.initI32(0);
+                return Value.initF64(0);
             };
             return Value.initF64(res);
         },
         .enumT => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
         .symbol => return Value.initF64(@floatFromInt(val.val & @as(u64, 0xFF))),
         .int => return Value.initF64(@floatFromInt(val.asInteger())),
+        .none => return Value.initF64(0),
+        .boolean => return Value.initF64(if (val.asBool()) 1 else 0),
         else => {
             vm.release(val);
             return vm.returnPanic("Not a type that can be converted to `number`.");

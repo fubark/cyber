@@ -2097,40 +2097,6 @@ fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
     return vm.panicFmt("Cannot convert `{}` to number.", &.{v(vm.types.buf[typeId].name)});
 }
 
-fn convToF64OrPanic(val: Value) linksection(cy.HotSection) !f64 {
-    if (val.isPointer()) {
-        const obj = val.asHeapObject();
-        if (obj.head.typeId == rt.AstringT) {
-            const str = obj.astring.getConstSlice();
-            return std.fmt.parseFloat(f64, str) catch 0;
-        } else if (obj.head.typeId == rt.UstringT) {
-            const str = obj.ustring.getConstSlice();
-            return std.fmt.parseFloat(f64, str) catch 0;
-        } else if (obj.head.typeId == rt.RawstringT) {
-            const str = obj.rawstring.getConstSlice();
-            return std.fmt.parseFloat(f64, str) catch 0;
-        } else return gvm.panic("Cannot convert struct to number");
-    } else {
-        switch (val.getTag()) {
-            rt.NoneT => return 0,
-            rt.BooleanT => return if (val.asBool()) 1 else 0,
-            rt.IntegerT => return @floatFromInt(val.asI32()),
-            rt.ErrorT => stdx.fatal(),
-            rt.StaticAstringT => {
-                const slice = val.asStaticStringSlice();
-                const str = gvm.strBuf[slice.start..slice.end];
-                return std.fmt.parseFloat(f64, str) catch 0;
-            },
-            rt.StaticUstringT => {
-                const slice = val.asStaticStringSlice();
-                const str = gvm.strBuf[slice.start..slice.end];
-                return std.fmt.parseFloat(f64, str) catch 0;
-            },
-            else => stdx.panicFmt("unexpected tag {}", .{val.getTag()}),
-        }
-    }
-}
-
 const SymbolMapType = enum {
     one,
     many,

@@ -314,7 +314,7 @@ const VMrunner = struct {
         };
         self.trace.opCounts = &.{};
         self.vm.init(t.alloc) catch stdx.fatal();
-        self.vm.setTrace(&self.trace);
+        self.vm.internal().setTrace(&self.trace);
     }
 
     fn deinit(self: *VMrunner) void {
@@ -348,7 +348,7 @@ const VMrunner = struct {
         // Eval with new env.
         self.deinit();
         try self.vm.init(t.alloc);
-        self.vm.setTrace(&self.trace);
+        self.vm.internal().setTrace(&self.trace);
         return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
                 try self.vm.printLastUserPanicError();

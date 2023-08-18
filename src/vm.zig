@@ -1971,6 +1971,13 @@ pub const VM = struct {
         const str = self.valueToTempString(val);
         _ = writer.write(str) catch stdx.fatal();
     }
+
+    pub fn setTrace(self: *VM, trace: *cy.TraceInfo) void {
+        if (!cy.TraceEnabled) {
+            return;
+        }
+        self.trace = trace;
+    }
 };
 
 pub const StringType = enum {

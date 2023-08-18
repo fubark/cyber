@@ -51,13 +51,6 @@ pub const UserVM = struct {
         return self.internal().compiler.addModuleLoader(absSpec, func);
     }
 
-    pub fn setTrace(self: *UserVM, trace: *cy.TraceInfo) void {
-        if (!cy.TraceEnabled) {
-            return;
-        }
-        self.internal().trace = trace;
-    }
-
     pub fn getStackTrace(self: *UserVM) *const cy.StackTrace {
         return @as(*const VM, @ptrCast(self)).getStackTrace();
     }

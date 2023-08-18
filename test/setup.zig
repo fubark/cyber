@@ -65,7 +65,7 @@ pub const VMrunner = struct {
             .trace = .{},
         };
         self.vm.init(t.alloc) catch fatal();
-        self.vm.setTrace(&self.trace);
+        self.vm.internal().setTrace(&self.trace);
     }
 
     pub fn deinit(self: *VMrunner) void {
@@ -182,7 +182,7 @@ pub const VMrunner = struct {
             return error.UnreleasedObjects;
         }
         try self.vm.init(t.alloc);
-        self.vm.setTrace(&self.trace);
+        self.vm.internal().setTrace(&self.trace);
     }
 
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {

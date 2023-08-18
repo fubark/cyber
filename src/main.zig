@@ -125,11 +125,11 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     defer alloc.free(src);
 
     try vm.init(alloc);
-    defer vm.deinit();
+    defer vm.deinit(false);
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
-    const res = vm.compile(path, src) catch |err| {
+    const res = vm.compile(path, src, .{ .enableFileModules = true }) catch |err| {
         fmt.panic("unexpected {}\n", &.{fmt.v(err)});
     };
     if (res.err) |err| {
@@ -146,7 +146,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
             },
         }
     }
-    try cy.debug.dumpBytecode(vm.constInternal(), pc);
+    try cy.debug.dumpBytecode(&vm, pc);
 }
 
 fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
@@ -156,7 +156,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     cy.verbose = verbose;
 
     try vm.init(alloc);
-    defer vm.deinit();
+    defer vm.deinit(false);
 
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
@@ -196,9 +196,9 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         }
     }
     if (cy.TrackGlobalRC) {
-        vm.internal().compiler.deinitRtObjects();
-        vm.internal().deinitRtObjects();
-        try cy.arc.checkGlobalRC(vm.internal());
+        vm.compiler.deinitRtObjects();
+        vm.deinitRtObjects();
+        try cy.arc.checkGlobalRC(&vm);
     }
 }
 

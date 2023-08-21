@@ -20,7 +20,7 @@ t.eq(foo2(20, 10), 30)
 -- Static function wrapped in value.
 func foo3():
     return 5
-bar = foo3
+var bar = foo3
 t.eq(bar(), 5)
 
 -- Wrong number of arguments when invoking lambda.
@@ -38,7 +38,7 @@ t.eq(try bar('a', 123), error.InvalidSignature)
 -- Using as custom less function for sort.
 func less(a, b):
     return a < b
-list = [3, 2, 1]
+var list = [3, 2, 1]
 list.sort(less)
 t.eqList(list, [1, 2, 3])
 
@@ -61,7 +61,7 @@ t.eq(foo7(), 123)
 -- Static func initializer assigns closure value.
 func foo8() = foo8dep()
 var foo8dep: func ():
-    local = 123
+    var local = 123
     return func():
         return local
 t.eq(foo8(), 123)

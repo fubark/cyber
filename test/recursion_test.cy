@@ -12,7 +12,7 @@ type S object:
 func foo2(o):
   if o.n is 0:
     return 0
-  n = o.n
+  var n = o.n
   o.n = o.n - 1
   return n + foo2(o)
 t.eq(foo2(S{ n: 10 }), 55) 

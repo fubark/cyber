@@ -55,6 +55,7 @@ pub const Chunk = struct {
     /// Additional info for initializer symbols.
     semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.CompactResolvedSymId, sema.InitializerSym),
 
+    declaredVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     curSemaBlockId: sema.BlockId,
     curSemaSubBlockId: sema.SubBlockId,
@@ -129,6 +130,7 @@ pub const Chunk = struct {
             .blockJumpStack = .{},
             .subBlockJumpStack = .{},
             .assignedVarStack = .{},
+            .declaredVarStack = .{},
             .operandStack = .{},
             .curBlock = undefined,
             .curSemaBlockId = undefined,
@@ -179,6 +181,7 @@ pub const Chunk = struct {
         self.blockJumpStack.deinit(self.alloc);
         self.subBlockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
+        self.declaredVarStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
         self.vars.deinit(self.alloc);
         self.capVarDescs.deinit(self.alloc);
@@ -203,6 +206,10 @@ pub const Chunk = struct {
     /// Assumes `semaBlockStack` has a dummy head element. Main block starts at 1.
     pub inline fn semaBlockDepth(self: *Chunk) u32 {
         return @intCast(self.semaBlockStack.items.len-1);
+    }
+
+    pub inline fn semaIsMainBlock(self: *Chunk) bool {
+        return self.semaBlockDepth() == 1;
     }
 
     pub fn pushSemaBlock(self: *Chunk, id: sema.BlockId) !void {
@@ -356,7 +363,7 @@ pub const Chunk = struct {
             _ = try self.reserveLocalVar(varId);
 
             // Params are already defined.
-            self.vars.items[varId].genIsDefined = true;
+            self.vars.items[varId].isDefinedOnce = true;
         }
 
         // An extra callee slot is reserved so that function values
@@ -368,7 +375,7 @@ pub const Chunk = struct {
                 _ = try self.reserveLocalVar(varId);
 
                 // Params are already defined.
-                self.vars.items[varId].genIsDefined = true;
+                self.vars.items[varId].isDefinedOnce = true;
             }
         }
     }
@@ -438,7 +445,7 @@ pub const Chunk = struct {
         }
         for (sblock.locals.items) |varId| {
             const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and svar.genIsDefined) {
+            if (svar.lifetimeRcCandidate and svar.isDefinedOnce) {
                 try self.operandStack.append(self.alloc, cy.InstDatum.initArg(svar.local));
             }
         }
@@ -624,7 +631,7 @@ pub const Chunk = struct {
             const svar = &self.vars.items[varAndType.id];
             // log.debug("{s} iter var", .{self.getVarName(varAndType.id)});
             svar.vtype = varAndType.vtype;
-            svar.genIsDefined = true;
+            svar.isDefinedOnce = true;
         }
     }
 

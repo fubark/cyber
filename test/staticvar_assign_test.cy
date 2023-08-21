@@ -6,14 +6,14 @@ var a: 123
 
 -- Assignment to a static variable.
 a = 234
-f = func():
+var f = func():
     t.eq(a, 234)
 try f()
 
 -- Assignment with same name in nested block does not write to static var.
 a = 123
 f = func():
-    a = 234
+    var a = 234
     t.eq(a, 234)
 try f()
 t.eq(a, 123)
@@ -21,7 +21,7 @@ t.eq(a, 123)
 -- Assignment to static variable inside nested block.
 a = 123
 f = func():
-    static a = 234
+    a = 234
     t.eq(a, 234)
 try f()
 t.eq(a, 234)
@@ -29,16 +29,7 @@ t.eq(a, 234)
 -- Subsequent assignment to static variable inside nested block.
 a = 123
 f = func():
-    static a = 234
-    a = 345
-    t.eq(a, 345)
-try f()
-t.eq(a, 345)
-
--- Subsequent assignment to after declared as a static var.
-a = 123
-f = func ():
-    static a
+    a = 234
     a = 345
     t.eq(a, 345)
 try f()
@@ -46,7 +37,7 @@ t.eq(a, 345)
 
 -- Assignment to a static variable before it is declared.
 f = func():
-    static b = 234
+    b = 234
     t.eq(b, 234)
 try f()
 t.eq(b, 234)

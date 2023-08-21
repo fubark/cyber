@@ -11,7 +11,7 @@ Cyber uses `libtcc` to JIT compile the bindings so function calls are fast. `bin
 ```cy
 import os 'os'
 
-lib = os.bindLib('mylib.so', [
+var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
@@ -48,7 +48,7 @@ The `CFunc` object lets you bind to a C-function. The `sym` field maps to the C-
 ```cy
 import os 'os'
 
-lib = os.bindLib('mylib.so', [
+var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
@@ -71,11 +71,11 @@ type MyObject object:
     b pointer
     c bool
 
-lib = os.bindLib('mylib.so', [
+var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'foo', args: [MyObject], ret: MyObject }
     os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
 ])
-res = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
+var res = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
 ```
 The example above maps to these C declarations in `mylib.so`:
 ```text
@@ -94,18 +94,18 @@ MyObject foo(MyObject o) {
 ```cy
 import os 'os'
 
-lib = os.bindLib('mylib.so', [
+var lib = os.bindLib('mylib.so', [
     os.CFunc{ sym: 'foo', args: [MyObject], ret: #voidPtr }
     os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
 ])
-ptr = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
-res = lib.ptrToMyObject(ptr)
+var ptr = lib.foo(MyObject{ a: 123, b: os.cstr('foo'), c: true })
+var res = lib.ptrToMyObject(ptr)
 ```
 
 ## Pointers
 A `pointer` is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. A new pointer can be created with the builtin `pointer`.
 ```cy
-ptr = pointer(0xDEADBEEF)
+var ptr = pointer(0xDEADBEEF)
 print ptr.value()     --'3735928559'
 ```
 

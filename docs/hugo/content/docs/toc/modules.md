@@ -91,7 +91,7 @@ The core module contains functions related to Cyber and common utilities. It is 
 Sample usage:
 ```cy
 print 'hello'
-contents = readFile 'foo.txt'
+var contents = readFile 'foo.txt'
 print contents
 ```
 
@@ -135,7 +135,7 @@ Sample usage:
 ```cy
 import m 'math'
 
-r = 10
+var r = 10
 print(m.pi * r^2)
 ```
 | Variable | Type | Summary |
@@ -198,7 +198,7 @@ Sample usage:
 ```cy
 import os 'os'
 
-map = os.getEnvAll()
+var map = os.getEnvAll()
 for map each k, v:
     print '{k} -> {v}'
 ```
@@ -290,7 +290,7 @@ Sample usage:
 ```cy
 import t 'test'
 
-a = 123 + 321
+var a = 123 + 321
 t.eq(a, 444)
 ```
 

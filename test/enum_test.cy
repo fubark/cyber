@@ -7,7 +7,7 @@ type Animal enum:
   Tiger
 
 -- enum to number.
-n = Animal.Tiger
+var n = Animal.Tiger
 t.eq(number(n), 1)
 
 -- Using enum declared afterwards.

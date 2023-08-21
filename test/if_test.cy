@@ -3,7 +3,7 @@
 import t 'test'
 
 -- if branch.
-foo = 0
+var foo = 0
 if true:
   foo = 123
 else:

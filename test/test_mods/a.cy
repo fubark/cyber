@@ -31,7 +31,6 @@ func toNumber(val) number:
 var initOnce: incInitOnce(initOnceCount)
 var initOnceCount: 0
 func incInitOnce(cur):
-    static initOnceCount
     initOnceCount = cur + 1
     return initOnceCount
 

@@ -41,8 +41,8 @@ type Vec2 object:
     x number
     y number
 -- Same name, different object types.
-v1 = Vec2{ x: 1, y: 2 }
-v2 = a.Vec2{ x: 3, y: 4 }
+var v1 = Vec2{ x: 1, y: 2 }
+var v2 = a.Vec2{ x: 3, y: 4 }
 t.eq(typeof(v1) != typeof(v2), true)
 t.eq(v1.x, 1)
 t.eq(v1.y, 2)
@@ -50,6 +50,6 @@ t.eq(v2.x, 3)
 t.eq(v2.y, 4)
 
 -- Calling object func from another module.
-v = a.Vec2.new(3, 4)
+var v = a.Vec2.new(3, 4)
 t.eq(v.x, 3)
 t.eq(v.y, 4)

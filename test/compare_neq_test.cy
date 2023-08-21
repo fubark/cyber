@@ -11,9 +11,9 @@ t.eq('foo' != rawstring('bar'), true)
 -- Comparing objects.
 type S object:
   value
-o = S{ value: 3 }
+var o = S{ value: 3 }
 t.eq(o != 123, true)
-o2 = o
+var o2 = o
 t.eq(o != o2, false)
 
 -- Compare symbols.

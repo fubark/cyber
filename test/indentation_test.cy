@@ -3,11 +3,11 @@
 import t 'test'
 
 -- Detect end of block.
-f = func ():
+var f = func ():
   return 123
 t.eq(f(), 123)
 f = func ():
-  a = 123
+  var a = 123
   return a
 t.eq(f(), 123)
 
@@ -16,7 +16,7 @@ f = func ():
 	return 123
 t.eq(f(), 123)
 f = func ():
-		a = 123
+		var a = 123
 		return a
 t.eq(f(), 123)
 

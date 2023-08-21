@@ -3,7 +3,7 @@
 import t 'test'
 
 -- Basic.
-iters = 0
+var iters = 0
 for 0..10 each i:
    iters += 1
 t.eq(iters, 10)
@@ -17,7 +17,7 @@ for 0..10 each i:
 t.eq(iters, 20)
 
 -- two `for` with non const max value don't interfere with each other
-foo = 10
+var foo = 10
 iters = 0
 for 0..foo each i:
    iters += 1
@@ -26,17 +26,17 @@ for 0..foo each i:
 t.eq(iters, 20)
 
 -- Nested for loop.
-count = 0
+var count = 0
 for 0..10 each i:
-  inner = 0
+  var inner = 0
   for 0..10 each j:
     inner += 1
   count += inner
 t.eq(count, 100)
 
 -- Index vars overwrites user var.
-i = 123
-sum = 0
+var i = 123
+var sum = 0
 for 0..10 each i:
   sum += i
 t.eq(i, 9)

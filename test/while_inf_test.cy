@@ -1,7 +1,7 @@
 import t 'test'
 
 -- Infinite loop clause.
-i = 0
+var i = 0
 while:
   i += 1
   if i == 10:
@@ -17,7 +17,7 @@ while:
 
 -- Continue.
 i = 0
-count = 0
+var count = 0
 while:
   i += 1
   if i == 4:
@@ -29,8 +29,7 @@ t.eq(count, 9)
 
 -- Single line block.
 i = 0
-inc = func(): 
-  capture i
+var inc = func(): 
   i += 1
   return i
 while: if inc() == 10: break

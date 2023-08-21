@@ -3,7 +3,7 @@
 import t 'test'
 
 -- Single quote literal.
-str = 'abc'
+var str = 'abc'
 t.eq(str, 'abc')
 
 -- Const string multi-line double quote literal.
@@ -17,7 +17,7 @@ abc'''
 t.eq(str, 'abc\nabc')
 
 str = 'abcxyz'
-lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
+var lstr = 'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'
 
 -- index operator
 t.eq(str[-1], 'z')
@@ -180,7 +180,7 @@ t.eq(try str.sliceAt(6), error.OutOfBounds)
 -- split()
 t.eqList(''.split(','), [''])
 t.eqList('abc'.split(','), ['abc'])
-res = 'abc,ab,a'.split(',')
+var res = 'abc,ab,a'.split(',')
 t.eq(res.len(), 3)
 t.eq(res[0], 'abc')
 t.eq(res[1], 'ab')

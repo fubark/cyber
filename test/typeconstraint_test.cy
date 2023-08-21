@@ -13,7 +13,7 @@ type PrimType object:
 t.eq(staticPrim(123), true)
 
 -- Call static function with var.
-n = 123
+var n = 123
 t.eq(staticPrim(n), true)
 
 -- Call static function from cast.
@@ -21,7 +21,7 @@ n = t.erase(123)
 t.eq(staticPrim(n as number), true)
 
 -- Call static function with object access.
-o = PrimType{ a: 123 }
+var o = PrimType{ a: 123 }
 t.eq(staticPrim(o.a), true)
 
 --|

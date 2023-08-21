@@ -7,7 +7,7 @@
 
 import os 'os'
 
-lib = os.bindLib('./libfoo.so', [
+var lib = os.bindLib('./libfoo.so', [
     os.CFunc{ sym: 'add', args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)

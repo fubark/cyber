@@ -5,6 +5,6 @@ func go():
         print '{i}'
         coyield
 
-f = coinit go()
+var f = coinit go()
 while f.status() != #done:
     coresume f

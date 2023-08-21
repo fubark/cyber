@@ -4,14 +4,14 @@
 
 import t 'test'
 
-pre = 'abc'
-str = '{pre}xyz'
+var pre = 'abc'
+var str = '{pre}xyz'
 str = str[0..]  -- Sets up the slice.
 t.eq(str, 'abcxyz')
 
 -- Sets up the slice.
-lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'[0..]
-upper = '{'ABCXYZ'}'[0..]
+var lstr = '{'aaaaaaaaaaaaaaaamaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaza'}'[0..]
+var upper = '{'ABCXYZ'}'[0..]
 
 -- index operator
 t.eq(str[-1], 'z')
@@ -133,7 +133,7 @@ t.eq(str.sliceAt(5), 'z')
 t.eq(try str.sliceAt(6), error.OutOfBounds)
 
 -- split()
-res = string('abc,ab,a')[0..].split(',')
+var res = string('abc,ab,a')[0..].split(',')
 t.eq(res.len(), 3)
 t.eq(res[0], 'abc')
 t.eq(res[1], 'ab')

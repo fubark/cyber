@@ -84,9 +84,9 @@ t.eq(true or true and false, true)
 --|
 
 -- Variables and parenthesis.
-time = 50
-minTime = 50
-timeRange = 100
+var time = 50
+var minTime = 50
+var timeRange = 100
 t.eq(5 + 90 * (time - minTime) / timeRange, 5)
 
 -- Left recursion with different operators.

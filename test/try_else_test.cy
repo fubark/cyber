@@ -7,7 +7,7 @@ func happy(a):
     return a
 
 -- Returns result.
-res = try 1 else 0
+var res = try 1 else 0
 t.eq(res, 1)
 
 -- Top expr fails, returns default value.

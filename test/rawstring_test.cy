@@ -2,10 +2,10 @@
 
 import t 'test'
 
-str = rawstring('abc🦊xyz🐶')
+var str = rawstring('abc🦊xyz🐶')
 t.eq(str, rawstring('abc🦊xyz🐶'))
 
-upper = rawstring('ABC🦊XYZ🐶')
+var upper = rawstring('ABC🦊XYZ🐶')
 
 -- index operator
 t.eq(try str[-1], error.InvalidRune)
@@ -140,7 +140,7 @@ t.eq(try str.sliceAt(13), error.InvalidRune)
 t.eq(try str.sliceAt(14), error.OutOfBounds)
 
 -- split()
-res = rawstring('abc,🐶ab,a').split(',')
+var res = rawstring('abc,🐶ab,a').split(',')
 t.eq(res.len(), 3)
 t.eq(res[0], rawstring('abc'))
 t.eq(res[1], rawstring('🐶ab'))

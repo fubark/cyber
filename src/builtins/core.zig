@@ -480,7 +480,7 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseRe
         switch (decl.declT) {
             .variable => {
                 const node = nodes[decl.inner.variable];
-                const varSpec = nodes[node.head.varDecl.varSpec];
+                const varSpec = nodes[node.head.staticDecl.varSpec];
                 name = res.getFirstNodeString(varSpec.head.varSpec.name);
                 pos = res.tokens[node.start_token].pos();
             },

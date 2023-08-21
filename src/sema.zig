@@ -46,9 +46,6 @@ pub const LocalVar = struct {
     /// Whether this var references a static variable.
     isStaticAlias: bool = false,
 
-    /// Whether the variable references a captured/static var from a modifier or implicity from a read reference.
-    hasCaptureOrStaticModifier: bool = false,
-
     /// Currently a captured var always needs to be boxed.
     /// In the future, the concept of a const variable could change this.
     isBoxed: bool = false,
@@ -69,7 +66,12 @@ pub const LocalVar = struct {
     /// use a flag to indicate whether the var has been loosely defined in the block. (eg. assigned to lvalue)
     /// Note that assigning inside a branch counts as defined.
     /// Entering an iter block will auto mark those as defined since the var could have been assigned by a previous iteration.
-    genIsDefined: bool = false,
+    isDefinedOnce: bool = false,
+
+    /// Whether the var is currently declared (according to the language rules) at the current position in the current block. 
+    /// When a sub block ends, this is set back to false.
+    /// If this variable is an alias, this is always false.
+    isDeclared: bool = false,
 
     inner: extern union {
         staticAlias: extern struct {
@@ -117,13 +119,17 @@ pub const SubBlock = struct {
     /// back to the parent scope.
     assignedVarStart: u32,
 
+    /// Start of declared vars in this subblock in `declaredVarStack`.
+    declaredVarStart: u32,
+
     /// Previous sema sub block.
     /// When this sub block ends, the previous sub block id is set as the current.
     prevSubBlockId: SubBlockId,
 
-    pub fn init(prevSubBlockId: SubBlockId, assignedVarStart: usize) SubBlock {
+    pub fn init(prevSubBlockId: SubBlockId, assignedVarStart: usize, declaredVarStart: usize) SubBlock {
         return .{
             .assignedVarStart = @intCast(assignedVarStart),
+            .declaredVarStart = @intCast(declaredVarStart),
             .iterVarBeginTypes = .{},
             .endMergeTypes = .{},
             .prevVarTypes = .{},
@@ -420,11 +426,14 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .continueStmt => {
             return;
         },
+        .localDecl => {
+            _ = try localDecl(c, nodeId);
+        },
         .opAssignStmt => {
             const left = c.nodes[node.head.opAssignStmt.left];
             if (left.node_t == .ident) {
                 const rtype = try semaExpr(c, node.head.opAssignStmt.right);
-                _ = try assignVar(c, node.head.opAssignStmt.left, rtype, .assign);
+                _ = try assignVar(c, node.head.opAssignStmt.left, rtype);
             } else if (left.node_t == .accessExpr) {
                 _ = try accessExpr(c, node.head.opAssignStmt.left);
                 _ = try semaExpr(c, node.head.opAssignStmt.right);
@@ -441,10 +450,10 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 const right = c.nodes[node.head.left_right.right];
                 if (right.node_t == .matchBlock) {
                     const rtype = try matchBlock(c, node.head.left_right.right, true);
-                    _ = try assignVar(c, node.head.left_right.left, rtype, .assign);
+                    _ = try assignVar(c, node.head.left_right.left, rtype);
                 } else {
                     const rtype = try semaExpr(c, node.head.left_right.right);
-                    _ = try assignVar(c, node.head.left_right.left, rtype, .assign);
+                    _ = try assignVar(c, node.head.left_right.left, rtype);
                 }
             } else if (left.node_t == .indexExpr) {
                 _ = try semaExpr(c, left.head.left_right.left);
@@ -465,28 +474,8 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 return c.reportErrorAt("Assignment to the left {} is not allowed.", &.{fmt.v(left.node_t)}, nodeId);
             }
         },
-        .varDecl => {
-            try varDecl(c, nodeId, true);
-        },
-        .captureDecl => {
-            const left = c.nodes[node.head.left_right.left];
-            std.debug.assert(left.node_t == .ident);
-            if (node.head.left_right.right != cy.NullId) {
-                const rtype = try semaExpr(c, node.head.left_right.right);
-                _ = try assignVar(c, node.head.left_right.left, rtype, .captureAssign);
-            } else {
-                _ = try assignVar(c, node.head.left_right.left, bt.Undefined, .captureAssign);
-            }
-        },
         .staticDecl => {
-            const left = c.nodes[node.head.left_right.left];
-            std.debug.assert(left.node_t == .ident);
-            if (node.head.left_right.right != cy.NullId) {
-                const rtype = try semaExpr(c, node.head.left_right.right);
-                _ = try assignVar(c, node.head.left_right.left, rtype, .staticAssign);
-            } else {
-                _ = try assignVar(c, node.head.left_right.left, bt.Undefined, .staticAssign);
-            }
+            try staticDecl(c, nodeId, true);
         },
         .typeAliasDecl => {
             const nameN = c.nodes[node.head.typeAliasDecl.name];
@@ -526,8 +515,8 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             const optt = try semaExpr(c, node.head.whileOptStmt.opt);
             if (node.head.whileOptStmt.some != cy.NullId) {
-                _ = try ensureLocalBodyVar(c, node.head.whileOptStmt.some, bt.Any);
-                _ = try assignVar(c, node.head.whileOptStmt.some, optt, .assign);
+                _ = try getOrDeclareLocal(c, node.head.whileOptStmt.some, bt.Any);
+                _ = try assignVar(c, node.head.whileOptStmt.some, optt);
             }
 
             try semaStmts(c, node.head.whileOptStmt.bodyHead);
@@ -547,9 +536,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             if (node.head.for_iter_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
                 if (eachClause.head.eachClause.key != cy.NullId) {
-                    _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.key, bt.Any);
+                    _ = try getOrDeclareLocal(c, eachClause.head.eachClause.key, bt.Any);
                 }
-                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, bt.Any);
+                _ = try getOrDeclareLocal(c, eachClause.head.eachClause.value, bt.Any);
             }
 
             try semaStmts(c, node.head.for_iter_stmt.body_head);
@@ -560,7 +549,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             if (node.head.for_range_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
-                _ = try ensureLocalBodyVar(c, eachClause.head.eachClause.value, bt.Number);
+                _ = try getOrDeclareLocal(c, eachClause.head.eachClause.value, bt.Number);
             }
 
             const range_clause = c.nodes[node.head.for_range_stmt.range_clause];
@@ -605,7 +594,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             try pushSubBlock(c);
             if (node.head.tryStmt.errorVar != cy.NullId) {
-                _ = try ensureLocalBodyVar(c, node.head.tryStmt.errorVar, bt.Error);
+                _ = try getOrDeclareLocal(c, node.head.tryStmt.errorVar, bt.Error);
             }
             try semaStmts(c, node.head.tryStmt.catchFirstStmt);
             try endSubBlock(c);
@@ -986,7 +975,7 @@ fn funcDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
 pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    const varSpec = c.nodes[node.head.varDecl.varSpec];
+    const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const nameN = c.nodes[varSpec.head.varSpec.name];
     const name = c.getNodeTokenString(nameN);
     const nameId = try ensureNameSym(c.compiler, name);
@@ -1001,29 +990,67 @@ pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 
     const rSymId = try resolveLocalVarSym(c, c.semaResolvedRootSymId, nameId, typeSymId, nodeId, true);
-    c.nodes[nodeId].head.varDecl.sema_rSymId = rSymId;
+    c.nodes[nodeId].head.staticDecl.sema_rSymId = rSymId;
 }
 
-fn varDecl(c: *cy.Chunk, nodeId: cy.NodeId, exported: bool) !void {
+fn localDecl(self: *cy.Chunk, nodeId: cy.NodeId) !void {
+    const node = self.nodes[nodeId];
+    const rtype = try semaExpr(self, node.head.localDecl.right);
+    const varSpec = self.nodes[node.head.localDecl.varSpec];
+    const nameNid = varSpec.head.varSpec.name;
+    const nameN = self.nodes[nameNid];
+    const name = self.getNodeTokenString(nameN);
+
+    const sblock = curBlock(self);
+    if (sblock.nameToVar.get(name)) |varId| {
+        const svar = &self.vars.items[varId];
+        if (svar.isCaptured()) {
+            return self.reportErrorAt("`{}` already references a parent local variable.", &.{v(name)}, nodeId);
+        } else if (svar.isStaticAlias) {
+            return self.reportErrorAt("`{}` already references a static variable.", &.{v(name)}, nodeId);
+        } else {
+            if (!svar.isDeclared) {
+                svar.isDeclared = true;
+                try self.assignedVarStack.append(self.alloc, varId);
+                try self.declaredVarStack.append(self.alloc, varId);
+                self.nodes[nameNid].head.ident.semaVarId = varId;
+            } else {
+                if (self.semaIsMainBlock()) {
+                    return self.reportErrorAt("Variable `{}` is already declared in the main block.", &.{v(name)}, nodeId);
+                } else {
+                    return self.reportErrorAt("Variable `{}` is already declared in the current function block.", &.{v(name)}, nodeId);
+                }
+            }
+        }
+    } else {
+        const id = try pushLocalBodyVar(self, name, rtype);
+        self.vars.items[id].isDeclared = true;
+        try self.assignedVarStack.append(self.alloc, id);
+        try self.declaredVarStack.append(self.alloc, id);
+        self.nodes[nameNid].head.ident.semaVarId = id;
+    }
+}
+
+fn staticDecl(c: *cy.Chunk, nodeId: cy.NodeId, exported: bool) !void {
     _ = exported;
     const node = c.nodes[nodeId];
-    const varSpec = c.nodes[node.head.varDecl.varSpec];
+    const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const nameN = c.nodes[varSpec.head.varSpec.name];
     if (nameN.node_t == .ident) {
         const name = c.getNodeTokenString(nameN);
 
-        const rSymId = node.head.varDecl.sema_rSymId;
+        const rSymId = node.head.staticDecl.sema_rSymId;
         const crSymId = CompactResolvedSymId.initSymId(rSymId);
 
         c.curSemaInitingSym = crSymId;
         c.semaVarDeclDeps.clearRetainingCapacity();
         defer c.curSemaInitingSym = CompactResolvedSymId.initNull();
 
-        const right = c.nodes[node.head.varDecl.right];
+        const right = c.nodes[node.head.staticDecl.right];
         if (right.node_t == .matchBlock) {
-            _ = try matchBlock(c, node.head.varDecl.right, true);
+            _ = try matchBlock(c, node.head.staticDecl.right, true);
         } else {
-            _ = semaExpr(c, node.head.varDecl.right) catch |err| {
+            _ = semaExpr(c, node.head.staticDecl.right) catch |err| {
                 if (err == error.CanNotUseLocal) {
                     const local = c.nodes[c.compiler.errorPayload];
                     const localName = c.getNodeTokenString(local);
@@ -1521,54 +1548,59 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
             return bt.Dynamic;
         } else if (callee.node_t == .ident) {
             const name = c.getNodeTokenString(callee);
-            const res = try getOrLookupVar(c, name, .readSkipStaticVar);
-            if (res.isLocal) {
-                c.nodes[node.head.callExpr.callee].head.ident.semaVarId = res.id;
 
-                var numArgs: u32 = 1;
-                var arg_id = node.head.callExpr.arg_head;
-                while (arg_id != cy.NullId) : (numArgs += 1) {
-                    const arg = c.nodes[arg_id];
-                    _ = try semaExpr(c, arg_id);
-                    arg_id = arg.next;
-                }
-                return bt.Any;
-            } else {
-                const callArgStart = c.compiler.typeStack.items.len;
-                defer c.compiler.typeStack.items.len = callArgStart;
+            // Perform custom lookup for static vars.
+            const res = try getOrLookupVar(c, name, false);
+            switch (res) {
+                .local => |id| {
+                    c.nodes[node.head.callExpr.callee].head.ident.semaVarId = id;
 
-                const nameId = try ensureNameSym(c.compiler, name);
-
-                // const funcCandStart = c.funcCandidateStack.items.len;
-                // defer c.funcCandidateStack.items.len = funcCandStart;
-                // const funcCandidates = try pushFuncCandidates(c, c.semaResolvedRootSymId, nameId, node.head.callExpr.numArgs);
-                const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
-                const reqRet = bt.Any;
-
-                c.curNodeId = node.head.callExpr.callee;
-                if (callArgs.hasDynamicArg) {
-                    // Runtime type check.
-                    if (try getOrResolveSymForDynamicFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes)) |callRes| {
-                        if (callArgs.hasFlexArg) {
-                            updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
-                        }
-                        try referenceSym(c, callRes.crSymId, true);
-                        c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
-                        return callRes.retType;
+                    var numArgs: u32 = 1;
+                    var arg_id = node.head.callExpr.arg_head;
+                    while (arg_id != cy.NullId) : (numArgs += 1) {
+                        const arg = c.nodes[arg_id];
+                        _ = try semaExpr(c, arg_id);
+                        arg_id = arg.next;
                     }
-                } else {
-                    // Compile-time type check.
-                    if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes, reqRet)) |callRes| {
-                        if (callArgs.hasFlexArg) {
-                            updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
-                        }
-                        try referenceSym(c, callRes.crSymId, true);
-                        c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
-                        return callRes.retType;
-                    }
-                }
+                    return bt.Any;
+                },
+                .static, // There was a previous usage of a static var alias.
+                .not_found => {
+                    const callArgStart = c.compiler.typeStack.items.len;
+                    defer c.compiler.typeStack.items.len = callArgStart;
 
-                return c.reportError("No such symbol: `{}`", &.{v(name)});
+                    const nameId = try ensureNameSym(c.compiler, name);
+
+                    // const funcCandStart = c.funcCandidateStack.items.len;
+                    // defer c.funcCandidateStack.items.len = funcCandStart;
+                    // const funcCandidates = try pushFuncCandidates(c, c.semaResolvedRootSymId, nameId, node.head.callExpr.numArgs);
+                    const callArgs = try pushCallArgs(c, node.head.callExpr.arg_head);
+                    const reqRet = bt.Any;
+
+                    c.curNodeId = node.head.callExpr.callee;
+                    if (callArgs.hasDynamicArg) {
+                        // Runtime type check.
+                        if (try getOrResolveSymForDynamicFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes)) |callRes| {
+                            if (callArgs.hasFlexArg) {
+                                updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
+                            }
+                            try referenceSym(c, callRes.crSymId, true);
+                            c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
+                            return callRes.retType;
+                        }
+                    } else {
+                        // Compile-time type check.
+                        if (try getOrResolveSymForFuncCall(c, c.semaResolvedRootSymId, nameId, callArgs.argTypes, reqRet)) |callRes| {
+                            if (callArgs.hasFlexArg) {
+                                updateFlexArgTypes(c, node.head.callExpr.arg_head, callArgs.argTypes, callRes.funcSigId);
+                            }
+                            try referenceSym(c, callRes.crSymId, true);
+                            c.nodes[node.head.callExpr.callee].head.ident.sema_crSymId = callRes.crSymId;
+                            return callRes.retType;
+                        }
+                    }
+                    return c.reportErrorAt("Undeclared func `{}`.", &.{v(name)}, node.head.callExpr.callee);
+                },
             }
         } else {
             // All other callees are treated as function value calls.
@@ -1589,30 +1621,36 @@ fn callExpr(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
 fn identifier(c: *cy.Chunk, nodeId: cy.NodeId) !TypeId {
     const node = c.nodes[nodeId];
     const name = c.getNodeTokenString(node);
-    const res = try getOrLookupVar(c, name, .read);
-    if (res.isLocal) {
-        c.nodes[nodeId].head.ident.semaVarId = res.id;
-        return c.vars.items[res.id].vtype;
-    } else {
-        const nameId = try ensureNameSym(c.compiler, name);
+    const res = try getOrLookupVar(c, name, true);
+    switch (res) {
+        .local => |id| {
+            c.nodes[nodeId].head.ident.semaVarId = id;
+            return c.vars.items[id].vtype;
+        },
+        .static => {
+            const nameId = try ensureNameSym(c.compiler, name);
 
-        const symRes = try mustGetOrResolveDistinctSym(c, c.semaResolvedRootSymId, nameId);
-        const crSymId = symRes.toCompactId();
-        try referenceSym(c, crSymId, true);
-        c.nodes[nodeId].head.ident.sema_crSymId = crSymId;
+            const symRes = try mustGetOrResolveDistinctSym(c, c.semaResolvedRootSymId, nameId);
+            const crSymId = symRes.toCompactId();
+            try referenceSym(c, crSymId, true);
+            c.nodes[nodeId].head.ident.sema_crSymId = crSymId;
 
-        const rSym = c.compiler.sema.getResolvedSym(symRes.rSymId);
-        switch (rSym.symT) {
-            .variable => {
-                return rSym.inner.variable.rTypeSymId;
-            },
-            .builtinType => {
-                return bt.MetaType;
-            },
-            else => {
-                return bt.Any;
-            },
-        }
+            const rSym = c.compiler.sema.getResolvedSym(symRes.rSymId);
+            switch (rSym.symT) {
+                .variable => {
+                    return rSym.inner.variable.rTypeSymId;
+                },
+                .builtinType => {
+                    return bt.MetaType;
+                },
+                else => {
+                    return bt.Any;
+                },
+            }
+        },
+        .not_found => {
+            return c.reportErrorAt("Undeclared variable `{}`.", &.{v(name)}, nodeId);
+        },
     }
 }
 
@@ -1713,7 +1751,7 @@ fn pushSubBlock(self: *cy.Chunk) !void {
     curBlock(self).subBlockDepth += 1;
     const prev = self.curSemaSubBlockId;
     self.curSemaSubBlockId = @intCast(self.semaSubBlocks.items.len);
-    try self.semaSubBlocks.append(self.alloc, SubBlock.init(prev, self.assignedVarStack.items.len));
+    try self.semaSubBlocks.append(self.alloc, SubBlock.init(prev, self.assignedVarStack.items.len, self.declaredVarStack.items.len));
 }
 
 fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
@@ -1738,6 +1776,7 @@ fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
 
             c.curNodeId = curNode;
             const id = try pushLocalVar(c, name, rParamSymId);
+            c.vars.items[id].isDeclared = true;
             try sblock.params.append(c.alloc, id);
 
             curNode = param.next;
@@ -1746,6 +1785,7 @@ fn pushMethodParamVars(c: *cy.Chunk, func: *const FuncDecl) !void {
 
     // Add self receiver param.
     var id = try pushLocalVar(c, "self", bt.Any);
+    c.vars.items[id].isDeclared = true;
     try sblock.params.append(c.alloc, id);
 }
 
@@ -1762,6 +1802,7 @@ fn appendFuncParamVars(chunk: *cy.Chunk, func: *const FuncDecl) !void {
 
             try types.assertTypeSym(chunk, rParamSymId);
             const id = try pushLocalVar(chunk, name, rParamSymId);
+            chunk.vars.items[id].isDeclared = true;
             try sblock.params.append(chunk.alloc, id);
 
             curNode = param.next;
@@ -1807,7 +1848,7 @@ fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, v
     const capturedIdx: u8 = @intCast(block.captures.items.len);
     self.vars.items[id].capturedIdx = capturedIdx;
     self.vars.items[id].isBoxed = true;
-    self.vars.items[id].genIsDefined = true;
+    self.vars.items[id].isDefinedOnce = true;
 
     try self.capVarDescs.put(self.alloc, id, .{
         .user = parentVarId,
@@ -1823,15 +1864,22 @@ fn pushLocalBodyVar(self: *cy.Chunk, name: []const u8, vtype: TypeId) !LocalVarI
     return id;
 }
 
-fn ensureLocalBodyVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !LocalVarId {
+fn getOrDeclareLocal(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !LocalVarId {
     const node = self.nodes[ident];
     const name = self.getNodeTokenString(node);
     if (curBlock(self).nameToVar.get(name)) |varId| {
         self.nodes[ident].head.ident.semaVarId = varId;
+        if (!self.vars.items[varId].isDeclared) {
+            self.vars.items[varId].isDeclared = true;
+            try self.declaredVarStack.append(self.alloc, varId);
+        }
         return varId;
     } else {
+        // Declare var.
         const id = try pushLocalBodyVar(self, name, vtype);
+        self.vars.items[id].isDeclared = true;
         self.nodes[ident].head.ident.semaVarId = id;
+        try self.declaredVarStack.append(self.alloc, id);
         return id;
     }
 }
@@ -1860,222 +1908,86 @@ fn referenceSym(c: *cy.Chunk, rSymId: CompactResolvedSymId, trackDep: bool) !voi
     }
 }
 
-const VarLookupStrategy = enum {
-    /// Look upwards for a parent local. If no such local exists, assume a static var.
-    read,
-    /// Same as read but does not try to find a static var symbol.
-    readSkipStaticVar,
-    /// Assume a static var.
-    staticAssign,
-    /// Look upwards for a parent local. If no such local exists, a compile error is returned.
-    captureAssign,
-    /// If missing in the current block, a new local is created.
-    assign,
+const VarLookupResult = union(enum) {
+    static: CompactResolvedSymId,
+    local: LocalVarId,
+    not_found: void,
 };
 
-const VarLookupResult = struct {
-    /// If `isLocal` is true, id is a LocalVarId.
-    id: u32,
-    /// If `isLocal` is false, id is a CompactResolvedSymId.
-    isLocal: bool,
-    /// Whether the local var was created.
-    created: bool,
-};
-
-fn getOrLookupVar(self: *cy.Chunk, name: []const u8, strat: VarLookupStrategy) !VarLookupResult {
+/// Static var lookup is skipped for callExpr since there is a chance it can fail on a
+/// symbol with overloaded signatures.
+fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLookupResult {
     const sblock = curBlock(self);
     if (sblock.nameToVar.get(name)) |varId| {
         const svar = self.vars.items[varId];
-        switch (strat) {
-            .readSkipStaticVar,
-            .read => {
-                if (!svar.isStaticAlias) {
-                    // Can not reference local var in a static var decl unless it's in a nested block.
-                    // eg. a = 0
-                    //     var b = a
-                    if (self.isInStaticInitializer() and self.semaBlockDepth() == 1) {
-                        self.compiler.errorPayload = self.curNodeId;
-                        return error.CanNotUseLocal;
-                    }
-                    return VarLookupResult{
-                        .id = varId,
-                        .isLocal = true,
-                        .created = false,
-                    };
-                } else {
-                    return VarLookupResult{
-                        .id = @bitCast(svar.inner.staticAlias.crSymId),
-                        .isLocal = false,
-                        .created = false,
-                    };
-                }
-            },
-            .assign => {
-                if (svar.isStaticAlias) {
-                    // Assumes static variables can only exist in the main block.
-                    if (svar.hasCaptureOrStaticModifier or self.semaBlockDepth() == 1) {
-                        return VarLookupResult{
-                            .id = @bitCast(svar.inner.staticAlias.crSymId),
-                            .isLocal = false,
-                            .created = false,
-                        };
-                    } else {
-                        return self.reportError("`{}` already references a static variable. The variable must be declared with `static` before assigning to it.", &.{v(name)});
-                    }
-                } else if (svar.isCaptured()) {
-                    if (svar.hasCaptureOrStaticModifier) {
-                        return VarLookupResult{
-                            .id = varId,
-                            .isLocal = true,
-                            .created = false,
-                        };
-                    } else {
-                        return self.reportError("`{}` already references a captured variable. The variable must be declared with `capture` before assigning to it.", &.{v(name)});
-                    }
-                } else {
-                    return VarLookupResult{
-                        .id = varId,
-                        .isLocal = true,
-                        .created = false,
-                    };
-                }
-            },
-            .captureAssign => {
-                if (!svar.isCaptured()) {
-                    // Previously not captured, update to captured.
-                    return self.reportError("TODO: update to captured variable", &.{});
-                } else {
-                    return VarLookupResult{
-                        .id = varId,
-                        .isLocal = true,
-                        .created = false,
-                    };
-                }
-            },
-            .staticAssign => {
-                if (!svar.isStaticAlias) {
-                    // Previously not static alias, update to static alias.
-                    return self.reportError("TODO: update to static alias", &.{});
-                } else {
-                    return VarLookupResult{
-                        .id = cy.NullId,
-                        .isLocal = false,
-                        .created = false,
-                    };
-                }
-            },
-            // When typed declaration is implemented, that can create a new local if the variable was previously implicity captured.
-            // // Create a new local var and update mapping so any references after will refer to the local var.
-            // const sblock = curBlock(self);
-            // _ = sblock.nameToVar.remove(name);
-            // const id = try pushLocalBodyVar(self, name, vtype);
-            // if (sblock.subBlockDepth > 1) {
-            //     self.vars.items[id].genInitializer = true;
-            // }
+        if (svar.isStaticAlias) {
+            return VarLookupResult{
+                .static = @bitCast(svar.inner.staticAlias.crSymId),
+            };
+        } else if (svar.isCaptured()) {
+            // Can not reference local var in a static var decl unless it's in a nested block.
+            // eg. var a = 0
+            //     var b: a
+            if (self.isInStaticInitializer() and self.semaBlockDepth() == 1) {
+                self.compiler.errorPayload = self.curNodeId;
+                return error.CanNotUseLocal;
+            }
+            return VarLookupResult{
+                .local = varId,
+            };
+        } else {
+            if (self.isInStaticInitializer() and self.semaBlockDepth() == 1) {
+                self.compiler.errorPayload = self.curNodeId;
+                return error.CanNotUseLocal;
+            }
+            if (!svar.isDeclared) {
+                return VarLookupResult{
+                    .not_found = {},
+                };
+            } else {
+                return VarLookupResult{
+                    .local = varId,
+                };
+            }
         }
     }
-
-    // Perform lookup based on the strategy. See `VarLookupStrategy`.
-    switch (strat) {
-        .readSkipStaticVar,
-        .read => {
-            if (lookupParentLocal(self, name)) |res| {
-                if (self.isInStaticInitializer()) {
-                    // Can not capture local before this block.
-                    if (res.blockDepth == 1) {
-                        self.compiler.errorPayload = self.curNodeId;
-                        return error.CanNotUseLocal;
-                    }
-                } else if (sblock.isStaticFuncBlock) {
-                    // Can not capture local before static function block.
-                    const func = self.semaFuncDecls.items[sblock.funcDeclId];
-                    const funcName = func.getName(self);
-                    return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (function values) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
-                }
-
-                // Create a local captured variable.
-                const parentVar = self.vars.items[res.varId];
-                const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
-                return VarLookupResult{
-                    .id = id,
-                    .isLocal = true,
-                    .created = true,
-                };
-            } else {
-                if (strat == .read) {
-                    const nameId = try ensureNameSym(self.compiler, name);
-                    const res = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
-                    _ = try pushStaticVarAlias(self, name, res.toCompactId());
-                    return VarLookupResult{
-                        .id = @bitCast(res.toCompactId()),
-                        .isLocal = false,
-                        .created = false,
-                    };
-                } else {
-                    return VarLookupResult{
-                        .id = cy.NullId,
-                        .isLocal = false,
-                        .created = false,
-                    };
-                }
+    if (lookupParentLocal(self, name)) |res| {
+        if (self.isInStaticInitializer()) {
+            // Can not capture local before this block.
+            if (res.blockDepth == 1) {
+                self.compiler.errorPayload = self.curNodeId;
+                return error.CanNotUseLocal;
             }
-        },
-        .staticAssign => {
+        } else if (sblock.isStaticFuncBlock) {
+            // Can not capture local before static function block.
+            const func = self.semaFuncDecls.items[sblock.funcDeclId];
+            const funcName = func.getName(self);
+            return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (anonymous functions) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
+        }
+
+        // Create a local captured variable.
+        const parentVar = self.vars.items[res.varId];
+        const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
+        return VarLookupResult{
+            .local = id,
+        };
+    } else {
+        if (staticLookup) {
             const nameId = try ensureNameSym(self.compiler, name);
-            const res = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
-            const id = try pushStaticVarAlias(self, name, res.toCompactId());
-            self.vars.items[id].hasCaptureOrStaticModifier = true;
-            return VarLookupResult{
-                .id = @bitCast(res.toCompactId()),
-                .isLocal = false,
-                .created = true,
-            };
-        },
-        .captureAssign => {
-            if (lookupParentLocal(self, name)) |res| {
-                if (self.isInStaticInitializer()) {
-                    if (res.blockDepth == 1) {
-                        return self.reportError("Can not use local in static variable initializer.", &.{});
-                    }
-                } else if (sblock.isStaticFuncBlock) {
-                    // Can not capture local before static function block.
-                    const func = self.semaFuncDecls.items[sblock.funcDeclId];
-                    const funcName = func.getName(self);
-                    return self.reportErrorAt("Can not capture the local variable `{}` from static function `{}`.\nOnly lambdas (function values) can capture local variables.", &.{v(name), v(funcName)}, self.curNodeId);
-                }
-                // Create a local captured variable.
-                const parentVar = self.vars.items[res.varId];
-                const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
-                self.vars.items[id].hasCaptureOrStaticModifier = true;
+            const res = (try getOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId)) orelse {
                 return VarLookupResult{
-                    .id = id,
-                    .isLocal = true,
-                    .created = true,
+                    .not_found = {},
                 };
-            } else {
-                return self.reportError("Could not find a parent local named `{}`.", &.{v(name)});
-            }
-        },
-        .assign => {
-            // Prefer static variable in the same block.
-            // For now, only do this for main block.
-            if (self.semaBlockDepth() == 1) {
-                const nameId = try ensureNameSym(self.compiler, name);
-                if (hasResolvedSym(self, self.semaResolvedRootSymId, nameId)) {
-                    return VarLookupResult{
-                        .id = cy.NullId,
-                        .isLocal = false,
-                        .created = false,
-                    };
-                }
-            }
-            const id = try pushLocalBodyVar(self, name, bt.Undefined);
-            return VarLookupResult{
-                .id = id,
-                .isLocal = true,
-                .created = true,
             };
-        },
+            _ = try pushStaticVarAlias(self, name, res.toCompactId());
+            return VarLookupResult{
+                .static = @bitCast(res.toCompactId()),
+            };
+        } else {
+            return VarLookupResult{
+                .not_found = {},
+            };
+        }
     }
 }
 
@@ -2534,10 +2446,6 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, rParentSymId: ResolvedSymId, nameId
                     };
                 }
             }
-
-            // Report missing symbol when looking in a module.
-            const name = getName(chunk.compiler, nameId);
-            return chunk.reportError("Missing symbol: `{}`", &.{v(name)});
         }
     }
 
@@ -3256,40 +3164,50 @@ fn accessExpr(self: *cy.Chunk, nodeId: cy.NodeId) !AccessExprResult {
         if (left.node_t == .ident) {
             const name = self.getNodeTokenString(left);
             const nameId = try ensureNameSym(self.compiler, name);
-            const res = try getOrLookupVar(self, name, .read);
+            const res = try getOrLookupVar(self, name, true);
 
             const rightName = self.getNodeTokenString(right);
             const rightNameId = try ensureNameSym(self.compiler, rightName);
-            if (!res.isLocal) {
-                // Static symbol.
-                const leftSymRes = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
-                const crLeftSym = leftSymRes.toCompactId();
-                try referenceSym(self, crLeftSym, true);
-                self.nodes[node.head.accessExpr.left].head.ident.sema_crSymId = crLeftSym;
+            switch (res) {
+                .local => |id| {
+                    self.nodes[node.head.accessExpr.left].head.ident.semaVarId = id;
+                    const svar = self.vars.items[id];
+                    self.nodeTypes[node.head.accessExpr.left] = svar.vtype;
+                    return getAccessExprResult(self, svar.vtype, rightName);
+                },
+                .static => {
+                    // Static symbol.
+                    const leftSymRes = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
+                    const crLeftSym = leftSymRes.toCompactId();
+                    try referenceSym(self, crLeftSym, true);
+                    self.nodes[node.head.accessExpr.left].head.ident.sema_crSymId = crLeftSym;
 
-                self.curNodeId = node.head.accessExpr.right;
-                if (try getOrResolveDistinctSym(self, leftSymRes.rSymId, rightNameId)) |symRes| {
-                    const crRightSym = symRes.toCompactId();
-                    try referenceSym(self, crRightSym, true);
-                    self.nodes[nodeId].head.accessExpr.sema_crSymId = crRightSym;
+                    self.curNodeId = node.head.accessExpr.right;
+                    if (try getOrResolveDistinctSym(self, leftSymRes.rSymId, rightNameId)) |symRes| {
+                        const crRightSym = symRes.toCompactId();
+                        try referenceSym(self, crRightSym, true);
+                        self.nodes[nodeId].head.accessExpr.sema_crSymId = crRightSym;
 
-                    const exprT = try getTypeForResolvedValueSym(self, crRightSym);
-                    return AccessExprResult{
-                        .recvT = getSymType(self.compiler, crLeftSym.id),
-                        .exprT = exprT,
-                    };
-                } else {
-                    const leftSym = self.compiler.sema.getResolvedSym(leftSymRes.rSymId);
-                    if (leftSym.symT == .variable) {
-                        const vtype = leftSym.inner.variable.rTypeSymId;
-                        return getAccessExprResult(self, vtype, rightName);
+                        const exprT = try getTypeForResolvedValueSym(self, crRightSym);
+                        return AccessExprResult{
+                            .recvT = getSymType(self.compiler, crLeftSym.id),
+                            .exprT = exprT,
+                        };
+                    } else {
+                        const leftSym = self.compiler.sema.getResolvedSym(leftSymRes.rSymId);
+                        if (leftSym.getModuleId() != null) {
+                            // Report missing symbol when looking in a module.
+                            return self.reportError("Missing symbol: `{}`", &.{v(rightName)});
+                        }
+                        if (leftSym.symT == .variable) {
+                            const vtype = leftSym.inner.variable.rTypeSymId;
+                            return getAccessExprResult(self, vtype, rightName);
+                        }
                     }
-                }
-            } else {
-                self.nodes[node.head.accessExpr.left].head.ident.semaVarId = res.id;
-                const svar = self.vars.items[res.id];
-                self.nodeTypes[node.head.accessExpr.left] = svar.vtype;
-                return getAccessExprResult(self, svar.vtype, rightName);
+                },
+                .not_found => {
+                    return self.reportErrorAt("Undeclared variable `{}`.", &.{v(name)}, node.head.accessExpr.left);
+                },
             }
         } else if (left.node_t == .accessExpr) {
             const res = try accessExpr(self, node.head.accessExpr.left);
@@ -3338,45 +3256,49 @@ fn toLocalType(vtype: TypeId) TypeId {
     return vtype;
 }
 
-fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId, strat: VarLookupStrategy) !void {
+fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !void {
     // log.debug("set var {s}", .{name});
     const node = self.nodes[ident];
     const name = self.getNodeTokenString(node);
 
-    const res = try getOrLookupVar(self, name, strat);
-    if (res.isLocal) {
-        const svar = &self.vars.items[res.id];
-        if (svar.isCaptured()) {
-            if (!svar.isBoxed) {
-                // Becomes boxed so codegen knows ahead of time.
-                svar.isBoxed = true;
+    const res = try getOrLookupVar(self, name, true);
+    switch (res) {
+        .local => |id| {
+            const svar = &self.vars.items[id];
+            if (svar.isCaptured()) {
+                if (!svar.isBoxed) {
+                    // Becomes boxed so codegen knows ahead of time.
+                    svar.isBoxed = true;
+                }
             }
-        }
 
-        if (!res.created) {
             const ssblock = curSubBlock(self);
-            if (!ssblock.prevVarTypes.contains(res.id)) {
+            if (!ssblock.prevVarTypes.contains(id)) {
                 // Same variable but branched to sub block.
-                try ssblock.prevVarTypes.put(self.alloc, res.id, svar.vtype);
+                try ssblock.prevVarTypes.put(self.alloc, id, svar.vtype);
             }
-        }
 
-        // Update current type after checking for branched assignment.
-        if (!types.isSameType(svar.vtype, vtype)) {
-            svar.vtype = toLocalType(vtype);
-            if (!svar.lifetimeRcCandidate and types.isRcCandidateType(self.compiler, vtype)) {
-                svar.lifetimeRcCandidate = true;
+            // Update current type after checking for branched assignment.
+            if (!types.isSameType(svar.vtype, vtype)) {
+                svar.vtype = toLocalType(vtype);
+                if (!svar.lifetimeRcCandidate and types.isRcCandidateType(self.compiler, vtype)) {
+                    svar.lifetimeRcCandidate = true;
+                }
             }
-        }
 
-        try self.assignedVarStack.append(self.alloc, res.id);
-        self.nodes[ident].head.ident.semaVarId = res.id;
-    } else {
-        const nameId = try ensureNameSym(self.compiler, name);
-        const symRes = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
-        const crSymId = symRes.toCompactId();
-        try referenceSym(self, crSymId, true);
-        self.nodes[ident].head.ident.sema_crSymId = crSymId;
+            try self.assignedVarStack.append(self.alloc, id);
+            self.nodes[ident].head.ident.semaVarId = id;
+        },
+        .static => {
+            const nameId = try ensureNameSym(self.compiler, name);
+            const symRes = try mustGetOrResolveDistinctSym(self, self.semaResolvedRootSymId, nameId);
+            const crSymId = symRes.toCompactId();
+            try referenceSym(self, crSymId, true);
+            self.nodes[ident].head.ident.sema_crSymId = crSymId;
+        },
+        .not_found => {
+            return self.reportErrorAt("Undeclared variable `{}`.", &.{v(name)}, ident);
+        },
     }
 }
 
@@ -3417,6 +3339,14 @@ fn endSubBlock(self: *cy.Chunk) !void {
         }
     }
     ssblock.prevVarTypes.deinit(self.alloc);
+
+    // Mark vars as undeclared.
+    const curDeclaredVars = self.declaredVarStack.items[ssblock.declaredVarStart..];
+    self.declaredVarStack.items.len = ssblock.declaredVarStart;
+    for (curDeclaredVars) |varId| {
+        const svar = &self.vars.items[varId];
+        svar.isDeclared = false;
+    }
 
     self.curSemaSubBlockId = ssblock.prevSubBlockId;
     sblock.subBlockDepth -= 1;
@@ -3616,7 +3546,7 @@ fn resolveLocalVarSym(self: *cy.Chunk, rParentSymId: ResolvedSymId, nameId: Name
         };
         if (self.localSyms.contains(key)) {
             const node = self.nodes[declId];
-            const varSpec = self.nodes[node.head.varDecl.varSpec];
+            const varSpec = self.nodes[node.head.staticDecl.varSpec];
             return self.reportErrorAt("The symbol `{}` was already declared.", &.{v(getName(self.compiler, nameId))}, varSpec.head.varSpec.name);
         }
     }

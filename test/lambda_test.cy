@@ -3,7 +3,7 @@
 import t 'test'
 
 -- No params.
-foo = () => 2 + 2
+var foo = () => 2 + 2
 t.eq(foo(), 4)
 
 -- One param.
@@ -20,7 +20,7 @@ func call(f):
 t.eq(call(a => a + 1), 15)
 
 -- Using parentheses.
-m = { a: () => 4 }
+var m = { a: () => 4 }
 t.eq((m.a)(), 4)
 
 -- -- Invoking lambda temp.

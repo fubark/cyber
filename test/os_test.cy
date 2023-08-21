@@ -8,7 +8,7 @@ if os.system != 'windows':
     t.eq(os.getEnv('testfoo'), none)
 
 -- access()
-res = try os.access('test/assets/missing.txt', #read)
+var res = try os.access('test/assets/missing.txt', #read)
 t.eq(res, error.FileNotFound)
 res = os.access('test/assets/file.txt', #read)
 t.eq(res, true)
@@ -20,12 +20,12 @@ t.eq(res.len() > 0, true)
 -- createDir()
 try os.removeDir('test/assets/tempdir')
 t.eq(os.createDir('test/assets/tempdir'), true)
-dir = os.openDir('test/assets/tempdir')
+var dir = os.openDir('test/assets/tempdir')
 t.eq(dir.stat().type, #dir)
 
 -- createFile() new file.
 try os.removeFile('test/assets/write.txt')
-file = os.createFile('test/assets/write.txt', false)
+var file = os.createFile('test/assets/write.txt', false)
 file.write('foobar')
 t.eq(readFile('test/assets/write.txt'), rawstring('foobar'))
 -- createFile() no truncate.
@@ -46,7 +46,7 @@ t.eq(os.dirName('/root/bar.txt'), '/root')
 
 -- openDir()
 dir = os.openDir('test')
-info = dir.stat()
+var info = dir.stat()
 t.eq(info.type, #dir)
 
 -- openFile()
@@ -55,7 +55,7 @@ info = file.stat()
 t.eq(info.type, #file)
 
 -- free() / malloc()
-ptr = os.malloc(16)
+var ptr = os.malloc(16)
 t.eq(typesym(ptr), #pointer)
 try os.free(ptr)
 
@@ -113,8 +113,8 @@ t.eq(readFile('test/assets/write.txt'), rawstring('foobarabcxyz'))
 
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
-iter = dir.iterator()
-entries = []
+var iter = dir.iterator()
+var entries = []
 while iter.next() some n:
     entries.append(n)
 t.eq(entries.len(), 3)

@@ -11,7 +11,7 @@ The `none` value represents an empty value. This is similar to null in other lan
 ## Booleans.
 Booleans can be `true` or `false`.
 ```cy
-a = true
+var a = true
 if a:
     print 'a is true'
 ```
@@ -27,14 +27,14 @@ You can still use numbers as integers and perform arithmetic without rounding is
 When performing bitwise operations, the number is first converted to an 32-bit integer.
 
 ```cy
-a = 123
-b = 2.34567
+var a = 123
+var b = 2.34567
 ```
 
 There are other number literal notations you can use.
 ```cy
 -- Scientific notation. 
-a = 123.0e4
+var a = 123.0e4
 
 -- Integer notations.
 a = 0xFF     -- hex.
@@ -63,30 +63,30 @@ A string is always UTF-8 validated. [rawstrings](#rawstring) outperform strings 
 
 A single line string literal is surrounded in single quotes.
 ```cy
-apple = 'a fruit'
+var apple = 'a fruit'
 ```
 
 You can escape the single quote inside the literal or use double quotes.
 ```cy
-apple = 'Bob\'s fruit'
+var apple = 'Bob\'s fruit'
 apple = "Bob's fruit"
 ```
 
 Strings are UTF-8 encoded.
 ```cy
-str = 'abc🦊xyz🐶'
+var str = 'abc🦊xyz🐶'
 ```
 
 Use double quotes to surround a multi-line string.
 ```cy
-str = "line a
+var str = "line a
 line b
 line c"
 ```
 
 You can escape double quotes inside the literal or use triple quotes.
 ```cy
-str = "line a
+var str = "line a
 line \"b\"
 line c"
 
@@ -109,29 +109,29 @@ The following escape sequences are supported:
 
 The boundary of each line can be set with a vertical line character. This makes it easier to see the whitespace.
 ```cy
-poem = "line a
+var poem = "line a
        |  two spaces from the left
        |     indented further"
 ```
 
 Using the index operator will return the UTF-8 rune at the given index as a slice. This is equivalent to calling the method `sliceAt()`.
 ```cy
-str = 'abcd'
+var str = 'abcd'
 print str[1]     -- "b"
 print str[-1]    -- "d"
 ```
 
 Using the slice index operator will return a view of the string at the given start and end (exclusive) indexes. The start index defaults to 0 and the end index defaults to the string's length.
 ```cy
-str = 'abcxyz'
-sub = str[0..3]
+var str = 'abcxyz'
+var sub = str[0..3]
 print sub        -- "abc"
 print str[..5]   -- "abcxy"
 print str[1..]   -- "bcxyz"
 
 -- One way to use slices is to continue a string operation.
 str = 'abcabcabc'
-i = str.findRune(0u'c')
+var i = str.findRune(0u'c')
 print(i)                            -- "2"
 i += 1
 print(i + str[i..].findRune(0u'c'))  -- "5"
@@ -201,15 +201,15 @@ func upper(self) string
 
 You can embed expressions into string templates using braces.
 ```cy
-name = 'Bob'
-points = 123
-str = 'Scoreboard: {name} {points}'
+var name = 'Bob'
+var points = 123
+var str = 'Scoreboard: {name} {points}'
 ```
 
 Escape braces with a backslash.
 ```cy
-points = 123
-str = 'Scoreboard: \{ Bob \} {points}'
+var points = 123
+var str = 'Scoreboard: \{ Bob \} {points}'
 ```
 String templates can not contain nested string templates.
 
@@ -218,7 +218,7 @@ A `rawstring` does not automatically validate the string and is indexed by bytes
 
 Using the index operator will return the UTF-8 rune starting at the given byte index as a slice. If the index does not begin a valid UTF-8 rune, `error.InvalidRune` is returned. This is equivalent to calling the method `sliceAt()`.
 ```cy
-str = rawstring('abcd').insertByte(1, 255)
+var str = rawstring('abcd').insertByte(1, 255)
 print str[0]     -- "a"
 print str[1]     -- error.InvalidRune
 print str[-1]    -- "d"
@@ -297,7 +297,7 @@ func utf8(self) string
 Lists are a builtin type that holds an ordered collection of elements. Lists grow or shrink as you insert or remove elements.
 ```cy
 -- Construct a new list.
-list = [1, 2, 3]
+var list = [1, 2, 3]
 
 -- The first element of the list starts at index 0.
 print list[0]    -- Prints '1'
@@ -308,7 +308,7 @@ print list[-1]   -- Prints '3'
 
 Lists can be sliced with the range `..` clause. The sliced list becomes a new list that you can modify without affecting the original list. The end index is non-inclusive. Negative start or end values count from the end of the list.
 ```cy
-list = [ 1, 2, 3, 4, 5 ]
+var list = [ 1, 2, 3, 4, 5 ]
 list[0..0]  -- []          Empty list.
 list[0..3]  -- [ 1, 2, 3 ] From start to end index.
 list[3..]   -- [ 4, 5 ]    From start index to end of list. 
@@ -318,7 +318,7 @@ list[2..+2] -- [ 3, 4 ]    From start index to start index + amount.
 
 List operations.
 ```cy
-list = [234]
+var list = [234]
 -- Append a value.
 list.append 123
 print list[-1]     -- Prints '123'
@@ -357,7 +357,7 @@ list.remove(1)
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries.
 ```cy
-map = { a: 123, b: () => 5 }
+var map = { a: 123, b: () => 5 }
 print map['a']
 
 -- You can also access the map using an access expression.
@@ -373,7 +373,7 @@ Entries can also follow a `{}:` block.
 This gives structure to the entries and has
 the added benefit of allowing multi-line lambdas.
 ```cy
-colors = {}:
+var colors = {}:
     red: 0xFF0000
     green: 0x00FF00
     blue: 0x0000FF
@@ -390,7 +390,7 @@ colors = {}:
 ```
 Map operations.
 ```cy
-map = {}
+var map = {}
 -- Set a key value pair.
 map[123] = 234
 
@@ -420,7 +420,7 @@ type Node object:
     value
     next
 
-node = Node{ value: 123, next: none }
+var node = Node{ value: 123, next: none }
 print node.value          -- '123'
 ```
 New instances of an object template are created using the type name and braces that surround the initial member values.
@@ -438,7 +438,7 @@ type Node object:
     func dump(self):
         print self.value
 
-n = Node.create()
+var n = Node.create()
 n.dump()
 ```
 
@@ -453,13 +453,13 @@ type Fruit enum:
     banana
     kiwi
 
-fruit = Fruit.kiwi
+var fruit = Fruit.kiwi
 print fruit          -- 'Fruit.kiwi'
 print number(fruit)  -- '3'
 ```
 When the type of the value is known to be an enum, it can be assigned using a symbol literal.
 ```cy
-fruit = Fruit.kiwi
+var fruit = Fruit.kiwi
 fruit = #orange
 print(fruit == Fruit.orange)   -- 'true'
 ```
@@ -467,7 +467,7 @@ print(fruit == Fruit.orange)   -- 'true'
 ## Symbols.
 Symbol literals begin with `#`, followed by an identifier. They have their own global unique id.
 ```cy
-currency = #usd
+var currency = #usd
 print(currency == #usd)      -- 'true'
 print number(currency)       -- '123' or some arbitrary id.
 ```

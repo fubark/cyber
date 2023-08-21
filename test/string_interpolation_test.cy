@@ -1,12 +1,12 @@
 import t 'test'
 
 -- Using single quotes.
-a = 'World'
-b = 123
+var a = 'World'
+var b = 123
 t.eq('Hello {a} {b}', 'Hello World 123')
 
 -- Unescape.
-str = '\n\tHello {a} {b}'
+var str = '\n\tHello {a} {b}'
 t.eq(str.runeAt(0), 10)
 t.eq(str.runeAt(1), 9)
 

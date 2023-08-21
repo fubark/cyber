@@ -19,13 +19,13 @@ Cyber introduces the concept of compile-time dynamic typing. This allows a local
 
 Local variables declared without a type specifier start off with the type of their initializer. In the following, `a` is implicity declared as a `number` at compile-time because number literals default to the `number` type.
 ```cy
-a = 123
+var a = 123
 ```
 
 The type can change at compile-time from another assignment. 
 If `a` is then assigned to a string literal, `a` from that point on becomes the `string` type at compile-time.
 ```cy
-a = 123
+var a = 123
 foo(a)           -- Valid call expression.
 a = 'hello'
 foo(a)           -- CompileError. Expected `number` argument, got `string`.
@@ -36,7 +36,7 @@ func foo(n number):
 
 The type of `a` can also change in branches. However, after the branch block, `a` will have a merged type determined by the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` assumes the `any` type after merging the `number` and `string` types.
 ```cy
-a = 123
+var a = 123
 if a > 20:
     a = 'hello'
     foo(a)       -- Valid call expression. `foo` can be called without type casting.
@@ -111,7 +111,7 @@ import util './util.cy'
 
 type Vec3 util.Vec3
 
-v = Vec3{ x: 3, y: 4, z: 5 }
+var v = Vec3{ x: 3, y: 4, z: 5 }
 ```
 
 ## Type casting.

@@ -23,13 +23,13 @@ type Vec2 object:
   func <call>(x number, y number) Vec2:
     return Vec2{ x: x, y: y }
 
-v = Vec2(1, 2)
+var v = Vec2(1, 2)
 ```
 
 ## Reflection.
 A `metatype` object references an internal type. Use the `typeof` builtin to get the `metatype` of a value.
 ```cy
-val = 123
+var val = 123
 print typeof(val)   -- 'type: number'
 
 -- Referencing a type as a value also returns its `metatype`.

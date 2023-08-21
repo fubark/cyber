@@ -382,7 +382,7 @@ pub const VMcompiler = struct {
                 for (chunk.parser.staticDecls.items) |decl| {
                     if (decl.declT == .variable) {
                         const node = chunk.nodes[decl.inner.variable];
-                        const rSymId = node.head.varDecl.sema_rSymId;
+                        const rSymId = node.head.staticDecl.sema_rSymId;
                         const crSymId = sema.CompactResolvedSymId.initSymId(rSymId);
                         try gen.genStaticInitializerDFS(chunk, crSymId);
                     } else if (decl.declT == .funcInit) {
@@ -445,7 +445,7 @@ pub const VMcompiler = struct {
         const chunk = &self.chunks.items[id];
 
         // Dummy first element to avoid len > 0 check during pop.
-        try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0));
+        try chunk.semaSubBlocks.append(self.alloc, sema.SubBlock.init(0, 0, 0));
         try chunk.semaBlockStack.append(self.alloc, 0);
 
         const root = chunk.nodes[chunk.parserAstRootId];

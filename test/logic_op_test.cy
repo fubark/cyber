@@ -7,7 +7,7 @@ t.eq('cyber' or false, 'cyber')
 
 -- If first `or` operand evaluates to true, the second expression is not evaluated
 -- and the first operand is returned.
-a = none
+var a = none
 t.eq(123 or a.foo, 123)
 
 -- If first `or` operand evaluates to false, the second expression is evaluated and returned.
@@ -17,7 +17,7 @@ t.eq(false and true, false)
 t.eq(true and true, true)
 
 -- First false skips second operand evaluation.
-called = false
+var called: false
 func foo():
   called = true
 t.eq(false and foo(), false)

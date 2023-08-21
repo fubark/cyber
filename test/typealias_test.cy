@@ -10,7 +10,7 @@ type Vec2 a.Vec2
 type Parent object:
     v Vec2
 
-v = Vec2{ x: 1, y: 2 }
+var v = Vec2{ x: 1, y: 2 }
 t.eq(v.x, 1)
 t.eq(v.y, 2)
 

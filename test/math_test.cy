@@ -90,7 +90,7 @@ t.eq(m.cbrt(8), 2)
 t.eq(m.cbrt(27), 3)
 
 -- random
-rand = m.random()
+var rand = m.random()
 t.eq(rand >= 0 and rand < 1, true)
 
 -- cos

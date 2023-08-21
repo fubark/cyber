@@ -16,7 +16,7 @@ t.eq(typeof({}).id(), 11)
 -- Referencing type object.
 type Foo object:
 	a number
-foo = Foo{ a: 123 }
+var foo = Foo{ a: 123 }
 t.eq(typeof(foo), Foo)
 
 -- Referencing builtin types.

@@ -1,7 +1,7 @@
 import t 'test'
 
 -- Single quote literal with escaped single quote.
-str = 'ab\'c'
+var str = 'ab\'c'
 t.eq(str.len(), 4)
 t.eq(str.runeAt(0), 0u'a')
 t.eq(str.runeAt(1), 0u'b')

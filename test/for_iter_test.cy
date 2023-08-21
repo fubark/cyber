@@ -3,8 +3,8 @@
 import t 'test'
 
 -- Basic.
-list = [1, 2, 3]
-sum = 0
+var list = [1, 2, 3]
+var sum = 0
 for list each it:
    sum += it
 t.eq(sum, 6)
@@ -17,7 +17,7 @@ for sList each it:
 t.eq(sum, 6)
 
 -- Loop iterator var overwrites the user var.
-elem = 123
+var elem = 123
 list = [1, 2, 3]
 for list each elem:
   pass
@@ -49,7 +49,7 @@ t.eq(sum, 6)
 
 -- Return expr inside loop body.
 list = [1, 2, 3]
-f = func (arr):
+var f = func (arr):
    for arr each item:
       if item == 4:
          return 1
@@ -60,7 +60,7 @@ t.eq(f(list), 0)
 
 -- Empty iterator. Tests that iterator is cleaned up without entering body loop.
 list = []
-count = 0
+var count = 0
 for list each it:
    count += 1
 t.eq(count, 0)

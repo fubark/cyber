@@ -2,7 +2,7 @@
 
 import t 'test'
 
-err = error.FileNotFound
+var err = error.FileNotFound
 t.eq(typesym(err), #error)
 t.eq(err, error.FileNotFound)
 

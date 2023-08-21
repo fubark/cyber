@@ -6,7 +6,7 @@ type Node object:
 var snode: Node{ value: 123 }
 
 -- Initialization.
-n = Node{ value: 123 }
+var n = Node{ value: 123 }
 t.eq(n.value, 123)
 
 -- Init and default field to none.
@@ -19,8 +19,7 @@ t.eq(n.value[0], 123)
 
 -- Get field from declared static var.
 snode.value = 123
-f = func():
-  static snode
+var f = func():
   return snode.value
 t.eq(f(), 123)
 
@@ -30,12 +29,12 @@ n.value = 234
 t.eq(n.value, 234)
 
 -- Op assign to object field.
-nw = Node{ value: 123 }
+var nw = Node{ value: 123 }
 nw.value += 1
 t.eq(nw.value, 124)
 
 -- Assign to object field when the object is a temp local.
-nodes = [ Node{ value: 123 } ]
+var nodes = [ Node{ value: 123 } ]
 nodes[0].value = 234
 t.eq(nodes[0].value, 234)
 
@@ -47,7 +46,6 @@ t.eq(nodes[0].value, 124)
 -- Set object field after declared as a static var.
 snode.value = 123
 f = func():
-  static snode
   snode.value = 234
   t.eq(snode.value, 234)
 try f()
@@ -66,7 +64,7 @@ t.eq(string(n), 'Node')
 type W object:
   a
   b
-w = W{
+var w = W{
   a: 1
   b: 2
 }
@@ -110,9 +108,9 @@ type Node2 object:
 type Node3 object:
   a
   b
-n1 = Node1{ a: 1, b: 2 }
-n2 = Node2{ a: 3, b: 4 }
-n3 = Node3{ a: 5, b: 6 }
+var n1 = Node1{ a: 1, b: 2 }
+var n2 = Node2{ a: 3, b: 4 }
+var n3 = Node3{ a: 5, b: 6 }
 t.eq(n1.a, 1)
 t.eq(n1.b, 2)
 t.eq(n2.a, 3)
@@ -121,6 +119,6 @@ t.eq(n3.a, 5)
 t.eq(n3.b, 6)
 
 -- Using Object sym as a value.
-sym = Node
+var sym = Node
 t.eq(typesym(sym), #metatype)
 t.eq(string(sym), 'type: Node')

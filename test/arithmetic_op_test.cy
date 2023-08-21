@@ -22,7 +22,7 @@ t.eq(2 ^ 5, 32)
 t.eq(3 % 2, 1)
 
 -- Assign to same var.
-a = 0
+var a = 0
 a = a + 1
 t.eq(a, 1)
 a = 0

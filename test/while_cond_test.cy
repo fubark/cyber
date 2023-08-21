@@ -3,7 +3,7 @@
 import t 'test'
 
 -- Basic.
-i = 0
+var i = 0
 while i != 10:
   i += 1
 t.eq(i, 10)
@@ -17,7 +17,7 @@ t.eq(i, 1)
 
 -- continue
 i = 0
-count = 0
+var count = 0
 while i != 10:
   i += 1
   if i == 2:

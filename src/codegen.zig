@@ -964,6 +964,13 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
         .expr_stmt => {
             _ = try exprStmt(c, nodeId, false);
         },
+        .localDecl => {
+            if (node.head.localDecl.right != cy.NullId) {
+                // Can assume left is .ident from sema.
+                const varSpec = c.nodes[node.head.localDecl.varSpec];
+                try assignExprToLocalVar(c, varSpec.head.varSpec.name, node.head.localDecl.right);
+            }
+        },
         .assign_stmt => {
             try assignStmt(c, nodeId);
         },
@@ -1061,33 +1068,8 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
 
             c.buf.setOpArgU16(popTryPc + 1, @intCast(c.buf.ops.items.len - popTryPc));
         },
-        .varDecl => {
-            // Nop. Static variables are hoisted and initialized at the start of the program.
-        },
-        .captureDecl => {
-            if (node.head.left_right.right != cy.NullId) {
-                // Can assume left is .ident from sema.
-                try assignExprToLocalVar(c, node.head.left_right.left, node.head.left_right.right);
-            }
-        },
         .staticDecl => {
-            if (node.head.left_right.right != cy.NullId) {
-                const left = c.nodes[node.head.left_right.left];
-                std.debug.assert(left.node_t == .ident);
-
-                const crSymId = left.head.ident.sema_crSymId;
-                if (!crSymId.isFuncSymId) {
-                    const rsym = c.compiler.sema.getResolvedSym(crSymId.id);
-                    const rightv = try expression(c, node.head.left_right.right, RegisterCstr.tempMustRetain);
-                    const rtSymId = try c.compiler.vm.ensureVarSym(rsym.key.absResolvedSymKey.rParentSymId, rsym.key.absResolvedSymKey.nameId);
-
-                    const pc = c.buf.len();
-                    try c.buf.pushOp3(.setStaticVar, 0, 0, rightv.local);
-                    c.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
-                } else {
-                    stdx.fatal();
-                }
-            }
+            // Nop. Static variables are hoisted and initialized at the start of the program.
         },
         .whileOptStmt => {
             try whileOptStmt(c, nodeId);
@@ -1197,7 +1179,7 @@ fn whileOptStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         const some = c.nodes[node.head.whileOptStmt.some];
         optLocal = c.genGetVar(some.head.ident.semaVarId).?.local;
         // Since this variable is used in the loop, it is considered defined before codegen.
-        c.vars.items[some.head.ident.semaVarId].genIsDefined = true;
+        c.vars.items[some.head.ident.semaVarId].isDefinedOnce = true;
         try assignExprToLocalVar(c, node.head.whileOptStmt.some, node.head.whileOptStmt.opt);
     } else {
         const optv = try expression(c, node.head.whileOptStmt.opt, RegisterCstr.simple);
@@ -1472,9 +1454,9 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         valVar = c.genGetVar(valIdent.head.ident.semaVarId).?;
 
         // At this point the temp var is loosely defined.
-        c.vars.items[valIdent.head.ident.semaVarId].genIsDefined = true;
+        c.vars.items[valIdent.head.ident.semaVarId].isDefinedOnce = true;
         if (pairIter) {
-            c.vars.items[keyIdent.head.ident.semaVarId].genIsDefined = true;
+            c.vars.items[keyIdent.head.ident.semaVarId].isDefinedOnce = true;
         }
     }
 
@@ -2219,7 +2201,7 @@ pub fn genStaticInitializerDFS(self: *Chunk, crSymId: sema.CompactResolvedSymId)
 
             // Clear register state.
             chunk.rega.resetNextTemp();
-            const exprv = try expression(chunk, decl.head.varDecl.right, RegisterCstr.tempMustRetain);
+            const exprv = try expression(chunk, decl.head.staticDecl.right, RegisterCstr.tempMustRetain);
 
             const rtSymId = try self.compiler.vm.ensureVarSym(rSym.key.absResolvedSymKey.rParentSymId, rSym.key.absResolvedSymKey.nameId);
 
@@ -2572,7 +2554,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
 
     const svar = c.genGetVarPtr(varId).?;
     if (svar.isBoxed) {
-        stdx.debug.dassert(svar.genIsDefined);
+        stdx.debug.dassert(svar.isDefinedOnce);
         try assignExprToBoxedVar(c, svar, exprId);
         return;
     }
@@ -2581,10 +2563,10 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
         const crSymId = expr.head.ident.sema_crSymId;
         if (crSymId.isPresent()) {
             // Copying a symbol.
-            if (!svar.genIsDefined or !types.isRcCandidateType(c.compiler, svar.vtype)) {
+            if (!svar.isDefinedOnce or !types.isRcCandidateType(c.compiler, svar.vtype)) {
                 const exprv = try expression(c, exprId, RegisterCstr.exactMustRetain(svar.local));
                 svar.vtype = exprv.vtype;
-                svar.genIsDefined = true;
+                svar.isDefinedOnce = true;
             } else {
                 const exprv = try expression(c, exprId, RegisterCstr.tempMustRetain);
                 svar.vtype = exprv.vtype;
@@ -2595,7 +2577,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
         }
 
         const exprv = try expression(c, exprId, RegisterCstr.simple);
-        if (svar.genIsDefined) {
+        if (svar.isDefinedOnce) {
             if (types.isRcCandidateType(c.compiler, svar.vtype)) {
                 // log.debug("releaseSet {} {}", .{varId, svar.vtype.typeT});
                 if (types.isRcCandidateType(c.compiler, exprv.vtype)) {
@@ -2619,7 +2601,7 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
             } else {
                 try c.buf.pushOp2(.copy, exprv.local, svar.local);
             }
-            svar.genIsDefined = true;
+            svar.isDefinedOnce = true;
             svar.vtype = exprv.vtype;
         }
         return;
@@ -2649,10 +2631,10 @@ fn assignExprToLocalVar(c: *Chunk, leftId: cy.NodeId, exprId: cy.NodeId) !void {
     }
 
     // Retain rval.
-    if (!svar.genIsDefined or !types.isRcCandidateType(c.compiler, svar.vtype)) {
+    if (!svar.isDefinedOnce or !types.isRcCandidateType(c.compiler, svar.vtype)) {
         const exprv = try expression(c, exprId, RegisterCstr.exactMustRetain(svar.local));
         svar.vtype = exprv.vtype;
-        svar.genIsDefined = true;
+        svar.isDefinedOnce = true;
     } else {
         const exprv = try expression(c, exprId, RegisterCstr.simpleMustRetain);
         stdx.debug.dassert(exprv.local != svar.local);
@@ -2666,7 +2648,7 @@ fn assignExprToBoxedVar(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
     // Retain rval.
     const exprv = try expression(self, exprId, RegisterCstr.tempMustRetain);
     svar.vtype = exprv.vtype;
-    svar.genIsDefined = true;
+    svar.isDefinedOnce = true;
     if (!types.isRcCandidateType(self.compiler, svar.vtype)) {
         if (svar.isCaptured()) {
             const temp = try self.rega.consumeNextTemp();
@@ -2705,7 +2687,7 @@ pub fn initVarLocals(self: *Chunk) !void {
 
         // Captured vars are already defined.
         for (sblock.captures.items) |varId| {
-            self.vars.items[varId].genIsDefined = true;
+            self.vars.items[varId].isDefinedOnce = true;
         }
     }
 

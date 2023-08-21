@@ -23,15 +23,15 @@ test "ARC." {
 
     // List literal is assigned to a local. Increase ref count.
     val = try run.eval(
-        \\a = [1, 2]
+        \\var a = [1, 2]
     );
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
     // Assigning to another variable increases the ref count.
     val = try run.eval(
-        \\a = [1, 2]
-        \\b = a
+        \\var a = [1, 2]
+        \\var b = a
     );
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
@@ -41,8 +41,8 @@ test "ARC." {
         \\import t 'test'
         \\type S object:
         \\  value
-        \\a = [123]
-        \\s = S{ value: a }
+        \\var a = [123]
+        \\var s = S{ value: a }
         \\t.eq(s.value[0], 123)
     );
     try t.eq(trace.numRetains, 3);
@@ -60,32 +60,32 @@ test "ARC." {
 
     // Map entry access expression retains the entry.
     val = try run.eval(
-        \\a = { foo: 'abc{123}' }
-        \\b = a.foo
+        \\var a = { foo: 'abc{123}' }
+        \\var b = a.foo
     );
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
     // Non-initializer expr in if expr true branch is retained.
     val = try run.eval(
-        \\a = [ 123 ]
-        \\b = if true then a else 234
+        \\var a = [ 123 ]
+        \\var b = if true then a else 234
     );
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
     // Non-initializer expr in if expr false branch is retained.
     val = try run.eval(
-        \\a = [ 123 ]
-        \\b = if false then 234 else a
+        \\var a = [ 123 ]
+        \\var b = if false then 234 else a
     );
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
     // vm.checkMemory is able to detect retain cycle.
     val = try run.eval(
-        \\a = []
-        \\b = []
+        \\var a = []
+        \\var b = []
         \\a.append(b)
         \\b.append(a)
     );
@@ -127,8 +127,8 @@ test "ARC assignments." {
     // Set index on rc-candidate child to primitive.
     _ = try run.eval(
         \\import t 'test'
-        \\a = [123]
-        \\b = 234
+        \\var a = [123]
+        \\var b = 234
         \\a[0] = b
         \\t.eq(a[0], 234)
     );
@@ -140,8 +140,8 @@ test "ARC assignments." {
     // Set index on rc-candidate child to rc-candidate.
     _ = try run.eval(
         \\import t 'test'
-        \\a = [123]
-        \\b = {}
+        \\var a = [123]
+        \\var b = {}
         \\a[0] = b
         \\t.eq(typesym(a[0]), #map)
     );
@@ -182,9 +182,9 @@ test "ARC for function returns values." {
         \\type S object:
         \\  value
         \\func foo():
-        \\  a = S{ value: 123 }
+        \\  var a = S{ value: 123 }
         \\  return a
-        \\s = foo()
+        \\var s = foo()
         \\t.eq(s.value, 123)
     );
     try t.eq(trace.numRetains, 2);
@@ -220,7 +220,7 @@ test "ARC on temp locals in expressions." {
 
     // The string template literal is released at the end of the arc expression.
     val = try run.eval(
-        \\foo = 'World'
+        \\var foo = 'World'
         \\'Hello {foo} {123}'
     );
     try run.valueIsString(val, "Hello World 123");
@@ -238,7 +238,7 @@ test "ARC in loops." {
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop.
     _ = try run.eval(
-        \\a = 123
+        \\var a = 123
         \\for 0..3:
         \\  a = 'abc{123}'   -- copyReleaseDst
     );
@@ -247,7 +247,7 @@ test "ARC in loops." {
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop and if branch.
     _ = try run.eval(
-        \\a = 123
+        \\var a = 123
         \\for 0..3:
         \\  if true:
         \\    a = 'abc{123}'    -- copyReleaseDst
@@ -259,7 +259,7 @@ test "ARC in loops." {
     _ = try run.eval(
         \\type S object:
         \\  foo
-        \\a = 123
+        \\var a = 123
         \\for 0..3:
         \\  a = S{ foo: 123 }.foo
     );
@@ -271,7 +271,7 @@ test "ARC in loops." {
     // An rc var first used inside a loop.
     _ = try run.eval(
         \\for 0..3:
-        \\  a = 'abc{123}'
+        \\  var a = 'abc{123}'
     );
     try t.eq(trace.numRetains, 3);
     // The inner set inst should be a releaseSet.
@@ -282,7 +282,7 @@ test "ARC in loops." {
     _ = try run.eval(
         \\func foo(it):
         \\  pass
-        \\list = [123, 234] -- +1a +1 
+        \\var list = [123, 234] -- +1a +1 
         \\for list each it:   -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
         \\  foo(it)         -- +2a
     );
@@ -291,10 +291,10 @@ test "ARC in loops." {
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     _ = try run.eval(
-        \\list = [{a: 123}, {a: 234}] -- +3a +3
-        \\for list each it:             -- +7a +7 -2
+        \\var list = [{a: 123}, {a: 234}] -- +3a +3
+        \\for list each it:               -- +7a +7 -2
         \\  pass                      
-        \\                            --        -8
+        \\                                --        -8
     );
     try t.eq(trace.numRetainAttempts, 10);
     try t.eq(trace.numRetains, 10);

@@ -2,11 +2,11 @@
 
 import t 'test'
 
-pre = 'abc🦊'
-str = '{pre}xyz🐶'
+var pre = 'abc🦊'
+var str = '{pre}xyz🐶'
 t.eq(str, 'abc🦊xyz🐶')
 
-upper = '{'abc🦊xyz🐶'}'
+var upper = '{'abc🦊xyz🐶'}'
 
 -- index operator
 t.eq(str[-1], '🐶')
@@ -124,7 +124,7 @@ t.eq(str.sliceAt(7), '🐶')
 t.eq(try str.sliceAt(8), error.OutOfBounds)
 
 -- split()
-res = string('abc,🐶ab,a').split(',')
+var res = string('abc,🐶ab,a').split(',')
 t.eq(res.len(), 3)
 t.eq(res[0], 'abc')
 t.eq(res[1], '🐶ab')

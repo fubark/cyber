@@ -31,7 +31,7 @@ foo()
 foo()
 
 -- arrayFill with primitive.
-a = arrayFill(123, 10)
+var a = arrayFill(123, 10)
 t.eq(a.len(), 10)
 for 0..10 each i:
   t.eq(a[i], 123)
@@ -48,26 +48,26 @@ t.eq(copy(123), 123)
 type S object:
   foo
   bar
-s = S{}
-oldList = [123, s]
-newList = copy(oldList)
+var s = S{}
+var oldList = [123, s]
+var newList = copy(oldList)
 t.eq(newList == oldList, false)
 t.eq(newList.len(), 2)
 t.eq(newList[0], 123)
 t.eq(newList[1], s)
-oldMap = { a: 123, b: s }
-newMap = copy(oldMap)
+var oldMap = { a: 123, b: s }
+var newMap = copy(oldMap)
 t.eq(newMap == oldMap, false)
 t.eq(newMap.size(), 2)
 t.eq(newMap.a, 123)
 t.eq(newMap.b, s)
-oldStr = 'foo'
-newStr = copy(oldStr)
+var oldStr = 'foo'
+var newStr = copy(oldStr)
 t.eq(newStr, oldStr)
-rcList = []
+var rcList = []
 s.foo = 123
 s.bar = rcList
-newS = copy(s)
+var newS = copy(s)
 t.eq(newS == s, false)
 t.eq(newS.foo, 123)
 t.eq(newS.bar, rcList)
@@ -75,7 +75,7 @@ t.eq(newS.bar, rcList)
 -- error(), see error_test.cy
 
 -- int()
-res = int(100)
+var res = int(100)
 t.eq(typesym(res), #int)
 t.eq(number(res), 100)
 t.eq(number(int(100.1)), 100)
@@ -124,7 +124,7 @@ t.eq(res['decls'][0].type, 'enumT')
 t.eq(res['decls'][0].name, 'foo')
 
 -- parseCyon()
-val = parseCyon('123')
+var val = parseCyon('123')
 t.eq(val, 123)
 val = parseCyon('"foo"')
 t.eq(val, 'foo')
@@ -143,7 +143,7 @@ t.eq(val.size(), 1)
 t.eq(val['a'], 123)
 
 -- pointer()
-ptr = pointer(0xDEADBEEF)
+var ptr = pointer(0xDEADBEEF)
 t.eq(ptr.value(), 3735928559)
 
 -- runestr()
@@ -153,10 +153,10 @@ t.eq(try runestr(2 ^ 22), error.InvalidRune)
 t.eq(try runestr(-1), error.InvalidRune)
 
 -- string()
-str = 'abcd'
+var str = 'abcd'
 t.eq(string(str), 'abcd')
 t.eq(string(str[0..2]), 'ab')
-rstr = rawstring('abcd')
+var rstr = rawstring('abcd')
 t.eq(string(rstr), 'rawstring (4)')
 t.eq(string(rstr[0..2]), 'rawstring (2)')
 t.eq(string(123), '123')
@@ -169,7 +169,7 @@ t.eq(string(#foo), '#foo')
 t.eq(string(number), 'type: number')
 
 -- toCyon()
-cyon = toCyon(123)
+var cyon = toCyon(123)
 t.eq(cyon, '123')
 cyon = toCyon('foo')
 t.eq(cyon, "'foo'")
@@ -211,6 +211,6 @@ t.eq(typesym(pointer(0)), #pointer)
 if os.system != 'wasm':
   s = rawstring('').insertByte(0, 255)
   writeFile('test.txt', s)
-  read = readFile('test.txt')
+  var read = readFile('test.txt')
   t.eq(read.len(), 1)
   t.eq(read.byteAt(0), 255)

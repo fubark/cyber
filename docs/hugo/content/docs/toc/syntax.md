@@ -4,22 +4,26 @@ weight: 1
 ---
 
 # Syntax
-Cyber's syntax is concise while still being easy to read and understand.
+Cyber's syntax is concise and easy to read.
 
 ## Statements.
-In Cyber, a statement ends with the new line.
-A statement block is not surrounded by delimiters like braces.
-Instead, the beginning of a block starts with a colon.
-This is intended to make a clear distinction between expressions and structured statements.
+A statement ends with the new line.
 ```cy
--- This is a statement.
-a = 123
-
--- This statement begins a new block.
-if true:
-    a = 234
+-- An assignment statement.
+var a = 123
 ```
-The first statement in a block must be indented further than the block declaration. Spaces or tabs can be used for indentation but not both. The rest of the statements in the block must follow the same indentation. When the next statement recedes from this indentation the block ends.
+## Blocks.
+A new block starts with a colon.
+This is intended to give structure to nested statements without an ending delimiter.
+```cy
+-- This `if` statement begins a new block.
+if true:
+    var a = 234
+```
+The first statement in a block must be indented further.
+Spaces or tabs can be used for indentation but not both.
+Subsequent statements in the block must follow the same indentation.
+The block ends when a statement recedes from this indentation.
 ```cy
 for items each it:
     if it == 20:
@@ -27,13 +31,13 @@ for items each it:
         print it
     print it      -- This is the first statement outside of the `if` block.
 ```
-Single line blocks allows you to have one statement on the same line as the block statement.
+Single-line blocks allow only one statement after a starting block.
 ```cy
 -- A single line block.
 if true: print 123
 
 if true: print 123
-    -- This is an indentation error since the single line block is already consumed.
+    -- This is an indentation error since the single-line block is already consumed.
     print 234
 ```
 
@@ -42,82 +46,53 @@ In Cyber, there are local variables and static variables.
 
 ### Local Variables.
 Local variables exist until the end of their scope.
-They are set using the assignment statement.
+They are declared and initialized using the `var` keyword.
 ```cy
-a = 123
+-- Declaration.
+var a = 123
+
+-- Subsequent assignment.
+a = 234
 ```
 
-Function blocks and the main block have their own local variable scope.
-Variable assignments prefer to set the variable in the current block. If there is no such variable in the current block, it will create a new local variable.
+Variables from parent main/function blocks can be shadowed.
 ```cy
-a = 123
+var a = 123
 foo = func():
-    -- A new local `a` inside `foo`.
-    a = 234
+    -- A new local `a` inside function `foo`.
+    var a = 234
 foo()
 print a      -- '123'
 ```
 
-If the assignment was intended for a parent local variable, the `capture` keyword is used.
+However, variables declared in sub-blocks such as `if` and `for` can not shadow variables in the same main/function block.
 ```cy
-a = 123
-foo = func():
-    capture a = 234
-foo()
-print a      -- '234'
-```
-
-Once declared with `capture`, any subsequent assignments will also set the parent local variable.
-```cy
-a = 123
-foo = func():
-    capture a = 234
-    a = 345
-foo()
-print a      -- '345'
-```
-
-Control flow constructs such as `if` or `for` are considered sub-blocks and share the same variable scope as the block they are in.
-```cy
-a = 123
+var a = 123
 if true:
-    a = 234
-print a      -- '234'
+    -- CompileError, `a` is already declared in the main block.
+    var a = 234 
 ```
 
-Referencing a variable that doesn't exist in the current block, will find the first variable above the current block.
+When a parent local is referenced in an anonymous function, the variable is automatically captured. Note that static functions can not capture parent locals.
 ```cy
-a = 123
-foo = func():
-    print a
-foo()        -- '123'
+var a = 123
+var foo = func():
+    a = 234
+foo()
+print a      -- '234'
 ```
 
 ### Static Variables.
-Unlike local variables, static variables are always available until the end of the script.
-They act as global variables and are visible from anywhere in the script without being captured by a closure. 
-You can declare static variables with the `var` keyword.
+Static variables live until the end of the script.
+They act as global variables and are visible from anywhere in the script. 
+Static variables are also declared with `var` but `:` is used instead of `=` to initialize a value to them.
 ```cy
 var a: 123
 func foo():
     print a     -- '123'
 ```
 
-The initializer comes after a colon instead of an assignment operator when declaring a static variable.
-
-Since assignment statements prefer to write to a variable in it's local block, the `static` keyword is used to select a static variable instead.
-```cy
-var a: 123
-func foo():
-    static a = 234
-foo()
-print a         -- '234'
-```
-
-Static variables are also exported from the current script. You can read more about exports and [Modules](#modules).
-```cy
-var a: 123      -- Exported under the current module's namespace.
-```
+Static variables are automically exported from the current script. You can read more about exports and [Modules](#modules).
 
 When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.
 ```cy
@@ -131,13 +106,13 @@ print add(5)     -- '10'
 
 Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables.
 ```cy
-a = 123
+var a = 123
 var b: a      -- Compile error, initializer can not reference a local variable.
 ```
 
 However, you can reassign any value to them with an assignment statement.
 ```cy
-a = 123
+var a = 123
 var b: 0
 b = a         -- Reassigning can reference a local variable.
 ```
@@ -158,7 +133,7 @@ print a        -- '444'
 ```
 
 Circular references in initializers are allowed.
-When initialization encounters a reference that creates this circular dependency, that reference evaluates to `none` at that moment.
+When initialization encounters a reference that creates this circular dependency, that reference evaluates to `none`.
 In the following, `a` attempts to initialize first because of its natural ordering. Since `b` is a dependency, it supersedes the natural ordering.
 When `b` is found to reference an already visited `a` (causing the circular dependency), it evaluatues to `a`'s current value which is `none`. At the end of initialization, both `a` and `b` have the value `none`.
 ```cy
@@ -170,19 +145,19 @@ Sometimes, you may want to initialize a static variable by executing multiple st
 For this use case, you can use a declaration block.
 ```cy
 var myImage:
-    img = loadImage('me.png')
+    var img = loadImage('me.png')
     img.resize(100, 100)
     img.filter(#blur, 5)
     break img
 ```
-The final resulting value that is set to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is used instead.
+The final resulting value that is assigned to the static variable is provided by a `break` statement. If a `break` statement is not provided, `none` is assigned instead.
 
 ## Keywords.
-There are currently `35` keywords in Cyber. This list categorizes them and shows you when you might need them.
+There are currently `33` keywords in Cyber. This list categorizes them and shows you when you might need them.
 
 - [Control Flow]({{<relref "/docs/toc/control-flow">}}): `if` `then` `else` `match` `while` `for` `each` `break` `continue` `pass` `some`
 - [Operators](#operators): `or` `and` `not` `is`
-- [Variables](#variables): `var` `static` `capture` `as`
+- [Variables](#variables): `var` `as`
 - [Functions]({{<relref "/docs/toc/functions">}}): `func` `return`
 - [Coroutines]({{<relref "/docs/toc/concurrency#fibers">}}): `coinit` `coyield`, `coresume`
 - [Data Types]({{<relref "/docs/toc/data-types">}}): `type` `object` `enum` `true` `false` `none`
@@ -300,7 +275,7 @@ A single line comment starts with two hyphens and ends at the end of the line.
 ```cy
 -- This is a comment.
 
-a = 123   -- This is a comment on the same line as a statement.
+var a = 123   -- This is a comment on the same line as a statement.
 ```
 There will be multi-line comments in Cyber but the syntax has not been determined.
 

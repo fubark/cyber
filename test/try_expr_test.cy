@@ -15,7 +15,7 @@ t.eq(foo(), 1)
 
 -- Non-error inside assignment function assignment.
 func foo2():
-    val = try 1
+    var val = try 1
     return val
 t.eq(foo2(), 1)
 
@@ -26,12 +26,12 @@ t.eqList(foo3(), [])
 
 -- Non-error rc value assignment inside function.
 func foo4():
-    val = try []
+    var val = try []
     return val
 t.eqList(foo4(), [])
 
 -- Caught error.
-res = try fail()
+var res = try fail()
 t.eq(res, error.Fail)
 
 -- Caught error inside function.
@@ -41,6 +41,6 @@ t.eq(foo5(), error.Fail)
 
 -- Error value assignment inside function. Returns from function.
 func foo6():
-    val = try fail()
+    var val = try fail()
     return val
 t.eq(foo6(), error.Fail)

@@ -23,7 +23,7 @@ test "Call typed function with dynamic arg." {
     // Runtime type check.
     try eval(.{ .silent = true },
         \\import t 'test'
-        \\a = foo(123)
+        \\var a = foo(123)
         \\a = foo(a)
         \\func foo(a number):
         \\  return 'foo'
@@ -47,7 +47,7 @@ test "Specific ARC cases." {
 test "Type casting." {
     // Failed to cast to exact type at runtime.
     try eval(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\print(a as pointer)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -90,7 +90,7 @@ test "Type casting." {
 
     // Failed to cast to abstract type at runtime.
     try eval(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\print(a as string)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -139,7 +139,7 @@ test "Typed object." {
         \\t.eq(foo(Foo{a: 123}), true)
         \\        
         \\-- From var.
-        \\o = Foo{a: 123}
+        \\var o = Foo{a: 123}
         \\t.eq(foo(o), true)
         \\
         \\-- Cast erased type.
@@ -180,7 +180,7 @@ test "Typed metatype." {
         \\t.eq(foo(number), true)
         \\        
         \\-- From var.
-        \\mt = number
+        \\var mt = number
         \\t.eq(foo(mt), true)
         \\
         \\-- Cast erased type.
@@ -220,7 +220,7 @@ test "Typed fiber." {
         \\t.eq(foo(coinit start()), true)
         \\        
         \\-- From var.
-        \\f = coinit start()
+        \\var f = coinit start()
         \\t.eq(foo(f), true)
         \\
         \\-- Cast erased type.
@@ -292,7 +292,7 @@ test "Typed pointer." {
         \\  return a.value() == 123
         \\
         \\-- From var.
-        \\ptr = pointer(123)
+        \\var ptr = pointer(123)
         \\t.eq(foo(ptr), true)
         \\
         \\-- Cast erased type.
@@ -329,7 +329,7 @@ test "Typed string." {
         \\t.eq(foo('true'), true)
         \\
         \\-- From var.
-        \\str = 'true'
+        \\var str = 'true'
         \\t.eq(foo(str), true)
         \\
         \\-- Cast erased type.
@@ -366,7 +366,7 @@ test "Typed boolean." {
         \\t.eq(foo(true), true)
         \\
         \\-- From var.
-        \\b = true
+        \\var b = true
         \\t.eq(foo(b), true)
         \\
         \\-- Cast erased type.
@@ -403,7 +403,7 @@ test "Typed Map." {
         \\t.eq(foo({ a: 123 }), true)
         \\
         \\-- From var.
-        \\map = { a: 123 }
+        \\var map = { a: 123 }
         \\t.eq(foo(map), true)
         \\
         \\-- Cast erased type.
@@ -440,7 +440,7 @@ test "Typed List." {
         \\t.eq(foo([123]), true)
         \\
         \\-- From var.
-        \\list = [123]
+        \\var list = [123]
         \\t.eq(foo(list), true)
         \\
         \\-- Cast erased type.
@@ -477,7 +477,7 @@ test "Typed symbol." {
         \\t.eq(foo(#sometag), true)
         \\
         \\-- From var.
-        \\tag = #sometag
+        \\var tag = #sometag
         \\t.eq(foo(tag), true)
         \\
         \\-- Cast erased type.
@@ -665,7 +665,7 @@ test "Multiple evals with same VM." {
 
     const src =
         \\import t 'test'
-        \\a = 1
+        \\var a = 1
         \\t.eq(a, 1)
         ;
 
@@ -688,7 +688,7 @@ test "Multiple evals with same VM." {
 
 test "Debug labels." {
     try eval(.{},
-        \\a = 1
+        \\var a = 1
         \\@genLabel('MyLabel')
         \\a = 1
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -827,12 +827,14 @@ test "Imports." {
     // Import missing file.
     var res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/missing.cy'
-        \\b = a
+        \\var b = a
     );
     try t.expectError(res, error.CompileError);
     const errMsg = run.vm.getCompileErrorMsg();
     try t.expect(std.mem.startsWith(u8, errMsg, "Import path does not exist:"));
     try t.expect(std.mem.indexOf(u8, errMsg, "test/test_mods/missing.cy") != null);
+
+    run.deinit();
 
     // TODO: Not needed for @hidden
     // // Using unexported func symbol.
@@ -853,18 +855,19 @@ test "Imports." {
     // try t.eqStr(run.vm.getCompileErrorMsg(), "Symbol is not exported: `varNoExport`");
 
     // Using missing symbol.
-    res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
+    try eval(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/a.cy'
-        \\b = a.missing
-    );
-    try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Missing symbol: `missing`
-        \\
-        \\@AbsPath(test/import_test.cy):2:7:
-        \\b = a.missing
-        \\      ^
-        \\
-    );
+        \\var b = a.missing
+    , struct { fn func(runner: *VMrunner, evalRes: EvalResult) !void {
+        try runner.expectErrorReport(evalRes, error.CompileError,
+            \\CompileError: Missing symbol: `missing`
+            \\
+            \\@AbsPath(test/import_test.cy):2:11:
+            \\var b = a.missing
+            \\          ^
+            \\
+        );
+    }}.func);
 
     // Failed to set func from another module
     res = run.evalExt(Config.initFileModules("./test/import_test.cy").withSilent(),
@@ -1134,6 +1137,7 @@ test "FFI." {
     // Wrong param type.
     try eval(.{ .silent = true },
         \\import os 'os'
+        \\var libPath = none
         \\if os.system == 'macos':
         \\  -- rdynamic doesn't work atm for MacOS.
         \\  libPath = 'test/macos_lib.dylib'
@@ -1142,7 +1146,7 @@ test "FFI." {
         \\else:
         \\  libPath = none
         \\
-        \\lib = try os.bindLib(libPath, [
+        \\var lib = try os.bindLib(libPath, [
         \\  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
         \\])
         \\lib.testAdd(123, '321')
@@ -1151,7 +1155,7 @@ test "FFI." {
             \\panic: Can not find compatible function for `testAdd(any, number, string) any` in `BindLib`.
             \\Only `func testAdd(any, number, number) number` exists for the symbol `testAdd`.
             \\
-            \\main:13:1 main:
+            \\main:14:1 main:
             \\lib.testAdd(123, '321')
             \\^
             \\
@@ -1161,6 +1165,7 @@ test "FFI." {
     // Wrong num params.
     try eval(.{ .silent = true },
         \\import os 'os'
+        \\var libPath = none
         \\if os.system == 'macos':
         \\  -- rdynamic doesn't work atm for MacOS.
         \\  libPath = 'test/macos_lib.dylib'
@@ -1169,7 +1174,7 @@ test "FFI." {
         \\else:
         \\  libPath = none
         \\
-        \\lib = try os.bindLib(libPath, [
+        \\var lib = try os.bindLib(libPath, [
         \\  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
         \\])
         \\lib.testAdd(123, 234, 345)
@@ -1177,7 +1182,7 @@ test "FFI." {
         try run.expectErrorReport(res, error.Panic,
             \\panic: `func testAdd(any, number, number, number) any` can not be found in `BindLib`.
             \\
-            \\main:13:1 main:
+            \\main:14:1 main:
             \\lib.testAdd(123, 234, 345)
             \\^
             \\
@@ -1190,7 +1195,7 @@ test "FFI." {
 test "Symbols." {
     // Literal.
     try eval(.{},
-        \\n = #Tiger
+        \\var n = #Tiger
         \\number(n)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
@@ -1256,14 +1261,14 @@ test "Objects." {
     try eval(.{ .silent = true },
         \\type S object:
         \\  a
-        \\o = S{ b: 100 }
+        \\var o = S{ b: 100 }
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Missing field `b` in `S`.
             \\
-            \\main:3:8:
-            \\o = S{ b: 100 }
-            \\       ^
+            \\main:3:12:
+            \\var o = S{ b: 100 }
+            \\           ^
             \\
         );
     }}.func);
@@ -1272,7 +1277,7 @@ test "Objects." {
     try eval(.{ .silent = true },
         \\type S object:
         \\  a
-        \\o = S{ a: 100 }
+        \\var o = S{ a: 100 }
         \\o.b = 200
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
@@ -1291,7 +1296,7 @@ test "Object fields." {
     try eval(.{ .silent = true },
         \\type S object:
         \\  a number
-        \\o = S{}
+        \\var o = S{}
         \\o.a = []
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
@@ -1309,7 +1314,7 @@ test "Object fields." {
         \\type S object:
         \\  a number
         \\func foo(): return []
-        \\o = S{}
+        \\var o = S{}
         \\o.a = foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1327,7 +1332,7 @@ test "Object fields." {
         \\import t 'test'
         \\type S object:
         \\  a number
-        \\o = t.erase(S{})
+        \\var o = t.erase(S{})
         \\o.a = []
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1346,7 +1351,7 @@ test "Object funcs/methods." {
     try eval(.{ .silent = true },
         \\type S object:
         \\  a
-        \\o = S{}
+        \\var o = S{}
         \\o.foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1365,7 +1370,7 @@ test "Object funcs/methods." {
         \\  a
         \\  func foo(self):
         \\    return 123
-        \\o = S{}
+        \\var o = S{}
         \\o.foo(234)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
@@ -1394,7 +1399,7 @@ test "Object funcs/methods." {
         \\    return 123 + param
         \\  func get6(param, param2):
         \\    return 123 + param - param2
-        \\n = Node{ value: 123 }
+        \\var n = Node{ value: 123 }
         \\
         \\-- self param.
         \\t.eq(n.get(), 123)
@@ -1424,13 +1429,13 @@ test "must()" {
 
     _ = try run.eval(
         \\import t 'test'
-        \\a = 123
+        \\var a = 123
         \\-- no error, must returns argument.
         \\t.eq(must(a), 123)
     );
 
     var res = run.evalExt(.{ .silent = true },
-        \\a = error.boom
+        \\var a = error.boom
         \\must(a)
     );
     try t.expectError(res, error.Panic);
@@ -1442,7 +1447,7 @@ test "must()" {
         .chunkId = 0,
         .line = 1,
         .col = 0,
-        .lineStartPos = 15,
+        .lineStartPos = 19,
     });
 }
 
@@ -1451,7 +1456,7 @@ test "panic()" {
     defer run.destroy();
 
     var res = run.evalExt(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\1 + panic(#boom)
     );
     try t.expectError(res, error.Panic);
@@ -1463,7 +1468,7 @@ test "panic()" {
         .chunkId = 0,
         .line = 1,
         .col = 4,
-        .lineStartPos = 8,
+        .lineStartPos = 12,
     });
 }
 
@@ -1517,7 +1522,7 @@ test "Stack trace unwinding." {
     defer run.destroy();
 
     var res = run.evalExt(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\1 + a.foo
     );
     try run.expectErrorReport(res, error.Panic,
@@ -1535,13 +1540,13 @@ test "Stack trace unwinding." {
         .chunkId = 0,
         .line = 1,
         .col = 4,
-        .lineStartPos = 8,
+        .lineStartPos = 12,
     });
 
     // Function stack trace.
     res = run.evalExt(.{ .silent = true },
         \\func foo():
-        \\  a = 123
+        \\  var a = 123
         \\  return 1 + a.foo
         \\foo()
     );
@@ -1563,14 +1568,14 @@ test "Stack trace unwinding." {
         .chunkId = 0,
         .line = 2,
         .col = 13,
-        .lineStartPos = 22,
+        .lineStartPos = 26,
     });
     try eqStackFrame(trace.frames[1], .{
         .name = "main",
         .chunkId = 0,
         .line = 3,
         .col = 0,
-        .lineStartPos = 41,
+        .lineStartPos = 45,
     });
 
     // panic from another module.
@@ -1631,7 +1636,7 @@ test "Optionals." {
     defer run.destroy();
 
     var val = try run.eval(
-        \\foo = none
+        \\var foo = none
         \\foo
     );
     try t.eq(val.isNone(), true);
@@ -1747,6 +1752,7 @@ test "Statements." {
         \\import t 'test'
         \\
         \\-- Expressions are allowed to wrap to the next line.
+        \\var a = 0
         \\if true or
         \\   true:
         \\  a = 10
@@ -1844,7 +1850,7 @@ test "Integers." {
         \\import t 'test'
         \\
         \\-- Once a number literal is assigned to untyped local, it becomes a number.
-        \\a = 10
+        \\var a = 10
         \\t.eq(a < 4, false) -- This should generate less op. If lessInt is generated this would be `true` because the @bitCast(i32, lower a) == 0.
     );
 }
@@ -1852,56 +1858,56 @@ test "Integers." {
 test "Numbers." {
     // Unsupported integer notation.
     try eval(.{ .silent = true },
-        \\a = 0z000
+        \\var a = 0z000
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.TokenError,
             \\ParseError: Unsupported integer notation: z
             \\
-            \\main:1:6:
-            \\a = 0z000
-            \\     ^
+            \\main:1:10:
+            \\var a = 0z000
+            \\         ^
             \\
         );
     }}.func);
 
     // Empty char is not allowed.
     try eval(.{ .silent = true },
-        \\a = 0u''
+        \\var a = 0u''
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Invalid UTF-8 Rune.
             \\
-            \\main:1:5:
-            \\a = 0u''
-            \\    ^
+            \\main:1:9:
+            \\var a = 0u''
+            \\        ^
             \\
         );
     }}.func);
 
     // More than one rune in literal. 
     try eval(.{ .silent = true },
-        \\a = 0u'🦊a'
+        \\var a = 0u'🦊a'
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Invalid UTF-8 Rune.
             \\
-            \\main:1:5:
-            \\a = 0u'🦊a'
-            \\    ^
+            \\main:1:9:
+            \\var a = 0u'🦊a'
+            \\        ^
             \\
         );
     }}.func);
 
     // More than one rune in literal. (Grapheme cluster)
     try eval(.{ .silent = true },
-        \\a = 0u'👨‍👨‍👦‍👦'
+        \\var a = 0u'👨‍👨‍👦‍👦'
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Invalid UTF-8 Rune.
             \\
-            \\main:1:5:
-            \\a = 0u'👨‍👨‍👦‍👦'
-            \\    ^
+            \\main:1:9:
+            \\var a = 0u'👨‍👨‍👦‍👦'
+            \\        ^
             \\
         );
     }}.func);
@@ -2001,7 +2007,7 @@ test "Undefined variable references." {
         \\t.eq(a, 123)
     );
     try run.expectErrorReport(res, error.CompileError,
-        \\CompileError: Missing symbol: `a`
+        \\CompileError: Undeclared variable `a`.
         \\
         \\main:2:6:
         \\t.eq(a, 123)
@@ -2030,7 +2036,7 @@ test "Static variable declaration." {
 
     // Capturing a local variable in a static var initializer is not allowed.
     var res = run.evalExt(.{ .silent = true },
-        \\b = 123
+        \\var b = 123
         \\var a: b
     );
     try t.expectError(res, error.CompileError);
@@ -2091,38 +2097,146 @@ test "Static variable declaration." {
 }
 
 test "Static variable assignment." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Assigning to a implicit static var alias is not allowed.
-    var res = run.evalExt(.{ .silent = true },
-        \\var a: 1
-        \\func foo():
-        \\  -- Implicitly references static var.
-        \\  print a
-        \\  -- Attempting to assign.
-        \\  a = 3
-    );
-    try run.expectErrorReport(res, error.CompileError, 
-        \\CompileError: `a` already references a static variable. The variable must be declared with `static` before assigning to it.
-        \\
-        \\main:6:7:
-        \\  a = 3
-        \\      ^
-        \\
-    );
-
-    run.deinit();
-
     try evalPass(.{}, @embedFile("staticvar_assign_test.cy"));
 }
 
 test "Local variable declaration." {
+    // Can't redeclare var.    
+    try eval(.{ .silent = true },
+        \\var a = 1
+        \\var a = 2
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Variable `a` is already declared in the main block.
+            \\
+            \\main:2:1:
+            \\var a = 2
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Declaring a var that is already referencing a parent local.
+    try eval(.{ .silent = true },
+        \\var a = 1
+        \\var foo = func():
+        \\  -- Captured for read.
+        \\  print a
+        \\  -- Attempting to declare `a`.
+        \\  var a = 3
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: `a` already references a parent local variable.
+            \\
+            \\main:6:3:
+            \\  var a = 3
+            \\  ^
+            \\
+        );
+    }}.func);
+
+    // Declaring a var that is already referencing a static var.
+    try eval(.{ .silent = true },
+        \\var a: 1
+        \\var foo = func():
+        \\  print a
+        \\  -- Attempting to declare `a`.
+        \\  var a = 3
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: `a` already references a static variable.
+            \\
+            \\main:5:3:
+            \\  var a = 3
+            \\  ^
+            \\
+        );
+    }}.func);
+
+    // Can't declare in a nested sub block.
+    try eval(.{ .silent = true },
+        \\var a = 1
+        \\if true:
+        \\  var a = 2
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Variable `a` is already declared in the main block.
+            \\
+            \\main:3:3:
+            \\  var a = 2
+            \\  ^
+            \\
+        );
+    }}.func);
+
+    // Can't reference var from non parent if block.
+    try eval(.{ .silent = true },
+        \\if true:
+        \\  var a = 1
+        \\a
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Undeclared variable `a`.
+            \\
+            \\main:3:1:
+            \\a
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Can't reference iter var from non parent for block.
+    try eval(.{ .silent = true },
+        \\for 0..10 each i:
+        \\  pass
+        \\i
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Undeclared variable `i`.
+            \\
+            \\main:3:1:
+            \\i
+            \\^
+            \\
+        );
+    }}.func);
+
+    // Can't reference var from non parent for block.
+    try eval(.{ .silent = true },
+        \\for 0..10:
+        \\  var i = 0
+        \\i
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Undeclared variable `i`.
+            \\
+            \\main:3:1:
+            \\i
+            \\^
+            \\
+        );
+    }}.func);
+
+
     try evalPass(.{}, @embedFile("localvar_decl_test.cy"));
 }
 
 test "Local variable assignment." {
     try evalPass(.{}, @embedFile("localvar_assign_test.cy"));
+
+    // Assign to undeclared var.
+    try eval(.{ .silent = true },
+        \\foo = 1
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.CompileError,
+            \\CompileError: Undeclared variable `foo`.
+            \\
+            \\main:1:1:
+            \\foo = 1
+            \\^
+            \\
+        );
+    }}.func);
 
     // Initializing an object in a branch will auto generate initializers at the start of
     // the function. This test sets freed object values along the undefined stack space.
@@ -2138,7 +2252,7 @@ test "Local variable assignment." {
         \\type S object:
         \\  value
         \\if false:
-        \\  a = S{ value: 123 }
+        \\  var a = S{ value: 123 }
     );
 
     // Same test in method scope.
@@ -2153,8 +2267,8 @@ test "Local variable assignment." {
         \\  value
         \\  func foo(self):
         \\    if false:
-        \\      a = S{ value: 123 }
-        \\s = S{ value: 234 }
+        \\      var a = S{ value: 123 }
+        \\var s = S{ value: 234 }
         \\s.foo()
     );
 }
@@ -2164,13 +2278,13 @@ test "if expression" {
     defer run.destroy();
 
     var val = try run.eval(
-        \\foo = true
+        \\var foo = true
         \\if foo then 123 else 456
     );
     try t.eq(val.asF64toI32(), 123);
 
     val = try run.eval(
-        \\foo = false
+        \\var foo = false
         \\if foo then 123 else 456
     );
     try t.eq(val.asF64toI32(), 456);
@@ -2178,7 +2292,7 @@ test "if expression" {
     // Types are merged.
     _ = try run.eval(
         \\import t 'test'
-        \\a = if false then 123 else '{123}456'
+        \\var a = if false then 123 else '{123}456'
         \\t.eq(a, '123456')
         \\-- `a` should be released since else returns a heap string.
     );
@@ -2190,14 +2304,14 @@ test "Return statement." {
 
     // If/else.
     var val = try run.eval(
-        \\foo = true
+        \\var foo = true
         \\if foo:
         \\  return 123
     );
     try t.eq(val.asF64toI32(), 123);
 
     val = try run.eval(
-        \\foo = false
+        \\var foo = false
         \\if foo:
         \\  return 123
         \\else:
@@ -2294,42 +2408,16 @@ test "For loop over range." {
 }
 
 test "Native function call." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    var val = try run.eval(
-        \\list = []
+    try evalPass(.{},
+        \\import t 'test'
+        \\var list = []
         \\for 0..10 each i:
         \\   list.append(i)
-        \\list[9]
+        \\t.eq(list[9], 9)
     );
-    try t.eq(val.asF64toI32(), 9);
 }
 
 test "Closures." {
-    const run = VMrunner.create();
-    defer run.destroy();
-
-    // Assigning to a implicitly captured var is not allowed.
-    var res = run.evalExt(.{ .silent = true },
-        \\a = 1
-        \\foo = func():
-        \\  -- Implicitly captured for read.
-        \\  print a
-        \\  -- Attempting to assign.
-        \\  a = 3
-    );
-    try run.expectErrorReport(res, error.CompileError, 
-        \\CompileError: `a` already references a captured variable. The variable must be declared with `capture` before assigning to it.
-        \\
-        \\main:6:7:
-        \\  a = 3
-        \\      ^
-        \\
-    );
-
-    run.deinit();
-
     try evalPass(.{}, @embedFile("closure_test.cy"));
 }
 
@@ -2407,7 +2495,7 @@ test "Static functions." {
 
     // Declaration initializer has a reference to a local.
     try eval(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\func foo() = a
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
@@ -2452,13 +2540,13 @@ test "Static functions." {
 
     // Capture local from static function is not allowed.
     try eval(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\func foo():
         \\  return a
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not capture the local variable `a` from static function `foo`.
-            \\Only lambdas (function values) can capture local variables.
+            \\Only lambdas (anonymous functions) can capture local variables.
             \\
             \\main:3:10:
             \\  return a
@@ -2467,19 +2555,19 @@ test "Static functions." {
         );
     }}.func);
 
-    // Explicit capture from static function is not allowed.
+    // Capturing from static function is not allowed.
     try eval(.{ .silent = true },
-        \\a = 123
+        \\var a = 123
         \\func foo():
-        \\  capture a = 234
+        \\  a = 234
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not capture the local variable `a` from static function `foo`.
-            \\Only lambdas (function values) can capture local variables.
+            \\Only lambdas (anonymous functions) can capture local variables.
             \\
-            \\main:3:15:
-            \\  capture a = 234
-            \\              ^
+            \\main:3:7:
+            \\  a = 234
+            \\      ^
             \\
         );
     }}.func);
@@ -2537,7 +2625,7 @@ test "access expression" {
         \\import t 'test'
         \\
         \\-- One level of access from parent.
-        \\map = { a: 5 }
+        \\var map = { a: 5 }
         \\t.eq(map.a, 5)
         \\
         \\-- Multiple levels of access from parent.
@@ -2574,84 +2662,84 @@ test "Arithmetic operators." {
 
     // Can only add numbers.
     try eval(.{ .silent = true },
-        \\a = 'foo' + 123
+        \\var a = 'foo' + 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:11 main:
-            \\a = 'foo' + 123
-            \\          ^
+            \\main:1:15 main:
+            \\var a = 'foo' + 123
+            \\              ^
             \\
         );
     }}.func);
 
     // Can only subtract numbers.
     try eval(.{ .silent = true },
-        \\a = 'foo' - 123
+        \\var a = 'foo' - 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:11 main:
-            \\a = 'foo' - 123
-            \\          ^
+            \\main:1:15 main:
+            \\var a = 'foo' - 123
+            \\              ^
             \\
         );
     }}.func);
 
     // Can only multiply numbers.
     try eval(.{ .silent = true },
-        \\a = 'foo' * 123
+        \\var a = 'foo' * 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:11 main:
-            \\a = 'foo' * 123
-            \\          ^
+            \\main:1:15 main:
+            \\var a = 'foo' * 123
+            \\              ^
             \\
         );
     }}.func);
 
     // Can only divide numbers.
     try eval(.{ .silent = true },
-        \\a = 'foo' / 123
+        \\var a = 'foo' / 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:11 main:
-            \\a = 'foo' / 123
-            \\          ^
+            \\main:1:15 main:
+            \\var a = 'foo' / 123
+            \\              ^
             \\
         );
     }}.func);
 
     // Can only mod numbers.
     try eval(.{ .silent = true },
-        \\a = 'foo' % 123
+        \\var a = 'foo' % 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:11 main:
-            \\a = 'foo' % 123
-            \\          ^
+            \\main:1:15 main:
+            \\var a = 'foo' % 123
+            \\              ^
             \\
         );
     }}.func);
 
     // Can only pow numbers.
     try eval(.{ .silent = true },
-        \\a = 'foo' ^ 123
+        \\var a = 'foo' ^ 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Expected number operand.
             \\
-            \\main:1:11 main:
-            \\a = 'foo' ^ 123
-            \\          ^
+            \\main:1:15 main:
+            \\var a = 'foo' ^ 123
+            \\              ^
             \\
         );
     }}.func);

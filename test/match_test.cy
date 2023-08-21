@@ -3,8 +3,8 @@
 import t 'test'
 
 -- Match no case.
-a = 123
-res = 0
+var a = 123
+var res = 0
 match a:
     0: res = 1
     10: res = 2

@@ -6,8 +6,8 @@ import t 'test'
 func foo(list):
   coyield
   list.append(123)
-list = []
-f = coinit foo(list)
+var list = []
+var f = coinit foo(list)
 t.eq(list.len(), 0)
 
 -- Start fiber with yield at start.
@@ -37,7 +37,7 @@ t.eq(coresume f, 123)
 
 -- Start fiber with yield in nested function.
 func bar():
-  alist = [] -- This should be released after fiber is freed.
+  var alist = [] -- This should be released after fiber is freed.
   coyield
 func foo5(list):
   bar()
@@ -84,11 +84,11 @@ func sum(n):
     return 0
   return n + sum(n - 1)
 f = coinit sum(20)
-res = coresume f
+var res = coresume f
 t.eq(res, 210)
 
 -- coinit lambda
-foof = func (list):
+var foof = func (list):
   list.append(123)
 f = coinit foof([])
 coresume f

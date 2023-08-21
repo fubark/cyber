@@ -6,6 +6,8 @@ func fail():
 func happy(a):
     return a
 
+var a = none
+
 -- No error.
 try:
     a = 1
@@ -74,7 +76,7 @@ t.eq(a, 0)
 
 -- Catch invokes lambda release inst.
 -- If it's skipped, this test would report an unreleased ref count.
-f = func():
+var f = func():
     throw error.Fail
 try:
     f()

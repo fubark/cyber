@@ -21,7 +21,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "as", .as_k },
     // .{ "await", .await_k },
     .{ "break", .break_k },
-    .{ "capture", .capture_k },
     .{ "catch", .catch_k },
     .{ "coinit", .coinit_k },
     .{ "continue", .continue_k },
@@ -43,7 +42,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "or", .or_k },
     .{ "pass", .pass_k },
     .{ "some", .some_k },
-    .{ "static", .static_k },
     .{ "not", .not_k },
     .{ "return", .return_k },
     .{ "then", .then_k },
@@ -130,6 +128,9 @@ pub const Parser = struct {
         self.tokens.deinit(self.alloc);
         self.nodes.deinit(self.alloc);
         self.alloc.free(self.last_err);
+        for (self.block_stack.items) |*block| {
+            block.deinit(self.alloc);
+        }
         self.block_stack.deinit(self.alloc);
         self.deps.deinit(self.alloc);
         self.staticDecls.deinit(self.alloc);
@@ -1661,7 +1662,12 @@ pub const Parser = struct {
                 const typeSpecHead = (try self.parseOptTypeSpec()) orelse cy.NullId;
 
                 token = self.peekToken();
-                if (token.tag() != .colon) {
+                var isStatic: bool = undefined;
+                if (token.tag() == .colon) {
+                    isStatic = true;
+                } else if (token.tag() == .equal) {
+                    isStatic = false;
+                } else {
                     return self.reportParseError("Expected `:` after local variable name.", &.{});
                 }
                 self.advanceToken();
@@ -1688,110 +1694,31 @@ pub const Parser = struct {
                     },
                 };
 
-                const decl = try self.pushNode(.varDecl, start);
-                self.nodes.items[decl].head = .{
-                    .varDecl = .{
-                        .varSpec = varSpec,
-                        .right = right,
-                    },
-                };
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .variable,
-                    .inner = .{
-                        .variable = decl,
-                    }
-                });
-                return decl;
-            },
-            .capture_k => {
-                const start = self.next_pos;
-                self.advanceToken();
-
-                // Local name.
-                token = self.peekToken();
-                var name: NodeId = undefined;
-                if (token.tag() == .ident) {
-                    name = try self.pushIdentNode(self.next_pos);
-                    self.advanceToken();
-                } else return self.reportParseError("Expected local variable identifier.", &.{});
-
-                token = self.peekToken();
-                if (token.tag() != .equal) {
-                    try self.consumeNewLineOrEnd();
-                    const decl = try self.pushNode(.captureDecl, start);
-                    self.nodes.items[decl].head = .{
-                        .left_right = .{
-                            .left = name,
-                            .right = NullId,
-                        },
-                    };
-                    return decl;
-                }
-                self.advanceToken();
-
-                var right: NodeId = undefined;
-                if (self.peekToken().tag() == .func_k) {
-                    // Multi-line lambda.
-                    right = try self.parseMultilineLambdaFunction();
-                } else {
-                    right = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                    };
-                }
-                try self.consumeNewLineOrEnd();
-                const decl = try self.pushNode(.captureDecl, start);
-                self.nodes.items[decl].head = .{
-                    .left_right = .{
-                        .left = name,
-                        .right = right,
-                    },
-                };
-                return decl;
-            },
-            .static_k => {
-                const start = self.next_pos;
-                self.advanceToken();
-
-                // Local name.
-                token = self.peekToken();
-                var name: NodeId = undefined;
-                if (token.tag() == .ident) {
-                    name = try self.pushIdentNode(self.next_pos);
-                    self.advanceToken();
-                } else return self.reportParseError("Expected variable name identifier.", &.{});
-
-                token = self.peekToken();
-                if (token.tag() != .equal) {
-                    try self.consumeNewLineOrEnd();
+                if (isStatic) {
                     const decl = try self.pushNode(.staticDecl, start);
                     self.nodes.items[decl].head = .{
-                        .left_right = .{
-                            .left = name,
-                            .right = NullId,
+                        .staticDecl = .{
+                            .varSpec = varSpec,
+                            .right = right,
+                        },
+                    };
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .variable,
+                        .inner = .{
+                            .variable = decl,
+                        }
+                    });
+                    return decl;
+                } else {
+                    const decl = try self.pushNode(.localDecl, start);
+                    self.nodes.items[decl].head = .{
+                        .localDecl = .{
+                            .varSpec = varSpec,
+                            .right = right,
                         },
                     };
                     return decl;
                 }
-                self.advanceToken();
-
-                var right: NodeId = undefined;
-                if (self.peekToken().tag() == .func_k) {
-                    // Multi-line lambda.
-                    right = try self.parseMultilineLambdaFunction();
-                } else {
-                    right = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                    };
-                }
-                try self.consumeNewLineOrEnd();
-                const decl = try self.pushNode(.staticDecl, start);
-                self.nodes.items[decl].head = .{
-                    .left_right = .{
-                        .left = name,
-                        .right = right,
-                    },
-                };
-                return decl;
             },
             else => {},
         }
@@ -3331,8 +3258,6 @@ pub const TokenType = enum(u6) {
     try_k,
     catch_k,
     throw_k,
-    static_k,
-    capture_k,
     var_k,
     match_k,
     // Error token, returned if ignoreErrors = true.
@@ -3365,10 +3290,9 @@ pub const NodeType = enum {
     expr_stmt,
     assign_stmt,
     opAssignStmt,
-    staticDecl,
-    captureDecl,
     varSpec,
-    varDecl,
+    staticDecl,
+    localDecl,
     pass_stmt,
     breakStmt,
     continueStmt,
@@ -3594,10 +3518,14 @@ pub const Node = struct {
             name: NodeId,
             typeSpecHead: Nullable(NodeId),
         },
-        varDecl: struct {
+        staticDecl: struct {
             varSpec: NodeId,
             right: NodeId,
             sema_rSymId: cy.sema.ResolvedSymId = cy.NullId,
+        },
+        localDecl: struct {
+            varSpec: NodeId,
+            right: NodeId,
         },
         tagMember: struct {
             name: NodeId,
@@ -4735,6 +4663,6 @@ test "Internals." {
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 61);
-    try t.eq(keywords.kvs.len, 35);
+    try t.eq(std.enums.values(TokenType).len, 59);
+    try t.eq(keywords.kvs.len, 33);
 }

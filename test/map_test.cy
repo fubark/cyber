@@ -3,7 +3,7 @@
 import t 'test'
 
 -- Empty map.
-a = {}
+var a = {}
 t.eq(a.size(), 0)
 t.eq(a['foo'], none)
 
@@ -88,15 +88,15 @@ t.eq(a.b[1], 2)
 -- Iterate maps.
 
 -- Iterator.
-m = { a: 2, b: 3, c: 4 }
-sum = 0
+var m = { a: 2, b: 3, c: 4 }
+var sum = 0
 for m each v:
   sum += v 
 t.eq(sum, 9)
 
 -- Pair Iterator.
 sum = 0
-codeSum = 0
+var codeSum = 0
 for m each k, v:
   sum += v
   codeSum += k.runeAt(0)
@@ -105,9 +105,9 @@ t.eq(codeSum, 294)
 
 -- Nested iteration.
 m = { a: 1, b: 2, c: 3 }
-res = 0
+var res = 0
 for m each n:
-  innerSum = 0
+  var innerSum = 0
   for m each nn:
     innerSum += nn
   res += n * innerSum
@@ -118,7 +118,7 @@ m = { a: 1, b: 2, c: 3 }
 res = 0
 codeSum = 0
 for m each k, n:
-  innerSum = 0
+  var innerSum = 0
   for m each kk, nn:
     innerSum += nn
     codeSum += kk.runeAt(0)

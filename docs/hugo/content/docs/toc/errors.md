@@ -10,7 +10,7 @@ Cyber provides error values and try/catch mechanisms to handle expected errors. 
 The `error` type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won't be consistent. Use your own enums if you want reliable ID values. In a future version of Cyber, you'll be able to attach an optional payload value.
 ```cy
 -- Shorthand for creating an error value with a symbol.
-err = error.Oops
+var err = error.Oops
 
 -- Alternatively, use the builtin error function to wrap a symbol.
 err = error(#Oops)
@@ -55,7 +55,7 @@ func fail2():
 `throw` can also be used as an expression.
 ```cy
 func fail():
-    a = false or throw error.False
+    var a = false or throw error.False
 ```
 
 ## Catching errors.
@@ -69,7 +69,7 @@ catch err:
 
 The `try else` expression either returns a non-error result or the default value from the `else` clause.
 ```cy
-res = try funcThatCanFail() else 123
+var res = try funcThatCanFail() else 123
 print res         -- '123'
 
 -- Any errors thrown from sub expressions also return the default value.
@@ -79,7 +79,7 @@ print res         -- '123'
 
 When `try` is used by itself, either the result or the caught error value is returned.
 ```cy
-res = try funcThatCanFail()
+var res = try funcThatCanFail()
 if res == error.Failed:
     print 'Result is an error.'
 
@@ -97,7 +97,7 @@ catch err:
     print errorReport()
 
     -- Provides structured info about the stack trace.
-    info = errorTrace()
+    var info = errorTrace()
     print info.frames.len()
 ```
 

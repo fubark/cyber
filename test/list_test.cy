@@ -3,7 +3,7 @@
 import t 'test'
 
 -- Omits last comma for multiline initializer.
-a = [
+var a = [
   1,
   2,
 ]
@@ -135,7 +135,7 @@ t.eq(a[2][0], 3)
 
 -- Iteration.
 a = [1, 2, 3, 4, 5]
-sum = 0
+var sum = 0
 for a each it:
   sum += it
 t.eq(sum, 15)
@@ -143,7 +143,7 @@ t.eq(sum, 15)
 -- Pair iteration.
 a = [10, 20, 30]
 sum = 0
-idxSum = 0
+var idxSum = 0
 for a each idx, it:
   sum += it
   idxSum += idx
@@ -152,9 +152,9 @@ t.eq(idxSum, 3)
 
 -- Nested iteration.
 a = [1, 2, 3]
-res = 0
+var res = 0
 for a each n:
-  innerSum = 0
+  var innerSum = 0
   for a each m:
     innerSum += m
   res += n * innerSum
@@ -163,9 +163,9 @@ t.eq(res, 36)
 -- Nested pair iteration.
 a = [1, 2, 3]
 res = 0
-idxRes = 0
+var idxRes = 0
 for a each i, n:
-  innerSum = 0
+  var innerSum = 0
   idxSum = 0
   for a each j, m:
     innerSum += m

@@ -4,9 +4,10 @@ import t 'test'
 import os 'os'
 
 -- Not found.
-lib = try os.bindLib('xyz123.so', [])
+var lib = try os.bindLib('xyz123.so', [])
 t.eq(lib, error.FileNotFound)
 
+var libPath = none
 if os.system == 'macos':
   -- rdynamic doesn't work atm for MacOS.
   libPath = 'test/macos_lib.dylib'
@@ -62,8 +63,8 @@ t.eq(lib.testF64(1.2345), 1.2345)
 t.eq(lib.testArray([123, 321]), 444)
 
 -- object arg and return type.
-cstr = os.cstr('foo')
-res = lib.testObject(MyObject{ a: 123, b: 10, c: cstr, d: true})
+var cstr = os.cstr('foo')
+var res = lib.testObject(MyObject{ a: 123, b: 10, c: cstr, d: true})
 t.eq(res.a, 123)
 t.eq(res.b, 10)
 t.eq(os.fromCstr(res.c as pointer), rawstring('foo'))
@@ -72,7 +73,7 @@ os.free(cstr)
 
 -- Return struct ptr and convert to Cyber object.
 cstr = os.cstr('foo')
-ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: cstr, d: true})
+var ptr = lib.testRetObjectPtr(MyObject{ a: 123, b: 10, c: cstr, d: true})
 t.eq(typesym(ptr), #pointer)
 res = lib.ptrToMyObject(pointer(ptr))
 t.eq(res.a, 123)
@@ -100,7 +101,7 @@ t.eq(lib.testBool(false), false)
 lib = try os.bindLib(libPath, [
   os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
-testAdd = lib['testAdd']
+var testAdd = lib['testAdd']
 t.eq(testAdd(123, 321), 444)
 
 -- Reassign a binded function to a static function.

@@ -17,7 +17,7 @@ type Account object:
     func show(self, title):
         print '{title or ''}, {self.name}, {self.balance}'
 
-a = Account.new('Savings')
+var a = Account.new('Savings')
 a.show('Initial')
 a.deposit(1000.00)
 a.show('After deposit')

@@ -1,7 +1,7 @@
 <!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="FFI. # Cyber supports binding to an existing C ABI compatible library at runtime. This allows you to call into dynamic libraries created in C or other languages. Cyber uses libtcc to JIT compile the bindings so function calls are fast. bindLib is part of the os module and accepts the path to the library as a string and a list of CFunc or CStruct declarations.
-import os 'os' lib = os."><meta name=theme-color content="#FFFFFF"><meta name=color-scheme content="light dark"><meta property="og:title" content="FFI"><meta property="og:description" content="FFI. # Cyber supports binding to an existing C ABI compatible library at runtime. This allows you to call into dynamic libraries created in C or other languages. Cyber uses libtcc to JIT compile the bindings so function calls are fast. bindLib is part of the os module and accepts the path to the library as a string and a list of CFunc or CStruct declarations.
-import os 'os' lib = os."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/ffi/"><meta property="article:section" content="docs"><title>FFI | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png type=image/x-icon><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.dbdc43cfc7cca5d330dcdc30d5cc7728bb00acac251a05592acdb163860ce7eb.js integrity="sha256-29xDz8fMpdMw3Nww1cx3KLsArKwlGgVZKs2xY4YM5+s=" crossorigin=anonymous></script>
+import os 'os' var lib = os."><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="FFI"><meta property="og:description" content="FFI. # Cyber supports binding to an existing C ABI compatible library at runtime. This allows you to call into dynamic libraries created in C or other languages. Cyber uses libtcc to JIT compile the bindings so function calls are fast. bindLib is part of the os module and accepts the path to the library as a string and a list of CFunc or CStruct declarations.
+import os 'os' var lib = os."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/ffi/"><meta property="article:section" content="docs"><title>FFI | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
+<script defer src=/cyber/en.search.min.2be553e307dd69bd26eb8656401abaff5e501133538baa6f3b470f9bf461d2bc.js integrity="sha256-K+VT4wfdab0m64ZWQBq6/15QETNTi6pvO0cPm/Rh0rw=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/ class=active>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>FFI</strong>
@@ -10,7 +10,7 @@ import os 'os' lib = os."><meta property="og:type" content="article"><meta prope
 This allows you to call into dynamic libraries created in C or other languages.
 Cyber uses <code>libtcc</code> to JIT compile the bindings so function calls are fast. <code>bindLib</code> is part of the <code>os</code> module and accepts the path to the library as a string and a list of <a href=#cfunc>CFunc</a> or <a href=#cstruct>CStruct</a> declarations.</p><pre tabindex=0><code class=language-cy data-lang=cy>import os &#39;os&#39;
 
-lib = os.bindLib(&#39;mylib.so&#39;, [
+var lib = os.bindLib(&#39;mylib.so&#39;, [
     os.CFunc{ sym: &#39;add&#39;, args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
@@ -19,7 +19,7 @@ The resulting object of <code>bindLib</code> holds a reference to an internal TC
 Once the object is released by ARC, the TCCState is also released which removes the JIT code from memory.</p><h2 id=cfunc>CFunc.
 <a class=anchor href=#cfunc>#</a></h2><p>The <code>CFunc</code> object lets you bind to a C-function. The <code>sym</code> field maps to the C-function&rsquo;s symbol name in the dynamic library. The <code>args</code> field declares the type mapping from Cyber to C-function&rsquo;s arguments. Finally, the <code>ret</code> field declares the type mapping from the C-function&rsquo;s return type to a Cyber type.</p><pre tabindex=0><code class=language-cy data-lang=cy>import os &#39;os&#39;
 
-lib = os.bindLib(&#39;mylib.so&#39;, [
+var lib = os.bindLib(&#39;mylib.so&#39;, [
     os.CFunc{ sym: &#39;add&#39;, args: [#int, #int], ret: #int }
 ])
 lib.add(123, 321)
@@ -35,11 +35,11 @@ type MyObject object:
     b pointer
     c bool
 
-lib = os.bindLib(&#39;mylib.so&#39;, [
+var lib = os.bindLib(&#39;mylib.so&#39;, [
     os.CFunc{ sym: &#39;foo&#39;, args: [MyObject], ret: MyObject }
     os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
 ])
-res = lib.foo(MyObject{ a: 123, b: os.cstr(&#39;foo&#39;), c: true })
+var res = lib.foo(MyObject{ a: 123, b: os.cstr(&#39;foo&#39;), c: true })
 </code></pre><p>The example above maps to these C declarations in <code>mylib.so</code>:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-text data-lang=text><span style=display:flex><span>typedef struct MyObject {
 </span></span><span style=display:flex><span>    double a;
 </span></span><span style=display:flex><span>    char* b;
@@ -51,14 +51,14 @@ res = lib.foo(MyObject{ a: 123, b: os.cstr(&#39;foo&#39;), c: true })
 </span></span><span style=display:flex><span>}
 </span></span></code></pre></div><p><code>CStruct</code> also generates <code>ptrTo[Type]</code> as a helper function to dereference an opaque ptr to a new Cyber object:</p><pre tabindex=0><code class=language-cy data-lang=cy>import os &#39;os&#39;
 
-lib = os.bindLib(&#39;mylib.so&#39;, [
+var lib = os.bindLib(&#39;mylib.so&#39;, [
     os.CFunc{ sym: &#39;foo&#39;, args: [MyObject], ret: #voidPtr }
     os.CStruct{ fields: [#f64, #charPtr, #bool], type: MyObject }
 ])
-ptr = lib.foo(MyObject{ a: 123, b: os.cstr(&#39;foo&#39;), c: true })
-res = lib.ptrToMyObject(ptr)
+var ptr = lib.foo(MyObject{ a: 123, b: os.cstr(&#39;foo&#39;), c: true })
+var res = lib.ptrToMyObject(ptr)
 </code></pre><h2 id=pointers>Pointers
-<a class=anchor href=#pointers>#</a></h2><p>A <code>pointer</code> is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. A new pointer can be created with the builtin <code>pointer</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>ptr = pointer(0xDEADBEEF)
+<a class=anchor href=#pointers>#</a></h2><p>A <code>pointer</code> is used to read or write to an exact memory address. This is typically used for FFI to manually map Cyber types to C, and back. A new pointer can be created with the builtin <code>pointer</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var ptr = pointer(0xDEADBEEF)
 print ptr.value()     --&#39;3735928559&#39;
 </code></pre><h3 id=type-pointer><code>type pointer</code>
 <a class=anchor href=#type-pointer>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>value() number</code></td><td>Returns the memory address as a <code>number</code>.</td></tr></tbody></table></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/ffi.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>

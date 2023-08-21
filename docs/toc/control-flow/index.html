@@ -1,24 +1,24 @@
 <!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Control Flow. # Cyber provides the common constructs to branch and enter loops.
 Branching. # Use if and else statements to branch the execution of your code depending on conditions. The else clause can contain a condition which is only evaluated if the previous if or conditional else clause was false.
-a = 10 if a == 10: print 'a is 10' else a == 20: print 'a is 20' else: print 'neither 10 nor 20' An if expression also needs the then keyword."><meta name=theme-color content="#FFFFFF"><meta name=color-scheme content="light dark"><meta property="og:title" content="Control Flow"><meta property="og:description" content="Control Flow. # Cyber provides the common constructs to branch and enter loops.
+var a = 10 if a == 10: print 'a is 10' else a == 20: print 'a is 20' else: print 'neither 10 nor 20' An if expression also needs the then keyword."><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="Control Flow"><meta property="og:description" content="Control Flow. # Cyber provides the common constructs to branch and enter loops.
 Branching. # Use if and else statements to branch the execution of your code depending on conditions. The else clause can contain a condition which is only evaluated if the previous if or conditional else clause was false.
-a = 10 if a == 10: print 'a is 10' else a == 20: print 'a is 20' else: print 'neither 10 nor 20' An if expression also needs the then keyword."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/control-flow/"><meta property="article:section" content="docs"><title>Control Flow | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png type=image/x-icon><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.dbdc43cfc7cca5d330dcdc30d5cc7728bb00acac251a05592acdb163860ce7eb.js integrity="sha256-29xDz8fMpdMw3Nww1cx3KLsArKwlGgVZKs2xY4YM5+s=" crossorigin=anonymous></script>
+var a = 10 if a == 10: print 'a is 10' else a == 20: print 'a is 20' else: print 'neither 10 nor 20' An if expression also needs the then keyword."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/control-flow/"><meta property="article:section" content="docs"><title>Control Flow | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
+<script defer src=/cyber/en.search.min.2be553e307dd69bd26eb8656401abaff5e501133538baa6f3b470f9bf461d2bc.js integrity="sha256-K+VT4wfdab0m64ZWQBq6/15QETNTi6pvO0cPm/Rh0rw=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/ class=active>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>Control Flow</strong>
 <label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#branching>Branching.</a></li><li><a href=#iterations>Iterations.</a></li><li><a href=#matching>Matching.</a></li><li><a href=#trycatch>Try/Catch.</a></li><li><a href=#deferred-execution>Deferred Execution.</a></li></ul></nav></aside></header><article class=markdown><h1 id=control-flow>Control Flow.
 <a class=anchor href=#control-flow>#</a></h1><p>Cyber provides the common constructs to branch and enter loops.</p><h2 id=branching>Branching.
-<a class=anchor href=#branching>#</a></h2><p>Use <code>if</code> and <code>else</code> statements to branch the execution of your code depending on conditions. The <code>else</code> clause can contain a condition which is only evaluated if the previous if or conditional else clause was <code>false</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 10
+<a class=anchor href=#branching>#</a></h2><p>Use <code>if</code> and <code>else</code> statements to branch the execution of your code depending on conditions. The <code>else</code> clause can contain a condition which is only evaluated if the previous if or conditional else clause was <code>false</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 10
 if a == 10:
     print &#39;a is 10&#39;
 else a == 20:
     print &#39;a is 20&#39;
 else:
     print &#39;neither 10 nor 20&#39;
-</code></pre><p>An <code>if</code> expression also needs the <code>then</code> keyword. Conditional <code>else</code> clauses are not allowed in an <code>if</code> expression.:</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 10
-str = if a == 10 then &#39;red&#39; else &#39;blue&#39;
-</code></pre><p>Use <code>and</code> and <code>or</code> logical operators to combine conditions:</p><pre tabindex=0><code class=language-cy data-lang=cy>a = 10
+</code></pre><p>An <code>if</code> expression also needs the <code>then</code> keyword. Conditional <code>else</code> clauses are not allowed in an <code>if</code> expression.:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 10
+var str = if a == 10 then &#39;red&#39; else &#39;blue&#39;
+</code></pre><p>Use <code>and</code> and <code>or</code> logical operators to combine conditions:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 10
 if a &gt; 5 and a &lt; 15:
     print &#39;a is between 5 and 15&#39;
 if a == 20 or a == 10: 
@@ -29,11 +29,11 @@ When the <code>while</code> clause contains a condition, the loop continues to r
 while:
     pass
 
-running = true
+var running = true
 while running:
     -- Keep looping until `running` is false.
     pass
-</code></pre><p>You can use the optional <code>while</code> loop to continue the loop until the expression evaluates to the <code>none</code> value. The unwrapped optional value is copied to the variable declared after <code>some</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>iter = dir.walk()
+</code></pre><p>You can use the optional <code>while</code> loop to continue the loop until the expression evaluates to the <code>none</code> value. The unwrapped optional value is copied to the variable declared after <code>some</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var iter = dir.walk()
 while iter.next() some entry:
     print entry.name
 </code></pre><p><code>for</code> loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator <code>..</code> is replaced with <code>..=</code>, the target number is inclusive. The range can be given a custom step.</p><pre tabindex=0><code class=language-cy data-lang=cy>for 0..100 each i:
@@ -48,7 +48,7 @@ for 100..0, 1 each i:
 for 100..=0, 1 each i:
     print i    -- 100, 99, 98, ... , 0
 </code></pre><p>The <code>for</code> clause can iterate over an <code>Iterable</code> object. An Iterable type contains an <code>iterator()</code> method that returns an <code>Iterator</code> object. An Iterator type contains a <code>next()</code> method that returns the next value or <code>none</code> when finished.
-You can iterate lists since they are Iterable.</p><pre tabindex=0><code class=language-cy data-lang=cy>list = [1, 2, 3, 4, 5]
+You can iterate lists since they are Iterable.</p><pre tabindex=0><code class=language-cy data-lang=cy>var list = [1, 2, 3, 4, 5]
 
 -- Iterate on values.
 for list each n:
@@ -61,7 +61,7 @@ for list each i, n:
 -- Iterate on just indexes.
 for list each i, _:
     print i 
-</code></pre><p>The <code>for</code> clause can also iterate over maps with the same idea.</p><pre tabindex=0><code class=language-cy data-lang=cy>map = { a: 123, b: 234 }
+</code></pre><p>The <code>for</code> clause can also iterate over maps with the same idea.</p><pre tabindex=0><code class=language-cy data-lang=cy>var map = { a: 123, b: 234 }
 
 -- Iterate on values.
 for map each v:
@@ -85,7 +85,7 @@ for map each k, _:
     print i
 -- This loop prints 0 through 9 but skips 4.
 </code></pre><h2 id=matching>Matching.
-<a class=anchor href=#matching>#</a></h2><p>Matching is similar to a switch statement. The expression to the right of <code>match</code> is evaluated and execution jumps to the declared case with the matching value. Multiple cases can be grouped together using a comma separator. An optional <code>else</code> fallback case is executed when no other cases were matched.</p><pre tabindex=0><code class=language-cy data-lang=cy>val = 1000
+<a class=anchor href=#matching>#</a></h2><p>Matching is similar to a switch statement. The expression to the right of <code>match</code> is evaluated and execution jumps to the declared case with the matching value. Multiple cases can be grouped together using a comma separator. An optional <code>else</code> fallback case is executed when no other cases were matched.</p><pre tabindex=0><code class=language-cy data-lang=cy>var val = 1000
 match val:
     0..100: print &#39;at or between 0 and 99&#39;
     100: print &#39;val is 100&#39;

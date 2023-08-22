@@ -48,6 +48,8 @@ pub const Chunk = struct {
     // funcCandidateStack: std.ArrayListUnmanaged(sema.FuncCandidate),
     nodeTypes: []sema.ResolvedSymId,
 
+    curObjectSymId: sema.ResolvedSymId,
+
     /// List of func decls.
     /// They are resolved after data types.
     semaFuncDecls: std.ArrayListUnmanaged(sema.FuncDecl),
@@ -134,6 +136,7 @@ pub const Chunk = struct {
             .operandStack = .{},
             .curBlock = undefined,
             .curSemaBlockId = undefined,
+            .curObjectSymId = cy.NullId,
             .curSemaSubBlockId = undefined,
             .nextSemaSubBlockId = undefined,
             .buf = undefined,
@@ -439,7 +442,7 @@ pub const Chunk = struct {
 
         for (sblock.params.items) |varId| {
             const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and !svar.isCaptured()) {
+            if (svar.lifetimeRcCandidate and !svar.isParentLocalAlias()) {
                 try self.operandStack.append(self.alloc, cy.InstDatum.initArg(svar.local));
             }
         }

@@ -424,7 +424,9 @@ var node = Node{ value: 123, next: none }
 print node.value          -- '123'
 ```
 New instances of an object template are created using the type name and braces that surround the initial member values.
-When declaring methods, the first parameter must be `self`. Otherwise, it becomes a function that can only be invoked from the type's namespace.
+
+### Methods.
+The first parameter of a method must be `self`. Otherwise, it declares a static function that can only be invoked from the type's namespace.
 ```cy
 type Node object:
     value
@@ -440,6 +442,15 @@ type Node object:
 
 var n = Node.create()
 n.dump()
+```
+
+Although `self` is required in a method's signature, it's optional when referencing the type's members.
+```cy
+type Node object:
+    value
+
+    func double(self):
+        return value * 2
 ```
 
 ## Enums.

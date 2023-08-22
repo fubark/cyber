@@ -7,6 +7,10 @@ const rt = cy.rt;
 
 pub const KeyU64 = extern union {
     val: u64,
+    objectMemberKey: extern struct {
+        objSymId: sema.ResolvedSymId,
+        memberNameId: sema.NameSymId,
+    },
     absResolvedSymKey: extern struct {
         rParentSymId: u32,
         nameId: u32,

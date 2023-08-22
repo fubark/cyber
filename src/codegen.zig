@@ -69,7 +69,43 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
         stdx.debug.dassert(!svar.isStaticAlias);
 
         var dst: RegisterId = undefined;
-        if (!svar.isCaptured()) {
+        if (svar.isObjectMemberAlias) {
+            if (svar.isParentLocalAlias()) {
+                dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
+                try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, dst);
+                try c.buf.pushOp2(.boxValue, dst, dst);
+                const name = c.getNodeTokenString(node);
+                const fieldId = try c.compiler.vm.ensureFieldSym(name);
+                if (cstr.mustRetain) {
+                    const pc = c.buf.len();
+                    try c.buf.pushOpSlice(.fieldRetain, &.{ dst, dst, 0, 0, 0, 0, 0 });
+                    c.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+                    return c.initGenValue(dst, bt.Any, true);
+                } else {
+                    const pc = c.buf.len();
+                    try c.buf.pushOpSlice(.field, &.{ dst, dst, 0, 0, 0, 0, 0 });
+                    c.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+                    return c.initGenValue(dst, bt.Any, false);
+                }
+            } else {
+                dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
+                const sblock = sema.curBlock(c);
+                const selfLocal: u8 = @intCast(4 + sblock.params.items.len - 1);
+                const name = c.getNodeTokenString(node);
+                const fieldId = try c.compiler.vm.ensureFieldSym(name);
+                if (cstr.mustRetain) {
+                    const pc = c.compiler.buf.len();
+                    try c.compiler.buf.pushOpSlice(.fieldRetain, &.{ selfLocal, dst, 0, 0, 0, 0, 0 });
+                    c.compiler.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+                    return c.initGenValue(dst, bt.Any, true);
+                } else {
+                    const pc = c.compiler.buf.len();
+                    try c.compiler.buf.pushOpSlice(.field, &.{ selfLocal, dst, 0, 0, 0, 0, 0 });
+                    c.compiler.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+                    return c.initGenValue(dst, bt.Any, false);
+                }
+            }
+        } else if (!svar.isParentLocalAlias()) {
             dst = try c.rega.selectFromLocalVar(cstr, svar.local);
         } else {
             dst = try c.rega.selectFromNonLocalVar(cstr, cstr.mustRetain);
@@ -77,7 +113,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
         if (cstr.mustRetain and types.isRcCandidateType(c.compiler, svar.vtype)) {
             // Ensure retain +1.
             if (svar.isBoxed) {
-                if (svar.isCaptured()) {
+                if (svar.isParentLocalAlias()) {
                     try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, dst);
                     try c.buf.pushOp2(.boxValueRetain, dst, dst);
                 } else {
@@ -93,7 +129,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             return c.initGenValue(dst, svar.vtype, true);
         } else {
             if (svar.isBoxed) {
-                if (svar.isCaptured()) {
+                if (svar.isParentLocalAlias()) {
                     try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, dst);
                     try c.buf.pushOp2(.boxValue, dst, dst);
                 } else {
@@ -1215,7 +1251,7 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const right = try expression(c, node.head.opAssignStmt.right, RegisterCstr.simple);
             if (svar.isBoxed) {
                 const temp = try c.rega.consumeNextTemp();
-                if (svar.isCaptured()) {
+                if (svar.isParentLocalAlias()) {
                     try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, temp);
                     try c.buf.pushOp2(.boxValue, temp, temp);
                 } else {
@@ -1225,7 +1261,7 @@ fn opAssignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                 try c.pushDebugSym(nodeId);
                 try c.buf.pushOp3(genOp, temp, right.local, temp);
 
-                if (svar.isCaptured()) {
+                if (svar.isParentLocalAlias()) {
                     const temp2 = try c.rega.consumeNextTemp();
                     try c.buf.pushOp3(.captured, c.curBlock.closureLocal, svar.capturedIdx, temp2);
                     try c.buf.pushOp2(.setBoxValue, temp2, temp);
@@ -2650,7 +2686,7 @@ fn assignExprToBoxedVar(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
     svar.vtype = exprv.vtype;
     svar.isDefinedOnce = true;
     if (!types.isRcCandidateType(self.compiler, svar.vtype)) {
-        if (svar.isCaptured()) {
+        if (svar.isParentLocalAlias()) {
             const temp = try self.rega.consumeNextTemp();
             defer self.rega.setNextTemp(temp);
             try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, temp);
@@ -2659,7 +2695,7 @@ fn assignExprToBoxedVar(self: *Chunk, svar: *sema.LocalVar, exprId: cy.NodeId) !
             try self.buf.pushOp2(.setBoxValue, svar.local, exprv.local);
         }
     } else {
-        if (svar.isCaptured()) {
+        if (svar.isParentLocalAlias()) {
             const temp = try self.rega.consumeNextTemp();
             defer self.rega.setNextTemp(temp);
             try self.buf.pushOp3(.captured, self.curBlock.closureLocal, svar.capturedIdx, temp);
@@ -2697,10 +2733,17 @@ pub fn initVarLocals(self: *Chunk) !void {
 
         // Reset boxed.
         const svar = &self.vars.items[varId];
-        if (!svar.isCaptured()) {
+        if (!svar.isParentLocalAlias()) {
             svar.isBoxed = false;
         }
         // log.debug("reserve {} {s}", .{local, self.getVarName(varId)});
+    }
+
+    for (sblock.params.items) |varId| {
+        const svar = &self.vars.items[varId];
+        if (!svar.isParentLocalAlias()) {
+            svar.isBoxed = false;
+        }
     }
 
     // Main block var locals start at 0 otherwise after the call return info and params.

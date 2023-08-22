@@ -92,7 +92,7 @@ func foo():
     print a     -- '123'
 ```
 
-Static variables are automically exported from the current script. You can read more about exports and [Modules](#modules).
+Static variables are always exported from the current script. You can read more about exports and [Modules](#modules).
 
 When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.
 ```cy

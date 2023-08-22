@@ -1383,44 +1383,7 @@ test "Object funcs/methods." {
         );
     }}.func);
 
-    try evalPass(.{},
-        \\import t 'test'
-        \\type Node object:
-        \\  value
-        \\  func get(self):
-        \\    return self.value
-        \\  func get2(self, param):
-        \\    return self.value + param
-        \\  func get3(self, param, param2):
-        \\    return self.value + param - param2
-        \\  func get4():
-        \\    return 123
-        \\  func get5(param):
-        \\    return 123 + param
-        \\  func get6(param, param2):
-        \\    return 123 + param - param2
-        \\var n = Node{ value: 123 }
-        \\
-        \\-- self param.
-        \\t.eq(n.get(), 123)
-        \\
-        \\-- self param with regular param.
-        \\n = Node{ value: 123 }
-        \\t.eq(n.get2(321), 444)
-        \\
-        \\-- self param with many regular param.
-        \\n = Node{ value: 123 }
-        \\t.eq(n.get3(321, 1), 443)
-        \\
-        \\-- Static method, no params.
-        \\t.eq(Node.get4(), 123)
-        \\
-        \\-- Static method, one params.
-        \\t.eq(Node.get5(321), 444)
-        \\
-        \\-- Static method, many params.
-        \\t.eq(Node.get6(321, 1), 443)
-    );
+    try evalPass(.{}, @embedFile("object_func_test.cy"));
 }
 
 test "must()" {

@@ -31,9 +31,8 @@ const RegisterId = cy.register.RegisterId;
 
 pub const LocalVarId = u32;
 
-/// Represents a variable in a block.
-/// If the variable was declared `static`, references to it will use a static symbol instead.
-/// Other variables are given reserved registers on the stack frame.
+/// Represents a variable or alias in a block.
+/// Local variables are given reserved registers on the stack frame.
 /// Captured variables have box values at runtime.
 pub const LocalVar = struct {
     /// The current type of the var as the ast is traversed.
@@ -46,12 +45,12 @@ pub const LocalVar = struct {
     /// Whether this var references a static variable.
     isStaticAlias: bool = false,
 
+    /// Whether this var references a parent object member.
+    isObjectMemberAlias: bool = false,
+
     /// Currently a captured var always needs to be boxed.
     /// In the future, the concept of a const variable could change this.
     isBoxed: bool = false,
-
-    /// Whether this is a function param. (Does not include captured vars.)
-    isParam: bool = false,
 
     /// Indicates that at some point during the vars lifetime it was an rcCandidate.
     /// Since all exit paths jump to the same release inst, this flag is used to determine
@@ -76,12 +75,12 @@ pub const LocalVar = struct {
     inner: extern union {
         staticAlias: extern struct {
             crSymId: CompactResolvedSymId,
-        }
+        },
     } = undefined,
 
     name: if (builtin.mode == .Debug) []const u8 else void,
 
-    pub inline fn isCaptured(self: LocalVar) bool {
+    pub inline fn isParentLocalAlias(self: LocalVar) bool {
         return self.capturedIdx != cy.NullU8;
     }
 };
@@ -172,6 +171,9 @@ pub const Block = struct {
 
     /// Whether this block belongs to a static function.
     isStaticFuncBlock: bool,
+
+    /// Whether this block belongs to an object method.
+    isMethodBlock: bool = false,
 
     /// Whether temporaries (nameToVar) was deinit.
     deinitedTemps: bool,
@@ -399,6 +401,8 @@ pub const AbsSymSigKey = cy.hash.KeyU64;
 pub const AbsResolvedSymKey = cy.hash.KeyU64;
 pub const AbsResolvedFuncSymKey = cy.hash.KeyU64;
 pub const AbsSymSigKeyContext = cy.AbsFuncSigKeyContext;
+
+const ObjectMemberKey = cy.hash.KeyU64;
 
 pub fn semaStmts(self: *cy.Chunk, head: cy.NodeId) anyerror!void {
     var cur_id = head;
@@ -784,6 +788,7 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     while (fieldId != cy.NullId) : (i += 1) {
         const field = c.nodes[fieldId];
         const fieldName = c.getNodeTokenString(field);
+        const fieldNameId = try ensureNameSym(c.compiler, fieldName);
         const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
 
         var fieldType: ResolvedSymId = undefined;
@@ -794,6 +799,13 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         }
 
         try c.compiler.vm.addFieldSym(rtTypeId, fieldSymId, @intCast(i), fieldType);
+
+        try c.compiler.sema.objectMembers.put(c.alloc, .{
+            .objectMemberKey = .{
+                .objSymId = objSymId,
+                .memberNameId = fieldNameId,
+            },
+        }, {});
         fieldId = field.next;
     }
     c.compiler.vm.types.buf[rtTypeId].numFields = i;
@@ -842,6 +854,12 @@ fn objectDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     // const nameId = try ensureNameSym(c.compiler, name);
     // const rSymId = nameN.head.ident.sema_crSymId.id;
 
+    if (c.curObjectSymId != cy.NullId) {
+        return c.reportErrorAt("Nested types are not supported.", &.{}, nodeId);
+    }
+    c.curObjectSymId = c.nodes[node.head.objectDecl.name].head.ident.sema_crSymId.id;
+    defer c.curObjectSymId = cy.NullId;
+
     var funcId = node.head.objectDecl.funcsHead;
     while (funcId != cy.NullId) {
         const declId = c.nodes[funcId].head.func.semaDeclId;
@@ -855,6 +873,8 @@ fn objectDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             if (std.mem.eql(u8, paramName, "self")) {
                 // Struct method.
                 const blockId = try pushBlock(c, funcN.head.func.semaDeclId);
+                c.semaBlocks.items[blockId].isMethodBlock = true;
+
                 func.semaBlockId = blockId;
                 errdefer endBlock(c) catch stdx.fatal();
                 try pushMethodParamVars(c, func);
@@ -1004,7 +1024,7 @@ fn localDecl(self: *cy.Chunk, nodeId: cy.NodeId) !void {
     const sblock = curBlock(self);
     if (sblock.nameToVar.get(name)) |varId| {
         const svar = &self.vars.items[varId];
-        if (svar.isCaptured()) {
+        if (svar.isParentLocalAlias()) {
             return self.reportErrorAt("`{}` already references a parent local variable.", &.{v(name)}, nodeId);
         } else if (svar.isStaticAlias) {
             return self.reportErrorAt("`{}` already references a static variable.", &.{v(name)}, nodeId);
@@ -1842,6 +1862,29 @@ fn pushStaticVarAlias(c: *cy.Chunk, name: []const u8, crSymId: CompactResolvedSy
     return id;
 }
 
+fn pushObjectMemberAlias(c: *cy.Chunk, name: []const u8) !LocalVarId {
+    const id = try pushLocalVar(c, name, bt.Any);
+    c.vars.items[id].isObjectMemberAlias = true;
+    return id;
+}
+
+fn pushCapturedObjectMemberAlias(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: TypeId) !LocalVarId {
+    const block = curBlock(self);
+    const id = try pushLocalVar(self, name, vtype);
+    const capturedIdx: u8 = @intCast(block.captures.items.len);
+    self.vars.items[id].isObjectMemberAlias = true;
+    self.vars.items[id].capturedIdx = capturedIdx;
+    self.vars.items[id].isBoxed = true;
+    self.vars.items[id].isDefinedOnce = true;
+
+    try self.capVarDescs.put(self.alloc, id, .{
+        .user = parentVarId,
+    });
+
+    try block.captures.append(self.alloc, id);
+    return id;
+}
+
 fn pushCapturedVar(self: *cy.Chunk, name: []const u8, parentVarId: LocalVarId, vtype: TypeId) !LocalVarId {
     const block = curBlock(self);
     const id = try pushLocalVar(self, name, vtype);
@@ -1910,7 +1953,10 @@ fn referenceSym(c: *cy.Chunk, rSymId: CompactResolvedSymId, trackDep: bool) !voi
 
 const VarLookupResult = union(enum) {
     static: CompactResolvedSymId,
+
+    /// Local, parent local alias, or parent object member alias.
     local: LocalVarId,
+
     not_found: void,
 };
 
@@ -1924,7 +1970,11 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
             return VarLookupResult{
                 .static = @bitCast(svar.inner.staticAlias.crSymId),
             };
-        } else if (svar.isCaptured()) {
+        } else if (svar.isObjectMemberAlias) {
+            return VarLookupResult{
+                .local = varId,
+            };
+        } else if (svar.isParentLocalAlias()) {
             // Can not reference local var in a static var decl unless it's in a nested block.
             // eg. var a = 0
             //     var b: a
@@ -1951,7 +2001,25 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
             }
         }
     }
-    if (lookupParentLocal(self, name)) |res| {
+
+    // Look for object member if inside method.
+    if (sblock.isMethodBlock) {
+        const nameId = try ensureNameSym(self.compiler, name);
+        const key = ObjectMemberKey{
+            .objectMemberKey = .{
+                .objSymId = self.curObjectSymId,
+                .memberNameId = nameId,
+            },
+        };
+        if (self.compiler.sema.objectMembers.contains(key)) {
+            const id = try pushObjectMemberAlias(self, name);
+            return VarLookupResult{
+                .local = id,
+            };
+        }
+    }
+
+    if (try lookupParentLocal(self, name)) |res| {
         if (self.isInStaticInitializer()) {
             // Can not capture local before this block.
             if (res.blockDepth == 1) {
@@ -1967,10 +2035,17 @@ fn getOrLookupVar(self: *cy.Chunk, name: []const u8, staticLookup: bool) !VarLoo
 
         // Create a local captured variable.
         const parentVar = self.vars.items[res.varId];
-        const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
-        return VarLookupResult{
-            .local = id,
-        };
+        if (res.isObjectMember) {
+            const id = try pushCapturedObjectMemberAlias(self, name, res.varId, parentVar.vtype);
+            return VarLookupResult{
+                .local = id,
+            };
+        } else {
+            const id = try pushCapturedVar(self, name, res.varId, parentVar.vtype);
+            return VarLookupResult{
+                .local = id,
+            };
+        }
     } else {
         if (staticLookup) {
             const nameId = try ensureNameSym(self.compiler, name);
@@ -1996,9 +2071,11 @@ const LookupParentLocalResult = struct {
 
     // Main block starts at 1.
     blockDepth: u32,
+
+    isObjectMember: bool,
 };
 
-fn lookupParentLocal(c: *cy.Chunk, name: []const u8) ?LookupParentLocalResult {
+fn lookupParentLocal(c: *cy.Chunk, name: []const u8) !?LookupParentLocalResult {
     // Only check one block above.
     if (c.semaBlockDepth() > 1) {
         const prevId = c.semaBlockStack.items[c.semaBlockDepth() - 1];
@@ -2008,6 +2085,25 @@ fn lookupParentLocal(c: *cy.Chunk, name: []const u8) ?LookupParentLocalResult {
                 return .{
                     .varId = varId,
                     .blockDepth = c.semaBlockDepth(),
+                    .isObjectMember = false,
+                };
+            }
+        }
+
+        // Look for object member if inside method.
+        if (prev.isMethodBlock) {
+            const nameId = try ensureNameSym(c.compiler, name);
+            const key = ObjectMemberKey{
+                .objectMemberKey = .{
+                    .objSymId = c.curObjectSymId,
+                    .memberNameId = nameId,
+                },
+            };
+            if (c.compiler.sema.objectMembers.contains(key)) {
+                return .{
+                    .varId = prev.nameToVar.get("self").?,
+                    .blockDepth = c.semaBlockDepth(),
+                    .isObjectMember = true,
                 };
             }
         }
@@ -3265,7 +3361,7 @@ fn assignVar(self: *cy.Chunk, ident: cy.NodeId, vtype: TypeId) !void {
     switch (res) {
         .local => |id| {
             const svar = &self.vars.items[id];
-            if (svar.isCaptured()) {
+            if (svar.isParentLocalAlias()) {
                 if (!svar.isBoxed) {
                     // Becomes boxed so codegen knows ahead of time.
                     svar.isBoxed = true;
@@ -4022,6 +4118,8 @@ pub const Model = struct {
     /// Owned absolute specifier path to module.
     moduleMap: std.StringHashMapUnmanaged(cy.ModuleId),
 
+    objectMembers: std.HashMapUnmanaged(ObjectMemberKey, void, cy.hash.KeyU64Context, 80),
+
     pub fn init(alloc: std.mem.Allocator) Model {
         return .{
             .alloc = alloc,
@@ -4036,6 +4134,7 @@ pub const Model = struct {
             .resolvedUntypedFuncSigs = .{},
             .modules = .{},
             .moduleMap = .{},
+            .objectMembers = .{},
         };
     }
 
@@ -4045,11 +4144,13 @@ pub const Model = struct {
             self.resolvedSymMap.clearRetainingCapacity();
             self.resolvedFuncSyms.clearRetainingCapacity();
             self.resolvedFuncSymMap.clearRetainingCapacity();
+            self.objectMembers.clearRetainingCapacity();
         } else {
             self.resolvedSyms.deinit(alloc);
             self.resolvedSymMap.deinit(alloc);
             self.resolvedFuncSyms.deinit(alloc);
             self.resolvedFuncSymMap.deinit(alloc);
+            self.objectMembers.deinit(alloc);
         }
 
         for (self.modules.items) |*mod| {

@@ -64,9 +64,10 @@ type Heap object:
             self.last = self.root
             self.size = 1
             return
+        var new = none
         if (self.size + 1) & self.size is 0:
             -- Insert at left most node.
-            parent = self.root.getLeftmost()
+            var parent = self.root.getLeftmost()
             new = Node{
                 left: none
                 right: none
@@ -87,7 +88,7 @@ type Heap object:
                 self.last.parent.right = new
                 self.last = new
             else:
-                sibling = self.last.parent.getRightSibling()
+                var sibling = self.last.parent.getRightSibling()
                 new = Node{
                     left: none
                     right: none
@@ -102,10 +103,10 @@ type Heap object:
     func swapUp(self, node):
         if self.last is node:
             self.last = node.parent
-        parentSave = node.parent
-        parentLeft = parentSave.left
-        parentRight = parentSave.right
-        parentParent = parentSave.parent
+        var parentSave = node.parent
+        var parentLeft = parentSave.left
+        var parentRight = parentSave.right
+        var parentParent = parentSave.parent
 
         parentSave.left = node.left
         if node.left is not none:
@@ -153,14 +154,14 @@ type Heap object:
 
     func popTop(self):
         if self.size is 1:
-            res = self.root
+            var res = self.root
             self.root = none
             self.last = none
             self.size = 0
             return res
 
         if self.size <= 3:
-            top = self.root
+            var top = self.root
             self.swapUp(self.last)
             top.parent = none
             if self.size == 3:
@@ -172,6 +173,7 @@ type Heap object:
             self.size = self.size - 1
             return top
 
+        var newLast = none
         if self.size & (self.size - 1) is 0:
             newLast = self.root.getRightmost()
         else:
@@ -189,7 +191,7 @@ type Heap object:
             self.last.parent.right = none
         self.last.parent = none
 
-        top = self.root
+        var top = self.root
         self.root = self.last
         self.last = newLast
         self.size = self.size - 1
@@ -197,11 +199,11 @@ type Heap object:
         self.siftDown(self.root)
         return top
 
-h = Heap.new()
+var h = Heap.new()
 for 1..20000 each i:
     h.insert(i) 
 
-sum = 0
+var sum = 0
 for 1..20000 each i:
     sum = sum + h.popTop().value
 

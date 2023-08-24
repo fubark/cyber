@@ -3,8 +3,13 @@
 #include <stddef.h>
 #include <math.h>
 
+
+#define CALL_OBJ_SYM_INST_LEN 16
+#define CALL_SYM_INST_LEN 12
+#define CALL_INST_LEN 3
+
 typedef enum {
-    CodeConstOp,
+    CodeConstOp = 0,
     CodeConstI8,
     CodeConstI8Int,
     CodeAdd,
@@ -138,6 +143,29 @@ typedef enum {
     TYPE_TYPESYM,
 } Type;
 
+typedef enum {
+    SEMA_TYPE_ANY = 0,
+    SEMA_TYPE_BOOLEAN,
+    SEMA_TYPE_NUMBER,
+    SEMA_TYPE_INTEGER,
+    SEMA_TYPE_STRING,
+    SEMA_TYPE_RAWSTRING,
+    SEMA_TYPE_SYMBOL,
+    SEMA_TYPE_LIST,
+    SEMA_TYPE_MAP,
+    SEMA_TYPE_POINTER,
+    SEMA_TYPE_NONE,
+    SEMA_TYPE_ERROR,
+    SEMA_TYPE_FIBER,
+    SEMA_TYPE_METATYPE,
+
+    SEMA_TYPE_NUMBERLIT = 14,
+    SEMA_TYPE_UNDEFINED,
+    SEMA_TYPE_STATICSTRING,
+    SEMA_TYPE_FILE,
+    SEMA_TYPE_DYNAMIC,
+} SemaType;
+
 typedef uint8_t Inst;
 typedef uint64_t Value;
 typedef union ValueUnion {
@@ -168,7 +196,7 @@ typedef union HeapObject {
     struct {
         uint32_t typeId;
         uint32_t rc;
-    } retainedCommon;
+    } head;
     Fiber fiber;
     Object object;
 } HeapObject;
@@ -208,6 +236,13 @@ typedef struct FieldSymbolMap {
     uint32_t mruFieldTypeSymId;
     uint32_t nameId;
 } FieldSymbolMap;
+
+typedef struct VmType {
+    char* namePtr;
+    size_t nameLen;
+    uint32_t numFields;
+    uint32_t typeSymId;
+} VmType;
 
 typedef struct VM {
     ZAllocator alloc;
@@ -313,7 +348,7 @@ ResultCode execBytecode(VM* vm);
 // Calling into Zig.
 void zFatal();
 char* zOpCodeName(OpCode code);
-PcSp zCallSym(VM* vm, Inst* pc, Value* stack, uint8_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
+PcSp zCallSym(VM* vm, Inst* pc, Value* stack, uint16_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
 void zDumpEvalOp(VM* vm, Inst* pc);
 extern bool verbose;
 void zFreeObject(VM* vm, HeapObject* obj);

@@ -545,9 +545,9 @@ const DebugLabel = struct {
     }
 };
 
-pub const CallObjSymInstLen = 16;
-pub const CallSymInstLen = 12;
-pub const CallInstLen = 3;
+pub const CallObjSymInstLen = vmc.CALL_OBJ_SYM_INST_LEN;
+pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
+pub const CallInstLen = vmc.CALL_INST_LEN;
 
 pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
     switch (pc[0].code) {

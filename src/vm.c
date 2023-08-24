@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "vm.h"
 
+#define STATIC_ASSERT(COND,MSG) typedef char static_assertion_##MSG[(COND)?1:-1]
+
 #define SIGN_MASK ((uint64_t)1 << 63)
 #define TAGGED_VALUE_MASK ((uint64_t)0x7ffc000000000000)
 #define TAG_MASK (((uint32_t)1 << 3) - 1)
@@ -146,7 +148,7 @@ static inline TypeId getPrimitiveTypeId(Value val) {
 
 static inline TypeId getTypeId(Value val) {
     if (VALUE_IS_POINTER(val)) {
-        return VALUE_AS_HEAPOBJECT(val)->retainedCommon.typeId;
+        return VALUE_AS_HEAPOBJECT(val)->head.typeId;
     } else {
         return getPrimitiveTypeId(val);
     }
@@ -162,11 +164,24 @@ static inline uint32_t stackOffset(VM* vm, Value* stack) {
 
 static inline uint8_t getFieldOffset(VM* vm, HeapObject* obj, uint32_t symId) {
     FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.bufPtr) + symId;
-    if (obj->retainedCommon.typeId == symMap->mruTypeId) {
+    if (obj->head.typeId == symMap->mruTypeId) {
         return (uint8_t)symMap->mruOffset;
     } else {
-        return zGetFieldOffsetFromTable(vm, obj->retainedCommon.typeId, symId);
+        return zGetFieldOffsetFromTable(vm, obj->head.typeId, symId);
     }
+}
+
+static inline bool isTypeSymCompat(TypeId typeSymId, TypeId cstrType) {
+    if (typeSymId == cstrType) {
+        return true;
+    }
+    if (cstrType == SEMA_TYPE_ANY || cstrType == SEMA_TYPE_DYNAMIC) {
+        return true;
+    }
+    if (cstrType == SEMA_TYPE_STRING && typeSymId == SEMA_TYPE_STATICSTRING) {
+        return true;
+    }
+    return false;
 }
 
 ResultCode execBytecode(VM* vm) {
@@ -216,7 +231,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallObjNativeFuncIC),
         JENTRY(CallObjFuncIC),
         JENTRY(CallTypeCheck),
-        JENTRY(TypeCheck),
         JENTRY(CallSym),
         JENTRY(CallFuncIC),
         JENTRY(CallNativeFuncIC),
@@ -248,6 +262,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetField),
         JENTRY(SetFieldRelease),
         JENTRY(SetFieldReleaseIC),
+        JENTRY(SetCheckFieldRelease),
         JENTRY(PushTry),
         JENTRY(PopTry),
         JENTRY(Throw),
@@ -288,6 +303,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Sym),
         JENTRY(End),
     };
+    STATIC_ASSERT(sizeof(jumpTable) == (CodeEnd + 1) * sizeof(void*), JUMP_TABLE_INCOMPLETE);
     #define CASE(op) Code_##op
     #define NEXT() PRE_NEXT(); goto *jumpTable[*pc]
 #else
@@ -435,12 +451,12 @@ beginSwitch:
         uint8_t numArgs = pc[2];
         uint8_t numRet = pc[3];
         uint8_t symId = pc[4];
-        uint16_t rFuncSigId = READ_U16(5);
+        uint16_t anySelfFuncSigId = READ_U16(5);
 
         Value recv = stack[startLocal + numArgs + 4 - 1];
         TypeId typeId = getTypeId(recv);
 
-        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, symId, rFuncSigId, startLocal, numArgs, numRet);
+        CallObjSymResult res = zCallObjSym(vm, pc, stack, recv, typeId, symId, startLocal, numArgs, numRet, anySelfFuncSigId);
         if (res.code != RES_CODE_SUCCESS) {
             return res.code;
         }
@@ -524,7 +540,7 @@ beginSwitch:
         uint8_t startLocal = pc[1];
         uint8_t numArgs = pc[2];
         uint8_t numRet = pc[3];
-        uint8_t symId = pc[4];
+        uint16_t symId = READ_U16(4);
         PcSp res = zCallSym(vm, pc, stack, symId, startLocal, numArgs, numRet);
         pc = res.pc;
         stack = res.sp;
@@ -542,9 +558,10 @@ beginSwitch:
         stack += startLocal;
         *(uint8_t*)(stack + 1) = pc[3];
         *((uint8_t*)(stack + 1) + 1) = 0;
-        stack[2] = (uintptr_t)(pc + 11);
+        *((uint8_t*)(stack + 1) + 2) = CALL_SYM_INST_LEN;
+        stack[2] = (uintptr_t)(pc + CALL_SYM_INST_LEN);
         stack[3] = retFramePtr;
-        pc = (Inst*)READ_U48(5);
+        pc = (Inst*)READ_U48(6);
         NEXT();
     }
     CASE(CallNativeFuncIC): {
@@ -643,7 +660,7 @@ beginSwitch:
     CASE(Field): {
         uint8_t left = pc[1];
         uint8_t dst = pc[2];
-        uint8_t symId = pc[3];
+        uint16_t symId = READ_U16(3);
         Value recv = stack[left];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
@@ -651,13 +668,13 @@ beginSwitch:
             if (offset != NULL_U8) {
                 stack[dst] = objectGetField((Object*)obj, offset);
                 pc[0] = CodeFieldIC;
-                WRITE_U16(4, obj->retainedCommon.typeId);
-                pc[6] = offset;
+                WRITE_U16(5, obj->head.typeId);
+                pc[7] = offset;
             } else {
                 // framePtr[dst] = @call(.never_inline, gvm.getFieldFallback, .{obj, gvm.fieldSyms.buf[symId].name});
                 return RES_CODE_UNKNOWN;
             }
-            pc += 7;
+            pc += 8;
             NEXT();
         } else {
             // return vm.getFieldMissingSymbolError();
@@ -669,9 +686,9 @@ beginSwitch:
         uint8_t dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (obj->retainedCommon.typeId == READ_U16(4)) {
-                stack[dst] = objectGetField((Object*)obj, pc[6]);
-                pc += 7;
+            if (obj->head.typeId == READ_U16(5)) {
+                stack[dst] = objectGetField((Object*)obj, pc[7]);
+                pc += 8;
                 NEXT();
             } else {
                 // Deoptimize.
@@ -688,7 +705,7 @@ beginSwitch:
     CASE(FieldRetain): {
         Value recv = stack[pc[1]];
         uint8_t dst = pc[2];
-        uint8_t symId = pc[3];
+        uint16_t symId = READ_U16(3);
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
             uint8_t offset = getFieldOffset(vm, obj, symId);
@@ -696,14 +713,14 @@ beginSwitch:
                 stack[dst] = objectGetField((Object*)obj, offset);
 
                 pc[0] = CodeFieldRetainIC;
-                WRITE_U16(4, obj->retainedCommon.typeId);
-                pc[6] = offset;
+                WRITE_U16(5, obj->head.typeId);
+                pc[7] = offset;
             } else {
                 // stack[dst] = @call(.never_inline, vm.getFieldFallback, .{obj, vm.fieldSyms.buf[symId].name});
                 return RES_CODE_UNKNOWN;
             }
             retain(vm, stack[dst]);
-            pc += 7;
+            pc += 8;
             NEXT();
         } else {
             // return vm.getFieldMissingSymbolError();
@@ -715,10 +732,10 @@ beginSwitch:
         uint8_t dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (obj->retainedCommon.typeId == READ_U16(4)) {
-                stack[dst] = objectGetField((Object*)obj, pc[6]);
+            if (obj->head.typeId == READ_U16(5)) {
+                stack[dst] = objectGetField((Object*)obj, pc[7]);
                 retain(vm, stack[dst]);
-                pc += 7;
+                pc += 8;
                 NEXT();
             }
         } else {
@@ -889,7 +906,7 @@ beginSwitch:
                 *lastValue = val;
 
                 pc[0] = CodeSetFieldReleaseIC;
-                WRITE_U16(4, obj->retainedCommon.typeId);
+                WRITE_U16(4, obj->head.typeId);
                 pc[6] = offset;
                 pc += 7;
                 NEXT();
@@ -906,7 +923,7 @@ beginSwitch:
         Value recv = stack[pc[1]];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (obj->retainedCommon.typeId == READ_U16(4)) {
+            if (obj->head.typeId == READ_U16(4)) {
                 Value* lastValue = objectGetFieldPtr((Object*)obj, pc[6]);
                 release(vm, *lastValue);
                 *lastValue = stack[pc[2]];
@@ -926,8 +943,38 @@ beginSwitch:
         }
     }
     CASE(SetCheckFieldRelease): {
-        printf("Unsupported %s\n", zOpCodeName(*pc));
-        zFatal();
+        Value recv = stack[pc[1]];
+        Value val = stack[pc[2]];
+        uint8_t symId = pc[3];
+        if (VALUE_IS_POINTER(recv)) {
+            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
+            uint8_t offset = getFieldOffset(vm, obj, symId);
+            if (offset != NULL_U8) {
+                FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.bufPtr) + symId;
+                uint32_t fieldSemaTypeId = symMap->mruFieldTypeSymId;
+                TypeId rightTypeId = getTypeId(val);
+                VmType* type = ((VmType*)vm->types.bufPtr) + rightTypeId;
+                uint32_t rightSemaTypeId = type->typeSymId;
+                if (!isTypeSymCompat(rightSemaTypeId, fieldSemaTypeId)) {
+                    // return panicIncompatibleFieldType(vm, fieldSemaTypeId, val);
+                    return RES_CODE_UNKNOWN;
+                }
+
+                Value* lastValue = objectGetFieldPtr((Object*)obj, offset);
+                release(vm, *lastValue);
+                *lastValue = val;
+
+                // TODO: Inline cache.
+                pc += 7;
+                NEXT();
+            } else {
+                // return vm.getFieldMissingSymbolError();
+                return RES_CODE_UNKNOWN;
+            }
+        } else {
+            // return vm.setFieldNotObjectError();
+            return RES_CODE_UNKNOWN;
+        }
     }
     CASE(PushTry):
     CASE(PopTry):
@@ -962,7 +1009,7 @@ beginSwitch:
         Value fiber = stack[pc[1]];
         if (VALUE_IS_POINTER(fiber)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(fiber);
-            if (obj->retainedCommon.typeId == TYPE_FIBER) {
+            if (obj->head.typeId == TYPE_FIBER) {
                 if ((Fiber*)obj != vm->curFiber) {
                     if (obj->fiber.pc != NULL_U32) {
                         PcSp res = zPushFiber(vm, pcOffset(vm, pc + 3), stack, (Fiber*)obj, pc[2]);
@@ -986,6 +1033,9 @@ beginSwitch:
         }
         NEXT();
     CASE(Retain):
+        retain(vm, stack[pc[1]]);
+        pc += 2;
+        NEXT();
     CASE(CopyRetainRelease):
     CASE(Box):
     CASE(SetBoxValue):
@@ -1143,19 +1193,19 @@ beginSwitch:
         printf("Unsupported %s\n", zOpCodeName(*pc));
         zFatal();
     CASE(StaticVar): {
-        uint8_t symId = pc[1];
+        uint16_t symId = READ_U16(1);
         Value sym = *(Value*)(vm->varSyms.bufPtr + symId);
         retain(vm, sym);
-        stack[pc[2]] = sym;
-        pc += 3;
+        stack[pc[3]] = sym;
+        pc += 4;
         NEXT();
     }
     CASE(SetStaticVar): {
-        uint8_t symId = pc[1];
+        uint16_t symId = READ_U16(1);
         Value prev = *(Value*)(vm->varSyms.bufPtr + symId);
-        *(Value*)(vm->varSyms.bufPtr + symId) = stack[pc[2]];
+        *(Value*)(vm->varSyms.bufPtr + symId) = stack[pc[3]];
         release(vm, prev);
-        pc += 3;
+        pc += 4;
         NEXT();
     }
     CASE(SetStaticFunc):

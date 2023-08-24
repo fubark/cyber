@@ -6,6 +6,7 @@ const sema = cy.sema;
 const ResolvedSymId = sema.ResolvedSymId;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
+const vmc = @import("vm_c.zig");
 const log = stdx.log.scoped(.types);
 
 pub const TypeId = ResolvedSymId;
@@ -13,30 +14,30 @@ pub const TypeId = ResolvedSymId;
 const bt = BuiltinTypeSymIds;
 pub const BuiltinTypeSymIds = struct {
     /// Name ids are reserved to match type sym ids.
-    pub const Any: TypeId = 0;
-    pub const Boolean: TypeId = 1;
-    pub const Number: TypeId = 2;
-    pub const Integer: TypeId = 3;
-    pub const String: TypeId = 4;
-    pub const Rawstring: TypeId = 5;
-    pub const Symbol: TypeId = 6;
-    pub const List: TypeId = 7;
-    pub const Map: TypeId = 8;
-    pub const Pointer: TypeId = 9;
-    pub const None: TypeId = 10;
-    pub const Error: TypeId = 11;
-    pub const Fiber: TypeId = 12;
-    pub const MetaType: TypeId = 13;
+    pub const Any: TypeId = vmc.SEMA_TYPE_ANY;
+    pub const Boolean: TypeId = vmc.SEMA_TYPE_BOOLEAN;
+    pub const Number: TypeId = vmc.SEMA_TYPE_NUMBER;
+    pub const Integer: TypeId = vmc.SEMA_TYPE_INTEGER;
+    pub const String: TypeId = vmc.SEMA_TYPE_STRING;
+    pub const Rawstring: TypeId = vmc.SEMA_TYPE_RAWSTRING;
+    pub const Symbol: TypeId = vmc.SEMA_TYPE_SYMBOL;
+    pub const List: TypeId = vmc.SEMA_TYPE_LIST;
+    pub const Map: TypeId = vmc.SEMA_TYPE_MAP;
+    pub const Pointer: TypeId = vmc.SEMA_TYPE_POINTER;
+    pub const None: TypeId = vmc.SEMA_TYPE_NONE;
+    pub const Error: TypeId = vmc.SEMA_TYPE_ERROR;
+    pub const Fiber: TypeId = vmc.SEMA_TYPE_FIBER;
+    pub const MetaType: TypeId = vmc.SEMA_TYPE_METATYPE;
 
     /// Internal types.
 
     /// Number literals can represent a number or integer.
-    pub const NumberLit: TypeId = 14;
-    pub const Undefined: TypeId = 15;
+    pub const NumberLit: TypeId = vmc.SEMA_TYPE_NUMBERLIT;
+    pub const Undefined: TypeId = vmc.SEMA_TYPE_UNDEFINED;
     /// Strings that aren't retained.
-    pub const StaticString: TypeId = 16;
-    pub const File: TypeId = 17;
-    pub const Dynamic: TypeId = 18;
+    pub const StaticString: TypeId = vmc.SEMA_TYPE_STATICSTRING;
+    pub const File: TypeId = vmc.SEMA_TYPE_FILE;
+    pub const Dynamic: TypeId = vmc.SEMA_TYPE_DYNAMIC;
 
     pub const End: TypeId = 19;
 };

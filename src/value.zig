@@ -75,7 +75,7 @@ pub const Value = packed union {
         /// An offset is stored to the original call inst for stack unwinding.
         callInstOffset: u8,
     },
-    retPcPtr: [*]const cy.InstDatum,
+    retPcPtr: [*]const cy.Inst,
     retFramePtr: [*]Value,
     // two: packed struct {
     //     low: u32,

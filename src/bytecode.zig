@@ -14,7 +14,7 @@ pub const ByteCodeBuffer = struct {
     alloc: std.mem.Allocator,
     /// The required stack size for the main frame.
     mainStackSize: u32,
-    ops: std.ArrayListUnmanaged(InstDatum),
+    ops: std.ArrayListUnmanaged(Inst),
     consts: std.ArrayListUnmanaged(Const),
 
     /// After compilation, consts is merged into the ops buffer.
@@ -149,7 +149,7 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn pushOperands(self: *ByteCodeBuffer, operands: []const InstDatum) !void {
+    pub fn pushOperands(self: *ByteCodeBuffer, operands: []const Inst) !void {
         try self.ops.appendSlice(self.alloc, operands);
     }
 
@@ -229,7 +229,7 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
     }
 }
 
-pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize, extra: []const u8) void {
+pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extra: []const u8) void {
     switch (code) {
         .add => {
             const left = pc[1].arg;
@@ -272,7 +272,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const InstDatum, len: usize,
             const startLocal = pc[1].arg;
             const numRet = pc[3].arg;
             const stackSize = pc[4].arg;
-            const pcPtr: [*]cy.InstDatum = @ptrFromInt(@as(usize, @intCast(@as(*const align(1) u48, @ptrCast(pc + 6)).*)));
+            const pcPtr: [*]cy.Inst = @ptrFromInt(@as(usize, @intCast(@as(*const align(1) u48, @ptrCast(pc + 6)).*)));
             fmt.printStderr("{} {} startLocal={}, numRet={}, stackSize={}, pcPtr={}", &.{v(pcOffset), v(code), v(startLocal), v(numRet), v(stackSize), v(pcPtr)});
         },
         .call1 => {
@@ -507,11 +507,11 @@ pub const Const = packed union {
     }
 };
 
-pub const InstDatum = packed union {
+pub const Inst = packed union {
     code: OpCode,
     arg: u8,
 
-    pub fn initArg(arg: u8) InstDatum {
+    pub fn initArg(arg: u8) Inst {
         return .{
             .arg = arg,
         };
@@ -549,7 +549,7 @@ pub const CallObjSymInstLen = vmc.CALL_OBJ_SYM_INST_LEN;
 pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
 pub const CallInstLen = vmc.CALL_INST_LEN;
 
-pub fn getInstLenAt(pc: [*]const InstDatum) u8 {
+pub fn getInstLenAt(pc: [*]const Inst) u8 {
     switch (pc[0].code) {
         .ret0,
         .ret1,
@@ -884,7 +884,7 @@ pub const OpCode = enum(u8) {
 
 test "Internals." {
     try t.eq(std.enums.values(OpCode).len, 100);
-    try t.eq(@sizeOf(InstDatum), 1);
+    try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);
 }

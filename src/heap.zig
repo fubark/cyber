@@ -819,7 +819,7 @@ pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Val
 /// Captured values are retained during alloc.
 pub fn allocClosure(
     self: *cy.VM, fp: [*]Value, funcPc: usize, numParams: u8, stackSize: u8,
-    rFuncSigId: u16, capturedVals: []const cy.InstDatum, closureLocal: u8,
+    rFuncSigId: u16, capturedVals: []const cy.Inst, closureLocal: u8,
 ) !Value {
     var obj: *HeapObject = undefined;
     if (capturedVals.len <= 2) {
@@ -864,7 +864,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, rF
     return Value.initPtr(obj);
 }
 
-pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.InstDatum, vals: []const Value) !Value {
+pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Value) !Value {
     const firstStr = self.valueAsStaticString(Value.initRaw(self.consts[strs[0].arg].val));
     try self.u8Buf.resize(self.alloc, firstStr.len);
     std.mem.copy(u8, self.u8Buf.items(), firstStr);

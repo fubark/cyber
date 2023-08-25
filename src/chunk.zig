@@ -92,7 +92,7 @@ pub const Chunk = struct {
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
     subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
 
-    operandStack: std.ArrayListUnmanaged(cy.InstDatum),
+    operandStack: std.ArrayListUnmanaged(cy.Inst),
 
     /// Used to advance to the next saved sema sub block.
     nextSemaSubBlockId: u32,
@@ -327,7 +327,7 @@ pub const Chunk = struct {
     }
 
     pub fn pushTempOperand(self: *Chunk, operand: u8) !void {
-        try self.operandStack.append(self.alloc, cy.InstDatum.initArg(operand));
+        try self.operandStack.append(self.alloc, cy.Inst.initArg(operand));
     }
 
     pub fn reserveLocal(self: *Chunk, block: *GenBlock) !u8 {
@@ -443,13 +443,13 @@ pub const Chunk = struct {
         for (sblock.params.items) |varId| {
             const svar = self.vars.items[varId];
             if (svar.lifetimeRcCandidate and !svar.isParentLocalAlias()) {
-                try self.operandStack.append(self.alloc, cy.InstDatum.initArg(svar.local));
+                try self.operandStack.append(self.alloc, cy.Inst.initArg(svar.local));
             }
         }
         for (sblock.locals.items) |varId| {
             const svar = self.vars.items[varId];
             if (svar.lifetimeRcCandidate and svar.isDefinedOnce) {
-                try self.operandStack.append(self.alloc, cy.InstDatum.initArg(svar.local));
+                try self.operandStack.append(self.alloc, cy.Inst.initArg(svar.local));
             }
         }
         

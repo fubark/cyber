@@ -465,7 +465,7 @@ pub const ObjectTrace = struct {
     freeTypeId: rt.TypeId,
 };
 
-fn getOpCodeAtPc(ops: []const cy.InstDatum, atPc: u32) ?cy.OpCode {
+fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
     var i: usize = 0;
     while (i < ops.len) {
         if (i == atPc) {

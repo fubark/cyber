@@ -8,6 +8,7 @@ const fmt = @import("fmt.zig");
 const bytecode = @import("bytecode.zig");
 const v = fmt.v;
 const log = stdx.log.scoped(.debug);
+const vmc = @import("vm_c.zig");
 
 const NullId = std.math.maxInt(u32);
 
@@ -513,16 +514,6 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         }
         fmt.printStderr("\n", &.{});
 
-        var dumpCtx = DumpContext{
-            .vm = vm,
-            .symIdToVar = .{},
-        };
-        defer dumpCtx.deinit();
-        var iter = vm.varSymSigs.iterator();
-        while (iter.next()) |e| {
-            try dumpCtx.symIdToVar.put(vm.alloc, e.value_ptr.*, e.key_ptr.*);
-        }
-
         const node = chunk.nodes[sym.loc];
         const token = chunk.tokens[node.start_token];
         const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].code), @tagName(node.node_t) });
@@ -546,7 +537,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
             const code = pc[0].code;
             const len = bytecode.getInstLenAt(pc);
-            try dumpCtx.dumpInst(pcOffset, code, pc, len);
+            try dumpInst(vm, pcOffset, code, pc, len);
             pcOffset += len;
             pc += len;
         }
@@ -558,7 +549,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         fmt.printStderr("--", &.{});
         var code = pc[0].code;
         var len = bytecode.getInstLenAt(pc);
-        try dumpCtx.dumpInst(pcOffset, code, pc, len);
+        try dumpInst(vm, pcOffset, code, pc, len);
         pcOffset += len;
         pc += len;
 
@@ -570,7 +561,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
             }
             code = pc[0].code;
             len = bytecode.getInstLenAt(pc);
-            try dumpCtx.dumpInst(pcOffset, code, pc, len);
+            try dumpInst(vm, pcOffset, code, pc, len);
             pcOffset += len;
             pc += len;
             i += 1;
@@ -591,7 +582,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
             const code = pc[0].code;
             const len = bytecode.getInstLenAt(pc);
-            bytecode.dumpInst(pcOffset, code, pc, len, "");
+            try dumpInst(vm, pcOffset, code, pc, len);
             pcOffset += len;
             pc += len;
         }
@@ -618,37 +609,28 @@ fn dumpLabelAdvance(vm: *const cy.VM, curLabelIdx: *u32, nextLabelPc: *u32) void
     }
 }
 
-const DumpContext = struct {
-    vm: *const cy.VM,
-    symIdToVar: std.AutoHashMapUnmanaged(u32, cy.hash.KeyU64),
-
-    fn deinit(self: *DumpContext) void {
-        self.symIdToVar.deinit(self.vm.alloc);
+pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const cy.Inst, len: u32) !void {
+    var buf: [1024]u8 = undefined;
+    var extra: []const u8 = "";
+    switch (code) {
+        .staticVar => {
+            const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
+            const nameId = vm.varSymExtras.get(symId).?;
+            const name = cy.sema.getName(&vm.compiler, nameId);
+            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+        },
+        .fieldRetain => {
+            const symId = pc[3].arg;
+            const sym = vm.fieldSyms.buf[symId];
+            const name = cy.sema.getName(&vm.compiler, sym.nameId);
+            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
+        },
+        .callObjSym => {
+            const symId = pc[4].arg;
+            const symName = vm.methodSymExtras.buf[symId].getName();
+            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
+        },
+        else => {},
     }
-
-    fn dumpInst(self: *const DumpContext, pcOffset: u32, code: cy.OpCode, pc: [*]cy.InstDatum, len: u32) !void {
-        var buf: [1024]u8 = undefined;
-        var extra: []const u8 = "";
-        switch (code) {
-            .staticVar => {
-                const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
-                const nameId = self.symIdToVar.get(symId).?.rtVarKey.nameId;
-                const name = cy.sema.getName(&self.vm.compiler, nameId);
-                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
-            },
-            .fieldRetain => {
-                const symId = pc[3].arg;
-                const sym = self.vm.fieldSyms.buf[symId];
-                const name = cy.sema.getName(&self.vm.compiler, sym.nameId);
-                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
-            },
-            .callObjSym => {
-                const symId = pc[4].arg;
-                const symName = self.vm.methodSymExtras.buf[symId].getName();
-                extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
-            },
-            else => {},
-        }
-        bytecode.dumpInst(pcOffset, code, pc, len, extra);
-    }
-};
+    bytecode.dumpInst(pcOffset, code, pc, len, extra);
+}

@@ -718,6 +718,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
     _ = tcc.tcc_add_symbol(state, "icyAllocCyPointer", cAllocCyPointer);
     _ = tcc.tcc_add_symbol(state, "icyAllocObject", cAllocObject);
     _ = tcc.tcc_add_symbol(state, "icyAllocList", cAllocList);
+    // _ = tcc.tcc_add_symbol(state, "printValue", cPrintValue);
     if (builtin.cpu.arch == .aarch64) {
         _ = tcc.tcc_add_symbol(state, "memmove", memmove);
     }
@@ -1002,6 +1003,11 @@ fn cAllocObject(vm: *cy.UserVM, id: u32) callconv(.C) Value {
 fn cAllocList(vm: *cy.UserVM, elems: [*]Value, n: u32) callconv(.C) Value {
     const ivm = vm.internal();
     return cy.heap.allocList(ivm, elems[0..n]) catch stdx.fatal();
+}
+
+fn cPrintValue(val: u64) void {
+    const v: Value = @bitCast(val);
+    v.dump();
 }
 
 fn breakpoint() callconv(.C) void {

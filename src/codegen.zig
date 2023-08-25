@@ -222,7 +222,7 @@ fn stringTemplate(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue 
             const raw = self.getNodeTokenString(cur);
             const str = try self.unescapeString(raw);
             const idx = try self.buf.getOrPushStringConst(str);
-            try self.operandStack.append(self.alloc, cy.InstDatum.initArg(@intCast(idx)));
+            try self.operandStack.append(self.alloc, cy.Inst.initArg(@intCast(idx)));
         } else {
             _ = try expression(self, curId, RegisterCstr.tempMustRetain);
             numExprs += 1;

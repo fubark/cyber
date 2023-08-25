@@ -251,6 +251,7 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     }
     if (config.debug) {
         cy.verbose = true;
+        cy.collectDumpInfo = true;
         t.setLogLevel(.debug);
     }
     defer {
@@ -259,6 +260,7 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
         }
         if (config.debug) {
             cy.verbose = false;
+            cy.collectDumpInfo = false;
             t.setLogLevel(.warn);
         }
     }

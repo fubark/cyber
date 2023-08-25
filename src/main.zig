@@ -127,6 +127,8 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     try vm.init(alloc);
     defer vm.deinit(false);
 
+    cy.collectDumpInfo = true;
+
     var trace: cy.TraceInfo = undefined;
     vm.setTrace(&trace);
     const res = vm.compile(path, src, .{ .enableFileModules = true }) catch |err| {
@@ -154,6 +156,9 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     defer alloc.free(src);
 
     cy.verbose = verbose;
+    if (verbose) {
+        cy.collectDumpInfo = true;
+    }
 
     try vm.init(alloc);
     defer vm.deinit(false);

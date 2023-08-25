@@ -155,6 +155,8 @@ pub fn forceSectionDeps() !void {
     forceSectionDep(initSection);
 }
 
+pub var collectDumpInfo = false;
+
 /// Whether to print verbose logs.
 pub export var verbose = false;
 

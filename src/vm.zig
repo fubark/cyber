@@ -85,6 +85,7 @@ pub const VM = struct {
     funcSymSigs: std.HashMapUnmanaged(AbsFuncSigKey, SymbolId, KeyU96Context, 80),
     funcSymDetails: cy.List(rt.FuncSymDetail),
 
+    /// Static vars. 
     varSyms: cy.List(rt.VarSym),
     varSymSigs: std.HashMapUnmanaged(rt.VarKey, SymbolId, cy.hash.KeyU64Context, 80),
 
@@ -163,6 +164,8 @@ pub const VM = struct {
 
     expGlobalRC: usize,
 
+    varSymExtras: std.AutoHashMapUnmanaged(SymbolId, sema.NameSymId),
+
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
             .alloc = alloc,
@@ -225,6 +228,7 @@ pub const VM = struct {
             .lastError = null,
             .userData = null,
             .expGlobalRC = 0,
+            .varSymExtras = .{},
         };
         self.curFiber = &self.mainFiber;
         try self.compiler.init(self);
@@ -414,6 +418,12 @@ pub const VM = struct {
             } else {
                 self.objectTraceMap.deinit(self.alloc);
             }
+        }
+
+        if (reset) {
+            self.varSymExtras.clearRetainingCapacity();
+        } else {
+            self.varSymExtras.deinit(self.alloc);
         }
 
         if (!reset) {
@@ -869,6 +879,9 @@ pub const VM = struct {
             const id: u32 = @intCast(self.varSyms.len);
             try self.varSyms.append(self.alloc, rt.VarSym.init(Value.None));
             res.value_ptr.* = id;
+            if (cy.collectDumpInfo) {
+                try self.varSymExtras.put(self.alloc, id, nameId);
+            }
             return id;
         } else {
             return res.value_ptr.*;
@@ -3809,22 +3822,19 @@ fn dumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) !void {
     if (builtin.is_test and !debug.atLeastTestDebugLevel()) {
         return;
     }
-    var buf: [1024]u8 = undefined;
-    var extra: []const u8 = "";
-
     const offset = getInstOffset(vm, pc);
+    const len = cy.getInstLenAt(pc);
+    try cy.debug.dumpInst(vm, offset, pc[0].code, pc, len);
     switch (pc[0].code) {
         .constOp => {
             const idx = @as(*const align (1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].arg;
             _ = dst;
             const val = Value{ .val = vm.consts[idx].val };
-            extra = try std.fmt.bufPrint(&buf, "[constVal={s}]", .{vm.valueToTempString(val)});
+            fmt.printStderr("rt: [constVal={}]\n", &.{v(vm.valueToTempString(val))});
         },
         else => {},
     }
-    const len = cy.getInstLenAt(pc);
-    cy.bytecode.dumpInst(offset, pc[0].code, pc, len, extra);
 }
 
 pub const EvalError = error{

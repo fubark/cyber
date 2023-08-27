@@ -64,10 +64,11 @@ pub const ValuePair = struct {
 /// and one more bit (so that QNANs can also be a number value) take up 13 bits.
 pub const Value = packed union {
     val: u64,
+
     /// Call frame return info.
     retInfo: packed struct {
         numRetVals: u8,
-        retFlag: bool,
+        retFlag: u8,
 
         /// Since there are different call insts with varying lengths,
         /// the call convention prefers to advance the pc before saving it so

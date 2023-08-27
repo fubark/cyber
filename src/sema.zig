@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const vmc = @import("vm_c.zig");
 const rt = cy.rt;
 const types = cy.types;
 const bt = types.BuiltinTypeSymIds;
@@ -285,7 +286,7 @@ pub const ResolvedFuncSym = struct {
     }
 };
 
-const ResolvedSymType = enum {
+const ResolvedSymType = enum(u8) {
     func,
     variable,
     object,
@@ -4337,7 +4338,12 @@ test "Internals." {
     try t.eq(@sizeOf(LocalVar), 32);
     try t.eq(@sizeOf(ResolvedFuncSym), 24);
     try t.eq(@sizeOf(ResolvedFuncSig), 16);
+
     try t.eq(@sizeOf(ResolvedSym), 24);
+    try t.eq(@offsetOf(ResolvedSym, "symT"), @offsetOf(vmc.ResolvedSym, "symT"));
+    try t.eq(@offsetOf(ResolvedSym, "key"), @offsetOf(vmc.ResolvedSym, "key"));
+
+    try t.eq(@sizeOf(ResolvedSymData), 12);
     try t.eq(@sizeOf(Name), 16);
     try t.eq(@sizeOf(CompactResolvedSymId), 4);
 }

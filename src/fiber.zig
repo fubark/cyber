@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const vmc = @import("vm_c.zig");
 const rt = cy.rt;
 const log = stdx.log.scoped(.fiber);
 const Value = cy.Value;
@@ -35,6 +36,9 @@ pub const Fiber = extern struct {
     /// This is used to find end locals pc if any.
     initialPcOffset: u32,
 
+    panicPayload: PanicPayload,
+    panicType: PanicType,
+
     /// Where coyield and coreturn should copy the return value to.
     /// If this is the NullByteId, no value is copied and instead released.
     parentDstLocal: u8,
@@ -42,6 +46,17 @@ pub const Fiber = extern struct {
     fn getFp(self: Fiber) [*]Value {
         return self.stackPtr + self.fpOffset;
     }
+};
+
+pub const PanicPayload = u64;
+
+pub const PanicType = enum(u8) {
+    uncaughtError = vmc.PANIC_UNCAUGHT_ERROR,
+    staticMsg = vmc.PANIC_STATIC_MSG,
+    msg = vmc.PANIC_MSG,
+    nativeThrow = vmc.PANIC_NATIVE_THROW,
+    inflightOom = vmc.PANIC_INFLIGHT_OOM,
+    none = vmc.PANIC_NONE,
 };
 
 /// Holds info about a runtime try block.
@@ -52,7 +67,11 @@ pub const TryFrame = extern struct {
 };
 
 test "Internals" {
-    try t.eq(@sizeOf(Fiber), 80);
+    try t.eq(@sizeOf(Fiber), 88);
+    try t.eq(@offsetOf(Fiber, "panicPayload"), @offsetOf(vmc.Fiber, "panicPayload"));
+    try t.eq(@offsetOf(Fiber, "panicType"), @offsetOf(vmc.Fiber, "panicType"));
+    try t.eq(@offsetOf(Fiber, "parentDstLocal"), @offsetOf(vmc.Fiber, "parentDstLocal"));
+
     try t.eq(@sizeOf(TryFrame), 16);
 }
 
@@ -80,6 +99,8 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
         .throwTraceCap = 0,
         .throwTraceLen = 0,
         .initialPcOffset = @intCast(pc),
+        .panicPayload = undefined,
+        .panicType = .none,
         .prevFiber = undefined,
     };
 

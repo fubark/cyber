@@ -7,6 +7,7 @@ const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const vm_ = @import("vm.zig");
+const vmc = @import("vm_c.zig");
 const sema = cy.sema;
 const types = cy.types;
 const bt = types.BuiltinTypeSymIds;
@@ -30,15 +31,17 @@ pub const VMcompiler = struct {
     alloc: std.mem.Allocator,
     vm: *cy.VM,
     buf: cy.ByteCodeBuffer,
+
     lastErr: []const u8,
+    
+    /// Sema model resulting from the sema pass.
+    sema: sema.Model,
+
     lastErrNode: cy.NodeId,
     lastErrChunk: cy.ChunkId,
 
     /// Used to return additional info for an error.
     errorPayload: cy.NodeId,
-
-    /// Sema model resulting from the sema pass.
-    sema: sema.Model,
 
     /// Absolute specifier to additional loaders.
     moduleLoaders: std.StringHashMapUnmanaged(std.ArrayListUnmanaged(cy.ModuleLoaderFunc)),
@@ -702,3 +705,8 @@ pub const CompileConfig = struct {
 pub const ValidateConfig = struct {
     enableFileModules: bool = false,
 };
+
+test "Internals." {
+    try t.eq(@offsetOf(VMcompiler, "buf"), @offsetOf(vmc.Compiler, "buf"));
+    try t.eq(@offsetOf(VMcompiler, "sema"), @offsetOf(vmc.Compiler, "sema"));
+}

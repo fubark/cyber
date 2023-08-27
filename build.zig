@@ -339,11 +339,17 @@ pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Op
     var cflags = std.ArrayList([]const u8).init(alloc);
     if (step.optimize == .Debug) {
         try cflags.append("-DDEBUG=1");
+    } else {
+        try cflags.append("-DDEBUG=0");
     }
     try cflags.append("-DCGOTO=1");
     if (opts.trackGlobalRc) {
         try cflags.append("-DTRACK_GLOBAL_RC=1");
     }
+    if (opts.trace) {
+        try cflags.append("-DTRACE_ENABLED=1");
+    }
+
     step.addIncludePath(.{ .path = thisDir() ++ "/src"});
     step.addCSourceFile(.{
         .file = .{ .path = thisDir() ++ "/src/vm.c" },

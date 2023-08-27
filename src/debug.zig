@@ -255,47 +255,46 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
     }
 }
 
-pub const PanicPayload = u64;
-
-pub const PanicType = enum {
-    /// Uncaught thrown error. Error value is in `panicPayload`.
-    uncaughtError,
-
-    /// Msg string is in `panicPayload`. Lower u48 is the pointer, and upper u16 is the length.
-    msg,
-
-    /// panicPayload contains error value thrown from native function.
-    nativeThrow,
-
-    none,
-};
-
 pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
-    switch (vm.panicType) {
+    switch (vm.curFiber.panicType) {
         .uncaughtError => {
-            const str = vm.valueToTempString(cy.Value{ .val = vm.panicPayload });
+            const str = vm.valueToTempString(cy.Value{ .val = vm.curFiber.panicPayload });
             return try fmt.allocFormat(vm.alloc, "{}", &.{v(str)});
         },
         .msg => {
-            const ptr: usize = @intCast(vm.panicPayload & ((1 << 48) - 1));
-            const len: usize = @intCast(vm.panicPayload >> 48);
+            const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.curFiber.panicPayload >> 48);
+            // Check for zero delimited.
+            const str = @as([*]const u8, @ptrFromInt(ptr))[0..len];
+            if (str[len-1] == 0) {
+                return vm.alloc.dupe(u8, str[0..len-1]);
+            } else {
+                return vm.alloc.dupe(u8, str);
+            }
+        },
+        .staticMsg => {
+            const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.curFiber.panicPayload >> 48);
             return vm.alloc.dupe(u8, @as([*]const u8, @ptrFromInt(ptr))[0..len]);
         },
+        .inflightOom,
         .nativeThrow,
         .none => {
-            stdx.panic("Unexpected panic type.");
+            stdx.panicFmt("Unexpected panic type. {}", .{vm.curFiber.panicType});
         },
     }
 }
 
 pub fn freePanicPayload(vm: *const cy.VM) void {
-    switch (vm.panicType) {
+    switch (vm.curFiber.panicType) {
         .uncaughtError => {},
         .msg => {
-            const ptr: usize = @intCast(vm.panicPayload & ((1 << 48) - 1));
-            const len: usize = @intCast(vm.panicPayload >> 48);
+            const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
+            const len: usize = @intCast(vm.curFiber.panicPayload >> 48);
             vm.alloc.free(@as([*]const u8, @ptrFromInt(ptr))[0..len]);
         },
+        .staticMsg,
+        .inflightOom,
         .nativeThrow,
         .none => {},
     }
@@ -360,7 +359,7 @@ pub fn compactToStackFrame(vm: *cy.VM, cframe: CompactFrame) !StackFrame {
     return getStackFrame(vm, sym);
 }
 
-fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) !StackFrame {
+fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
     if (sym.frameLoc == cy.NullId) {
         const chunk = vm.compiler.chunks.items[sym.file];
         const node = chunk.nodes[sym.loc];
@@ -408,7 +407,7 @@ pub fn buildStackTrace(self: *cy.VM) !void {
     while (true) {
         const sym = getDebugSym(self, pcOffset) orelse return error.NoDebugSym;
 
-        const frame = try getStackFrame(self, sym);
+        const frame = getStackFrame(self, sym);
         try frames.append(self.alloc, frame);
         if (sym.frameLoc == cy.NullId) {
             break;

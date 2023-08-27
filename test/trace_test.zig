@@ -4,7 +4,13 @@ const stdx = @import("stdx");
 const t = stdx.testing;
 
 const cy = @import("../src/cyber.zig");
+const vmc = @import("../src/vm_c.zig");
 const log = stdx.log.scoped(.trace_test);
+
+test {
+    // Include exports for C vm.
+    std.testing.refAllDecls(cy.vm);
+}
 
 test "ARC." {
     var run: VMrunner = undefined;
@@ -401,3 +407,7 @@ const VMrunner = struct {
         return undefined;
     }
 };
+
+test "Internals." {
+    try t.eq(@offsetOf(cy.VM, "trace"), @offsetOf(vmc.VM, "trace"));
+}

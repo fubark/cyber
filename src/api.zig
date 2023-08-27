@@ -312,15 +312,15 @@ pub const UserVM = struct {
         @setCold(true);
         const vm = self.internal();
         const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
-        vm.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
-        vm.panicType = .msg;
+        vm.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
+        vm.curFiber.panicType = .msg;
         return Value.Interrupt;
     }
 
     pub fn prepareThrowSymbol(self: *UserVM, id: u8) Value {
         const vm = self.internal();
-        vm.panicPayload = Value.initErrorSymbol(id).val;
-        vm.panicType = .nativeThrow;
+        vm.curFiber.panicPayload = Value.initErrorSymbol(id).val;
+        vm.curFiber.panicType = .nativeThrow;
         return Value.Interrupt;
     }
 

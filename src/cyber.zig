@@ -80,7 +80,9 @@ pub const MaxPoolObjectStringByteLen = heap.MaxPoolObjectAstringByteLen;
 pub const MaxPoolObjectRawStringByteLen = heap.MaxPoolObjectRawStringByteLen;
 
 pub const fiber = @import("fiber.zig");
-pub const Fiber = fiber.Fiber;
+
+pub const vmc = @import("vm_c.zig");
+pub const Fiber = vmc.Fiber;
 
 pub const arc = @import("arc.zig");
 

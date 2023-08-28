@@ -67,7 +67,7 @@ pub const VM = struct {
     /// Tail is only used in debug mode.
     heapFreeTail: if (builtin.mode == .Debug) ?*HeapObject else void,
 
-    tryStack: cy.List(cy.fiber.TryFrame),
+    tryStack: cy.List(vmc.TryFrame),
 
     refCounts: if (TrackGlobalRC) usize else void,
 
@@ -122,7 +122,7 @@ pub const VM = struct {
     /// Records a minimal trace during stack unwinding.
     /// Only includes frames visited during stack unwinding.
     /// Further frames would need to be queried when building a full stack trace.
-    throwTrace: cy.List(cy.debug.CompactFrame),
+    throwTrace: cy.List(vmc.CompactFrame),
 
     trace: if (TraceEnabled) *TraceInfo else void,
 
@@ -225,7 +225,7 @@ pub const VM = struct {
             .expGlobalRC = 0,
             .varSymExtras = .{},
         };
-        self.mainFiber.panicType = .none;
+        self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
         try self.compiler.init(self);
 
@@ -628,19 +628,14 @@ pub const VM = struct {
         }
     }
 
-    fn prepareEvalCold(self: *VM, buf: cy.ByteCodeBuffer) void {
-        @setCold(true);
-        debug.freePanicPayload(self);
-        self.curFiber.panicType = .none;
-        self.debugTable = buf.debugTable.items;
-    }
-
     pub fn evalByteCode(self: *VM, buf: cy.ByteCodeBuffer) !Value {
         if (buf.ops.items.len == 0) {
             return error.NoEndOp;
         }
 
-        @call(.never_inline, VM.prepareEvalCold, .{self, buf});
+        debug.freePanicPayload(self);
+        self.curFiber.panicType = vmc.PANIC_NONE;
+        self.debugTable = buf.debugTable.items;
 
         // Set these last to hint location to cache before eval.
         self.pc = @ptrCast(buf.ops.items.ptr);
@@ -1318,31 +1313,32 @@ pub const VM = struct {
         }
     }
 
-    fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic, OutOfMemory} {
+    fn panicFmt(self: *VM, format: []const u8, args: []const fmt.FmtValue) error{Panic} {
         @setCold(true);
         const msg = fmt.allocFormat(self.alloc, format, args) catch |err| {
             if (err == error.OutOfMemory) {
-                return error.OutOfMemory;
+                self.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+                return error.Panic;
             } else {
                 stdx.panic("unexpected");
             }
         };
         self.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
-        self.curFiber.panicType = .msg;
+        self.curFiber.panicType = vmc.PANIC_MSG;
         log.debug("{s}", .{msg});
         return error.Panic;
     }
 
     pub fn interruptThrowSymbol(self: *VM, sym: bindings.Symbol) error{Panic} {
         self.curFiber.panicPayload = Value.initErrorSymbol(@intFromEnum(sym)).val;
-        self.curFiber.panicType = .nativeThrow;
+        self.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return error.Panic;
     }
 
     pub fn panicWithUncaughtError(self: *VM, err: Value) error{Panic} {
         @setCold(true);
         self.curFiber.panicPayload = err.val;
-        self.curFiber.panicType = .uncaughtError;
+        self.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
         return error.Panic;
     }
 
@@ -1350,7 +1346,7 @@ pub const VM = struct {
         @setCold(true);
         const dupe = try self.alloc.dupe(u8, msg);
         self.curFiber.panicPayload = @as(u64, @intFromPtr(dupe.ptr)) | (@as(u64, dupe.len) << 48);
-        self.curFiber.panicType = .msg;
+        self.curFiber.panicType = vmc.PANIC_MSG;
         log.debug("{s}", .{dupe});
         return error.Panic;
     }
@@ -2216,13 +2212,13 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
                 } else if (err == error.End) {
                     return;
                 } else if (err == error.Panic) {
-                    if (vm.curFiber.panicType == .nativeThrow) {
+                    if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
                         if (try @call(.never_inline, cy.fiber.throw, .{vm, vm.framePtr, vm.pc, Value.initRaw(vm.curFiber.panicPayload) })) |res| {
                             vm.pc = res.pc;
                             vm.framePtr = res.sp;
                             continue;
                         } else {
-                            vm.curFiber.panicType = .uncaughtError;
+                            vm.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
                         }
                     }
                     try @call(.never_inline, debug.buildStackTrace, .{vm});
@@ -2235,17 +2231,21 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
         while (true) {
             const res = vmc.execBytecode(@ptrCast(vm));
             if (res == vmc.RES_CODE_PANIC) {
-                if (vm.curFiber.panicType == .nativeThrow) {
+                if (vm.curFiber.panicType == vmc.PANIC_NATIVE_THROW) {
                     if (try @call(.never_inline, cy.fiber.throw, .{vm, vm.framePtr, vm.pc, Value.initRaw(vm.curFiber.panicPayload) })) |throwRes| {
                         vm.pc = throwRes.pc;
                         vm.framePtr = throwRes.sp;
                         continue;
                     } else {
-                        vm.curFiber.panicType = .uncaughtError;
+                        vm.curFiber.panicType = vmc.PANIC_UNCAUGHT_ERROR;
                     }
                 }
                 try @call(.never_inline, debug.buildStackTrace, .{vm});
                 return error.Panic;
+            } else if (res == vmc.RES_CODE_STACK_OVERFLOW) {
+                log.debug("grow stack", .{});
+                try @call(.never_inline, cy.fiber.growStackAuto, .{vm});
+                continue;
             } else if (res == vmc.RES_CODE_UNKNOWN) {
                 log.debug("Unknown error.", .{});
                 return vm.panic("Unknown error code.");
@@ -2973,7 +2973,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     try @call(.never_inline, @TypeOf(vm.tryStack).growTotalCapacity, .{&vm.tryStack, vm.alloc, vm.tryStack.len + 1});
                 }
                 vm.tryStack.appendAssumeCapacity(.{
-                    .fp = framePtr,
+                    .fp = @ptrCast(framePtr),
                     .catchPc = getInstOffset(vm, pc) + catchPcOffset,
                     .catchErrDst = errDst,
                 });
@@ -3321,8 +3321,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const val = framePtr[pc[1].arg];
                 if (val.isPointer()) {
-                    const fiber = val.asPointer(*cy.fiber.Fiber);
-                    if (fiber.structId == rt.FiberT) {
+                    const fiber = val.asPointer(*vmc.Fiber);
+                    if (fiber.typeId == rt.FiberT) {
                         if (fiber != vm.curFiber) {
                             // Only resume fiber if it's not done.
                             if (fiber.pcOffset != cy.NullId) {
@@ -4051,18 +4051,27 @@ fn panicIncompatibleFieldType(vm: *cy.VM, fieldSemaTypeId: types.TypeId, rightv:
     );
 }
 
-fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, targetFuncSigId: sema.ResolvedFuncSigId) error{Panic, OutOfMemory} {
+fn panicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: []const Value, targetFuncSigId: sema.ResolvedFuncSigId) error{Panic} {
     for (args) |arg| {
         release(vm, arg);
     }
 
-    const semaTypeIds = try allocFuncCallSemaTypeIds(vm, args);
+    const semaTypeIds = allocFuncCallSemaTypeIds(vm, args) catch {
+        vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+        return error.Panic;
+    };
     defer vm.alloc.free(semaTypeIds);
 
     const nameId = vm.funcSymDetails.buf[funcId].nameId;
     const name = sema.getName(&vm.compiler, nameId);
-    const sigStr = try sema.allocResolvedFuncSigTypesStr(&vm.compiler, semaTypeIds, bt.Any);
-    const existingSigStr = try sema.allocResolvedFuncSigStr(&vm.compiler, targetFuncSigId);
+    const sigStr = sema.allocResolvedFuncSigTypesStr(&vm.compiler, semaTypeIds, bt.Any) catch {
+        vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+        return error.Panic;
+    };
+    const existingSigStr = sema.allocResolvedFuncSigStr(&vm.compiler, targetFuncSigId) catch {
+        vm.curFiber.panicType = vmc.PANIC_INFLIGHT_OOM;
+        return error.Panic;
+    };
     defer {
         vm.alloc.free(sigStr);
         vm.alloc.free(existingSigStr);
@@ -4784,14 +4793,34 @@ export fn zOpCodeName(code: vmc.OpCode) [*:0]const u8 {
     return @tagName(ecode);
 }
 
-export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.PcSp {
+export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: SymbolId, startLocal: u8, numArgs: u8, reqNumRetVals: u8) linksection(cy.HotSection) vmc.PcSpResult {
     const numRetVals: u2 = @intCast(reqNumRetVals);
-    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, symId, startLocal, numArgs, numRetVals}) catch {
-        stdx.fatal();
+    const res = @call(.always_inline, VM.callSym, .{vm, pc, framePtr, symId, startLocal, numArgs, numRetVals}) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else if (err == error.StackOverflow) {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_STACK_OVERFLOW,
+            };
+        } else {
+            log.debug("err {}", .{err});
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
     };
     return .{
         .pc = @ptrCast(res.pc),
         .sp = @ptrCast(res.sp),
+        .code = vmc.RES_CODE_SUCCESS,
     };
 }
 
@@ -4832,12 +4861,20 @@ export fn zCallObjSym(
     if (vm.getCallObjSym(typeId, methodId)) |sym| {
         const res = @call(.never_inline, callMethodEntry, .{
             vm, pc, stack, methodId, sym, recv, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
-        }) catch {
-            return .{
-                .pc = undefined,
-                .stack = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
+        }) catch |err| {
+            if (err == error.Panic) {
+                return .{
+                    .pc = undefined,
+                    .stack = undefined,
+                    .code = vmc.RES_CODE_PANIC,
+                };
+            } else {
+                return .{
+                    .pc = undefined,
+                    .stack = undefined,
+                    .code = vmc.RES_CODE_UNKNOWN,
+                };
+            }
         };
         return .{
             .pc = @ptrCast(res.pc),
@@ -4845,12 +4882,20 @@ export fn zCallObjSym(
             .code = vmc.RES_CODE_SUCCESS,
         };
     } else {
-        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, methodId, startLocal, numArgs, numRet}) catch {
-            return .{
-                .pc = undefined,
-                .stack = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
+        const res = @call(.never_inline, callObjSymFallback, .{vm, pc, stack, recv, typeId, methodId, startLocal, numArgs, numRet}) catch |err| {
+            if (err == error.Panic) {
+                return .{
+                    .pc = undefined,
+                    .stack = undefined,
+                    .code = vmc.RES_CODE_PANIC,
+                };
+            } else {
+                return .{
+                    .pc = undefined,
+                    .stack = undefined,
+                    .code = vmc.RES_CODE_UNKNOWN,
+                };
+            }
         };
         return .{
             .pc = @ptrCast(res.pc),
@@ -4915,9 +4960,38 @@ export fn zEvalCompareNot(vm: *VM, left: Value, right: Value) vmc.Value {
 }
 
 export fn zGetIndex(vm: *VM, recv: *Value, indexv: Value) vmc.ValueResult {
-    const val = vm.getIndex(recv, indexv) catch return .{
-        .val = undefined,
-        .code = vmc.RES_CODE_UNKNOWN,
+    const val = vm.getIndex(recv, indexv) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .val = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else {
+            return .{
+                .val = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
+    };
+    return .{
+        .val = @bitCast(val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+} 
+
+export fn zGetReverseIndex(vm: *VM, recv: *Value, indexv: Value) vmc.ValueResult {
+    const val = vm.getReverseIndex(recv, indexv) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .val = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else {
+            return .{
+                .val = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
     };
     return .{
         .val = @bitCast(val),
@@ -4926,12 +5000,20 @@ export fn zGetIndex(vm: *VM, recv: *Value, indexv: Value) vmc.ValueResult {
 } 
 
 export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) vmc.PcSpResult {
-    const res = call(vm, pc, framePtr, callee, startLocal, numArgs, retInfo) catch {
-        return .{
-            .pc = undefined,
-            .sp = undefined,
-            .code = vmc.RES_CODE_UNKNOWN,
-        };
+    const res = call(vm, pc, framePtr, callee, startLocal, numArgs, retInfo) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else {
+            return .{
+                .pc = undefined,
+                .sp = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
     };
     return .{
         .pc = @ptrCast(res.pc),
@@ -4942,6 +5024,19 @@ export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, star
 
 export fn zAllocPoolObject(vm: *cy.VM) vmc.HeapObjectResult {
     const obj = cy.heap.allocPoolObject(vm) catch {
+        return .{
+            .obj = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .obj = @ptrCast(obj),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zAllocExternalObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
+    const obj = cy.heap.allocExternalObject(vm, size) catch {
         return .{
             .obj = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -5018,4 +5113,85 @@ export fn zAlloc(alloc: vmc.ZAllocator, n: usize) vmc.BufferResult {
         .len = buf.len,
         .code = vmc.RES_CODE_SUCCESS,
     };
+}
+
+export fn zPanicIncompatibleFuncSig(vm: *cy.VM, funcId: rt.FuncId, args: [*]const Value, numArgs: usize, targetFuncSigId: sema.ResolvedFuncSigId) void {
+    panicIncompatibleFuncSig(vm, funcId, args[0..numArgs], targetFuncSigId) catch {};
+}
+
+export fn zDebugLogEnabled() bool {
+    if (builtin.is_test) {
+        return std.testing.log_level == .debug;
+    }
+    return builtin.mode == .Debug;
+}
+
+export fn zSetStaticFunc(vm: *VM, funcId: SymbolId, val: Value) vmc.ResultCode {
+    setStaticFunc(vm, funcId, val) catch |err| {
+        if (err == error.Panic) {
+            return vmc.RES_CODE_PANIC;
+        } else {
+            return vmc.RES_CODE_UNKNOWN;
+        }
+    };
+    return vmc.RES_CODE_SUCCESS;
+}
+
+export fn zGrowTryStackTotalCapacity(list: *cy.List(vmc.TryFrame), alloc: vmc.ZAllocator, minCap: usize) vmc.ResultCode {
+    const zalloc = std.mem.Allocator{
+        .ptr = @ptrCast(alloc.ptr),
+        .vtable = @ptrCast(@alignCast(alloc.vtable)),
+    };
+    list.growTotalCapacity(zalloc, minCap) catch {
+        return vmc.RES_CODE_UNKNOWN;
+    };
+    return vmc.RES_CODE_SUCCESS;
+}
+
+export fn zThrow(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) vmc.PcSpResult {
+    const mbRes = cy.fiber.throw(vm, startFp, pc, err) catch {
+        return .{
+            .pc = undefined,
+            .sp = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    if (mbRes) |res| {
+        return .{
+            .pc = @ptrCast(res.pc),
+            .sp = @ptrCast(res.sp),
+            .code = vmc.RES_CODE_SUCCESS,
+        };
+    } else {
+        vm.panicWithUncaughtError(err) catch {};
+        return .{
+            .pc = undefined,
+            .sp = undefined,
+            .code = vmc.RES_CODE_PANIC,
+        };
+    }
+}
+
+export fn zSliceOp(vm: *VM, recv: *Value, startV: Value, endV: Value) vmc.ValueResult {
+    const val = vm.sliceOp(recv, startV, endV) catch |err| {
+        if (err == error.Panic) {
+            return .{
+                .val = undefined,
+                .code = vmc.RES_CODE_PANIC,
+            };
+        } else {
+            return .{
+                .val = undefined,
+                .code = vmc.RES_CODE_UNKNOWN,
+            };
+        }
+    };
+    return .{
+        .val = @bitCast(val),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
+export fn zOpMatch(vm: *const VM, pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
+    return opMatch(vm, pc, framePtr);
 }

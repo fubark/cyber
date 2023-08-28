@@ -4,8 +4,11 @@
 #include <math.h>
 
 typedef uint8_t u8;
+typedef int8_t i8;
 typedef uint16_t u16;
+typedef int16_t i16;
 typedef uint32_t u32;
+typedef int32_t i32;
 typedef uint64_t u64;
 
 typedef struct Str {
@@ -191,6 +194,7 @@ typedef union ValueUnion {
 } ValueUnion;
 typedef uint64_t Const;
 
+typedef u32 FuncId;
 typedef u32 NodeId;
 typedef u32 ChunkId;
 typedef u32 MethodId;
@@ -225,6 +229,16 @@ typedef struct ResolvedFuncSig {
     bool isTyped;
 } ResolvedFuncSig;
 
+typedef struct NativeFunc1 {
+    TypeId typeId;
+    u32 rc;
+    void* func;
+    u32 numParams;
+    u32 rFuncSigId;
+    Value tccState;
+    bool hasTccState;
+} NativeFunc1;
+
 typedef enum {
     /// Uncaught thrown error. Error value is in `panicPayload`.
     PANIC_UNCAUGHT_ERROR,
@@ -244,27 +258,48 @@ typedef enum {
     PANIC_NONE,
 } PanicType;
 
+/// Holds info about a runtime try block.
+typedef struct TryFrame {
+    Value* fp;
+    u32 catchPc;
+    u8 catchErrDst;
+} TryFrame;
+
+/// Minimal stack frame to reconstruct a `StackFrame`.
+typedef struct CompactFrame {
+    u32 pcOffset;
+    u32 fpOffset;
+} CompactFrame;
+
 typedef struct Fiber {
     TypeId typeId;
     uint32_t rc;
+
     struct Fiber* prevFiber;
     Value* stackPtr;
     uint32_t stackLen;
+
+    /// If pcOffset == NullId, the fiber is done.
     uint32_t pcOffset;
     uint32_t stackOffset;
 
     uint32_t tryStackCap;
-    void* tryStackPtr;
+    TryFrame* tryStackPtr;
     uint32_t tryStackLen;
 
     uint32_t throwTraceCap;
-    void* throwTracePtr;
+    CompactFrame* throwTracePtr;
     uint32_t throwTraceLen;
 
+    /// Points to the first inst of the fiber.
+    /// This is used to find end locals pc if any.
     uint32_t initialPcOffset;
 
     u64 panicPayload;
     u8 panicType;
+
+    /// Where coyield and coreturn should copy the return value to.
+    /// If this is the NullByteId, no value is copied and instead released.
     u8 parentDstLocal;
 } Fiber;
 
@@ -273,6 +308,24 @@ typedef struct Object {
     uint32_t rc;
     Value firstValue;
 } Object;
+
+typedef struct Box {
+    TypeId typeId;
+    uint32_t rc;
+    Value val;
+} Box;
+
+typedef struct Closure {
+    TypeId typeId;
+    u32 rc;
+    u32 funcPc;
+    u8 numParams;
+    u8 numCaptured;
+    u8 stackSize;
+    u8 local;
+    u64 rFuncSigId;
+    Value firstCapturedVal;
+} Closure;
 
 typedef struct Lambda {
     TypeId typeId;
@@ -313,7 +366,10 @@ typedef union HeapObject {
     Object object;
     MetaType metatype;
     Lambda lambda;
+    Closure closure;
+    Box box;
     Map map;
+    NativeFunc1 nativeFunc1;
 } HeapObject;
 
 typedef struct ZAllocator {
@@ -436,6 +492,41 @@ typedef struct TraceInfo {
     u32 numRetainCycleRoots;
 } TraceInfo;
 
+typedef enum {
+    FUNC_SYM_NATIVEFUNC1,
+    FUNC_SYM_FUNC,
+    FUNC_SYM_CLOSURE,
+} FuncSymbolType;
+
+typedef struct FuncSymbol {
+    u32 entryT;
+    union {
+        struct {
+            u16 typedFlagNumParams;
+            u16 rFuncSigId;
+        } nativeFunc1;
+        struct {
+            u32 rFuncSigId;
+        } none;
+        struct {
+            u32 rFuncSigId;
+        } func;
+    } innerExtra;
+    union {
+        void* nativeFunc1;
+        struct {
+            u32 pc;
+            u16 stackSize;
+            u16 numParams;
+        } func;
+        void* closure;
+    } inner;
+} FuncSymbol;
+
+typedef struct StaticVar {
+    Value value;
+} StaticVar;
+
 typedef struct VM {
     ZAllocator alloc;
 
@@ -475,11 +566,11 @@ typedef struct VM {
 
     ZHashMap methodSymSigs;
 
-    ZCyList funcSyms;
+    ZCyList funcSyms; // FuncSymbol
     ZHashMap funcSymSigs;
     ZCyList funcSymDetails;
 
-    ZCyList varSyms;
+    ZCyList varSyms; // StaticVar
     ZHashMap varSymSigs;
 
     ZCyList fieldSyms;
@@ -527,6 +618,7 @@ typedef struct EvalConfig {
 typedef enum {
     RES_CODE_SUCCESS = 0,
     RES_CODE_PANIC,
+    RES_CODE_STACK_OVERFLOW,
     RES_CODE_UNKNOWN,
 } ResultCode;
 
@@ -576,7 +668,7 @@ extern bool verbose;
 void zFatal();
 BufferResult zAlloc(ZAllocator alloc, size_t n);
 char* zOpCodeName(OpCode code);
-PcSp zCallSym(VM* vm, Inst* pc, Value* stack, uint16_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
+PcSpResult zCallSym(VM* vm, Inst* pc, Value* stack, uint16_t symId, uint8_t startLocal, uint8_t numArgs, uint8_t reqNumRetVals);
 void zDumpEvalOp(VM* vm, Inst* pc);
 void zDumpValue(Value val);
 void zFreeObject(VM* vm, HeapObject* obj);
@@ -592,10 +684,19 @@ uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(VM* vm, Value left, Value right);
 Value zEvalCompareNot(VM* vm, Value left, Value right);
 ValueResult zGetIndex(VM* vm, Value* recv, Value indexv); 
+ValueResult zGetReverseIndex(VM* vm, Value* recv, Value indexv); 
 PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs, Value retInfo);
 HeapObjectResult zAllocPoolObject(VM* vm);
+HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocMap(VM* vm, u16* keyIdxs, Value* vals, u32 numEntries);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
 ResultCode zSetIndexRelease(VM* vm, Value left, Value index, Value right);
 ResultCode zSetIndex(VM* vm, Value left, Value index, Value right);
+void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArgs, ResolvedFuncSigId targetFuncSigId);
+bool zDebugLogEnabled();
+ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
+ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
+PcSpResult zThrow(VM* vm, Value* startFp, const Inst* pc, Value err);
+ValueResult zSliceOp(VM* vm, Value* recv, Value startV, Value endV);
+u16 zOpMatch(VM* vm, const Inst* pc, Value* framePtr);

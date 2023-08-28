@@ -256,7 +256,7 @@ pub fn writeUserError(vm: *const cy.VM, w: anytype, title: []const u8, msg: []co
 }
 
 pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
-    switch (vm.curFiber.panicType) {
+    switch (@as(cy.fiber.PanicType, @enumFromInt(vm.curFiber.panicType))) {
         .uncaughtError => {
             const str = vm.valueToTempString(cy.Value{ .val = vm.curFiber.panicPayload });
             return try fmt.allocFormat(vm.alloc, "{}", &.{v(str)});
@@ -286,7 +286,7 @@ pub fn allocPanicMsg(vm: *const cy.VM) ![]const u8 {
 }
 
 pub fn freePanicPayload(vm: *const cy.VM) void {
-    switch (vm.curFiber.panicType) {
+    switch (@as(cy.fiber.PanicType, @enumFromInt(vm.curFiber.panicType))) {
         .uncaughtError => {},
         .msg => {
             const ptr: usize = @intCast(vm.curFiber.panicPayload & ((1 << 48) - 1));
@@ -344,17 +344,11 @@ pub const StackFrame = struct {
     chunkId: u32,
 };
 
-/// Minimal stack frame to reconstruct a `StackFrame`.
-pub const CompactFrame = struct {
-    pcOffset: u32,
-    fpOffset: u32,
-};
-
 test "Internals." {
-    try t.eq(@sizeOf(CompactFrame), 8);
+    try t.eq(@sizeOf(vmc.CompactFrame), 8);
 }
 
-pub fn compactToStackFrame(vm: *cy.VM, cframe: CompactFrame) !StackFrame {
+pub fn compactToStackFrame(vm: *cy.VM, cframe: vmc.CompactFrame) !StackFrame {
     const sym = getDebugSym(vm, cframe.pcOffset) orelse return error.NoDebugSym;
     return getStackFrame(vm, sym);
 }

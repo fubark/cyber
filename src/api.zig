@@ -7,6 +7,7 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
+const vmc = cy.vmc;
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
@@ -313,14 +314,14 @@ pub const UserVM = struct {
         const vm = self.internal();
         const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
         vm.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
-        vm.curFiber.panicType = .msg;
+        vm.curFiber.panicType = vmc.PANIC_MSG;
         return Value.Interrupt;
     }
 
     pub fn prepareThrowSymbol(self: *UserVM, id: u8) Value {
         const vm = self.internal();
         vm.curFiber.panicPayload = Value.initErrorSymbol(id).val;
-        vm.curFiber.panicType = .nativeThrow;
+        vm.curFiber.panicType = vmc.PANIC_NATIVE_THROW;
         return Value.Interrupt;
     }
 

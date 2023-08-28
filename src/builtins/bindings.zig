@@ -6,6 +6,7 @@ const fatal = stdx.fatal;
 const builtin = @import("builtin");
 
 const cy = @import("../cyber.zig");
+const vmc = cy.vmc;
 const rt = cy.rt;
 const sema = cy.sema;
 const bt = cy.types.BuiltinTypeSymIds;
@@ -816,7 +817,7 @@ fn pointerValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
 }
 
 fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
-    const fiber = recv.asPointer(*cy.fiber.Fiber);
+    const fiber = recv.asPointer(*vmc.Fiber);
     defer vm.releaseObject(stdx.ptrAlignCast(*cy.HeapObject, fiber));
 
     if (vm.internal().curFiber == fiber) {

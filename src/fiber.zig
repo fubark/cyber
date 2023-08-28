@@ -12,42 +12,6 @@ const rt = cy.rt;
 const log = stdx.log.scoped(.fiber);
 const Value = cy.Value;
 
-pub const Fiber = extern struct {
-    structId: rt.TypeId,
-    rc: u32,
-    prevFiber: ?*Fiber,
-    stackPtr: [*]Value,
-    stackLen: u32,
-
-    /// If pcOffset == NullId, the fiber is done.
-    pcOffset: u32,
-
-    fpOffset: u32,
-
-    tryStackCap: u32,
-    tryStackPtr: [*]TryFrame,
-    tryStackLen: u32,
-
-    throwTraceCap: u32,
-    throwTracePtr: [*]cy.debug.CompactFrame,
-    throwTraceLen: u32,
-
-    /// Points to the first inst of the fiber.
-    /// This is used to find end locals pc if any.
-    initialPcOffset: u32,
-
-    panicPayload: PanicPayload,
-    panicType: PanicType,
-
-    /// Where coyield and coreturn should copy the return value to.
-    /// If this is the NullByteId, no value is copied and instead released.
-    parentDstLocal: u8,
-
-    fn getFp(self: Fiber) [*]Value {
-        return self.stackPtr + self.fpOffset;
-    }
-};
-
 pub const PanicPayload = u64;
 
 pub const PanicType = enum(u8) {
@@ -59,20 +23,9 @@ pub const PanicType = enum(u8) {
     none = vmc.PANIC_NONE,
 };
 
-/// Holds info about a runtime try block.
-pub const TryFrame = extern struct {
-    fp: [*]Value,
-    catchPc: u32,
-    catchErrDst: u8,
-};
-
 test "Internals" {
-    try t.eq(@sizeOf(Fiber), 88);
-    try t.eq(@offsetOf(Fiber, "panicPayload"), @offsetOf(vmc.Fiber, "panicPayload"));
-    try t.eq(@offsetOf(Fiber, "panicType"), @offsetOf(vmc.Fiber, "panicType"));
-    try t.eq(@offsetOf(Fiber, "parentDstLocal"), @offsetOf(vmc.Fiber, "parentDstLocal"));
-
-    try t.eq(@sizeOf(TryFrame), 16);
+    try t.eq(@sizeOf(vmc.Fiber), 88);
+    try t.eq(@sizeOf(vmc.TryFrame), 16);
 }
 
 pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSize: u32) linksection(cy.HotSection) !cy.Value {
@@ -82,15 +35,15 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
     // Assumes call start local is at 1.
     std.mem.copy(Value, stack[5..5+args.len], args);
 
-    const obj: *Fiber = @ptrCast(try cy.heap.allocExternalObject(vm, @sizeOf(Fiber)));
+    const obj: *vmc.Fiber = @ptrCast(try cy.heap.allocExternalObject(vm, @sizeOf(vmc.Fiber)));
     const parentDstLocal = cy.NullU8;
     obj.* = .{
-        .structId = rt.FiberT,
+        .typeId = rt.FiberT,
         .rc = 1,
-        .stackPtr = stack.ptr,
+        .stackPtr = @ptrCast(stack.ptr),
         .stackLen = @intCast(stack.len),
         .pcOffset = @intCast(pc),
-        .fpOffset = 0,
+        .stackOffset = 0,
         .parentDstLocal = parentDstLocal,
         .tryStackCap = 0,
         .tryStackPtr = undefined,
@@ -100,7 +53,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
         .throwTraceLen = 0,
         .initialPcOffset = @intCast(pc),
         .panicPayload = undefined,
-        .panicType = .none,
+        .panicType = vmc.PANIC_NONE,
         .prevFiber = undefined,
     };
 
@@ -110,38 +63,38 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
 /// Since this is called from a coresume expression, the fiber should already be retained.
 pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber: *cy.Fiber, parentDstLocal: u8) PcSp {
     // Save current fiber.
-    vm.curFiber.stackPtr = vm.stack.ptr;
+    vm.curFiber.stackPtr = @ptrCast(vm.stack.ptr);
     vm.curFiber.stackLen = @intCast(vm.stack.len);
     vm.curFiber.pcOffset = @intCast(curFiberEndPc);
-    vm.curFiber.fpOffset = @intCast(getStackOffset(vm.stack.ptr, curFramePtr));
+    vm.curFiber.stackOffset = @intCast(getStackOffset(vm.stack.ptr, curFramePtr));
 
     // Push new fiber.
     fiber.prevFiber = vm.curFiber;
     fiber.parentDstLocal = parentDstLocal;
     vm.curFiber = fiber;
-    vm.stack = fiber.stackPtr[0..fiber.stackLen];
+    vm.stack = @as([*]Value, @ptrCast(fiber.stackPtr))[0..fiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
     // Check if fiber was previously yielded.
     if (vm.ops[fiber.pcOffset].code == .coyield) {
         log.debug("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset + 3),
-            .sp = fiber.getFp(),
+            .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
         };
     } else {
         log.debug("fiber set to {} {*}", .{fiber.pcOffset, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset),
-            .sp = fiber.getFp(),
+            .sp = @ptrCast(fiber.stackPtr + fiber.stackOffset),
         };
     }
 }
 
 pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Value) PcSp {
-    vm.curFiber.stackPtr = vm.stack.ptr;
+    vm.curFiber.stackPtr = @ptrCast(vm.stack.ptr);
     vm.curFiber.stackLen = @intCast(vm.stack.len);
     vm.curFiber.pcOffset = @intCast(curFiberEndPc);
-    vm.curFiber.fpOffset = @intCast(getStackOffset(vm.stack.ptr, curFp));
+    vm.curFiber.stackOffset = @intCast(getStackOffset(vm.stack.ptr, curFp));
     const dstLocal = vm.curFiber.parentDstLocal;
 
     // Release current fiber.
@@ -153,17 +106,17 @@ pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Val
 
     // Copy return value to parent local.
     if (dstLocal != cy.NullU8) {
-        vm.curFiber.stackPtr[vm.curFiber.fpOffset + dstLocal] = retValue;
+        vm.curFiber.stackPtr[vm.curFiber.stackOffset + dstLocal] = @bitCast(retValue);
     } else {
         cy.arc.release(vm, retValue);
     }
 
-    vm.stack = vm.curFiber.stackPtr[0..vm.curFiber.stackLen];
+    vm.stack = @as([*]Value, @ptrCast(vm.curFiber.stackPtr))[0..vm.curFiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + vm.curFiber.stackLen;
     log.debug("fiber set to {} {*}", .{vm.curFiber.pcOffset, vm.framePtr});
     return PcSp{
         .pc = toVmPc(vm, vm.curFiber.pcOffset),
-        .sp = vm.curFiber.getFp(),
+        .sp = @ptrCast(vm.curFiber.stackPtr + vm.curFiber.stackOffset),
     };
 }
 
@@ -171,8 +124,8 @@ pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Val
 /// This also releases the initial captured vars since it's on the stack.
 pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
     log.debug("release fiber stack", .{});
-    var stack = fiber.stackPtr[0..fiber.stackLen];
-    var framePtr = fiber.fpOffset;
+    var stack = @as([*]Value, @ptrCast(fiber.stackPtr))[0..fiber.stackLen];
+    var framePtr = fiber.stackOffset;
     var pc = fiber.pcOffset;
 
     if (pc != cy.NullId) {
@@ -183,7 +136,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             .callSym => {
                 if (pc >= 6 and vm.ops[pc - 6].code == .coinit) {
                     const numArgs = vm.ops[pc - 4].arg;
-                    for (stack[fiber.fpOffset + 5..fiber.fpOffset + 5 + numArgs]) |arg| {
+                    for (stack[fiber.stackOffset + 5..fiber.stackOffset + 5 + numArgs]) |arg| {
                         cy.arc.release(vm, arg);
                     }
                 }
@@ -306,7 +259,7 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?
         vm.tryStack.len -= 1;
 
         vm.throwTrace.clearRetainingCapacity();
-        if (tframe.fp == startFp) {
+        if (@as([*]Value, @ptrCast(tframe.fp)) == startFp) {
             // Copy error to catch dst.
             if (tframe.catchErrDst != cy.NullU8) {
                 startFp[tframe.catchErrDst] = err;
@@ -331,16 +284,16 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?
             };
         } else {
             // Unwind to next try frame.
-            try cy.fiber.unwindThrowUntilFramePtr(vm, startFp, pc, tframe.fp);
+            try cy.fiber.unwindThrowUntilFramePtr(vm, startFp, pc, @ptrCast(tframe.fp));
 
             // Copy error to catch dst.
             if (tframe.catchErrDst != cy.NullU8) {
-                tframe.fp[tframe.catchErrDst] = err;
+                tframe.fp[tframe.catchErrDst] = @bitCast(err);
             }
 
             return PcSp{
                 .pc = toVmPc(vm, tframe.catchPc),
-                .sp = tframe.fp,
+                .sp = @ptrCast(tframe.fp),
             };
         }
     } else {

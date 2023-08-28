@@ -3,6 +3,7 @@
 /// Heap objects, object allocation and deinitializers.
 
 const cy = @import("cyber.zig");
+const vmc = cy.vmc;
 const rt = cy.rt;
 const Value = cy.Value;
 const mi = @import("mimalloc");
@@ -1504,11 +1505,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             freePoolObject(vm, obj);
         },
         rt.FiberT => {
-            const fiber: *cy.fiber.Fiber = @ptrCast(obj);
+            const fiber: *vmc.Fiber = @ptrCast(obj);
             cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
                 stdx.panicFmt("release fiber: {}", .{err});
             };
-            freeExternalObject(vm, obj, @sizeOf(cy.fiber.Fiber));
+            freeExternalObject(vm, obj, @sizeOf(vmc.Fiber));
         },
         rt.BoxT => {
             cy.arc.release(vm, obj.box.val);

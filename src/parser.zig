@@ -138,7 +138,7 @@ pub const Parser = struct {
 
     fn dumpTokensToCurrent(self: *Parser) void {
         for (self.tokens.items[0..self.next_pos+1]) |token| {
-            log.debug("{}", .{token.token_t});
+            log.debug("{}", .{token.tag()});
         }
     }
 
@@ -1113,20 +1113,20 @@ pub const Parser = struct {
         }
 
         var token = self.peekToken();
-        if (token.token_t != .catch_k) {
+        if (token.tag() != .catch_k) {
             return self.reportParseError("Expected catch block.", &.{});
         }
         self.advanceToken();
 
         token = self.peekToken();
         var errorVar: NodeId = cy.NullId;
-        if (token.token_t == .ident) {
+        if (token.tag() == .ident) {
             errorVar = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
         }
 
         token = self.peekToken();
-        if (token.token_t != .colon) {
+        if (token.tag() != .colon) {
             return self.reportParseError("Expected colon.", &.{});
         }
         self.advanceToken();
@@ -1194,7 +1194,7 @@ pub const Parser = struct {
         self.advanceToken();
 
         var token = self.peekToken();
-        if (token.token_t == .ident) {
+        if (token.tag() == .ident) {
             const ident = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
 
@@ -1507,7 +1507,7 @@ pub const Parser = struct {
         const start = self.next_pos;
         var token = self.peekToken();
         var firstCond: NodeId = undefined;
-        if (token.token_t == .else_k) {
+        if (token.tag() == .else_k) {
             self.advanceToken();
             firstCond = try self.pushNode(.elseCase, start);
         } else {
@@ -1524,7 +1524,7 @@ pub const Parser = struct {
             } else if (token.tag() == .comma) {
                 self.advanceToken();
                 var cond: NodeId = undefined;
-                if (token.token_t == .else_k) {
+                if (token.tag() == .else_k) {
                     self.advanceToken();
                     cond = try self.pushNode(.elseCase, start);
                 } else {
@@ -1609,7 +1609,7 @@ pub const Parser = struct {
                 return try self.parseIfStatement();
             },
             .try_k => {
-                if (self.peekTokenAhead(1).token_t == .colon) {
+                if (self.peekTokenAhead(1).tag() == .colon) {
                     return try self.parseTryStmt();
                 }
             },
@@ -2292,7 +2292,7 @@ pub const Parser = struct {
 
                 token = self.peekToken();
                 var elseExpr: NodeId = cy.NullId;
-                if (token.token_t == .else_k) {
+                if (token.tag() == .else_k) {
                     self.advanceToken();
                     elseExpr = try self.parseTermExpr();
                 }
@@ -2361,11 +2361,11 @@ pub const Parser = struct {
             .error_k => b: {
                 self.advanceToken();
                 token = self.peekToken();
-                if (token.token_t == .dot) {
+                if (token.tag() == .dot) {
                     // Error symbol literal.
                     self.advanceToken();
                     token = self.peekToken();
-                    if (token.token_t == .ident) {
+                    if (token.tag() == .ident) {
                         const symbol = try self.pushIdentNode(self.next_pos);
                         self.advanceToken();
                         const id = try self.pushNode(.errorSymLit, start);
@@ -2786,7 +2786,7 @@ pub const Parser = struct {
                         .minus,
                         .star,
                         .slash => {
-                            if (self.peekTokenAhead(1).token_t == .equal) {
+                            if (self.peekTokenAhead(1).tag() == .equal) {
                                 if (opts.returnLeftAssignExpr) {
                                     return try self.returnLeftAssignExpr(left_id, opts.outIsAssignStmt);
                                 } else {
@@ -2862,7 +2862,7 @@ pub const Parser = struct {
                             return try self.parseNoParenCallExpression(left_id);
                         },
                         else => {
-                            return self.reportParseError("Unexpected token: {}", &.{v(next.token_t)});
+                            return self.reportParseError("Unexpected token: {}", &.{v(next.tag())});
                         }
                     }
                 }
@@ -3036,103 +3036,47 @@ pub const Parser = struct {
     }
 
     inline fn pushSymbolToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .symbol,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = end_pos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.symbol, start_pos, .{ .end_pos = end_pos }));
     }
 
     inline fn pushIdentToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .ident,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = end_pos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.ident, start_pos, .{ .end_pos = end_pos }));
     }
 
     inline fn pushNonDecimalIntegerToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .nonDecInt,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = end_pos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.nonDecInt, start_pos, .{ .end_pos = end_pos }));
     }
 
     inline fn pushNumberToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .number,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = end_pos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.number, start_pos, .{ .end_pos = end_pos }));
     }
 
     inline fn pushTemplateStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .templateString,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = end_pos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.templateString, start_pos, .{ .end_pos = end_pos }));
     }
 
     inline fn pushStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .string,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = end_pos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.string, start_pos, .{ .end_pos = end_pos }));
     }
 
     inline fn pushOpToken(self: *Parser, operator_t: OperatorType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = .operator,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .operator_t = operator_t,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(.operator, start_pos, .{
+            .operator_t = operator_t,
+        }));
     }
 
     inline fn pushIndentToken(self: *Parser, num_spaces: u32, start_pos: u32, spaces: bool) void {
-        self.tokens.append(self.alloc, .{
-            .token_t = .indent,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .indent = if (spaces) num_spaces else num_spaces + 100,
-            },
-        }) catch fatal();
+        self.tokens.append(self.alloc, Token.init(.indent, start_pos, .{
+            .indent = if (spaces) num_spaces else num_spaces + 100,
+        })) catch fatal();
     }
 
     inline fn pushToken(self: *Parser, token_t: TokenType, start_pos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = token_t,
-            .start_pos = @intCast(start_pos),
-            .data = .{
-                .end_pos = NullId,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(token_t, start_pos, .{ .end_pos = NullId }));
     }
 
     inline fn pushKeywordToken(self: *Parser, token_t: TokenType, startPos: u32, endPos: u32) !void {
-        try self.tokens.append(self.alloc, .{
-            .token_t = token_t,
-            .start_pos = @intCast(startPos),
-            .data = .{
-                .end_pos = endPos,
-            },
-        });
+        try self.tokens.append(self.alloc, Token.init(token_t, startPos, .{ .end_pos = endPos }));
     }
 
     /// When n=0, this is equivalent to peekToken.
@@ -3140,13 +3084,9 @@ pub const Parser = struct {
         if (self.next_pos + n < self.tokens.items.len) {
             return self.tokens.items[self.next_pos + n];
         } else {
-            return Token{
-                .token_t = .none,
-                .start_pos = @intCast(self.next_pos),
-                .data = .{
-                    .end_pos = NullId,
-                },
-            };
+            return Token.init(.none, self.next_pos, .{
+                .end_pos = NullId,
+            });
         }
     }
 
@@ -3154,13 +3094,9 @@ pub const Parser = struct {
         if (!self.isAtEndToken()) {
             return self.tokens.items[self.next_pos];
         } else {
-            return Token{
-                .token_t = .none,
-                .start_pos = @intCast(self.next_pos),
-                .data = .{
-                    .end_pos = NullId,
-                },
-            };
+            return Token.init(.none, self.next_pos, .{
+                .end_pos = NullId,
+            });
         }
     }
 
@@ -3179,7 +3115,7 @@ pub const Parser = struct {
     }
 };
 
-pub const OperatorType = enum {
+pub const OperatorType = enum(u8) {
     plus,
     minus,
     star,
@@ -3201,7 +3137,7 @@ pub const OperatorType = enum {
     equal_equal,
 };
 
-pub const TokenType = enum(u6) {
+pub const TokenType = enum(u8) {
     ident,
     number,
     nonDecInt,
@@ -3266,22 +3202,29 @@ pub const TokenType = enum(u6) {
     none,
 };
 
-pub const Token = packed struct {
-    token_t: TokenType,
-    start_pos: u26,
-    data: packed union {
+pub const Token = extern struct {
+    // First 8 bits is the TokenType, last 24 bits is the start pos.
+    head: u32,
+    data: extern union {
         end_pos: u32,
         operator_t: OperatorType,
         // Num indent spaces.
         indent: u32,
     },
 
+    pub fn init(ttype: TokenType, startPos: u32, data: std.meta.FieldType(Token, .data)) Token {
+        return .{
+            .head = (startPos << 8) | @intFromEnum(ttype),
+            .data = data,
+        };
+    }
+
     pub inline fn tag(self: Token) TokenType {
-        return self.token_t;
+        return @enumFromInt(self.head & 0xff);
     }
 
     pub inline fn pos(self: Token) u32 {
-        return self.start_pos;
+        return self.head >> 8;
     }
 };
 
@@ -4659,7 +4602,7 @@ const StaticDecl = struct {
 
 test "Internals." {
     try t.eq(@sizeOf(Token), 8);
-    try t.eq(@alignOf(Token), 8);
+    try t.eq(@alignOf(Token), 4);
     try t.eq(@sizeOf(Node), 28);
     try t.eq(@sizeOf(TokenizeState), 4);
 

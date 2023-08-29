@@ -507,7 +507,7 @@ pub const Const = packed union {
     }
 };
 
-pub const Inst = packed union {
+pub const Inst = extern union {
     code: OpCode,
     arg: u8,
 

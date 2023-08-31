@@ -3784,8 +3784,8 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 }
 
 fn popStackFrameLocal0(pc: *[*]const cy.Inst, framePtr: *[*]Value) linksection(cy.HotSection) bool {
-    const retFlag = framePtr.*[1].retInfo.retFlag;
-    const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
+    const retFlag = framePtr.*[1].retInfoRetFlag();
+    const reqNumArgs = framePtr.*[1].retInfoNumRet();
     if (reqNumArgs == 0) {
         pc.* = framePtr.*[2].retPcPtr;
         framePtr.* = framePtr.*[3].retFramePtr;
@@ -3814,8 +3814,8 @@ fn popStackFrameLocal0(pc: *[*]const cy.Inst, framePtr: *[*]Value) linksection(c
 }
 
 fn popStackFrameLocal1(vm: *VM, pc: *[*]const cy.Inst, framePtr: *[*]Value) linksection(cy.HotSection) bool {
-    const retFlag = framePtr.*[1].retInfo.retFlag;
-    const reqNumArgs = framePtr.*[1].retInfo.numRetVals;
+    const retFlag = framePtr.*[1].retInfoRetFlag();
+    const reqNumArgs = framePtr.*[1].retInfoNumRet();
     if (reqNumArgs == 1) {
         pc.* = framePtr.*[2].retPcPtr;
         framePtr.* = framePtr.*[3].retFramePtr;
@@ -4323,24 +4323,30 @@ fn callMethodGroupNoInline(
 
 pub inline fn buildReturnInfo2(numRetVals: u8, comptime cont: bool, comptime callInstOffset: u8) Value {
     return .{
-        .retInfo = .{
-            .numRetVals = numRetVals,
-            // .retFlag = if (cont) 0 else 1,
-            .retFlag = @intFromBool(!cont),
-            .callInstOffset = callInstOffset,
-        },
+        .val = numRetVals | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
     };
+    // return .{
+    //     .retInfo = .{
+    //         .numRetVals = numRetVals,
+    //         // .retFlag = if (cont) 0 else 1,
+    //         .retFlag = @intFromBool(!cont),
+    //         .callInstOffset = callInstOffset,
+    //     },
+    // };
 }
 
 pub inline fn buildReturnInfo(comptime numRetVals: u2, comptime cont: bool, comptime callInstOffset: u8) Value {
     return .{
-        .retInfo = .{
-            .numRetVals = numRetVals,
-            // .retFlag = if (cont) 0 else 1,
-            .retFlag = @intFromBool(!cont),
-            .callInstOffset = callInstOffset,
-        },
+        .val = numRetVals | (@as(u32, @intFromBool(!cont)) << 8) | (@as(u32, callInstOffset) << 16),
     };
+    // return .{
+    //     .retInfo = .{
+    //         .numRetVals = numRetVals,
+    //         // .retFlag = if (cont) 0 else 1,
+    //         .retFlag = @intFromBool(!cont),
+    //         .callInstOffset = callInstOffset,
+    //     },
+    // };
 }
 
 pub inline fn getInstOffset(vm: *const VM, to: [*]const cy.Inst) u32 {

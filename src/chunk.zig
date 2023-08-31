@@ -1,5 +1,6 @@
 const std = @import("std");
 const stdx = @import("stdx");
+const t = stdx.testing;
 const builtin = @import("builtin");
 const cy = @import("cyber.zig");
 const fmt = cy.fmt;
@@ -714,14 +715,18 @@ pub const Chunk = struct {
     }
 };
 
-const DataNode = packed struct {
-    inner: packed union {
-        funcSym: packed struct {
+const DataNode = extern struct {
+    inner: extern union {
+        funcSym: extern struct {
             symId: u32,
         },
     },
     next: u32,
 };
+
+test "Internals." {
+    try t.eq(@sizeOf(DataNode), 8);
+}
 
 const GenBlock = struct {
     /// This includes the return info, function params, captured params, and local vars.

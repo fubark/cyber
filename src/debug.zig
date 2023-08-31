@@ -406,7 +406,7 @@ pub fn buildStackTrace(self: *cy.VM) !void {
         if (sym.frameLoc == cy.NullId) {
             break;
         } else {
-            pcOffset = cy.getInstOffset(self, self.stack[fpOffset + 2].retPcPtr) - self.stack[fpOffset + 1].retInfo.callInstOffset;
+            pcOffset = cy.getInstOffset(self, self.stack[fpOffset + 2].retPcPtr) - self.stack[fpOffset + 1].retInfoCallInstOffset();
             fpOffset = cy.getStackOffset(self, self.stack[fpOffset + 3].retFramePtr);
         }
     }

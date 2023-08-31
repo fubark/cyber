@@ -496,9 +496,9 @@ pub const StringIndexInsertContext = struct {
     }
 };
 
-pub const Const = packed union {
+pub const Const = extern union {
     val: u64,
-    two: packed struct {
+    two: extern struct {
         lower: u32,
         upper: u32,
     },

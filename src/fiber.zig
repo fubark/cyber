@@ -154,7 +154,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
         // Unwind stack and release all locals.
         while (framePtr > 0) {
-            pc = @intCast(getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfo.callInstOffset);
+            pc = @intCast(getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfoCallInstOffset());
 
             // Compute next frame ptr offset.
             framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
@@ -206,7 +206,7 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
             return;
         } else {
             // Unwind.
-            pcOffset = getInstOffset(vm.ops.ptr, stack[fpOffset + 2].retPcPtr) - stack[fpOffset + 1].retInfo.callInstOffset;
+            pcOffset = getInstOffset(vm.ops.ptr, stack[fpOffset + 2].retPcPtr) - stack[fpOffset + 1].retInfoCallInstOffset();
             fpOffset = getStackOffset(stack.ptr, stack[fpOffset + 3].retFramePtr);
         }
     }
@@ -240,7 +240,7 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
         });
 
         // Unwind frame.
-        pcOffset = getInstOffset(vm.ops.ptr, vm.stack[fpOffset + 2].retPcPtr) - vm.stack[fpOffset + 1].retInfo.callInstOffset;
+        pcOffset = getInstOffset(vm.ops.ptr, vm.stack[fpOffset + 2].retPcPtr) - vm.stack[fpOffset + 1].retInfoCallInstOffset();
         fpOffset = getStackOffset(vm.stack.ptr, vm.stack[fpOffset + 3].retFramePtr);
     }
 

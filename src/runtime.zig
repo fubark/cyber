@@ -257,7 +257,7 @@ pub const FuncSymbolEntry = extern struct {
     } = undefined,
     inner: extern union {
         nativeFunc1: cy.NativeFuncPtr,
-        func: packed struct {
+        func: extern struct {
             pc: u32,
             /// Stack size required by the func.
             stackSize: u16,

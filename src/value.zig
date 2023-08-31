@@ -66,16 +66,17 @@ pub const Value = packed union {
     val: u64,
 
     /// Call frame return info.
-    retInfo: packed struct {
-        numRetVals: u8,
-        retFlag: u8,
+    // retInfo: packed struct {
+    //     numRetVals: u8,
+    //     retFlag: u8,
 
-        /// Since there are different call insts with varying lengths,
-        /// the call convention prefers to advance the pc before saving it so
-        /// stepping over the call will already have the correct pc.
-        /// An offset is stored to the original call inst for stack unwinding.
-        callInstOffset: u8,
-    },
+    //     /// Since there are different call insts with varying lengths,
+    //     /// the call convention prefers to advance the pc before saving it so
+    //     /// stepping over the call will already have the correct pc.
+    //     /// An offset is stored to the original call inst for stack unwinding.
+    //     callInstOffset: u8,
+    // },
+
     retPcPtr: [*]const cy.Inst,
     retFramePtr: [*]Value,
     // two: packed struct {
@@ -90,6 +91,18 @@ pub const Value = packed union {
     /// Interrupt value. Represented as an error tag literal with a null tag id.
     /// Returned from native funcs.
     pub const Interrupt = Value{ .val = ErrorMask | (@as(u32, 0xFF) << 8) | std.math.maxInt(u8) };
+
+    pub inline fn retInfoCallInstOffset(self: *const Value) u8 {
+        return @intCast((self.val & 0xff0000) >> 16);
+    }
+
+    pub inline fn retInfoRetFlag(self: *const Value) u8 {
+        return @intCast((self.val & 0xff00) >> 8);
+    }
+
+    pub inline fn retInfoNumRet(self: *const Value) u8 {
+        return @intCast(self.val & 0xff);
+    }
 
     pub inline fn asInteger(self: *const Value) i32 {
         return @bitCast(@as(u32, @intCast(self.val & 0xffffffff)));
@@ -675,7 +688,7 @@ test "Internals." {
 
     // Check Zig/C struct compat.
     try t.eq(@sizeOf(Value), @sizeOf(vmc.Value));
-    const retInfoT = std.meta.fieldInfo(Value, .retInfo).type;
-    try t.eq(@offsetOf(retInfoT, "numRetVals"), 0);
-    try t.eq(@offsetOf(retInfoT, "retFlag"), 1);
+    // const retInfoT = std.meta.fieldInfo(Value, .retInfo).type;
+    // try t.eq(@offsetOf(retInfoT, "numRetVals"), 0);
+    // try t.eq(@offsetOf(retInfoT, "retFlag"), 1);
 }

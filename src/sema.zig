@@ -86,7 +86,7 @@ pub const LocalVar = struct {
     }
 };
 
-pub const CapVarDesc = packed union {
+pub const CapVarDesc = extern union {
     /// The user of a captured var contains the SemaVarId back to the owner's var.
     user: LocalVarId,
 };
@@ -4346,4 +4346,6 @@ test "Internals." {
     try t.eq(@sizeOf(ResolvedSymData), 12);
     try t.eq(@sizeOf(Name), 16);
     try t.eq(@sizeOf(CompactResolvedSymId), 4);
+
+    try t.eq(@sizeOf(CapVarDesc), 4);
 }

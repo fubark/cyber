@@ -9,7 +9,7 @@ const Version = "0.2";
 
 var useMalloc: bool = undefined;
 var selinux: bool = undefined;
-var engine: config.Engine = .zig;
+var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
 
 var stdx: *std.build.Module = undefined;
@@ -23,8 +23,7 @@ pub fn build(b: *std.build.Builder) !void {
     selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
     useMalloc = b.option(bool, "use-malloc", "Use C allocator.") orelse false;
-
-    const opts = getDefaultOptions(target, optimize);
+    vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .zig;
 
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
@@ -53,7 +52,7 @@ pub fn build(b: *std.build.Builder) !void {
         exe.rdynamic = true;
 
         try addBuildOptions(b, exe, opts);
-        if (engine == .c) {
+        if (vmEngine == .c) {
             try buildCVM(b.allocator, exe, opts);
         }
         // exe.emit_asm = .emit;
@@ -178,7 +177,7 @@ pub fn build(b: *std.build.Builder) !void {
         step.addModule("stdx", stdx);
         step.rdynamic = true;
 
-        if (engine == .c) {
+        if (vmEngine == .c) {
             try buildCVM(b.allocator, step, opts);
         }
 
@@ -268,7 +267,7 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: 
     build_options.addOption([]const u8, "build", buildTag);
     build_options.addOption([]const u8, "commit", commitTag);
     build_options.addOption(bool, "useMalloc", useMalloc);
-    build_options.addOption(config.Engine, "engine", engine);
+    build_options.addOption(config.Engine, "vmEngine", vmEngine);
     build_options.addOption(bool, "trace", opts.trace);
     build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
@@ -296,7 +295,7 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
     tcc_lib.buildAndLink(b, step, .{
         .selinux = opts.selinux,
     });
-    if (engine == .c) {
+    if (vmEngine == .c) {
         try buildCVM(b.allocator, step, newOpts);
     }
     return step;

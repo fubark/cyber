@@ -2202,7 +2202,7 @@ const Root = @This();
 /// To reduce the amount of code inlined in the hot loop, handle StackOverflow at the top and resume execution.
 /// This is also the entry way for native code to call into the VM, assuming pc, framePtr, and virtual registers are already set.
 pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory, Panic, NoDebugSym, End}!void {
-    if (comptime build_options.engine == .zig) {
+    if (comptime build_options.vmEngine == .zig) {
         while (true) {
             @call(.always_inline, evalLoop, .{vm}) catch |err| {
                 if (err == error.StackOverflow) {
@@ -2227,7 +2227,7 @@ pub fn evalLoopGrowStack(vm: *VM) linksection(cy.HotSection) error{StackOverflow
             };
             return;
         }
-    } else if (comptime build_options.engine == .c) {
+    } else if (comptime build_options.vmEngine == .c) {
         while (true) {
             const res = vmc.execBytecode(@ptrCast(vm));
             if (res == vmc.RES_CODE_PANIC) {

@@ -77,9 +77,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                 const name = c.getNodeTokenString(node);
                 const fieldId = try c.compiler.vm.ensureFieldSym(name);
                 if (cstr.mustRetain) {
-                    const pc = c.buf.len();
-                    try c.buf.pushOpSlice(.fieldRetain, &.{ dst, dst, 0, 0, 0, 0, 0 });
-                    c.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+                    try pushFieldRetain(c, dst, dst, @intCast(fieldId));
                     return c.initGenValue(dst, bt.Any, true);
                 } else {
                     const pc = c.buf.len();
@@ -94,9 +92,7 @@ fn identifier(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
                 const name = c.getNodeTokenString(node);
                 const fieldId = try c.compiler.vm.ensureFieldSym(name);
                 if (cstr.mustRetain) {
-                    const pc = c.compiler.buf.len();
-                    try c.compiler.buf.pushOpSlice(.fieldRetain, &.{ selfLocal, dst, 0, 0, 0, 0, 0 });
-                    c.compiler.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+                    try pushFieldRetain(c, selfLocal, dst, @intCast(fieldId));
                     return c.initGenValue(dst, bt.Any, true);
                 } else {
                     const pc = c.compiler.buf.len();
@@ -888,9 +884,7 @@ fn field(self: *cy.Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
     try self.pushDebugSym(nodeId);
     const leftIsTempRetained = leftv.retained and leftv.isTempLocal;
     if (req.mustRetain or leftIsTempRetained) {
-        const pc = self.buf.len();
-        try self.buf.pushOpSlice(.fieldRetain, &.{ leftv.local, dst, 0, 0, 0, 0, 0 });
-        self.buf.setOpArgU16(pc + 3, @intCast(fieldId));
+        try pushFieldRetain(self, leftv.local, dst, @intCast(fieldId));
 
         // ARC cleanup.
         try releaseIfRetainedTemp(self, leftv);
@@ -1504,18 +1498,18 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     _ = try expression(c, node.head.for_iter_stmt.iterable, RegisterCstr.exactMustRetain(iterLocal + 4));
     if (pairIter) {
         try pushCallObjSym(c, iterLocal, 1, 1,
-            @intCast(c.compiler.vm.pairIteratorObjSym), @intCast(rFuncSigId),
+            @intCast(c.compiler.vm.pairIteratorMGID), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
     } else {
         try pushCallObjSym(c, iterLocal, 1, 1,
-            @intCast(c.compiler.vm.iteratorObjSym), @intCast(rFuncSigId),
+            @intCast(c.compiler.vm.iteratorMGID), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
     }
 
     try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
     if (pairIter) {
         try pushCallObjSym(c, iterLocal + 1, 1, 2,
-            @intCast(c.compiler.vm.nextPairObjSym), @intCast(rFuncSigId),
+            @intCast(c.compiler.vm.nextPairMGID), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1525,7 +1519,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         }
     } else {
         try pushCallObjSym(c, iterLocal + 1, 1, 1,
-            @intCast(c.compiler.vm.nextObjSym), @intCast(rFuncSigId),
+            @intCast(c.compiler.vm.nextMGID), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1547,7 +1541,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
     if (pairIter) {
         try pushCallObjSym(c, iterLocal + 1, 1, 2,
-            @intCast(c.compiler.vm.nextPairObjSym), @intCast(rFuncSigId),
+            @intCast(c.compiler.vm.nextPairMGID), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -1557,7 +1551,7 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         }
     } else {
         try pushCallObjSym(c, iterLocal + 1, 1, 1,
-            @intCast(c.compiler.vm.nextObjSym), @intCast(rFuncSigId),
+            @intCast(c.compiler.vm.nextMGID), @intCast(rFuncSigId),
             node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
@@ -2028,7 +2022,7 @@ fn callObjSym(self: *Chunk, callStartLocal: u8, callExprId: cy.NodeId) !GenValue
         
     const name = self.getNodeTokenString(ident);
 
-    const methodSymId = try self.compiler.vm.ensureMethodSym(name, numArgs - 1);
+    const methodSymId = try self.compiler.vm.ensureMethodGroup(name);
 
     _ = try expression(self, callee.head.accessExpr.left, RegisterCstr.tempMustRetain);
 
@@ -2079,7 +2073,7 @@ fn genFuncValueCallExpr(self: *Chunk, nodeId: cy.NodeId, fiberDst: u8, startLoca
     }
 
     try self.pushDebugSym(nodeId);
-    try self.buf.pushOp2(.call1, callStartLocal, @intCast(numArgs));
+    try self.buf.pushOp3(.call, callStartLocal, @intCast(numArgs), 1);
 
     // ARC cleanup.
     if (startFiber) {
@@ -2556,7 +2550,7 @@ fn binOpAssignToField(self: *Chunk, code: cy.OpCode, leftId: cy.NodeId, rightId:
 
 fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.FuncDecl, name: []const u8) !void {
     // log.debug("gen method {s}", .{name});
-    const methodId = try self.compiler.vm.ensureMethodSym(name, func.numParams - 1);
+    const mgId = try self.compiler.vm.ensureMethodGroup(name);
 
     const jumpPc = try self.pushEmptyJump();
 
@@ -2576,11 +2570,11 @@ fn genMethodDecl(self: *Chunk, typeId: rt.TypeId, node: cy.Node, func: sema.Func
 
     const funcSig = self.compiler.sema.getResolvedFuncSig(func.rFuncSigId);
     if (funcSig.isTyped) {
-        const sym = rt.MethodSym.initSingleTypedFunc(func.rFuncSigId, opStart, stackSize);
-        try self.compiler.vm.addMethodSym(typeId, methodId, sym);
+        const m = rt.MethodInit.initTypedFunc(func.rFuncSigId, opStart, stackSize, func.numParams);
+        try self.compiler.vm.addMethod(typeId, mgId, m);
     } else {
-        const sym = rt.MethodSym.initSingleUntypedFunc(func.rFuncSigId, opStart, stackSize);
-        try self.compiler.vm.addMethodSym(typeId, methodId, sym);
+        const m = rt.MethodInit.initUntypedFunc(func.rFuncSigId, opStart, stackSize, func.numParams);
+        try self.compiler.vm.addMethod(typeId, mgId, m);
     }
 }
 
@@ -2756,6 +2750,12 @@ fn unexpectedFmt(format: []const u8, vals: []const fmt.FmtValue) noreturn {
         fmt.printStderr(format, vals);
     }
     stdx.fatal();
+}
+
+fn pushFieldRetain(c: *cy.Chunk, recv: u8, dst: u8, fieldId: u16) !void {
+    const start = c.buf.ops.items.len;
+    try c.buf.pushOpSlice(.fieldRetain, &.{ recv, dst, 0, 0, 0, 0, 0 });
+    c.buf.setOpArgU16(start + 3, fieldId);
 }
 
 fn pushCallObjSym(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, numRet: u8, symId: u8, rFuncSigId: u16, nodeId: cy.NodeId) !void {

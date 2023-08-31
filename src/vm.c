@@ -48,6 +48,7 @@
 #define VALUE_RETINFO(nrv, rf, cio) ((Value)(nrv | ((u32)rf << 8) | ((u32)cio << 16)))
 #define VALUE_TRUE TRUE_MASK
 #define VALUE_FALSE FALSE_MASK
+#define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
 #define VALUE_RAW(u) u
 #define VALUE_PTR(ptr) (POINTER_MASK | (uint64_t)ptr)
 #define VALUE_STATIC_STRING_SLICE(v) ((IndexSlice){ .start = v & 0xffffffff, .len = (((u32)(v >> 32)) & BEFORE_TAG_MASK) >> 3 })
@@ -66,7 +67,6 @@
 #define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_BOX))
 #define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
 #define VALUE_IS_NONE(v) (v == NONE_MASK)
-#define VALUE_IS_PANIC(v) (ERROR_MASK | (uint32_t)(0xff << 8) | UINT8_MAX)
 #define VALUE_IS_NUMBER(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
 #define VALUE_BOTH_NUMBERS(v1, v2) (VALUE_IS_NUMBER(v1) && VALUE_IS_NUMBER(v2))
@@ -498,14 +498,23 @@ ResultCode execBytecode(VM* vm) {
     #define WRITE_U16(offset, u) pc[offset] = u & 0xff; pc[offset+1] = u >> 8
     #define READ_U32(offset) ((uint32_t)pc[offset] | ((uint32_t)pc[offset+1] << 8) | ((uint32_t)pc[offset+2] << 16) | ((uint32_t)pc[offset+3] << 24))
     #define READ_U48(offset) ((uint64_t)pc[offset] | ((uint64_t)pc[offset+1] << 8) | ((uint64_t)pc[offset+2] << 16) | ((uint64_t)pc[offset+3] << 24) | ((uint64_t)pc[offset+4] << 32) | ((uint64_t)pc[offset+5] << 40))
+
+#if TRACE_ENABLED
+    #define PRE_TRACE() \
+        vm->trace->opCountsBuf[pc[0]].count += 1; \
+        vm->trace->totalOpCounts += 1
+#else
+    #define PRE_TRACE()
+#endif
+
 #if DEBUG    
-    #define PRE_NEXT() \
+    #define PRE_DUMP() \
         if (verbose) { \
             zDumpEvalOp(vm, pc); \
         } \
         //vm.debugPc = pcOffset(vm, pc);
 #else
-    #define PRE_NEXT()
+    #define PRE_DUMP()
 #endif
 #if CGOTO
     #define JENTRY(op) &&Code_##op
@@ -544,8 +553,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(CallNativeFuncIC),
         JENTRY(Ret1),
         JENTRY(Ret0),
-        JENTRY(Call0),
-        JENTRY(Call1),
+        JENTRY(Call),
         JENTRY(Field),
         JENTRY(FieldIC),
         JENTRY(FieldRetain),
@@ -615,7 +623,8 @@ ResultCode execBytecode(VM* vm) {
     #define CASE(op) Code_##op
     #define NEXT() \
         do { \
-            PRE_NEXT(); \
+            PRE_TRACE(); \
+            PRE_DUMP(); \
             goto *jumpTable[*pc]; \
         } while (false)
 #else
@@ -623,6 +632,7 @@ ResultCode execBytecode(VM* vm) {
     #define CASE(op) case Code##op
     #define NEXT() \
         do { \
+            PRE_TRACE(); \
             PRE_NEXT(); \
             goto beginSwitch \
         } while (false)
@@ -830,13 +840,15 @@ beginSwitch:
         }
         NEXT();
     }
-    CASE(Jump):
+    CASE(Jump): {
         pc += READ_I16(1);
         NEXT();
-    CASE(Release):
+    }
+    CASE(Release): {
         release(vm, stack[pc[1]]);
         pc += 2;
         NEXT();
+    }
     CASE(ReleaseN): {
         uint8_t numLocals = pc[1];
         uint8_t i;
@@ -876,9 +888,9 @@ beginSwitch:
             vm->curStack = stack;
             MethodPtr fn = (MethodPtr)READ_U48(8);
             Value res = fn(vm, recv, stack + startLocal + 4, numArgs);
-            // if (VALUE_IS_PANIC(res)) {
-            //     return error.Panic;
-            // }
+            if (res == VALUE_INTERRUPT) {
+                RETURN(RES_CODE_PANIC);
+            }
             uint8_t numRet = pc[3];
             if (numRet == 1) {
                 stack[startLocal] = res;
@@ -999,9 +1011,9 @@ beginSwitch:
         vm->curStack = newStack;
         FuncPtr fn = (FuncPtr)READ_U48(6);
         Value res = fn(vm, newStack + 4, numArgs);
-        // if (res.isPanic()) {
-        //     return error.Panic;
-        // }
+        if (res == VALUE_INTERRUPT) {
+            RETURN(RES_CODE_PANIC);
+        }
         uint8_t numRet = pc[3];
         if (numRet == 1) {
             newStack[0] = res;
@@ -1080,28 +1092,14 @@ beginSwitch:
             }
         }
     }
-    CASE(Call0): {
+    CASE(Call): {
         uint8_t startLocal = pc[1];
         uint8_t numArgs = pc[2];
-        pc += 3;
+        uint8_t numRet = pc[3];
+        pc += 4;
 
         Value callee = stack[startLocal + numArgs + 4];
-        Value retInfo = VALUE_RETINFO(0, false, CALL_INST_LEN);
-        PcSpResult res = zCall(vm, pc, stack, callee, startLocal, numArgs, retInfo);
-        if (LIKELY(res.code == RES_CODE_SUCCESS)) {
-            pc = res.pc;
-            stack = res.sp;
-            NEXT();
-        }
-        RETURN(res.code);
-    }
-    CASE(Call1): {
-        uint8_t startLocal = pc[1];
-        uint8_t numArgs = pc[2];
-        pc += 3;
-
-        Value callee = stack[startLocal + numArgs + 4];
-        Value retInfo = VALUE_RETINFO(1, false, CALL_INST_LEN);
+        Value retInfo = VALUE_RETINFO(numRet, false, CALL_INST_LEN);
         PcSpResult res = zCall(vm, pc, stack, callee, startLocal, numArgs, retInfo);
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             pc = res.pc;
@@ -1111,27 +1109,32 @@ beginSwitch:
         RETURN(res.code);
     }
     CASE(Field): {
-        uint8_t left = pc[1];
-        uint8_t dst = pc[2];
-        uint16_t symId = READ_U16(3);
-        Value recv = stack[left];
-        if (VALUE_IS_POINTER(recv)) {
-            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            uint8_t offset = getFieldOffset(vm, obj, symId);
-            if (offset != NULL_U8) {
-                stack[dst] = objectGetField((Object*)obj, offset);
-                pc[0] = CodeFieldIC;
-                WRITE_U16(5, obj->head.typeId);
-                pc[7] = offset;
-            } else {
-                stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId);
-            }
-            pc += 8;
-            NEXT();
-        } else {
-            panicFieldMissing(vm);
-            RETURN(RES_CODE_PANIC);
-        }
+#define FIELD_BODY(v) \
+    uint8_t left = pc[1]; \
+    uint8_t dst = pc[2]; \
+    uint16_t symId = READ_U16(3); \
+    Value recv = stack[left]; \
+    if (VALUE_IS_POINTER(recv)) { \
+        HeapObject* obj = VALUE_AS_HEAPOBJECT(recv); \
+        uint8_t offset = getFieldOffset(vm, obj, symId); \
+        if (offset != NULL_U8) { \
+            stack[dst] = objectGetField((Object*)obj, offset); \
+            pc[0] = FIELD_BODY_IC_##v; \
+            WRITE_U16(5, obj->head.typeId); \
+            pc[7] = offset; \
+        } else { \
+            stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId); \
+        } \
+        FIELD_BODY_END_##v \
+        pc += 8; \
+        NEXT(); \
+    } else { \
+        panicFieldMissing(vm); \
+        RETURN(RES_CODE_PANIC); \
+    }
+#define FIELD_BODY_IC_0 CodeFieldIC
+#define FIELD_BODY_END_0 
+        FIELD_BODY(0);
     }
     CASE(FieldIC): {
         Value recv = stack[pc[1]];
@@ -1153,28 +1156,9 @@ beginSwitch:
         }
     }
     CASE(FieldRetain): {
-        Value recv = stack[pc[1]];
-        u8 dst = pc[2];
-        u16 symId = READ_U16(3);
-        if (VALUE_IS_POINTER(recv)) {
-            HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            u8 offset = getFieldOffset(vm, obj, symId);
-            if (offset != NULL_U8) {
-                stack[dst] = objectGetField((Object*)obj, offset);
-
-                pc[0] = CodeFieldRetainIC;
-                WRITE_U16(5, obj->head.typeId);
-                pc[7] = offset;
-            } else {
-                stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId);
-            }
-            retain(vm, stack[dst]);
-            pc += 8;
-            NEXT();
-        } else {
-            // return vm.getFieldMissingSymbolError();
-            RETURN(RES_CODE_UNKNOWN);
-        }
+#define FIELD_BODY_IC_1 CodeFieldRetainIC
+#define FIELD_BODY_END_1 retain(vm, stack[dst]);
+        FIELD_BODY(1);
     }
     CASE(FieldRetainIC): {
         Value recv = stack[pc[1]];
@@ -1589,7 +1573,7 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
-    CASE(Coreturn):
+    CASE(Coreturn): {
         pc += 1;
         if (vm->curFiber != &vm->mainFiber) {
             PcSp res = zPopFiber(vm, NULL_U32, stack, stack[1]);
@@ -1597,10 +1581,12 @@ beginSwitch:
             stack = res.sp;
         }
         NEXT();
-    CASE(Retain):
+    }
+    CASE(Retain): {
         retain(vm, stack[pc[1]]);
         pc += 2;
         NEXT();
+    }
     CASE(CopyRetainRelease): {
         uint8_t src = pc[1];
         uint8_t dst = pc[2];

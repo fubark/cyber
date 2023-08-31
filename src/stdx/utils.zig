@@ -1,5 +1,34 @@
 const std = @import("std");
 
+pub fn getHashMapMemSize(comptime K: type, comptime V: type, cap: usize) usize {
+    const Header = struct {
+        values: [*]V,
+        keys: [*]K,
+        capacity: std.AutoHashMap(K, V).Unmanaged.Size,
+    };
+
+    const Metadata = packed struct {
+        const FingerPrint = u7;
+        fingerprint: FingerPrint,
+        used: u1,
+    };
+
+    const header_align = @alignOf(Header);
+    const key_align = if (@sizeOf(K) == 0) 1 else @alignOf(K);
+    const val_align = if (@sizeOf(V) == 0) 1 else @alignOf(V);
+    const max_align = comptime @max(header_align, key_align, val_align);
+
+    const meta_size = @sizeOf(Header) + cap * @sizeOf(Metadata);
+
+    const keys_start = std.mem.alignForward(usize, meta_size, key_align);
+    const keys_end = keys_start + cap * @sizeOf(K);
+
+    const vals_start = std.mem.alignForward(usize, keys_end, val_align);
+    const vals_end = vals_start + cap * @sizeOf(V);
+
+    return std.mem.alignForward(usize, vals_end, max_align);
+}
+
 pub inline fn ptrAlignCast(comptime Ptr: type, ptr: anytype) Ptr {
     return @ptrCast(@alignCast(ptr));
 }

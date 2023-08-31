@@ -4,6 +4,7 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const sema = cy.sema;
 const rt = cy.rt;
+const vmc = cy.vmc;
 
 pub const KeyU64 = extern union {
     val: u64,
@@ -23,13 +24,6 @@ pub const KeyU64 = extern union {
         nameId: sema.NameSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
     },
-    rtMethodKey: extern struct {
-        nameId: sema.NameSymId,
-        /// Method syms are keyed by numParams since an exact signature
-        /// can miss a compatible typed function.
-        /// numParams does not include the self param to match callObjSym's numParams.
-        numParams: u32,
-    },
     relModuleSymKey: extern struct {
         nameId: sema.NameSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
@@ -42,9 +36,9 @@ pub const KeyU64 = extern union {
         rParentSymId: sema.ResolvedSymId,
         nameId: sema.NameSymId,
     },
-    rtMethodTableKey: extern struct {
+    rtTypeMethodGroupKey: extern struct {
         typeId: rt.TypeId,
-        methodId: rt.MethodId,
+        mgId: vmc.MethodGroupId,
     },
     rtFieldTableKey: extern struct {
         typeId: rt.TypeId,
@@ -69,11 +63,11 @@ pub const KeyU64 = extern union {
         };
     }
 
-    pub fn initMethodTableKey(typeId: rt.TypeId, methodId: rt.MethodId) KeyU64 {
+    pub fn initTypeMethodGroupKey(typeId: rt.TypeId, mgId: vmc.MethodGroupId) KeyU64 {
         return .{
-            .rtMethodTableKey = .{
+            .rtTypeMethodGroupKey = .{
                 .typeId = typeId,
-                .methodId = methodId,
+                .mgId = mgId,
             },
         };
     }

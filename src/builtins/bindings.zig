@@ -107,62 +107,60 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     const b = ModuleBuilder.init(&self.compiler, undefined);
 
-    self.iteratorObjSym = try b.ensureMethodSym("iterator", 0);
-    self.nextObjSym = try b.ensureMethodSym("next", 0);
-    self.pairIteratorObjSym = try b.ensureMethodSym("pairIterator", 0);
-    self.nextPairObjSym = try b.ensureMethodSym("nextPair", 0);
-
-    // Common string methods.
-    const add = try b.ensureMethodSym("add", 1);
-    const append = try b.ensureMethodSym("append", 1);
-    const byteAt = try b.ensureMethodSym("byteAt", 1);
-    const charAt = try b.ensureMethodSym("charAt", 1);
-    const close = try b.ensureMethodSym("close", 0);
-    const codeAt = try b.ensureMethodSym("codeAt", 1);
-    const concat = try b.ensureMethodSym("concat", 1);
-    const endsWith = try b.ensureMethodSym("endsWith", 1);
-    const find = try b.ensureMethodSym("find", 1);
-    const findAnyRune = try b.ensureMethodSym("findAnyRune", 1);
-    const findRune = try b.ensureMethodSym("findRune", 1);
-    const idSym = try b.ensureMethodSym("id", 0);
-    const index = try b.ensureMethodSym("index", 1);
-    const indexChar = try b.ensureMethodSym("indexChar", 1);
-    const indexCharSet = try b.ensureMethodSym("indexCharSet", 1);
-    const indexCode = try b.ensureMethodSym("indexCode", 1);
-    const insert = try b.ensureMethodSym("insert", 2);
-    const insertByte = try b.ensureMethodSym("insertByte", 2);
-    const isAscii = try b.ensureMethodSym("isAscii", 0);
-    const joinString = try b.ensureMethodSym("joinString", 1);
-    const len = try b.ensureMethodSym("len", 0);
-    const less = try b.ensureMethodSym("less", 1);
-    const lower = try b.ensureMethodSym("lower", 0);
-    const read = try b.ensureMethodSym("read", 1);
-    const readToEnd = try b.ensureMethodSym("readToEnd", 0);
-    const remove = try b.ensureMethodSym("remove", 1);
-    const repeat = try b.ensureMethodSym("repeat", 1);
-    const replace = try b.ensureMethodSym("replace", 2);
-    const resize = try b.ensureMethodSym("resize", 1);
-    const runeAt = try b.ensureMethodSym("runeAt", 1);
-    const seek = try b.ensureMethodSym("seek", 1);
-    const seekFromCur = try b.ensureMethodSym("seekFromCur", 1);
-    const seekFromEnd = try b.ensureMethodSym("seekFromEnd", 1);
-    const size = try b.ensureMethodSym("size", 0);
-    const slice = try b.ensureMethodSym("slice", 2);
-    const sliceAt = try b.ensureMethodSym("sliceAt", 1);
-    const sort = try b.ensureMethodSym("sort", 1);
-    const split = try b.ensureMethodSym("split", 1);
-    const startsWith = try b.ensureMethodSym("startsWith", 1);
-    const stat = try b.ensureMethodSym("stat", 0);
-    const status = try b.ensureMethodSym("status", 0);
-    const streamLines = try b.ensureMethodSym("streamLines", 0);
-    const streamLines1 = try b.ensureMethodSym("streamLines", 1);
-    const toString = try b.ensureMethodSym("toString", 0);
-    const trim = try b.ensureMethodSym("trim", 2);
-    const upper = try b.ensureMethodSym("upper", 0);
-    const utf8 = try b.ensureMethodSym("utf8", 0);
-    const value = try b.ensureMethodSym("value", 0);
-    const walk = try b.ensureMethodSym("walk", 0);
-    const write = try b.ensureMethodSym("write", 1);
+    // Builtin methods.
+    const add = try b.ensureMethodGroup("add");
+    const append = try b.ensureMethodGroup("append");
+    const byteAt = try b.ensureMethodGroup("byteAt");
+    const charAt = try b.ensureMethodGroup("charAt");
+    const close = try b.ensureMethodGroup("close");
+    const codeAt = try b.ensureMethodGroup("codeAt");
+    const concat = try b.ensureMethodGroup("concat");
+    const endsWith = try b.ensureMethodGroup("endsWith");
+    const find = try b.ensureMethodGroup("find");
+    const findAnyRune = try b.ensureMethodGroup("findAnyRune");
+    const findRune = try b.ensureMethodGroup("findRune");
+    const idSym = try b.ensureMethodGroup("id");
+    const index = try b.ensureMethodGroup("index");
+    const indexChar = try b.ensureMethodGroup("indexChar");
+    const indexCharSet = try b.ensureMethodGroup("indexCharSet");
+    const indexCode = try b.ensureMethodGroup("indexCode");
+    const insert = try b.ensureMethodGroup("insert");
+    const insertByte = try b.ensureMethodGroup("insertByte");
+    const isAscii = try b.ensureMethodGroup("isAscii");
+    self.iteratorMGID = try b.ensureMethodGroup("iterator");
+    const joinString = try b.ensureMethodGroup("joinString");
+    const len = try b.ensureMethodGroup("len");
+    const less = try b.ensureMethodGroup("less");
+    const lower = try b.ensureMethodGroup("lower");
+    self.nextMGID = try b.ensureMethodGroup("next");
+    self.nextPairMGID = try b.ensureMethodGroup("nextPair");
+    self.pairIteratorMGID = try b.ensureMethodGroup("pairIterator");
+    const read = try b.ensureMethodGroup("read");
+    const readToEnd = try b.ensureMethodGroup("readToEnd");
+    const remove = try b.ensureMethodGroup("remove");
+    const repeat = try b.ensureMethodGroup("repeat");
+    const replace = try b.ensureMethodGroup("replace");
+    const resize = try b.ensureMethodGroup("resize");
+    const runeAt = try b.ensureMethodGroup("runeAt");
+    const seek = try b.ensureMethodGroup("seek");
+    const seekFromCur = try b.ensureMethodGroup("seekFromCur");
+    const seekFromEnd = try b.ensureMethodGroup("seekFromEnd");
+    const size = try b.ensureMethodGroup("size");
+    const slice = try b.ensureMethodGroup("slice");
+    const sliceAt = try b.ensureMethodGroup("sliceAt");
+    const sort = try b.ensureMethodGroup("sort");
+    const split = try b.ensureMethodGroup("split");
+    const startsWith = try b.ensureMethodGroup("startsWith");
+    const stat = try b.ensureMethodGroup("stat");
+    const status = try b.ensureMethodGroup("status");
+    const streamLines = try b.ensureMethodGroup("streamLines");
+    const toString = try b.ensureMethodGroup("toString");
+    const trim = try b.ensureMethodGroup("trim");
+    const upper = try b.ensureMethodGroup("upper");
+    const utf8 = try b.ensureMethodGroup("utf8");
+    const value = try b.ensureMethodGroup("value");
+    const walk = try b.ensureMethodGroup("walk");
+    const write = try b.ensureMethodGroup("write");
     
     // Init compile time builtins.
 
@@ -219,30 +217,30 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try b.addMethod(rt.ListT, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
     try b.addMethod(rt.ListT, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
     try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Number, bt.Any}, bt.Any, listInsert);
-    try b.addMethod(rt.ListT, self.iteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
+    try b.addMethod(rt.ListT, self.iteratorMGID, &.{bt.Any}, bt.Any, listIterator);
     try b.addMethod(rt.ListT, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
     try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Number, listLen);
-    try b.addMethod(rt.ListT, self.pairIteratorObjSym, &.{bt.Any}, bt.Any, listIterator);
+    try b.addMethod(rt.ListT, self.pairIteratorMGID, &.{bt.Any}, bt.Any, listIterator);
     try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Number}, bt.Any, listRemove);
     try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Number}, bt.Any, listResize);
     try b.addMethod(rt.ListT, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
 
     id = try self.addBuiltinType("ListIterator", cy.NullId);
     std.debug.assert(id == rt.ListIteratorT);
-    try b.addMethod(rt.ListIteratorT, self.nextObjSym, &.{bt.Any}, bt.Any, listIteratorNext);
-    try b.addMethod2(rt.ListIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, listIteratorNextPair);
+    try b.addMethod(rt.ListIteratorT, self.nextMGID, &.{bt.Any}, bt.Any, listIteratorNext);
+    try b.addMethod2(rt.ListIteratorT, self.nextPairMGID, &.{bt.Any}, bt.Any, listIteratorNextPair);
 
     id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
     try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
     try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Number, mapSize);
-    try b.addMethod(rt.MapT, self.iteratorObjSym,     &.{ bt.Any }, bt.Any, mapIterator);
-    try b.addMethod(rt.MapT, self.pairIteratorObjSym, &.{ bt.Any }, bt.Any, mapIterator);
+    try b.addMethod(rt.MapT, self.iteratorMGID,     &.{ bt.Any }, bt.Any, mapIterator);
+    try b.addMethod(rt.MapT, self.pairIteratorMGID, &.{ bt.Any }, bt.Any, mapIterator);
 
     id = try self.addBuiltinType("MapIterator", cy.NullId);
     std.debug.assert(id == rt.MapIteratorT);
-    try b.addMethod(rt.MapIteratorT, self.nextObjSym,     &.{bt.Any}, bt.Any, mapIteratorNext);
-    try b.addMethod2(rt.MapIteratorT, self.nextPairObjSym, &.{bt.Any}, bt.Any, mapIteratorNextPair);
+    try b.addMethod(rt.MapIteratorT, self.nextMGID,     &.{bt.Any}, bt.Any, mapIteratorNext);
+    try b.addMethod2(rt.MapIteratorT, self.nextPairMGID, &.{bt.Any}, bt.Any, mapIteratorNextPair);
 
     id = try self.addBuiltinType("Closure", cy.NullId);
     std.debug.assert(id == rt.ClosureT);
@@ -375,8 +373,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == rt.FileT);
     if (cy.hasStdFiles) {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
-        try b.addMethod(rt.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, fileIterator);
-        try b.addMethod(rt.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, fileNext);
+        try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, fileIterator);
+        try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, fileNext);
         try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, fileRead);
         try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
         try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, fileSeek);
@@ -384,12 +382,12 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromEnd);
         try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
-        try b.addMethod(rt.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
         try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
     } else {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
-        try b.addMethod(rt.FileT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, self.nextObjSym,     &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
@@ -397,18 +395,18 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, streamLines1,        &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
     }
 
     id = try self.addBuiltinType("Dir", cy.NullId);
     std.debug.assert(id == rt.DirT);
     if (cy.hasStdFiles) {
-        try b.addMethod(rt.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, dirIterator);
+        try b.addMethod(rt.DirT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, dirIterator);
         try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
     } else {
-        try b.addMethod(rt.DirT, self.iteratorObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, objNop0);
     }
@@ -416,9 +414,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("DirIterator", cy.NullId);
     std.debug.assert(id == rt.DirIteratorT);
     if (cy.hasStdFiles) {
-        try b.addMethod(rt.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, dirIteratorNext);
+        try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, dirIteratorNext);
     } else {
-        try b.addMethod(rt.DirIteratorT, self.nextObjSym, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, objNop0);
     }
 
     id = try self.addBuiltinType("MetaType", bt.MetaType);
@@ -2567,27 +2565,27 @@ pub const ModuleBuilder = struct {
         try self.mod().setNativeTypedFunc(self.compiler, name, params, ret, ptr);
     }
 
-    pub fn ensureMethodSym(self: *const ModuleBuilder, name: []const u8, numParams: u32) !u32 {
-        return self.vm.ensureMethodSym(name, numParams);
+    pub fn ensureMethodGroup(self: *const ModuleBuilder, name: []const u8) !vmc.MethodGroupId {
+        return self.vm.ensureMethodGroup(name);
     }
 
-    pub fn addMethod(self: *const ModuleBuilder, typeId: rt.TypeId, methodId: rt.MethodId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
+    pub fn addMethod(self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
         const funcSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getResolvedFuncSig(funcSigId);
         if (funcSig.isTyped) {
-            try self.vm.addMethodSym(typeId, methodId, rt.MethodSym.initSingleTypedNativeFunc(funcSigId, ptr));
+            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initTypedNativeFunc(funcSigId, ptr, @intCast(params.len)));
         } else {
-            try self.vm.addMethodSym(typeId, methodId, rt.MethodSym.initSingleUntypedNativeFunc1(funcSigId, ptr));
+            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initUntypedNativeFunc1(funcSigId, ptr, @intCast(params.len)));
         }
     }
 
-    pub fn addMethod2(self: *const ModuleBuilder, typeId: rt.TypeId, methodId: rt.MethodId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
+    pub fn addMethod2(self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
         const funcSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getResolvedFuncSig(funcSigId);
         if (funcSig.isTyped) {
             return error.Unsupported;
         } else {
-            try self.vm.addMethodSym(typeId, methodId, rt.MethodSym.initSingleUntypedNativeFunc2(funcSigId, ptr));
+            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initUntypedNativeFunc2(funcSigId, ptr, @intCast(params.len)));
         }
     }
 

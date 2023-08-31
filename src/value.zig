@@ -454,6 +454,7 @@ pub const Value = packed union {
                     rt.ClosureT => log.info("Closure {*}", .{obj}),
                     rt.FiberT => log.info("Fiber {*}", .{obj}),
                     rt.NativeFuncT => return log.info("NativeFunc {*}", .{obj}),
+                    rt.PointerT => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
                     else => {
                         log.info("HeapObject {*} {}", .{obj, obj.head.typeId});
                     },

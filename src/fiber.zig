@@ -169,8 +169,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
         // Check to run extra release ops (eg. For call1 inst.)
         if (vm.ops[pc].code != .coreturn) {
             switch (vm.ops[fiber.initialPcOffset].code) {
-                .call0,
-                .call1 => {
+                .call => {
                     const endLocalsPc = fiber.initialPcOffset + cy.bytecode.CallInstLen;
                     if (vm.ops[endLocalsPc].code == .release) {
                         const local = vm.ops[endLocalsPc+1].arg;

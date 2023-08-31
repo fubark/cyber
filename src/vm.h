@@ -23,7 +23,7 @@ typedef struct IndexSlice {
 
 #define CALL_OBJ_SYM_INST_LEN 16
 #define CALL_SYM_INST_LEN 12
-#define CALL_INST_LEN 3
+#define CALL_INST_LEN 4
 
 typedef enum {
     CodeConstOp = 0,
@@ -60,8 +60,7 @@ typedef enum {
     CodeCallNativeFuncIC,
     CodeRet1,
     CodeRet0,
-    CodeCall0,
-    CodeCall1,
+    CodeCall,
     CodeField,
     CodeFieldIC,
     CodeFieldRetain,
@@ -198,6 +197,8 @@ typedef u32 FuncId;
 typedef u32 NodeId;
 typedef u32 ChunkId;
 typedef u32 MethodId;
+typedef u32 MethodGroupId;
+typedef u32 TypeMethodGroupId;
 typedef u32 ResolvedSymId;
 typedef u32 ResolvedFuncSigId;
 typedef u32 NameId;
@@ -479,8 +480,13 @@ typedef struct Compiler {
     NodeId errorPayload;
 } Compiler;
 
+typedef struct OpCount {
+    u32 code;
+    u32 count;
+} OpCount;
+
 typedef struct TraceInfo {
-    void* opCountsBuf;
+    OpCount* opCountsBuf;
     size_t opCountsLen;
     u32 totalOpCounts;
     u32 numRetains;
@@ -561,10 +567,11 @@ typedef struct VM {
     size_t refCounts;
 #endif
 
-    ZCyList methodSyms;
-    ZHashMap methodTable;
-
-    ZHashMap methodSymSigs;
+    ZCyList methods;
+    ZCyList methodGroups;
+    ZHashMap methodGroupKeys;
+    ZCyList typeMethodGroups;
+    ZHashMap typeMethodGroupKeys;
 
     ZCyList funcSyms; // FuncSymbol
     ZHashMap funcSymSigs;
@@ -592,7 +599,8 @@ typedef struct VM {
     StackTrace stackTrace;
 
     ZHashMap funcSymDeps;
-    ZCyList methodSymExtras;
+    ZCyList methodGroupExts;
+    ZCyList methodExts;
     DebugSym* debugTablePtr;
     size_t debugTableLen;
 

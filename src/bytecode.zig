@@ -275,10 +275,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const pcPtr: [*]cy.Inst = @ptrFromInt(@as(usize, @intCast(@as(*const align(1) u48, @ptrCast(pc + 6)).*)));
             fmt.printStderr("{} {} startLocal={}, numRet={}, stackSize={}, pcPtr={}", &.{v(pcOffset), v(code), v(startLocal), v(numRet), v(stackSize), v(pcPtr)});
         },
-        .call1 => {
+        .call => {
             const startLocal = pc[1].arg;
             const numArgs = pc[2].arg;
-            fmt.printStderr("{} {} startLocal={}, numArgs={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs)});
+            const numRet = pc[3].arg;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet)});
         },
         .closure => {
             const negFuncPcOffset = pc[1].arg;
@@ -549,6 +550,11 @@ pub const CallObjSymInstLen = vmc.CALL_OBJ_SYM_INST_LEN;
 pub const CallSymInstLen = vmc.CALL_SYM_INST_LEN;
 pub const CallInstLen = vmc.CALL_INST_LEN;
 
+test "getInstLenAt" {
+    var code = Inst{ .code = OpCode.call };
+    try t.eq(getInstLenAt(@ptrCast(&code)), CallInstLen);
+}
+
 pub fn getInstLenAt(pc: [*]const Inst) u8 {
     switch (pc[0].code) {
         .ret0,
@@ -573,10 +579,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             const numVars = pc[1].arg;
             return 2 + numVars;
         },
-        .call0,
-        .call1 => {
-            return CallInstLen;
-        },
         .init,
         .popTry,
         .copy,
@@ -596,6 +598,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .tagLiteral => {
             return 3;
         },
+        .call,
         .captured,
         .constOp,
         .staticVar,
@@ -760,13 +763,9 @@ pub const OpCode = enum(u8) {
     ret1 = vmc.CodeRet1,
     ret0 = vmc.CodeRet0,
 
-    /// Calls a lambda and ensures 0 return values.
-    /// [calleeLocal] [numArgs]
-    call0 = vmc.CodeCall0,
-
-    /// Calls a lambda and ensures 1 return value.
-    /// [calleeLocal] [numArgs]
-    call1 = vmc.CodeCall1,
+    /// Calls a lambda.
+    /// [calleeLocal] [numArgs] [numRet=0/1]
+    call = vmc.CodeCall,
 
     field = vmc.CodeField,
     fieldIC = vmc.CodeFieldIC,
@@ -883,7 +882,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "Internals." {
-    try t.eq(std.enums.values(OpCode).len, 100);
+    try t.eq(std.enums.values(OpCode).len, 99);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

@@ -422,7 +422,7 @@ pub const VMcompiler = struct {
         //         sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.func.pc.offset};
         //     }
         // }
-        // for (self.vm.methodSyms.items()) |*sym| {
+        // for (self.vm.methodGroups.items()) |*sym| {
         //     if (sym.mapT == .one) {
         //         if (sym.inner.one.sym.entryT == .func) {
         //             sym.inner.one.sym.inner.func.pc = .{ .ptr = self.buf.ops.items.ptr + sym.inner.one.sym.inner.func.pc.offset };

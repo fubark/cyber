@@ -53,122 +53,166 @@ pub const Type = struct {
 pub const FieldTableKey = cy.hash.KeyU64;
 pub const FieldId = u32;
 
-pub const MethodKey = cy.hash.KeyU64;
-pub const MethodTableKey = cy.hash.KeyU64;
-pub const MethodId = u32;
+pub const MethodGroupKey = sema.NameSymId;
+pub const TypeMethodGroupKey = cy.hash.KeyU64;
 
-const MethodEntryType = enum {
-    singleUntypedFunc,
-    singleUntypedNativeFunc1,
-    singleUntypedNativeFunc2,
-
-    /// Single typed func.
-    singleTypedFunc,
-
-    /// Single typed native func.
-    singleTypedNativeFunc,
+pub const MethodType = enum {
+    untypedFunc,
+    untypedNativeFunc1,
+    untypedNativeFunc2,
+    typedFunc,
+    typedNativeFunc,
 };
 
-/// Stored in `methodTable`.
-pub const MethodEntry = struct {
-    type: MethodEntryType,
-
-    /// The full signature of the function.
-    rFuncSigId: u32,
-
-    inner: MethodInner,
-};
-
-const MethodInner = packed union {
-    nativeFunc1: cy.NativeObjFuncPtr,
-    nativeFunc2: cy.NativeObjFunc2Ptr,
-    func: packed struct {
+pub const MethodData = extern union {
+    typedNativeFunc: extern struct {
+        ptr: cy.NativeObjFuncPtr,
+        funcSigId: sema.ResolvedFuncSigId,
+        /// Includes self param.
+        numParams: u8,
+    },
+    untypedNativeFunc1: extern struct {
+        ptr: cy.NativeObjFuncPtr,
+        numParams: u8,
+    },
+    untypedNativeFunc2: extern struct {
+        ptr: cy.NativeObjFunc2Ptr,
+        numParams: u8,
+    },
+    typedFunc: extern struct {
+        funcSigId: sema.ResolvedFuncSigId,
+        pc: u32,
+        stackSize: u32,
+        numParams: u8,
+    },
+    untypedFunc: extern struct {
+        numParams: u8,
         pc: u32,
         stackSize: u32,
     },
 };
 
-/// Keeping this small is better for function calls.
-/// Secondary symbol data should be moved to `methodSymExtras`.
-pub const MethodSym = struct {
-    mruEntryType: MethodEntryType,
-    /// Most recent sym used is cached avoid hashmap lookup. 
-    mruTypeId: TypeId,
+pub const MethodExt = struct {
+    /// Signature is kept for every method.
+    funcSigId: sema.ResolvedFuncSigId,
+};
 
-    /// The full signature of the function.
-    /// This is only used for `singleTypedFunc` which do runtime type checks on the arguments.
-    rFuncSigId: u32,
+/// Used to initialize `Method` and `MethodExt`.
+pub const MethodInit = struct {
+    type: MethodType,
+    data: MethodData,
+    funcSigId: sema.ResolvedFuncSigId,
 
-    inner: MethodInner,
-
-    pub fn initSingleUntypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32) MethodSym {
+    pub fn initUntypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
         return .{
-            .mruEntryType = .singleUntypedFunc,
-            .mruTypeId = undefined,
-            .rFuncSigId = funcSigId,
-            .inner = .{
-                .func = .{
+            .type = .untypedFunc,
+            .data = .{
+                .untypedFunc = .{
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
+                    .numParams = numParams,
                 },
             },
+            .funcSigId = funcSigId,
         };
     }
 
-    pub fn initSingleUntypedNativeFunc1(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
+    pub fn initUntypedNativeFunc1(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
         return .{
-            .mruEntryType = .singleUntypedNativeFunc1,
-            .mruTypeId = undefined,
-            .rFuncSigId = funcSigId,
-            .inner = .{
-                .nativeFunc1 = func,
+            .type = .untypedNativeFunc1,
+            .data = .{
+                .untypedNativeFunc1 = .{
+                    .ptr = func,
+                    .numParams = numParams,
+                },
             },
+            .funcSigId = funcSigId,
         };
     }
 
-    pub fn initSingleUntypedNativeFunc2(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr) MethodSym {
+    pub fn initUntypedNativeFunc2(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr, numParams: u8) MethodInit {
         return .{
-            .mruEntryType = .singleUntypedNativeFunc2,
-            .mruTypeId = undefined,
-            .rFuncSigId = funcSigId,
-            .inner = .{
-                .nativeFunc2 = func,
+            .type = .untypedNativeFunc2,
+            .data = .{
+                .untypedNativeFunc2 = .{
+                    .ptr = func,
+                    .numParams = numParams,
+                },
             },
+            .funcSigId = funcSigId,
         };
     }
 
-    pub fn initSingleTypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32) MethodSym {
+    pub fn initTypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
         return .{
-            .mruEntryType = .singleTypedFunc,
-            .mruTypeId = undefined,
-            .rFuncSigId = funcSigId,
-            .inner = .{
-                .func = .{
+            .type = .typedFunc,
+            .data = .{
+                .typedFunc = .{
+                    .funcSigId = funcSigId,
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
+                    .numParams = numParams,
                 },
             },
+            .funcSigId = funcSigId,
         };
     }
 
-    pub fn initSingleTypedNativeFunc(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr) MethodSym {
+    pub fn initTypedNativeFunc(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
         return .{
-            .mruEntryType = .singleTypedNativeFunc,
-            .mruTypeId = undefined,
-            .rFuncSigId = funcSigId,
-            .inner = .{
-                .nativeFunc1 = func,
+            .type = .typedNativeFunc,
+            .data = .{
+                .typedNativeFunc = .{
+                    .funcSigId = funcSigId,
+                    .ptr = func,
+                    .numParams = numParams,
+                },
             },
+            .funcSigId = funcSigId,
         };
     }
 };
 
-pub const MethodSymExtra = struct {
+pub const Method = struct {
+    type: MethodType,
+
+    data: MethodData,
+
+    next: vmc.MethodId,
+};
+
+pub const TypeMethodGroup = struct {
+    mruMethodId: vmc.MethodId,
+
+    head: vmc.MethodId,
+
+    /// For faster append.
+    tail: vmc.MethodId,
+};
+
+/// Keeping this small is better for function calls.
+/// Secondary symbol data should be moved to `methodGroupExts`.
+pub const MethodGroup = struct {
+    /// Most recent type  is cached to avoid hashmap lookup. 
+    mruTypeId: TypeId,
+
+    mruMethodType: MethodType,
+    mruMethodData: MethodData,
+    mruTypeMethodOverloaded: bool,
+};
+
+pub const MethodGroupExt = struct {
     namePtr: [*]const u8,
-    nameLen: u32,
+    /// NullId if only one method in the group.
+    mruTypeMethodGroupId: vmc.TypeMethodGroupId,
+    mruMethodId: vmc.MethodId,
+    /// So debug info can be obtained for a method group with just one method.
+    initialFuncSigId: sema.ResolvedFuncSigId,
+
+    nameLen: u16,
     nameIsOwned: bool,
 
-    pub fn getName(self: *const MethodSymExtra) []const u8 {
+    pub fn getName(self: *const MethodGroupExt) []const u8 {
         return self.namePtr[0..self.nameLen];
     }
 };
@@ -282,8 +326,13 @@ pub const VarSym = struct {
 pub const FieldSymbolMap = vmc.FieldSymbolMap;
 
 test "Internals." {
-    try t.eq(@alignOf(MethodSym), 8);
-    try t.eq(@sizeOf(MethodSym), 24);
+    try t.eq(@sizeOf(MethodData), 16);
+    try t.eq(@sizeOf(Method), 24);
+    try t.eq(@sizeOf(MethodExt), 4);
+    try t.eq(@sizeOf(TypeMethodGroup), 12);
+    try t.eq(@alignOf(MethodGroup), 8);
+    try t.eq(@sizeOf(MethodGroup), 24);
+    try t.eq(@sizeOf(MethodGroupExt), 24);
 
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
     var funcSymEntry: FuncSymbolEntry = undefined;

@@ -620,7 +620,7 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
         },
         .callObjSym => {
             const symId = pc[4].arg;
-            const symName = vm.methodSymExtras.buf[symId].getName();
+            const symName = vm.methodGroupExts.buf[symId].getName();
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
         },
         else => {},

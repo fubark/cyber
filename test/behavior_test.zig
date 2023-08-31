@@ -1180,7 +1180,8 @@ test "FFI." {
         \\lib.testAdd(123, 234, 345)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: `func testAdd(any, number, number, number) any` can not be found in `BindLib`.
+            \\panic: Can not find compatible function for `testAdd(any, number, number, number) any` in `BindLib`.
+            \\Only `func testAdd(any, number, number) number` exists for the symbol `testAdd`.
             \\
             \\main:14:1 main:
             \\lib.testAdd(123, 234, 345)
@@ -1374,7 +1375,8 @@ test "Object funcs/methods." {
         \\o.foo(234)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: `func foo(any, number) any` can not be found in `S`.
+            \\panic: Can not find compatible function for `foo(any, number) any` in `S`.
+            \\Only `func foo(any) any` exists for the symbol `foo`.
             \\
             \\main:6:1 main:
             \\o.foo(234)

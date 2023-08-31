@@ -31,6 +31,8 @@ pub fn build(b: *std.build.Builder) !void {
     tcc = tcc_lib.createModule(b);
     mimalloc = mimalloc_lib.createModule(b);
 
+    const opts = getDefaultOptions(target, optimize);
+
     {
         const step = b.step("cli", "Build main cli.");
 

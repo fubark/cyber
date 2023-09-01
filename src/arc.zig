@@ -53,7 +53,7 @@ pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
 fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
         const msg = std.fmt.allocPrint(vm.alloc, "Double free object: {*} at pc: {}({s})", .{
-            obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].code),
+            obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].opcode()),
         }) catch stdx.fatal();
         defer vm.alloc.free(msg);
         cy.debug.printTraceAtPc(vm, vm.debugPc, msg) catch stdx.fatal();
@@ -86,14 +86,14 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
 }
 
 pub fn runTempReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    if (vm.ops[startPc].code == .release) {
+    if (vm.ops[startPc].opcode() == .release) {
         var pc = startPc;
         while (true) {
-            const local = vm.ops[pc+1].arg;
+            const local = vm.ops[pc+1].val;
             // stack[framePtr + local].dump();
             release(vm, stack[framePtr + local]);
             pc += 2;
-            if (vm.ops[pc].code != .release) {
+            if (vm.ops[pc].opcode() != .release) {
                 break;
             }
         }
@@ -101,10 +101,10 @@ pub fn runTempReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, s
 }
 
 pub fn runBlockEndReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    if (vm.ops[startPc].code == .releaseN) {
-        const numLocals = vm.ops[startPc+1].arg;
+    if (vm.ops[startPc].opcode() == .releaseN) {
+        const numLocals = vm.ops[startPc+1].val;
         for (vm.ops[startPc+2..startPc+2+numLocals]) |local| {
-            release(vm, stack[framePtr + local.arg]);
+            release(vm, stack[framePtr + local.val]);
         }
     }
 }

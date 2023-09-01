@@ -75,7 +75,7 @@ pub fn pushFiber(vm: *cy.VM, curFiberEndPc: usize, curFramePtr: [*]Value, fiber:
     vm.stack = @as([*]Value, @ptrCast(fiber.stackPtr))[0..fiber.stackLen];
     vm.stackEndPtr = vm.stack.ptr + fiber.stackLen;
     // Check if fiber was previously yielded.
-    if (vm.ops[fiber.pcOffset].code == .coyield) {
+    if (vm.ops[fiber.pcOffset].opcode() == .coyield) {
         log.debug("fiber set to {} {*}", .{fiber.pcOffset + 3, vm.framePtr});
         return .{
             .pc = toVmPc(vm, fiber.pcOffset + 3),
@@ -131,11 +131,11 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
     if (pc != cy.NullId) {
 
         // Check if fiber is still in init state.
-        switch (vm.ops[pc].code) {
+        switch (vm.ops[pc].opcode()) {
             .callFuncIC,
             .callSym => {
-                if (pc >= 6 and vm.ops[pc - 6].code == .coinit) {
-                    const numArgs = vm.ops[pc - 4].arg;
+                if (pc >= 6 and vm.ops[pc - 6].opcode() == .coinit) {
+                    const numArgs = vm.ops[pc - 4].val;
                     for (stack[fiber.stackOffset + 5..fiber.stackOffset + 5 + numArgs]) |arg| {
                         cy.arc.release(vm, arg);
                     }
@@ -145,7 +145,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
         }
 
         // Check if fiber was previously on a yield op.
-        if (vm.ops[pc].code == .coyield) {
+        if (vm.ops[pc].opcode() == .coyield) {
             const jump = @as(*const align(1) u16, @ptrCast(&vm.ops[pc+1])).*;
             log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
             // The yield statement already contains the end locals pc.
@@ -167,12 +167,12 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
         }
 
         // Check to run extra release ops (eg. For call1 inst.)
-        if (vm.ops[pc].code != .coreturn) {
-            switch (vm.ops[fiber.initialPcOffset].code) {
+        if (vm.ops[pc].opcode() != .coreturn) {
+            switch (vm.ops[fiber.initialPcOffset].opcode()) {
                 .call => {
                     const endLocalsPc = fiber.initialPcOffset + cy.bytecode.CallInstLen;
-                    if (vm.ops[endLocalsPc].code == .release) {
-                        const local = vm.ops[endLocalsPc+1].arg;
+                    if (vm.ops[endLocalsPc].opcode() == .release) {
+                        const local = vm.ops[endLocalsPc+1].val;
                         cy.arc.release(vm, stack[framePtr + local]);
                     }
                 },
@@ -220,7 +220,7 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     const tFpOffset = getStackOffset(vm.stack.ptr, targetFp);
 
     while (fpOffset > tFpOffset) {
-        log.debug("release frame: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+        log.debug("release frame: {} {}", .{pcOffset, vm.ops[pcOffset].opcode()});
         // Perform cleanup for this frame.
 
         // Release temporaries in the current frame.
@@ -245,7 +245,7 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     }
 
     // Release temporaries in the current frame.
-    log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+    log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].opcode()});
     const instLen = cy.getInstLenAt(vm.ops.ptr + pcOffset);
     cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
 }
@@ -273,7 +273,7 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?
             });
 
             // Release temporaries in the current frame.
-            log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].code});
+            log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].opcode()});
             cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset);
 
             // Goto catch block in current frame.

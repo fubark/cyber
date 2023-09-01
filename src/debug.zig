@@ -81,14 +81,14 @@ pub fn indexOfDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?usize {
 pub fn dumpObjectTrace(vm: *const cy.VM, obj: *cy.HeapObject) !void {
     if (vm.objectTraceMap.get(obj)) |trace| {
         const msg = try std.fmt.allocPrint(vm.alloc, "Allocated object: {*} at pc: {}({s})", .{
-            obj, trace.allocPc, @tagName(vm.ops[trace.allocPc].code),
+            obj, trace.allocPc, @tagName(vm.ops[trace.allocPc].opcode()),
         });
         defer vm.alloc.free(msg);
         try printTraceAtPc(vm, trace.allocPc, msg);
 
         if (trace.freePc != cy.NullId) {
             const msg2 = try std.fmt.allocPrint(vm.alloc, "Last freed at pc: {}({s}) with type: {}({s})", .{
-                trace.freePc, @tagName(vm.ops[trace.freePc].code), trace.freeTypeId, cy.heap.getTypeName(vm, trace.freeTypeId),
+                trace.freePc, @tagName(vm.ops[trace.freePc].opcode()), trace.freeTypeId, cy.heap.getTypeName(vm, trace.freeTypeId),
             });
             defer vm.alloc.free(msg2);
             try printTraceAtPc(vm, trace.freePc, msg2);
@@ -109,7 +109,7 @@ pub fn printTraceAtPc(vm: *const cy.VM, pc: u32, msg: []const u8) !void {
         if (pc == cy.NullId) {
             fmt.printStderr("Trace: {} (vm global allocation)\n", &.{v(msg)});
         } else {
-            fmt.printStderr("{}\nMissing debug sym for {}, pc: {}.\n", &.{v(msg), v(vm.ops[pc].code), v(pc)});
+            fmt.printStderr("{}\nMissing debug sym for {}, pc: {}.\n", &.{v(msg), v(vm.ops[pc].opcode()), v(pc)});
         }
     }
 }
@@ -418,7 +418,7 @@ pub fn buildStackTrace(self: *cy.VM) !void {
 /// TODO: Memoize this function.
 pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
     const idx = indexOfDebugSym(vm, pc) orelse {
-        stdx.panicFmt("Missing debug symbol: {}", .{vm.ops[pc].code});
+        stdx.panicFmt("Missing debug symbol: {}", .{vm.ops[pc].opcode()});
     };
     const sym = vm.debugTable[idx];
     if (sym.frameLoc != cy.NullId) {
@@ -463,7 +463,7 @@ fn getOpCodeAtPc(ops: []const cy.Inst, atPc: u32) ?cy.OpCode {
     var i: usize = 0;
     while (i < ops.len) {
         if (i == atPc) {
-            return ops[i].code;
+            return ops[i].opcode();
         }
         i += bytecode.getInstLenAt(ops.ptr + i);
     }
@@ -509,7 +509,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
 
         const node = chunk.nodes[sym.loc];
         const token = chunk.tokens[node.start_token];
-        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].code), @tagName(node.node_t) });
+        const msg = try std.fmt.allocPrint(vm.alloc, "pc={} op={s} node={s}", .{ pcContext, @tagName(pc[pcContext].opcode()), @tagName(node.node_t) });
         defer vm.alloc.free(msg);
         try printUserError(vm, "Trace", msg, sym.file, token.pos());
 
@@ -528,7 +528,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
                 dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
             }
 
-            const code = pc[0].code;
+            const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
             try dumpInst(vm, pcOffset, code, pc, len);
             pcOffset += len;
@@ -540,7 +540,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         }
         // Special marker for requested inst.
         fmt.printStderr("--", &.{});
-        var code = pc[0].code;
+        var code = pc[0].opcode();
         var len = bytecode.getInstLenAt(pc);
         try dumpInst(vm, pcOffset, code, pc, len);
         pcOffset += len;
@@ -552,7 +552,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
             if (pcOffset == nextLabelPc) {
                 dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
             }
-            code = pc[0].code;
+            code = pc[0].opcode();
             len = bytecode.getInstLenAt(pc);
             try dumpInst(vm, pcOffset, code, pc, len);
             pcOffset += len;
@@ -573,7 +573,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
                 dumpLabelAdvance(vm, &curLabelIdx, &nextLabelPc);
             }
 
-            const code = pc[0].code;
+            const code = pc[0].opcode();
             const len = bytecode.getInstLenAt(pc);
             try dumpInst(vm, pcOffset, code, pc, len);
             pcOffset += len;
@@ -613,13 +613,13 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
         },
         .fieldRetain => {
-            const symId = pc[3].arg;
+            const symId = pc[3].val;
             const sym = vm.fieldSyms.buf[symId];
             const name = cy.sema.getName(&vm.compiler, sym.nameId);
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
         },
         .callObjSym => {
-            const symId = pc[4].arg;
+            const symId = pc[4].val;
             const symName = vm.methodGroupExts.buf[symId].getName();
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
         },

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <math.h>
 #include "vm.h"
 
 #define STATIC_ASSERT(cond, msg) typedef char static_assertion_##msg[(cond)?1:-1]

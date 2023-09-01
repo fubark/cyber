@@ -842,12 +842,12 @@ pub fn allocClosure(
     const dst = obj.closure.getCapturedValuesPtr();
     for (capturedVals, 0..) |local, i| {
         if (builtin.mode == .Debug) {
-            if (!fp[local.arg].isBox()) {
+            if (!fp[local.val].isBox()) {
                 stdx.panic("Expected box value.");
             }
         }
-        cy.arc.retain(self, fp[local.arg]);
-        dst[i] = fp[local.arg];
+        cy.arc.retain(self, fp[local.val]);
+        dst[i] = fp[local.val];
     }
     return Value.initPtr(obj);
 }
@@ -866,7 +866,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, rF
 }
 
 pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Value) !Value {
-    const firstStr = self.valueAsStaticString(Value.initRaw(self.consts[strs[0].arg].val));
+    const firstStr = self.valueAsStaticString(Value.initRaw(self.consts[strs[0].val].val));
     try self.u8Buf.resize(self.alloc, firstStr.len);
     std.mem.copy(u8, self.u8Buf.items(), firstStr);
 
@@ -874,7 +874,7 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
     for (vals, 0..) |val, i| {
         self.writeValueToString(writer, val);
         cy.arc.release(self, val);
-        try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].arg].val)));
+        try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].val].val)));
     }
 
     // TODO: As string is built, accumulate charLen and detect rawstring to avoid doing validation.

@@ -98,11 +98,12 @@ pub fn build(b: *std.build.Builder) !void {
 
         try addBuildOptions(b, lib, opts);
 
-        // lib.linkLibC();
         lib.addModule("stdx", stdx);
         if (opts.useMimalloc) {
             mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
             mimalloc_lib.buildAndLink(b, lib, .{});
+        } else {
+            lib.linkLibC();
         }
 
         if (!target.getCpuArch().isWasm()) {

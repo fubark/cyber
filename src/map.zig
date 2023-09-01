@@ -339,7 +339,7 @@ pub const ValueMapEntry = struct {
     value: cy.Value,
 };
 
-test "Internals." {
+test "map internals." {
     try t.eq(@sizeOf(ValueMapEntry), 16);
     try t.eq(@alignOf(*ValueMapEntry), 8);
     try t.eq(@sizeOf(Metadata), 1);

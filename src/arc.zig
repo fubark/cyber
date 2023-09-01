@@ -15,7 +15,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (builtin.mode == .Debug) {
+        if (cy.TraceObjects) {
             checkDoubleFree(vm, obj);
         }
         obj.head.rc -= 1;
@@ -64,7 +64,7 @@ fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
 }
 
 pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
-    if (builtin.mode == .Debug or builtin.is_test) {
+    if (cy.TraceObjects) {
         checkDoubleFree(vm, obj);
     }
     obj.head.rc -= 1;

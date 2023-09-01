@@ -177,6 +177,8 @@ pub const hasStdFiles = !isWasm;
 const build_options = @import("build_options");
 pub const TraceEnabled = build_options.trace;
 pub const TrackGlobalRC = build_options.trackGlobalRC;
+pub const TraceObjects = build_options.traceObjects;
+pub const UseMimalloc = build_options.useMimalloc;
 
 const std = @import("std");
 pub const NullId = std.math.maxInt(u32);

@@ -677,7 +677,7 @@ test "asF64" {
     try t.eq(val.asF64(), -std.math.inf(f64));
 }
 
-test "Internals." {
+test "value internals." {
     try t.eq(@sizeOf(Value), 8);
     try t.eq(@alignOf(Value), 8);
     try t.eq(StaticAstringMask, 0x7FFC000300000000);

@@ -890,7 +890,7 @@ pub const OpCode = enum(u8) {
     end = vmc.CodeEnd,
 };
 
-test "Internals." {
+test "bytecode internals." {
     try t.eq(std.enums.values(OpCode).len, 99);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);

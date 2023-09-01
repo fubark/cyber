@@ -724,7 +724,7 @@ const DataNode = extern struct {
     next: u32,
 };
 
-test "Internals." {
+test "chunk internals." {
     try t.eq(@sizeOf(DataNode), 8);
 }
 

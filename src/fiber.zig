@@ -23,7 +23,7 @@ pub const PanicType = enum(u8) {
     none = vmc.PANIC_NONE,
 };
 
-test "Internals" {
+test "fiber internals." {
     try t.eq(@sizeOf(vmc.Fiber), 88);
     try t.eq(@sizeOf(vmc.TryFrame), 16);
 }

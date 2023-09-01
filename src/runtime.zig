@@ -325,7 +325,7 @@ pub const VarSym = struct {
 
 pub const FieldSymbolMap = vmc.FieldSymbolMap;
 
-test "Internals." {
+test "runtime internals." {
     try t.eq(@sizeOf(MethodData), 16);
     try t.eq(@sizeOf(Method), 24);
     try t.eq(@sizeOf(MethodExt), 4);

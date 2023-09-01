@@ -607,7 +607,11 @@ pub fn appendModule(c: *cy.VMcompiler, name: []const u8) !ModuleId {
     return id;
 }
 
-test "Internals" {
+test "module internals" {
     try t.eq(@sizeOf(ModuleFuncNode), 16);
-    try t.eq(@sizeOf(ModuleSym), 24);
+    if (builtin.mode == .Debug) {
+        try t.eq(@sizeOf(ModuleSym), 24);
+    } else {
+        try t.eq(@sizeOf(ModuleSym), 16);
+    }
 }

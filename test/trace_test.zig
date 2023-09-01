@@ -407,7 +407,3 @@ const VMrunner = struct {
         return undefined;
     }
 };
-
-test "Internals." {
-    try t.eq(@offsetOf(cy.VM, "trace"), @offsetOf(vmc.VM, "trace"));
-}

@@ -4334,8 +4334,12 @@ pub fn getOrLoadModule(self: *cy.Chunk, spec: []const u8, nodeId: cy.NodeId) !cy
     }
 }
 
-test "Internals." {
-    try t.eq(@sizeOf(LocalVar), 32);
+test "sema internals." {
+    if (builtin.mode == .Debug) {
+        try t.eq(@sizeOf(LocalVar), 32);
+    } else {
+        try t.eq(@sizeOf(LocalVar), 16);
+    }
     try t.eq(@sizeOf(ResolvedFuncSym), 24);
     try t.eq(@sizeOf(ResolvedFuncSig), 16);
 

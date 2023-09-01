@@ -218,6 +218,3 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, symId: TypeId) bool {
         }
     }
 }
-
-test "Internals." {
-}

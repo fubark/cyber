@@ -109,6 +109,6 @@ pub const KeyU64Context = struct {
     }
 };
 
-test "Internals." {
+test "hash internals." {
     try t.eq(@sizeOf(KeyU64), 8);
 }

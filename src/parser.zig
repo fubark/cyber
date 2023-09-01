@@ -4600,10 +4600,14 @@ const StaticDecl = struct {
     },
 };
 
-test "Internals." {
+test "parser internals." {
     try t.eq(@sizeOf(Token), 8);
     try t.eq(@alignOf(Token), 4);
-    try t.eq(@sizeOf(Node), 28);
+    if (builtin.mode == .Debug) {
+        try t.eq(@sizeOf(Node), 28);
+    } else {
+        try t.eq(@sizeOf(Node), 24);
+    }
     try t.eq(@sizeOf(TokenizeState), 4);
 
     try t.eq(std.enums.values(TokenType).len, 59);

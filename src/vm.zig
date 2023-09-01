@@ -30,7 +30,6 @@ const UserVM = cy.UserVM;
 const log = stdx.log.scoped(.vm);
 
 const UseGlobalVM = true;
-pub const TrackGlobalRC = builtin.mode != .ReleaseFast;
 const StdSection = cy.StdSection;
 
 /// Temp buf for toString conversions when the len is known to be small.
@@ -69,7 +68,7 @@ pub const VM = struct {
 
     tryStack: cy.List(vmc.TryFrame),
 
-    refCounts: if (TrackGlobalRC) usize else void,
+    refCounts: if (cy.TrackGlobalRC) usize else void,
 
     /// Cached buckets used to lookup object methods.
     /// If the `MethodGroup.mruTypeId` matches, the mru func data stored in MethodGroup is used first.
@@ -147,11 +146,11 @@ pub const VM = struct {
     stdHttpClient: if (!cy.isWasm) http.StdHttpClient else void,
 
     /// Object to pc of instruction that allocated it.
-    objectTraceMap: if (builtin.mode == .Debug) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
+    objectTraceMap: if (cy.TraceObjects) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
 
     /// In debug mode, always save the current pc so tracing can be obtained.
     /// debugPc == NullId indicates execution has not started.
-    debugPc: if (builtin.mode == .Debug) u32 else void,
+    debugPc: if (cy.TraceObjects) u32 else void,
 
     config: EvalConfig,
 
@@ -211,7 +210,7 @@ pub const VM = struct {
             .u8Buf2 = .{},
             .stackTrace = .{},
             .debugTable = undefined,
-            .refCounts = if (TrackGlobalRC) 0 else undefined,
+            .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
             .throwTrace = .{},
             .mainFiber = undefined,
             .curFiber = undefined,
@@ -2141,7 +2140,7 @@ const Symbol = struct {
     nameOwned: bool,
 };
 
-test "Internals." {
+test "vm internals." {
     try t.eq(@alignOf(VM), 8);
 
     try t.eq(@sizeOf(AbsFuncSigKey), 16);
@@ -2192,6 +2191,10 @@ test "Internals." {
     try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
     try t.eq(@offsetOf(VM, "throwTrace"), @offsetOf(vmc.VM, "throwTrace"));
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
+
+    if (cy.TraceEnabled) {
+        try t.eq(@offsetOf(cy.VM, "trace"), @offsetOf(vmc.VM, "trace"));
+    }
 }
 
 const EnumId = u32;

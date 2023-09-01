@@ -364,6 +364,6 @@ pub const UserVM = struct {
     }
 };
 
-test "Internals." {
+test "api internals." {
     try t.eq(@alignOf(UserVM), UserVMAlign);
 }

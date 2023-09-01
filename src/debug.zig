@@ -344,7 +344,7 @@ pub const StackFrame = struct {
     chunkId: u32,
 };
 
-test "Internals." {
+test "debug internals." {
     try t.eq(@sizeOf(vmc.CompactFrame), 8);
 }
 

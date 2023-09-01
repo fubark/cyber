@@ -31,10 +31,10 @@ pub fn build(b: *std.build.Builder) !void {
     tcc = tcc_lib.createModule(b);
     mimalloc = mimalloc_lib.createModule(b);
 
-    const opts = getDefaultOptions(target, optimize);
-
     {
         const step = b.step("cli", "Build main cli.");
+
+        const opts = getDefaultOptions(target, optimize);
 
         const exe = b.addExecutable(.{
             .name = "cyber",
@@ -61,8 +61,10 @@ pub fn build(b: *std.build.Builder) !void {
 
         // exe.linkLibC();
         exe.addModule("stdx", stdx);
-        mimalloc_lib.addModule(exe, "mimalloc", mimalloc);
-        mimalloc_lib.buildAndLink(b, exe, .{});
+        if (opts.useMimalloc) {
+            mimalloc_lib.addModule(exe, "mimalloc", mimalloc);
+            mimalloc_lib.buildAndLink(b, exe, .{});
+        }
         tcc_lib.addModule(exe, "tcc", tcc);
         tcc_lib.buildAndLink(b, exe, .{
             .selinux = selinux,
@@ -73,6 +75,9 @@ pub fn build(b: *std.build.Builder) !void {
 
     {
         const step = b.step("lib", "Build as a library.");
+
+        const opts = getDefaultOptions(target, optimize);
+
         const lib = b.addSharedLibrary(.{
             .name = "cyber",
             .root_source_file = .{ .path = "src/lib.zig" },
@@ -95,8 +100,10 @@ pub fn build(b: *std.build.Builder) !void {
 
         // lib.linkLibC();
         lib.addModule("stdx", stdx);
-        mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
-        mimalloc_lib.buildAndLink(b, lib, .{});
+        if (opts.useMimalloc) {
+            mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
+            mimalloc_lib.buildAndLink(b, lib, .{});
+        }
 
         if (!target.getCpuArch().isWasm()) {
             tcc_lib.addModule(lib, "tcc", tcc);
@@ -116,6 +123,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     {
         const step = b.step("wasm-test", "Build the wasm test runner.");
+        const opts = getDefaultOptions(target, optimize);
         const lib = b.addSharedLibrary(.{
             .name = "test",
             .root_source_file = .{ .path = "test/wasm_test.zig" },
@@ -144,8 +152,11 @@ pub fn build(b: *std.build.Builder) !void {
 
         // lib.linkLibC();
         lib.addModule("stdx", stdx);
-        mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
-        mimalloc_lib.buildAndLink(b, lib, .{});
+
+        if (opts.useMimalloc) {
+            mimalloc_lib.addModule(lib, "mimalloc", mimalloc);
+            mimalloc_lib.buildAndLink(b, lib, .{});
+        }
 
         if (!target.getCpuArch().isWasm()) {
             tcc_lib.addModule(lib, "tcc", tcc);
@@ -166,6 +177,9 @@ pub fn build(b: *std.build.Builder) !void {
     {
         const mainStep = b.step("test", "Run tests.");
 
+        var opts = getDefaultOptions(target, optimize);
+        opts.trackGlobalRc = true;
+
         var step = b.addTest(.{
             .root_source_file = .{ .path = "./test/main_test.zig" },
             .target = target,
@@ -178,6 +192,11 @@ pub fn build(b: *std.build.Builder) !void {
         try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
         step.rdynamic = true;
+
+        if (opts.useMimalloc) {
+            mimalloc_lib.addModule(step, "mimalloc", mimalloc);
+            mimalloc_lib.buildAndLink(b, step, .{});
+        }
 
         if (vmEngine == .c) {
             try buildCVM(b.allocator, step, opts);
@@ -195,6 +214,10 @@ pub fn build(b: *std.build.Builder) !void {
 
     {
         const mainStep = b.step("test-lib", "Run tests.");
+
+        var opts = getDefaultOptions(target, optimize);
+        opts.trackGlobalRc = true;
+
         var step = b.addTest(.{
             .root_source_file = .{ .path = "./test/lib_test.zig" },
             .target = target,
@@ -207,6 +230,11 @@ pub fn build(b: *std.build.Builder) !void {
         try addBuildOptions(b, step, opts);
         step.addModule("stdx", stdx);
         step.rdynamic = true;
+
+        if (opts.useMimalloc) {
+            mimalloc_lib.addModule(step, "mimalloc", mimalloc);
+            mimalloc_lib.buildAndLink(b, step, .{});
+        }
 
         tcc_lib.addModule(step, "tcc", tcc);
         tcc_lib.buildAndLink(b, step, .{
@@ -221,6 +249,8 @@ pub fn build(b: *std.build.Builder) !void {
     {
         // Just trace test.
         const mainStep = b.step("test-trace", "Run trace tests.");
+        var opts = getDefaultOptions(target, optimize);
+        opts.trackGlobalRc = true;
         const step = try addTraceTest(b, opts);
         mainStep.dependOn(&b.addRunArtifact(step).step);
     }
@@ -232,11 +262,12 @@ pub fn build(b: *std.build.Builder) !void {
 
 const Options = struct {
     selinux: bool,
-    linkMimalloc: bool = false,
     trackGlobalRc: bool,
     trace: bool,
+    traceObjects: bool,
     target: std.zig.CrossTarget,
     optimize: std.builtin.OptimizeMode,
+    useMimalloc: bool,
 };
 
 fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.OptimizeMode) Options {
@@ -244,8 +275,12 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .selinux = selinux,
         .trackGlobalRc = optimize != .ReleaseFast,
         .trace = false,
+        .traceObjects = optimize == .Debug,
         .target = target,
         .optimize = optimize,
+
+        // Use mimalloc for fast builds.
+        .useMimalloc = optimize == .ReleaseFast and !target.getCpuArch().isWasm(),
     };
 }
 
@@ -269,8 +304,11 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: 
     build_options.addOption([]const u8, "build", buildTag);
     build_options.addOption([]const u8, "commit", commitTag);
     build_options.addOption(bool, "useMalloc", useMalloc);
+    build_options.addOption(bool, "useMimalloc", opts.useMimalloc);
+
     build_options.addOption(config.Engine, "vmEngine", vmEngine);
     build_options.addOption(bool, "trace", opts.trace);
+    build_options.addOption(bool, "traceObjects", opts.traceObjects);
     build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     // build_options.addOption(bool, "trace", true);
@@ -292,6 +330,11 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
     newOpts.trace = true;
     try addBuildOptions(b, step, newOpts);
     step.addModule("stdx", stdx);
+
+    if (opts.useMimalloc) {
+        mimalloc_lib.addModule(step, "mimalloc", mimalloc);
+        mimalloc_lib.buildAndLink(b, step, .{});
+    }
 
     tcc_lib.addModule(step, "tcc", tcc);
     tcc_lib.buildAndLink(b, step, .{

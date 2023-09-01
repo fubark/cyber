@@ -17,9 +17,6 @@ const log = stdx.log.scoped(.heap);
 const NullId = std.math.maxInt(u32);
 const NullU8 = std.math.maxInt(u8);
 
-/// Use mimalloc for fast builds.
-const UseMimalloc = builtin.mode == .ReleaseFast and !cy.isWasm;
-
 var gpa: std.heap.GeneralPurposeAllocator(.{
     .enable_memory_limit = false,
     .stack_trace_frames = if (builtin.mode == .Debug) 10 else 0,
@@ -32,7 +29,7 @@ fn initAllocator() void {
     if (build_options.useMalloc) {
         return;
     } else {
-        if (UseMimalloc) {
+        if (cy.UseMimalloc) {
             miAlloc.init();
         } else {
             return;
@@ -52,7 +49,7 @@ pub fn getAllocator() std.mem.Allocator {
     if (build_options.useMalloc) {
         return std.heap.c_allocator;
     } else {
-        if (UseMimalloc) {
+        if (cy.UseMimalloc) {
             return miAlloc.allocator();
         } else {
             if (cy.isWasm) {
@@ -69,7 +66,7 @@ pub fn deinitAllocator() void {
         if (build_options.useMalloc) {
             return;
         } else {
-            if (UseMimalloc) {
+            if (cy.UseMimalloc) {
                 miAlloc.deinit();
             } else {
                 if (cy.isWasm) {
@@ -1639,7 +1636,7 @@ test "Free object invalidation." {
     }
 }
 
-test "Internals." {
+test "heap internals." {
     try t.eq(@sizeOf(MapInner), 32);
     try t.eq(@sizeOf(HeapObject), 40);
     try t.eq(@alignOf(HeapObject), 8);

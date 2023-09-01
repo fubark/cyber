@@ -706,7 +706,7 @@ pub const ValidateConfig = struct {
     enableFileModules: bool = false,
 };
 
-test "Internals." {
+test "vm compiler internals." {
     try t.eq(@offsetOf(VMcompiler, "buf"), @offsetOf(vmc.Compiler, "buf"));
     try t.eq(@offsetOf(VMcompiler, "sema"), @offsetOf(vmc.Compiler, "sema"));
 }

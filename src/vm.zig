@@ -2107,19 +2107,19 @@ fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
     } else if (val.isInteger()) {
         return @floatFromInt(val.asInteger());
     } else {
-        return @call(.never_inline, panicConvertNumberError, .{vm, val});
+        return @call(.never_inline, panicConvertFloatError, .{vm, val});
     }
 }
 
-fn panicExpectedNumber(vm: *cy.VM) error{Panic, OutOfMemory} {
+fn panicExpectedFloat(vm: *cy.VM) error{Panic, OutOfMemory} {
     @setCold(true);
     return vm.panic("Expected float operand.");
 }
 
-fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
+fn panicConvertFloatError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
     @setCold(true);
     const typeId = val.getTypeId();
-    return vm.panicFmt("Cannot convert `{}` to number.", &.{v(vm.types.buf[typeId].name)});
+    return vm.panicFmt("Cannot convert `{}` to float.", &.{v(vm.types.buf[typeId].name)});
 }
 
 const SymbolMapType = enum {
@@ -2439,7 +2439,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     pc += 2;
                     continue;
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
             },
             .compare => {
@@ -2481,10 +2481,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initF64(left.asF64() + right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -2505,10 +2505,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initF64(left.asF64() - right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -2529,10 +2529,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initBool(left.asF64() < right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -2553,10 +2553,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initBool(left.asF64() > right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -2567,10 +2567,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initBool(left.asF64() <= right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -2581,10 +2581,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initBool(left.asF64() >= right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3389,10 +3389,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initF64(left.asF64() * right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3403,10 +3403,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initF64(left.asF64() / right.asF64());
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3417,10 +3417,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initF64(std.math.mod(f64, left.asF64(), right.asF64()) catch std.math.nan_f64);
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3431,10 +3431,10 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     framePtr[pc[3].val] = Value.initF64(std.math.pow(f64, left.asF64(), right.asF64()));
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3587,11 +3587,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     const f: f64 = @floatFromInt(left.asF64toI32() & right.asF64toI32());
                     framePtr[pc[3].val] = Value.initF64(f);
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3602,11 +3602,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     const f: f64 = @floatFromInt(left.asF64toI32() | right.asF64toI32());
                     framePtr[pc[3].val] = Value.initF64(f);
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3617,11 +3617,11 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     const f: f64 = @floatFromInt(left.asF64toI32() ^ right.asF64toI32());
                     framePtr[pc[3].val] = Value.initF64(f);
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3638,7 +3638,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     pc += 2;
                     continue;
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
             },
             .bitwiseLeftShift => {
@@ -3647,13 +3647,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     const mod: u64 = @bitCast(@mod(right.asF64toI64(), 32));
                     const amt: u5 = @intCast(mod);
                     const res: f64 = @floatFromInt(left.asF64toI32() << amt);
                     framePtr[pc[3].val] = Value.initF64(res);
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -3664,13 +3664,13 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const left = framePtr[pc[1].val];
                 const right = framePtr[pc[2].val];
-                if (Value.bothNumbers(left, right)) {
+                if (Value.bothFloats(left, right)) {
                     const mod: u64 = @bitCast(@mod(right.asF64toI64(), 32));
                     const amt: u5 = @intCast(mod);
                     const res: f64 = @floatFromInt(left.asF64toI32() >> amt);
                     framePtr[pc[3].val] = Value.initF64(res);
                 } else {
-                    return @call(.never_inline, panicExpectedNumber, .{vm});
+                    return @call(.never_inline, panicExpectedFloat, .{vm});
                 }
                 pc += 4;
                 continue;
@@ -4363,7 +4363,7 @@ pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
 /// Like Value.dump but shows heap values.
 pub fn dumpValue(vm: *const VM, val: Value) void {
     if (val.isFloat()) {
-        fmt.printStdout("Number {}\n", &.{ v(val.asF64()) });
+        fmt.printStdout("Float {}\n", &.{ v(val.asF64()) });
     } else {
         if (val.isPointer()) {
             const obj = val.asHeapObject();

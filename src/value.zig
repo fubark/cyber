@@ -207,7 +207,7 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn bothNumbers(a: Value, b: Value) bool {
+    pub inline fn bothFloats(a: Value, b: Value) bool {
         return a.isFloat() and b.isFloat();
     }
 

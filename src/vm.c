@@ -44,7 +44,7 @@
 #define VALUE_INTEGER(n) (INTEGER_MASK | n)
 #define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
 #define VALUE_NONE NONE_MASK
-#define VALUE_NUMBER(n) ((ValueUnion){ .d = n }.u)
+#define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
 #define VALUE_ENUM(tag, val) ((Value)(ENUM_MASK | tag << 8 | val ))
 #define VALUE_RETINFO(nrv, rf, cio) ((Value)(nrv | ((u32)rf << 8) | ((u32)cio << 16)))
 #define VALUE_TRUE TRUE_MASK
@@ -58,9 +58,9 @@
 // Value ops.
 #define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & ~POINTER_MASK))
 #define VALUE_AS_INTEGER(v) ((int32_t)(v & 0xffffffff))
-#define VALUE_AS_NUMBER(v) ((ValueUnion){ .u = v }.d)
-#define VALUE_AS_NUMBER_TO_INT(v) ((int32_t)VALUE_AS_NUMBER(v))
-#define VALUE_AS_NUMBER_TO_INT64(v) ((int64_t)VALUE_AS_NUMBER(v))
+#define VALUE_AS_FLOAT(v) ((ValueUnion){ .u = v }.d)
+#define VALUE_AS_FLOAT_TO_INT(v) ((int32_t)VALUE_AS_FLOAT(v))
+#define VALUE_AS_FLOAT_TO_INT64(v) ((int64_t)VALUE_AS_FLOAT(v))
 #define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
 #define VALUE_IS_POINTER(v) ((v & POINTER_MASK) == POINTER_MASK)
@@ -68,9 +68,9 @@
 #define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_BOX))
 #define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
 #define VALUE_IS_NONE(v) (v == NONE_MASK)
-#define VALUE_IS_NUMBER(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
+#define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
-#define VALUE_BOTH_NUMBERS(v1, v2) (VALUE_IS_NUMBER(v1) && VALUE_IS_NUMBER(v2))
+#define VALUE_BOTH_FLOATS(v1, v2) (VALUE_IS_FLOAT(v1) && VALUE_IS_FLOAT(v2))
 #define VALUE_GET_TAG(v) (((uint32_t)(v >> 32)) & TAG_MASK)
 #define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
 #define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
@@ -211,16 +211,16 @@ static inline void retain(VM* vm, Value val) {
 }
 
 static inline double toF64(Value val) {
-    if (VALUE_IS_NUMBER(val)) {
-        return VALUE_AS_NUMBER(val);
+    if (VALUE_IS_FLOAT(val)) {
+        return VALUE_AS_FLOAT(val);
     } else {
         return zOtherToF64(val);
     }
 }
 
 static inline TypeId getPrimitiveTypeId(Value val) {
-    if (VALUE_IS_NUMBER(val)) {
-        return TYPE_NUMBER;
+    if (VALUE_IS_FLOAT(val)) {
+        return TYPE_FLOAT;
     } else {
         return VALUE_GET_TAG(val);
     }
@@ -657,7 +657,7 @@ beginSwitch:
         pc += 4;
         NEXT();
     CASE(ConstI8):
-        stack[pc[2]] = VALUE_NUMBER((double)(int8_t)pc[1]);
+        stack[pc[2]] = VALUE_FLOAT((double)(int8_t)pc[1]);
         pc += 3;
         NEXT();
     CASE(ConstI8Int):
@@ -667,8 +667,8 @@ beginSwitch:
     CASE(Add): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) + VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) + VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -679,8 +679,8 @@ beginSwitch:
     CASE(Sub): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) - VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) - VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1228,8 +1228,8 @@ beginSwitch:
     CASE(Less): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) < VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) < VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1240,8 +1240,8 @@ beginSwitch:
     CASE(Greater): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) > VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) > VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1252,8 +1252,8 @@ beginSwitch:
     CASE(LessEqual): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) <= VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) <= VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1264,8 +1264,8 @@ beginSwitch:
     CASE(GreaterEqual): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_NUMBER(left) >= VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) >= VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1276,8 +1276,8 @@ beginSwitch:
     CASE(Mul): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) * VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1288,8 +1288,8 @@ beginSwitch:
     CASE(Div): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_NUMBER(VALUE_AS_NUMBER(left) / VALUE_AS_NUMBER(right));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) / VALUE_AS_FLOAT(right));
             pc += 4;
             NEXT();
         } else {
@@ -1300,8 +1300,8 @@ beginSwitch:
     CASE(Pow): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_NUMBER(pow(VALUE_AS_NUMBER(left), VALUE_AS_NUMBER(right)));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_FLOAT(pow(VALUE_AS_FLOAT(left), VALUE_AS_FLOAT(right)));
             pc += 4;
             NEXT();
         } else {
@@ -1312,8 +1312,8 @@ beginSwitch:
     CASE(Mod): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            stack[pc[3]] = VALUE_NUMBER(fmod(VALUE_AS_NUMBER(left), VALUE_AS_NUMBER(right)));
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            stack[pc[3]] = VALUE_FLOAT(fmod(VALUE_AS_FLOAT(left), VALUE_AS_FLOAT(right)));
             pc += 4;
             NEXT();
         } else {
@@ -1349,8 +1349,8 @@ beginSwitch:
     }
     CASE(Neg): {
         Value* dst = &stack[pc[1]];
-        if (VALUE_IS_NUMBER(*dst)) {
-            *dst = VALUE_NUMBER(-VALUE_AS_NUMBER(*dst));
+        if (VALUE_IS_FLOAT(*dst)) {
+            *dst = VALUE_FLOAT(-VALUE_AS_FLOAT(*dst));
             pc += 2;
             NEXT();
         } else {
@@ -1733,9 +1733,9 @@ beginSwitch:
     CASE(BitwiseAnd): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            int32_t res = VALUE_AS_NUMBER_TO_INT(left) & VALUE_AS_NUMBER_TO_INT(right);
-            stack[pc[3]] = VALUE_NUMBER((double)res);
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            int32_t res = VALUE_AS_FLOAT_TO_INT(left) & VALUE_AS_FLOAT_TO_INT(right);
+            stack[pc[3]] = VALUE_FLOAT((double)res);
         } else {
             panicExpectedNumber(vm);
             RETURN(RES_CODE_PANIC);
@@ -1746,9 +1746,9 @@ beginSwitch:
     CASE(BitwiseOr): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            int32_t res = VALUE_AS_NUMBER_TO_INT(left) | VALUE_AS_NUMBER_TO_INT(right);
-            stack[pc[3]] = VALUE_NUMBER((double)res);
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            int32_t res = VALUE_AS_FLOAT_TO_INT(left) | VALUE_AS_FLOAT_TO_INT(right);
+            stack[pc[3]] = VALUE_FLOAT((double)res);
         } else {
             panicExpectedNumber(vm);
             RETURN(RES_CODE_PANIC);
@@ -1759,9 +1759,9 @@ beginSwitch:
     CASE(BitwiseXor): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            int32_t res = VALUE_AS_NUMBER_TO_INT(left) ^ VALUE_AS_NUMBER_TO_INT(right);
-            stack[pc[3]] = VALUE_NUMBER((double)res);
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            int32_t res = VALUE_AS_FLOAT_TO_INT(left) ^ VALUE_AS_FLOAT_TO_INT(right);
+            stack[pc[3]] = VALUE_FLOAT((double)res);
         } else {
             panicExpectedNumber(vm);
             RETURN(RES_CODE_PANIC);
@@ -1772,9 +1772,9 @@ beginSwitch:
     CASE(BitwiseNot): {
         Value* dst = &stack[pc[1]];
         Value val = *dst;
-        if (VALUE_IS_NUMBER(val)) {
-            int32_t res = ~VALUE_AS_NUMBER_TO_INT(val);
-            *dst = VALUE_NUMBER((double)res);
+        if (VALUE_IS_FLOAT(val)) {
+            int32_t res = ~VALUE_AS_FLOAT_TO_INT(val);
+            *dst = VALUE_FLOAT((double)res);
         } else {
             panicExpectedNumber(vm);
             RETURN(RES_CODE_PANIC);
@@ -1785,9 +1785,9 @@ beginSwitch:
     CASE(BitwiseLeftShift): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            int32_t res = VALUE_AS_NUMBER_TO_INT(left) << VALUE_AS_NUMBER_TO_INT(right);
-            stack[pc[3]] = VALUE_NUMBER((double)res);
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            int32_t res = VALUE_AS_FLOAT_TO_INT(left) << VALUE_AS_FLOAT_TO_INT(right);
+            stack[pc[3]] = VALUE_FLOAT((double)res);
         } else {
             panicExpectedNumber(vm);
             RETURN(RES_CODE_PANIC);
@@ -1798,9 +1798,9 @@ beginSwitch:
     CASE(BitwiseRightShift): {
         Value left = stack[pc[1]];
         Value right = stack[pc[2]];
-        if (VALUE_BOTH_NUMBERS(left, right)) {
-            int32_t res = VALUE_AS_NUMBER_TO_INT(left) >> VALUE_AS_NUMBER_TO_INT(right);
-            stack[pc[3]] = VALUE_NUMBER((double)res);
+        if (VALUE_BOTH_FLOATS(left, right)) {
+            int32_t res = VALUE_AS_FLOAT_TO_INT(left) >> VALUE_AS_FLOAT_TO_INT(right);
+            stack[pc[3]] = VALUE_FLOAT((double)res);
         } else {
             panicExpectedNumber(vm);
             RETURN(RES_CODE_PANIC);
@@ -1842,18 +1842,18 @@ beginSwitch:
     CASE(ForRangeInit): {
         double start = toF64(stack[pc[1]]);
         double end = toF64(stack[pc[2]]);
-        stack[pc[2]] = VALUE_NUMBER(end);
+        stack[pc[2]] = VALUE_FLOAT(end);
         double step = toF64(stack[pc[3]]);
         if (step < 0) {
             step = -step;
         }
-        stack[pc[3]] = VALUE_NUMBER(step);
+        stack[pc[3]] = VALUE_FLOAT(step);
         if (start == end) {
             pc += READ_U16(6) + 7;
             NEXT();
         } else {
-            stack[pc[4]] = VALUE_NUMBER(start);
-            stack[pc[5]] = VALUE_NUMBER(start);
+            stack[pc[4]] = VALUE_FLOAT(start);
+            stack[pc[5]] = VALUE_FLOAT(start);
             uint16_t offset = READ_U16(6);
             if (start < end) {
                 pc[offset] = CodeForRange;
@@ -1865,10 +1865,10 @@ beginSwitch:
         }
     }
     CASE(ForRange): {
-        double counter = VALUE_AS_NUMBER(stack[pc[1]]) + VALUE_AS_NUMBER(stack[pc[2]]);
-        if (counter < VALUE_AS_NUMBER(stack[pc[3]])) {
-            stack[pc[1]] = VALUE_NUMBER(counter);
-            stack[pc[4]] = VALUE_NUMBER(counter);
+        double counter = VALUE_AS_FLOAT(stack[pc[1]]) + VALUE_AS_FLOAT(stack[pc[2]]);
+        if (counter < VALUE_AS_FLOAT(stack[pc[3]])) {
+            stack[pc[1]] = VALUE_FLOAT(counter);
+            stack[pc[4]] = VALUE_FLOAT(counter);
             pc -= READ_U16(5);
         } else {
             pc += 7;
@@ -1876,10 +1876,10 @@ beginSwitch:
         NEXT();
     }
     CASE(ForRangeReverse): {
-        double counter = VALUE_AS_NUMBER(stack[pc[1]]) - VALUE_AS_NUMBER(stack[pc[2]]);
-        if (counter > VALUE_AS_NUMBER(stack[pc[3]])) {
-            stack[pc[1]] = VALUE_NUMBER(counter);
-            stack[pc[4]] = VALUE_NUMBER(counter);
+        double counter = VALUE_AS_FLOAT(stack[pc[1]]) - VALUE_AS_FLOAT(stack[pc[2]]);
+        if (counter > VALUE_AS_FLOAT(stack[pc[3]])) {
+            stack[pc[1]] = VALUE_FLOAT(counter);
+            stack[pc[4]] = VALUE_FLOAT(counter);
             pc -= READ_U16(5);
         } else {
             pc += 7;

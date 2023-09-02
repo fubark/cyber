@@ -4425,7 +4425,7 @@ pub const KeyU96 = extern union {
     },
     rtFuncSymKey: extern struct {
         // TODO: Is it enough to just use the final resolved func sym id?
-        // One use for splitting up rParentSymId/nameId is to look for <call>() magic function.
+        // One use for splitting up rParentSymId/nameId is to look for $call() magic function.
         rParentSymId: sema.ResolvedSymId,
         nameId: sema.NameSymId,
         rFuncSigId: sema.ResolvedFuncSigId,
@@ -4778,7 +4778,6 @@ fn callMethod(
                 const semaTypeId = vm.types.buf[valTypeId].rTypeSymId;
                 if (!types.isTypeSymCompat(&vm.compiler, semaTypeId, cstrTypeId)) {
                     return null;
-                    // return panicIncompatibleMethodSig(vm, mgId, recv, vals);
                 }
             }
 
@@ -4814,7 +4813,6 @@ fn callMethod(
                 const valTypeId = val.getTypeId();
                 const semaTypeId = vm.types.buf[valTypeId].rTypeSymId;
                 if (!types.isTypeSymCompat(&vm.compiler, semaTypeId, cstrTypeId)) {
-                    // return panicIncompatibleMethodSig(vm, mgId, recv, vals);
                     return null;
                 }
             }

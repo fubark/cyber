@@ -2228,13 +2228,14 @@ pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const TypeId, ret: Typ
     } else {
         const id: u32 = @intCast(c.sema.resolvedFuncSigs.items.len);
         const new = try c.alloc.dupe(ResolvedSymId, params);
-        var isTyped = false;
+        var isParamsTyped = false;
         for (params) |rSymId| {
             if (rSymId != bt.Any) {
-                isTyped = true;
+                isParamsTyped = true;
                 break;
             }
         }
+        var isTyped = isParamsTyped;
         if (ret != bt.Any) {
             isTyped = true;
         }
@@ -2243,6 +2244,7 @@ pub fn ensureResolvedFuncSig(c: *cy.VMcompiler, params: []const TypeId, ret: Typ
             .paramLen = @intCast(new.len),
             .retSymId = ret,
             .isTyped = isTyped,
+            .isParamsTyped = isParamsTyped,
         });
         res.value_ptr.* = id;
         res.key_ptr.* = .{
@@ -2693,11 +2695,11 @@ fn getOrResolveSymForDynamicFuncCall(
         }
     }
 
-    // Look for <call> magic function.
+    // Look for $call magic function.
     if (rSymId != cy.NullId) {
         const sym = chunk.compiler.sema.getResolvedSym(rSymId);
         if (sym.getModuleId()) |symModId| {
-            const callNameId = try ensureNameSym(chunk.compiler, "<call>");
+            const callNameId = try ensureNameSym(chunk.compiler, "$call");
             if (try cy.module.findModuleSymForDynamicFuncCall(chunk, symModId, callNameId)) |funcSigId| {
                 // Check if already resolved.
                 key = AbsResolvedSymKey{
@@ -2872,11 +2874,11 @@ fn getOrResolveSymForFuncCall(
         }
     }
 
-    // Look for <call> magic function.
+    // Look for $call magic function.
     if (rSymId != cy.NullId) {
         const sym = chunk.compiler.sema.getResolvedSym(rSymId);
         if (sym.getModuleId()) |symModId| {
-            const callNameId = try ensureNameSym(chunk.compiler, "<call>");
+            const callNameId = try ensureNameSym(chunk.compiler, "$call");
             if (try cy.module.findModuleSymForFuncCall(chunk, symModId, callNameId, args, ret)) |funcSigId| {
                 // Check if already resolved.
                 key = AbsResolvedSymKey{
@@ -3958,7 +3960,12 @@ pub const ResolvedFuncSig = struct {
     paramPtr: [*]const ResolvedSymId,
     retSymId: ResolvedSymId,
     paramLen: u16,
+
+    /// If a param or the return type is not the any type.
     isTyped: bool,
+
+    /// If a param is not the any type.
+    isParamsTyped: bool,
 
     pub inline fn params(self: ResolvedFuncSig) []const ResolvedSymId {
         return self.paramPtr[0..self.paramLen];

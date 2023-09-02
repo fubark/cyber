@@ -60,6 +60,9 @@ pub const MethodType = enum {
     untypedFunc,
     untypedNativeFunc1,
     untypedNativeFunc2,
+
+    /// A func is typed if at least one of the params is not the any type.
+    /// The return type does not count.
     typedFunc,
     typedNativeFunc,
 };

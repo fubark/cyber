@@ -171,13 +171,13 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == rt.BooleanT);
     var rsym = self.compiler.sema.getResolvedSym(bt.Boolean);
     var sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.Boolean, booleanCall);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.Boolean, booleanCall);
 
     id = try self.addBuiltinType("error", bt.Error);
     std.debug.assert(id == rt.ErrorT);
     rsym = self.compiler.sema.getResolvedSym(bt.Error);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.Error, errorCall);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.Error, errorCall);
     try b.addMethod(rt.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
     id = try self.addBuiltinType("StaticAstring", bt.String);
@@ -186,7 +186,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     // string type module.
     rsym = self.compiler.sema.getResolvedSym(bt.String);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.String, stringCall);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.String, stringCall);
 
     id = try self.addBuiltinType("StaticUstring", bt.String);
     std.debug.assert(id == rt.StaticUstringT);
@@ -201,13 +201,13 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == rt.IntegerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Integer);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.Integer, integerCall);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.Integer, integerCall);
 
     id = try self.addBuiltinType("float", bt.Float);
     std.debug.assert(id == rt.FloatT);
     rsym = self.compiler.sema.getResolvedSym(bt.Float);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.Number, numberCall);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.Float, floatCall);
 
     id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
@@ -365,8 +365,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     std.debug.assert(id == rt.PointerT);
     rsym = self.compiler.sema.getResolvedSym(bt.Pointer);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.Pointer, pointerCall);
-    try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Number, pointerValue);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.Pointer, pointerCall);
+    try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Float, pointerValue);
 
     id = try self.addBuiltinType("File", bt.File);
     std.debug.assert(id == rt.FileT);
@@ -2425,7 +2425,7 @@ pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn numberCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn floatCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .float => return val,
@@ -2570,7 +2570,7 @@ pub const ModuleBuilder = struct {
     pub fn addMethod(self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFuncPtr) !void {
         const funcSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getResolvedFuncSig(funcSigId);
-        if (funcSig.isTyped) {
+        if (funcSig.isParamsTyped) {
             try self.vm.addMethod(typeId, mgId, rt.MethodInit.initTypedNativeFunc(funcSigId, ptr, @intCast(params.len)));
         } else {
             try self.vm.addMethod(typeId, mgId, rt.MethodInit.initUntypedNativeFunc1(funcSigId, ptr, @intCast(params.len)));
@@ -2580,7 +2580,7 @@ pub const ModuleBuilder = struct {
     pub fn addMethod2(self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId, params: []const sema.ResolvedSymId, ret: sema.ResolvedSymId, ptr: cy.NativeObjFunc2Ptr) !void {
         const funcSigId = try sema.ensureResolvedFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getResolvedFuncSig(funcSigId);
-        if (funcSig.isTyped) {
+        if (funcSig.isParamsTyped) {
             return error.Unsupported;
         } else {
             try self.vm.addMethod(typeId, mgId, rt.MethodInit.initUntypedNativeFunc2(funcSigId, ptr, @intCast(params.len)));

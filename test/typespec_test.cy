@@ -2,7 +2,7 @@
 import a 'test_mods/a.cy'
 
 type Bar object:
-    b number
+    b float
 
 type Foo object:
     field Bar     -- Allowed after field ident.

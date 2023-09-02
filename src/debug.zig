@@ -583,7 +583,7 @@ pub fn dumpBytecode(vm: *const cy.VM, optPcContext: ?u32) !void {
         fmt.printStderr("\nConstants:\n", &.{});
         for (vm.compiler.buf.mconsts) |extra| {
             const val = cy.Value{ .val = extra.val };
-            if (val.isNumber()) {
+            if (val.isFloat()) {
                 fmt.printStderr("{}\n", &.{v(val.asF64())});
             } else {
                 fmt.printStderr("{}\n", &.{v(extra.val)});

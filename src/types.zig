@@ -16,7 +16,7 @@ pub const BuiltinTypeSymIds = struct {
     /// Name ids are reserved to match type sym ids.
     pub const Any: TypeId = vmc.SEMA_TYPE_ANY;
     pub const Boolean: TypeId = vmc.SEMA_TYPE_BOOLEAN;
-    pub const Number: TypeId = vmc.SEMA_TYPE_NUMBER;
+    pub const Float: TypeId = vmc.SEMA_TYPE_FLOAT;
     pub const Integer: TypeId = vmc.SEMA_TYPE_INTEGER;
     pub const String: TypeId = vmc.SEMA_TYPE_STRING;
     pub const Rawstring: TypeId = vmc.SEMA_TYPE_RAWSTRING;
@@ -31,8 +31,8 @@ pub const BuiltinTypeSymIds = struct {
 
     /// Internal types.
 
-    /// Number literals can represent a number or integer.
-    pub const NumberLit: TypeId = vmc.SEMA_TYPE_NUMBERLIT;
+    /// Numeric literals can represent a number or integer.
+    pub const NumericLit: TypeId = vmc.SEMA_TYPE_NUMERICLIT;
     pub const Undefined: TypeId = vmc.SEMA_TYPE_UNDEFINED;
     /// Strings that aren't retained.
     pub const StaticString: TypeId = vmc.SEMA_TYPE_STATICSTRING;
@@ -45,7 +45,7 @@ pub const BuiltinTypeSymIds = struct {
 test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NameAny, bt.Any);
     try t.eq(sema.NameBoolean, bt.Boolean);
-    try t.eq(sema.NameNumber, bt.Number);
+    try t.eq(sema.NameFloat, bt.Float);
     try t.eq(sema.NameInt, bt.Integer);
     try t.eq(sema.NameString, bt.String);
     try t.eq(sema.NameRawstring, bt.Rawstring);
@@ -77,8 +77,8 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const TypeId, ret: TypeId,
     // Check each param type. Attempt to satisfy constraints.
     for (target.params(), args) |cstrType, argType| {
         if (!isTypeSymCompat(c, argType, cstrType)) {
-            if (argType == bt.NumberLit) {
-                if (cstrType == bt.Integer or cstrType == bt.Number) {
+            if (argType == bt.NumericLit) {
+                if (cstrType == bt.Integer or cstrType == bt.Float) {
                     continue;
                 }
             }
@@ -127,7 +127,7 @@ pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: 
 pub fn toRtConcreteType(typeId: TypeId) ?rt.TypeId {
     return switch (typeId) {
         bt.Any => null,
-        bt.Number => rt.NumberT,
+        bt.Float => rt.FloatT,
         bt.Integer => rt.IntegerT,
         bt.Symbol => rt.SymbolT,
         bt.List => rt.ListT,
@@ -148,8 +148,8 @@ pub fn toRtConcreteType(typeId: TypeId) ?rt.TypeId {
 }
 
 pub fn toNonFlexType(typeId: TypeId) TypeId {
-    if (typeId == bt.NumberLit) {
-        return bt.Number;
+    if (typeId == bt.NumericLit) {
+        return bt.Float;
     } else {
         return typeId;
     }
@@ -181,7 +181,7 @@ pub fn isEnumType(c: *cy.VMcompiler, typeId: TypeId) bool {
 
 pub fn isFlexibleType(typeId: TypeId) bool {
     switch (typeId) {
-        bt.NumberLit => return true,
+        bt.NumericLit => return true,
         else => return false,
     }
 }
@@ -198,12 +198,12 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, symId: TypeId) bool {
         bt.Dynamic,
         bt.Any => return true,
         bt.Integer,
-        bt.Number,
+        bt.Float,
         bt.StaticString,
         bt.Symbol,
         bt.None,
         bt.Error,
-        bt.NumberLit,
+        bt.NumericLit,
         bt.Undefined,
         bt.Boolean => return false,
         else => {

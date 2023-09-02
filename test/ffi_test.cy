@@ -21,8 +21,8 @@ lib = try os.bindLib(libPath, [ os.CFunc{ sym: 'missing123', args: [], ret: #int
 t.eq(lib, error.MissingSymbol)
 
 type MyObject object:
-  a number
-  b number
+  a float
+  b float
   c string
   d boolean
 
@@ -110,7 +110,7 @@ var staticLibPath: if os.system == 'macos' then 'test/macos_lib.dylib' else if o
 var staticLib: os.bindLib(staticLibPath, [
   os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
 ], { genMap: true })
-func staticAdd(a number, b number) number = staticLib.testAdd
+func staticAdd(a float, b float) float = staticLib.testAdd
 t.eq(staticAdd(123, 321), 444)
 -- Freeing the lib reference should not affect `staticAdd`
 staticLib = none

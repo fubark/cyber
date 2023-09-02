@@ -50,7 +50,7 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                     return false;
                 }
             },
-            .number => {
+            .float => {
                 if (act.asF64() == exp.asF64()) {
                     return true;
                 } else {
@@ -181,7 +181,7 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
     const actType = act.getUserTag();
     const expType = exp.getUserTag();
     if (actType == expType) {
-        if (actType == .number) {
+        if (actType == .float) {
             if (std.math.approxEqAbs(f64, act.asF64(), exp.asF64(), 1e-5)) {
                 return Value.True;
             } else {
@@ -189,7 +189,7 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
                 return prepareThrowSymbol(vm, .AssertError);
             }
         } else {
-            printStderr("Expected number, actual: {}\n", &.{v(actType)});
+            printStderr("Expected float, actual: {}\n", &.{v(actType)});
             return prepareThrowSymbol(vm, .AssertError);
         }
     } else {

@@ -3,7 +3,7 @@ import t 'test'
 
 t.eq(a.varNum, 123)
 t.eq(checkNumberArg(a.varTypedNum), 123)
-func checkNumberArg(a number):
+func checkNumberArg(a float):
     return a
 t.eqList(a.varList, [1, 2, 3])
 t.eq(a.varMap.size(), 3)
@@ -33,13 +33,13 @@ func sameFuncName():
     return 123
 t.eq(a.sameFuncName(), sameFuncName())
 
--- Reference the alias `number` in `a.cy` that was already resolved in main.
-t.eq(number(1), 1)
-t.eq(a.useNumber(1), 1)
+-- Reference the alias `float` in `a.cy` that was already resolved in main.
+t.eq(float(1), 1)
+t.eq(a.useFloat(1), 1)
 
 type Vec2 object:
-    x number
-    y number
+    x float
+    y float
 -- Same name, different object types.
 var v1 = Vec2{ x: 1, y: 2 }
 var v2 = a.Vec2{ x: 3, y: 4 }

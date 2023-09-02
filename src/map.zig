@@ -148,7 +148,7 @@ pub const ValueMap = struct {
     }
 
     fn computeHash(vm: *const cy.VM, key: cy.Value) linksection(cy.Section) u64 {
-        if (key.isNumber()) {
+        if (key.isFloat()) {
             return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.val));
         }
         if (vm.tryValueAsComparableString(key)) |str| {

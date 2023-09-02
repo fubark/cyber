@@ -25,7 +25,7 @@ a = b
 
 -- Binary metatype operand does not reuse dst for temp since it is retained.
 var f = func():
-    return number == boolean
+    return float == boolean
 f()
 
 -- if expr returns rcCandidate value if else clause is a RC string and if clause is a non-RC string.

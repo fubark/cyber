@@ -47,9 +47,9 @@ func foo5(): return 2 + 2
 t.eq(foo5(), 4)
 
 -- Static func initializer assigns static function value.
-func foo6a(val) number:
+func foo6a(val) float:
     return val
-func foo6(val) number = foo6a
+func foo6(val) float = foo6a
 t.eq(foo6(123), 123)
 
 -- Static func initializer assigns function value.

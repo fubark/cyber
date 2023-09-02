@@ -163,7 +163,7 @@ export fn cyValueFalse() Value {
     return Value.False;
 }
 
-export fn cyValueNumber(n: f64) Value {
+export fn cyValueFloat(n: f64) Value {
     return Value.initF64(n);
 }
 
@@ -237,12 +237,12 @@ test "cyValueAsHeapObject()" {
     try t.eq(@intFromPtr(o), 80);
 }
 
-export fn cyValueAsNumber(val: Value) f64 {
+export fn cyValueAsFloat(val: Value) f64 {
     return val.asF64();
 }
 
-test "cyValueAsNumber()" {
-    try t.eq(c.cyValueAsNumber(c.cyValueNumber(123.0)), 123);
+test "cyValueAsFloat()" {
+    try t.eq(c.cyValueAsFloat(c.cyValueFloat(123.0)), 123);
 }
 
 export fn cyValueToBool(val: Value) bool {
@@ -250,8 +250,8 @@ export fn cyValueToBool(val: Value) bool {
 }
 
 test "cyValueToBool()" {
-    try t.eq(c.cyValueToBool(c.cyValueNumber(123.0)), true);
-    try t.eq(c.cyValueToBool(c.cyValueNumber(0)), true);
+    try t.eq(c.cyValueToBool(c.cyValueFloat(123.0)), true);
+    try t.eq(c.cyValueToBool(c.cyValueFloat(0)), true);
     try t.eq(c.cyValueToBool(c.cyValueTrue()), true);
     try t.eq(c.cyValueToBool(c.cyValueNone()), false);
     try t.eq(c.cyValueToBool(c.cyValueFalse()), false);
@@ -326,7 +326,7 @@ test "Constants." {
     try t.eq(c.CY_TypeEnum, rt.EnumT);
     try t.eq(c.CY_TypeSymbol, rt.SymbolT);
     try t.eq(c.CY_TypeInteger, rt.IntegerT);
-    try t.eq(c.CY_TypeNumber, rt.NumberT);
+    try t.eq(c.CY_TypeFloat, rt.FloatT);
     try t.eq(c.CY_TypeList, rt.ListT);
     try t.eq(c.CY_TypeListIter, rt.ListIteratorT);
     try t.eq(c.CY_TypeMap, rt.MapT);
@@ -354,7 +354,7 @@ export fn cyValueGetTypeId(val: Value) c.CyTypeId {
 }
 
 test "cyValueGetType()" {
-    try t.eq(c.cyValueGetTypeId(c.cyValueNumber(123)), rt.NumberT);
+    try t.eq(c.cyValueGetTypeId(c.cyValueFloat(123)), rt.FloatT);
 }
 
 export fn cyListLen(list: Value) usize {
@@ -401,25 +401,25 @@ test "List ops." {
     try t.eq(c.cyListCap(list), 3);
 
     // Append.
-    c.cyListAppend(vm, list, c.cyValueNumber(4));
+    c.cyListAppend(vm, list, c.cyValueFloat(4));
     var res = c.cyListGet(vm, list, 3);
-    try t.eq(c.cyValueAsNumber(res), 4);
+    try t.eq(c.cyValueAsFloat(res), 4);
     try t.eq(c.cyListLen(list), 4);
     try t.eq(c.cyListCap(list), 12);
 
     // Get.
     res = c.cyListGet(vm, list, 1);
-    try t.eq(c.cyValueAsNumber(res), 2);
+    try t.eq(c.cyValueAsFloat(res), 2);
 
     // Set.
-    c.cyListSet(vm, list, 1, c.cyValueNumber(100));
+    c.cyListSet(vm, list, 1, c.cyValueFloat(100));
     res = c.cyListGet(vm, list, 1);
-    try t.eq(c.cyValueAsNumber(res), 100);
+    try t.eq(c.cyValueAsFloat(res), 100);
 
     // Insert.
-    c.cyListInsert(vm, list, 0, c.cyValueNumber(123));
+    c.cyListInsert(vm, list, 0, c.cyValueFloat(123));
     res = c.cyListGet(vm, list, 0);
-    try t.eq(c.cyValueAsNumber(res), 123);
+    try t.eq(c.cyValueAsFloat(res), 123);
     try t.eq(c.cyListLen(list), 5);
 }
 

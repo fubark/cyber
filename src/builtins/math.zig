@@ -7,77 +7,77 @@ pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     const b = cy.bindings.ModuleBuilder.init(c, modId);
 
     // Euler's number and the base of natural logarithms; approximately 2.718.
-    try b.setVar("e", bt.Number, Value.initF64(std.math.e));
+    try b.setVar("e", bt.Float, Value.initF64(std.math.e));
 
     // Infinity.
-    try b.setVar("inf", bt.Number, Value.initF64(std.math.inf(f64)));
+    try b.setVar("inf", bt.Float, Value.initF64(std.math.inf(f64)));
 
     // Base-10 logarithm of E; approximately 0.434.
-    try b.setVar("log10e", bt.Number, Value.initF64(std.math.log10e));
+    try b.setVar("log10e", bt.Float, Value.initF64(std.math.log10e));
 
     // Base-2 logarithm of E; approximately 1.443.
-    try b.setVar("log2e", bt.Number, Value.initF64(std.math.log2e));
+    try b.setVar("log2e", bt.Float, Value.initF64(std.math.log2e));
 
     // Natural logarithm of 10; approximately 2.303.
-    try b.setVar("ln10", bt.Number, Value.initF64(std.math.ln10));
+    try b.setVar("ln10", bt.Float, Value.initF64(std.math.ln10));
 
     // Natural logarithm of 2; approximately 0.693.
-    try b.setVar("ln2", bt.Number, Value.initF64(std.math.ln2));
+    try b.setVar("ln2", bt.Float, Value.initF64(std.math.ln2));
 
     // Not a number.
-    try b.setVar("nan", bt.Number, Value.initF64(-std.math.nan_f64));
+    try b.setVar("nan", bt.Float, Value.initF64(-std.math.nan_f64));
 
     // Neg infinity.
-    try b.setVar("neginf", bt.Number, Value.initF64(-std.math.inf(f64)));
+    try b.setVar("neginf", bt.Float, Value.initF64(-std.math.inf(f64)));
 
     // Ratio of a circle's circumference to its diameter; approximately 3.14159.
-    try b.setVar("pi", bt.Number, Value.initF64(std.math.pi));
+    try b.setVar("pi", bt.Float, Value.initF64(std.math.pi));
 
     // Square root of ½; approximately 0.707.
-    try b.setVar("sqrt1_2", bt.Number, Value.initF64(std.math.sqrt1_2));
+    try b.setVar("sqrt1_2", bt.Float, Value.initF64(std.math.sqrt1_2));
 
     // Square root of 2; approximately 1.414.
-    try b.setVar("sqrt2", bt.Number, Value.initF64(std.math.sqrt2));
+    try b.setVar("sqrt2", bt.Float, Value.initF64(std.math.sqrt2));
 
-    const num1: []const cy.sema.ResolvedSymId = &.{bt.Number};
-    const num2: []const cy.sema.ResolvedSymId = &.{bt.Number, bt.Number};
+    const num1: []const cy.sema.ResolvedSymId = &.{bt.Float};
+    const num2: []const cy.sema.ResolvedSymId = &.{bt.Float, bt.Float};
 
-    try b.setFunc("abs",    num1, bt.Number, abs);
-    try b.setFunc("acos",   num1, bt.Number, acos);
-    try b.setFunc("acosh",  num1, bt.Number, acosh);
-    try b.setFunc("asin",   num1, bt.Number, asin);
-    try b.setFunc("asinh",  num1, bt.Number, asinh);
-    try b.setFunc("atan",   num1, bt.Number, atan);
-    try b.setFunc("atan2",  num2, bt.Number, atan2);
-    try b.setFunc("atanh",  num1, bt.Number, atanh);
-    try b.setFunc("cbrt",   num1, bt.Number, cbrt);
-    try b.setFunc("ceil",   num1, bt.Number, ceil);
-    try b.setFunc("clz32",  num1, bt.Number, clz32);
-    try b.setFunc("cos",    num1, bt.Number, cos);
-    try b.setFunc("cosh",   num1, bt.Number, cosh);
-    try b.setFunc("exp",    num1, bt.Number, exp);
-    try b.setFunc("expm1",  num1, bt.Number, expm1);
-    try b.setFunc("floor",  num1, bt.Number, floor);
-    try b.setFunc("hypot",  num2, bt.Number, hypot);
-    try b.setFunc("isNaN",  num1, bt.Number, isNaN);
-    try b.setFunc("ln",     num1, bt.Number, ln);
-    try b.setFunc("log",    num2, bt.Number, log);
-    try b.setFunc("log10",  num1, bt.Number, log10);
-    try b.setFunc("log1p",  num1, bt.Number, log1p);
-    try b.setFunc("log2",   num1, bt.Number, log2);
-    try b.setFunc("max",    num2, bt.Number, max);
-    try b.setFunc("min",    num2, bt.Number, min);
-    try b.setFunc("mul32",  num2, bt.Number, mul32);
-    try b.setFunc("pow",    num2, bt.Number, pow);
-    try b.setFunc("random", &.{}, bt.Number, random);
-    try b.setFunc("round",  num1, bt.Number, round);
-    try b.setFunc("sign",   num1, bt.Number, sign);
-    try b.setFunc("sin",    num1, bt.Number, sin);
-    try b.setFunc("sinh",   num1, bt.Number, sinh);
-    try b.setFunc("sqrt",   num1, bt.Number, sqrt);
-    try b.setFunc("tan",    num1, bt.Number, tan);
-    try b.setFunc("tanh",   num1, bt.Number, tanh);
-    try b.setFunc("trunc",  num1, bt.Number, trunc);
+    try b.setFunc("abs",    num1, bt.Float, abs);
+    try b.setFunc("acos",   num1, bt.Float, acos);
+    try b.setFunc("acosh",  num1, bt.Float, acosh);
+    try b.setFunc("asin",   num1, bt.Float, asin);
+    try b.setFunc("asinh",  num1, bt.Float, asinh);
+    try b.setFunc("atan",   num1, bt.Float, atan);
+    try b.setFunc("atan2",  num2, bt.Float, atan2);
+    try b.setFunc("atanh",  num1, bt.Float, atanh);
+    try b.setFunc("cbrt",   num1, bt.Float, cbrt);
+    try b.setFunc("ceil",   num1, bt.Float, ceil);
+    try b.setFunc("clz32",  num1, bt.Float, clz32);
+    try b.setFunc("cos",    num1, bt.Float, cos);
+    try b.setFunc("cosh",   num1, bt.Float, cosh);
+    try b.setFunc("exp",    num1, bt.Float, exp);
+    try b.setFunc("expm1",  num1, bt.Float, expm1);
+    try b.setFunc("floor",  num1, bt.Float, floor);
+    try b.setFunc("hypot",  num2, bt.Float, hypot);
+    try b.setFunc("isNaN",  num1, bt.Float, isNaN);
+    try b.setFunc("ln",     num1, bt.Float, ln);
+    try b.setFunc("log",    num2, bt.Float, log);
+    try b.setFunc("log10",  num1, bt.Float, log10);
+    try b.setFunc("log1p",  num1, bt.Float, log1p);
+    try b.setFunc("log2",   num1, bt.Float, log2);
+    try b.setFunc("max",    num2, bt.Float, max);
+    try b.setFunc("min",    num2, bt.Float, min);
+    try b.setFunc("mul32",  num2, bt.Float, mul32);
+    try b.setFunc("pow",    num2, bt.Float, pow);
+    try b.setFunc("random", &.{}, bt.Float, random);
+    try b.setFunc("round",  num1, bt.Float, round);
+    try b.setFunc("sign",   num1, bt.Float, sign);
+    try b.setFunc("sin",    num1, bt.Float, sin);
+    try b.setFunc("sinh",   num1, bt.Float, sinh);
+    try b.setFunc("sqrt",   num1, bt.Float, sqrt);
+    try b.setFunc("tan",    num1, bt.Float, tan);
+    try b.setFunc("tanh",   num1, bt.Float, tanh);
+    try b.setFunc("trunc",  num1, bt.Float, trunc);
 }
 
 /// Returns the absolute value of x.

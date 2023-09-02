@@ -731,7 +731,7 @@ pub const VM = struct {
             }
             return res;
         } else {
-            if (recv.isNumber()) {
+            if (recv.isFloat()) {
                 return self.panic("Unsupported slice operation on type `number`.");
             } else {
                 const res = switch (recv.getTag()) {
@@ -1264,7 +1264,7 @@ pub const VM = struct {
             }
             return res;
         } else {
-            if (left.isNumber()) {
+            if (left.isFloat()) {
                 return self.panic("Unsupported reverse index operation on type `number`.");
             } else {
                 const res = switch (left.getTag()) {
@@ -1339,7 +1339,7 @@ pub const VM = struct {
             }
             return res;
         } else {
-            if (left.isNumber()) {
+            if (left.isFloat()) {
                 return self.panic("Unsupported index operation on type `number`.");
             } else {
                 const res = switch (left.getTag()) {
@@ -1808,7 +1808,7 @@ pub const VM = struct {
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
     pub fn getOrWriteValueString(self: *const VM, writer: anytype, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
-        if (val.isNumber()) {
+        if (val.isFloat()) {
             const f = val.asF64();
             const start = writer.pos();
             if (Value.floatIsSpecial(f)) {
@@ -2033,7 +2033,7 @@ fn getComparableStringType(val: Value) ?StringType {
         }
         return null;
     } else {
-        if (val.isNumber()) {
+        if (val.isFloat()) {
             return null;
         }
         switch (val.getTag()) {
@@ -2102,7 +2102,7 @@ fn evalCompareNot(vm: *const VM, left: cy.Value, right: cy.Value) linksection(cy
 }
 
 fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
-    if (val.isNumber()) {
+    if (val.isFloat()) {
         return val.asF64();
     } else if (val.isInteger()) {
         return @floatFromInt(val.asInteger());
@@ -2113,7 +2113,7 @@ fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
 
 fn panicExpectedNumber(vm: *cy.VM) error{Panic, OutOfMemory} {
     @setCold(true);
-    return vm.panic("Expected number operand.");
+    return vm.panic("Expected float operand.");
 }
 
 fn panicConvertNumberError(vm: *cy.VM, val: Value) error{Panic, OutOfMemory} {
@@ -2434,7 +2434,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const dst = &framePtr[pc[1].val];
                 const val = dst.*;
-                if (val.isNumber()) {
+                if (val.isFloat()) {
                     dst.* = Value.initF64(-val.asF64());
                     pc += 2;
                     continue;
@@ -3632,7 +3632,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const dst = &framePtr[pc[1].val];
                 const val = dst.*;
-                if (val.isNumber()) {
+                if (val.isFloat()) {
                     const f: f64 = @floatFromInt(~val.asF64toI32());
                     dst.* = Value.initF64(f);
                     pc += 2;
@@ -4362,7 +4362,7 @@ pub inline fn getStackOffset(vm: *const VM, to: [*]const Value) u32 {
 
 /// Like Value.dump but shows heap values.
 pub fn dumpValue(vm: *const VM, val: Value) void {
-    if (val.isNumber()) {
+    if (val.isFloat()) {
         fmt.printStdout("Number {}\n", &.{ v(val.asF64()) });
     } else {
         if (val.isPointer()) {

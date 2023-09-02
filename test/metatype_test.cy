@@ -15,14 +15,14 @@ t.eq(typeof({}).id(), 11)
 
 -- Referencing type object.
 type Foo object:
-	a number
+	a float
 var foo = Foo{ a: 123 }
 t.eq(typeof(foo), Foo)
 
 -- Referencing builtin types.
 t.eq((any).id(), 29)
 t.eq((boolean).id(), 1)
-t.eq((number).id(), 8)
+t.eq((float).id(), 8)
 t.eq((int).id(), 7)
 t.eq((string).id(), 30)
 t.eq((rawstring).id(), 31)

@@ -2,15 +2,15 @@ import t 'test'
 
 -- Cast to exact primitive type.
 var a = t.erase(1)
-t.eq(foo1(a as number), true)
-func foo1(a number):
+t.eq(foo1(a as float), true)
+func foo1(a float):
     return true
 
 -- Cast to exact object type.
 a = Foo{ a: 123 }
 t.eq(foo2(a as Foo), true)
 type Foo object:
-    a number
+    a float
 func foo2(a Foo):
     return true
 

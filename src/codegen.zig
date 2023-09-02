@@ -398,16 +398,16 @@ fn binExpr(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
     const op = node.head.binExpr.op;
     switch (op) {
         .percent => {
-            return binExprGeneric(c, .mod, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .mod, nodeId, bt.Float, cstr);
         },
         .slash => {
-            return binExprGeneric(c, .div, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .div, nodeId, bt.Float, cstr);
         },
         .star => {
-            return binExprGeneric(c, .mul, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .mul, nodeId, bt.Float, cstr);
         },
         .caret => {
-            return binExprGeneric(c, .pow, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .pow, nodeId, bt.Float, cstr);
         },
         .equal_equal => {
             return binExprGeneric(c, .compare, nodeId, bt.Boolean, cstr);
@@ -438,7 +438,7 @@ fn binExpr(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             try releaseIfRetainedTemp(c, leftv);
             try releaseIfRetainedTemp(c, rightv);
 
-            return c.initGenValue(dst, bt.Number, false);
+            return c.initGenValue(dst, bt.Float, false);
         },
         .minus => {
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -463,7 +463,7 @@ fn binExpr(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             try releaseIfRetainedTemp(c, leftv);
             try releaseIfRetainedTemp(c, rightv);
 
-            return c.initGenValue(dst, bt.Number, false);
+            return c.initGenValue(dst, bt.Float, false);
         },
         .less => {
             const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -496,19 +496,19 @@ fn binExpr(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) !GenValue {
             return binExprGeneric(c, .greaterEqual, nodeId, bt.Boolean, cstr);
         },
         .bitwiseAnd => {
-            return binExprGeneric(c, .bitwiseAnd, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .bitwiseAnd, nodeId, bt.Float, cstr);
         },
         .bitwiseOr => {
-            return binExprGeneric(c, .bitwiseOr, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .bitwiseOr, nodeId, bt.Float, cstr);
         },
         .bitwiseXor => {
-            return binExprGeneric(c, .bitwiseXor, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .bitwiseXor, nodeId, bt.Float, cstr);
         },
         .bitwiseLeftShift => {
-            return binExprGeneric(c, .bitwiseLeftShift, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .bitwiseLeftShift, nodeId, bt.Float, cstr);
         },
         .bitwiseRightShift => {
-            return binExprGeneric(c, .bitwiseRightShift, nodeId, bt.Number, cstr);
+            return binExprGeneric(c, .bitwiseRightShift, nodeId, bt.Float, cstr);
         },
         .and_op => {
             const dst = try c.rega.selectFromNonLocalVar(cstr, true);
@@ -1784,12 +1784,12 @@ fn constNumber(self: *Chunk, val: f64, dst: LocalId) !GenValue {
         const i: i64 = @intFromFloat(val);
         if (i >= std.math.minInt(i8) and i <= std.math.maxInt(i8)) {
             try self.buf.pushOp2(.constI8, @bitCast(@as(i8, @intCast(i))), dst);
-            return self.initGenValue(dst, bt.Number, false);
+            return self.initGenValue(dst, bt.Float, false);
         }
     }
     const idx = try self.buf.pushConst(cy.Const.init(@bitCast(val)));
     try constOp(self, idx, dst);
-    return self.initGenValue(dst, bt.Number, false);
+    return self.initGenValue(dst, bt.Float, false);
 }
 
 fn ifExpr(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
@@ -2340,7 +2340,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
                     const child = try expression(c, node.head.unary.child, RegisterCstr.exact(dst));
                     try c.buf.pushOp1(.neg, dst);
                     try releaseIfRetainedTemp(c, child);
-                    return c.initGenValue(dst, bt.Number, false);
+                    return c.initGenValue(dst, bt.Float, false);
                 },
                 .not => {
                     const dst = try c.rega.selectFromNonLocalVar(cstr, false);
@@ -2354,7 +2354,7 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
                     const child = try expression(c, node.head.unary.child, RegisterCstr.exact(dst));
                     try c.buf.pushOp1(.bitwiseNot, dst);
                     try releaseIfRetainedTemp(c, child);
-                    return c.initGenValue(dst, bt.Number, false);
+                    return c.initGenValue(dst, bt.Float, false);
                 },
             }
         },

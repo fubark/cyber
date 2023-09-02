@@ -1,3 +1,3 @@
-func foo() = toNumber
-func toNumber(val) number:
-	return number(val)
+func foo() = toFloat
+func toFloat(val) float:
+	return float(val)

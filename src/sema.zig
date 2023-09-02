@@ -554,7 +554,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             if (node.head.for_range_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
-                _ = try getOrDeclareLocal(c, eachClause.head.eachClause.value, bt.Number);
+                _ = try getOrDeclareLocal(c, eachClause.head.eachClause.value, bt.Float);
             }
 
             const range_clause = c.nodes[node.head.for_range_stmt.range_clause];
@@ -1090,7 +1090,7 @@ fn flexExpr(c: *cy.Chunk, nodeId: cy.NodeId) anyerror!TypeId {
     const node = c.nodes[nodeId];
     const reqType = switch (node.node_t) {
         .number,
-        .nonDecInt => bt.NumberLit,
+        .nonDecInt => bt.NumericLit,
         else => bt.Any,
     };
     return semaExprType(c, nodeId, reqType);
@@ -1221,8 +1221,8 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                 },
             };
             const canBeInt = std.math.cast(i32, val) != null;
-            if (reqType == bt.NumberLit) {
-                return bt.NumberLit;
+            if (reqType == bt.NumericLit) {
+                return bt.NumericLit;
             } else if (reqType == bt.Integer) {
                 if (canBeInt) {
                     return bt.Integer;
@@ -1230,12 +1230,12 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                     return c.reportError("Number literal can not be an integer.", &.{});
                 }
             } else {
-                return bt.Number;
+                return bt.Float;
             }
         },
         .number => {
-            if (reqType == bt.NumberLit) {
-                return bt.NumberLit;
+            if (reqType == bt.NumericLit) {
+                return bt.NumericLit;
             } else if (reqType == bt.Integer) {
                 const literal = c.getNodeTokenString(node);
                 const val = try std.fmt.parseFloat(f64, literal);
@@ -1247,7 +1247,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                 }
                 return c.reportError("Number literal can not be an integer.", &.{});
             } else {
-                return bt.Number;
+                return bt.Float;
             }
         },
         .string => {
@@ -1327,7 +1327,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
             switch (op) {
                 .minus => {
                     _ = try semaExpr(c, node.head.unary.child);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .not => {
                     _ = try semaExpr(c, node.head.unary.child);
@@ -1335,7 +1335,7 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                 },
                 .bitwiseNot => {
                     _ = try semaExpr(c, node.head.unary.child);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 // else => return self.reportErrorAt("Unsupported unary op: {}", .{op}, node),
             }
@@ -1360,12 +1360,12 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                 .percent => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .caret => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .plus,
                 .minus => {
@@ -1375,33 +1375,33 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, reqType: TypeId) anyerror!Type
                     if (leftT == bt.Integer and rightT == bt.Integer) {
                         return bt.Integer;
                     } else {
-                        return bt.Number;
+                        return bt.Float;
                     }
                 },
                 .bitwiseAnd => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .bitwiseOr => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .bitwiseXor => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .bitwiseLeftShift => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .bitwiseRightShift => {
                     _ = try semaExpr(c, left);
                     _ = try semaExpr(c, right);
-                    return bt.Number;
+                    return bt.Float;
                 },
                 .and_op => {
                     const ltype = try semaExpr(c, left);
@@ -3349,7 +3349,7 @@ const VarResult = struct {
 
 /// To a local type before assigning to a local variable.
 fn toLocalType(vtype: TypeId) TypeId {
-    stdx.debug.dassert(vtype != bt.NumberLit);
+    stdx.debug.dassert(vtype != bt.NumericLit);
     return vtype;
 }
 
@@ -3902,11 +3902,11 @@ fn updateFlexArgTypes2(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeI
         const arg = c.nodes[cur];
         if (types.isFlexibleType(argTypes[i])) {
             switch (argTypes[i]) {
-                bt.NumberLit => {
+                bt.NumericLit => {
                     if (param == bt.Integer) {
                         c.nodeTypes[cur] = bt.Integer;
                     } else {
-                        c.nodeTypes[cur] = bt.Number;
+                        c.nodeTypes[cur] = bt.Float;
                     }
                 },
                 else => unreachable,
@@ -3922,8 +3922,8 @@ fn defaultFlexArgTypes(c: *cy.Chunk, argHead: cy.NodeId, argTypes: []const TypeI
         const arg = c.nodes[cur];
         if (types.isFlexibleType(argT)) {
             switch (argTypes[i]) {
-                bt.NumberLit => {
-                    c.nodeTypes[cur] = bt.Number;
+                bt.NumericLit => {
+                    c.nodeTypes[cur] = bt.Float;
                 },
                 else => unreachable,
             }
@@ -3979,7 +3979,7 @@ pub const ResolvedFuncSig = struct {
 
 pub const NameAny = 0;
 pub const NameBoolean = 1;
-pub const NameNumber = 2;
+pub const NameFloat = 2;
 pub const NameInt = 3;
 pub const NameString = 4;
 pub const NameRawstring = 5;

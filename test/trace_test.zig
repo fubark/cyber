@@ -372,7 +372,7 @@ const VMrunner = struct {
 
     pub fn valueIsI32(self: *VMrunner, act: cy.Value, exp: i32) !void {
         _ = self;
-        if (act.isNumber()) {
+        if (act.isFloat()) {
             const actf = act.asF64();
             if (cy.Value.floatCanBeInteger(actf)) {
                 try t.eq(act.asF64toI32(), exp);

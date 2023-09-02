@@ -143,7 +143,7 @@ pub const Value = packed union {
 
     pub inline fn toF64(self: *const Value) linksection(cy.HotSection) f64 {
         @setRuntimeSafety(debug);
-        if (self.isNumber()) {
+        if (self.isFloat()) {
             return self.asF64();
         } else {
             return @call(.never_inline, otherToF64, .{self}) catch stdx.fatal();
@@ -208,7 +208,7 @@ pub const Value = packed union {
     }
 
     pub inline fn bothNumbers(a: Value, b: Value) bool {
-        return a.isNumber() and b.isNumber();
+        return a.isFloat() and b.isFloat();
     }
 
     pub inline fn isStaticString(self: *const Value) bool {
@@ -246,8 +246,8 @@ pub const Value = packed union {
     }
 
     pub inline fn getPrimitiveTypeId(self: *const Value) u32 {
-        if (self.isNumber()) {
-            return rt.NumberT;
+        if (self.isFloat()) {
+            return rt.FloatT;
         } else {
             return self.getTag();
         }
@@ -261,12 +261,12 @@ pub const Value = packed union {
         }
     }
 
-    pub inline fn isNumberOrPointer(self: *const Value) bool {
+    pub inline fn isFloatOrPointer(self: *const Value) bool {
         // This could be faster if the 3 bits past the 48 pointer bits represents a non primitive number value.
-        return self.isNumber() or self.isPointer();
+        return self.isFloat() or self.isPointer();
     }
 
-    pub inline fn isNumber(self: *const Value) bool {
+    pub inline fn isFloat(self: *const Value) bool {
         // Only a number(f64) if not all tagged bits are set.
         return self.val & TaggedValueMask != TaggedValueMask;
     }
@@ -439,8 +439,8 @@ pub const Value = packed union {
     }
 
     pub fn dump(self: *const Value) void {
-        if (self.isNumber()) {
-            log.info("Number {}", .{self.asF64()});
+        if (self.isFloat()) {
+            log.info("Float {}", .{self.asF64()});
         } else {
             if (self.isPointer()) {
                 const obj = self.asHeapObject();
@@ -504,8 +504,8 @@ pub const Value = packed union {
     }
 
     pub fn getUserTag(self: *const Value) linksection(cy.Section) ValueUserTag {
-        if (self.isNumber()) {
-            return .number;
+        if (self.isFloat()) {
+            return .float;
         } else {
             if (self.isPointer()) {
                 const obj = self.asHeapObject();
@@ -555,7 +555,7 @@ const EnumValue = struct {
 };
 
 pub const ValueUserTag = enum {
-    number,
+    float,
     int,
     boolean,
     object,

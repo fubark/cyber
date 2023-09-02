@@ -1,5 +1,5 @@
 var varNum: 123
-var varTypedNum number: 123
+var varTypedNum float: 123
 var varList: [1, 2, 3]
 var varMap: { a: 1, b: 2, c: 3 }
 var varFunc: func():
@@ -24,9 +24,9 @@ func barNoExport():
 -- Test that there is no main block execution for imported modules.
 panic(#ExecutedModuleMain)
 
-func declAssign(val) number = toNumber
-func toNumber(val) number:
-    return number(val)
+func declAssign(val) float = toFloat
+func toFloat(val) float:
+    return float(val)
 
 var initOnce: incInitOnce(initOnceCount)
 var initOnceCount: 0
@@ -44,16 +44,16 @@ var funcDep: func ():
 func sameFuncName():
     return 123
 
-func useNumber(a):
-    return toNumber(a)
+func useFloat(a):
+    return toFloat(a)
 
 type Vec2 object:
-    x number
-    y number
+    x float
+    y float
 
     func new(x, y):
         return Vec2{ x: x, y: y }
 type Vec2Alias Vec2
 
 type Bar object:
-    a number
+    a float

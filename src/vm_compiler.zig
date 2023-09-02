@@ -147,8 +147,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameAny);
         id = try sema.ensureNameSym(self, "boolean");
         std.debug.assert(id == sema.NameBoolean);
-        id = try sema.ensureNameSym(self, "number");
-        std.debug.assert(id == sema.NameNumber);
+        id = try sema.ensureNameSym(self, "float");
+        std.debug.assert(id == sema.NameFloat);
         id = try sema.ensureNameSym(self, "int");
         std.debug.assert(id == sema.NameInt);
         id = try sema.ensureNameSym(self, "string");
@@ -177,8 +177,8 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Any);
         id = try sema.addResolvedBuiltinSym(self, "boolean", rt.BooleanT);
         std.debug.assert(id == bt.Boolean);
-        id = try sema.addResolvedBuiltinSym(self, "number", rt.NumberT);
-        std.debug.assert(id == bt.Number);
+        id = try sema.addResolvedBuiltinSym(self, "float", rt.FloatT);
+        std.debug.assert(id == bt.Float);
         id = try sema.addResolvedBuiltinSym(self, "int", rt.IntegerT);
         std.debug.assert(id == bt.Integer);
         id = try sema.addResolvedBuiltinSym(self, "string", rt.StringUnionT);
@@ -202,8 +202,8 @@ pub const VMcompiler = struct {
         id = try sema.addResolvedBuiltinSym(self, "metatype", rt.MetaTypeT);
         std.debug.assert(id == bt.MetaType);
 
-        id = try sema.addResolvedInternalSym(self, "number");
-        std.debug.assert(id == bt.NumberLit);
+        id = try sema.addResolvedInternalSym(self, "float");
+        std.debug.assert(id == bt.NumericLit);
         id = try sema.addResolvedInternalSym(self, "undefined");
         std.debug.assert(id == bt.Undefined);
         id = try sema.addResolvedInternalSym(self, "string");

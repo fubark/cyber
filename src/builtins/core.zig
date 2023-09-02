@@ -21,7 +21,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     try b.mod().syms.ensureTotalCapacity(self.alloc, 13);
 
     // Funcs.
-    try b.setFunc("arrayFill", &.{bt.Any, bt.Number}, bt.List, arrayFill);
+    try b.setFunc("arrayFill", &.{bt.Any, bt.Float}, bt.List, arrayFill);
     try b.setFunc("asciiCode", &.{bt.Any}, bt.Any, asciiCode);
     if (cy.hasJit) {
         try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
@@ -45,15 +45,15 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     } else {
         try b.setFunc("execCmd", &.{bt.List}, bt.Any, execCmd);
     }
-    try b.setFunc("exit", &.{bt.Number}, bt.None, exit);
+    try b.setFunc("exit", &.{bt.Float}, bt.None, exit);
     try b.setFunc("fetchUrl", &.{bt.Any}, bt.Any, fetchUrl);
     if (cy.hasStdFiles) {
         try b.setFunc("getInput", &.{}, bt.Any, getInput);
     } else {
         try b.setFunc("getInput", &.{}, bt.Any, bindings.nop0);
     }
-    try b.setFunc("isAlpha", &.{ bt.Number }, bt.Boolean, isAlpha);
-    try b.setFunc("isDigit", &.{ bt.Number }, bt.Boolean, isDigit);
+    try b.setFunc("isAlpha", &.{ bt.Float }, bt.Boolean, isAlpha);
+    try b.setFunc("isDigit", &.{ bt.Float }, bt.Boolean, isDigit);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
@@ -71,9 +71,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
         try b.setFunc("readFile", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
-    try b.setFunc("runestr", &.{ bt.Number }, bt.String, runestr);
+    try b.setFunc("runestr", &.{ bt.Float }, bt.String, runestr);
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
-    try b.setFunc("typeid", &.{ bt.Any }, bt.Number, typeid);
+    try b.setFunc("typeid", &.{ bt.Any }, bt.Float, typeid);
     try b.setFunc("valtag", &.{ bt.Any }, bt.Symbol, valtag);
     try b.setFunc("typesym", &.{ bt.Any }, bt.Symbol, typesym);
     try b.setFunc("typeof", &.{ bt.Any }, bt.MetaType, typeof);
@@ -352,7 +352,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             while (iter.next()) |e| {
                 const key = uservm.valueToTempString(e.key);
                 switch (e.value.getUserTag()) {
-                    .number => {
+                    .float => {
                         try ctx.encodeNumber(key, e.value.asF64());
                     },
                     .string => {
@@ -378,7 +378,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             const items = val.asHeapObject().list.items();
             for (items) |it| {
                 switch (it.getUserTag()) {
-                    .number => {
+                    .float => {
                         try ctx.encodeNumber(it.asF64());
                     },
                     .string => {
@@ -403,7 +403,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             const T = @TypeOf(val);
             if (T == Value) {
                 switch (val.getUserTag()) {
-                    .number => {
+                    .float => {
                         try ctx.encodeNumber(val.asF64());
                     },
                     .string => {
@@ -569,7 +569,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             // TODO: Use allocOwnedString
             return try self.allocStringInfer(str);
         },
-        .number => {
+        .float => {
             return Value.initF64(try val.asF64());
         },
         .boolean => {
@@ -662,7 +662,7 @@ pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     defer vm.release(val);
     switch (val.getUserTag()) {
-        .number => return Value.initSymbol(@intFromEnum(Symbol.number)),
+        .float => return Value.initSymbol(@intFromEnum(Symbol.float)),
         .object => return Value.initSymbol(@intFromEnum(Symbol.object)),
         .err => return Value.initSymbol(@intFromEnum(Symbol.err)),
         .boolean => return Value.initSymbol(@intFromEnum(Symbol.boolean)),

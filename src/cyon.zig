@@ -542,7 +542,7 @@ const ValueType = enum {
     list,
     map,
     string,
-    number,
+    float,
     boolean,
 };
 
@@ -557,7 +557,7 @@ pub const DecodeValueIR = struct {
             .arr_literal => return .list,
             .map_literal => return .map,
             .string => return .string,
-            .number => return .number,
+            .number => return .float,
             .true_literal => return .boolean,
             .false_literal => return .boolean,
             else => stdx.panicFmt("unsupported {}", .{node.node_t}),

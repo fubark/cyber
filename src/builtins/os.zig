@@ -53,9 +53,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
         try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
     }
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        try b.setVar("vecBitSize", bt.Number, cy.Value.initF64(VecSize * 8));
+        try b.setVar("vecBitSize", bt.Float, cy.Value.initF64(VecSize * 8));
     } else {
-        try b.setVar("vecBitSize", bt.Number, cy.Value.initF64(0));
+        try b.setVar("vecBitSize", bt.Float, cy.Value.initF64(0));
     }
 
     // Functions.
@@ -88,7 +88,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
         try b.setFunc("fromCstr", &.{bt.Pointer}, bt.Rawstring, bindings.nop1);
         try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
-        try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, bindings.nop1);
+        try b.setFunc("malloc", &.{bt.Float}, bt.Pointer, bindings.nop1);
     } else {
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
         try b.setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
@@ -106,9 +106,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
             try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, getEnv);
             try b.setFunc("getEnvAll", &.{}, bt.Map, getEnvAll);
         }
-        try b.setFunc("malloc", &.{bt.Number}, bt.Pointer, malloc);
+        try b.setFunc("malloc", &.{bt.Float}, bt.Pointer, malloc);
     }
-    try b.setFunc("milliTime", &.{}, bt.Number, milliTime);
+    try b.setFunc("milliTime", &.{}, bt.Float, milliTime);
     if (cy.isWasm) {
         try b.setFunc("openDir", &.{bt.Any}, bt.Any, bindings.nop1);
         try b.setFunc("openDir", &.{bt.Any, bt.Boolean}, bt.Any, bindings.nop2);
@@ -132,7 +132,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
             try b.setFunc("setEnv", &.{bt.Any, bt.Any}, bt.None, setEnv);
         }
     }
-    try b.setFunc("sleep", &.{bt.Number}, bt.None, sleep);
+    try b.setFunc("sleep", &.{bt.Float}, bt.None, sleep);
     if (cy.isWasm or builtin.os.tag == .windows) {
         try b.setFunc("unsetEnv", &.{bt.Any}, bt.None, bindings.nop1);
     } else {
@@ -338,7 +338,7 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
                 rt.StringUnionT => {
                     optType = .string;
                 },
-                rt.NumberT => {
+                rt.FloatT => {
                     optType = .number;
                 },
                 rt.BooleanT => {

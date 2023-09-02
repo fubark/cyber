@@ -31,7 +31,6 @@ pub const Symbol = enum {
     long,
     ulong,
     usize,
-    float,
     double,
     charPtr,
     voidPtr,
@@ -64,7 +63,7 @@ pub const Symbol = enum {
 
     boolean,
     err,
-    number,
+    float,
     object,
     map,
     list,
@@ -204,9 +203,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Integer, integerCall);
 
-    id = try self.addBuiltinType("number", bt.Number);
-    std.debug.assert(id == rt.NumberT);
-    rsym = self.compiler.sema.getResolvedSym(bt.Number);
+    id = try self.addBuiltinType("float", bt.Float);
+    std.debug.assert(id == rt.FloatT);
+    rsym = self.compiler.sema.getResolvedSym(bt.Float);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("<call>", &.{ bt.Any }, bt.Number, numberCall);
 
@@ -216,13 +215,13 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try b.addMethod(rt.ListT, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
     try b.addMethod(rt.ListT, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
     try b.addMethod(rt.ListT, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
-    try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Number, bt.Any}, bt.Any, listInsert);
+    try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Float, bt.Any}, bt.Any, listInsert);
     try b.addMethod(rt.ListT, self.iteratorMGID, &.{bt.Any}, bt.Any, listIterator);
     try b.addMethod(rt.ListT, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
-    try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Number, listLen);
+    try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Float, listLen);
     try b.addMethod(rt.ListT, self.pairIteratorMGID, &.{bt.Any}, bt.Any, listIterator);
-    try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Number}, bt.Any, listRemove);
-    try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Number}, bt.Any, listResize);
+    try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Float}, bt.Any, listRemove);
+    try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Float}, bt.Any, listResize);
     try b.addMethod(rt.ListT, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
 
     id = try self.addBuiltinType("ListIterator", cy.NullId);
@@ -233,7 +232,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
     try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
-    try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Number, mapSize);
+    try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Float, mapSize);
     try b.addMethod(rt.MapT, self.iteratorMGID,     &.{ bt.Any }, bt.Any, mapIterator);
     try b.addMethod(rt.MapT, self.pairIteratorMGID, &.{ bt.Any }, bt.Any, mapIterator);
 
@@ -268,27 +267,27 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             else => unreachable,
         };
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.String, stringAppend(tag));
-        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCharAt(tag));
-        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCodeAt(tag));
+        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCharAt(tag));
+        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCodeAt(tag));
         try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.String, stringConcat(tag));
         try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
         try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
         try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
-        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Number }, bt.Any, stringFindRune(tag));
+        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Float }, bt.Any, stringFindRune(tag));
         try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
         try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
         try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
-        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Number }, bt.Any, stringIndexCode(tag));
-        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Number, bt.Any }, bt.String, stringInsert(tag));
+        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Float }, bt.Any, stringIndexCode(tag));
+        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Float, bt.Any }, bt.String, stringInsert(tag));
         try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
-        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Number, stringLen(tag));
+        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Float, stringLen(tag));
         try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
         try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.String, stringLower(tag));
         try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.String, stringReplace(tag));
-        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Number }, bt.Any, stringRepeat(tag));
-        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringRuneAt(tag));
-        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Number, bt.Number }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Number }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Float }, bt.Any, stringRepeat(tag));
+        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringRuneAt(tag));
+        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Float, bt.Float }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Float }, bt.Any, stringSliceAt(tag));
         try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
         try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
         try b.addMethod(typeId, trim,         &.{ bt.Any, bt.Symbol, bt.Any }, bt.Any, stringTrim(tag));
@@ -301,7 +300,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     // rawstring type module.
     rsym = self.compiler.sema.getResolvedSym(bt.Rawstring);
     sb = ModuleBuilder.init(&self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("<call>", &.{ bt.Any }, bt.Rawstring, rawstringCall);
+    try sb.setFunc("$call", &.{ bt.Any }, bt.Rawstring, rawstringCall);
 
     id = try self.addBuiltinType("RawstringSlice", bt.Rawstring);
     std.debug.assert(id == rt.RawstringSliceT);
@@ -314,31 +313,31 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             else => unreachable,
         };
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringAppend(tag));
-        try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Number }, bt.Any,
+        try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Float }, bt.Any,
             if (tag == .rawstring) rawStringByteAt else rawStringSliceByteAt);
-        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCharAt(tag));
-        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringCodeAt(tag));
+        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCharAt(tag));
+        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCodeAt(tag));
         try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringConcat(tag));
         try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
         try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
         try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
-        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Number }, bt.Any, stringFindRune(tag));
+        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Float }, bt.Any, stringFindRune(tag));
         try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
         try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
         try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
-        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Number }, bt.Any, stringIndexCode(tag));
-        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Number, bt.Any }, bt.Any, stringInsert(tag));
-        try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Number, bt.Number }, bt.Any,
+        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Float }, bt.Any, stringIndexCode(tag));
+        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Float, bt.Any }, bt.Any, stringInsert(tag));
+        try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Float, bt.Float }, bt.Any,
             if (tag == .rawstring) rawStringInsertByte else rawStringSliceInsertByte);
         try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
-        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Number, stringLen(tag));
+        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Float, stringLen(tag));
         try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
         try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.Rawstring, stringLower(tag));
-        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Number }, bt.Any, stringRepeat(tag));
+        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Float }, bt.Any, stringRepeat(tag));
         try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.Rawstring, stringReplace(tag));
-        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Number }, bt.Any, stringRuneAt(tag));
-        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Number, bt.Number }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Number }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringRuneAt(tag));
+        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Float, bt.Float }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Float }, bt.Any, stringSliceAt(tag));
         try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
         try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
         try b.addMethod(typeId, toString,     &.{ bt.Any }, bt.Any,
@@ -375,27 +374,27 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
         try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, fileIterator);
         try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, fileNext);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, fileRead);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Float }, bt.Any, fileRead);
         try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, fileSeek);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromCur);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, fileSeekFromEnd);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Float }, bt.Any, fileSeek);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Float }, bt.Any, fileSeekFromCur);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Float }, bt.Any, fileSeekFromEnd);
         try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Number }, bt.Any, fileStreamLines1);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, fileStreamLines1);
         try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
     } else {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
         try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Float }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Float }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Number }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
     }
 
@@ -421,7 +420,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("MetaType", bt.MetaType);
     std.debug.assert(id == rt.MetaTypeT);
-    try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Number, metatypeId);
+    try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Float, metatypeId);
 
     id = try self.addBuiltinType("any", bt.Any);
     std.debug.assert(id == rt.AnyT);
@@ -442,7 +441,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try ensureSymbol(self, "long", .long);
     try ensureSymbol(self, "ulong", .ulong);
     try ensureSymbol(self, "usize", .usize);
-    try ensureSymbol(self, "float", .float);
     try ensureSymbol(self, "double", .double);
     try ensureSymbol(self, "charPtr", .charPtr);
     try ensureSymbol(self, "voidPtr", .voidPtr);
@@ -475,7 +473,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     try ensureSymbol(self, "boolean", .boolean);
     try ensureSymbol(self, "error", .err);
-    try ensureSymbol(self, "number", .number);
+    try ensureSymbol(self, "float", .float);
     try ensureSymbol(self, "object", .object);
     try ensureSymbol(self, "map", .map);
     try ensureSymbol(self, "list", .list);
@@ -2408,7 +2406,7 @@ pub fn booleanCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
-        .number => {
+        .float => {
             return Value.initI32(@intFromFloat(@trunc(val.asF64())));
         },
         .string => {
@@ -2430,7 +2428,7 @@ pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 pub fn numberCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
-        .number => return val,
+        .float => return val,
         .string => {
             defer vm.release(val);
             const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
@@ -2445,7 +2443,7 @@ pub fn numberCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         .boolean => return Value.initF64(if (val.asBool()) 1 else 0),
         else => {
             vm.release(val);
-            return vm.returnPanic("Not a type that can be converted to `number`.");
+            return vm.returnPanic("Not a type that can be converted to `float`.");
         }
     }
 }
@@ -2454,7 +2452,7 @@ pub fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     if (val.isPointerT()) {
         return val;
-    } else if (val.isNumber()) {
+    } else if (val.isFloat()) {
         const i: usize = @intFromFloat(val.asF64());
         return cy.heap.allocPointer(vm.internal(), @ptrFromInt(i)) catch fatal();
     } else {

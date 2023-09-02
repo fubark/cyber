@@ -25,12 +25,12 @@ test "Call typed function with dynamic arg." {
         \\import t 'test'
         \\var a = foo(123)
         \\a = foo(a)
-        \\func foo(a number):
+        \\func foo(a float):
         \\  return 'foo'
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
             \\panic: Can not find compatible function for `foo(string) any`.
-            \\Only `func foo(number) any` exists.
+            \\Only `func foo(float) any` exists.
             \\
             \\main:3:5 main:
             \\a = foo(a)
@@ -51,7 +51,7 @@ test "Type casting." {
         \\print(a as pointer)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `number` to `pointer`.
+            \\panic: Can not cast `float` to `pointer`.
             \\
             \\main:2:9 main:
             \\print(a as pointer)
@@ -65,7 +65,7 @@ test "Type casting." {
         \\123 as symbol
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `number` to `symbol`.
+            \\panic: Can not cast `float` to `symbol`.
             \\
             \\main:1:5 main:
             \\123 as symbol
@@ -79,7 +79,7 @@ test "Type casting." {
         \\123 as List
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `number` to `List`.
+            \\panic: Can not cast `float` to `List`.
             \\
             \\main:1:5 main:
             \\123 as List
@@ -94,7 +94,7 @@ test "Type casting." {
         \\print(a as string)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not cast `number` to `string`.
+            \\panic: Can not cast `float` to `string`.
             \\
             \\main:2:9 main:
             \\print(a as string)
@@ -110,13 +110,13 @@ test "Typed object." {
     // Wrong param type.
     try eval(.{ .silent = true },
         \\type Foo object:
-        \\  a number
+        \\  a float
         \\func foo(a Foo):
         \\  pass
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(Foo) any` exists for the symbol `foo`.
             \\
             \\main:5:1:
@@ -130,7 +130,7 @@ test "Typed object." {
         \\import t 'test'
         \\
         \\type Foo object:
-        \\  a number
+        \\  a float
         \\
         \\func foo(a Foo):
         \\  return a.a == 123
@@ -174,17 +174,17 @@ test "Typed metatype." {
         \\import t 'test'
         \\
         \\func foo(a metatype):
-        \\  return a == number
+        \\  return a == float
         \\
         \\-- Literal.
-        \\t.eq(foo(number), true)
+        \\t.eq(foo(float), true)
         \\        
         \\-- From var.
-        \\var mt = number
+        \\var mt = float
         \\t.eq(foo(mt), true)
         \\
         \\-- Cast erased type.
-        \\mt = t.erase(number)
+        \\mt = t.erase(float)
         \\t.eq(foo(mt as metatype), true)
     );
 }
@@ -234,13 +234,13 @@ test "Type constraints." {
 
     // Wrong arg type to number param.
     try eval(.{ .silent = true },
-        \\func foo(a number):
+        \\func foo(a float):
         \\  pass
         \\foo(true)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not find compatible function signature for `foo(boolean) any`.
-            \\Only `func foo(number) any` exists for the symbol `foo`.
+            \\Only `func foo(float) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
             \\foo(true)
@@ -256,7 +256,7 @@ test "Type constraints." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(none) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -275,7 +275,7 @@ test "Typed pointer." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(pointer) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -309,7 +309,7 @@ test "Typed string." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(string) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -346,7 +346,7 @@ test "Typed boolean." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(boolean) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -383,7 +383,7 @@ test "Typed Map." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(Map) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -420,7 +420,7 @@ test "Typed List." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(List) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -457,7 +457,7 @@ test "Typed symbol." {
         \\foo(123)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo(symbol) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -506,13 +506,13 @@ test "Typed function params." {
 test "Compile-time typed function calls." {
     // Error from param type mismatch.
     try eval(.{ .silent = true },
-        \\func foo(a number):
+        \\func foo(a float):
         \\  return a + 3
         \\foo(none)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: Can not find compatible function signature for `foo(none) any`.
-            \\Only `func foo(number) any` exists for the symbol `foo`.
+            \\Only `func foo(float) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
             \\foo(none)
@@ -523,13 +523,13 @@ test "Compile-time typed function calls." {
 
     // Error from different number of params.
     try eval(.{ .silent = true },
-        \\func foo(a number):
+        \\func foo(a float):
         \\  return a + 3
         \\foo(1, 2)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number, number) any`.
-            \\Only `func foo(number) any` exists for the symbol `foo`.
+            \\CompileError: Can not find compatible function signature for `foo(float, float) any`.
+            \\Only `func foo(float) any` exists for the symbol `foo`.
             \\
             \\main:3:1:
             \\foo(1, 2)
@@ -876,10 +876,10 @@ test "Imports." {
         \\t.eq(typesym(a.foo), #function)
     );
     try run.expectErrorReport(res, error.Panic,
-        \\panic: Assigning to static function `func () any` with a different function signature `func (any) number`.
+        \\panic: Assigning to static function `func () any` with a different function signature `func (any) float`.
         \\
         \\@AbsPath(test/test_mods/init_func_error.cy):1:14 main:
-        \\func foo() = toNumber
+        \\func foo() = toFloat
         \\             ^
         \\
     );
@@ -1152,8 +1152,8 @@ test "FFI." {
         \\lib.testAdd(123, '321')
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `testAdd(any, number, string) any` in `BindLib`.
-            \\Only `func testAdd(any, number, number) number` exists for the symbol `testAdd`.
+            \\panic: Can not find compatible function for `testAdd(any, float, string) any` in `BindLib`.
+            \\Only `func testAdd(any, float, float) float` exists for the symbol `testAdd`.
             \\
             \\main:14:1 main:
             \\lib.testAdd(123, '321')
@@ -1180,8 +1180,8 @@ test "FFI." {
         \\lib.testAdd(123, 234, 345)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `testAdd(any, number, number, number) any` in `BindLib`.
-            \\Only `func testAdd(any, number, number) number` exists for the symbol `testAdd`.
+            \\panic: Can not find compatible function for `testAdd(any, float, float, float) any` in `BindLib`.
+            \\Only `func testAdd(any, float, float) float` exists for the symbol `testAdd`.
             \\
             \\main:14:1 main:
             \\lib.testAdd(123, 234, 345)
@@ -1197,7 +1197,7 @@ test "Symbols." {
     // Literal.
     try eval(.{},
         \\var n = #Tiger
-        \\number(n)
+        \\float(n)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
         const id = try run.vm.internal().ensureSymbol("Tiger");
@@ -1254,8 +1254,8 @@ test "Objects." {
     );
     try evalPass(.{},
         \\type Vec2 object:
-        \\  x number
-        \\  y number
+        \\  x float
+        \\  y float
     );
 
     // Initialize with undeclared field.
@@ -1296,12 +1296,12 @@ test "Object fields." {
     // Compile time type check.
     try eval(.{ .silent = true },
         \\type S object:
-        \\  a number
+        \\  a float
         \\var o = S{}
         \\o.a = []
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Assigning to `number` member with incompatible type `List`.
+            \\CompileError: Assigning to `float` member with incompatible type `List`.
             \\
             \\main:4:7:
             \\o.a = []
@@ -1313,13 +1313,13 @@ test "Object fields." {
     // Runtime type check when right is dynamic.
     try eval(.{ .silent = false },
         \\type S object:
-        \\  a number
+        \\  a float
         \\func foo(): return []
         \\var o = S{}
         \\o.a = foo()
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to `number` member with incompatible type `List`.
+            \\panic: Assigning to `float` member with incompatible type `List`.
             \\
             \\main:5:1 main:
             \\o.a = foo()
@@ -1332,12 +1332,12 @@ test "Object fields." {
     try eval(.{ .silent = false },
         \\import t 'test'
         \\type S object:
-        \\  a number
+        \\  a float
         \\var o = t.erase(S{})
         \\o.a = []
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Assigning to `number` member with incompatible type `List`.
+            \\panic: Assigning to `float` member with incompatible type `List`.
             \\
             \\main:5:1 main:
             \\o.a = []
@@ -1375,7 +1375,7 @@ test "Object funcs/methods." {
         \\o.foo(234)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Can not find compatible function for `foo(any, number) any` in `S`.
+            \\panic: Can not find compatible function for `foo(any, float) any` in `S`.
             \\Only `func foo(any) any` exists for the symbol `foo`.
             \\
             \\main:6:1 main:
@@ -1820,7 +1820,7 @@ test "Integers." {
     );
 }
 
-test "Numbers." {
+test "Floats." {
     // Unsupported integer notation.
     try eval(.{ .silent = true },
         \\var a = 0z000
@@ -1877,7 +1877,7 @@ test "Numbers." {
         );
     }}.func);
 
-    try evalPass(.{}, @embedFile("number_test.cy"));
+    try evalPass(.{}, @embedFile("float_test.cy"));
 }
 
 test "Operator precedence." {
@@ -2332,7 +2332,7 @@ test "For iterator." {
         \\  print i
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: `iterator` is either missing in `number` or the call signature: iterator(self, 0 args) is unsupported.
+            \\panic: `iterator` is either missing in `float` or the call signature: iterator(self, 0 args) is unsupported.
             \\
             \\main:1:5 main:
             \\for 123 each i:
@@ -2412,7 +2412,7 @@ test "Static functions." {
         \\foo(1)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\`foo` does not exist.
             \\
             \\main:1:1:
@@ -2429,7 +2429,7 @@ test "Static functions." {
         \\foo(1)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float) any`.
             \\Only `func foo() any` exists for the symbol `foo`.
             \\
             \\main:3:1:
@@ -2448,7 +2448,7 @@ test "Static functions." {
         \\foo(1, 2)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: Can not find compatible function signature for `foo(number, number) any`.
+            \\CompileError: Can not find compatible function signature for `foo(float, float) any`.
             \\There are multiple overloaded functions named `foo`.
             \\
             \\main:5:1:
@@ -2491,13 +2491,13 @@ test "Static functions." {
 
     // Declaration initializer for a function already imported from core.
     try eval(.{ .silent = true },
-        \\func print(val) = number
+        \\func print(val) = float
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.CompileError,
             \\CompileError: The symbol `print` was already declared.
             \\
             \\main:1:6:
-            \\func print(val) = number
+            \\func print(val) = float
             \\     ^
             \\
         );
@@ -2621,7 +2621,7 @@ test "Arithmetic operators." {
         \\0 * (1 / 0)
     , struct { fn func(_: *VMrunner, res: EvalResult) !void {
         const val = try res;
-        try t.expect(val.isNumber());
+        try t.expect(val.isFloat());
         try t.expect(std.math.isNan(val.asF64()));
     }}.func);
 
@@ -2630,7 +2630,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' + 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected number operand.
+            \\panic: Expected float operand.
             \\
             \\main:1:15 main:
             \\var a = 'foo' + 123
@@ -2644,7 +2644,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' - 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected number operand.
+            \\panic: Expected float operand.
             \\
             \\main:1:15 main:
             \\var a = 'foo' - 123
@@ -2658,7 +2658,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' * 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected number operand.
+            \\panic: Expected float operand.
             \\
             \\main:1:15 main:
             \\var a = 'foo' * 123
@@ -2672,7 +2672,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' / 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected number operand.
+            \\panic: Expected float operand.
             \\
             \\main:1:15 main:
             \\var a = 'foo' / 123
@@ -2686,7 +2686,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' % 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected number operand.
+            \\panic: Expected float operand.
             \\
             \\main:1:15 main:
             \\var a = 'foo' % 123
@@ -2700,7 +2700,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' ^ 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected number operand.
+            \\panic: Expected float operand.
             \\
             \\main:1:15 main:
             \\var a = 'foo' ^ 123

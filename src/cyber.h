@@ -27,7 +27,7 @@ typedef enum {
     CY_TypeEnum,
     CY_TypeSymbol,
     CY_TypeInteger,
-    CY_TypeNumber,
+    CY_TypeFloat,
     CY_TypeList,
     CY_TypeListIter,
     CY_TypeMap,
@@ -101,7 +101,7 @@ void cyVmFree(CyVM* vm, void* ptr, size_t len);
 CyValue cyValueNone();
 CyValue cyValueTrue();
 CyValue cyValueFalse();
-CyValue cyValueNumber(double n);
+CyValue cyValueFloat(double n);
 CyValue cyValueInteger(int n);
 CyValue cyValueGetOrAllocStringInfer(CyVM* vm, CStr str);
 CyValue cyValueGetOrAllocAstring(CyVM* vm, CStr str);
@@ -118,7 +118,7 @@ CyTypeId cyValueGetTypeId(CyValue val);
 
 // Values to C types.
 CyHeapObject* cyValueAsHeapObject(CyValue val);
-double cyValueAsNumber(CyValue val);
+double cyValueAsFloat(CyValue val);
 bool cyValueToBool(CyValue val);
 bool cyValueAsBool(CyValue val);
 int cyValueAsInteger(CyValue val);

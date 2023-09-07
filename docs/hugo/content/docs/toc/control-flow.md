@@ -52,7 +52,7 @@ while iter.next() some entry:
     print entry.name
 ```
 
-`for` loops can iterate over a range that starts at a number (inclusive) to a target number (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
+`for` loops can iterate over a range that starts at a `float` (inclusive) to a target `float` (exclusive). When the range operator `..` is replaced with `..=`, the target number is inclusive. The range can be given a custom step.
 ```cy
 for 0..100 each i:
     print i    -- 0, 1, 2, ... , 99

@@ -50,9 +50,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
     try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
     
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        try b.setVar("vecBitSize", bt.Float, cy.Value.initF64(VecSize * 8));
+        try b.setVar("vecBitSize", bt.Float, cy.Value.initI32(VecSize * 8));
     } else {
-        try b.setVar("vecBitSize", bt.Float, cy.Value.initF64(0));
+        try b.setVar("vecBitSize", bt.Float, cy.Value.initI32(0));
     }
 
     // Functions.

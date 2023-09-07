@@ -23,17 +23,17 @@ When using `CFunc` or `CStruct` declarations, [symbols]({{<relref "/docs/toc/dat
 | Binding | Cyber | C | Details |
 | -- | -- | -- | -- |
 | #bool | bool | bool |
-| #char | number | int8_t, signed char | 
-| #uchar | number | uint8_t, unsigned char | 
-| #short | number | int16_t, short | 
-| #ushort | number | uint16_t, unsigned short | 
-| #int | number | int32_t, int |
-| #uint | number | uint32_t, unsigned int |
-| #long | number | int64_t, long long | 
-| #ulong | number | uint64_t, unsigned long long | 
-| #usize | number | size_t, uintptr_t | 
-| #float | number | float |
-| #double | number | double |
+| #char | float | int8_t, signed char | 
+| #uchar | float | uint8_t, unsigned char | 
+| #short | float | int16_t, short | 
+| #ushort | float | uint16_t, unsigned short | 
+| #int | float | int32_t, int |
+| #uint | float | uint32_t, unsigned int |
+| #long | float | int64_t, long long | 
+| #ulong | float | uint64_t, unsigned long long | 
+| #usize | float | size_t, uintptr_t | 
+| #float | float | float |
+| #double | float | double |
 | #charPtr | pointer | char* | Use `os.cstr()` and `os.fromCstr()` to convert between a Cyber string and a null terminated C string.
 | #voidPtr | pointer | void* |
 | sym symbol | object \<sym\> | Struct | The mapping from a Cyber object type `sym` and the C-struct can be declared with `CStruct`. |
@@ -67,7 +67,7 @@ After adding a `CStruct` declaration, you can use the object type symbol in CFun
 import os 'os'
 
 type MyObject object:
-    a number
+    a float
     b pointer
     c bool
 
@@ -112,4 +112,4 @@ print ptr.value()     --'3735928559'
 ### `type pointer`
 | Method | Summary |
 | ------------- | ----- |
-| `value() number` | Returns the memory address as a `number`. |
+| `value() float` | Returns the memory address as a `float`. |

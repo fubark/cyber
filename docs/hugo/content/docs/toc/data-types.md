@@ -4,7 +4,7 @@ weight: 2
 ---
 
 # Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Numbers](#numbers), Integers, [Enums](#enums), [Symbols](#symbols), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
 
 The `none` value represents an empty value. This is similar to null in other languages.
 
@@ -20,42 +20,51 @@ When other value types are coerced to the boolean type, the truthy value is dete
 - Other objects and values are always `true`.
 
 ## Numbers.
-In Cyber, the `number` is the default number type and has a 64-bit double precision floating point format.
+### Floats.
+`float` is the default number type and has an (IEEE 754) 64-bit floating point format.
 
-You can still use numbers as integers and perform arithmetic without rounding issues in a 32-bit integer range. The safe integer range is from -(2^53-1) to (2^53-1). Any integers beyond this range is not guaranteed to have a unique representation.
+Although a `float` represents a decimal number, it can also represent integers between -(2{{<sup "53">}}-1) and (2{{<sup "53">}}-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
 
-When performing bitwise operations, the number is first converted to an 32-bit integer.
-
+When a numeric literal is used and the type can not be inferred, it will default to the `float` type:
 ```cy
 var a = 123
-var b = 2.34567
 ```
 
-There are other number literal notations you can use.
+Decimal and scientific notations always produce a `float` value:
 ```cy
--- Scientific notation. 
-var a = 123.0e4
-
--- Integer notations.
-a = 0xFF     -- hex.
-a = 0o17     -- octal.
-a = 0b1010   -- binary.
-a = 0u'🐶'   -- UTF-8 rune.
+var a = 2.34567
+var b = 123.0e4
 ```
 
-The `int` type is a 32-bit integer and has limited support and you can only declare them in function param and return types.
+Arbitrary values can be converted to a `float` using the type as a function. 
 ```cy
-func fib(n int) int:
-    if n < 2:
-        return n
-    return fib(n - 1) + fib(n - 2)
-print(fib(30))
+var a = '12.3'
+var b = float(a) 
 ```
 
+### Integers.
+`int` is a number type that represents a 32-bit integer.
+
+A numeric literal can be used to create an `int` if the inferred type is an `int`:
+```cy
+a int = 123
+```
+
+Integer notations always produce a `int` value:
+```cy
+var a = 0xFF     -- hex.
+a = 0o17         -- octal.
+a = 0b1010       -- binary.
+a = 0u'🐶'       -- UTF-8 rune.
+```
+
+In addition to arithmetic operations, integers can also perform [bitwise operations]({{<relref "/docs/toc/syntax#bitwise-operators">}}).
+
+### Big Numbers.
 Big numbers will be supported in a future version of Cyber.
 
 ## Strings.
-The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as a `number`. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
+The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](#string-buffer).
 
@@ -145,22 +154,22 @@ func concat(self, str string) string
 func endsWith(self, suffix string) bool
 -- Returns whether the string ends with `suffix`.
 
-func find(self, needle string) number?
+func find(self, needle string) float?
 -- Returns the first index of substring `needle` in the string or `none` if not found.
 
-func findAnyRune(self, set string) number?
+func findAnyRune(self, set string) float?
 -- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
 
-func findRune(self, needle number) number?
+func findRune(self, needle float) float?
 -- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
 
-func insert(self, idx number, str string) string
+func insert(self, idx float, str string) string
 -- Returns a new string with `str` inserted at index `idx`.
 
 func isAscii(self) bool
 -- Returns whether the string contains all ASCII runes.
 
-func len(self) number
+func len(self) float
 -- Returns the number of UTF-8 runes in the string.
 
 func less(self, str string) bool
@@ -172,16 +181,16 @@ func lower(self) string
 func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 
-func repeat(self, n number) string
+func repeat(self, n float) string
 -- Returns a new string with this string repeated `n` times.
 
-func runeAt(self, idx number) number
+func runeAt(self, idx float) float
 -- Returns the UTF-8 rune at index `idx`.
 
-func slice(self, start number, end number) string
+func slice(self, start float, end float) string
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
-func sliceAt(self, idx number) string
+func sliceAt(self, idx float) string
 -- Returns the UTF-8 rune at index `idx` as a single rune string.
 
 func split(self, delim string) List
@@ -226,7 +235,7 @@ print str[-1]    -- "d"
 
 ### `type rawstring`
 ```cy
-func byteAt(self, idx number) number
+func byteAt(self, idx float) float
 -- Returns the byte value (0-255) at the given index `idx`.
 
 func concat(self, str string) string
@@ -235,25 +244,25 @@ func concat(self, str string) string
 func endsWith(self, suffix string) bool
 -- Returns whether the string ends with `suffix`.
 
-func find(self, needle string) number?
+func find(self, needle string) float?
 -- Returns the first index of substring `needle` in the string or `none` if not found.
 
-func findAnyRune(self, set string) number?
+func findAnyRune(self, set string) float?
 -- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
 
-func findRune(self, needle number) number?
+func findRune(self, needle float) float?
 -- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
 
-func insert(self, idx number, str string) string
+func insert(self, idx float, str string) string
 -- Returns a new string with `str` inserted at index `idx`.
 
-func insertByte(self, idx number, byte number) string
+func insertByte(self, idx float, byte float) string
 -- Returns a new string with `byte` inserted at index `idx`.
 
 func isAscii(self) bool
 -- Returns whether the string contains all ASCII runes.
 
-func len(self) number
+func len(self) float
 -- Returns the number of bytes in the string.
 
 func less(self, str rawstring) bool
@@ -262,19 +271,19 @@ func less(self, str rawstring) bool
 func lower(self) string
 -- Returns this string in lowercase.
 
-func repeat(self, n number) rawstring
+func repeat(self, n float) rawstring
 -- Returns a new rawstring with this rawstring repeated `n` times.
 
 func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`.
 
-func runeAt(self, idx number) number
+func runeAt(self, idx float) float
 -- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
-func slice(self, start number, end number) rawstring
+func slice(self, start float, end float) rawstring
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
-func sliceAt(self, idx number) string
+func sliceAt(self, idx float) string
 -- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func split(self, delim string) List
@@ -345,13 +354,13 @@ list.remove(1)
 | ------------- | ----- |
 | `append(val any) none` | Appends a value to the end of the list. |
 | `concat(val any) none` | Concats the elements of another list to the end of this list. |
-| `insert(idx number, val any) none` | Inserts a value at index `idx`. |
+| `insert(idx float, val any) none` | Inserts a value at index `idx`. |
 | `iterator() Iterator<any>` | Returns a new iterator over the list elements. |
 | `joinString(separator any) string` | Returns a new string that joins the elements with `separator`. |
-| `len() number` | Returns the number of elements in the list. |
-| `pairIterator() PairIterator<number, any>` | Returns a new pair iterator over the list elements. |
-| `remove(idx number) none` | Removes an element at index `idx`. |
-| `resize(len number) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
+| `len() float` | Returns the number of elements in the list. |
+| `pairIterator() PairIterator<float, any>` | Returns a new pair iterator over the list elements. |
+| `remove(idx float) none` | Removes an element at index `idx`. |
+| `resize(len float) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
 | `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
 
 ## Maps.
@@ -409,9 +418,9 @@ for map each val, key:
 | Method | Summary |
 | ------------- | ----- |
 | `iterator() Iterator<any>` | Returns a new iterator over the map elements. |
-| `pairIterator() PairIterator<number, any>` | Returns a new pair iterator over the map elements. |
+| `pairIterator() PairIterator<float, any>` | Returns a new pair iterator over the map elements. |
 | `remove(key any) none` | Removes the element with the given key `key`. |
-| `size() number` | Returns the number of key-value pairs in the map. |
+| `size() float` | Returns the number of key-value pairs in the map. |
 
 ## Objects.
 Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration. Object types are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
@@ -465,8 +474,8 @@ type Fruit enum:
     kiwi
 
 var fruit = Fruit.kiwi
-print fruit          -- 'Fruit.kiwi'
-print number(fruit)  -- '3'
+print fruit       -- 'Fruit.kiwi'
+print float(fruit)  -- '3'
 ```
 When the type of the value is known to be an enum, it can be assigned using a symbol literal.
 ```cy
@@ -479,6 +488,6 @@ print(fruit == Fruit.orange)   -- 'true'
 Symbol literals begin with `#`, followed by an identifier. They have their own global unique id.
 ```cy
 var currency = #usd
-print(currency == #usd)      -- 'true'
-print number(currency)       -- '123' or some arbitrary id.
+print(currency == #usd)   -- 'true'
+print float(currency)       -- '123' or some arbitrary id.
 ```

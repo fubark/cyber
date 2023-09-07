@@ -180,7 +180,7 @@ Cyber supports the following operators. They are ordered from highest to lowest 
 | `or` | Logical or. |
 
 ### Arithmetic Operators.
-Cyber supports the following arithmetic operators. To understand how these operators affect the number type, see [Numbers]({{<relref "/docs/toc/data-types#numbers">}}).
+The following arithmetic operators are supported for the [numeric data types]({{<relref "/docs/toc/data-types#numbers">}}).
 ```cy
 1 + 2     -- Addition, evaluates to 3.
 100 - 10  -- Subtraction, evaluates to 90.
@@ -211,7 +211,7 @@ a == []     -- Evaluates to `false`
 1 != 2      -- Evaluates to `true`
 ```
 
-Numbers have additional comparison operators.
+Number types have additional comparison operators.
 ```cy
 a > b    -- `true` if a is greater than b
 a >= b   -- `true` if a is greater than or equal to b
@@ -249,7 +249,7 @@ not 123       -- Evaluates to false
 
 ### Bitwise Operators.
 
-Cyber supports the following bitwise operators for integer values. Number operands are first converted to a 32-bit integer (two's complement) before applying the operation.
+Cyber supports the following bitwise operators for `int` number values.
 ```cy
 -- Bitwise and: any underlying bits that are set in both integers are set in the new integer.
 a & b

@@ -17,7 +17,7 @@ A variable with the `any` type can hold any value. It can only be copied to dest
 ## Compile-time dynamic typing.
 Cyber introduces the concept of compile-time dynamic typing. This allows a local variable to gain additional compile-time features while using it as a dynamic value. It can prevent inevitable runtime errors and avoid unnecessary type casts.
 
-Local variables declared without a type specifier start off with the type of their initializer. In the following, `a` is implicity declared as a `number` at compile-time because number literals default to the `number` type.
+Local variables declared without a type specifier start off with the type of their initializer. In the following, `a` is implicity declared as a `float` at compile-time because numeric literals default to the `float` type.
 ```cy
 var a = 123
 ```
@@ -28,13 +28,13 @@ If `a` is then assigned to a string literal, `a` from that point on becomes the 
 var a = 123
 foo(a)           -- Valid call expression.
 a = 'hello'
-foo(a)           -- CompileError. Expected `number` argument, got `string`.
+foo(a)           -- CompileError. Expected `float` argument, got `string`.
 
-func foo(n number):
+func foo(n float):
     pass
 ```
 
-The type of `a` can also change in branches. However, after the branch block, `a` will have a merged type determined by the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` assumes the `any` type after merging the `number` and `string` types.
+The type of `a` can also change in branches. However, after the branch block, `a` will have a merged type determined by the types assigned to `a` from the two branched code paths. Currently, the `any` type is used if the types from the two branches differ. At the end of the following `if` block, `a` assumes the `any` type after merging the `float` and `string` types.
 ```cy
 var a = 123
 if a > 20:
@@ -48,7 +48,7 @@ func foo(s string):
 ```
 
 ## Default types.
-Static variables without a type specifier will always default to the `any` type. In the following, `a` is compiled with the `any` type despite being initialized to a number literal.
+Static variables without a type specifier will always default to the `any` type. In the following, `a` is compiled with the `any` type despite being initialized to a numeric literal.
 ```cy
 var a: 123
 a = 'hello'
@@ -64,25 +64,25 @@ print add(3, 4)
 
 ## Static typing.
 In Cyber, types can be optionally declared with variables, parameters, and return values.
-The following builtin types are available in every namespace: `bool`, `number`, `int`, `string`, `list`, `map`, `error`, `fiber`, `any`.
+The following builtin types are available in every namespace: `bool`, `float`, `int`, `string`, `list`, `map`, `error`, `fiber`, `any`.
 
 A `type object` declaration creates a new object type.
 ```cy
 type Student object:    -- Creates a new type named `Student`
     name string
     age int
-    gpa number
+    gpa float
 ```
 
 When a type specifier follows a variable name, it declares the variable with the type. Any operation afterwards that violates the type constraint will result in a compile error.
 ```cy
-a number = 123
+a float = 123
 a = 'hello'        -- CompileError. Type mismatch.
 ```
 
 Parameter and return type specifiers in a function signature follows the same syntax.
 ```cy
-func mul(a number, b number) number:
+func mul(a float, b float) float:
     return a * b
 
 print mul(3, 4)
@@ -92,7 +92,7 @@ print mul(3, '4')  -- CompileError. Function signature mismatch.
 Type specifiers must be resolved at compile-time.
 ```cy
 type Foo object:
-    a number
+    a float
     b string
     c Bar          -- CompileError. Bar is not declared.
 ```
@@ -119,14 +119,14 @@ The `as` keyword can be used to cast a value to a specific type. Casting lets th
 If the compiler knows the cast will always fail at runtime, a compile error is returned instead.
 If the cast fails at runtime, a panic is returned.
 ```cy
-print('123' as number)    -- CompileError. Can not cast `string` to `number`.
+print('123' as float)    -- CompileError. Can not cast `string` to `float`.
 
 erased any = 123
-add(1, erased as number)  -- Success.
+add(1, erased as float)  -- Success.
 
-print(erased as string)   -- Panic. Can not cast `number` to `string`.
+print(erased as string)   -- Panic. Can not cast `float` to `string`.
 
-func add(a number, b number):
+func add(a float, b float):
     return a + b
 ```
 
@@ -137,6 +137,6 @@ op any = add
 print op(1, 2)           -- '3'
 print op(1, '2')         -- Panic. Function signature mismatch.
 
-func add(a number, b number) number:
+func add(a float, b float) float:
     return a + b
 ```

@@ -20,24 +20,24 @@ t.eq(2 + ((3 + 4) / 7), 3)
 --|
 
 -- Bitwise shift before bitwise and.
-t.eq(2 & 1 << 1, 2)
+t.eq(int(2) & 1 << 1, int(2))
 
 -- Bitwise shift before bitwise or.
-t.eq(1 | 1 << 1, 3)
+t.eq(int(1) | 1 << 1, int(3))
 
 --|
 --| Precedence=8, Bitwise and
 --|
 
 -- Bitwise and before bitwise or.
-t.eq(8 | 1 & 1, 9)
+t.eq(int(8) | 1 & 1, int(9))
 
 --|
 --| Precedence=7, Bitwise or, xor
 --|
 
 -- Bitwise or before power.
-t.eq(3 ^ 2 | 1, 27)
+t.eq(int(3) ^ 2 | 1, int(27))
 
 --|
 --| Precedence=6, Power

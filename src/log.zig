@@ -1,8 +1,9 @@
 const std = @import("std");
+const cy = @import("cyber.zig");
 pub const wasm = @import("log_wasm.zig");
 const builtin = @import("builtin");
 
-const UseStd = !builtin.target.isWasm();
+const UseStd = !builtin.target.isWasm() or builtin.os.tag == .wasi;
 const UseTimer = builtin.mode == .Debug and true;
 
 var timer: ?std.time.Timer = null;
@@ -13,8 +14,38 @@ fn initTimerOnce() void {
     }
 }
 
+fn printStderr(comptime format: []const u8, args: anytype) void {
+    const stderr = std.io.getStdErr().writer();
+    std.debug.getStderrMutex().lock();
+    defer std.debug.getStderrMutex().unlock();
+    stderr.print(format, args) catch @panic("print error");
+}
+
 pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
     return struct {
+        pub fn tracev(comptime format: []const u8, args: anytype) void {
+            if (cy.Trace) {
+                if (cy.verbose) {
+                    if (UseStd) {
+                        if (UseTimer) {
+                            initTimerOnce();
+                            const elapsed = timer.?.read();
+                            const secs = elapsed / 1000000000;
+                            const msecs = (elapsed % 1000000000)/1000000;
+                            std.log.scoped(Scope).debug("{}.{}: " ++ format, .{secs, msecs} ++ args);
+                            const prefix = @tagName(Scope) ++ ": {}.{}: ";
+                            printStderr(prefix ++ format ++ "\n", .{secs, msecs} ++ args);
+                        } else {
+                            const prefix = @tagName(Scope) ++ ": ";
+                            printStderr(prefix ++ format ++ "\n", args);
+                        }
+                    } else {
+                        wasm.scoped(Scope).debug(format, args);
+                    }
+                }
+            }
+        }
+
         pub fn debug(comptime format: []const u8, args: anytype) void {
             if (UseStd) {
                 if (UseTimer) {

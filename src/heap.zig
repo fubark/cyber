@@ -13,7 +13,7 @@ const t = stdx.testing;
 const std = @import("std");
 const builtin = @import("builtin");
 const tcc = @import("tcc");
-const log = stdx.log.scoped(.heap);
+const log = cy.log.scoped(.heap);
 const NullId = std.math.maxInt(u32);
 const NullU8 = std.math.maxInt(u8);
 
@@ -110,7 +110,7 @@ pub const HeapObject = extern union {
     lambda: Lambda,
     astring: Astring,
     ustring: Ustring,
-    stringSlice: StringSlice,
+    stringSlice: vmc.StringSlice,
     rawstring: RawString,
     rawstringSlice: RawStringSlice,
     object: Object,
@@ -168,7 +168,7 @@ pub const List = extern struct {
     },
 
     pub fn getList(self: *List) *cy.List(Value) {
-        return stdx.ptrAlignCast(*cy.List(Value), &self.list);
+        return cy.ptrAlignCast(*cy.List(Value), &self.list);
     }
 
     pub inline fn items(self: *const List) []Value {
@@ -177,15 +177,15 @@ pub const List = extern struct {
 
     /// Assumes `val` is retained.
     pub fn append(self: *List, alloc: std.mem.Allocator, val: Value) linksection(cy.Section) void {
-        const list = stdx.ptrAlignCast(*cy.List(Value), &self.list);
+        const list = cy.ptrAlignCast(*cy.List(Value), &self.list);
         if (list.len == list.buf.len) {
             // After reaching a certain size, use power of two ceil.
             // This reduces allocations for big lists while not over allocating for smaller lists.
             if (list.len > 512) {
-                const newCap = std.math.ceilPowerOfTwo(u32, @as(u32, @intCast(list.len)) + 1) catch stdx.fatal();
-                list.growTotalCapacityPrecise(alloc, newCap) catch stdx.fatal();
+                const newCap = std.math.ceilPowerOfTwo(u32, @as(u32, @intCast(list.len)) + 1) catch cy.fatal();
+                list.growTotalCapacityPrecise(alloc, newCap) catch cy.fatal();
             } else {
-                list.growTotalCapacity(alloc, list.len + 1) catch stdx.fatal();
+                list.growTotalCapacity(alloc, list.len + 1) catch cy.fatal();
             }
         }
         list.appendAssumeCapacity(val);
@@ -215,7 +215,7 @@ pub const Map = extern struct {
     },
 
     pub fn map(self: *Map) *MapInner {
-        return stdx.ptrAlignCast(*MapInner, &self.inner);
+        return cy.ptrAlignCast(*MapInner, &self.inner);
     }
 };
 
@@ -235,7 +235,7 @@ pub const Closure = extern struct {
     stackSize: u8,
     /// Closure value is copied to this local to provide captured var lookup.
     local: u8,
-    rFuncSigId: u64,
+    funcSigId: u64,
 
     // Begins array of `Box` values.
     firstCapturedVal: Value,
@@ -252,7 +252,7 @@ const Lambda = extern struct {
     numParams: u8,
     stackSize: u8,
     padding: u16 = 0,
-    rFuncSigId: u64,
+    funcSigId: u64,
 };
 
 /// 28 byte length can fit inside a Heap pool object.
@@ -298,32 +298,16 @@ const Ustring = extern struct {
     }
 };
 
-/// One data structure for astring/ustring slice it can fit into a pool object
-/// and use the same layout.
-const StringSlice = extern struct {
-    structId: rt.TypeId,
-    rc: u32,
-    buf: [*]const u8,
-    len: u32,
-
-    uCharLen: u32,
-    uMruIdx: u32,
-    uMruCharIdx: u32,
-
-    /// A Ustring slice may have a null or 0 parentPtr if it's sliced from StaticUstring.
-    /// The lower 63 bits contains the parentPtr.
-    /// The last bit contains an isAscii flag.
-    extra: u64,
-
-    pub inline fn getParentPtr(self: *const StringSlice) ?*cy.HeapObject {
+pub const StringSlice = struct {
+    pub inline fn getParentPtr(self: vmc.StringSlice) ?*cy.HeapObject {
         return @ptrFromInt(@as(usize, @intCast(self.extra & 0x7fffffffffffffff)));
     }
 
-    pub inline fn isAstring(self: *const StringSlice) bool {
+    pub inline fn isAstring(self: vmc.StringSlice) bool {
         return self.extra & (1 << 63) > 0;
     }
 
-    pub inline fn getConstSlice(self: *const StringSlice) []const u8 {
+    pub inline fn getConstSlice(self: vmc.StringSlice) []const u8 {
         return self.buf[0..self.len];
     }
 };
@@ -393,7 +377,7 @@ const NativeFunc1 = extern struct {
     rc: u32,
     func: *const fn (*cy.UserVM, [*]const Value, u8) Value,
     numParams: u32,
-    rFuncSigId: u32,
+    funcSigId: u32,
     tccState: Value,
     hasTccState: bool,
 };
@@ -542,14 +526,14 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
     // Align with HeapObject so it can be casted.
     const slice = try vm.alloc.alignedAlloc(u8, @alignOf(HeapObject), size);
     defer {
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             cy.heap.traceAlloc(vm, @ptrCast(slice.ptr));
         }
     }
     if (cy.TrackGlobalRC) {
         vm.refCounts += 1;
     }
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         vm.trace.numRetains += 1;
         vm.trace.numRetainAttempts += 1;
     }
@@ -561,13 +545,13 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
     if (self.heapFreeHead == null) {
         const list = try growHeapPages(self, @max(1, (self.heapPages.len * 15) / 10));
         self.heapFreeHead = list.head;
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             self.heapFreeTail = list.tail;
         }
     }
     const ptr = self.heapFreeHead.?;
     defer {
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             traceAlloc(self, ptr);
             if (self.heapFreeTail == ptr) {
                 // Ensure tail is updated if it was the same segment as head.
@@ -577,7 +561,7 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }
-        if (cy.TraceEnabled) {
+        if (cy.Trace) {
             self.trace.numRetains += 1;
             self.trace.numRetainAttempts += 1;
         }
@@ -602,7 +586,7 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
 }
 
 fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize) void {
-    if (builtin.mode == .Debug) {
+    if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
             trace.freeTypeId = obj.head.typeId;
@@ -615,7 +599,7 @@ fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize) void {
 }
 
 pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    if (builtin.mode == .Debug) {
+    if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
             trace.freeTypeId = obj.head.typeId;
@@ -630,8 +614,8 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
         obj.freeSpan.start = prev.freeSpan.start;
         obj.freeSpan.typeId = cy.NullId;
     } else {
-        if (builtin.mode == .Debug) {
-            // Debug mode performs LRU allocation to surface double free errors better.
+        if (cy.Trace) {
+            // Tracing performs LRU allocation to surface double free errors better.
             // When an object is constantly reused, the most recent traced alloc/free info
             // can mask an earlier alloc/free on the same object pointer.
             obj.freeSpan = .{
@@ -709,7 +693,7 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
             .cap = 0,
         },
     };
-    const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     // Initializes capacity to exact size.
     try list.ensureTotalCapacityPrecise(self.alloc, n);
     list.len = n;
@@ -735,7 +719,7 @@ pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) 
             .cap = 0,
         },
     };
-    const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     // Initializes capacity to exact size.
     try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
     list.len = elems.len;
@@ -817,7 +801,7 @@ pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Val
 /// Captured values are retained during alloc.
 pub fn allocClosure(
     self: *cy.VM, fp: [*]Value, funcPc: usize, numParams: u8, stackSize: u8,
-    rFuncSigId: u16, capturedVals: []const cy.Inst, closureLocal: u8,
+    funcSigId: u16, capturedVals: []const cy.Inst, closureLocal: u8,
 ) !Value {
     var obj: *HeapObject = undefined;
     if (capturedVals.len <= 2) {
@@ -833,14 +817,14 @@ pub fn allocClosure(
         .stackSize = stackSize,
         .numCaptured = @intCast(capturedVals.len),
         .local = closureLocal,
-        .rFuncSigId = rFuncSigId,
+        .funcSigId = funcSigId,
         .firstCapturedVal = undefined,
     };
     const dst = obj.closure.getCapturedValuesPtr();
     for (capturedVals, 0..) |local, i| {
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             if (!fp[local.val].isBox()) {
-                stdx.panic("Expected box value.");
+                cy.panic("Expected box value.");
             }
         }
         cy.arc.retain(self, fp[local.val]);
@@ -849,7 +833,7 @@ pub fn allocClosure(
     return Value.initPtr(obj);
 }
 
-pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, rFuncSigId: u16) !Value {
+pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16) !Value {
     const obj = try allocPoolObject(self);
     obj.lambda = .{
         .structId = rt.LambdaT,
@@ -857,7 +841,7 @@ pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, rF
         .funcPc = @intCast(funcPc),
         .numParams = numParams,
         .stackSize = stackSize,
-        .rFuncSigId = rFuncSigId,
+        .funcSigId = funcSigId,
     };
     return Value.initPtr(obj);
 }
@@ -1167,7 +1151,7 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
 pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: ?*HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.stringSlice = .{
-        .structId = rt.StringSliceT,
+        .typeId = rt.StringSliceT,
         .rc = 1,
         .buf = slice.ptr,
         .len = @intCast(slice.len),
@@ -1182,7 +1166,7 @@ pub fn allocUstringSlice(self: *cy.VM, slice: []const u8, charLen: u32, parent: 
 pub fn allocAstringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.stringSlice = .{
-        .structId = rt.StringSliceT,
+        .typeId = rt.StringSliceT,
         .rc = 1,
         .buf = slice.ptr,
         .len = @intCast(slice.len),
@@ -1239,14 +1223,14 @@ pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, rFuncSigId: cy.sema.ResolvedFuncSigId, tccState: ?Value) !Value {
+pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
         .structId = rt.NativeFuncT,
         .rc = 1,
         .func = func,
         .numParams = numParams,
-        .rFuncSigId = rFuncSigId,
+        .funcSigId = funcSigId,
         .tccState = undefined,
         .hasTccState = false,
     };
@@ -1317,10 +1301,10 @@ pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy
         .recursive = recursive,
     };
     if (recursive) {
-        const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &obj.inner.walker);
+        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &obj.inner.walker);
         walker.* = try dir.getStdIterableDir().walk(self.alloc);
     } else {
-        const iter = stdx.ptrAlignCast(*std.fs.IterableDir.Iterator, &obj.inner.iter);
+        const iter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &obj.inner.iter);
         iter.* = dir.getStdIterableDir().iterate();
     }
     return Value.initPtr(obj);
@@ -1380,15 +1364,15 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
     const sym = self.funcSyms.buf[symId];
     switch (@as(cy.rt.FuncSymbolEntryType, @enumFromInt(sym.entryT))) {
         .nativeFunc1 => {
-            const rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
+            const funcSigId = sym.innerExtra.nativeFunc1.funcSigId;
             const numParams = sym.innerExtra.nativeFunc1.numParams();
-            return allocNativeFunc1(self, sym.inner.nativeFunc1, numParams, rFuncSigId, null);
+            return allocNativeFunc1(self, sym.inner.nativeFunc1, numParams, funcSigId, null);
         },
         .func => {
             return allocLambda(self, sym.inner.func.pc,
                 @intCast(sym.inner.func.numParams),
                 @intCast(sym.inner.func.stackSize),
-                @intCast(sym.innerExtra.func.rFuncSigId)
+                @intCast(sym.innerExtra.func.funcSigId)
             );
         },
         .closure => {
@@ -1400,20 +1384,20 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
 }
 
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    if (builtin.mode == .Debug) {
+    if (cy.Trace) {
         if (obj.head.typeId == cy.NullId) {
-            stdx.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
+            cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
             if (cy.verbose) {
                 log.debug("free type={}({s})", .{
-                    obj.head.typeId, cy.heap.getTypeName(vm, obj.head.typeId),
+                    obj.head.typeId, vm.getTypeName(obj.head.typeId),
                 });
             }
         }
     }
     switch (obj.head.typeId) {
         rt.ListT => {
-            const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
+            const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
             for (list.items()) |it| {
                 cy.arc.release(vm, it);
             }
@@ -1421,11 +1405,11 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             freePoolObject(vm, obj);
         },
         rt.ListIteratorT => {
-            cy.arc.releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.listIter.list));
+            cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list));
             freePoolObject(vm, obj);
         },
         rt.MapT => {
-            const map = stdx.ptrAlignCast(*MapInner, &obj.map.inner);
+            const map = cy.ptrAlignCast(*MapInner, &obj.map.inner);
             var iter = map.iterator();
             while (iter.next()) |entry| {
                 cy.arc.release(vm, entry.key);
@@ -1435,7 +1419,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             freePoolObject(vm, obj);
         },
         rt.MapIteratorT => {
-            cy.arc.releaseObject(vm, stdx.ptrAlignCast(*HeapObject, obj.mapIter.map));
+            cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map));
             freePoolObject(vm, obj);
         },
         rt.ClosureT => {
@@ -1484,7 +1468,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             }
         },
         rt.StringSliceT => {
-            if (obj.stringSlice.getParentPtr()) |parent| {
+            if (cy.heap.StringSlice.getParentPtr(obj.stringSlice)) |parent| {
                 cy.arc.releaseObject(vm, parent);
             }
             freePoolObject(vm, obj);
@@ -1504,7 +1488,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         rt.FiberT => {
             const fiber: *vmc.Fiber = @ptrCast(obj);
             cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
-                stdx.panicFmt("release fiber: {}", .{err});
+                cy.panicFmt("release fiber: {}", .{err});
             };
             freeExternalObject(vm, obj, @sizeOf(vmc.Fiber));
         },
@@ -1550,7 +1534,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
             if (cy.hasStdFiles) {
                 var dir: *DirIterator = @ptrCast(obj);
                 if (dir.recursive) {
-                    const walker = stdx.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
+                    const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
                     walker.deinit();   
                 }
                 cy.arc.releaseObject(vm, @ptrCast(dir.dir));
@@ -1562,16 +1546,16 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void 
         },
         else => {
             // Struct deinit.
-            if (builtin.mode == .Debug) {
+            if (cy.Trace) {
 
                 if (cy.verbose) {
-                    log.debug("free {s}", .{vm.types.buf[obj.head.typeId].name});
+                    log.debug("free {s}", .{vm.getTypeName(obj.head.typeId)});
                 }
 
                 // Check range.
                 if (obj.head.typeId >= vm.types.len) {
                     log.debug("unsupported struct type {}", .{obj.head.typeId});
-                    stdx.fatal();
+                    cy.fatal();
                 }
             }
             const numFields = vm.types.buf[obj.head.typeId].numFields;
@@ -1593,24 +1577,16 @@ pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
         .allocPc = vm.debugPc,
         .freePc = cy.NullId,
         .freeTypeId = cy.NullId,
-    }) catch stdx.fatal();
-}
-
-pub fn getTypeName(vm: *const cy.VM, typeId: rt.TypeId) []const u8 {
-    return vm.types.buf[typeId].name;
+    }) catch cy.fatal();
 }
 
 test "Free object invalidation." {
     var vm: cy.VM = undefined;
     try vm.init(t.alloc);
-    if (cy.TraceEnabled) {
-        var trace = cy.TraceInfo{};
-        vm.trace = &trace;
-    }
     defer vm.deinit(false);
 
-    // Invalidation only happens in Debug mode.
-    if (builtin.mode == .Debug) {
+    // Invalidation only happens in trace mode.
+    if (cy.Trace) {
         // Free pool object with no previous free slot invalidates object pointer.
         var obj = try allocPoolObject(&vm);
         obj.head.typeId = 100;
@@ -1637,23 +1613,30 @@ test "Free object invalidation." {
 }
 
 test "heap internals." {
-    try t.eq(@sizeOf(MapInner), 32);
+    if (cy.is32Bit) {
+        try t.eq(@sizeOf(MapInner), 20);
+        try t.eq(@alignOf(List), 4);
+        try t.eq(@alignOf(ListIterator), 4);
+        try t.eq(@alignOf(DirIterator), 4);
+    } else {
+        try t.eq(@sizeOf(MapInner), 32);
+        try t.eq(@alignOf(List), 8);
+        try t.eq(@alignOf(ListIterator), 8);
+        try t.eq(@alignOf(DirIterator), 8);
+    }
     try t.eq(@sizeOf(HeapObject), 40);
     try t.eq(@alignOf(HeapObject), 8);
     try t.eq(@sizeOf(HeapPage), 40 * 102);
     try t.eq(@alignOf(HeapPage), 8);
 
-    try t.eq(@alignOf(List), 8);
     var list: List = undefined;
     try t.eq(@intFromPtr(&list.list.ptr), @intFromPtr(&list) + 8);
-    try t.eq(@alignOf(ListIterator), 8);
 
     try t.eq(@alignOf(Dir), 8);
     var dir: Dir = undefined;
     try t.eq(@intFromPtr(&dir.structId), @intFromPtr(&dir));
     try t.eq(@intFromPtr(&dir.rc), @intFromPtr(&dir) + 4);
 
-    try t.eq(@alignOf(DirIterator), 8);
     var dirIter: DirIterator = undefined;
     try t.eq(@intFromPtr(&dirIter.structId), @intFromPtr(&dirIter));
     try t.eq(@intFromPtr(&dirIter.rc), @intFromPtr(&dirIter) + 4);
@@ -1700,35 +1683,6 @@ test "heap internals." {
     try t.eq(Ustring.BufOffset, 24);
     try t.eq(@intFromPtr(&ustr.bufStart), @intFromPtr(&ustr) + Ustring.BufOffset);
 
-    const slice = StringSlice{
-        .structId = rt.StringSliceT,
-        .rc = 1,
-        .buf = undefined,
-        .len = 1,
-        .uCharLen = undefined,
-        .uMruIdx = undefined,
-        .uMruCharIdx = undefined,
-        .extra = undefined,
-    };
-    try t.eq(@intFromPtr(&slice.structId), @intFromPtr(&slice));
-    try t.eq(@intFromPtr(&slice.rc), @intFromPtr(&slice) + 4);
-    try t.eq(@intFromPtr(&slice.buf), @intFromPtr(&slice) + 8);
-    try t.eq(@intFromPtr(&slice.len), @intFromPtr(&slice) + 16);
-    try t.eq(@intFromPtr(&slice.uCharLen), @intFromPtr(&slice) + 20);
-    try t.eq(@intFromPtr(&slice.uMruIdx), @intFromPtr(&slice) + 24);
-    try t.eq(@intFromPtr(&slice.uMruCharIdx), @intFromPtr(&slice) + 28);
-    try t.eq(@intFromPtr(&slice.extra), @intFromPtr(&slice) + 32);
-
-    const rslice = RawStringSlice{
-        .structId = rt.RawstringSliceT,
-        .rc = 1,
-        .buf = undefined,
-        .len = 1,
-        .parent = undefined,
-    };
-    try t.eq(@intFromPtr(&rslice.structId), @intFromPtr(&rslice));
-    try t.eq(@intFromPtr(&rslice.rc), @intFromPtr(&rslice) + 4);
-    try t.eq(@intFromPtr(&rslice.buf), @intFromPtr(&rslice) + 8);
-    try t.eq(@intFromPtr(&rslice.len), @intFromPtr(&rslice) + 16);
-    try t.eq(@intFromPtr(&rslice.parent), @intFromPtr(&rslice) + 24);
+    try t.eq(@offsetOf(List, "structId"), 0);    
+    try t.eq(@offsetOf(List, "rc"), 4);    
 }

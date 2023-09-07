@@ -3,7 +3,8 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const platform = @import("platform.zig");
-const log = stdx.log.scoped(.cache);
+const cy = @import("cyber.zig");
+const log = cy.log.scoped(.cache);
 
 /// Loaded on demand.
 /// Once loaded, common sub directories are assumed to exist.

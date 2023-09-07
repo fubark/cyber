@@ -65,7 +65,7 @@ type Heap object:
             self.size = 1
             return
         var new = none
-        if (self.size + 1) & self.size is 0:
+        if int(self.size + 1) & int(self.size) is 0:
             -- Insert at left most node.
             var parent = self.root.getLeftmost()
             new = Node{
@@ -174,7 +174,7 @@ type Heap object:
             return top
 
         var newLast = none
-        if self.size & (self.size - 1) is 0:
+        if int(self.size) & int(self.size - 1) is 0:
             newLast = self.root.getRightmost()
         else:
             newLast = self.last.getLeftSibling()

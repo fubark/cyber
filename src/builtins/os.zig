@@ -1,6 +1,6 @@
 const std = @import("std");
 const stdx = @import("stdx");
-const fatal = stdx.fatal;
+const fatal = cy.fatal;
 const builtin = @import("builtin");
 const cy = @import("../cyber.zig");
 const rt = cy.rt;
@@ -14,7 +14,7 @@ const fromUnsupportedError = bindings.fromUnsupportedError;
 const bt = cy.types.BuiltinTypeSymIds;
 const ffi = @import("os_ffi.zig");
 
-const log = stdx.log.scoped(.os);
+const log = cy.log.scoped(.os);
 
 pub var CFuncT: rt.TypeId = undefined;
 pub var CStructT: rt.TypeId = undefined;
@@ -47,11 +47,8 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
         try b.setVar("stdout", bt.Any, Value.None);
         try b.setVar("stderr", bt.Any, Value.None);
     }
-    if (builtin.cpu.arch.isWasm()) {
-        try b.setVar("system", bt.String, try self.buf.getOrPushStringValue("wasm"));
-    } else {
-        try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
-    }
+    try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
+    
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
         try b.setVar("vecBitSize", bt.Float, cy.Value.initF64(VecSize * 8));
     } else {
@@ -454,19 +451,19 @@ pub fn exePath(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 pub fn getEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const key = vm.valueToTempRawString(args[0]);
     const res = std.os.getenv(key) orelse return Value.None;
-    return vm.allocStringInfer(res) catch stdx.fatal();
+    return vm.allocStringInfer(res) catch cy.fatal();
 }
 
 pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    var env = std.process.getEnvMap(vm.allocator()) catch stdx.fatal();
+    var env = std.process.getEnvMap(vm.allocator()) catch cy.fatal();
     defer env.deinit();
 
-    const map = vm.allocEmptyMap() catch stdx.fatal();
+    const map = vm.allocEmptyMap() catch cy.fatal();
     var iter = env.iterator();
     while (iter.next()) |entry| {
-        const key = vm.allocStringInfer(entry.key_ptr.*) catch stdx.fatal();
-        const val = vm.allocStringInfer(entry.value_ptr.*) catch stdx.fatal();
-        vm.internal().setIndex(map, key, val) catch stdx.fatal();
+        const key = vm.allocStringInfer(entry.key_ptr.*) catch cy.fatal();
+        const val = vm.allocStringInfer(entry.value_ptr.*) catch cy.fatal();
+        vm.internal().setIndex(map, key, val) catch cy.fatal();
         vm.release(key);
     }
     return map;
@@ -482,7 +479,7 @@ pub fn free(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const size: usize = @intFromFloat(args[0].asF64());
     const ptr = std.c.malloc(size);
-    return cy.heap.allocPointer(vm.internal(), ptr) catch stdx.fatal();
+    return cy.heap.allocPointer(vm.internal(), ptr) catch cy.fatal();
 }
 
 fn fromCstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -508,7 +505,7 @@ pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
     defer vm.release(args[0]);
     if (std.fs.path.dirname(path)) |res| {
-        return vm.allocStringInfer(res) catch stdx.fatal();
+        return vm.allocStringInfer(res) catch cy.fatal();
     } else {
         return Value.None;
     }
@@ -522,16 +519,16 @@ pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     };
     defer vm.allocator().free(res);
     // TODO: Use allocOwnedString.
-    return vm.allocStringInfer(res) catch stdx.fatal();
+    return vm.allocStringInfer(res) catch cy.fatal();
 }
 
 pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const key = vm.valueToTempRawString(args[0]);
-    const keyz = vm.allocator().dupeZ(u8, key) catch stdx.fatal();
+    const keyz = vm.allocator().dupeZ(u8, key) catch cy.fatal();
     defer vm.allocator().free(keyz);
 
     const value = vm.valueToTempRawString(args[1]);
-    const valuez = vm.allocator().dupeZ(u8, value) catch stdx.fatal();
+    const valuez = vm.allocator().dupeZ(u8, value) catch cy.fatal();
     defer vm.allocator().free(valuez);
     _ = setenv(keyz, valuez, 1);
     return Value.None;
@@ -546,7 +543,7 @@ pub fn sleep(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     } else {
         const ms = args[0].asF64();
         const secs: u64 = @intFromFloat(@divFloor(ms, 1000));
-        const nsecs: u64 = @intFromFloat(1e6 * (std.math.mod(f64, ms, 1000) catch stdx.fatal()));
+        const nsecs: u64 = @intFromFloat(1e6 * (std.math.mod(f64, ms, 1000) catch cy.fatal()));
         if (cy.isWasm) {
             hostSleep(secs, nsecs);
         } else {
@@ -560,7 +557,7 @@ extern fn hostSleep(secs: u64, nsecs: u64) void;
 
 pub fn unsetEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const key = vm.valueToTempRawString(args[0]);
-    const keyz = vm.allocator().dupeZ(u8, key) catch stdx.fatal();
+    const keyz = vm.allocator().dupeZ(u8, key) catch cy.fatal();
     defer vm.allocator().free(keyz);
     _ = unsetenv(keyz);
     return Value.None;
@@ -583,13 +580,13 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     var configV = args[2];
     const ivm = vm.internal();
-    const genMapV = vm.allocAstring("genMap") catch stdx.fatal();
+    const genMapV = vm.allocAstring("genMap") catch cy.fatal();
     defer {
         vm.release(args[2]);
         vm.release(genMapV);
     }
     var config: ffi.BindLibConfig = .{};
-    const val = ivm.getIndex(&configV, genMapV) catch stdx.fatal();
+    const val = ivm.getIndex(&configV, genMapV) catch cy.fatal();
     if (val.isTrue()) {
         config.genMap = true;
     }

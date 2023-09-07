@@ -208,7 +208,7 @@ t.eq(typesym('abc'), #string)
 t.eq(typesym(pointer(0)), #pointer)
 
 -- writeFile() rawstring
-if os.system != 'wasm':
+if os.cpu != 'wasm32':
   s = rawstring('').insertByte(0, 255)
   writeFile('test.txt', s)
   var read = readFile('test.txt')

@@ -11,6 +11,7 @@ var useMalloc: bool = undefined;
 var selinux: bool = undefined;
 var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
+var trace: bool = undefined;
 
 var stdx: *std.build.Module = undefined;
 var tcc: *std.build.Module = undefined;
@@ -23,7 +24,8 @@ pub fn build(b: *std.build.Builder) !void {
     selinux = b.option(bool, "selinux", "Whether you are building on linux distro with selinux. eg. Fedora.") orelse false;
     testFilter = b.option([]const u8, "test-filter", "Test filter.");
     useMalloc = b.option(bool, "use-malloc", "Use C allocator.") orelse false;
-    vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .zig;
+    vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .c;
+    trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
 
     stdx = b.createModule(.{
         .source_file = .{ .path = thisDir() ++ "/src/stdx/stdx.zig" },
@@ -106,6 +108,10 @@ pub fn build(b: *std.build.Builder) !void {
             lib.linkLibC();
         }
 
+        if (vmEngine == .c) {
+            try buildCVM(b.allocator, lib, opts);
+        }
+
         if (!target.getCpuArch().isWasm()) {
             tcc_lib.addModule(lib, "tcc", tcc);
             tcc_lib.buildAndLink(b, lib, .{
@@ -123,51 +129,53 @@ pub fn build(b: *std.build.Builder) !void {
     }
 
     {
-        const step = b.step("wasm-test", "Build the wasm test runner.");
-        const opts = getDefaultOptions(target, optimize);
-        const lib = b.addSharedLibrary(.{
-            .name = "test",
-            .root_source_file = .{ .path = "test/wasm_test.zig" },
+        const mainStep = b.step("build-test", "Build test.");
+
+        var opts = getDefaultOptions(target, optimize);
+        opts.trackGlobalRc = true;
+
+        var step = b.addTest(.{
+            // Lib test includes main tests.
+            .root_source_file = .{ .path = "./test/lib_test.zig" },
             .target = target,
             .optimize = optimize,
+            .filter = testFilter,
             .main_pkg_path = .{ .path = "." },
         });
-        if (lib.optimize != .Debug) {
-            // Currently there is a limit to @embedFile in wasm_test.zig before strip=true crashes on linux.
-            if (builtin.os.tag == .linux) {
-                lib.strip = false;
-            } else {
-                lib.strip = true;
-            }
+        step.addIncludePath(.{ .path = thisDir() ++ "/src" });
+
+        try addBuildOptions(b, step, opts);
+        step.addModule("stdx", stdx);
+        step.rdynamic = true;
+
+        if (opts.useMimalloc) {
+            mimalloc_lib.addModule(step, "mimalloc", mimalloc);
+            mimalloc_lib.buildAndLink(b, step, .{});
         }
-        lib.addIncludePath(.{ .path = thisDir() ++ "/src" });
 
-        // Allow dynamic libraries to be loaded by filename in the cwd.
-        // lib.addRPath(".");
+        if (vmEngine == .c) {
+            try buildCVM(b.allocator, step, opts);
+        }
 
-        // Allow exported symbols to be visible to dlopen.
-        // Also needed to export symbols in wasm lib.
-        lib.rdynamic = true;
-
-        try addBuildOptions(b, lib, opts);
-
-        lib.linkLibC();
-        lib.addModule("stdx", stdx);
+        step.linkLibC();
 
         if (!target.getCpuArch().isWasm()) {
-            tcc_lib.addModule(lib, "tcc", tcc);
-            tcc_lib.buildAndLink(b, lib, .{
+            tcc_lib.addModule(step, "tcc", tcc);
+            tcc_lib.buildAndLink(b, step, .{
                 .selinux = selinux,
             });
         } else {
-            lib.addAnonymousModule("tcc", .{
+            step.addAnonymousModule("tcc", .{
                 .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
             });
             // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
-            lib.stack_protector = false;
+            step.stack_protector = false;
         }
-        step.dependOn(&lib.step);
-        step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+
+        mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
+
+        step = try addTraceTest(b, opts);
+        mainStep.dependOn(&b.addInstallArtifact(step, .{}).step);
     }
 
     {
@@ -232,6 +240,10 @@ pub fn build(b: *std.build.Builder) !void {
             mimalloc_lib.buildAndLink(b, step, .{});
         }
 
+        if (vmEngine == .c) {
+            try buildCVM(b.allocator, step, opts);
+        }
+
         tcc_lib.addModule(step, "tcc", tcc);
         tcc_lib.buildAndLink(b, step, .{
             .selinux = opts.selinux,
@@ -256,22 +268,32 @@ pub fn build(b: *std.build.Builder) !void {
     b.step("version", "Get the short version.").dependOn(&printStep.step);
 }
 
-const Options = struct {
+pub fn buildAndLink(step: *std.build.Step.Compile) void {
+    if (!step.target.getCpuArch().isWasm()) {
+        tcc_lib.buildAndLink(step.step.owner, step, .{
+            .selinux = false,
+        });
+    }
+}
+
+pub const Options = struct {
     selinux: bool,
     trackGlobalRc: bool,
     trace: bool,
-    traceObjects: bool,
     target: std.zig.CrossTarget,
     optimize: std.builtin.OptimizeMode,
     useMimalloc: bool,
 };
 
+    // deps: struct {
+    //     tcc: *std.build.Module,
+    // },
+
 fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.OptimizeMode) Options {
     return .{
         .selinux = selinux,
         .trackGlobalRc = optimize != .ReleaseFast,
-        .trace = false,
-        .traceObjects = optimize == .Debug,
+        .trace = trace,
         .target = target,
         .optimize = optimize,
 
@@ -280,7 +302,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
     };
 }
 
-fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: Options) !void {
+fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Options {
     const buildTag = std.process.getEnvVarOwned(b.allocator, "BUILD") catch |err| b: {
         if (err == error.EnvironmentVariableNotFound) {
             break :b "local";
@@ -304,16 +326,20 @@ fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: 
 
     build_options.addOption(config.Engine, "vmEngine", vmEngine);
     build_options.addOption(bool, "trace", opts.trace);
-    build_options.addOption(bool, "traceObjects", opts.traceObjects);
     build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
+    build_options.addOption(bool, "is32Bit", is32Bit(opts.target));
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
-    // build_options.addOption(bool, "trace", true);
+    return build_options;
+}
 
+fn addBuildOptions(b: *std.build.Builder, step: *std.build.LibExeObjStep, opts: Options) !void {
+    const build_options = try createBuildOptions(b, opts);
     step.addOptions("build_options", build_options);
 }
 
 fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep {
     const step = b.addTest(.{
+        .name = "trace_test",
         .root_source_file = .{ .path = "./test/trace_test.zig" },
         .optimize = opts.optimize,
         .target = opts.target,
@@ -327,19 +353,37 @@ fn addTraceTest(b: *std.build.Builder, opts: Options) !*std.build.LibExeObjStep 
     try addBuildOptions(b, step, newOpts);
     step.addModule("stdx", stdx);
 
-    if (opts.useMimalloc) {
+    if (newOpts.useMimalloc) {
         mimalloc_lib.addModule(step, "mimalloc", mimalloc);
         mimalloc_lib.buildAndLink(b, step, .{});
     }
 
-    tcc_lib.addModule(step, "tcc", tcc);
-    tcc_lib.buildAndLink(b, step, .{
-        .selinux = opts.selinux,
-    });
+    step.linkLibC();
+    if (!newOpts.target.getCpuArch().isWasm()) {
+        tcc_lib.addModule(step, "tcc", tcc);
+        tcc_lib.buildAndLink(b, step, .{
+            .selinux = selinux,
+        });
+    } else {
+        step.addAnonymousModule("tcc", .{
+            .source_file = .{ .path = thisDir() ++ "/src/nopkg.zig" },
+        });
+        // Disable stack protector since the compiler isn't linking __stack_chk_guard/__stack_chk_fail.
+        step.stack_protector = false;
+    }
+
     if (vmEngine == .c) {
         try buildCVM(b.allocator, step, newOpts);
     }
     return step;
+}
+
+fn is32Bit(target: std.zig.CrossTarget) bool {
+    switch (target.getCpuArch()) {
+        .wasm32,
+        .x86 => return true,
+        else => return false,
+    }
 }
 
 const stdxPkg = std.build.Pkg{
@@ -387,8 +431,19 @@ pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Op
         try cflags.append("-DTRACK_GLOBAL_RC=1");
     }
     if (opts.trace) {
-        try cflags.append("-DTRACE_ENABLED=1");
+        try cflags.append("-DTRACE=1");
+    } else {
+        try cflags.append("-DTRACE=0");
     }
+    if (is32Bit(opts.target)) {
+        try cflags.append("-DIS_32BIT=1");
+    } else {
+        try cflags.append("-DIS_32BIT=0");
+    }
+
+    // Disable traps for arithmetic/bitshift overflows.
+    // Note that changing this alone doesn't clear the build cache.
+    step.disable_sanitize_c = true;
 
     step.addIncludePath(.{ .path = thisDir() ++ "/src"});
     step.addCSourceFile(.{

@@ -8,7 +8,7 @@ const v = fmt.v;
 const sema = cy.sema;
 const types = cy.types;
 const gen = cy.codegen;
-const log = stdx.log.scoped(.chunk);
+const log = cy.log.scoped(.chunk);
 
 pub const ChunkId = u32;
 
@@ -47,16 +47,16 @@ pub const Chunk = struct {
     vars: std.ArrayListUnmanaged(sema.LocalVar),
     capVarDescs: std.AutoHashMapUnmanaged(sema.LocalVarId, sema.CapVarDesc),
     // funcCandidateStack: std.ArrayListUnmanaged(sema.FuncCandidate),
-    nodeTypes: []sema.ResolvedSymId,
+    nodeTypes: []sema.SymbolId,
 
-    curObjectSymId: sema.ResolvedSymId,
+    curObjectSymId: sema.SymbolId,
 
     /// List of func decls.
     /// They are resolved after data types.
     semaFuncDecls: std.ArrayListUnmanaged(sema.FuncDecl),
 
     /// Additional info for initializer symbols.
-    semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.CompactResolvedSymId, sema.InitializerSym),
+    semaInitializerSyms: std.AutoArrayHashMapUnmanaged(sema.CompactSymbolId, sema.InitializerSym),
 
     declaredVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
     assignedVarStack: std.ArrayListUnmanaged(sema.LocalVarId),
@@ -64,16 +64,16 @@ pub const Chunk = struct {
     curSemaSubBlockId: sema.SubBlockId,
 
     /// Which sema sym var is currently being analyzed for an assignment initializer.
-    curSemaInitingSym: sema.CompactResolvedSymId,
+    curSemaInitingSym: sema.CompactSymbolId,
 
     /// When looking at a var declaration, keep track of which symbols are already recorded as dependencies.
-    semaVarDeclDeps: std.AutoHashMapUnmanaged(sema.CompactResolvedSymId, void),
+    semaVarDeclDeps: std.AutoHashMapUnmanaged(sema.CompactSymbolId, void),
 
     /// Currently used to store lists of static var dependencies.
     bufU32: std.ArrayListUnmanaged(u32),
 
     /// The resolved sym id of this chunk.
-    semaResolvedRootSymId: sema.ResolvedSymId,
+    semaRootSymId: sema.SymbolId,
 
     /// Current block stack.
     semaBlockStack: std.ArrayListUnmanaged(sema.BlockId),
@@ -83,7 +83,7 @@ pub const Chunk = struct {
 
     /// Local syms is used as a cache to sema.resolvedSyms.
     /// It's useful to store imports, importAlls that are only visible to the module.
-    localSyms: std.HashMapUnmanaged(sema.RelLocalSymKey, sema.LocalSym, cy.hash.KeyU64Context, 80),
+    localSyms: std.HashMapUnmanaged(sema.LocalSymKey, sema.LocalSym, cy.hash.KeyU64Context, 80),
 
     ///
     /// Codegen pass
@@ -149,7 +149,7 @@ pub const Chunk = struct {
             .tempBufU8 = .{},
             .srcOwned = false,
             .modId = cy.NullId,
-            .semaResolvedRootSymId = cy.NullId,
+            .semaRootSymId = cy.NullId,
             .semaBlockStack = .{},
             .mainSemaBlockId = cy.NullId,
             .semaFuncDecls = .{},
@@ -300,8 +300,8 @@ pub const Chunk = struct {
                 return;
             }
 
-            const reqTypeSymId = types.typeToResolvedSym(requiredType);
-            const typeSymId = types.typeToResolvedSym(genValue.vtype);
+            const reqTypeSymId = types.typeToSymbol(requiredType);
+            const typeSymId = types.typeToSymbol(genValue.vtype);
             if (typeSymId != reqTypeSymId) {
                 return self.reportError("Type {} can not be casted to required type {}", &.{fmt.v(genValue.vtype.typeT), fmt.v(requiredType.typeT)});
             }
@@ -384,42 +384,42 @@ pub const Chunk = struct {
         }
     }
 
-    pub fn genEnsureRtFuncSym(self: *Chunk, rFuncSymId: sema.ResolvedFuncSymId) !u32 {
-        const rFuncSym = self.compiler.sema.getResolvedFuncSym(rFuncSymId);
-        const rSym = self.compiler.sema.getResolvedSym(rFuncSym.getResolvedSymId());
-        const key = rSym.key.absResolvedSymKey;
-        const rFuncSigId = rFuncSym.getResolvedFuncSigId();
-        return self.compiler.vm.ensureFuncSym(key.rParentSymId, key.nameId, rFuncSigId);
+    pub fn genEnsureRtFuncSym(self: *Chunk, funcSymId: sema.FuncSymId) !u32 {
+        const rFuncSym = self.compiler.sema.getFuncSym(funcSymId);
+        const rSym = self.compiler.sema.getSymbol(rFuncSym.getSymbolId());
+        const key = rSym.key.resolvedSymKey;
+        const funcSigId = rFuncSym.getFuncSigId();
+        return self.compiler.vm.ensureFuncSym(key.parentSymId, key.nameId, funcSigId);
     }
 
-    pub fn genGetResolvedFuncSym(self: *const Chunk, rSymId: sema.ResolvedSymId, rFuncSigId: sema.ResolvedFuncSigId) ?sema.ResolvedFuncSym {
-        const key = sema.AbsResolvedSymKey{
-            .absResolvedFuncSymKey = .{
-                .rSymId = rSymId,
-                .rFuncSigId = rFuncSigId,
+    pub fn genGetFuncSym(self: *const Chunk, symId: sema.SymbolId, funcSigId: sema.FuncSigId) ?sema.FuncSym {
+        const key = sema.ResolvedSymKey{
+            .resolvedFuncSymKey = .{
+                .symId = symId,
+                .funcSigId = funcSigId,
             },
         };
-        if (self.compiler.semaResolvedFuncSymMap.get(key)) |id| {
+        if (self.compiler.semaFuncSymMap.get(key)) |id| {
             return self.compiler.sema.resolvedFuncSyms.items[id];
         } else {
             return null;
         }
     }
 
-    pub fn genGetResolvedSymId(self: *const Chunk, semaSymId: sema.SymId) ?sema.ResolvedSymId {
+    pub fn genGetSymbolId(self: *const Chunk, semaSymId: sema.SymId) ?sema.SymbolId {
         const sym = self.semaSyms.items[semaSymId];
-        if (sym.rSymId != cy.NullId) {
-            return sym.rSymId;
+        if (sym.symId != cy.NullId) {
+            return sym.symId;
         } else {
             return null;
         }
     }
 
-    pub fn genGetResolvedSym(self: *const Chunk, semaSymId: sema.SymId) ?sema.ResolvedSym {
+    pub fn genGetSymbol(self: *const Chunk, semaSymId: sema.SymId) ?sema.Symbol {
         if (semaSymId != cy.NullId) {
             const sym = self.semaSyms.items[semaSymId];
-            if (sym.rSymId != cy.NullId) {
-                return self.compiler.sema.resolvedSyms.items[sym.rSymId];
+            if (sym.symId != cy.NullId) {
+                return self.compiler.sema.resolvedSyms.items[sym.symId];
             }
         }
         return null;
@@ -543,7 +543,7 @@ pub const Chunk = struct {
         for (self.subBlockJumpStack.items[jumpStackStart..]) |jump| {
             switch (jump.jumpT) {
                 .subBlockBreak => {
-                    stdx.panicFmt("Unexpected jump.", .{});
+                    cy.panicFmt("Unexpected jump.", .{});
                 },
                 .brk => {
                     if (breakPc > jump.pc) {

@@ -5,11 +5,11 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const core = @import("builtins/core.zig");
 
-const log = stdx.log.scoped(.fmt);
+const log = cy.log.scoped(.fmt);
 
 // This provides a simple string interpolation without comptime.
 
-const FmtValueType = enum {
+const FmtValueType = enum(u8) {
     char,
     string,
     i8,
@@ -26,20 +26,27 @@ const FmtValueType = enum {
     err,
 };
 
-pub const FmtValue = struct {
-    valT: FmtValueType,
-    inner: union {
+pub const FmtValue = extern struct {
+    data: extern union {
         u8: u8,
         u16: u16,
         u32: u32,
         u64: u64,
         f64: f64,
-        string: []const u8,
+        string: [*]const u8,
         char: u8,
         bool: bool,
         ptr: ?*anyopaque,
     },
+    data2: extern union {
+        string: u32, // string len.
+    } = undefined,
+    type: FmtValueType,
 };
+
+test "fmt internals." {
+    try t.eq(@sizeOf(FmtValue), 16);
+}
 
 fn toFmtValueType(comptime T: type) FmtValueType {
     switch (T) {
@@ -80,72 +87,72 @@ pub fn v(val: anytype) FmtValue {
     switch (fmt_t) {
         .bool => {
             return .{
-                .valT = .bool,
-                .inner = .{
+                .type = .bool,
+                .data = .{
                     .bool = val,
                 },
             };
         },
         .char => {
             return .{
-                .valT = .char,
-                .inner = .{
+                .type = .char,
+                .data = .{
                     .u8 = val,
                 }
             };
         },
         .i8 => {
             return .{
-                .valT = .i8,
-                .inner = .{
+                .type = .i8,
+                .data = .{
                     .u8 = @bitCast(val),
                 }
             };
         },
         .u8 => {
             return .{
-                .valT = .u8,
-                .inner = .{
+                .type = .u8,
+                .data = .{
                     .u8 = val,
                 }
             };
         },
         .i16 => {
             return .{
-                .valT = .i16,
-                .inner = .{
+                .type = .i16,
+                .data = .{
                     .u16 = @bitCast(val),
                 }
             };
         },
         .u16 => {
             return .{
-                .valT = .u16,
-                .inner = .{
+                .type = .u16,
+                .data = .{
                     .u16 = val,
                 }
             };
         },
         .i32 => {
             return .{
-                .valT = .i32,
-                .inner = .{
+                .type = .i32,
+                .data = .{
                     .u32 = @bitCast(val),
                 }
             };
         },
         .u32 => {
             return .{
-                .valT = .u32,
-                .inner = .{
+                .type = .u32,
+                .data = .{
                     .u32 = val,
                 }
             };
         },
         .u64 => return u64v(val),
         .f64 => return .{
-            .valT = .f64,
-            .inner = .{
+            .type = .f64,
+            .data = .{
                 .f64 = val,
             },
         },
@@ -153,8 +160,8 @@ pub fn v(val: anytype) FmtValue {
         .enumt => return enumv(val),
         .err => return str(@errorName(val)),
         .ptr =>  return .{
-            .valT = .ptr,
-            .inner = .{
+            .type = .ptr,
+            .data = .{
                 .ptr = @ptrFromInt(@intFromPtr(val)),
             }
         },
@@ -163,86 +170,93 @@ pub fn v(val: anytype) FmtValue {
 
 pub fn char(ch: u8) FmtValue {
     return .{
-        .valT = .char,
-        .inner = .{
+        .type = .char,
+        .data = .{
             .char = ch,
-        }
+        },
     };
 }
 
 pub fn u64v(n: u64) FmtValue {
     return .{
-        .valT = .u64,
-        .inner = .{
+        .type = .u64,
+        .data = .{
             .u64 = n,
         }
     };
 }
 
 pub fn enumv(e: anytype) FmtValue {
+    const name = @tagName(e);
     return .{
-        .valT = .string,
-        .inner = .{
-            .string = @tagName(e),
-        }
+        .type = .string,
+        .data = .{
+            .string = name.ptr,
+        },
+        .data2 = .{
+            .string = @intCast(name.len),
+        },
     };
 }
 
 pub fn str(s: []const u8) FmtValue {
     return .{
-        .valT = .string,
-        .inner = .{
-            .string = s,
-        }
+        .type = .string,
+        .data = .{
+            .string = s.ptr,
+        },
+        .data2 = .{
+            .string = @intCast(s.len),
+        },
     };
 }
 
 fn formatValue(writer: anytype, val: FmtValue) !void {
-    switch (val.valT) {
+    switch (val.type) {
         .bool => {
-            if (val.inner.bool) {
+            if (val.data.bool) {
                 try writer.writeAll("true");
             } else {
                 try writer.writeAll("false");
             }
         },
         .char => {
-            try writer.writeByte(val.inner.char);
+            try writer.writeByte(val.data.char);
         },
         .i8 => {
-            try std.fmt.formatInt(@as(i8, @bitCast(val.inner.u8)), 10, .lower, .{}, writer);
+            try std.fmt.formatInt(@as(i8, @bitCast(val.data.u8)), 10, .lower, .{}, writer);
         },
         .u8 => {
-            try std.fmt.formatInt(val.inner.u8, 10, .lower, .{}, writer);
+            try std.fmt.formatInt(val.data.u8, 10, .lower, .{}, writer);
         },
         .i16 => {
-            try std.fmt.formatInt(@as(i16, @bitCast(val.inner.u16)), 10, .lower, .{}, writer);
+            try std.fmt.formatInt(@as(i16, @bitCast(val.data.u16)), 10, .lower, .{}, writer);
         },
         .u16 => {
-            try std.fmt.formatInt(val.inner.u16, 10, .lower, .{}, writer);
+            try std.fmt.formatInt(val.data.u16, 10, .lower, .{}, writer);
         },
         .u32 => {
-            try std.fmt.formatInt(val.inner.u32, 10, .lower, .{}, writer);
+            try std.fmt.formatInt(val.data.u32, 10, .lower, .{}, writer);
         },
         .i32 => {
-            try std.fmt.formatInt(@as(i32, @bitCast(val.inner.u32)), 10, .lower, .{}, writer);
+            try std.fmt.formatInt(@as(i32, @bitCast(val.data.u32)), 10, .lower, .{}, writer);
         },
         .u64 => {
-            try std.fmt.formatInt(val.inner.u64, 10, .lower, .{}, writer);
+            try std.fmt.formatInt(val.data.u64, 10, .lower, .{}, writer);
         },
         .f64 => {
-            try std.fmt.formatFloatDecimal(val.inner.f64, .{}, writer);
+            try std.fmt.formatFloatDecimal(val.data.f64, .{}, writer);
         },
         .err,
         .enumt,
         .string => {
-            try writer.writeAll(val.inner.string);
+            try writer.writeAll(val.data.string[0..val.data2.string]);
         },
         .ptr => {
             try writer.writeByte('@');
-            try std.fmt.formatInt(@intFromPtr(val.inner.ptr), 16, .lower, .{}, writer);
+            try std.fmt.formatInt(@intFromPtr(val.data.ptr), 16, .lower, .{}, writer);
         },
-        // else => stdx.panicFmt("unsupported {}", .{val.valT}),
+        // else => cy.panicFmt("unsupported {}", .{val.type}),
     }
 }
 
@@ -289,7 +303,7 @@ var printMutex = std.Thread.Mutex{};
 pub fn printStdout(fmt: []const u8, vals: []const FmtValue) void {
     printStdoutOrErr(fmt, vals) catch |err| {
         log.debug("{}", .{err});
-        stdx.fatal();
+        cy.fatal();
     };
 }
 
@@ -316,14 +330,14 @@ pub fn printDeprecated(name: []const u8, sinceVersion: []const u8, fmt: []const 
 pub fn printStderr(fmt: []const u8, vals: []const FmtValue) void {
     printStderrOrErr(fmt, vals) catch |err| {
         log.debug("{}", .{err});
-        stdx.fatal();
+        cy.fatal();
     };
 }
 
-pub const StderrWriter = if (!cy.isWasm) std.fs.File.Writer else HostFileWriter;
+pub const StderrWriter = if (!cy.isWasmFreestanding) std.fs.File.Writer else HostFileWriter;
 
 pub fn lockStderrWriter() StderrWriter {
-    if (!cy.isWasm) {
+    if (!cy.isWasmFreestanding) {
         printMutex.lock();
         return std.io.getStdErr().writer();
     } else {
@@ -332,7 +346,7 @@ pub fn lockStderrWriter() StderrWriter {
 }
 
 pub fn unlockPrint() void {
-    if (!cy.isWasm) {
+    if (!cy.isWasmFreestanding) {
         printMutex.unlock();
     }
 }

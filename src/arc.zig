@@ -5,29 +5,31 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
-const log = stdx.log.scoped(.arc);
+const log = cy.log.scoped(.arc);
 const cy = @import("cyber.zig");
 const rt = cy.rt;
 
 pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         vm.trace.numReleaseAttempts += 1;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (cy.TraceObjects) {
+        if (cy.Trace) {
             checkDoubleFree(vm, obj);
         }
         obj.head.rc -= 1;
-        if (builtin.mode == .Debug) {
-            if (cy.verbose) {
-                log.debug("release {} rc={}", .{val.getUserTag(), obj.head.rc});
-            }
-        }
+        log.tracev("release {} rc={}", .{val.getUserTag(), obj.head.rc});
         if (cy.TrackGlobalRC) {
+            if (cy.Trace) {
+                if (vm.refCounts == 0) {
+                    cy.fmt.printStderr("Double free. {}\n", &.{cy.fmt.v(obj.head.typeId)});
+                    cy.fatal();
+                }
+            }
             vm.refCounts -= 1;
         }
-        if (cy.TraceEnabled) {
+        if (cy.Trace) {
             vm.trace.numReleases += 1;
         }
         if (obj.head.rc == 0) {
@@ -50,33 +52,29 @@ pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
     return false;
 }
 
-fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
+pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
         const msg = std.fmt.allocPrint(vm.alloc, "Double free object: {*} at pc: {}({s})", .{
             obj, vm.debugPc, @tagName(vm.ops[vm.debugPc].opcode()),
-        }) catch stdx.fatal();
+        }) catch cy.fatal();
         defer vm.alloc.free(msg);
-        cy.debug.printTraceAtPc(vm, vm.debugPc, msg) catch stdx.fatal();
+        cy.debug.printTraceAtPc(vm, vm.debugPc, msg) catch cy.fatal();
 
-        cy.debug.dumpObjectTrace(vm, obj) catch stdx.fatal();
-        stdx.fatal();
+        cy.debug.dumpObjectTrace(vm, obj) catch cy.fatal();
+        cy.fatal();
     }
 }
 
 pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
-    if (cy.TraceObjects) {
+    if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
     obj.head.rc -= 1;
-    if (builtin.mode == .Debug) {
-        if (cy.verbose) {
-            log.debug("release {} rc={}", .{obj.getUserTag(), obj.head.rc});
-        }
-    }
+    log.tracev("release {} rc={}", .{obj.getUserTag(), obj.head.rc});
     if (cy.TrackGlobalRC) {
         vm.refCounts -= 1;
     }
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         vm.trace.numReleases += 1;
         vm.trace.numReleaseAttempts += 1;
     }
@@ -111,78 +109,74 @@ pub fn runBlockEndReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usiz
 
 pub inline fn retainObject(self: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
     obj.head.rc += 1;
-    if (builtin.mode == .Debug) {
+    if (cy.Trace) {
         checkRetainDanglingPointer(self, obj);
         if (cy.verbose) {
-            log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
+            log.debug("retain {} rc={}", .{obj.getUserTag(), obj.head.rc});
         }
     }
     if (cy.TrackGlobalRC) {
         self.refCounts += 1;
     }
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         self.trace.numRetains += 1;
         self.trace.numRetainAttempts += 1;
     }
 }
 
-fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
+pub fn checkRetainDanglingPointer(vm: *cy.VM, obj: *cy.HeapObject) void {
     if (isObjectAlreadyFreed(vm, obj)) {
-        stdx.panic("Retaining dangling pointer.");
+        cy.panic("Retaining dangling pointer.");
     }
 }
 
 pub inline fn retain(self: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         self.trace.numRetainAttempts += 1;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         obj.head.rc += 1;
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            if (cy.verbose) {
-                log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
-            }
+            log.tracev("retain {} {}", .{obj.getUserTag(), obj.head.rc});
         }
         if (cy.TrackGlobalRC) {
             self.refCounts += 1;
         }
-        if (cy.TraceEnabled) {
+        if (cy.Trace) {
             self.trace.numRetains += 1;
         }
     }
 }
 
 pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.HotSection) void {
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         self.trace.numRetainAttempts += inc;
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         obj.head.rc += inc;
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             checkRetainDanglingPointer(self, obj);
-            if (cy.verbose) {
-                log.debug("retain {} {}", .{obj.getUserTag(), obj.head.rc});
-            }
+            log.tracev("retain {} {}", .{obj.getUserTag(), obj.head.rc});
         }
         if (cy.TrackGlobalRC) {
             self.refCounts += inc;
         }
-        if (cy.TraceEnabled) {
+        if (cy.Trace) {
             self.trace.numRetains += inc;
         }
     }
 }
 
 pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
-    if (cy.TraceEnabled) {
+    if (cy.Trace) {
         self.trace.numForceReleases += 1;
     }
     switch (obj.head.typeId) {
         rt.ListT => {
-            const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
+            const list = cy.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
             list.deinit(self.alloc);
             cy.heap.freePoolObject(self, obj);
             if (cy.TrackGlobalRC) {
@@ -190,7 +184,7 @@ pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
             }
         },
         rt.MapT => {
-            const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+            const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
             map.deinit(self.alloc);
             cy.heap.freePoolObject(self, obj);
             if (cy.TrackGlobalRC) {
@@ -198,7 +192,7 @@ pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
             }
         },
         else => {
-            return stdx.panic("unsupported struct type");
+            return cy.panic("unsupported struct type");
         },
     }
 }
@@ -207,7 +201,7 @@ pub fn getGlobalRC(self: *const cy.VM) usize {
     if (cy.TrackGlobalRC) {
         return self.refCounts;
     } else {
-        stdx.panic("Enable TrackGlobalRC.");
+        cy.panic("Enable TrackGlobalRC.");
     }
 }
 
@@ -243,12 +237,12 @@ pub fn checkMemory(self: *cy.VM) !bool {
 
             switch (obj.head.typeId) {
                 rt.ListT => {
-                    const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
+                    const list = cy.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
                     for (list.items()) |it| {
                         if (it.isPointer()) {
                             const ptr = it.asHeapObject();
                             if (visit(alloc, graph, cycleRoots_, ptr, graph.getPtr(ptr).?)) {
-                                cycleRoots_.append(alloc, obj) catch stdx.fatal();
+                                cycleRoots_.append(alloc, obj) catch cy.fatal();
                                 return true;
                             }
                         }
@@ -265,7 +259,7 @@ pub fn checkMemory(self: *cy.VM) !bool {
     var iter = nodes.iterator();
     while (iter.next()) |*entry| {
         if (S.visit(self.alloc, &nodes, &cycleRoots, entry.key_ptr.*, entry.value_ptr)) {
-            if (cy.TraceEnabled) {
+            if (cy.Trace) {
                 self.trace.numRetainCycles = 1;
                 self.trace.numRetainCycleRoots = @intCast(cycleRoots.items.len);
             }
@@ -289,13 +283,13 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
     if (rc != vm.expGlobalRC) {
         std.debug.print("unreleased refcount: {}, expected: {}\n", .{rc, vm.expGlobalRC});
 
-        if (builtin.mode == .Debug) {
+        if (cy.Trace) {
             var buf: [256]u8 = undefined;
             var iter = vm.objectTraceMap.iterator();
             while (iter.next()) |it| {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
-                    const typeName = vm.types.buf[it.key_ptr.*.head.typeId].name;
+                    const typeName = vm.getTypeName(it.key_ptr.*.head.typeId);
                     const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
                         it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc,
                         vm.valueToTempString(cy.Value.initPtr(it.key_ptr.*)),

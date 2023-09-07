@@ -298,7 +298,7 @@ pub fn utf8Len(s: []const u8) linksection(cy.Section) usize {
     var len: usize = 0;
     var i: usize = 0;
     while (i < s.len) {
-        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return stdx.fatal();
+        const cp_len = std.unicode.utf8ByteSequenceLength(s[i]) catch return cy.fatal();
         if (i + cp_len == s.len) {
             return len;
         }
@@ -332,7 +332,7 @@ pub fn ustringSeekByCharIndex(str: []const u8, seekIdx: u32, seekCharIdx: u32, c
         if (curCharIdx == charIdx) {
             return i;
         } else {
-            const len = std.unicode.utf8ByteSequenceLength(str[i]) catch stdx.fatal();
+            const len = std.unicode.utf8ByteSequenceLength(str[i]) catch cy.fatal();
             i += len;
             curCharIdx += 1;
         }
@@ -747,7 +747,7 @@ pub fn toUtf8CharIdx(str: []const u8, idx: usize) linksection(cy.Section) usize 
     var charIdx: usize = 0;
     var i: usize = 0;
     while (i < idx) {
-        const cpLen = std.unicode.utf8ByteSequenceLength(str[i]) catch stdx.fatal();
+        const cpLen = std.unicode.utf8ByteSequenceLength(str[i]) catch cy.fatal();
         i += cpLen;
         charIdx += 1;
     }
@@ -758,8 +758,8 @@ pub fn charIndexOfCodepoint(str: []const u8, needle: u21) linksection(cy.Section
     var charIdx: usize = 0;
     var i: usize = 0;
     while (i < str.len) {
-        const cpLen = std.unicode.utf8ByteSequenceLength(str[i]) catch stdx.fatal();
-        const cp = std.unicode.utf8Decode(str[i..i+cpLen]) catch stdx.fatal();
+        const cpLen = std.unicode.utf8ByteSequenceLength(str[i]) catch cy.fatal();
+        const cp = std.unicode.utf8Decode(str[i..i+cpLen]) catch cy.fatal();
         if (cp == needle) {
             return charIdx;
         }
@@ -869,12 +869,12 @@ pub fn replaceAtIdxes(dst: []u8, src: []const u8, needleLen: u32, replacement: [
 }
 
 pub fn utf8CodeAtNoCheck(str: []const u8, idx: usize) u21 {
-    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
-    return std.unicode.utf8Decode(str[0..len]) catch stdx.fatal();
+    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch cy.fatal();
+    return std.unicode.utf8Decode(str[0..len]) catch cy.fatal();
 }
 
 pub fn utf8CharSliceAtNoCheck(str: []const u8, idx: usize) []const u8 {
-    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch stdx.fatal();
+    const len = std.unicode.utf8ByteSequenceLength(str[idx]) catch cy.fatal();
     return str[idx..idx+len];
 }
 

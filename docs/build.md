@@ -22,9 +22,10 @@ zig build test
 # Runs just the tracing tests.
 zig build test-trace
 
-# WASM tests. For WASM target only.
-zig build wasm-test -Doptimize=ReleaseFast -Dtarget=wasm32-freestanding
+# Test WASM target.
+zig build build-test -Doptimize=ReleaseFast -Dtarget=wasm32-wasi
 wasm3 zig-out/test/test.wasm
+wasm3 zig-out/test/trace_test.wasm
 ```
 
 ## Build the CLI.
@@ -34,7 +35,7 @@ Cyber is optimized for the ReleaseFast build.
 zig build cli -Doptimize=ReleaseFast
 
 # For cross platform build. eg. Host: Linux x64, Target: MacOS arm64
-zig build cli -Doptimize=ReleaseFast -Dtarget=aarch64-macos.12-none
+zig build cli -Doptimize=ReleaseFast -Dtarget=aarch64-macos-none
 
 # For a debug build instead.
 zig build cli
@@ -49,7 +50,7 @@ When using Cyber as a API library, you'll need to build a library instead.
 zig build lib -Doptimize=ReleaseFast
 
 # For cross platform build. eg. Host: Linux x64, Target: MacOS arm64
-zig build lib -Doptimize=ReleaseFast -Dtarget=aarch64-macos.12-none
+zig build lib -Doptimize=ReleaseFast -Dtarget=aarch64-macos-none
 
 # For Web/WASM.
 zig build lib -Doptimize=ReleaseFast -Dtarget=wasm32-freestanding

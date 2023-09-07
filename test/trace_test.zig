@@ -5,7 +5,7 @@ const t = stdx.testing;
 
 const cy = @import("../src/cyber.zig");
 const vmc = @import("../src/vm_c.zig");
-const log = stdx.log.scoped(.trace_test);
+const log = cy.log.scoped(.trace_test);
 
 test {
     // Include exports for C vm.
@@ -14,16 +14,15 @@ test {
 
 test "ARC." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-
-    const trace = &run.trace;
 
     // Code is still generated for unused expr stmt.
     var val = try run.eval(
         \\[1, 2]
         \\return
     );
+    var trace = run.getTrace();
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
@@ -31,6 +30,7 @@ test "ARC." {
     val = try run.eval(
         \\var a = [1, 2]
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
@@ -39,6 +39,7 @@ test "ARC." {
         \\var a = [1, 2]
         \\var b = a
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
@@ -51,6 +52,7 @@ test "ARC." {
         \\var s = S{ value: a }
         \\t.eq(s.value[0], 123)
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
@@ -60,6 +62,7 @@ test "ARC." {
         \\  value
         \\1 + S{ value: 123 }.value
     );
+    trace = run.getTrace();
     try t.eq(val.asF64toI32(), 124);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
@@ -69,6 +72,7 @@ test "ARC." {
         \\var a = { foo: 'abc{123}' }
         \\var b = a.foo
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
@@ -77,6 +81,7 @@ test "ARC." {
         \\var a = [ 123 ]
         \\var b = if true then a else 234
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
@@ -85,6 +90,7 @@ test "ARC." {
         \\var a = [ 123 ]
         \\var b = if false then 234 else a
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
@@ -95,6 +101,7 @@ test "ARC." {
         \\a.append(b)
         \\b.append(a)
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 6);
     try t.eq(trace.numReleases, 4);
     try t.eq(trace.numForceReleases, 0);
@@ -106,9 +113,8 @@ test "ARC." {
 
 test "ARC for static variable declarations." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-    const trace = &run.trace;
 
     // Static variable is freed on vm end.
     _ = try run.eval(
@@ -116,7 +122,8 @@ test "ARC for static variable declarations." {
         \\var a: [123]
         \\t.eq(a[0], 123)
     );
-    run.deinit();
+    run.vm.internal().deinit(true);
+    const trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 3);
     try t.eq(trace.numReleaseAttempts, 6);
     try t.eq(trace.numRetains, 2);
@@ -125,10 +132,8 @@ test "ARC for static variable declarations." {
 
 test "ARC assignments." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-
-    const trace = &run.trace;
 
     // Set index on rc-candidate child to primitive.
     _ = try run.eval(
@@ -138,6 +143,7 @@ test "ARC assignments." {
         \\a[0] = b
         \\t.eq(a[0], 234)
     );
+    var trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 2);
     try t.eq(trace.numReleaseAttempts, 5);
     try t.eq(trace.numRetains, 1);
@@ -151,6 +157,7 @@ test "ARC assignments." {
         \\a[0] = b
         \\t.eq(typesym(a[0]), #map)
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 4);
     try t.eq(trace.numReleaseAttempts, 7);
     try t.eq(trace.numRetains, 4);
@@ -159,10 +166,8 @@ test "ARC assignments." {
 
 test "ARC for passing call args." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-
-    const trace = &run.trace;
 
     // Temp list is retained when passed into function.
     _ = try run.eval(
@@ -171,16 +176,15 @@ test "ARC for passing call args." {
         \\  return list[0]
         \\t.eq(foo([1]), 1)
     );
+    const trace = run.getTrace();
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 }
 
 test "ARC for function returns values." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-
-    const trace = &run.trace;
 
     // Local object is retained when returned.
     _ = try run.eval(
@@ -193,6 +197,7 @@ test "ARC for function returns values." {
         \\var s = foo()
         \\t.eq(s.value, 123)
     );
+    var trace = run.getTrace();
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
@@ -205,21 +210,21 @@ test "ARC for function returns values." {
         \\foo()
         \\return
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 }
 
 test "ARC on temp locals in expressions." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-
-    const trace = &run.trace;
 
     // Only the map literal is retained and released at the end of the arc expression.
     var val = try run.eval(
         \\{ a: [123] }.a[0]
     );
+    var trace = run.getTrace();
     try run.valueIsI32(val, 123);
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
@@ -229,6 +234,7 @@ test "ARC on temp locals in expressions." {
         \\var foo = 'World'
         \\'Hello {foo} {123}'
     );
+    trace = run.getTrace();
     try run.valueIsString(val, "Hello World 123");
     run.deinitValue(val);
     try t.eq(trace.numRetains, 1);
@@ -237,10 +243,8 @@ test "ARC on temp locals in expressions." {
 
 test "ARC in loops." {
     var run: VMrunner = undefined;
-    run.init();
+    try run.init();
     defer run.deinit();
-
-    const trace = &run.trace;
 
     // A non-rcCandidate var is reassigned to a rcCandidate var inside a loop.
     _ = try run.eval(
@@ -248,6 +252,7 @@ test "ARC in loops." {
         \\for 0..3:
         \\  a = 'abc{123}'   -- copyReleaseDst
     );
+    var trace = run.getTrace();
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
@@ -258,6 +263,7 @@ test "ARC in loops." {
         \\  if true:
         \\    a = 'abc{123}'    -- copyReleaseDst
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
@@ -269,6 +275,7 @@ test "ARC in loops." {
         \\for 0..3:
         \\  a = S{ foo: 123 }.foo
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 6);
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleaseAttempts, 10);
@@ -279,6 +286,7 @@ test "ARC in loops." {
         \\for 0..3:
         \\  var a = 'abc{123}'
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetains, 3);
     // The inner set inst should be a releaseSet.
     try t.eq(trace.numReleases, 3);
@@ -292,6 +300,7 @@ test "ARC in loops." {
         \\for list each it:   -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
         \\  foo(it)         -- +2a
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 10);
     try t.eq(trace.numRetains, 6);
 
@@ -302,6 +311,7 @@ test "ARC in loops." {
         \\  pass                      
         \\                                --        -8
     );
+    trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 10);
     try t.eq(trace.numRetains, 10);
     try t.eq(trace.numReleases, 10);
@@ -311,21 +321,15 @@ var testVm: cy.VM = undefined;
 
 const VMrunner = struct {
     vm: *cy.UserVM,
-    trace: cy.TraceInfo,
 
-    fn init(self: *VMrunner) void {
+    fn init(self: *VMrunner) !void {
         self.* = .{
             .vm = @ptrCast(&testVm),
-            .trace = undefined,
         };
-        self.trace.opCounts = &.{};
-        self.vm.init(t.alloc) catch stdx.fatal();
-        self.vm.internal().setTrace(&self.trace);
+        self.vm.init(t.alloc) catch cy.fatal();
     }
 
     fn deinit(self: *VMrunner) void {
-        t.alloc.free(self.trace.opCounts);
-        self.trace.opCounts = &.{};
         self.vm.deinit();
     }
 
@@ -345,6 +349,10 @@ const VMrunner = struct {
         return self.vm.getStackTrace();
     }
 
+    fn getTrace(self: *VMrunner) *vmc.TraceInfo {
+        return self.vm.internal().trace;
+    }
+
     fn eval(self: *VMrunner, src: []const u8) !cy.Value {
         const rc = self.vm.getGlobalRC();
         if (rc != 0) {
@@ -353,8 +361,7 @@ const VMrunner = struct {
         }
         // Eval with new env.
         self.deinit();
-        try self.vm.init(t.alloc);
-        self.vm.internal().setTrace(&self.trace);
+        try self.init();
         return self.vm.eval("main", src, .{ .singleRun = false }) catch |err| {
             if (err == error.Panic) {
                 try self.vm.printLastUserPanicError();
@@ -392,8 +399,8 @@ const VMrunner = struct {
 
     pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {
         _ = self;
-        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
-        const list = stdx.ptrAlignCast(*std.ArrayListUnmanaged(cy.Value), &obj.list.list);
+        const obj = cy.ptrAlignCast(*cy.HeapObject, val.asPointer());
+        const list = cy.ptrAlignCast(*std.ArrayListUnmanaged(cy.Value), &obj.list.list);
         const dupe = try t.alloc.alloc(i32, list.items.len);
         for (list.items, 0..) |it, i| {
             dupe[i] = @intFromFloat(it.toF64());

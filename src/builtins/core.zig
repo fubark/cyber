@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
-const fatal = stdx.fatal;
+const fatal = cy.fatal;
 const cy = @import("../cyber.zig");
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
@@ -14,7 +14,7 @@ const http = @import("../http.zig");
 const cache = @import("../cache.zig");
 const bt = cy.types.BuiltinTypeSymIds;
 
-const log = stdx.log.scoped(.core);
+const log = cy.log.scoped(.core);
 
 pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     const b = bindings.ModuleBuilder.init(self, modId);
@@ -86,7 +86,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
-    return vm.allocListFill(args[0], @intFromFloat(args[1].asF64())) catch stdx.fatal();
+    return vm.allocListFill(args[0], @intFromFloat(args[1].asF64())) catch cy.fatal();
 }
 
 pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
@@ -105,17 +105,17 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
     const url = vm.valueToTempString(args[0]);
     defer vm.release(args[0]);
 
-    const specGroup = cache.getSpecHashGroup(alloc, url) catch stdx.fatal();
+    const specGroup = cache.getSpecHashGroup(alloc, url) catch cy.fatal();
     defer specGroup.deinit(alloc);
 
     if (vm.internal().config.reload) {
-        specGroup.markEntryBySpecForRemoval(url) catch stdx.fatal();
+        specGroup.markEntryBySpecForRemoval(url) catch cy.fatal();
     } else {
         // First check local cache.
-        if (specGroup.findEntryBySpec(url) catch stdx.fatal()) |entry| {
-            const path = cache.allocSpecFilePath(alloc, entry) catch stdx.fatal();
+        if (specGroup.findEntryBySpec(url) catch cy.fatal()) |entry| {
+            const path = cache.allocSpecFilePath(alloc, entry) catch cy.fatal();
             defer alloc.free(path);
-            return vm.allocStringInfer(path) catch stdx.fatal();
+            return vm.allocStringInfer(path) catch cy.fatal();
         }
     }
 
@@ -128,11 +128,11 @@ fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
         log.debug("cacheUrl response status: {}", .{resp.status});
         return prepareThrowSymbol(vm, .UnknownError);
     } else {
-        const entry = cache.saveNewSpecFile(alloc, specGroup, url, resp.body) catch stdx.fatal();
+        const entry = cache.saveNewSpecFile(alloc, specGroup, url, resp.body) catch cy.fatal();
         defer entry.deinit(alloc);
-        const path = cache.allocSpecFilePath(alloc, entry) catch stdx.fatal();
+        const path = cache.allocSpecFilePath(alloc, entry) catch cy.fatal();
         defer alloc.free(path);
-        return vm.allocStringInfer(path) catch stdx.fatal();
+        return vm.allocStringInfer(path) catch cy.fatal();
     }
 }
 
@@ -208,7 +208,7 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
         vm.releaseObject(obj);
     }
     for (obj.list.items()) |arg| {
-        buf.append(alloc, vm.valueToString(arg) catch stdx.fatal()) catch stdx.fatal();
+        buf.append(alloc, vm.valueToString(arg) catch cy.fatal()) catch cy.fatal();
     }
 
     const res = std.ChildProcess.exec(.{
@@ -223,13 +223,13 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
                 return prepareThrowSymbol(vm, .StreamTooLong),
             error.StderrStreamTooLong =>
                 return prepareThrowSymbol(vm, .StreamTooLong),
-            else => stdx.panicFmt("exec err {}\n", .{err}),
+            else => cy.panicFmt("exec err {}\n", .{err}),
         }
     };
 
-    const map = vm.allocEmptyMap() catch stdx.fatal();
-    const outKey = vm.allocAstring("out") catch stdx.fatal();
-    const errKey = vm.allocAstring("err") catch stdx.fatal();
+    const map = vm.allocEmptyMap() catch cy.fatal();
+    const outKey = vm.allocAstring("out") catch cy.fatal();
+    const errKey = vm.allocAstring("err") catch cy.fatal();
     defer {
         vm.release(outKey);
         vm.release(errKey);
@@ -237,16 +237,16 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 
     // TODO: Use allocOwnedString
     defer alloc.free(res.stdout);
-    const out = vm.allocStringInfer(res.stdout) catch stdx.fatal();
-    ivm.setIndex(map, outKey, out) catch stdx.fatal();
+    const out = vm.allocStringInfer(res.stdout) catch cy.fatal();
+    ivm.setIndex(map, outKey, out) catch cy.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stderr);
-    const err = vm.allocStringInfer(res.stderr) catch stdx.fatal();
-    ivm.setIndex(map, errKey, err) catch stdx.fatal();
+    const err = vm.allocStringInfer(res.stderr) catch cy.fatal();
+    ivm.setIndex(map, errKey, err) catch cy.fatal();
     if (res.term == .Exited) {
-        const exitedKey = vm.allocAstring("exited") catch stdx.fatal();
+        const exitedKey = vm.allocAstring("exited") catch cy.fatal();
         defer vm.release(exitedKey);
-        ivm.setIndex(map, exitedKey, Value.initF64(@floatFromInt(res.term.Exited))) catch stdx.fatal();
+        ivm.setIndex(map, exitedKey, Value.initF64(@floatFromInt(res.term.Exited))) catch cy.fatal();
     }
     return map;
 }
@@ -270,7 +270,7 @@ pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
         };
         defer alloc.free(resp.body);
         // TODO: Use allocOwnedString
-        return vm.allocRawString(resp.body) catch stdx.fatal();
+        return vm.allocRawString(resp.body) catch cy.fatal();
     }
 }
 
@@ -280,11 +280,11 @@ pub fn getInput(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
     const input = std.io.getStdIn().reader().readUntilDelimiterAlloc(vm.allocator(), '\n', 10e8) catch |err| {
         if (err == error.EndOfStream) {
             return prepareThrowSymbol(vm, .EndOfStream);
-        } else stdx.fatal();
+        } else cy.fatal();
     };
     defer vm.allocator().free(input);
     // TODO: Use allocOwnedString
-    return vm.allocRawString(input) catch stdx.fatal();
+    return vm.allocRawString(input) catch cy.fatal();
 }
 
 pub fn must(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -347,7 +347,7 @@ fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const S = struct {
         fn encodeMap(ctx: *cy.EncodeMapContext, val: cy.Value) anyerror!void {
-            const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+            const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
             var iter = val.asHeapObject().map.map().iterator();
             while (iter.next()) |e| {
                 const key = uservm.valueToTempString(e.key);
@@ -382,7 +382,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
                         try ctx.encodeNumber(it.asF64());
                     },
                     .string => {
-                        const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+                        const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
                         const str = uservm.valueToTempString(it);
                         try ctx.encodeString(str);
                     },
@@ -407,7 +407,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
                         try ctx.encodeNumber(val.asF64());
                     },
                     .string => {
-                        const uservm = stdx.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
+                        const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
                         const str = uservm.valueToTempString(val);
                         try ctx.encodeString(str);
                     },
@@ -431,7 +431,7 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
                     else => {},
                 }
             } else {
-                stdx.panicFmt("unsupported: {s}", .{@typeName(T)});
+                cy.panicFmt("unsupported: {s}", .{@typeName(T)});
             }
         }
     };
@@ -533,15 +533,15 @@ pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     const alloc = vm.allocator();
     var parser = cy.Parser.init(alloc);
     defer parser.deinit();
-    const val = cy.decodeCyon(alloc, &parser, src) catch stdx.fatal();
-    return fromCyonValue(vm, val) catch stdx.fatal();
+    const val = cy.decodeCyon(alloc, &parser, src) catch cy.fatal();
+    return fromCyonValue(vm, val) catch cy.fatal();
 }
 
 fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
     const ivm = self.internal();
     switch (val.getValueType()) {
         .list => {
-            var dlist = val.asList() catch stdx.fatal();
+            var dlist = val.asList() catch cy.fatal();
             defer dlist.deinit();
             const elems = try ivm.alloc.alloc(Value, dlist.arr.len);
             for (elems, 0..) |*elem, i| {
@@ -550,7 +550,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             return try cy.heap.allocOwnedList(ivm, elems);
         },
         .map => {
-            var dmap = val.asMap() catch stdx.fatal();
+            var dmap = val.asMap() catch cy.fatal();
             defer dmap.deinit();
             var iter = dmap.iterator();
 
@@ -580,20 +580,20 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
 
 fn stdMapPut(vm: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void {
     const ivm = vm.internal();
-    const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner); 
-    map.put(vm.allocator(), ivm, key, value) catch stdx.fatal();
+    const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner); 
+    map.put(vm.allocator(), ivm, key, value) catch cy.fatal();
 }
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     defer vm.release(args[0]);
     const str = vm.valueToTempRawString(args[0]);
-    if (cy.isWasm) {
+    if (cy.isWasmFreestanding) {
         hostFileWrite(1, str.ptr, str.len);
         hostFileWrite(1, "\n", 1);
     } else {
         const w = std.io.getStdOut().writer();
-        w.writeAll(str) catch stdx.fatal();
-        w.writeByte('\n') catch stdx.fatal();
+        w.writeAll(str) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
     }
     return Value.None;
 }
@@ -607,16 +607,16 @@ pub fn prints(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
         hostFileWrite(1, str.ptr, str.len);
     } else {
         const w = std.io.getStdOut().writer();
-        w.writeAll(str) catch stdx.fatal();
+        w.writeAll(str) catch cy.fatal();
     }
     return Value.None;
 }
 
 pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
-    const input = std.io.getStdIn().readToEndAlloc(vm.allocator(), 10e8) catch stdx.fatal();
+    const input = std.io.getStdIn().readToEndAlloc(vm.allocator(), 10e8) catch cy.fatal();
     defer vm.allocator().free(input);
     // TODO: Use allocOwnString.
-    return vm.allocRawString(input) catch stdx.fatal();
+    return vm.allocRawString(input) catch cy.fatal();
 }
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -631,7 +631,7 @@ pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     };
     defer vm.allocator().free(content);
     // TODO: Use allocOwnedString.
-    return vm.allocRawString(content) catch stdx.fatal();
+    return vm.allocRawString(content) catch cy.fatal();
 }
 
 pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -692,7 +692,7 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     const pathDupe = vm.allocator().dupe(u8, path) catch fatal();
     defer vm.allocator().free(pathDupe);
     const content = vm.valueToTempRawString(args[1]);
-    std.fs.cwd().writeFile(path, content) catch stdx.fatal();
+    std.fs.cwd().writeFile(path, content) catch cy.fatal();
     return Value.None;
 }
 

@@ -18,7 +18,7 @@ const math_mod = @import("builtins/math.zig");
 const os_mod = @import("builtins/os.zig");
 const test_mod = @import("builtins/test.zig");
 
-const log = stdx.log.scoped(.vm_compiler);
+const log = cy.log.scoped(.vm_compiler);
 
 const f64NegOne = cy.Value.initF64(-1);
 const f64One = cy.Value.initF64(1);
@@ -56,9 +56,11 @@ pub const VMcompiler = struct {
     typeStack: std.ArrayListUnmanaged(types.TypeId),
 
     /// Reused for SymIds.
-    tempSyms: std.ArrayListUnmanaged(sema.ResolvedSymId),
+    tempSyms: std.ArrayListUnmanaged(sema.SymbolId),
 
     deinitedRtObjects: bool,
+
+    config: CompileConfig,
 
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
@@ -76,6 +78,7 @@ pub const VMcompiler = struct {
             .deinitedRtObjects = false,
             .tempSyms = .{},
             .typeStack = .{},
+            .config = .{}, 
         };
         try self.addModuleLoader("core", initModuleCompat("core", core_mod.initModule));
         try self.addModuleLoader("math", initModuleCompat("math", math_mod.initModule));
@@ -90,7 +93,7 @@ pub const VMcompiler = struct {
             return;
         }
         if (self.sema.moduleMap.get("os")) |id| {
-            os_mod.deinitModule(self, self.sema.modules.items[id]) catch stdx.fatal();
+            os_mod.deinitModule(self, self.sema.modules.items[id]) catch cy.fatal();
         }
         self.deinitedRtObjects = true;
     }
@@ -173,33 +176,33 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameMetatype);
 
         // Add builtins types as resolved syms.
-        id = try sema.addResolvedBuiltinSym(self, "any", rt.AnyT);
+        id = try sema.addBuiltinSym(self, "any", rt.AnyT);
         std.debug.assert(id == bt.Any);
-        id = try sema.addResolvedBuiltinSym(self, "boolean", rt.BooleanT);
+        id = try sema.addBuiltinSym(self, "boolean", rt.BooleanT);
         std.debug.assert(id == bt.Boolean);
-        id = try sema.addResolvedBuiltinSym(self, "float", rt.FloatT);
+        id = try sema.addBuiltinSym(self, "float", rt.FloatT);
         std.debug.assert(id == bt.Float);
-        id = try sema.addResolvedBuiltinSym(self, "int", rt.IntegerT);
+        id = try sema.addBuiltinSym(self, "int", rt.IntegerT);
         std.debug.assert(id == bt.Integer);
-        id = try sema.addResolvedBuiltinSym(self, "string", rt.StringUnionT);
+        id = try sema.addBuiltinSym(self, "string", rt.StringUnionT);
         std.debug.assert(id == bt.String);
-        id = try sema.addResolvedBuiltinSym(self, "rawstring", rt.RawstringUnionT);
+        id = try sema.addBuiltinSym(self, "rawstring", rt.RawstringUnionT);
         std.debug.assert(id == bt.Rawstring);
-        id = try sema.addResolvedBuiltinSym(self, "symbol", rt.SymbolT);
+        id = try sema.addBuiltinSym(self, "symbol", rt.SymbolT);
         std.debug.assert(id == bt.Symbol);
-        id = try sema.addResolvedBuiltinSym(self, "List", rt.ListT);
+        id = try sema.addBuiltinSym(self, "List", rt.ListT);
         std.debug.assert(id == bt.List);
-        id = try sema.addResolvedBuiltinSym(self, "Map", rt.MapT);
+        id = try sema.addBuiltinSym(self, "Map", rt.MapT);
         std.debug.assert(id == bt.Map);
-        id = try sema.addResolvedBuiltinSym(self, "pointer", rt.PointerT);
+        id = try sema.addBuiltinSym(self, "pointer", rt.PointerT);
         std.debug.assert(id == bt.Pointer);
-        id = try sema.addResolvedBuiltinSym(self, "none", rt.NoneT);
+        id = try sema.addBuiltinSym(self, "none", rt.NoneT);
         std.debug.assert(id == bt.None);
-        id = try sema.addResolvedBuiltinSym(self, "error", rt.ErrorT);
+        id = try sema.addBuiltinSym(self, "error", rt.ErrorT);
         std.debug.assert(id == bt.Error);
-        id = try sema.addResolvedBuiltinSym(self, "fiber", rt.FiberT);
+        id = try sema.addBuiltinSym(self, "fiber", rt.FiberT);
         std.debug.assert(id == bt.Fiber);
-        id = try sema.addResolvedBuiltinSym(self, "metatype", rt.MetaTypeT);
+        id = try sema.addBuiltinSym(self, "metatype", rt.MetaTypeT);
         std.debug.assert(id == bt.MetaType);
 
         id = try sema.addResolvedInternalSym(self, "float");
@@ -253,8 +256,10 @@ pub const VMcompiler = struct {
 
     /// Wrap compile so all errors can be handled in one place.
     fn compileInner(self: *VMcompiler, srcUri: []const u8, src: []const u8, config: CompileConfig) !void {
+        self.config = config;
+
         var finalSrcUri: []const u8 = undefined;
-        if (!cy.isWasm and self.vm.config.enableFileModules) {
+        if (!cy.isWasm and config.enableFileModules) {
             // Ensure that `srcUri` is resolved.
             finalSrcUri = std.fs.cwd().realpathAlloc(self.alloc, srcUri) catch |err| {
                 log.debug("Could not resolve main src uri: {s}", .{srcUri});
@@ -296,7 +301,7 @@ pub const VMcompiler = struct {
 
                 const chunk = &self.chunks.items[id];
                 const mod = self.sema.getModule(chunk.modId);
-                chunk.semaResolvedRootSymId = mod.resolvedRootSymId;
+                chunk.semaRootSymId = mod.resolvedRootSymId;
 
                 // Process static declarations.
                 for (chunk.parser.staticDecls.items) |decl| {
@@ -385,15 +390,15 @@ pub const VMcompiler = struct {
                 for (chunk.parser.staticDecls.items) |decl| {
                     if (decl.declT == .variable) {
                         const node = chunk.nodes[decl.inner.variable];
-                        const rSymId = node.head.staticDecl.sema_rSymId;
-                        const crSymId = sema.CompactResolvedSymId.initSymId(rSymId);
-                        try gen.genStaticInitializerDFS(chunk, crSymId);
+                        const symId = node.head.staticDecl.sema_symId;
+                        const csymId = sema.CompactSymbolId.initSymId(symId);
+                        try gen.genStaticInitializerDFS(chunk, csymId);
                     } else if (decl.declT == .funcInit) {
                         const node = chunk.nodes[decl.inner.funcInit];
                         const declId = node.head.func.semaDeclId;
                         const func = chunk.semaFuncDecls.items[declId];
-                        const crSymId = sema.CompactResolvedSymId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
-                        try gen.genStaticInitializerDFS(chunk, crSymId);
+                        const csymId = sema.CompactSymbolId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
+                        try gen.genStaticInitializerDFS(chunk, csymId);
                     }
                 }
             }
@@ -454,7 +459,7 @@ pub const VMcompiler = struct {
         const root = chunk.nodes[chunk.parserAstRootId];
 
         chunk.mainSemaBlockId = try sema.pushBlock(chunk, cy.NullId);
-        chunk.nodeTypes = try self.alloc.alloc(sema.ResolvedSymId, chunk.nodes.len);
+        chunk.nodeTypes = try self.alloc.alloc(sema.SymbolId, chunk.nodes.len);
         sema.semaStmts(chunk, root.head.root.headStmt) catch |err| {
             try sema.endBlock(chunk);
             return err;
@@ -467,7 +472,7 @@ pub const VMcompiler = struct {
     fn performChunkParse(self: *VMcompiler, id: cy.ChunkId) !void {
         const chunk = &self.chunks.items[id];
 
-        var tt = stdx.debug.trace();
+        var tt = cy.debug.timer();
         const ast = try chunk.parser.parse(chunk.src);
         tt.endPrint("parse");
         // Update buffer pointers so success/error paths can access them.
@@ -675,7 +680,7 @@ pub fn replaceIntoShorterList(comptime T: type, input: []const T, needle: []cons
     return replacements;
 }
 
-const unexpected = stdx.fatal;
+const unexpected = cy.fatal;
 
 const ImportTask = struct {
     chunkId: cy.ChunkId,
@@ -688,7 +693,7 @@ const ImportTask = struct {
 pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {
     return struct {
         fn initCompat(vm: *cy.UserVM, modId: cy.ModuleId) bool {
-            initFn(&vm.internal().compiler, modId) catch |err| {
+            initFn(vm.internal().compiler, modId) catch |err| {
                 log.debug("Init module `{s}` failed: {}", .{name, err});
                 return false;
             };
@@ -700,6 +705,7 @@ pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMc
 pub const CompileConfig = struct {
     skipCodegen: bool = false,
     enableFileModules: bool = false,
+    genDebugFuncMarkers: bool = false,
 };
 
 pub const ValidateConfig = struct {

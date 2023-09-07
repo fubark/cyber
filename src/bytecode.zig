@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
-const log = stdx.log.scoped(.bytecode);
+const log = cy.log.scoped(.bytecode);
 const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
 const v = fmt.v;
@@ -12,8 +12,6 @@ const vmc = @import("vm_c.zig");
 /// Holds vm instructions.
 pub const ByteCodeBuffer = struct {
     alloc: std.mem.Allocator,
-    /// The required stack size for the main frame.
-    mainStackSize: u32,
     ops: std.ArrayListUnmanaged(Inst),
     consts: std.ArrayListUnmanaged(Const),
 
@@ -24,14 +22,17 @@ pub const ByteCodeBuffer = struct {
     /// Contiguous constant strings in a buffer.
     strBuf: std.ArrayListUnmanaged(u8),
     /// Tracks the start index of strings that are already in strBuf.
-    strMap: std.HashMapUnmanaged(stdx.IndexSlice(u32), u32, StringIndexContext, std.hash_map.default_max_load_percentage),
+    strMap: std.HashMapUnmanaged(cy.IndexSlice(u32), u32, StringIndexContext, std.hash_map.default_max_load_percentage),
 
     /// Maps bytecode insts back to source code.
     /// Contains entries ordered by `pc`. 
     debugTable: std.ArrayListUnmanaged(DebugSym),
 
     /// Ordered labels by `pc` for debugging only.
-    debugLabels: std.ArrayListUnmanaged(DebugLabel),
+    debugMarkers: std.ArrayListUnmanaged(DebugMarker),
+    
+    /// The required stack size for the main frame.
+    mainStackSize: u32,
 
     pub fn init(alloc: std.mem.Allocator) !ByteCodeBuffer {
         var new = ByteCodeBuffer{
@@ -42,7 +43,7 @@ pub const ByteCodeBuffer = struct {
             .strBuf = .{},
             .strMap = .{},
             .debugTable = .{},
-            .debugLabels = .{},
+            .debugMarkers = .{},
             .mconsts = &.{},
         };
         // Perform big allocation for instruction buffer for more consistent heap allocation.
@@ -56,7 +57,7 @@ pub const ByteCodeBuffer = struct {
         self.strBuf.deinit(self.alloc);
         self.strMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
-        self.debugLabels.deinit(self.alloc);
+        self.debugMarkers.deinit(self.alloc);
     }
 
     pub fn clear(self: *ByteCodeBuffer) void {
@@ -65,7 +66,7 @@ pub const ByteCodeBuffer = struct {
         self.strBuf.clearRetainingCapacity();
         self.strMap.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
-        self.debugLabels.clearRetainingCapacity();
+        self.debugMarkers.clearRetainingCapacity();
     }
 
     pub inline fn len(self: *ByteCodeBuffer) usize {
@@ -79,11 +80,48 @@ pub const ByteCodeBuffer = struct {
         return start;
     }
 
-    pub fn pushDebugLabel(self: *ByteCodeBuffer, pc: usize, name: []const u8) !void {
-        try self.debugLabels.append(self.alloc, .{
-            .pc = @intCast(pc),
-            .namePtr = name.ptr,
-            .nameLen = @intCast(name.len),
+    pub fn pushDebugFuncStart(self: *ByteCodeBuffer, declId: cy.sema.FuncDeclId, chunkId: u32) !void {
+        try self.debugMarkers.append(self.alloc, .{
+            .type = @intFromEnum(DebugMarkerType.funcStart),
+            .pc = @intCast(self.ops.items.len),
+            .data = .{
+                .funcStart = .{
+                    .declId = declId,
+                    .chunkId = chunkId,
+                },
+            },
+            .data2 = undefined,
+        });
+    }
+
+    pub fn pushDebugFuncEnd(self: *ByteCodeBuffer, declId: cy.sema.FuncDeclId, chunkId: u32) !void {
+        try self.debugMarkers.append(self.alloc, .{
+            .type = @intFromEnum(DebugMarkerType.funcEnd),
+            .pc = @intCast(self.ops.items.len),
+            .data = .{
+                .funcEnd = .{
+                    .declId = declId,
+                    .chunkId = chunkId,
+                },
+            },
+            .data2 = undefined,
+        });
+    }
+
+    pub fn pushDebugLabel(self: *ByteCodeBuffer, name: []const u8) !void {
+        try self.debugMarkers.append(self.alloc, .{
+            .type = @intFromEnum(DebugMarkerType.label),
+            .pc = @intCast(self.ops.items.len),
+            .data = .{
+                .label = .{
+                    .namePtr = name.ptr,
+                },
+            },
+            .data2 = .{
+                .label = .{
+                    .nameLen = @intCast(name.len),
+                },
+            },
         });
     }
 
@@ -168,7 +206,7 @@ pub const ByteCodeBuffer = struct {
         return idx;
     }
 
-    pub fn getOrPushUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !stdx.IndexSlice(u32) {
+    pub fn getOrPushUstring(self: *ByteCodeBuffer, str: []const u8, charLen: u32) !cy.IndexSlice(u32) {
         const ctx = StringIndexContext{ .buf = &self.strBuf };
         const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
         const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
@@ -183,12 +221,12 @@ pub const ByteCodeBuffer = struct {
             @as(*align(1) u32, @ptrCast(self.strBuf.items.ptr + start + 8)).* = 0;
             self.strBuf.items.len += 12;
             try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = stdx.IndexSlice(u32).init(start + 12, @intCast(self.strBuf.items.len));
+            res.key_ptr.* = cy.IndexSlice(u32).init(start + 12, @intCast(self.strBuf.items.len));
             return res.key_ptr.*;
         }
     }
 
-    pub fn getOrPushAstring(self: *ByteCodeBuffer, str: []const u8) !stdx.IndexSlice(u32) {
+    pub fn getOrPushAstring(self: *ByteCodeBuffer, str: []const u8) !cy.IndexSlice(u32) {
         const ctx = StringIndexContext{ .buf = &self.strBuf };
         const insertCtx = StringIndexInsertContext{ .buf = &self.strBuf };
         const res = try self.strMap.getOrPutContextAdapted(self.alloc, str, insertCtx, ctx);
@@ -197,7 +235,7 @@ pub const ByteCodeBuffer = struct {
         } else {
             const start: u32 = @intCast(self.strBuf.items.len);
             try self.strBuf.appendSlice(self.alloc, str);
-            res.key_ptr.* = stdx.IndexSlice(u32).init(start, @intCast(self.strBuf.items.len));
+            res.key_ptr.* = cy.IndexSlice(u32).init(start, @intCast(self.strBuf.items.len));
             return res.key_ptr.*;
         }
     }
@@ -231,7 +269,7 @@ fn printStderr(comptime format: []const u8, args: anytype) void {
 
 pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extra: []const u8) void {
     switch (code) {
-        .add => {
+        .addFloat => {
             const left = pc[1].val;
             const right = pc[2].val;
             const dst = pc[3].val;
@@ -258,8 +296,8 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const numArgs = pc[2].val;
             const numRet = pc[3].val;
             const symId = pc[4].val;
-            const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
-            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}, rFuncSigId={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId), v(rFuncSigId)});
+            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}, sym={}, funcSigId={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet), v(symId), v(funcSigId)});
         },
         .callSym => {
             const startLocal = pc[1].val;
@@ -286,10 +324,10 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const numParams = pc[2].val;
             const numCaptured = pc[3].val;
             const numLocals = pc[4].val;
-            const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
+            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             const local = pc[7].val;
             const dst = pc[8].val;
-            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, rFuncSigId={}, closureLocal={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(rFuncSigId), v(local), v(dst)});
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numCaptured={}, numLocals={}, funcSigId={}, closureLocal={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numCaptured), v(numLocals), v(funcSigId), v(local), v(dst)});
             printStderr(" {any}", .{std.mem.sliceAsBytes(pc[9..9+numCaptured])});
         },
         .constI8 => {
@@ -377,9 +415,9 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const negFuncPcOffset = pc[1].val;
             const numParams = pc[2].val;
             const numLocals = pc[3].val;
-            const rFuncSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
+            const funcSigId = @as(*const align(1) u16, @ptrCast(pc + 4)).*;
             const dst = pc[6].val;
-            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numLocals={}, rFuncSigId={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numLocals), v(rFuncSigId), v(dst)});
+            fmt.printStderr("{} {} negFuncPcOffset={}, numParams={}, numLocals={}, funcSigId={}, dst={}", &.{v(pcOffset), v(code), v(negFuncPcOffset), v(numParams), v(numLocals), v(funcSigId), v(dst)});
         },
         .list => {
             const startLocal = pc[1].val;
@@ -474,11 +512,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
 pub const StringIndexContext = struct {
     buf: *std.ArrayListUnmanaged(u8),
 
-    pub fn hash(self: StringIndexContext, s: stdx.IndexSlice(u32)) u64 {
+    pub fn hash(self: StringIndexContext, s: cy.IndexSlice(u32)) u64 {
         return std.hash.Wyhash.hash(0, self.buf.items[s.start..s.end]);
     }
 
-    pub fn eql(self: StringIndexContext, a: stdx.IndexSlice(u32), b: stdx.IndexSlice(u32)) bool {
+    pub fn eql(self: StringIndexContext, a: cy.IndexSlice(u32), b: cy.IndexSlice(u32)) bool {
         return std.mem.eql(u8, self.buf.items[a.start..a.end], self.buf.items[b.start..b.end]);
     }
 };
@@ -491,7 +529,7 @@ pub const StringIndexInsertContext = struct {
         return std.hash.Wyhash.hash(0, s);
     }
 
-    pub fn eql(self: StringIndexInsertContext, a: []const u8, b: stdx.IndexSlice(u32)) bool {
+    pub fn eql(self: StringIndexInsertContext, a: []const u8, b: cy.IndexSlice(u32)) bool {
         return std.mem.eql(u8, a, self.buf.items[b.start..b.end]);
     }
 };
@@ -542,16 +580,47 @@ pub const DebugSym = struct {
     file: u32,
 };
 
-const DebugLabel = struct {
-    /// Unowned.
-    namePtr: [*]const u8,
-    nameLen: u32,
+const DebugMarkerType = enum(u8) {
+    label,
+    funcStart,
 
-    /// Start position of an inst.
+    /// `pc` is exclusive.
+    funcEnd,
+};
+
+const DebugMarker = extern struct {
+    data: extern union {
+        label: extern struct {
+            /// Unowned.
+            namePtr: [*]const u8,
+        },
+        funcStart: extern struct {
+            chunkId: u32,
+            declId: cy.sema.FuncDeclId,
+        },
+        funcEnd: extern struct {
+            chunkId: u32,
+            declId: cy.sema.FuncDeclId,
+        },
+    },
+
+    /// Inst position of marker.
     pc: u32,
 
-    pub fn getName(self: DebugLabel) []const u8 {
-        return self.namePtr[0..self.nameLen];
+    data2: extern union {
+        label: extern struct {
+            nameLen: u16,
+        },
+    },
+
+    type: u8,
+
+    pub fn getLabelName(self: DebugMarker) []const u8 {
+        return self.data.label.namePtr[0..self.data2.label.nameLen];
+    }
+
+    pub fn etype(self: *const DebugMarker) DebugMarkerType {
+        return @enumFromInt(self.type);
     }
 };
 
@@ -571,9 +640,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .coreturn => {
             return 1;
         },
-        .neg,
         .not,
-        .bitwiseNot,
         .throw,
         .retain,
         .end,
@@ -621,13 +688,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .reverseIndex,
         .jumpNotNone,
         .jumpCond,
-        .sub,
-        .subInt,
-        .mul,
-        .div,
         .setField,
-        .pow,
-        .mod,
         .less,
         .lessInt,
         .greater,
@@ -635,14 +696,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .greaterEqual,
         .compare,
         .compareNot,
-        .bitwiseAnd,
-        .bitwiseOr,
-        .bitwiseXor,
-        .bitwiseLeftShift,
-        .bitwiseRightShift,
         .list,
-        .add,
-        .addInt,
         .tag,
         .cast,
         .castAbstract,
@@ -695,6 +749,26 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .callFuncIC => {
             return CallSymInstLen;
         },
+        .addFloat,
+        .subFloat,
+        .mulFloat,
+        .divFloat,
+        .powFloat,
+        .modFloat,
+        .addInt,
+        .subInt,
+        .mulInt,
+        .divInt,
+        .powInt,
+        .modInt,
+        .negFloat,
+        .negInt,
+        .bitwiseNot,
+        .bitwiseAnd,
+        .bitwiseOr,
+        .bitwiseXor,
+        .bitwiseLeftShift,
+        .bitwiseRightShift,
         .callObjSym,
         .callObjNativeFuncIC,
         .callObjFuncIC => {
@@ -712,11 +786,8 @@ pub const OpCode = enum(u8) {
     constI8 = vmc.CodeConstI8,
     /// Sets an immediate i8 value as an integer to a dst local.
     constI8Int = vmc.CodeConstI8Int,
-    /// Add first two locals and stores result to a dst local.
-    add = vmc.CodeAdd,
-    // addNumber,
-    /// Subtracts second local from first local and stores result to a dst local.
-    sub = vmc.CodeSub,
+    addFloat = vmc.CodeAddFloat,
+    subFloat = vmc.CodeSubFloat,
     /// Push boolean onto register stack.
     true = vmc.CodeTrue,
     false = vmc.CodeFalse,
@@ -789,20 +860,16 @@ pub const OpCode = enum(u8) {
     lessEqual = vmc.CodeLessEqual,
     greaterEqual = vmc.CodeGreaterEqual,
 
-    /// Multiplies first two locals and stores result to a dst local.
-    mul = vmc.CodeMul,
-    /// Divides second local from first local and stores result to a dst local.
-    div = vmc.CodeDiv,
-    /// Raises first local's power to the value of the second local and stores result to a dst local.
-    pow = vmc.CodePow,
-    /// Perform modulus on the two locals and stores result to a dst local.
-    mod = vmc.CodeMod,
+    mulFloat = vmc.CodeMulFloat,
+    divFloat = vmc.CodeDivFloat,
+    powFloat = vmc.CodePowFloat,
+    modFloat = vmc.CodeModFloat,
 
     compareNot = vmc.CodeCompareNot,
 
     /// [startLocal] [exprCount] [dst] [..string consts]
     stringTemplate = vmc.CodeStringTemplate,
-    neg = vmc.CodeNeg,
+    negFloat = vmc.CodeNegFloat,
 
     /// Initialize locals starting from `startLocal` to the `none` value.
     /// init [startLocal] [numLocals]
@@ -848,6 +915,11 @@ pub const OpCode = enum(u8) {
     jumpNotNone = vmc.CodeJumpNotNone,
     addInt = vmc.CodeAddInt,
     subInt = vmc.CodeSubInt,
+    mulInt = vmc.CodeMulInt,
+    divInt = vmc.CodeDivInt,
+    modInt = vmc.CodeModInt,
+    powInt = vmc.CodePowInt,
+    negInt = vmc.CodeNegInt,
     lessInt = vmc.CodeLessInt,
     forRangeInit = vmc.CodeForRangeInit,
     forRange = vmc.CodeForRange,
@@ -891,8 +963,19 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 99);
+    try t.eq(std.enums.values(OpCode).len, 104);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);
+    try t.eq(@sizeOf(DebugMarker), 16);
+
+    try t.eq(@offsetOf(ByteCodeBuffer, "alloc"), @offsetOf(vmc.ByteCodeBuffer, "alloc"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "mainStackSize"), @offsetOf(vmc.ByteCodeBuffer, "mainStackSize"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "ops"), @offsetOf(vmc.ByteCodeBuffer, "ops"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "consts"), @offsetOf(vmc.ByteCodeBuffer, "consts"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "mconsts"), @offsetOf(vmc.ByteCodeBuffer, "mconsts_buf"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "strBuf"), @offsetOf(vmc.ByteCodeBuffer, "strBuf"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "strMap"), @offsetOf(vmc.ByteCodeBuffer, "strMap"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "debugTable"), @offsetOf(vmc.ByteCodeBuffer, "debugTable"));
+    try t.eq(@offsetOf(ByteCodeBuffer, "debugMarkers"), @offsetOf(vmc.ByteCodeBuffer, "debugMarkers"));
 }

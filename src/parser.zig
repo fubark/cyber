@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
-const fatal = stdx.fatal;
+const fatal = cy.fatal;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const cy = @import("cyber.zig");
@@ -11,8 +11,8 @@ const Nullable = cy.Nullable;
 const TokenId = u32;
 pub const NodeId = u32;
 const NullId = cy.NullId;
-const log = stdx.log.scoped(.parser);
-const IndexSlice = stdx.IndexSlice(u32);
+const log = cy.log.scoped(.parser);
+const IndexSlice = cy.IndexSlice(u32);
 
 const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 
@@ -3303,6 +3303,18 @@ pub const NodeType = enum {
     castExpr,
 };
 
+pub const GenUnaryExprStrategy = enum {
+    none,
+    specialized,
+    generic,
+};
+
+pub const GenBinExprStrategy = enum {
+    none,
+    specialized,
+    generic,
+};
+
 pub const BinaryExprOp = enum {
     plus,
     minus,
@@ -3327,7 +3339,7 @@ pub const BinaryExprOp = enum {
     dummy,
 };
 
-const UnaryOp = enum {
+pub const UnaryOp = enum {
     minus,
     not,
     bitwiseNot,
@@ -3354,17 +3366,19 @@ pub const Node = struct {
         castExpr: struct {
             expr: NodeId,
             typeSpecHead: NodeId,
-            semaTypeSymId: cy.sema.ResolvedSymId = cy.NullId,
+            semaTypeSymId: cy.sema.SymbolId = cy.NullId,
         },
         binExpr: struct {
             left: NodeId,
             right: NodeId,
             op: BinaryExprOp,
+            semaGenStrat: GenBinExprStrategy = .none,
         },
         opAssignStmt: struct {
             left: NodeId,
             right: NodeId,
             op: BinaryExprOp,
+            semaGenStrat: GenBinExprStrategy = .none,
         },
         mapEntry: struct {
             left: NodeId,
@@ -3387,7 +3401,7 @@ pub const Node = struct {
             left: NodeId,
             right: NodeId,
             /// Symbol id of a var or func. NullId if it does not point to a symbol.
-            sema_crSymId: cy.sema.CompactResolvedSymId = cy.sema.CompactResolvedSymId.initNull(),
+            sema_csymId: cy.sema.CompactSymbolId = cy.sema.CompactSymbolId.initNull(),
         },
         callExpr: struct {
             callee: NodeId,
@@ -3397,12 +3411,13 @@ pub const Node = struct {
         },
         ident: struct {
             semaVarId: u32 = NullId,
-            sema_crSymId: cy.sema.CompactResolvedSymId = cy.sema.CompactResolvedSymId.initNull(),
-            semaMethodSigId: cy.sema.ResolvedFuncSigId = NullId,
+            sema_csymId: cy.sema.CompactSymbolId = cy.sema.CompactSymbolId.initNull(),
+            semaMethodSigId: cy.sema.FuncSigId = NullId,
         },
         unary: struct {
             child: NodeId,
             op: UnaryOp,
+            semaGenStrat: GenUnaryExprStrategy = .none,
         },
         root: struct {
             headStmt: NodeId,
@@ -3444,7 +3459,7 @@ pub const Node = struct {
         objectInit: struct {
             name: NodeId,
             initializer: NodeId,
-            sema_rSymId: Nullable(cy.sema.ResolvedSymId) = cy.NullId,
+            sema_symId: Nullable(cy.sema.SymbolId) = cy.NullId,
         },
         objectField: struct {
             name: NodeId,
@@ -3464,7 +3479,7 @@ pub const Node = struct {
         staticDecl: struct {
             varSpec: NodeId,
             right: NodeId,
-            sema_rSymId: cy.sema.ResolvedSymId = cy.NullId,
+            sema_symId: cy.sema.SymbolId = cy.NullId,
         },
         localDecl: struct {
             varSpec: NodeId,
@@ -4231,7 +4246,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 next.hadTemplateExpr = 1;
                 return next;
             } else {
-                stdx.panicFmt("Expected template expr '{{'", .{});
+                cy.panicFmt("Expected template expr '{{'", .{});
             }
         }
 

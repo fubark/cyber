@@ -2,14 +2,14 @@ const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 const stdx = @import("stdx");
-const fatal = stdx.fatal;
+const fatal = cy.fatal;
 const t = stdx.testing;
 
 const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
 const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
-const log = stdx.log.scoped(.behavior_test);
+const log = cy.log.scoped(.behavior_test);
 
 const setup = @import("setup.zig");
 const eval = setup.eval;
@@ -552,17 +552,17 @@ test "Custom modules." {
 
     const S = struct {
         fn test1(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
-            const count_ = stdx.ptrAlignCast(*usize, vm.getUserData());
+            const count_ = cy.ptrAlignCast(*usize, vm.getUserData());
             count_.* += 1;
             return cy.Value.None;
         }
         fn test2(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
-            const count_ = stdx.ptrAlignCast(*usize, vm.getUserData());
+            const count_ = cy.ptrAlignCast(*usize, vm.getUserData());
             count_.* += 2;
             return cy.Value.None;
         }
         fn test3(vm: *cy.UserVM, _: [*]const cy.Value, _: u8) cy.Value {
-            const count_ = stdx.ptrAlignCast(*usize, vm.getUserData());
+            const count_ = cy.ptrAlignCast(*usize, vm.getUserData());
             count_.* += 3;
             return cy.Value.None;
         }
@@ -576,8 +576,8 @@ test "Custom modules." {
             defer t.alloc.free(s1);
             defer t.alloc.free(s2);
             const mod = vm.internal().compiler.sema.getModulePtr(modId);
-            mod.setNativeFuncExt(&vm.internal().compiler, s1, true, 0, S.test1) catch fatal();
-            mod.setNativeFuncExt(&vm.internal().compiler, s2, true, 0, S.test2) catch fatal();
+            mod.setNativeFuncExt(vm.internal().compiler, s1, true, 0, S.test1) catch fatal();
+            mod.setNativeFuncExt(vm.internal().compiler, s2, true, 0, S.test2) catch fatal();
             return true;
         }
     }.loader);
@@ -588,7 +588,7 @@ test "Custom modules." {
             const s1 = allocString("test");
             defer t.alloc.free(s1);
             const mod = vm.internal().compiler.sema.getModulePtr(modId);
-            mod.setNativeFuncExt(&vm.internal().compiler, s1, true, 0, S.test3) catch fatal();
+            mod.setNativeFuncExt(vm.internal().compiler, s1, true, 0, S.test3) catch fatal();
             return true;
         }
     }.loader);
@@ -632,9 +632,9 @@ test "Multiple evals persisting state." {
 
     try run.vm.addModuleLoader("core", struct {
         fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
-            const g = stdx.ptrAlignCast(*cy.Value, vm.getUserData()).*;
+            const g = cy.ptrAlignCast(*cy.Value, vm.getUserData()).*;
             const mod = vm.internal().compiler.sema.getModulePtr(modId);
-            mod.setVar(&vm.internal().compiler, "g", g) catch fatal();
+            mod.setVar(vm.internal().compiler, "g", g) catch fatal();
             return true;
         }
     }.loader);
@@ -694,10 +694,10 @@ test "Debug labels." {
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try t.eq(std.meta.isError(res), false);
         const vm = run.vm.internal();
-        try t.eq(vm.compiler.buf.debugLabels.items.len, 1);
-        const actLabel = vm.compiler.buf.debugLabels.items[0];
+        try t.eq(vm.compiler.buf.debugMarkers.items.len, 1);
+        const actLabel = vm.compiler.buf.debugMarkers.items[0];
         try t.eq(actLabel.pc, 6);
-        try t.eqStr(actLabel.getName(), "MyLabel");
+        try t.eqStr(actLabel.getLabelName(), "MyLabel");
     }}.func);
 }
 
@@ -752,14 +752,24 @@ test "User parse errors." {
 }
 
 test "Type specifiers." {
+    if (cy.isWasm) {
+        return;
+    }
     try evalPass(Config.initFileModules("./test/typespec_test.cy"), @embedFile("typespec_test.cy"));
 }
 
 test "Type alias." {
+    if (cy.isWasm) {
+        return;
+    }
     try evalPass(Config.initFileModules("./test/typealias_test.cy"), @embedFile("typealias_test.cy"));
 }
 
 test "Import http spec." {
+    if (cy.isWasm) {
+        return;
+    }
+
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -821,6 +831,10 @@ test "Import http spec." {
 }
 
 test "Imports." {
+    if (cy.isWasm) {
+        return;
+    }
+
     const run = VMrunner.create();
     defer run.destroy();
 
@@ -969,6 +983,10 @@ test "os module" {
         try t.eq(val.asSymbolId(), @intFromEnum(bindings.Symbol.big));
     }
 
+    if (cy.isWasm) {
+        return;
+    }
+
     run.deinit();
 
     try evalPass(.{}, @embedFile("os_test.cy"));
@@ -1056,6 +1074,9 @@ test "Errors." {
 }
 
 test "FFI." {
+    if (cy.isWasm) {
+        return;
+    }
     const S = struct {
         export fn testAdd(a: i32, b: i32) i32 {
             return a + b;
@@ -1543,49 +1564,52 @@ test "Stack trace unwinding." {
         .lineStartPos = 45,
     });
 
-    // panic from another module.
-    res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
-        \\import a 'test_mods/init_panic_error.cy'
-        \\import t 'test'
-        \\t.eq(a.foo, 123)
-    );
-    try t.expectError(res, error.Panic);
-    trace = run.getStackTrace();
-    try t.eq(trace.frames.len, 1);
-    try eqStackFrame(trace.frames[0], .{
-        .name = "main",
-        .chunkId = 1,
-        .line = 0,
-        .col = 9,
-        .lineStartPos = 0,
-    });
-
-    run.deinit();
-
-    // `throw` from another module's var initializer.
-    try eval(.{ .silent = true, .uri = "./test/main.cy" },
-        \\import a 'test_mods/init_throw_error.cy'
-        \\import t 'test'
-        \\t.eq(a.foo, 123)
-    , struct { fn func(run_: *VMrunner, res_: EvalResult) !void {
-        try run_.expectErrorReport(res_, error.Panic,
-            \\panic: error.boom
-            \\
-            \\@AbsPath(test/test_mods/init_throw_error.cy):1:10 main:
-            \\var foo: throw error.boom
-            \\         ^
-            \\
+    if (!cy.isWasm) {
+    
+        // panic from another module.
+        res = run.evalExt(.{ .silent = true, .uri = "./test/main.cy" },
+            \\import a 'test_mods/init_panic_error.cy'
+            \\import t 'test'
+            \\t.eq(a.foo, 123)
         );
-        const trace_ = run_.getStackTrace();
-        try t.eq(trace_.frames.len, 1);
-        try eqStackFrame(trace_.frames[0], .{
+        try t.expectError(res, error.Panic);
+        trace = run.getStackTrace();
+        try t.eq(trace.frames.len, 1);
+        try eqStackFrame(trace.frames[0], .{
             .name = "main",
             .chunkId = 1,
             .line = 0,
             .col = 9,
             .lineStartPos = 0,
         });
-    }}.func);
+
+        run.deinit();
+
+        // `throw` from another module's var initializer.
+        try eval(.{ .silent = true, .uri = "./test/main.cy" },
+            \\import a 'test_mods/init_throw_error.cy'
+            \\import t 'test'
+            \\t.eq(a.foo, 123)
+        , struct { fn func(run_: *VMrunner, res_: EvalResult) !void {
+            try run_.expectErrorReport(res_, error.Panic,
+                \\panic: error.boom
+                \\
+                \\@AbsPath(test/test_mods/init_throw_error.cy):1:10 main:
+                \\var foo: throw error.boom
+                \\         ^
+                \\
+            );
+            const trace_ = run_.getStackTrace();
+            try t.eq(trace_.frames.len, 1);
+            try eqStackFrame(trace_.frames[0], .{
+                .name = "main",
+                .chunkId = 1,
+                .line = 0,
+                .col = 9,
+                .lineStartPos = 0,
+            });
+        }}.func);
+    }
 }
 
 fn eqStackFrame(act: cy.StackFrame, exp: cy.StackFrame) !void {
@@ -2332,7 +2356,7 @@ test "For iterator." {
         \\  print i
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: `iterator` is either missing in `float` or the call signature: iterator(self, 0 args) is unsupported.
+            \\panic: `func iterator(any) any` can not be found in `float`.
             \\
             \\main:1:5 main:
             \\for 123 each i:
@@ -2391,18 +2415,7 @@ test "Function recursion." {
 }
 
 test "Function overloading." {
-    try evalPass(.{},
-        \\import t 'test'
-        \\func foo():
-        \\    return 2 + 2
-        \\func foo(n):
-        \\    return 2 + n
-        \\func foo(n, m):
-        \\    return n * m
-        \\t.eq(foo(), 4)
-        \\t.eq(foo(10), 12)
-        \\t.eq(foo(3, 5), 15)
-    );
+    try evalPass(.{}, @embedFile("function_overload_test.cy"));
 }
 
 test "Static functions." {
@@ -2630,7 +2643,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' + 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected float operand.
+            \\panic: `func $infix+(any, float) any` can not be found in `StaticAstring`.
             \\
             \\main:1:15 main:
             \\var a = 'foo' + 123
@@ -2644,7 +2657,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' - 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected float operand.
+            \\panic: `func $infix-(any, float) any` can not be found in `StaticAstring`.
             \\
             \\main:1:15 main:
             \\var a = 'foo' - 123
@@ -2658,7 +2671,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' * 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected float operand.
+            \\panic: `func $infix*(any, float) any` can not be found in `StaticAstring`.
             \\
             \\main:1:15 main:
             \\var a = 'foo' * 123
@@ -2672,7 +2685,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' / 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected float operand.
+            \\panic: `func $infix/(any, float) any` can not be found in `StaticAstring`.
             \\
             \\main:1:15 main:
             \\var a = 'foo' / 123
@@ -2686,7 +2699,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' % 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected float operand.
+            \\panic: `func $infix%(any, float) any` can not be found in `StaticAstring`.
             \\
             \\main:1:15 main:
             \\var a = 'foo' % 123
@@ -2700,7 +2713,7 @@ test "Arithmetic operators." {
         \\var a = 'foo' ^ 123
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try run.expectErrorReport(res, error.Panic,
-            \\panic: Expected float operand.
+            \\panic: `func $infix^(any, float) any` can not be found in `StaticAstring`.
             \\
             \\main:1:15 main:
             \\var a = 'foo' ^ 123

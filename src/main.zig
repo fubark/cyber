@@ -2,9 +2,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
-const log = stdx.log.scoped(.main);
+const log = cy.log.scoped(.main);
 const build_options = @import("build_options");
-const TraceEnabled = build_options.trace;
 const fmt = @import("fmt.zig");
 
 var verbose = false;
@@ -127,11 +126,10 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     try vm.init(alloc);
     defer vm.deinit(false);
 
-    cy.collectDumpInfo = true;
-
-    var trace: cy.TraceInfo = undefined;
-    vm.setTrace(&trace);
-    const res = vm.compile(path, src, .{ .enableFileModules = true }) catch |err| {
+    const res = vm.compile(path, src, .{
+        .enableFileModules = true,
+        .genDebugFuncMarkers = true,
+    }) catch |err| {
         fmt.panic("unexpected {}\n", &.{fmt.v(err)});
     };
     if (res.err) |err| {
@@ -156,20 +154,9 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     defer alloc.free(src);
 
     cy.verbose = verbose;
-    if (verbose) {
-        cy.collectDumpInfo = true;
-    }
 
     try vm.init(alloc);
     defer vm.deinit(false);
-
-    var trace: cy.TraceInfo = undefined;
-    vm.setTrace(&trace);
-    defer {
-        if (TraceEnabled) {
-            trace.deinit(alloc);
-        }
-    }
 
     _ = vm.eval(path, src, .{
         .singleRun = builtin.mode == .ReleaseFast,
@@ -196,7 +183,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
         try vm.dumpInfo();
-        if (TraceEnabled) {
+        if (cy.Trace) {
             vm.dumpStats();
         }
     }

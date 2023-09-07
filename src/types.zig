@@ -3,13 +3,13 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const rt = cy.rt;
 const sema = cy.sema;
-const ResolvedSymId = sema.ResolvedSymId;
+const SymbolId = sema.SymbolId;
 const fmt = @import("fmt.zig");
 const v = fmt.v;
 const vmc = @import("vm_c.zig");
-const log = stdx.log.scoped(.types);
+const log = cy.log.scoped(.types);
 
-pub const TypeId = ResolvedSymId;
+pub const TypeId = SymbolId;
 
 const bt = BuiltinTypeSymIds;
 pub const BuiltinTypeSymIds = struct {
@@ -33,10 +33,14 @@ pub const BuiltinTypeSymIds = struct {
 
     /// Numeric literals can represent a number or integer.
     pub const NumericLit: TypeId = vmc.SEMA_TYPE_NUMERICLIT;
+    /// Used to indicate no type value.
     pub const Undefined: TypeId = vmc.SEMA_TYPE_UNDEFINED;
     /// Strings that aren't retained.
     pub const StaticString: TypeId = vmc.SEMA_TYPE_STATICSTRING;
     pub const File: TypeId = vmc.SEMA_TYPE_FILE;
+
+    /// A dynamic type does not have a static type.
+    /// This is not the same as bt.Any which is a static type.
     pub const Dynamic: TypeId = vmc.SEMA_TYPE_DYNAMIC;
 
     pub const End: TypeId = 19;
@@ -64,9 +68,9 @@ pub fn isAnyOrDynamic(id: TypeId) bool {
 }
 
 /// Check type constraints on target func signature.
-pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const TypeId, ret: TypeId, targetId: sema.ResolvedFuncSigId) bool {
-    const target = c.sema.getResolvedFuncSig(targetId);
-    // const sigStr = try getResolvedFuncSigTempStr(chunk.compiler, rFuncSigId);
+pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const TypeId, ret: TypeId, targetId: sema.FuncSigId) bool {
+    const target = c.sema.getFuncSig(targetId);
+    // const sigStr = try getFuncSigTempStr(chunk.compiler, funcSigId);
     // log.debug("matching against: {s}", .{sigStr});
 
     // First check params length.
@@ -104,9 +108,9 @@ pub fn isTypeSymCompat(_: *cy.VMcompiler, typeSymId: TypeId, cstrType: TypeId) b
 }
 
 /// Check type constraints on target func signature.
-pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: sema.ResolvedFuncSigId) bool {
-    const src = c.sema.getResolvedFuncSig(id);
-    const target = c.sema.getResolvedFuncSig(targetId);
+pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.FuncSigId, targetId: sema.FuncSigId) bool {
+    const src = c.sema.getFuncSig(id);
+    const target = c.sema.getFuncSig(targetId);
 
     // First check params length.
     if (src.paramLen != target.paramLen) {
@@ -114,8 +118,8 @@ pub fn isFuncSigCompat(c: *cy.VMcompiler, id: sema.ResolvedFuncSigId, targetId: 
     }
 
     // Check each param type. Attempt to satisfy constraints.
-    for (target.params(), src.params()) |cstrSymId, typeSymId| {
-        if (!isTypeSymCompat(c, typeSymId, cstrSymId)) {
+    for (target.params(), src.params()) |cstsymId, typeSymId| {
+        if (!isTypeSymCompat(c, typeSymId, cstsymId)) {
             return false;
         }
     }
@@ -143,7 +147,7 @@ pub fn toRtConcreteType(typeId: TypeId) ?rt.TypeId {
         bt.Fiber => rt.FiberT,
         bt.MetaType => rt.MetaTypeT,
         bt.Error => rt.ErrorT,
-        else => stdx.panicFmt("Unsupported type {}", .{typeId}),
+        else => cy.panicFmt("Unsupported type {}", .{typeId}),
     };
 }
 
@@ -155,17 +159,28 @@ pub fn toNonFlexType(typeId: TypeId) TypeId {
     }
 }
 
-pub fn assertTypeSym(c: *cy.Chunk, symId: ResolvedSymId) !void {
+pub fn assertTypeSym(c: *cy.Chunk, symId: SymbolId) !void {
     if (symId < bt.End) {
         return;
     }
-    const sym = c.compiler.sema.getResolvedSym(symId);
+    const sym = c.compiler.sema.getSymbol(symId);
     if (sym.symT == .object) {
         return;
     } else {
-        const name = sema.getName(c.compiler, sym.key.absResolvedSymKey.nameId);
+        const name = sema.getName(c.compiler, sym.key.resolvedSymKey.nameId);
         return c.reportError("`{}` is not a valid type.", &.{v(name)});
     }
+}
+
+pub fn typeEqualOrChildOf(a: TypeId, b: TypeId) bool {
+    if (b == bt.Any) {
+        return true;
+    }
+    if (a == b) {
+        return true;
+    }
+    // TODO: Check if a is a child type of b.
+    return false;
 }
 
 pub fn isSameType(t1: TypeId, t2: TypeId) bool {
@@ -176,18 +191,11 @@ pub fn isEnumType(c: *cy.VMcompiler, typeId: TypeId) bool {
     if (typeId < bt.End) {
         return false;
     }
-    return c.sema.getResolvedSym(typeId).symT == .enumType;
+    return c.sema.getSymbol(typeId).symT == .enumType;
 }
 
-pub fn isFlexibleType(typeId: TypeId) bool {
-    switch (typeId) {
-        bt.NumericLit => return true,
-        else => return false,
-    }
-}
-
-pub fn isRcCandidateType(c: *cy.VMcompiler, symId: TypeId) bool {
-    switch (symId) {
+pub fn isRcCandidateType(c: *cy.VMcompiler, id: TypeId) bool {
+    switch (id) {
         bt.String,
         bt.Rawstring,
         bt.List,
@@ -207,13 +215,13 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, symId: TypeId) bool {
         bt.Undefined,
         bt.Boolean => return false,
         else => {
-            const sym = c.sema.getResolvedSym(symId);
+            const sym = c.sema.getSymbol(id);
             if (sym.symT == .object) {
                 return true;
             } else if (sym.symT == .enumType) {
                 return false;
             } else {
-                stdx.panicFmt("Unexpected sym type: {} {}", .{symId, sym.symT});
+                cy.panicFmt("Unexpected sym type: {} {}", .{id, sym.symT});
             }
         }
     }

@@ -1,4 +1,5 @@
 const stdx = @import("stdx");
+const build_options = @import("build_options");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const sema = cy.sema;
@@ -44,12 +45,6 @@ pub const RawstringUnionT: TypeId = 31;
 
 pub const TypeKey = cy.hash.KeyU64;
 
-pub const Type = struct {
-    name: []const u8,
-    numFields: u32,
-    rTypeSymId: sema.ResolvedSymId,
-};
-
 pub const FieldTableKey = cy.hash.KeyU64;
 pub const FieldId = u32;
 
@@ -57,38 +52,46 @@ pub const MethodGroupKey = sema.NameSymId;
 pub const TypeMethodGroupKey = cy.hash.KeyU64;
 
 pub const MethodType = enum {
-    untypedFunc,
-    untypedNativeFunc1,
-    untypedNativeFunc2,
+    untyped,
+    untypedNative1,
+    untypedNative2,
+
+    /// Native func that intends to do custom optimization.
+    /// Only funcs with untyped params are supported.
+    optimizing,
 
     /// A func is typed if at least one of the params is not the any type.
     /// The return type does not count.
-    typedFunc,
-    typedNativeFunc,
+    typed,
+    typedNative,
 };
 
 pub const MethodData = extern union {
-    typedNativeFunc: extern struct {
+    typedNative: extern struct {
         ptr: cy.NativeObjFuncPtr,
-        funcSigId: sema.ResolvedFuncSigId,
+        funcSigId: sema.FuncSigId,
         /// Includes self param.
         numParams: u8,
     },
-    untypedNativeFunc1: extern struct {
+    untypedNative1: extern struct {
         ptr: cy.NativeObjFuncPtr,
         numParams: u8,
     },
-    untypedNativeFunc2: extern struct {
+    untypedNative2: extern struct {
         ptr: cy.NativeObjFunc2Ptr,
         numParams: u8,
     },
-    typedFunc: extern struct {
-        funcSigId: sema.ResolvedFuncSigId,
+    optimizing: extern struct {
+        ptr: cy.OptimizingNativeMethod,
+        numParams: u8,
+    },
+    typed: extern struct {
+        funcSigId: sema.FuncSigId,
         pc: u32,
         stackSize: u32,
         numParams: u8,
     },
-    untypedFunc: extern struct {
+    untyped: extern struct {
         numParams: u8,
         pc: u32,
         stackSize: u32,
@@ -97,20 +100,20 @@ pub const MethodData = extern union {
 
 pub const MethodExt = struct {
     /// Signature is kept for every method.
-    funcSigId: sema.ResolvedFuncSigId,
+    funcSigId: sema.FuncSigId,
 };
 
 /// Used to initialize `Method` and `MethodExt`.
 pub const MethodInit = struct {
     type: MethodType,
     data: MethodData,
-    funcSigId: sema.ResolvedFuncSigId,
+    funcSigId: sema.FuncSigId,
 
-    pub fn initUntypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
+    pub fn initUntyped(funcSigId: sema.FuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
         return .{
-            .type = .untypedFunc,
+            .type = .untyped,
             .data = .{
-                .untypedFunc = .{
+                .untyped = .{
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
                     .numParams = numParams,
@@ -120,11 +123,11 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initUntypedNativeFunc1(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
+    pub fn initUntypedNative1(funcSigId: sema.FuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
         return .{
-            .type = .untypedNativeFunc1,
+            .type = .untypedNative1,
             .data = .{
-                .untypedNativeFunc1 = .{
+                .untypedNative1 = .{
                     .ptr = func,
                     .numParams = numParams,
                 },
@@ -133,11 +136,11 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initUntypedNativeFunc2(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFunc2Ptr, numParams: u8) MethodInit {
+    pub fn initUntypedNative2(funcSigId: sema.FuncSigId, func: cy.NativeObjFunc2Ptr, numParams: u8) MethodInit {
         return .{
-            .type = .untypedNativeFunc2,
+            .type = .untypedNative2,
             .data = .{
-                .untypedNativeFunc2 = .{
+                .untypedNative2 = .{
                     .ptr = func,
                     .numParams = numParams,
                 },
@@ -146,11 +149,11 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initTypedFunc(funcSigId: sema.ResolvedFuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
+    pub fn initTyped(funcSigId: sema.FuncSigId, pc: usize, stackSize: u32, numParams: u8) MethodInit {
         return .{
-            .type = .typedFunc,
+            .type = .typed,
             .data = .{
-                .typedFunc = .{
+                .typed = .{
                     .funcSigId = funcSigId,
                     .pc = @intCast(pc),
                     .stackSize = stackSize,
@@ -161,12 +164,25 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initTypedNativeFunc(funcSigId: sema.ResolvedFuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
+    pub fn initTypedNative(funcSigId: sema.FuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
         return .{
-            .type = .typedNativeFunc,
+            .type = .typedNative,
             .data = .{
-                .typedNativeFunc = .{
+                .typedNative = .{
                     .funcSigId = funcSigId,
+                    .ptr = func,
+                    .numParams = numParams,
+                },
+            },
+            .funcSigId = funcSigId,
+        };
+    }
+
+    pub fn initOptimizing(funcSigId: sema.FuncSigId, func: cy.OptimizingNativeMethod, numParams: u8) MethodInit {
+        return .{
+            .type = .optimizing,
+            .data = .{
+                .optimizing = .{
                     .ptr = func,
                     .numParams = numParams,
                 },
@@ -210,7 +226,7 @@ pub const MethodGroupExt = struct {
     mruTypeMethodGroupId: vmc.TypeMethodGroupId,
     mruMethodId: vmc.MethodId,
     /// So debug info can be obtained for a method group with just one method.
-    initialFuncSigId: sema.ResolvedFuncSigId,
+    initialFuncSigId: sema.FuncSigId,
 
     nameLen: u16,
     nameIsOwned: bool,
@@ -245,17 +261,17 @@ pub const FuncSymbolEntry = extern struct {
         nativeFunc1: extern struct {
             /// Used to wrap a native func as a function value.
             typedFlagNumParams: u16,
-            rFuncSigId: u16,
+            funcSigId: u16,
 
             pub fn numParams(self: @This()) u16 {
                 return self.typedFlagNumParams & ~(@as(u16, 1) << 15);
             }
         },
         none: extern struct {
-            rFuncSigId: u32,
+            funcSigId: u32,
         },
         func: extern struct {
-            rFuncSigId: u32,
+            funcSigId: u32,
         },
     } = undefined,
     inner: extern union {
@@ -270,14 +286,14 @@ pub const FuncSymbolEntry = extern struct {
         closure: *cy.Closure,
     },
 
-    pub fn initNativeFunc1(func: cy.NativeFuncPtr, isTyped: bool, numParams: u32, rFuncSigId: sema.ResolvedFuncSigId) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: cy.NativeFuncPtr, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbolEntry {
         const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
             .entryT = @intFromEnum(FuncSymbolEntryType.nativeFunc1),
             .innerExtra = .{
                 .nativeFunc1 = .{
                     .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
-                    .rFuncSigId = @intCast(rFuncSigId),
+                    .funcSigId = @intCast(funcSigId),
                 }
             },
             .inner = .{
@@ -286,12 +302,12 @@ pub const FuncSymbolEntry = extern struct {
         };
     }
 
-    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, rFuncSigId: cy.sema.ResolvedFuncSigId) FuncSymbolEntry {
+    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId) FuncSymbolEntry {
         return .{
             .entryT = @intFromEnum(FuncSymbolEntryType.func),
             .innerExtra = .{
                 .func = .{
-                    .rFuncSigId = rFuncSigId,
+                    .funcSigId = funcSigId,
                 },
             },
             .inner = .{
@@ -333,9 +349,7 @@ test "runtime internals." {
     try t.eq(@sizeOf(Method), 24);
     try t.eq(@sizeOf(MethodExt), 4);
     try t.eq(@sizeOf(TypeMethodGroup), 12);
-    try t.eq(@alignOf(MethodGroup), 8);
     try t.eq(@sizeOf(MethodGroup), 24);
-    try t.eq(@sizeOf(MethodGroupExt), 24);
 
     try t.eq(@sizeOf(FuncSymbolEntry), 16);
     var funcSymEntry: FuncSymbolEntry = undefined;
@@ -345,5 +359,13 @@ test "runtime internals." {
 
     try t.eq(@sizeOf(FieldSymbolMap), 16);
 
-    try t.eq(@sizeOf(Type), 24);
+    if (cy.is32Bit) {
+        try t.eq(@alignOf(MethodGroup), 4);
+        try t.eq(@sizeOf(MethodGroupExt), 20);
+        try t.eq(@sizeOf(vmc.Type), 16);
+    } else {
+        try t.eq(@alignOf(MethodGroup), 8);
+        try t.eq(@sizeOf(MethodGroupExt), 24);
+        try t.eq(@sizeOf(vmc.Type), 24);
+    }
 }

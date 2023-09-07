@@ -14,11 +14,9 @@ const debug = @import("debug.zig");
 const VM = cy.VM;
 const Value = cy.Value;
 
-const UserVMAlign = 8;
-
 /// A simplified VM handle.
 pub const UserVM = struct {
-    dummy: u64 align(UserVMAlign) = undefined,
+    dummy: u64 align(@alignOf(cy.VM)) = undefined,
 
     pub fn init(self: *UserVM, alloc: std.mem.Allocator) !void {
         try self.internal().init(alloc);
@@ -36,8 +34,8 @@ pub const UserVM = struct {
         return @ptrCast(self);
     }
 
-    pub fn ensureUntypedFuncSig(self: *UserVM, numParams: u32) !cy.sema.ResolvedFuncSigId {
-        return cy.sema.ensureResolvedUntypedFuncSig(&self.internal().compiler, numParams);
+    pub fn ensureUntypedFuncSig(self: *UserVM, numParams: u32) !cy.sema.FuncSigId {
+        return cy.sema.ensureResolvedUntypedFuncSig(self.internal().compiler, numParams);
     }
 
     pub fn getUserData(self: *UserVM) ?*anyopaque {
@@ -312,7 +310,7 @@ pub const UserVM = struct {
     pub fn returnPanic(self: *UserVM, msg: []const u8) Value {
         @setCold(true);
         const vm = self.internal();
-        const dupe = vm.alloc.dupe(u8, msg) catch stdx.fatal();
+        const dupe = vm.alloc.dupe(u8, msg) catch cy.fatal();
         vm.curFiber.panicPayload = @as(u64, @intCast(@intFromPtr(dupe.ptr))) | (@as(u64, dupe.len) << 48);
         vm.curFiber.panicType = vmc.PANIC_MSG;
         return Value.Interrupt;
@@ -365,5 +363,5 @@ pub const UserVM = struct {
 };
 
 test "api internals." {
-    try t.eq(@alignOf(UserVM), UserVMAlign);
+    try t.eq(@alignOf(UserVM), @alignOf(UserVM));
 }

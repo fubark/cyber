@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
@@ -23,27 +24,27 @@ pub const Module = struct {
 
     /// The root resolved symbol for this Module.
     /// This is duped from Chunk for user modules, but for builtins, it's only available here.
-    resolvedRootSymId: sema.ResolvedSymId,
+    resolvedRootSymId: sema.SymbolId,
 
     /// Owned absolute specifier path.
     /// If this is a submodule, it is a relative name.
     absSpec: []const u8,
 
     pub fn setNativeTypedFunc(self: *Module, c: *cy.VMcompiler, name: []const u8,
-        sig: []const sema.ResolvedSymId, retSymId: sema.ResolvedSymId, func: cy.NativeFuncPtr) !void {
+        sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.NativeFuncPtr) !void {
         return self.setNativeTypedFuncExt(c, name, false, sig, retSymId, func);
     } 
 
     pub fn setNativeTypedFuncExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool,
-        sig: []const sema.ResolvedSymId, retSymId: sema.ResolvedSymId, func: cy.NativeFuncPtr) !void {
+        sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.NativeFuncPtr) !void {
         const nameId = try sema.ensureNameSymExt(c, name, dupeName);
 
         // AnyType for params and return.
-        const rFuncSigId = try sema.ensureResolvedFuncSig(c, sig, retSymId);
+        const funcSigId = try sema.ensureFuncSig(c, sig, retSymId);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = rFuncSigId,
+                .funcSigId = funcSigId,
             },
         };
         const res = try self.syms.getOrPut(c.alloc, key);
@@ -56,7 +57,7 @@ pub const Module = struct {
             },
         };
         if (!res.found_existing) {
-            try declareFuncForNameSym(c, self, nameId, rFuncSigId);
+            try declareFuncForNameSym(c, self, nameId, funcSigId);
         }
     }
 
@@ -68,11 +69,11 @@ pub const Module = struct {
         const nameId = try sema.ensureNameSymExt(c, name, dupeName);
 
         // AnyType for params and return.
-        const rFuncSigId = try sema.ensureResolvedUntypedFuncSig(c, numParams);
+        const funcSigId = try sema.ensureResolvedUntypedFuncSig(c, numParams);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = rFuncSigId,
+                .funcSigId = funcSigId,
             },
         };
         const res = try self.syms.getOrPut(c.alloc, key);
@@ -85,7 +86,7 @@ pub const Module = struct {
             },
         };
         if (!res.found_existing) {
-            try declareFuncForNameSym(c, self, nameId, rFuncSigId);
+            try declareFuncForNameSym(c, self, nameId, funcSigId);
         }
     }
 
@@ -94,7 +95,7 @@ pub const Module = struct {
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = cy.NullId,
+                .funcSigId = cy.NullId,
             },
         };
         if (self.syms.get(key)) |sym| {
@@ -102,7 +103,7 @@ pub const Module = struct {
         } else return null;
     }
 
-    pub fn setTypedVar(self: *Module, c: *cy.VMcompiler, name: []const u8, typeSymId: sema.ResolvedSymId, val: cy.Value) !void {
+    pub fn setTypedVar(self: *Module, c: *cy.VMcompiler, name: []const u8, typeSymId: sema.SymbolId, val: cy.Value) !void {
         try self.setVarExt(c, name, false, typeSymId, val);
     }
 
@@ -110,12 +111,12 @@ pub const Module = struct {
         try self.setVarExt(c, name, false, bt.Any, val);
     }
 
-    pub fn setVarExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, typeSymId: sema.ResolvedSymId, val: cy.Value) !void {
+    pub fn setVarExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, typeSymId: sema.SymbolId, val: cy.Value) !void {
         const nameId = try sema.ensureNameSymExt(c, name, dupeName);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = cy.NullId,
+                .funcSigId = cy.NullId,
             },
         };
         try self.syms.put(c.alloc, key, .{
@@ -138,7 +139,7 @@ pub const Module = struct {
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = cy.NullId,
+                .funcSigId = cy.NullId,
             },
         };
         try self.syms.put(c.alloc, key, .{
@@ -156,7 +157,7 @@ pub const Module = struct {
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = cy.NullId,
+                .funcSigId = cy.NullId,
             },
         };
         if (self.syms.contains(key)) {
@@ -178,7 +179,7 @@ pub const Module = struct {
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = cy.NullId,
+                .funcSigId = cy.NullId,
             },
         };
         if (self.syms.contains(key)) {
@@ -198,11 +199,11 @@ pub const Module = struct {
     pub fn setUserFunc(self: *Module, c: *cy.VMcompiler, name: []const u8, numParams: u32, declId: sema.FuncDeclId) !void {
         const nameId = try sema.ensureNameSym(c, name);
 
-        const rFuncSigId = try sema.ensureResolvedUntypedFuncSig(c, numParams);
+        const funcSigId = try sema.ensureResolvedUntypedFuncSig(c, numParams);
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = rFuncSigId, 
+                .funcSigId = funcSigId, 
             },
         };
         const res = try self.syms.getOrPut(c.alloc, key);
@@ -215,7 +216,7 @@ pub const Module = struct {
             },
         };
         if (!res.found_existing) {
-            try self.addFuncToSym(c, nameId, rFuncSigId);
+            try self.addFuncToSym(c, nameId, funcSigId);
         }
     }
 
@@ -224,7 +225,7 @@ pub const Module = struct {
         const key = RelModuleSymKey{
             .relModuleSymKey = .{
                 .nameId = nameId,
-                .rFuncSigId = cy.NullId,
+                .funcSigId = cy.NullId,
             },
         };
         try self.syms.put(c.alloc, key, .{
@@ -289,7 +290,7 @@ const ModuleSym = struct {
     symT: ModuleSymType,
     extra: union {
         variable: struct {
-            rTypeSymId: sema.ResolvedSymId,
+            rTypeSymId: sema.SymbolId,
         }
     } = undefined,
     inner: union {
@@ -300,7 +301,7 @@ const ModuleSym = struct {
             val: cy.Value,
         },
         symToOneFunc: struct {
-            rFuncSigId: sema.ResolvedFuncSigId,
+            funcSigId: sema.FuncSigId,
         },
         symToManyFuncs: struct {
             head: *ModuleFuncNode,
@@ -336,7 +337,7 @@ const ModuleSym = struct {
 
 const ModuleFuncNode = struct {
     next: ?*ModuleFuncNode,
-    rFuncSigId: sema.ResolvedFuncSigId,
+    funcSigId: sema.FuncSigId,
 };
 
 pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, chunkId: cy.ChunkId, declId: cy.NodeId) !ModuleId {
@@ -344,7 +345,7 @@ pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, c
     const key = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
-            .rFuncSigId = cy.NullId,
+            .funcSigId = cy.NullId,
         },
     };
     if (c.sema.getModule(modId).syms.contains(key)) {
@@ -370,14 +371,14 @@ pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, c
 }
 
 pub fn declareUserFunc(
-    c: *cy.VMcompiler, modId: ModuleId, name: []const u8, funcSigId: sema.ResolvedFuncSigId,
+    c: *cy.VMcompiler, modId: ModuleId, name: []const u8, funcSigId: sema.FuncSigId,
     declId: sema.FuncDeclId, hasStaticInitializer: bool
 ) !void {
     const nameId = try sema.ensureNameSym(c, name);
     const key = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
-            .rFuncSigId = funcSigId, 
+            .funcSigId = funcSigId, 
         },
     };
     const mod = c.sema.getModulePtr(modId);
@@ -399,12 +400,12 @@ pub fn declareUserFunc(
 }
 
 fn declareFuncForNameSym(
-    c: *cy.VMcompiler, mod: *Module, nameId: sema.NameSymId, funcSigId: sema.ResolvedFuncSigId
+    c: *cy.VMcompiler, mod: *Module, nameId: sema.NameSymId, funcSigId: sema.FuncSigId
 ) !void {
     const key = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
-            .rFuncSigId = cy.NullId,
+            .funcSigId = cy.NullId,
         },
     };
     const res = try mod.syms.getOrPut(c.alloc, key);
@@ -412,12 +413,12 @@ fn declareFuncForNameSym(
         if (res.value_ptr.*.symT == .symToOneFunc) {
             const first = try c.alloc.create(ModuleFuncNode);
             first.* = .{
-                .rFuncSigId = res.value_ptr.*.inner.symToOneFunc.rFuncSigId,
+                .funcSigId = res.value_ptr.*.inner.symToOneFunc.funcSigId,
                 .next = null,
             };
             const new = try c.alloc.create(ModuleFuncNode);
             new.* = .{
-                .rFuncSigId = funcSigId,
+                .funcSigId = funcSigId,
                 .next = first,
             };
             res.value_ptr.* = .{
@@ -431,7 +432,7 @@ fn declareFuncForNameSym(
         } else if (res.value_ptr.*.symT == .symToManyFuncs) {
             const new = try c.alloc.create(ModuleFuncNode);
             new.* = .{
-                .rFuncSigId = funcSigId,
+                .funcSigId = funcSigId,
                 .next = res.value_ptr.*.inner.symToManyFuncs.head,
             };
             res.value_ptr.*.inner.symToManyFuncs.head = new;
@@ -443,7 +444,7 @@ fn declareFuncForNameSym(
             .symT = .symToOneFunc,
             .inner = .{
                 .symToOneFunc = .{
-                    .rFuncSigId = funcSigId,
+                    .funcSigId = funcSigId,
                 },
             },
         };
@@ -454,7 +455,7 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
     const relKey = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
-            .rFuncSigId = cy.NullId,
+            .funcSigId = cy.NullId,
         },
     };
 
@@ -487,7 +488,7 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
 //     const key = RelModuleSymKey{
 //         .relModuleSymKey = .{
 //             .nameId = nameId,
-//             .rFuncSigId = cy.NullId,
+//             .funcSigId = cy.NullId,
 //         },
 //     };
 //     const mod = c.compiler.sema.modules.items[modId];
@@ -496,23 +497,23 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
 //             .symToManyFuncs => {
 //                 var optNode: ?*ModuleFuncNode = modSym.inner.symToManyFuncs.head;
 //                 while (optNode) |node| {
-//                     const funcSig = c.compiler.sema.getResolvedFuncSig(node.rFuncSigId);
+//                     const funcSig = c.compiler.sema.getFuncSig(node.funcSigId);
 //                     if (funcSig.paramLen == numParams) {
 //                         try c.funcCandidateStack.append(c.alloc, .{
 //                             .parentSymId = mod.resolvedRootSymId,
-//                             .funcSigId = node.rFuncSigId,
+//                             .funcSigId = node.funcSigId,
 //                         });
 //                     }
 //                     optNode = node.next;
 //                 }
 //             },
 //             .symToOneFunc => {
-//                 const rFuncSigId = modSym.inner.symToOneFunc.rFuncSigId;
-//                 const funcSig = c.compiler.sema.getResolvedFuncSig(rFuncSigId);
+//                 const funcSigId = modSym.inner.symToOneFunc.funcSigId;
+//                 const funcSig = c.compiler.sema.getFuncSig(funcSigId);
 //                 if (funcSig.paramLen == numParams) {
 //                     try c.funcCandidateStack.append(c.alloc, .{
 //                         .parentSymId = mod.resolvedRootSymId,
-//                         .funcSigId = rFuncSigId,
+//                         .funcSigId = funcSigId,
 //                     });
 //                 }
 //             },
@@ -524,11 +525,11 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
 
 pub fn findModuleSymForDynamicFuncCall(
     chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId,
-) !?sema.ResolvedFuncSigId {
+) !?sema.FuncSigId {
     const relKey = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
-            .rFuncSigId = cy.NullId,
+            .funcSigId = cy.NullId,
         },
     };
 
@@ -539,7 +540,7 @@ pub fn findModuleSymForDynamicFuncCall(
                 return chunk.reportError("Unsupported dynamic call to overloaded symbol.", &.{});
             },
             .symToOneFunc => {
-                return modSym.inner.symToOneFunc.rFuncSigId;
+                return modSym.inner.symToOneFunc.funcSigId;
             },
             else => {
             },
@@ -552,11 +553,11 @@ pub fn findModuleSymForDynamicFuncCall(
 pub fn findModuleSymForFuncCall(
     chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId,
     args: []const types.TypeId, ret: types.TypeId
-) !?sema.ResolvedFuncSigId {
+) !?sema.FuncSigId {
     const relKey = RelModuleSymKey{
         .relModuleSymKey = .{
             .nameId = nameId,
-            .rFuncSigId = cy.NullId,
+            .funcSigId = cy.NullId,
         },
     };
 
@@ -566,16 +567,16 @@ pub fn findModuleSymForFuncCall(
             .symToManyFuncs => {
                 var optNode: ?*ModuleFuncNode = modSym.inner.symToManyFuncs.head;
                 while (optNode) |node| {
-                    if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, node.rFuncSigId)) {
-                        return node.rFuncSigId;
+                    if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, node.funcSigId)) {
+                        return node.funcSigId;
                     }
                     optNode = node.next;
                 }
             },
             .symToOneFunc => {
-                const rFuncSigId = modSym.inner.symToOneFunc.rFuncSigId;
-                if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, rFuncSigId)) {
-                    return rFuncSigId;
+                const funcSigId = modSym.inner.symToOneFunc.funcSigId;
+                if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, funcSigId)) {
+                    return funcSigId;
                 }
             },
             else => {
@@ -600,7 +601,7 @@ pub fn appendModule(c: *cy.VMcompiler, name: []const u8) !ModuleId {
     });
     if (builtin.mode == .Debug) {
         if (c.sema.moduleMap.contains(nameDupe)) {
-            stdx.panicFmt("Duplicate module: {s}", .{nameDupe});
+            cy.panicFmt("Duplicate module: {s}", .{nameDupe});
         }
     }
     try c.sema.moduleMap.put(c.alloc, nameDupe, id);
@@ -608,7 +609,11 @@ pub fn appendModule(c: *cy.VMcompiler, name: []const u8) !ModuleId {
 }
 
 test "module internals" {
-    try t.eq(@sizeOf(ModuleFuncNode), 16);
+    if (cy.is32Bit) {
+        try t.eq(@sizeOf(ModuleFuncNode), 8);
+    } else {
+        try t.eq(@sizeOf(ModuleFuncNode), 16);
+    }
     if (builtin.mode == .Debug) {
         try t.eq(@sizeOf(ModuleSym), 24);
     } else {

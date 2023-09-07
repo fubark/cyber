@@ -3,8 +3,6 @@ const stdx = @import("stdx.zig");
 const builtin = @import("builtin");
 const t = stdx.testing;
 
-const log = stdx.log.scoped(.heap);
-
 const IsWasm = builtin.target.isWasm();
 
 const MeasureMemory = false;
@@ -15,7 +13,7 @@ var wasm_gpa_inited = false;
 pub fn getDefaultAllocator() std.mem.Allocator {
     if (IsWasm) {
         if (!wasm_gpa_inited) {
-            wasm_gpa.init(.{}) catch stdx.fatal();
+            wasm_gpa.init(.{}) catch @panic("error");
             wasm_gpa_inited = true;
         }
         return wasm_gpa.allocator();
@@ -40,7 +38,7 @@ pub fn deinitDefaultAllocator() void {
 
 pub fn getTotalRequestedMemory() usize {
     if (IsWasm or !MeasureMemory) {
-        stdx.panic("unsupported");
+        // @panic("unsupported");
     } else {
         return gpa.?.total_requested_bytes;
     }
@@ -195,7 +193,7 @@ const WasmDefaultAllocator = struct {
 
         const self: * align(@sizeOf(usize)) WasmDefaultAllocator = @ptrCast(ptr);
         if (len == 0) {
-            stdx.panic("TODO: len 0");
+            @panic("TODO: len 0");
         }
         const payload_size = if (len_align == 0) len else b: {
             // len_align is not always a power of two so std.mem.alignForward won't work.
@@ -309,7 +307,7 @@ const WasmDefaultAllocator = struct {
 
     /// Grows the wasm memory by number of pages.
     fn growMemory(self: *WasmDefaultAllocator, num_pages: u32) !void {
-        log.debug("new memory page size {}", .{self.reserved_pages + num_pages});
+        // log.debug("new memory page size {}", .{self.reserved_pages + num_pages});
         const res = self.wasmMemoryGrow(self.next_page_idx + num_pages);
         if (res == -1) {
             return error.OutOfMemory;
@@ -409,7 +407,7 @@ const WasmDefaultAllocator = struct {
         const self: * align(@sizeOf(usize)) WasmDefaultAllocator = @ptrCast(ptr);
         _ = self;
         if (new_len == 0) {
-            stdx.panic("TODO: new_len 0");
+            @panic("TODO: new_len 0");
         }
 
         const new_payload_size = if (len_align == 0) new_len else b: {
@@ -691,10 +689,10 @@ pub const TraceAllocator = struct {
         self.freedMem += buf.len;
     }
 
-    fn dump(self: TraceAllocator) void {
-        log.info("alloc: {}", .{self.allocMem});
-        log.info("freed: {}", .{self.freedMem});
-        log.info("peak: {}", .{self.peakMem});
-        log.info("resize: {}", .{self.resizeMem});
-    }
+    // fn dump(self: TraceAllocator) void {
+        // log.info("alloc: {}", .{self.allocMem});
+        // log.info("freed: {}", .{self.freedMem});
+        // log.info("peak: {}", .{self.peakMem});
+        // log.info("resize: {}", .{self.resizeMem});
+    // }
 };

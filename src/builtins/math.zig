@@ -39,8 +39,8 @@ pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     // Square root of 2; approximately 1.414.
     try b.setVar("sqrt2", bt.Float, Value.initF64(std.math.sqrt2));
 
-    const num1: []const cy.sema.ResolvedSymId = &.{bt.Float};
-    const num2: []const cy.sema.ResolvedSymId = &.{bt.Float, bt.Float};
+    const num1: []const cy.sema.SymbolId = &.{bt.Float};
+    const num2: []const cy.sema.SymbolId = &.{bt.Float, bt.Float};
 
     try b.setFunc("abs",    num1, bt.Float, abs);
     try b.setFunc("acos",   num1, bt.Float, acos);

@@ -9,31 +9,31 @@ const vmc = cy.vmc;
 pub const KeyU64 = extern union {
     val: u64,
     objectMemberKey: extern struct {
-        objSymId: sema.ResolvedSymId,
+        objSymId: sema.SymbolId,
         memberNameId: sema.NameSymId,
     },
-    absResolvedSymKey: extern struct {
-        rParentSymId: u32,
+    resolvedSymKey: extern struct {
+        parentSymId: u32,
         nameId: u32,
     },
-    absResolvedFuncSymKey: extern struct {
-        rSymId: sema.ResolvedSymId,
-        rFuncSigId: sema.ResolvedFuncSigId,
+    resolvedFuncSymKey: extern struct {
+        symId: sema.SymbolId,
+        funcSigId: sema.FuncSigId,
     },
-    relLocalSymKey: extern struct {
+    localSymKey: extern struct {
         nameId: sema.NameSymId,
-        rFuncSigId: sema.ResolvedFuncSigId,
+        funcSigId: cy.Nullable(sema.FuncSigId),
     },
     relModuleSymKey: extern struct {
         nameId: sema.NameSymId,
-        rFuncSigId: sema.ResolvedFuncSigId,
+        funcSigId: sema.FuncSigId,
     },
     rtVarKey: extern struct {
-        rParentSymId: sema.ResolvedSymId,
+        parentSymId: sema.SymbolId,
         nameId: sema.NameSymId,
     },
     rtTypeKey: extern struct {
-        rParentSymId: sema.ResolvedSymId,
+        parentSymId: sema.SymbolId,
         nameId: sema.NameSymId,
     },
     rtTypeMethodGroupKey: extern struct {
@@ -45,19 +45,28 @@ pub const KeyU64 = extern union {
         fieldId: rt.FieldId,
     },
 
-    pub fn initVarKey(rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) KeyU64 {
+    pub fn initLocalSymKey(nameId: sema.NameSymId, funcSigId: ?sema.FuncSigId) KeyU64 {
+        return .{
+            .localSymKey = .{
+                .nameId = nameId,
+                .funcSigId = funcSigId orelse cy.NullId,
+            },
+        };
+    }
+
+    pub fn initVarKey(parentSymId: sema.SymbolId, nameId: sema.NameSymId) KeyU64 {
         return .{
             .rtVarKey = .{
-                .rParentSymId = rParentSymId,
+                .parentSymId = parentSymId,
                 .nameId = nameId,
             }
         };
     }
 
-    pub fn initAbsResolvedSymKey(parentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) KeyU64 {
+    pub fn initResolvedSymKey(parentSymId: sema.SymbolId, nameId: sema.NameSymId) KeyU64 {
         return .{
-            .absResolvedSymKey = .{
-                .rParentSymId = parentSymId,
+            .resolvedSymKey = .{
+                .parentSymId = parentSymId,
                 .nameId = nameId,
             },
         };
@@ -81,10 +90,10 @@ pub const KeyU64 = extern union {
         };
     }
 
-    pub fn initTypeKey(rParentSymId: sema.ResolvedSymId, nameId: sema.NameSymId) KeyU64 {
+    pub fn initTypeKey(parentSymId: sema.SymbolId, nameId: sema.NameSymId) KeyU64 {
         return .{
             .rtTypeKey = .{
-                .rParentSymId = rParentSymId,
+                .parentSymId = parentSymId,
                 .nameId = nameId,
             },
         };

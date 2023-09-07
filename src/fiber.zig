@@ -4,12 +4,13 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
 const vmc = @import("vm_c.zig");
 const rt = cy.rt;
-const log = stdx.log.scoped(.fiber);
+const log = cy.log.scoped(.fiber);
 const Value = cy.Value;
 
 pub const PanicPayload = u64;
@@ -24,8 +25,13 @@ pub const PanicType = enum(u8) {
 };
 
 test "fiber internals." {
-    try t.eq(@sizeOf(vmc.Fiber), 88);
-    try t.eq(@sizeOf(vmc.TryFrame), 16);
+    if (cy.is32Bit) {
+        try t.eq(@sizeOf(vmc.Fiber), 72);
+        try t.eq(@sizeOf(vmc.TryFrame), 12);
+    } else {
+        try t.eq(@sizeOf(vmc.Fiber), 88);
+        try t.eq(@sizeOf(vmc.TryFrame), 16);
+    }
 }
 
 pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSize: u32) linksection(cy.HotSection) !cy.Value {
@@ -99,7 +105,7 @@ pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Val
 
     // Release current fiber.
     const nextFiber = vm.curFiber.prevFiber.?;
-    cy.arc.releaseObject(vm, stdx.ptrAlignCast(*cy.HeapObject, vm.curFiber));
+    cy.arc.releaseObject(vm, cy.ptrAlignCast(*cy.HeapObject, vm.curFiber));
 
     // Set to next fiber.
     vm.curFiber = nextFiber;
@@ -150,19 +156,23 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             log.debug("release on frame {} {} {}", .{framePtr, pc, pc + jump});
             // The yield statement already contains the end locals pc.
             cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, pc + jump);
-        }
 
-        // Unwind stack and release all locals.
-        while (framePtr > 0) {
+            // Prev frame.
             pc = @intCast(getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfoCallInstOffset());
-
-            // Compute next frame ptr offset.
             framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
-            const sym = cy.debug.getDebugSym(vm, pc) orelse return error.NoDebugSym;
-            const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
-            log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
-            if (endLocalsPc != cy.NullId) {
-                cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, endLocalsPc);
+
+            // Unwind stack and release all locals.
+            while (framePtr > 0) {
+                const sym = cy.debug.getDebugSym(vm, pc) orelse return error.NoDebugSym;
+                const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+                log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
+                if (endLocalsPc != cy.NullId) {
+                    cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, endLocalsPc);
+                }
+
+                // Prev frame.
+                pc = @intCast(getInstOffset(vm.ops.ptr, stack[framePtr + 2].retPcPtr) - stack[framePtr + 1].retInfoCallInstOffset());
+                framePtr = @intCast(getStackOffset(stack.ptr, stack[framePtr + 3].retFramePtr));
             }
         }
 

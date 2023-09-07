@@ -4,7 +4,7 @@ const endian = builtin.target.cpu.arch.endian();
 const stdx = @import("stdx");
 const t = stdx.testing;
 const debug = builtin.mode == .Debug;
-const log = stdx.log.scoped(.value);
+const log = cy.log.scoped(.value);
 const cy = @import("cyber.zig");
 const rt = cy.rt;
 const fmt = @import("fmt.zig");
@@ -146,7 +146,7 @@ pub const Value = packed union {
         if (self.isFloat()) {
             return self.asF64();
         } else {
-            return @call(.never_inline, otherToF64, .{self}) catch stdx.fatal();
+            return @call(.never_inline, otherToF64, .{self}) catch cy.fatal();
         }
     }
 
@@ -160,7 +160,7 @@ pub const Value = packed union {
                 const str = obj.ustring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else if (obj.head.typeId == rt.StringSliceT) {
-                const str = obj.stringSlice.getConstSlice();
+                const str = cy.heap.StringSlice.getConstSlice(obj.stringSlice);
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else {
                 log.debug("unsupported conv to number: {}", .{obj.head.typeId});
@@ -209,6 +209,10 @@ pub const Value = packed union {
 
     pub inline fn bothFloats(a: Value, b: Value) bool {
         return a.isFloat() and b.isFloat();
+    }
+
+    pub inline fn bothIntegers(a: Value, b: Value) bool {
+        return a.val & b.val & (TaggedPrimitiveMask | SignMask) == IntegerMask;
     }
 
     pub inline fn isStaticString(self: *const Value) bool {
@@ -406,10 +410,10 @@ pub const Value = packed union {
         return .{ .val = StaticUstringMask | (@as(u64, len) << 35) | start };
     }
 
-    pub inline fn asStaticStringSlice(self: *const Value) stdx.IndexSlice(u32) {
+    pub inline fn asStaticStringSlice(self: *const Value) cy.IndexSlice(u32) {
         const len = (@as(u32, @intCast(self.val >> 32)) & BeforeTagMask) >> 3;
         const start: u32 = @intCast(self.val & 0xffffffff);
-        return stdx.IndexSlice(u32).init(start, start + len);
+        return cy.IndexSlice(u32).init(start, start + len);
     }
 
     pub inline fn floatIsSpecial(val: f64) bool {
@@ -585,23 +589,23 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
         const obj = val.asHeapObject();
         switch (obj.head.typeId) {
             rt.ListT => {
-                const list = stdx.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                const new = cy.heap.allocList(vm, list.items()) catch stdx.fatal();
+                const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
+                const new = cy.heap.allocList(vm, list.items()) catch cy.fatal();
                 for (list.items()) |item| {
                     cy.arc.retain(vm, item);
                 }
                 return new;
             },
             rt.MapT => {
-                const new = cy.heap.allocEmptyMap(vm) catch stdx.fatal();
-                const newMap = stdx.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
+                const new = cy.heap.allocEmptyMap(vm) catch cy.fatal();
+                const newMap = cy.ptrAlignCast(*cy.MapInner, &(new.asHeapObject()).map.inner);
 
-                const map = stdx.ptrAlignCast(*cy.MapInner, &obj.map.inner);
+                const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
                 var iter = map.iterator();
                 while (iter.next()) |entry| {
                     cy.arc.retain(vm, entry.key);
                     cy.arc.retain(vm, entry.value);
-                    newMap.put(vm.alloc, @ptrCast(vm), entry.key, entry.value) catch stdx.fatal();
+                    newMap.put(vm.alloc, @ptrCast(vm), entry.key, entry.value) catch cy.fatal();
                 }
                 return new;
             },
@@ -643,9 +647,9 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 const fields = obj.object.getValuesConstPtr()[0..numFields];
                 var new: Value = undefined;
                 if (numFields <= 4) {
-                    new = cy.heap.allocObjectSmall(vm, obj.head.typeId, fields) catch stdx.fatal();
+                    new = cy.heap.allocObjectSmall(vm, obj.head.typeId, fields) catch cy.fatal();
                 } else {
-                    new = cy.heap.allocObject(vm, obj.head.typeId, fields) catch stdx.fatal();
+                    new = cy.heap.allocObject(vm, obj.head.typeId, fields) catch cy.fatal();
                 }
                 for (fields) |field| {
                     cy.arc.retain(vm, field);

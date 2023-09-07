@@ -5,7 +5,7 @@ const t = stdx.testing;
 const cy = @import("cyber.zig");
 const NodeId = cy.NodeId;
 const Parser = cy.Parser;
-const log = stdx.log.scoped(.cdata);
+const log = cy.log.scoped(.cdata);
 
 pub const EncodeListContext = struct {
     writer: std.ArrayListUnmanaged(u8).Writer,
@@ -560,7 +560,7 @@ pub const DecodeValueIR = struct {
             .number => return .float,
             .true_literal => return .boolean,
             .false_literal => return .boolean,
-            else => stdx.panicFmt("unsupported {}", .{node.node_t}),
+            else => cy.panicFmt("unsupported {}", .{node.node_t}),
         }
     }
 
@@ -596,7 +596,7 @@ pub const DecodeValueIR = struct {
         } else if (node.node_t == .false_literal) {
             return false;
         } else {
-            stdx.panicFmt("Unsupported type: {}", .{node.node_t});
+            cy.panicFmt("Unsupported type: {}", .{node.node_t});
         }
     }
 };
@@ -653,7 +653,7 @@ test "encode" {
             } else if (T == TestListItem) {
                 try ctx.encodeMap(val, encodeItem);
             } else {
-                stdx.panicFmt("unsupported: {s}", .{@typeName(T)});
+                cy.panicFmt("unsupported: {s}", .{@typeName(T)});
             }
         }
     };

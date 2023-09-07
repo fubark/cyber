@@ -4,7 +4,6 @@ const builtin = @import("builtin");
 pub const tracy = @import("tracy.zig");
 
 const UseWasm = builtin.target.cpu.arch == .wasm32;
-const log = stdx.log.scoped(.debug);
 
 pub fn dassert(pred: bool) void {
     if (builtin.mode == .Debug) {
@@ -16,21 +15,6 @@ pub fn assertInRange(val: anytype, min: @TypeOf(val), max: @TypeOf(val)) void {
     if (val < min or val > max) {
         unreachable;
     }
-}
-
-pub fn panicFmt(comptime format: []const u8, args: anytype) noreturn {
-    if (UseWasm) {
-        log.err(format, args);
-    }
-    std.debug.panic(format, args);
-}
-
-pub fn panic(comptime msg: []const u8) noreturn {
-    if (UseWasm) {
-        // @panic can't print message in wasm so we use a logger that can.
-        log.err(msg, .{});
-    }
-    @panic(msg);
 }
 
 // Convenience function to shortcircuit in middle of code.
@@ -52,39 +36,3 @@ pub fn compileErrorFmt(comptime format: []const u8, args: anytype) noreturn {
     @compileError(str);
 }
 
-const EnableTimerTrace = builtin.mode == .Debug;
-
-const TimerTrace = struct {
-    timer: if (EnableTimerTrace) stdx.time.Timer else void,
-
-    pub fn end(self: *TimerTrace) void {
-        if (EnableTimerTrace) {
-            const now = self.timer.read();
-            log.info("time: {d:.3}ms", .{ @as(f32, @floatFromInt(now)) / 1e6 });
-        }
-    }
-
-    pub fn endPrint(self: *TimerTrace, msg: []const u8) void {
-        if (EnableTimerTrace) {
-            const now = self.timer.read();
-            if (builtin.mode == .ReleaseFast) {
-                std.debug.print("{s}: {d:.3}ms\n", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
-            } else {
-                log.info("{s}: {d:.3}ms", .{ msg, @as(f32, @floatFromInt(now)) / 1e6 });
-            }
-        }
-    }
-};
-
-// Simple trace with std Timer.
-pub fn trace() TimerTrace {
-    if (EnableTimerTrace) {
-        return .{
-            .timer = stdx.time.Timer.start() catch unreachable,
-        };
-    } else {
-        return .{
-            .timer = {},
-        };
-    }
-}

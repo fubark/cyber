@@ -1,5 +1,23 @@
 const std = @import("std");
 
+const cy = @import("cyber.zig");
+const log = cy.log.scoped(.utils);
+
+pub fn panicFmt(comptime format: []const u8, args: anytype) noreturn {
+    if (cy.isWasm) {
+        log.err(format, args);
+    }
+    std.debug.panic(format, args);
+}
+
+pub fn panic(comptime msg: []const u8) noreturn {
+    if (cy.isWasm) {
+        // @panic can't print message in wasm so we use a logger that can.
+        log.err(msg, .{});
+    }
+    @panic(msg);
+}
+
 pub fn getHashMapMemSize(comptime K: type, comptime V: type, cap: usize) usize {
     const Header = struct {
         values: [*]V,

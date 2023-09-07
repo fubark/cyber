@@ -148,7 +148,7 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
                 }
             },
             else => {
-                stdx.panicFmt("Unsupported type {}", .{actType});
+                cy.panicFmt("Unsupported type {}", .{actType});
             }
         }
     } else {

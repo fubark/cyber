@@ -2,10 +2,11 @@ const std = @import("std");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const debug = builtin.mode == .Debug;
 
 const cy = @import("cyber.zig");
-const log = stdx.log.scoped(.map);
+const log = cy.log.scoped(.map);
 
 /// The implementation of ValueMap is based on Zig's std.HashMapUnmanaged.
 /// Since keys and values are just cy.Values (8 bytes each), the memory layout can be made more compact.
@@ -340,10 +341,15 @@ pub const ValueMapEntry = struct {
 };
 
 test "map internals." {
+    if (cy.is32Bit) {
+        try t.eq(@alignOf(*ValueMapEntry), 4);
+        try t.eq(@sizeOf(ValueMap), 20);
+    } else {
+        try t.eq(@alignOf(*ValueMapEntry), 8);
+        try t.eq(@sizeOf(ValueMap), 32);
+    }
     try t.eq(@sizeOf(ValueMapEntry), 16);
-    try t.eq(@alignOf(*ValueMapEntry), 8);
     try t.eq(@sizeOf(Metadata), 1);
-    try t.eq(@sizeOf(ValueMap), 32);
 }
 
 /// Metadata for a slot. It can be in three states: empty, used or
@@ -432,7 +438,7 @@ pub const GetOrPutResult = struct {
 //         @setRuntimeSafety(debug);
 //         switch (key.keyT) {
 //             .constStr => return std.hash.Wyhash.hash(0, self.vm.strBuf[key.inner.constStr.start..key.inner.constStr.end]),
-//             .heapStr => stdx.panic("unsupported heapStr"),
+//             .heapStr => cy.panic("unsupported heapStr"),
 //             .number => {
 //                 return std.hash.Wyhash.hash(0, std.mem.asBytes(&key.inner.number));
 //             },
@@ -448,13 +454,13 @@ pub const GetOrPutResult = struct {
 //                     const bStr = self.vm.strBuf[b.inner.constStr.start..b.inner.constStr.end];
 //                     return std.mem.eql(u8, aStr, bStr);
 //                 } else if (b.keyT == .heapStr) {
-//                     stdx.panic("unsupported heapStr");
+//                     cy.panic("unsupported heapStr");
 //                 } else {
 //                     return false;
 //                 }
 //             },
 //             .heapStr => {
-//                 stdx.panic("unsupported heapStr");
+//                 cy.panic("unsupported heapStr");
 //             },
 //             .number => {
 //                 if (b.keyT != .number) {

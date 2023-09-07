@@ -2,13 +2,13 @@ const std = @import("std");
 const build_options = @import("build_options");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
-const fatal = stdx.fatal;
+const fatal = cy.fatal;
 const mi = @import("mimalloc");
 const cy = @import("cyber.zig");
 const rt = cy.rt;
 const Value = cy.Value;
 const t = stdx.testing;
-const log = stdx.log.scoped(.lib);
+const log = cy.log.scoped(.lib);
 const bt = cy.types.BuiltinTypeSymIds;
 
 const c = @cImport({
@@ -20,7 +20,7 @@ export fn cyVmCreate() *cy.UserVM {
     const vm = alloc.create(cy.VM) catch fatal();
     vm.init(alloc) catch fatal();
     if (cy.isWasm) {
-        stdx.log.wasm.init(alloc);
+        cy.log.wasm.init(alloc);
     }
     return @ptrCast(vm);
 }
@@ -28,7 +28,7 @@ export fn cyVmCreate() *cy.UserVM {
 export fn cyVmDestroy(vm: *cy.UserVM) void {
     vm.deinit();
     if (cy.isWasm) {
-        stdx.log.wasm.deinit();
+        cy.log.wasm.deinit();
     }
 }
 
@@ -108,7 +108,7 @@ export fn cyVmGetLastErrorReport(vm: *cy.UserVM) c.CStr {
     const report = vm.allocLastErrorReport() catch fatal();
     defer vm.internal().alloc.free(report);
     if (report.len > tempBuf.len - 1) {
-        stdx.panic("Buffer too small.");
+        cy.panic("Buffer too small.");
     }
     @memcpy(tempBuf[0..report.len], report);
     tempBuf[report.len] = 0;
@@ -126,13 +126,13 @@ export fn cyVmAddModuleLoader(vm: *cy.UserVM, cspec: c.CStr, func: c.CyLoadModul
 export fn cyVmSetModuleFunc(vm: *cy.UserVM, modId: cy.ModuleId, cname: c.CStr, numParams: u32, func: c.CyFunc) void {
     const symName = cname.charz[0..cname.len];
     const mod = vm.internal().compiler.sema.getModulePtr(modId);
-    mod.setNativeFuncExt(&vm.internal().compiler, symName, true, numParams, @ptrCast(func)) catch fatal();
+    mod.setNativeFuncExt(vm.internal().compiler, symName, true, numParams, @ptrCast(func)) catch fatal();
 }
 
 export fn cyVmSetModuleVar(vm: *cy.UserVM, modId: cy.ModuleId, cname: c.CStr, val: c.CyValue) void {
     const symName = cname.charz[0..cname.len];
     const mod = vm.internal().compiler.sema.getModulePtr(modId);
-    mod.setVarExt(&vm.internal().compiler, symName, true, bt.Any, @bitCast(val)) catch fatal();
+    mod.setVarExt(vm.internal().compiler, symName, true, bt.Any, @bitCast(val)) catch fatal();
 }
 
 export fn cyVmRelease(vm: *cy.UserVM, val: Value) void {
@@ -196,8 +196,8 @@ export fn cyValueAllocMap(vm: *cy.UserVM) Value {
 }
 
 export fn cyValueAllocNativeFunc(vm: *cy.UserVM, func: c.CyFunc, numParams: u32) Value {
-    const rFuncSigId = vm.ensureUntypedFuncSig(numParams) catch fatal();
-    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(func), numParams, rFuncSigId, null) catch fatal();
+    const funcSigId = vm.ensureUntypedFuncSig(numParams) catch fatal();
+    return cy.heap.allocNativeFunc1(vm.internal(), @ptrCast(func), numParams, funcSigId, null) catch fatal();
 }
 
 export fn cyValueTagLiteral(vm: *cy.UserVM, str: c.CStr) Value {
@@ -379,8 +379,8 @@ export fn cyListSet(vm: *cy.UserVM, list: Value, idx: usize, val: Value) void {
 
 export fn cyListInsert(vm: *cy.UserVM, list: Value, idx: usize, val: Value) void {
     vm.retain(val);
-    const inner = stdx.ptrAlignCast(*cy.List(Value), &list.asHeapObject().list.list);
-    inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch stdx.fatal();
+    const inner = cy.ptrAlignCast(*cy.List(Value), &list.asHeapObject().list.list);
+    inner.growTotalCapacity(vm.allocator(), inner.len + 1) catch cy.fatal();
     inner.insertAssumeCapacity(idx, val);
 }
 

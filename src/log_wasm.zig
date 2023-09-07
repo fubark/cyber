@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const stdx = @import("stdx.zig");
+const stdx = @import("stdx");
 
 extern fn hostLogDebug(ptr: [*]const u8, len: usize) void;
 extern fn hostLogInfo(ptr: [*]const u8, len: usize) void;

@@ -73,7 +73,7 @@ pub const StdHttpClient = struct {
     }
 
     fn request(ptr: *anyopaque, method: std.http.Method, uri: std.Uri, headers: std.http.Headers) RequestError!Request {
-        const self = stdx.ptrAlignCast(*StdHttpClient, ptr);
+        const self = cy.ptrAlignCast(*StdHttpClient, ptr);
         return stdRequest(&self.client, method, uri, headers, .{});
     }
 
@@ -125,7 +125,7 @@ pub const MockHttpClient = struct {
     }
 
     fn request(ptr: *anyopaque, method: std.http.Method, uri: std.Uri, headers: std.http.Headers) RequestError!Request {
-        const self = stdx.ptrAlignCast(*MockHttpClient, ptr);
+        const self = cy.ptrAlignCast(*MockHttpClient, ptr);
         if (self.retReqError) |err| {
             return err;
         } else {

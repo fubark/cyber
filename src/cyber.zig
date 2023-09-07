@@ -10,10 +10,12 @@ pub const Node = parser.Node;
 pub const NodeType = parser.NodeType;
 pub const NodeId = parser.NodeId;
 pub const BinaryExprOp = parser.BinaryExprOp;
+pub const UnaryOp = parser.UnaryOp;
 pub const Token = parser.Token;
 pub const Tokenizer = parser.Tokenizer;
 pub const TokenizeState = parser.TokenizeState;
 pub const TokenType = parser.TokenType;
+pub const GenBinExprStrategy = parser.GenBinExprStrategy;
 
 pub const sema = @import("sema.zig");
 pub const unescapeString = sema.unescapeString;
@@ -54,8 +56,6 @@ pub const ValueUserTag = value.ValueUserTag;
 pub const vm = @import("vm.zig");
 pub const EvalConfig = vm.EvalConfig;
 pub const VM = vm.VM;
-pub const TraceInfo = vm.TraceInfo;
-pub const OpCount = vm.OpCount;
 pub const EvalError = vm.EvalError;
 pub const buildReturnInfo = vm.buildReturnInfo;
 pub const getStackOffset = vm.getStackOffset;
@@ -139,26 +139,6 @@ pub const StdSection = if (builtin.os.tag == .macos) "__TEXT,.eval.std" else ".e
 pub const CompilerSection = if (builtin.os.tag == .macos) "__TEXT,.compiler" else ".compiler";
 pub const InitSection = if (builtin.os.tag == .macos) "__TEXT,.cyInit" else ".cyInit";
 
-pub export fn initSection() linksection(InitSection) callconv(.C) void {}
-pub export fn compilerSection() linksection(CompilerSection) callconv(.C) void {}
-pub export fn stdSection() linksection(StdSection) callconv(.C) void {}
-pub export fn section() linksection(Section) callconv(.C) void {}
-pub export fn hotSection() linksection(HotSection) callconv(.C) void {}
-
-/// Force the compiler to order linksection first on given function.
-/// Use exported c function so release builds don't remove them.
-pub fn forceSectionDep(_: *const fn() callconv(.C) void) void {} 
-
-pub fn forceSectionDeps() !void {
-    forceSectionDep(hotSection);
-    forceSectionDep(section);
-    forceSectionDep(stdSection);
-    forceSectionDep(compilerSection);
-    forceSectionDep(initSection);
-}
-
-pub var collectDumpInfo = false;
-
 /// Whether to print verbose logs.
 pub export var verbose = false;
 
@@ -171,13 +151,14 @@ pub var silentInternal = false;
 pub const simd = @import("simd.zig");
 
 pub const isWasm = builtin.cpu.arch.isWasm();
+pub const isWasmFreestanding = isWasm and builtin.os.tag == .freestanding;
+pub const is32Bit = build_options.is32Bit;
 pub const hasJit = !isWasm;
 pub const hasStdFiles = !isWasm;
 
 const build_options = @import("build_options");
-pub const TraceEnabled = build_options.trace;
+pub const Trace = build_options.trace;
 pub const TrackGlobalRC = build_options.trackGlobalRC;
-pub const TraceObjects = build_options.traceObjects;
 pub const UseMimalloc = build_options.useMimalloc;
 
 const std = @import("std");
@@ -190,7 +171,23 @@ pub fn Nullable(comptime T: type) type {
 }
 
 pub const NativeObjFuncPtr = *const fn (*UserVM, Value, [*]const Value, u8) Value;
+pub const OptimizingNativeMethod = *const fn (*UserVM, pc: [*]Inst, Value, [*]const Value, u8) void;
 pub const NativeObjFunc2Ptr = *const fn (*UserVM, Value, [*]const Value, u8) ValuePair;
 pub const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const NativeErrorFunc = fn (*UserVM, [*]const Value, u8) anyerror!Value;
 pub const ModuleLoaderFunc = *const fn (*UserVM, ModuleId) bool;
+
+pub const log = @import("log.zig");
+pub const utils = @import("utils.zig");
+pub const IndexSlice = utils.IndexSlice;
+pub const ptrAlignCast = utils.ptrAlignCast;
+pub const panic = utils.panic;
+pub const panicFmt = utils.panicFmt;
+
+pub inline fn unsupported() noreturn {
+    panic("unsupported");
+}
+
+pub inline fn fatal() noreturn {
+    panic("error");
+}

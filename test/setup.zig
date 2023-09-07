@@ -2,9 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
-const fatal = stdx.fatal;
+const fatal = cy.fatal;
 const cy = @import("../src/cyber.zig");
-const log = stdx.log.scoped(.setup);
+const log = cy.log.scoped(.setup);
 
 const UserError = error{Panic, CompileError, TokenError, ParseError};
 
@@ -46,7 +46,6 @@ var testVm: cy.VM = undefined;
 
 pub const VMrunner = struct {
     vm: *cy.UserVM,
-    trace: cy.TraceInfo,
 
     pub fn create() *VMrunner {
         var new = t.alloc.create(VMrunner) catch fatal();
@@ -62,10 +61,8 @@ pub const VMrunner = struct {
     fn init(self: *VMrunner) !void {
         self.* = .{
             .vm = @ptrCast(&testVm),
-            .trace = .{},
         };
         self.vm.init(t.alloc) catch fatal();
-        self.vm.internal().setTrace(&self.trace);
     }
 
     pub fn deinit(self: *VMrunner) void {
@@ -74,11 +71,10 @@ pub const VMrunner = struct {
 
     pub fn deinitExt(self: *VMrunner, checkGlobalRC: bool) void {
         self.vm.deinit();
-        self.trace.deinit(t.alloc);
         if (checkGlobalRC) {
             const rc = self.vm.getGlobalRC();
             if (rc != self.vm.internal().expGlobalRC) {
-                stdx.panicFmt("unreleased refcount from previous eval: {}, exp: {}", .{rc, self.vm.internal().expGlobalRC});
+                cy.panicFmt("unreleased refcount from previous eval: {}, exp: {}", .{rc, self.vm.internal().expGlobalRC});
             }
         }
     }
@@ -125,7 +121,10 @@ pub const VMrunner = struct {
             }
         }
         try self.resetEnv();    
-        return self.vm.eval(config.uri, src, .{ .singleRun = false, .enableFileModules = config.enableFileModules }) catch |err| {
+        return self.vm.eval(config.uri, src, .{
+            .singleRun = false,
+            .enableFileModules = config.enableFileModules,
+        }) catch |err| {
             switch (err) {
                 error.Panic,
                 error.TokenError,
@@ -182,7 +181,6 @@ pub const VMrunner = struct {
             return error.UnreleasedObjects;
         }
         try self.vm.init(t.alloc);
-        self.vm.internal().setTrace(&self.trace);
     }
 
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
@@ -220,8 +218,8 @@ pub const VMrunner = struct {
 
     pub fn valueToIntSlice(self: *VMrunner, val: cy.Value) ![]const i32 {
         _ = self;
-        const obj = stdx.ptrAlignCast(*cy.HeapObject, val.asPointer());
-        const list = stdx.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
+        const obj = cy.ptrAlignCast(*cy.HeapObject, val.asPointer());
+        const list = cy.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
         const dupe = try t.alloc.alloc(i32, list.len);
         for (list.items(), 0..) |it, i| {
             dupe[i] = @intFromFloat(it.toF64());
@@ -251,7 +249,6 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     }
     if (config.debug) {
         cy.verbose = true;
-        cy.collectDumpInfo = true;
         t.setLogLevel(.debug);
     }
     defer {
@@ -260,7 +257,6 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
         }
         if (config.debug) {
             cy.verbose = false;
-            cy.collectDumpInfo = false;
             t.setLogLevel(.warn);
         }
     }
@@ -325,21 +321,23 @@ pub fn eqUserError(alloc: std.mem.Allocator, act: []const u8, expTmpl: []const u
     defer exp.deinit(alloc);
     var pos: usize = 0;
     while (true) {
-        if (std.mem.indexOfPos(u8, expTmpl, pos, "@AbsPath(")) |idx| {
-            if (std.mem.indexOfScalarPos(u8, expTmpl, idx, ')')) |endIdx| {
-                try exp.appendSlice(alloc, expTmpl[pos..idx]);
-                const basePath = try std.fs.realpathAlloc(alloc, ".");
-                defer t.alloc.free(basePath);
-                try exp.appendSlice(alloc, basePath);
-                try exp.append(alloc, std.fs.path.sep);
+        if (!cy.isWasm) {
+            if (std.mem.indexOfPos(u8, expTmpl, pos, "@AbsPath(")) |idx| {
+                if (std.mem.indexOfScalarPos(u8, expTmpl, idx, ')')) |endIdx| {
+                    try exp.appendSlice(alloc, expTmpl[pos..idx]);
+                    const basePath = try std.fs.realpathAlloc(alloc, ".");
+                    defer t.alloc.free(basePath);
+                    try exp.appendSlice(alloc, basePath);
+                    try exp.append(alloc, std.fs.path.sep);
 
-                const relPathStart = exp.items.len;
-                try exp.appendSlice(alloc, expTmpl[idx+9..endIdx]);
-                if (builtin.os.tag == .windows) {
-                    _ = std.mem.replaceScalar(u8, exp.items[relPathStart..], '/', '\\');
+                    const relPathStart = exp.items.len;
+                    try exp.appendSlice(alloc, expTmpl[idx+9..endIdx]);
+                    if (builtin.os.tag == .windows) {
+                        _ = std.mem.replaceScalar(u8, exp.items[relPathStart..], '/', '\\');
+                    }
+
+                    pos = endIdx + 1;
                 }
-
-                pos = endIdx + 1;
             }
         }
         try exp.appendSlice(alloc, expTmpl[pos..]);

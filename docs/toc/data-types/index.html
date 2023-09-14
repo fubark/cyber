@@ -1,29 +1,31 @@
 <!doctype html><html lang=en-us dir=ltr><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Data Types. # In Cyber, there are primitive types and object types. Primitives are copied around by value and don&rsquo;t need additional heap memory or reference counts. Primitives include Booleans, Floats, Integers, Enums, Symbols, Errors, Static Strings, and the none value. Object types include Lists, Maps, Strings, Custom Objects, Lambdas, Fibers, Errors with payloads, Pointers, and several internal object types.
 The none value represents an empty value. This is similar to null in other languages."><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:title" content="Data Types"><meta property="og:description" content="Data Types. # In Cyber, there are primitive types and object types. Primitives are copied around by value and don&rsquo;t need additional heap memory or reference counts. Primitives include Booleans, Floats, Integers, Enums, Symbols, Errors, Static Strings, and the none value. Object types include Lists, Maps, Strings, Custom Objects, Lambdas, Fibers, Errors with payloads, Pointers, and several internal object types.
 The none value represents an empty value. This is similar to null in other languages."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/data-types/"><meta property="article:section" content="docs"><title>Data Types | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.f16cbe20c16a61ee31d06560bf8fa51adc32552ad9119c883f3c607b1736f734.js integrity="sha256-8Wy+IMFqYe4x0GVgv4+lGtwyVSrZEZyIPzxgexc29zQ=" crossorigin=anonymous></script>
+<script defer src=/cyber/en.search.min.117c4fcf0be3fa0b9320c5fe898a1fe9bb74886ebba8d9d943c69ddda3d8a907.js integrity="sha256-EXxPzwvj+guTIMX+iYof6bt0iG67qNnZQ8ad3aPYqQc=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
 <input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/ class=active>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>Data Types</strong>
-<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a><ul><li><a href=#floats>Floats.</a></li><li><a href=#integers>Integers.</a></li><li><a href=#big-numbers>Big Numbers.</a></li></ul></li><li><a href=#strings>Strings.</a><ul><li><a href=#type-string><code>type string</code></a></li><li><a href=#string-interpolation>String Interpolation.</a></li><li><a href=#rawstring>rawstring.</a></li><li><a href=#type-rawstring><code>type rawstring</code></a></li></ul></li><li><a href=#lists>Lists.</a><ul><li><a href=#type-list><code>type List</code></a></li></ul></li><li><a href=#maps>Maps.</a><ul><li><a href=#type-map><code>type Map</code></a></li></ul></li><li><a href=#objects>Objects.</a><ul><li><a href=#methods>Methods.</a></li></ul></li><li><a href=#enums>Enums.</a></li><li><a href=#symbols>Symbols.</a></li></ul></nav></aside></header><article class=markdown><h1 id=data-types>Data Types.
+<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a><ul><li><a href=#integers>Integers.</a></li><li><a href=#floats>Floats.</a></li><li><a href=#big-numbers>Big Numbers.</a></li></ul></li><li><a href=#strings>Strings.</a><ul><li><a href=#type-string><code>type string</code></a></li><li><a href=#string-interpolation>String Interpolation.</a></li><li><a href=#rawstring>rawstring.</a></li><li><a href=#type-rawstring><code>type rawstring</code></a></li></ul></li><li><a href=#lists>Lists.</a><ul><li><a href=#type-list><code>type List</code></a></li></ul></li><li><a href=#maps>Maps.</a><ul><li><a href=#type-map><code>type Map</code></a></li></ul></li><li><a href=#objects>Objects.</a><ul><li><a href=#methods>Methods.</a></li></ul></li><li><a href=#enums>Enums.</a></li><li><a href=#symbols>Symbols.</a></li></ul></nav></aside></header><article class=markdown><h1 id=data-types>Data Types.
 <a class=anchor href=#data-types>#</a></h1><p>In Cyber, there are primitive types and object types. Primitives are copied around by value and don&rsquo;t need additional heap memory or reference counts. Primitives include <a href=#booleans>Booleans</a>, <a href=#floats>Floats</a>, <a href=#integers>Integers</a>, <a href=#enums>Enums</a>, <a href=#symbols>Symbols</a>, <a href=/cyber/docs/toc/errors/>Errors</a>, <a href=#strings>Static Strings</a>, and the <code>none</code> value. Object types include <a href=#lists>Lists</a>, <a href=#maps>Maps</a>, <a href=#strings>Strings</a>, <a href=#objects>Custom Objects</a>, <a href=/cyber/docs/toc/functions/#lambdas>Lambdas</a>, <a href=/cyber/docs/toc/concurrency/#fibers>Fibers</a>, <a href=/cyber/docs/toc/errors/>Errors with payloads</a>, <a href=/cyber/docs/toc/ffi/#pointers>Pointers</a>, and several internal object types.</p><p>The <code>none</code> value represents an empty value. This is similar to null in other languages.</p><h2 id=booleans>Booleans.
 <a class=anchor href=#booleans>#</a></h2><p>Booleans can be <code>true</code> or <code>false</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = true
 if a:
     print &#39;a is true&#39;
 </code></pre><p>When other value types are coerced to the boolean type, the truthy value is determined as follows.</p><ul><li>The <code>none</code> value is <code>false</code>.</li><li>Other objects and values are always <code>true</code>.</li></ul><h2 id=numbers>Numbers.
-<a class=anchor href=#numbers>#</a></h2><h3 id=floats>Floats.
-<a class=anchor href=#floats>#</a></h3><p><code>float</code> is the default number type and has an (IEEE 754) 64-bit floating point format.</p><p>Although a <code>float</code> represents a decimal number, it can also represent integers between -(2<sup>53</sup>-1) and (2<sup>53</sup>-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.</p><p>When a numeric literal is used and the type can not be inferred, it will default to the <code>float</code> type:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
-</code></pre><p>Decimal and scientific notations always produce a <code>float</code> value:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 2.34567
-var b = 123.0e4
-</code></pre><p>Arbitrary values can be converted to a <code>float</code> using the type as a function.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = &#39;12.3&#39;
-var b = float(a) 
-</code></pre><h3 id=integers>Integers.
-<a class=anchor href=#integers>#</a></h3><p><code>int</code> is a number type that represents a 32-bit integer.</p><p>A numeric literal can be used to create an <code>int</code> if the inferred type is an <code>int</code>:</p><pre tabindex=0><code class=language-cy data-lang=cy>a int = 123
+<a class=anchor href=#numbers>#</a></h2><h3 id=integers>Integers.
+<a class=anchor href=#integers>#</a></h3><p><code>int</code> is the default integer type. It has 48-bits and can represent integers in the range -(2<sup>47</sup>) to 2<sup>47</sup>-1.</p><p>When a numeric literal is used and the type can not be inferred, it will default to the <code>int</code> type:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 </code></pre><p>Integer notations always produce a <code>int</code> value:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 0xFF     -- hex.
 a = 0o17         -- octal.
 a = 0b1010       -- binary.
 a = 0u&#39;🐶&#39;       -- UTF-8 rune.
-</code></pre><p>In addition to arithmetic operations, integers can also perform <a href=/cyber/docs/toc/syntax/#bitwise-operators>bitwise operations</a>.</p><h3 id=big-numbers>Big Numbers.
+</code></pre><p>Arbitrary values can be converted to a <code>int</code> using the type as a function.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = &#39;123&#39;
+var b = int(a) 
+</code></pre><p>In addition to arithmetic operations, integers can also perform <a href=/cyber/docs/toc/syntax/#bitwise-operators>bitwise operations</a>.</p><h3 id=floats>Floats.
+<a class=anchor href=#floats>#</a></h3><p><code>float</code> is the default floating point type. It has a (IEEE 754) 64-bit floating point format.</p><p>Although a <code>float</code> represents a decimal number, it can also represent integers between -(2<sup>53</sup>-1) and (2<sup>53</sup>-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.</p><p>A numeric literal can be used to create a <code>float</code> if the inferred type is a <code>float</code>:</p><pre tabindex=0><code class=language-cy data-lang=cy>a float = 123
+</code></pre><p>Decimal and scientific notations always produce a <code>float</code> value:</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 2.34567
+var b = 123.0e4
+</code></pre><p>Arbitrary values can be converted to a <code>float</code> using the type as a function.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = &#39;12.3&#39;
+var b = float(a) 
+</code></pre><h3 id=big-numbers>Big Numbers.
 <a class=anchor href=#big-numbers>#</a></h3><p>Big numbers will be supported in a future version of Cyber.</p><h2 id=strings>Strings.
 <a class=anchor href=#strings>#</a></h2><p>The <code>string</code> type represents a sequence of UTF-8 codepoints, also known as <code>runes</code>. Each rune is stored internally as 1-4 bytes and can be represented as an <code>int</code>. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn&rsquo;t need to care about this detail under normal usage.</p><p>Strings are <strong>immutable</strong>, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the <a href=#string-buffer>StringBuffer</a>.</p><p>A string is always UTF-8 validated. <a href=#rawstring>rawstrings</a> outperform strings but you&rsquo;ll have to validate them and take care of indexing yourself.</p><p>A single line string literal is surrounded in single quotes.</p><pre tabindex=0><code class=language-cy data-lang=cy>var apple = &#39;a fruit&#39;
 </code></pre><p>You can escape the single quote inside the literal or use double quotes.</p><pre tabindex=0><code class=language-cy data-lang=cy>var apple = &#39;Bob\&#39;s fruit&#39;
@@ -66,22 +68,22 @@ print(i + str[i..].findRune(0u&#39;c&#39;))  -- &#34;5&#34;
 func endsWith(self, suffix string) bool
 -- Returns whether the string ends with `suffix`.
 
-func find(self, needle string) float?
+func find(self, needle string) int?
 -- Returns the first index of substring `needle` in the string or `none` if not found.
 
-func findAnyRune(self, set string) float?
+func findAnyRune(self, set string) int?
 -- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
 
-func findRune(self, needle float) float?
+func findRune(self, needle int) int?
 -- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
 
-func insert(self, idx float, str string) string
+func insert(self, idx int, str string) string
 -- Returns a new string with `str` inserted at index `idx`.
 
 func isAscii(self) bool
 -- Returns whether the string contains all ASCII runes.
 
-func len(self) float
+func len(self) int
 -- Returns the number of UTF-8 runes in the string.
 
 func less(self, str string) bool
@@ -93,16 +95,16 @@ func lower(self) string
 func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 
-func repeat(self, n float) string
+func repeat(self, n int) string
 -- Returns a new string with this string repeated `n` times.
 
-func runeAt(self, idx float) float
+func runeAt(self, idx int) int
 -- Returns the UTF-8 rune at index `idx`.
 
-func slice(self, start float, end float) string
+func slice(self, start int, end int) string
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
-func sliceAt(self, idx float) string
+func sliceAt(self, idx int) string
 -- Returns the UTF-8 rune at index `idx` as a single rune string.
 
 func split(self, delim string) List
@@ -128,7 +130,7 @@ print str[0]     -- &#34;a&#34;
 print str[1]     -- error.InvalidRune
 print str[-1]    -- &#34;d&#34;
 </code></pre><h3 id=type-rawstring><code>type rawstring</code>
-<a class=anchor href=#type-rawstring>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>func byteAt(self, idx float) float
+<a class=anchor href=#type-rawstring>#</a></h3><pre tabindex=0><code class=language-cy data-lang=cy>func byteAt(self, idx int) int
 -- Returns the byte value (0-255) at the given index `idx`.
 
 func concat(self, str string) string
@@ -137,25 +139,25 @@ func concat(self, str string) string
 func endsWith(self, suffix string) bool
 -- Returns whether the string ends with `suffix`.
 
-func find(self, needle string) float?
+func find(self, needle string) int?
 -- Returns the first index of substring `needle` in the string or `none` if not found.
 
-func findAnyRune(self, set string) float?
+func findAnyRune(self, set string) int?
 -- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
 
-func findRune(self, needle float) float?
+func findRune(self, needle int) int?
 -- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
 
-func insert(self, idx float, str string) string
+func insert(self, idx int, str string) string
 -- Returns a new string with `str` inserted at index `idx`.
 
-func insertByte(self, idx float, byte float) string
+func insertByte(self, idx int, byte int) string
 -- Returns a new string with `byte` inserted at index `idx`.
 
 func isAscii(self) bool
 -- Returns whether the string contains all ASCII runes.
 
-func len(self) float
+func len(self) int
 -- Returns the number of bytes in the string.
 
 func less(self, str rawstring) bool
@@ -164,19 +166,19 @@ func less(self, str rawstring) bool
 func lower(self) string
 -- Returns this string in lowercase.
 
-func repeat(self, n float) rawstring
+func repeat(self, n int) rawstring
 -- Returns a new rawstring with this rawstring repeated `n` times.
 
 func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`.
 
-func runeAt(self, idx float) float
+func runeAt(self, idx int) int
 -- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
-func slice(self, start float, end float) rawstring
+func slice(self, start int, end int) rawstring
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
-func sliceAt(self, idx float) string
+func sliceAt(self, idx int) string
 -- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func split(self, delim string) List
@@ -229,7 +231,7 @@ for list each it:
 -- Remove an element at a specific index.
 list.remove(1)
 </code></pre><h3 id=type-list><code>type List</code>
-<a class=anchor href=#type-list>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>append(val any) none</code></td><td>Appends a value to the end of the list.</td></tr><tr><td><code>concat(val any) none</code></td><td>Concats the elements of another list to the end of this list.</td></tr><tr><td><code>insert(idx float, val any) none</code></td><td>Inserts a value at index <code>idx</code>.</td></tr><tr><td><code>iterator() Iterator&lt;any></code></td><td>Returns a new iterator over the list elements.</td></tr><tr><td><code>joinString(separator any) string</code></td><td>Returns a new string that joins the elements with <code>separator</code>.</td></tr><tr><td><code>len() float</code></td><td>Returns the number of elements in the list.</td></tr><tr><td><code>pairIterator() PairIterator&lt;float, any></code></td><td>Returns a new pair iterator over the list elements.</td></tr><tr><td><code>remove(idx float) none</code></td><td>Removes an element at index <code>idx</code>.</td></tr><tr><td><code>resize(len float) none</code></td><td>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values are appended to the list. If the new size is smaller, elements at the end of the list are removed.</td></tr><tr><td><code>sort(less func (a, b) bool) none</code></td><td>Sorts the list with the given <code>less</code> function. If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</td></tr></tbody></table><h2 id=maps>Maps.
+<a class=anchor href=#type-list>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>append(val any) none</code></td><td>Appends a value to the end of the list.</td></tr><tr><td><code>concat(val any) none</code></td><td>Concats the elements of another list to the end of this list.</td></tr><tr><td><code>insert(idx int, val any) none</code></td><td>Inserts a value at index <code>idx</code>.</td></tr><tr><td><code>iterator() Iterator&lt;any></code></td><td>Returns a new iterator over the list elements.</td></tr><tr><td><code>joinString(separator any) string</code></td><td>Returns a new string that joins the elements with <code>separator</code>.</td></tr><tr><td><code>len() int</code></td><td>Returns the number of elements in the list.</td></tr><tr><td><code>pairIterator() PairIterator&lt;int, any></code></td><td>Returns a new pair iterator over the list elements.</td></tr><tr><td><code>remove(idx int) none</code></td><td>Removes an element at index <code>idx</code>.</td></tr><tr><td><code>resize(len int) none</code></td><td>Resizes the list to <code>len</code> elements. If the new size is bigger, <code>none</code> values are appended to the list. If the new size is smaller, elements at the end of the list are removed.</td></tr><tr><td><code>sort(less func (a, b) bool) none</code></td><td>Sorts the list with the given <code>less</code> function. If element <code>a</code> should be ordered before <code>b</code>, the function should return <code>true</code> otherwise <code>false</code>.</td></tr></tbody></table><h2 id=maps>Maps.
 <a class=anchor href=#maps>#</a></h2><p>Maps are a builtin type that store key value pairs in dictionaries.</p><pre tabindex=0><code class=language-cy data-lang=cy>var map = { a: 123, b: () =&gt; 5 }
 print map[&#39;a&#39;]
 
@@ -271,7 +273,7 @@ map.remove 123
 for map each val, key:
     print &#39;{key} -&gt; {value}&#39;
 </code></pre><h3 id=type-map><code>type Map</code>
-<a class=anchor href=#type-map>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>iterator() Iterator&lt;any></code></td><td>Returns a new iterator over the map elements.</td></tr><tr><td><code>pairIterator() PairIterator&lt;float, any></code></td><td>Returns a new pair iterator over the map elements.</td></tr><tr><td><code>remove(key any) none</code></td><td>Removes the element with the given key <code>key</code>.</td></tr><tr><td><code>size() float</code></td><td>Returns the number of key-value pairs in the map.</td></tr></tbody></table><h2 id=objects>Objects.
+<a class=anchor href=#type-map>#</a></h3><table><thead><tr><th>Method</th><th>Summary</th></tr></thead><tbody><tr><td><code>iterator() Iterator&lt;any></code></td><td>Returns a new iterator over the map elements.</td></tr><tr><td><code>pairIterator() PairIterator&lt;any, any></code></td><td>Returns a new pair iterator over the map elements.</td></tr><tr><td><code>remove(key any) none</code></td><td>Removes the element with the given key <code>key</code>.</td></tr><tr><td><code>size() int</code></td><td>Returns the number of key-value pairs in the map.</td></tr></tbody></table><h2 id=objects>Objects.
 <a class=anchor href=#objects>#</a></h2><p>Any value that isn&rsquo;t a primitive is an object. You can declare your own object types using the <code>type object</code> declaration. Object types are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.</p><pre tabindex=0><code class=language-cy data-lang=cy>type Node object:
     value
     next
@@ -309,15 +311,15 @@ By default, the symbols generate unique ids starting from 0.</p><pre tabindex=0>
 
 var fruit = Fruit.kiwi
 print fruit       -- &#39;Fruit.kiwi&#39;
-print float(fruit)  -- &#39;3&#39;
+print int(fruit)  -- &#39;3&#39;
 </code></pre><p>When the type of the value is known to be an enum, it can be assigned using a symbol literal.</p><pre tabindex=0><code class=language-cy data-lang=cy>var fruit = Fruit.kiwi
 fruit = #orange
 print(fruit == Fruit.orange)   -- &#39;true&#39;
 </code></pre><h2 id=symbols>Symbols.
 <a class=anchor href=#symbols>#</a></h2><p>Symbol literals begin with <code>#</code>, followed by an identifier. They have their own global unique id.</p><pre tabindex=0><code class=language-cy data-lang=cy>var currency = #usd
 print(currency == #usd)   -- &#39;true&#39;
-print float(currency)       -- &#39;123&#39; or some arbitrary id.
+print int(currency)       -- &#39;123&#39; or some arbitrary id.
 </code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/data-types.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
-<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a><ul><li><a href=#floats>Floats.</a></li><li><a href=#integers>Integers.</a></li><li><a href=#big-numbers>Big Numbers.</a></li></ul></li><li><a href=#strings>Strings.</a><ul><li><a href=#type-string><code>type string</code></a></li><li><a href=#string-interpolation>String Interpolation.</a></li><li><a href=#rawstring>rawstring.</a></li><li><a href=#type-rawstring><code>type rawstring</code></a></li></ul></li><li><a href=#lists>Lists.</a><ul><li><a href=#type-list><code>type List</code></a></li></ul></li><li><a href=#maps>Maps.</a><ul><li><a href=#type-map><code>type Map</code></a></li></ul></li><li><a href=#objects>Objects.</a><ul><li><a href=#methods>Methods.</a></li></ul></li><li><a href=#enums>Enums.</a></li><li><a href=#symbols>Symbols.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
+<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#booleans>Booleans.</a></li><li><a href=#numbers>Numbers.</a><ul><li><a href=#integers>Integers.</a></li><li><a href=#floats>Floats.</a></li><li><a href=#big-numbers>Big Numbers.</a></li></ul></li><li><a href=#strings>Strings.</a><ul><li><a href=#type-string><code>type string</code></a></li><li><a href=#string-interpolation>String Interpolation.</a></li><li><a href=#rawstring>rawstring.</a></li><li><a href=#type-rawstring><code>type rawstring</code></a></li></ul></li><li><a href=#lists>Lists.</a><ul><li><a href=#type-list><code>type List</code></a></li></ul></li><li><a href=#maps>Maps.</a><ul><li><a href=#type-map><code>type Map</code></a></li></ul></li><li><a href=#objects>Objects.</a><ul><li><a href=#methods>Methods.</a></li></ul></li><li><a href=#enums>Enums.</a></li><li><a href=#symbols>Symbols.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
 <script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","error","static","capture","true","false","none","throw","try","catch","recover","enum","type"],type:["float","string","bool","any","int","List","Map","rawstring","symbol","pointer"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

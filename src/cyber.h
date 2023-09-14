@@ -121,7 +121,7 @@ CyHeapObject* cyValueAsHeapObject(CyValue val);
 double cyValueAsFloat(CyValue val);
 bool cyValueToBool(CyValue val);
 bool cyValueAsBool(CyValue val);
-int cyValueAsInteger(CyValue val);
+int64_t cyValueAsInteger(CyValue val);
 uint32_t cyValueAsTagLiteralId(CyValue val);
 CStr cyValueToTempString(CyVM* vm, CyValue val);
 CStr cyValueToTempRawString(CyVM* vm, CyValue val);

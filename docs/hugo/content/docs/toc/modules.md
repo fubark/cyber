@@ -97,25 +97,25 @@ print contents
 
 | Function | Summary |
 | ------------- | ----- |
-| `arrayFill(val any, n float) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
+| `arrayFill(val any, n int) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | `boolean(val any) boolean` | Converts a value to either `true` or `false`. | 
 | `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `error(e (enum \| symbol)) error` | Create an error from an enum or symbol. | 
 | `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
-| `exit(status float) noreturn` | Exits the program with a status code. | 
+| `exit(status int) noreturn` | Exits the program with a status code. | 
 | `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
 | `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
-| `isAlpha(val float) boolean` | Returns whether a rune is an alphabetic letter. | 
-| `isDigit(val float) boolean` | Returns whether a rune is a digit. | 
+| `isAlpha(val int) boolean` | Returns whether a rune is an alphabetic letter. | 
+| `isDigit(val int) boolean` | Returns whether a rune is a digit. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
 | `float(val any) float` | Casts or converts the value to a `float`. Panics if type conversion fails. | 
 | `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyber(src any) map` | Parses Cyber source string into structured map object. Currently, only metadata about static declarations is made available but this will be extended to include an AST. | 
 | `parseCyon(src any) any` | Parses a CYON string into a value. | 
-| `pointer(val any) pointer` | Converts a `float` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
+| `pointer(val any) pointer` | Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
@@ -229,7 +229,7 @@ for map each k, v:
 | `fromCstr(pointer) rawstring` | Returns a `rawstring` from a null terminated C string. |
 | `getEnv(key any) string \| none` | Returns an environment value by key. |
 | `getEnvAll() Map` | Returns all environment entries as a `Map`. |
-| `malloc(size float) pointer` | Allocates `size` bytes of memory and returns a pointer. |
+| `malloc(size int) pointer` | Allocates `size` bytes of memory and returns a pointer. |
 | `milliTime() float` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
 | `openDir(path any) Dir \| error` | Invokes `openDir(path, false)`. |
 | `openDir(path any, iterable boolean) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |

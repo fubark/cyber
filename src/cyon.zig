@@ -55,9 +55,15 @@ pub const EncodeListContext = struct {
         _ = try self.writer.write("\n");
     }
 
-    pub fn encodeNumber(self: *EncodeListContext, f: f64) !void {
+    pub fn encodeFloat(self: *EncodeListContext, f: f64) !void {
         try self.indent();
-        try Common.encodeNumber(self.writer, f);
+        try Common.encodeFloat(self.writer, f);
+        _ = try self.writer.write("\n");
+    }
+
+    pub fn encodeInt(self: *EncodeListContext, i: i48) !void {
+        try self.indent();
+        try Common.encodeInt(self.writer, i);
         _ = try self.writer.write("\n");
     }
 
@@ -113,8 +119,12 @@ pub const EncodeValueContext = struct {
         try Common.encodeBool(self.writer, b);
     }
 
-    pub fn encodeNumber(self: *EncodeValueContext, f: f64) !void {
-        try Common.encodeNumber(self.writer, f);
+    pub fn encodeFloat(self: *EncodeValueContext, f: f64) !void {
+        try Common.encodeFloat(self.writer, f);
+    }
+
+    pub fn encodeInt(self: *EncodeValueContext, i: i48) !void {
+        try Common.encodeInt(self.writer, i);
     }
 
     pub fn encodeString(self: *EncodeValueContext, str: []const u8) !void {
@@ -217,10 +227,17 @@ pub const EncodeMapContext = struct {
         _ = try self.writer.write("\n");
     }
 
-    pub fn encodeNumber(self: *EncodeMapContext, key: []const u8, f: f64) !void {
+    pub fn encodeInt(self: *EncodeMapContext, key: []const u8, i: i48) !void {
         try self.indent();
         _ = try self.writer.print("{s}: ", .{key});
-        try Common.encodeNumber(self.writer, f);
+        try Common.encodeInt(self.writer, i);
+        _ = try self.writer.write("\n");
+    }
+
+    pub fn encodeFloat(self: *EncodeMapContext, key: []const u8, f: f64) !void {
+        try self.indent();
+        _ = try self.writer.print("{s}: ", .{key});
+        try Common.encodeFloat(self.writer, f);
         _ = try self.writer.write("\n");
     }
 
@@ -303,7 +320,11 @@ const Common = struct {
         _ = try writer.print("{}", .{b});
     }
 
-    fn encodeNumber(writer: anytype, f: f64) !void {
+    fn encodeInt(writer: anytype, i: i48) !void {
+        try writer.print("{}", .{i});
+    }
+
+    fn encodeFloat(writer: anytype, f: f64) !void {
         if (cy.Value.floatCanBeInteger(f)) {
             try writer.print("{d:.0}", .{f});
         } else {
@@ -542,6 +563,7 @@ const ValueType = enum {
     list,
     map,
     string,
+    integer,
     float,
     boolean,
 };
@@ -557,18 +579,19 @@ pub const DecodeValueIR = struct {
             .arr_literal => return .list,
             .map_literal => return .map,
             .string => return .string,
-            .number => return .float,
+            .number => return .integer,
+            .float => return .float,
             .true_literal => return .boolean,
             .false_literal => return .boolean,
             else => cy.panicFmt("unsupported {}", .{node.node_t}),
         }
     }
 
-    pub fn asList(self: DecodeValueIR) !DecodeListIR {
+    pub fn getList(self: DecodeValueIR) !DecodeListIR {
         return DecodeListIR.init(self.alloc, self.res, self.exprId);
     }
 
-    pub fn asMap(self: DecodeValueIR) !DecodeMapIR {
+    pub fn getMap(self: DecodeValueIR) !DecodeMapIR {
         return DecodeMapIR.init(self.alloc, self.res, self.exprId);
     }
 
@@ -583,13 +606,19 @@ pub const DecodeValueIR = struct {
         return try buf.toOwnedSlice();
     }
 
-    pub fn asF64(self: DecodeValueIR) !f64 {
+    pub fn getF64(self: DecodeValueIR) !f64 {
         const node = self.res.nodes.items[self.exprId];
         const token_s = self.res.getTokenString(node.start_token);
         return try std.fmt.parseFloat(f64, token_s);
     }
 
-    pub fn asBool(self: DecodeValueIR) bool {
+    pub fn getInt(self: DecodeValueIR) !i48 {
+        const node = self.res.nodes.items[self.exprId];
+        const token_s = self.res.getTokenString(node.start_token);
+        return try std.fmt.parseInt(i48, token_s, 10);
+    }
+
+    pub fn getBool(self: DecodeValueIR) bool {
         const node = self.res.nodes.items[self.exprId];
         if (node.node_t == .true_literal) {
             return true;

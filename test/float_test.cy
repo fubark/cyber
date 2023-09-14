@@ -1,40 +1,28 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
 import t 'test'
+import m 'math'
 
 -- Default notation.
-t.eq(1, 1)
-t.eq(-1, -1)
-t.eq(-(-1), 1)
+t.eq(1.0, 1.0)
+t.eq(-1.0, -1.0)
+t.eq(-(-1.0), 1.0)
 
 -- Scientific notation.
-t.eq(1.23e2, 123)
+t.eq(1.23e2, 123.0)
 t.eqNear(123e-2, 1.23)
 
--- Hex notation.
-t.eq(0xff, 255)
-t.eq(0xFF, 255)
-
--- Octal notation.
-t.eq(0o77, 63)
-
--- Binary notation.
-t.eq(0b11, 3)
-
--- UTF-8 Rune notation.
-t.eq(0u'a', 97)
-t.eq(0u'A', 65)
-t.eq(0u'\'', 39)    -- Escape single quote.
-t.eq(0u'\\', 92)    -- Escape backslash.
-t.eq(0u'🐶', 128054)
-t.eq(0u'🦊', 129418)
-t.eq(0u'\n', 10)
-
 -- float.$call()
-t.eq(float(100), 100)
+t.eq(float(100), 100.0)
 t.eq(float(100.1), 100.1)
-t.eq(float('100'), 100)
+t.eq(float('100'), 100.0)
 t.eq(float('100.1'), 100.1)
-t.eq(float(none), 0)
-t.eq(float(true), 1)
-t.eq(float(false), 0)
+t.eq(float(none), 0.0)
+t.eq(float(true), 1.0)
+t.eq(float(false), 0.0)
+
+-- Infinity.
+t.eq(1.0 / 0, m.inf)
+
+-- NaN.
+t.eq(m.isNaN(0.0 * (1.0 / 0)), true)

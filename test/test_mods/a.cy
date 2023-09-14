@@ -24,9 +24,9 @@ func barNoExport():
 -- Test that there is no main block execution for imported modules.
 panic(#ExecutedModuleMain)
 
-func declAssign(val) float = toFloat
-func toFloat(val) float:
-    return float(val)
+func declAssign(val) int = toInt
+func toInt(val) int:
+    return int(val)
 
 var initOnce: incInitOnce(initOnceCount)
 var initOnceCount: 0
@@ -44,8 +44,8 @@ var funcDep: func ():
 func sameFuncName():
     return 123
 
-func useFloat(a):
-    return toFloat(a)
+func useInt(a):
+    return toInt(a)
 
 type Vec2 object:
     x float

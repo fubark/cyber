@@ -27,10 +27,15 @@ pub const ByteCodeBuffer = struct {
     /// Maps bytecode insts back to source code.
     /// Contains entries ordered by `pc`. 
     debugTable: std.ArrayListUnmanaged(DebugSym),
+    debugTempIndexTable: std.ArrayListUnmanaged(u32),
 
     /// Ordered labels by `pc` for debugging only.
     debugMarkers: std.ArrayListUnmanaged(DebugMarker),
-    
+
+    /// Unwinding temp graph.
+    unwindTempRegs: std.ArrayListUnmanaged(u8),
+    unwindTempPrevIndexes: std.ArrayListUnmanaged(u32),
+
     /// The required stack size for the main frame.
     mainStackSize: u32,
 
@@ -43,8 +48,11 @@ pub const ByteCodeBuffer = struct {
             .strBuf = .{},
             .strMap = .{},
             .debugTable = .{},
+            .debugTempIndexTable = .{},
             .debugMarkers = .{},
             .mconsts = &.{},
+            .unwindTempRegs = .{},
+            .unwindTempPrevIndexes = .{},
         };
         // Perform big allocation for instruction buffer for more consistent heap allocation.
         try new.ops.ensureTotalCapacityPrecise(alloc, 4096);
@@ -57,7 +65,10 @@ pub const ByteCodeBuffer = struct {
         self.strBuf.deinit(self.alloc);
         self.strMap.deinit(self.alloc);
         self.debugTable.deinit(self.alloc);
+        self.debugTempIndexTable.deinit(self.alloc);
         self.debugMarkers.deinit(self.alloc);
+        self.unwindTempRegs.deinit(self.alloc);
+        self.unwindTempPrevIndexes.deinit(self.alloc);
     }
 
     pub fn clear(self: *ByteCodeBuffer) void {
@@ -66,7 +77,10 @@ pub const ByteCodeBuffer = struct {
         self.strBuf.clearRetainingCapacity();
         self.strMap.clearRetainingCapacity();
         self.debugTable.clearRetainingCapacity();
+        self.debugTempIndexTable.clearRetainingCapacity();
         self.debugMarkers.clearRetainingCapacity();
+        self.unwindTempRegs.clearRetainingCapacity();
+        self.unwindTempPrevIndexes.clearRetainingCapacity();
     }
 
     pub inline fn len(self: *ByteCodeBuffer) usize {
@@ -125,13 +139,14 @@ pub const ByteCodeBuffer = struct {
         });
     }
 
-    pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32) !void {
+    pub fn pushDebugSym(self: *ByteCodeBuffer, pc: usize, file: u32, loc: u32, frameLoc: u32, unwindTempIdx: u32) !void {
         try self.debugTable.append(self.alloc, .{
             .pc = @intCast(pc),
             .loc = loc,
-            .file = file,
+            .file = @intCast(file),
             .frameLoc = frameLoc,
         });
+        try self.debugTempIndexTable.append(self.alloc, unwindTempIdx);
     }
 
     pub fn pushOp(self: *ByteCodeBuffer, code: OpCode) !void {
@@ -187,8 +202,12 @@ pub const ByteCodeBuffer = struct {
         }
     }
 
-    pub fn pushOperands(self: *ByteCodeBuffer, operands: []const Inst) !void {
-        try self.ops.appendSlice(self.alloc, operands);
+    pub fn pushOperands(self: *ByteCodeBuffer, operands: []const u8) !void {
+        const start = self.ops.items.len;
+        try self.ops.resize(self.alloc, self.ops.items.len + operands.len);
+        for (operands, 0..) |operand, i| {
+            self.ops.items[start+i] = .{ .val = operand };
+        }
     }
 
     pub fn setOpArgU16(self: *ByteCodeBuffer, idx: usize, arg: u16) void {
@@ -290,6 +309,12 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const local = pc[1].val;
             const dst = pc[2].val;
             fmt.printStderr("{} {} local={}, dst={}", &.{v(pcOffset), v(code), v(local), v(dst)});
+        },
+        .callObjNativeFuncIC => {
+            const startLocal = pc[1].val;
+            const numArgs = pc[2].val;
+            const numRet = pc[3].val;
+            fmt.printStderr("{} {} startLocal={}, numArgs={}, numRet={}", &.{v(pcOffset), v(code), v(startLocal), v(numArgs), v(numRet)});
         },
         .callObjSym => {
             const startLocal = pc[1].val;
@@ -393,7 +418,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const negOffset = @as(*const align(1) u16, @ptrCast(pc + 5)).*;
             fmt.printStderr("{} {} counter={}, step={}, end={}, userCounter={}, negOffset={}", &.{v(pcOffset), v(code), v(counter), v(step), v(end), v(userCounter), v(negOffset)});
         },
-        .index => {
+        .indexList => {
             const recv = pc[1].val;
             const index = pc[2].val;
             const dst = pc[3].val;
@@ -483,7 +508,7 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const retLocal = pc[2].val;
             fmt.printStderr("{} {} fiberLocal={}, retLocal={}", &.{v(pcOffset), v(code), v(fiberLocal), v(retLocal) });
         },
-        .slice => {
+        .sliceList => {
             const recv = pc[1].val;
             const start = pc[2].val;
             const end = pc[3].val;
@@ -494,6 +519,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const symId = @as(*const align(1) u16, @ptrCast(pc + 1)).*;
             const dst = pc[3].val;
             fmt.printStderr("{} {} sym={} dst={}", &.{v(pcOffset), v(code), v(symId), v(dst)});
+        },
+        .pushTry => {
+            const errDst = pc[1].val;
+            const catchPcOffset = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
+            fmt.printStderr("{} {} errDst={} catchPcOffset={}", &.{v(pcOffset), v(code), v(errDst), v(catchPcOffset)});
         },
         .stringTemplate => {
             const startLocal = pc[1].val;
@@ -566,7 +596,7 @@ pub const Inst = packed struct {
     }
 };
 
-pub const DebugSym = struct {
+pub const DebugSym = extern struct {
     /// Start position of an inst.
     pc: u32,
 
@@ -662,7 +692,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .copyReleaseDst,
         .copyRetainRelease,
         .constI8,
-        .constI8Int,
         .jump,
         .coyield,
         .coresume,
@@ -684,16 +713,9 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .pushTry,
         .setIndex,
         .setIndexRelease,
-        .index,
-        .reverseIndex,
         .jumpNotNone,
         .jumpCond,
         .setField,
-        .less,
-        .lessInt,
-        .greater,
-        .lessEqual,
-        .greaterEqual,
         .compare,
         .compareNot,
         .list,
@@ -712,7 +734,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
             return 4 + numEntries * 2;
         },
         .callTypeCheck,
-        .slice,
         .object,
         .objectSmall => {
             return 5;
@@ -749,6 +770,17 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .callFuncIC => {
             return CallSymInstLen;
         },
+        .lessFloat,
+        .greaterFloat,
+        .lessEqualFloat,
+        .greaterEqualFloat,
+        .lessInt,
+        .greaterInt,
+        .lessEqualInt,
+        .greaterEqualInt,
+        .sliceList,
+        .indexList,
+        .indexMap,
         .addFloat,
         .subFloat,
         .mulFloat,
@@ -781,11 +813,7 @@ pub const OpCode = enum(u8) {
     /// Copies a constant value from `consts` to a dst local.
     /// [constIdx u16] [dst]
     constOp = vmc.CodeConstOp,
-
-    /// Sets an immediate i8 value as a number to a dst local.
     constI8 = vmc.CodeConstI8,
-    /// Sets an immediate i8 value as an integer to a dst local.
-    constI8Int = vmc.CodeConstI8Int,
     addFloat = vmc.CodeAddFloat,
     subFloat = vmc.CodeSubFloat,
     /// Push boolean onto register stack.
@@ -806,11 +834,8 @@ pub const OpCode = enum(u8) {
 
     copyRetainSrc = vmc.CodeCopyRetainSrc,
 
-    /// [leftLocal] [indexLocal] Retains the result of an index operation.
-    index = vmc.CodeIndex,
-
-    /// [leftLocal] [indexLocal] Retains the result of a reverse index operation.
-    reverseIndex = vmc.CodeReverseIndex,
+    indexList = vmc.CodeIndexList,
+    indexMap = vmc.CodeIndexMap,
 
     /// First operand points the first elem and also the dst local. Second operand contains the number of elements.
     list = vmc.CodeList,
@@ -818,7 +843,7 @@ pub const OpCode = enum(u8) {
     /// Const key indexes follow the size operand.
     map = vmc.CodeMap,
     mapEmpty = vmc.CodeMapEmpty,
-    slice = vmc.CodeSlice,
+    sliceList = vmc.CodeSliceList,
     /// Pops top register, if value evals to false, jumps the pc forward by an offset.
     jumpNotCond = vmc.CodeJumpNotCond,
     jumpCond = vmc.CodeJumpCond,
@@ -854,11 +879,14 @@ pub const OpCode = enum(u8) {
     lambda = vmc.CodeLambda,
     closure = vmc.CodeClosure,
     compare = vmc.CodeCompare,
-    less = vmc.CodeLess,
-    // lessNumber,
-    greater = vmc.CodeGreater,
-    lessEqual = vmc.CodeLessEqual,
-    greaterEqual = vmc.CodeGreaterEqual,
+    lessFloat = vmc.CodeLessFloat,
+    greaterFloat = vmc.CodeGreaterFloat,
+    lessEqualFloat = vmc.CodeLessEqualFloat,
+    greaterEqualFloat = vmc.CodeGreaterEqualFloat,
+    lessInt = vmc.CodeLessInt,
+    greaterInt = vmc.CodeGreaterInt,
+    lessEqualInt = vmc.CodeLessEqualInt,
+    greaterEqualInt = vmc.CodeGreaterEqualInt,
 
     mulFloat = vmc.CodeMulFloat,
     divFloat = vmc.CodeDivFloat,
@@ -920,7 +948,6 @@ pub const OpCode = enum(u8) {
     modInt = vmc.CodeModInt,
     powInt = vmc.CodePowInt,
     negInt = vmc.CodeNegInt,
-    lessInt = vmc.CodeLessInt,
     forRangeInit = vmc.CodeForRangeInit,
     forRange = vmc.CodeForRange,
     forRangeReverse = vmc.CodeForRangeReverse,
@@ -963,11 +990,12 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 104);
+    try t.eq(std.enums.values(OpCode).len, 106);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);
     try t.eq(@sizeOf(DebugMarker), 16);
+    try t.eq(@sizeOf(DebugSym), 16);
 
     try t.eq(@offsetOf(ByteCodeBuffer, "alloc"), @offsetOf(vmc.ByteCodeBuffer, "alloc"));
     try t.eq(@offsetOf(ByteCodeBuffer, "mainStackSize"), @offsetOf(vmc.ByteCodeBuffer, "mainStackSize"));

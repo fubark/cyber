@@ -108,19 +108,25 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const b = ModuleBuilder.init(self.compiler, undefined);
 
     // Builtin methods.
-    self.@"$prefix~MGID" = try b.ensureMethodGroup("$prefix~");
-    self.@"$prefix-MGID" = try b.ensureMethodGroup("$prefix-");
-    self.@"$infix+MGID" = try b.ensureMethodGroup("$infix+");
-    self.@"$infix-MGID" = try b.ensureMethodGroup("$infix-");
-    self.@"$infix*MGID" = try b.ensureMethodGroup("$infix*");
-    self.@"$infix/MGID" = try b.ensureMethodGroup("$infix/");
-    self.@"$infix%MGID" = try b.ensureMethodGroup("$infix%");
-    self.@"$infix^MGID" = try b.ensureMethodGroup("$infix^");
-    self.@"$infix&MGID" = try b.ensureMethodGroup("$infix&");
-    self.@"$infix|MGID" = try b.ensureMethodGroup("$infix|");
-    self.@"$infix||MGID" = try b.ensureMethodGroup("$infix||");
-    self.@"$infix<<MGID" = try b.ensureMethodGroup("$infix<<");
-    self.@"$infix>>MGID" = try b.ensureMethodGroup("$infix>>");
+    self.indexMGID = try b.ensureMethodGroup("$index");
+    self.sliceMGID = try b.ensureMethodGroup("$slice");
+    self.@"infix<MGID" = try b.ensureMethodGroup("$infix<");
+    self.@"infix<=MGID" = try b.ensureMethodGroup("$infix<=");
+    self.@"infix>MGID" = try b.ensureMethodGroup("$infix>");
+    self.@"infix>=MGID" = try b.ensureMethodGroup("$infix>=");
+    self.@"infix+MGID" = try b.ensureMethodGroup("$infix+");
+    self.@"infix-MGID" = try b.ensureMethodGroup("$infix-");
+    self.@"infix*MGID" = try b.ensureMethodGroup("$infix*");
+    self.@"infix/MGID" = try b.ensureMethodGroup("$infix/");
+    self.@"infix%MGID" = try b.ensureMethodGroup("$infix%");
+    self.@"infix^MGID" = try b.ensureMethodGroup("$infix^");
+    self.@"infix&MGID" = try b.ensureMethodGroup("$infix&");
+    self.@"infix|MGID" = try b.ensureMethodGroup("$infix|");
+    self.@"infix||MGID" = try b.ensureMethodGroup("$infix||");
+    self.@"infix<<MGID" = try b.ensureMethodGroup("$infix<<");
+    self.@"infix>>MGID" = try b.ensureMethodGroup("$infix>>");
+    self.@"prefix~MGID" = try b.ensureMethodGroup("$prefix~");
+    self.@"prefix-MGID" = try b.ensureMethodGroup("$prefix-");
     const add = try b.ensureMethodGroup("add");
     const append = try b.ensureMethodGroup("append");
     const byteAt = try b.ensureMethodGroup("byteAt");
@@ -216,46 +222,59 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     rsym = self.compiler.sema.getSymbol(bt.Integer);
     sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("$call", &.{ bt.Any }, bt.Integer, integerCall);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$prefix~MGID", &.{ bt.Any }, bt.Integer, intBitwiseNot);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$prefix-MGID", &.{ bt.Any }, bt.Integer, intNeg);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, intAdd);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix-MGID", &.{ bt.Any, bt.Any }, bt.Integer, intSub);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix*MGID", &.{ bt.Any, bt.Any }, bt.Integer, intMul);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix/MGID", &.{ bt.Any, bt.Any }, bt.Integer, intDiv);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix%MGID", &.{ bt.Any, bt.Any }, bt.Integer, intMod);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix^MGID", &.{ bt.Any, bt.Any }, bt.Integer, intPow);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix&MGID", &.{ bt.Any, bt.Any }, bt.Integer, intBitwiseAnd);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix|MGID", &.{ bt.Any, bt.Any }, bt.Integer, intBitwiseOr);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix||MGID", &.{ bt.Any, bt.Any }, bt.Integer, intBitwiseXor);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix<<MGID", &.{ bt.Any, bt.Any }, bt.Integer, intBitwiseLeftShift);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"$infix>>MGID", &.{ bt.Any, bt.Any }, bt.Integer, intBitwiseRightShift);
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"prefix~MGID", &.{ bt.Any }, bt.Integer, intBitwiseNot);
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"prefix-MGID", &.{ bt.Any }, bt.Integer, intNeg);
+    // Inlined opcodes allow the right arg to be dynamic so the compiler can gen more of those.
+    // So for now, the runtime signature reflects that.
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessEqualInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterEqualInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.addInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.addInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.addInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.subInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.mulInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.divInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.modInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.powInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix&MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseAnd));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix|MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseOr));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix||MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseXor));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<<MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseLeftShift));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>>MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseRightShift));
 
     id = try self.addBuiltinType("float", bt.Float);
     std.debug.assert(id == rt.FloatT);
     rsym = self.compiler.sema.getSymbol(bt.Float);
     sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("$call", &.{ bt.Any }, bt.Float, floatCall);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$prefix-MGID", &.{ bt.Any }, bt.Float, floatNeg);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$infix+MGID", &.{ bt.Any, bt.Any }, bt.Float, floatAdd);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$infix-MGID", &.{ bt.Any, bt.Any }, bt.Float, floatSub);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$infix*MGID", &.{ bt.Any, bt.Any }, bt.Float, floatMul);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$infix/MGID", &.{ bt.Any, bt.Any }, bt.Float, floatDiv);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$infix%MGID", &.{ bt.Any, bt.Any }, bt.Float, floatMod);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"$infix^MGID", &.{ bt.Any, bt.Any }, bt.Float, floatPow);
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessEqualFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterEqualFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"prefix-MGID", &.{ bt.Any }, bt.Float, floatNeg);
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.addFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.subFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.mulFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.divFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.modFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.powFloat));
 
     id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
 
+    try b.addOptimizingMethod(rt.ListT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, binOp(.indexList));
     try b.addMethod(rt.ListT, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
     try b.addMethod(rt.ListT, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
     try b.addMethod(rt.ListT, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
-    try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Float, bt.Any}, bt.Any, listInsert);
+    try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Integer, bt.Any}, bt.Any, listInsert);
     try b.addMethod(rt.ListT, self.iteratorMGID, &.{bt.Any}, bt.Any, listIterator);
     try b.addMethod(rt.ListT, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
-    try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Float, listLen);
+    try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Integer, listLen);
     try b.addMethod(rt.ListT, self.pairIteratorMGID, &.{bt.Any}, bt.Any, listIterator);
-    try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Float}, bt.Any, listRemove);
-    try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Float}, bt.Any, listResize);
+    try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Integer}, bt.Any, listRemove);
+    try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Integer}, bt.Any, listResize);
     try b.addMethod(rt.ListT, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
 
     id = try self.addBuiltinType("ListIterator", cy.NullId);
@@ -265,8 +284,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
+    try b.addOptimizingMethod(rt.MapT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, binOp(.indexMap));
     try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
-    try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Float, mapSize);
+    try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Integer, mapSize);
     try b.addMethod(rt.MapT, self.iteratorMGID,     &.{ bt.Any }, bt.Any, mapIterator);
     try b.addMethod(rt.MapT, self.pairIteratorMGID, &.{ bt.Any }, bt.Any, mapIterator);
 
@@ -301,27 +321,29 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             else => unreachable,
         };
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.String, stringAppend(tag));
-        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCharAt(tag));
-        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCodeAt(tag));
+        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCharAt(tag));
+        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCodeAt(tag));
         try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.String, stringConcat(tag));
         try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
         try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
         try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
-        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Float }, bt.Any, stringFindRune(tag));
+        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Integer }, bt.Any, stringFindRune(tag));
         try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
         try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
         try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
-        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Float }, bt.Any, stringIndexCode(tag));
-        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Float, bt.Any }, bt.String, stringInsert(tag));
+        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Integer }, bt.Any, stringIndexCode(tag));
+        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Integer, bt.Any }, bt.String, stringInsert(tag));
         try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
-        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Float, stringLen(tag));
+        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Integer, stringLen(tag));
         try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
         try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.String, stringLower(tag));
         try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.String, stringReplace(tag));
-        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Float }, bt.Any, stringRepeat(tag));
-        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringRuneAt(tag));
-        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Float, bt.Float }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Float }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Integer }, bt.Any, stringRepeat(tag));
+        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringRuneAt(tag));
+        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, self.sliceMGID, &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, self.indexMGID, &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
         try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
         try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
         try b.addMethod(typeId, trim,         &.{ bt.Any, bt.Symbol, bt.Any }, bt.Any, stringTrim(tag));
@@ -347,31 +369,33 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
             else => unreachable,
         };
         try b.addMethod(typeId, append,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringAppend(tag));
-        try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Float }, bt.Any,
+        try b.addMethod(typeId, byteAt,       &.{ bt.Any, bt.Integer }, bt.Integer,
             if (tag == .rawstring) rawStringByteAt else rawStringSliceByteAt);
-        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCharAt(tag));
-        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringCodeAt(tag));
+        try b.addMethod(typeId, charAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCharAt(tag));
+        try b.addMethod(typeId, codeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringCodeAt(tag));
         try b.addMethod(typeId, concat,       &.{ bt.Any, bt.Any }, bt.Rawstring, stringConcat(tag));
         try b.addMethod(typeId, endsWith,     &.{ bt.Any, bt.Any }, bt.Boolean, stringEndsWith(tag));
         try b.addMethod(typeId, find,         &.{ bt.Any, bt.Any }, bt.Any, stringFind(tag));
         try b.addMethod(typeId, findAnyRune,  &.{ bt.Any, bt.Any }, bt.Any, stringFindAnyRune(tag));
-        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Float }, bt.Any, stringFindRune(tag));
+        try b.addMethod(typeId, findRune,     &.{ bt.Any, bt.Integer }, bt.Any, stringFindRune(tag));
         try b.addMethod(typeId, index,        &.{ bt.Any, bt.Any }, bt.Any, stringIndex(tag));
         try b.addMethod(typeId, indexChar,    &.{ bt.Any, bt.Any }, bt.Any, stringIndexChar(tag));
         try b.addMethod(typeId, indexCharSet, &.{ bt.Any, bt.Any }, bt.Any, stringIndexCharSet(tag));
-        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Float }, bt.Any, stringIndexCode(tag));
-        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Float, bt.Any }, bt.Any, stringInsert(tag));
-        try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Float, bt.Float }, bt.Any,
+        try b.addMethod(typeId, indexCode,    &.{ bt.Any, bt.Integer }, bt.Any, stringIndexCode(tag));
+        try b.addMethod(typeId, insert,       &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringInsert(tag));
+        try b.addMethod(typeId, insertByte,   &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any,
             if (tag == .rawstring) rawStringInsertByte else rawStringSliceInsertByte);
         try b.addMethod(typeId, isAscii,      &.{ bt.Any }, bt.Boolean, stringIsAscii(tag));
-        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Float, stringLen(tag));
+        try b.addMethod(typeId, len,          &.{ bt.Any }, bt.Integer, stringLen(tag));
         try b.addMethod(typeId, less,         &.{ bt.Any, bt.Any }, bt.Boolean, stringLess(tag));
         try b.addMethod(typeId, lower,        &.{ bt.Any }, bt.Rawstring, stringLower(tag));
-        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Float }, bt.Any, stringRepeat(tag));
+        try b.addMethod(typeId, repeat,       &.{ bt.Any, bt.Integer }, bt.Any, stringRepeat(tag));
         try b.addMethod(typeId, replace,      &.{ bt.Any, bt.Any, bt.Any }, bt.Rawstring, stringReplace(tag));
-        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Float }, bt.Any, stringRuneAt(tag));
-        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Float, bt.Float }, bt.Any, stringSlice(tag));
-        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Float }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, runeAt,       &.{ bt.Any, bt.Integer }, bt.Any, stringRuneAt(tag));
+        try b.addMethod(typeId, slice,        &.{ bt.Any, bt.Integer, bt.Integer }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, self.sliceMGID, &.{ bt.Any, bt.Integer, bt.Any }, bt.Any, stringSlice(tag));
+        try b.addMethod(typeId, sliceAt,      &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
+        try b.addMethod(typeId, self.indexMGID, &.{ bt.Any, bt.Integer }, bt.Any, stringSliceAt(tag));
         try b.addMethod(typeId, split,        &.{ bt.Any, bt.Any }, bt.List, stringSplit(tag));
         try b.addMethod(typeId, startsWith,   &.{ bt.Any, bt.Any }, bt.Boolean, stringStartsWith(tag));
         try b.addMethod(typeId, toString,     &.{ bt.Any }, bt.Any,
@@ -400,7 +424,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     rsym = self.compiler.sema.getSymbol(bt.Pointer);
     sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("$call", &.{ bt.Any }, bt.Pointer, pointerCall);
-    try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Float, pointerValue);
+    try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Integer, pointerValue);
 
     id = try self.addBuiltinType("File", bt.File);
     std.debug.assert(id == rt.FileT);
@@ -408,11 +432,11 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
         try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, fileIterator);
         try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, fileNext);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Float }, bt.Any, fileRead);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Integer }, bt.Any, fileRead);
         try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Float }, bt.Any, fileSeek);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Float }, bt.Any, fileSeekFromCur);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Float }, bt.Any, fileSeekFromEnd);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Integer }, bt.Any, fileSeek);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Integer }, bt.Any, fileSeekFromCur);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Integer }, bt.Any, fileSeekFromEnd);
         try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, fileStreamLines1);
@@ -421,11 +445,11 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
         try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Float }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Float }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
         try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
@@ -454,7 +478,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("MetaType", bt.MetaType);
     std.debug.assert(id == rt.MetaTypeT);
-    try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Float, metatypeId);
+    try b.addMethod(rt.MetaTypeT, idSym, &.{ bt.Any }, bt.Integer, metatypeId);
 
     id = try self.addBuiltinType("any", bt.Any);
     std.debug.assert(id == rt.AnyT);
@@ -537,11 +561,6 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
 
 fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    const compare = args[0];
-    defer {
-        vm.releaseObject(obj);
-        vm.release(compare);
-    }
     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
         lessFn: Value,
@@ -568,9 +587,8 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linkse
 }
 
 fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index: i64 = @intFromFloat(args[0].asF64());
+    const index: i64 = @intCast(args[0].asInteger());
     const list = recv.asHeapObject();
-    defer vm.releaseObject(list);
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
@@ -581,10 +599,9 @@ fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
 }
 
 fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index: i64 = @intFromFloat(args[0].asF64());
+    const index: i64 = @intCast(args[0].asInteger());
     const value = args[1];
     const list = recv.asHeapObject();
-    defer vm.releaseObject(list);
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
@@ -601,17 +618,13 @@ fn listAdd(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksec
 
 fn listAppend(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
+    vm.retain(args[0]);
     obj.list.append(vm.allocator(), args[0]);
-    vm.releaseObject(obj);
     return Value.None;
 }
 
 fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
     const items = obj.list.items();
     if (items.len > 0) {
         var sepCharLen: u32 = undefined;
@@ -676,10 +689,6 @@ fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) link
 
 fn listConcat(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
     const list = args[0].asHeapObject();
     for (list.list.items()) |it| {
         vm.retain(it);
@@ -688,17 +697,15 @@ fn listConcat(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     return Value.None;
 }
 
-fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
-    _ = args;
+fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
         defer obj.listIter.nextIdx += 1;
         const val = list.list.ptr[obj.listIter.nextIdx];
         vm.retain(val);
         return .{
-            .left = Value.initF64(@floatFromInt(obj.listIter.nextIdx)),
+            .left = Value.initInt(@intCast(obj.listIter.nextIdx)),
             .right = val,
         };
     } else return .{
@@ -707,10 +714,8 @@ fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
     };
 }
 
-fn listIteratorNext(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    _ = args;
+fn listIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
         defer obj.listIter.nextIdx += 1;
@@ -722,14 +727,14 @@ fn listIteratorNext(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) li
 
 fn listIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    // Don't need to release recv since it's retained by the iterator.
+    vm.retainObject(obj);
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
 fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size: u32 = @intFromFloat(args[0].asF64());
+    const size: u32 = @intCast(args[0].asInteger());
     if (inner.len < size) {
         const oldLen = inner.len;
         inner.resize(vm.allocator(), size) catch cy.fatal();
@@ -743,19 +748,17 @@ fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
         }
         inner.resize(vm.allocator(), size) catch cy.fatal();
     }
-    vm.releaseObject(list);
     return Value.None;
 }
 
 fn mapIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) Value {
     const obj = recv.asHeapObject();
-    // Don't need to release recv since it's retained by the iterator.
+    vm.retainObject(obj);
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
 fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
@@ -772,7 +775,6 @@ fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
 
 fn mapIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.value);
@@ -780,29 +782,23 @@ fn mapIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
     } else return Value.None;
 }
 
-fn mapSize(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+fn mapSize(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    vm.releaseObject(obj);
-    return Value.initF64(@floatFromInt(inner.size));
+    return Value.initInt(@intCast(inner.size));
 }
 
 fn mapRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(@ptrCast(vm), args[0]);
     return Value.None;
 }
 
-fn listLen(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
+fn listLen(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    vm.releaseObject(list);
-    return Value.initF64(@floatFromInt(inner.len));
+    return Value.initInt(@intCast(inner.len));
 }
 
 // Keep as reference in case resume should be a function call.
@@ -840,15 +836,13 @@ fn errorValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     }
 }
 
-fn pointerValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
+fn pointerValue(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
-    return Value.initF64(@floatFromInt(@intFromPtr(obj.pointer.ptr)));
+    return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
 }
 
 fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     const fiber = recv.asPointer(*vmc.Fiber);
-    defer vm.releaseObject(cy.ptrAlignCast(*cy.HeapObject, fiber));
 
     if (vm.internal().curFiber == fiber) {
         return Value.initSymbol(@intFromEnum(Symbol.running));
@@ -866,9 +860,6 @@ pub fn stringUpper(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-            }
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 const new = vm.allocUnsetAstringObject(str.len) catch fatal();
@@ -895,9 +886,6 @@ pub fn stringLower(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-            }
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 const new = vm.allocUnsetAstringObject(str.len) catch fatal();
@@ -924,10 +912,6 @@ pub fn stringLess(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             if (isRawStringObject(T)) {
                 var right: []const u8 = undefined;
@@ -950,23 +934,20 @@ pub fn stringLen(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-            }
             if (isAstringObject(T, obj)) {
                 if (T == .astring) {
-                    return Value.initF64(@floatFromInt(obj.astring.len));
+                    return Value.initInt(@intCast(obj.astring.len));
                 } else if (T == .staticAstring) {
-                    return Value.initF64(@floatFromInt(obj.len()));
+                    return Value.initInt(@intCast(obj.len()));
                 } else if (T == .slice) {
-                    return Value.initF64(@floatFromInt(obj.stringSlice.len));
+                    return Value.initInt(@intCast(obj.stringSlice.len));
                 } else fatal();
             } else if (isUstringObject(T, obj)) {
-                return Value.initF64(@floatFromInt(getStringCharLen(T, vm, obj)));
+                return Value.initInt(@intCast(getStringCharLen(T, vm, obj)));
             } else if (T == .rawstring) {
-                return Value.initF64(@floatFromInt(obj.rawstring.len));
+                return Value.initInt(@intCast(obj.rawstring.len));
             } else if (T == .rawSlice) {
-                return Value.initF64(@floatFromInt(obj.rawstringSlice.len));
+                return Value.initInt(@intCast(obj.rawstringSlice.len));
             } else fatal();
         }
     };
@@ -987,14 +968,13 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
-            const idx: i32 = @intFromFloat(args[0].toF64());
+            var idx = args[0].asInteger();
 
             if (isAstringObject(T, obj)) {
+                if (idx < 0) {
+                    idx = @as(i48, @intCast(str.len)) + idx;
+                }
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
@@ -1006,6 +986,9 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return vm.allocAstring(str[uidx..uidx + 1]) catch fatal();
                 }
             } else if (isUstringObject(T, obj)) {
+                if (idx < 0) {
+                    idx = @as(i48, @intCast(getStringCharLen(T, vm, obj))) + idx;
+                }
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
@@ -1025,6 +1008,9 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return vm.allocUstring(slice, 1) catch fatal();
                 }
             } else if (isRawStringObject(T)) {
+                if (idx < 0) {
+                    idx = @as(i48, @intCast(str.len)) + idx;
+                }
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
@@ -1058,14 +1044,13 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
-            const idx: i32 = @intFromFloat(args[0].asF64());
+            const idx = args[0].asInteger();
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
-                return Value.initF64(@floatFromInt(str[@intCast(idx)]));
+                return Value.initInt(@intCast(str[@intCast(idx)]));
             } else if (isUstringObject(T, obj)) {
                 if (idx < 0 or idx >= getStringCharLen(T, vm, obj)) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1077,7 +1062,7 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 
                 const cp = std.unicode.utf8Decode(slice) catch cy.fatal();
                 setUstringMruChar(T, vm, obj, uidx, start);
-                return Value.initF64(@floatFromInt(cp));
+                return Value.initInt(@intCast(cp));
             } else if (isRawStringObject(T)) {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1085,7 +1070,7 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 const uidx: u32 = @intCast(idx);
                 if (cy.utf8CharSliceAt(str, uidx)) |slice| {
                     const cp = std.unicode.utf8Decode(slice) catch cy.fatal();
-                    return Value.initF64(@floatFromInt(cp));
+                    return Value.initInt(@intCast(cp));
                 } else {
                     return prepareThrowSymbol(vm, .InvalidRune);
                 }
@@ -1096,14 +1081,14 @@ fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
 }
 
 fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val: Value) Value {
-    const index: i64 = @intFromFloat(indexv.asF64());
+    const index: i48 = indexv.asInteger();
     if (index < 0 or index > str.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     } 
-    const byte: u8 = @intFromFloat(val.asF64());
+    const byte: u8 = @intCast(val.asInteger());
     const new = vm.allocUnsetRawStringObject(str.len + 1) catch cy.fatal();
     const buf = new.rawstring.getSlice();
-    const uidx: u32 = @intCast(index);
+    const uidx: usize = @intCast(index);
     std.mem.copy(u8, buf[0..uidx], str[0..uidx]);
     buf[uidx] = byte;
     std.mem.copy(u8, buf[uidx+1..], str[uidx..]);
@@ -1112,14 +1097,12 @@ fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val
 
 fn rawStringInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const str = obj.rawstring.getConstSlice();
     return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
 
 fn rawStringSliceInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const str = obj.rawstringSlice.getConstSlice();
     return rawStringInsertByteCommon(vm, str, args[0], args[1]);
 }
@@ -1162,14 +1145,9 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                if (isHeapString(T)) {
-                    vm.releaseObject(obj);
-                }
-            }
             const str = getStringSlice(T, vm, obj);
 
-            const n: i32 = @intFromFloat(args[0].asF64());
+            const n = args[0].asInteger();
             if (n < 0) {
                 return prepareThrowSymbol(vm, .InvalidArgument);
             }
@@ -1332,10 +1310,6 @@ fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             const delim = vm.valueToTempString(args[0]);
 
@@ -1399,10 +1373,6 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[1]);
-            }
 
             const str = getStringSlice(T, vm, obj);
             const trimRunes = vm.valueToTempString(args[1]);
@@ -1437,11 +1407,6 @@ fn stringReplace(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-                vm.release(args[1]);
-            }
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 if (astringReplaceCommon(vm, str, args[0], args[1])) |val| {
@@ -1522,17 +1487,23 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
 
             if (isAstringObject(T, obj)) {
-                var start: i32 = @intFromFloat(args[0].asF64());
+                var start = args[0].asInteger();
                 if (start < 0) {
-                    start = @as(i32, @intCast(str.len)) + start;
+                    start = @as(i48, @intCast(str.len)) + start;
                 }
-                var end: i32 = if (args[1].isNone()) @intCast(str.len) else @intFromFloat(args[1].asF64());
+                var end: i48 = undefined;
+                if (args[1].isNone()) {
+                    end = @intCast(str.len);
+                } else if (args[1].isInteger()) {
+                    end = args[1].asInteger();
+                } else {
+                    return prepareThrowSymbol(vm, .InvalidArgument);
+                }
                 if (end < 0) {
-                    end = @as(i32, @intCast(str.len)) + end;
+                    end = @as(i48, @intCast(str.len)) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1548,13 +1519,13 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
-                var start: i32 = @intFromFloat(args[0].asF64());
+                var start: i48 = args[0].asInteger();
                 if (start < 0) {
-                    start = @as(i32, @intCast(charLen)) + start;
+                    start = @as(i48, @intCast(charLen)) + start;
                 }
-                var end: i32 = if (args[1].isNone()) @intCast(charLen) else @intFromFloat(args[1].asF64());
+                var end: i48 = if (args[1].isNone()) @intCast(charLen) else args[1].asInteger();
                 if (end < 0) {
-                    end = @as(i32, @intCast(charLen)) + end;
+                    end = @as(i48, @intCast(charLen)) + end;
                 }
                 if (start < 0 or end > charLen or end < start) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1574,13 +1545,13 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, obj) catch fatal();
                 }
             } else if (isRawStringObject(T)) {
-                var start: i32 = @intFromFloat(args[0].asF64());
+                var start: i48 = args[0].asInteger();
                 if (start < 0) {
-                    start = @as(i32, @intCast(str.len)) + start;
+                    start = @as(i48, @intCast(str.len)) + start;
                 }
-                var end: i32 = if (args[1].isNone()) @intCast(str.len) else @intFromFloat(args[1].asF64());
+                var end: i48 = if (args[1].isNone()) @intCast(str.len) else args[1].asInteger();
                 if (end < 0) {
-                    end = @as(i32, @intCast(str.len)) + end;
+                    end = @as(i48, @intCast(str.len)) + end;
                 }
                 if (start < 0 or end > str.len or end < start) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1608,10 +1579,6 @@ fn stringConcat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 var rcharLen: u32 = undefined;
@@ -1639,12 +1606,8 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[1]);
-            }
             const str = getStringSlice(T, vm, obj);
-            const idx: i32 = @intFromFloat(args[0].asF64());
+            const idx = args[0].asInteger();
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx > str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1702,10 +1665,6 @@ fn stringFind(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             const needle = vm.valueToTempString(args[0]);
             if (needle.len > 0 and needle.len <= str.len) {
@@ -1714,18 +1673,18 @@ fn stringFind(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     if (cy.string.indexOfChar(str, needle[0])) |idx| {
                         if (isUstringObject(T, obj)) {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@floatFromInt(charIdx));
+                            return Value.initInt(@intCast(charIdx));
                         } else {
-                            return Value.initF64(@floatFromInt(idx));
+                            return Value.initInt(@intCast(idx));
                         }
                     }
                 }
                 if (cy.string.indexOf(str, needle)) |idx| {
                     if (isUstringObject(T, obj)) {
                         const charIdx = cy.toUtf8CharIdx(str, idx);
-                        return Value.initF64(@floatFromInt(charIdx));
+                        return Value.initInt(@intCast(charIdx));
                     } else {
-                        return Value.initF64(@floatFromInt(idx));
+                        return Value.initInt(@intCast(idx));
                     }
                 }
             }
@@ -1739,10 +1698,6 @@ fn stringStartsWith(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             const needle = vm.valueToTempString(args[0]);
             return Value.initBool(std.mem.startsWith(u8, str, needle));
@@ -1755,10 +1710,6 @@ fn stringEndsWith(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             const needle = vm.valueToTempString(args[0]);
             return Value.initBool(std.mem.endsWith(u8, str, needle));
@@ -1774,7 +1725,6 @@ fn rawStringSliceToString(vm: *cy.UserVM, recv: Value, args: [*]const Value, nar
 
 fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const str = obj.rawstringSlice.getConstSlice();
     if (cy.validateUtf8(str)) |size| {
         if (size == str.len) {
@@ -1794,7 +1744,6 @@ fn rawStringToString(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u
 
 fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     const str = obj.rawstring.getConstSlice();
     if (cy.validateUtf8(str)) |size| {
         if (size == str.len) {
@@ -1809,26 +1758,24 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
 
 fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
-    const idx: i32 = @intFromFloat(args[0].asF64());
+    const idx: i48 = args[0].asInteger();
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     }
     const str = obj.rawstringSlice.getConstSlice();
-    const uidx: u32 = @intCast(idx);
-    return Value.initF64(@floatFromInt(str[uidx]));
+    const uidx: usize = @intCast(idx);
+    return Value.initInt(@intCast(str[uidx]));
 }
 
 fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
-    const idx: i32 = @intFromFloat(args[0].asF64());
+    const idx: i48 = args[0].asInteger();
     if (idx < 0 or idx >= obj.rawstring.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     }
     const str = obj.rawstring.getConstSlice();
-    const uidx: u32 = @intCast(idx);
-    return Value.initF64(@floatFromInt(str[uidx]));
+    const uidx: usize = @intCast(idx);
+    return Value.initInt(@intCast(str[uidx]));
 }
 
 fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
@@ -1846,14 +1793,13 @@ fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
 
 fn stringIsAscii(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+        fn inner(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             if (T == .staticAstring) {
                 return Value.True;
             } else if (T == .staticUstring) {
                 return Value.False;
             } else {
                 const obj = getStringObject(T, recv);
-                defer releaseStringObject(T, vm, obj);
                 if (isAstringObject(T, obj)) {
                     return Value.True;
                 } else if (isUstringObject(T, obj)) {
@@ -1881,10 +1827,6 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer {
-                releaseStringObject(T, vm, obj);
-                vm.release(args[0]);
-            }
             const str = getStringSlice(T, vm, obj);
             var setCharLen: u32 = undefined;
             const set = vm.valueToTempString2(args[0], &setCharLen);
@@ -1894,7 +1836,7 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (isAstringObject(T, obj)) {
                     if (setIsAscii) {
                         if (@call(.never_inline, cy.indexOfAsciiSet, .{str, set})) |idx| {
-                            return Value.initF64(@floatFromInt(idx));
+                            return Value.initInt(@intCast(idx));
                         }
                     } else {
                         // Filter ascii codepoints.
@@ -1913,7 +1855,7 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         }
                         if (tempBuf.len > 0) {
                             if (cy.indexOfAsciiSet(str, tempBuf.items())) |idx| {
-                                return Value.initF64(@floatFromInt(idx));
+                                return Value.initInt(@intCast(idx));
                             }
                         }
                     }
@@ -1921,7 +1863,7 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     if (setIsAscii) {
                         if (cy.indexOfAsciiSet(str, set)) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@floatFromInt(charIdx));
+                            return Value.initInt(@intCast(charIdx));
                         }
                     } else {
                         // Slow. Checks every utf8 code and applies min.
@@ -1938,13 +1880,13 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                             }
                         }
                         if (minIndex != NullId) {
-                            return Value.initF64(@floatFromInt(minIndex));
+                            return Value.initInt(@intCast(minIndex));
                         }
                     }
                 } else if (isRawStringObject(T)) {
                     if (setIsAscii) {
                         if (cy.indexOfAsciiSet(str, set)) |idx| {
-                            return Value.initF64(@floatFromInt(idx));
+                            return Value.initInt(@intCast(idx));
                         }
                     } else {
                         // Slow. Checks every utf8 code and applies min.
@@ -1961,7 +1903,7 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                             }
                         }
                         if (minIndex != NullId) {
-                            return Value.initF64(@floatFromInt(minIndex));
+                            return Value.initInt(@intCast(minIndex));
                         }
                     }
                 } else fatal();
@@ -1986,9 +1928,8 @@ fn stringFindRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             const obj = getStringObject(T, recv);
-            defer releaseStringObject(T, vm, obj);
             const str = getStringSlice(T, vm, obj);
-            const needle: i32 = @intFromFloat(args[0].asF64());
+            const needle = args[0].asInteger();
 
             if (needle > 0) {
                 const code: u21 = @intCast(needle);
@@ -1996,33 +1937,33 @@ fn stringFindRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (isAstringObject(T, obj)) {
                     if (needleIsAscii) {
                         if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
-                            return Value.initF64(@floatFromInt(idx));
+                            return Value.initInt(@intCast(idx));
                         }
                     }
                 } else if (isUstringObject(T, obj)) {
                     if (needleIsAscii) {
                         if (cy.string.indexOfChar(str, @intCast(code))) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@floatFromInt(charIdx));
+                            return Value.initInt(@intCast(charIdx));
                         }
                     } else {
                         var slice: [4]u8 = undefined;
                         _ = std.unicode.utf8Encode(code, &slice) catch fatal();
                         if (cy.string.indexOf(str, &slice)) |idx| {
                             const charIdx = cy.toUtf8CharIdx(str, idx);
-                            return Value.initF64(@floatFromInt(charIdx));
+                            return Value.initInt(@intCast(charIdx));
                         }
                     }
                 } else if (isRawStringObject(T)) {
                     if (needleIsAscii) {
                         if (cy.indexOfChar(str, @intCast(code))) |idx| {
-                            return Value.initF64(@floatFromInt(idx));
+                            return Value.initInt(@intCast(idx));
                         }
                     } else {
                         var slice: [4]u8 = undefined;
                         _ = std.unicode.utf8Encode(code, &slice) catch fatal();
                         if (cy.string.indexOf(str, &slice)) |idx| {
-                            return Value.initF64(@floatFromInt(idx));
+                            return Value.initInt(@intCast(idx));
                         }
                     }
                 } else fatal();
@@ -2037,7 +1978,6 @@ fn stringIndexChar(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     const S = struct {
         fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.indexChar()", "0.2", "Use string.findRune() instead.", &.{});
-            defer vm.release(args[0]);
             const needle = vm.valueToTempString(args[0]);
             if (needle.len > 0) {
                 const cp = cy.string.utf8CodeAtNoCheck(needle, 0);
@@ -2079,7 +2019,6 @@ pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
 
 pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     if (obj.dir.iterable) {
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(obj), true) catch fatal();
@@ -2090,7 +2029,6 @@ pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksectio
 
 pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     if (obj.dir.iterable) {
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(obj), false) catch fatal();
@@ -2109,13 +2047,12 @@ pub fn fileIterator(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
 
 pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes: i32 = @intFromFloat(args[0].asF64());
+    const numBytes = args[0].asInteger();
     if (numBytes > 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
@@ -2129,13 +2066,12 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
 
 pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes: i32 = @intFromFloat(args[0].asF64());
+    const numBytes = args[0].asInteger();
 
     const file = obj.file.getStdFile();
     file.seekBy(numBytes) catch |err| {
@@ -2146,13 +2082,12 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
 
 pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes: i32 = @intFromFloat(args[0].asF64());
+    const numBytes = args[0].asInteger();
     if (numBytes < 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
@@ -2167,10 +2102,6 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
 
 pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer {
-        vm.releaseObject(obj);
-        vm.release(args[0]);
-    }
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
@@ -2182,29 +2113,27 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
         return fromUnsupportedError(vm, "write", err, @errorReturnTrace());
     };
 
-    return Value.initF64(@floatFromInt(numWritten));
+    return Value.initInt(@intCast(numWritten));
 }
 
-pub fn fileClose(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn fileClose(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     obj.file.close();
     return Value.None;
 }
 
 pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes: i32 = @intFromFloat(args[0].asF64());
+    const numBytes = args[0].asInteger();
     if (numBytes <= 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
-    const unumBytes: u32 = @intCast(numBytes);
+    const unumBytes: usize = @intCast(numBytes);
     const file = obj.file.getStdFile();
 
     const alloc = vm.allocator();
@@ -2223,7 +2152,6 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
 
 pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
@@ -2259,7 +2187,6 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
 
 pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     if (obj.head.typeId == rt.FileT) {
         if (obj.file.closed) {
@@ -2308,15 +2235,13 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     return map;
 }
 
-pub fn metatypeId(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn metatypeId(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
-    return Value.initF64(@floatFromInt(obj.metatype.symId));
+    return Value.initInt(obj.metatype.symId);
 }
 
 pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
 
     const ivm = vm.internal();
     const iter: *cy.DirIterator = @ptrCast(obj);
@@ -2376,7 +2301,6 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
 
 pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
-    defer vm.releaseObject(obj);
     if (obj.file.iterLines) {
         const alloc = vm.allocator();
         const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
@@ -2432,8 +2356,7 @@ pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksecti
     }
 }
 
-pub fn booleanCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    defer vm.release(args[0]);
+pub fn booleanCall(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     return Value.initBool(args[0].toBool());
 }
 
@@ -2441,7 +2364,7 @@ pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     switch (val.getUserTag()) {
         .float => {
-            return Value.initI32(@intFromFloat(@trunc(val.asF64())));
+            return Value.initInt(@intFromFloat(@trunc(val.asF64())));
         },
         .string => {
             var str = vm.valueToTempString(val);
@@ -2449,12 +2372,17 @@ pub fn integerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
                 str = str[0..idx];
             }
             const res = std.fmt.parseInt(i32, str, 10) catch {
-                return Value.initI32(0);
+                return Value.initInt(0);
             };
-            return Value.initI32(res);
+            return Value.initInt(res);
+        },
+        .enumT => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
+        .symbol => return Value.initInt(@intCast(val.val & @as(u64, 0xFF))),
+        .int => {
+            return val;
         },
         else => {
-            return Value.initI32(0);
+            return Value.initInt(0);
         }
     }
 }
@@ -2464,7 +2392,6 @@ pub fn floatCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     switch (val.getUserTag()) {
         .float => return val,
         .string => {
-            defer vm.release(val);
             const res = std.fmt.parseFloat(f64, vm.valueToTempString(val)) catch {
                 return Value.initF64(0);
             };
@@ -2487,13 +2414,11 @@ inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     // Save callObjSym data.
     pc[8].val = startLocal;
     pc[9] = pc[2];
-    pc[10] = pc[3];
 
     // Inline bin op.
     pc[0] = cy.Inst.initOpCode(code);
     pc[1].val = startLocal + 4;
     pc[2].val = startLocal;
-    pc[3].val = 1; // Marker indicating inline caching.
 }
 
 inline fn inlineBinOp(pc: [*]cy.Inst, code: cy.OpCode) void {
@@ -2502,14 +2427,12 @@ inline fn inlineBinOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     pc[8].val = startLocal;
     pc[9] = pc[2];
     pc[10] = pc[3];
-    pc[11] = pc[4];
 
     // Inline bin op.
     pc[0] = cy.Inst.initOpCode(code);
     pc[1].val = startLocal + 4;
     pc[2].val = startLocal + 5;
     pc[3].val = startLocal;
-    pc[4].val = 1; // Marker indicating inline caching.
 }
 
 pub fn intBitwiseNot(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
@@ -2520,94 +2443,34 @@ pub fn intNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8)
     inlineUnaryOp(pc, .negInt);
 }
 
-pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void  {
     inlineUnaryOp(pc, .negFloat);
 }
 
-pub fn intBitwiseAnd(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .bitwiseAnd);
-}
-
-pub fn intBitwiseOr(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .bitwiseOr);
-}
-
-pub fn intBitwiseXor(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .bitwiseXor);
-}
-
-pub fn intBitwiseLeftShift(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .bitwiseLeftShift);
-}
-
-pub fn intBitwiseRightShift(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineUnaryOp(pc, .bitwiseRightShift);
-}
-
-pub fn intSub(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .subInt);
-}
-
-pub fn intAdd(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .subInt);
-}
-
-pub fn intMul(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .mulInt);
-}
-
-pub fn intDiv(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .divInt);
-}
-
-pub fn intMod(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .modInt);
-}
-
-pub fn intPow(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .powInt);
-}
-
-pub fn floatSub(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .subFloat);
-}
-
-pub fn floatAdd(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .addFloat);
-}
-
-pub fn floatMul(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .mulFloat);
-}
-
-pub fn floatDiv(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .divFloat);
-}
-
-pub fn floatMod(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .modFloat);
-}
-
-pub fn floatPow(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-    inlineBinOp(pc, .powFloat);
+fn binOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
+    const S = struct {
+        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+            inlineBinOp(pc, code);
+        }
+    };
+    return S.method;
 }
 
 pub fn pointerCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
     if (val.isPointerT()) {
+        vm.retain(val);
         return val;
-    } else if (val.isFloat()) {
-        const i: usize = @intFromFloat(val.asF64());
+    } else if (val.isInteger()) {
+        const i: usize = @intCast(val.asInteger());
         return cy.heap.allocPointer(vm.internal(), @ptrFromInt(i)) catch fatal();
     } else {
-        vm.release(val);
         return vm.returnPanic("Not a `pointer`.");
     }
 }
 
 pub fn rawstringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const str = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
     return vm.allocRawString(str) catch cy.fatal();
 }
 
@@ -2616,7 +2479,6 @@ pub fn stringCall(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     if (val.isString()) {
         return val; 
     } else {
-        defer vm.release(val);
         const str = vm.valueToTempString(val);
         return vm.allocStringInfer(str) catch cy.fatal();
     }

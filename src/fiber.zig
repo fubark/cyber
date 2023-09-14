@@ -129,27 +129,13 @@ pub fn popFiber(vm: *cy.VM, curFiberEndPc: usize, curFp: [*]Value, retValue: Val
 /// Unwinds the stack and releases the locals.
 /// This also releases the initial captured vars since it's on the stack.
 pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
-    log.debug("release fiber stack", .{});
+    log.tracev("release fiber stack, start", .{});
+    defer log.tracev("release fiber stack, end", .{});
     var stack = @as([*]Value, @ptrCast(fiber.stackPtr))[0..fiber.stackLen];
     var framePtr = fiber.stackOffset;
     var pc = fiber.pcOffset;
 
     if (pc != cy.NullId) {
-
-        // Check if fiber is still in init state.
-        switch (vm.ops[pc].opcode()) {
-            .callFuncIC,
-            .callSym => {
-                if (pc >= 6 and vm.ops[pc - 6].opcode() == .coinit) {
-                    const numArgs = vm.ops[pc - 4].val;
-                    for (stack[fiber.stackOffset + 5..fiber.stackOffset + 5 + numArgs]) |arg| {
-                        cy.arc.release(vm, arg);
-                    }
-                }
-            },
-            else => {},
-        }
-
         // Check if fiber was previously on a yield op.
         if (vm.ops[pc].opcode() == .coyield) {
             const jump = @as(*const align(1) u16, @ptrCast(&vm.ops[pc+1])).*;
@@ -163,9 +149,16 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 
             // Unwind stack and release all locals.
             while (framePtr > 0) {
-                const sym = cy.debug.getDebugSym(vm, pc) orelse return error.NoDebugSym;
+                const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
+                const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
+                const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+
                 const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
                 log.debug("release on frame {} {} {}", .{framePtr, pc, endLocalsPc});
+
+                if (tempIdx != cy.NullId) {
+                    cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
+                }
                 if (endLocalsPc != cy.NullId) {
                     cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, endLocalsPc);
                 }
@@ -176,18 +169,19 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
             }
         }
 
-        // Check to run extra release ops (eg. For call1 inst.)
+        // Cleanup on main fiber block.
         if (vm.ops[pc].opcode() != .coreturn) {
-            switch (vm.ops[fiber.initialPcOffset].opcode()) {
-                .call => {
-                    const endLocalsPc = fiber.initialPcOffset + cy.bytecode.CallInstLen;
-                    if (vm.ops[endLocalsPc].opcode() == .release) {
-                        const local = vm.ops[endLocalsPc+1].val;
-                        cy.arc.release(vm, stack[framePtr + local]);
-                    }
-                },
-                else => {},
+            const symIdx = cy.debug.indexOfDebugSym(vm, pc) orelse return error.NoDebugSym;
+            const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+            if (tempIdx != cy.NullId) {
+                cy.arc.runTempReleaseOps(vm, stack.ptr + framePtr, tempIdx);
             }
+
+            // No end locals for main fiber block yet.
+            // const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+            // if (endLocalsPc != cy.NullId) {
+            //     cy.arc.runBlockEndReleaseOps(vm, stack, framePtr, endLocalsPc);
+            // }
         }
     }
     // Finally free stack.
@@ -201,13 +195,15 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
     var fpOffset = getStackOffset(vm.stack.ptr, startFramePtr);
 
     while (true) {
-        log.debug("release frame at {}", .{pcOffset});
+        const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
+        const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
+        const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+        const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+        log.debug("release frame: {} {} {} {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, endLocalsPc});
 
         // Release temporaries in the current frame.
-        cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+        cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
 
-        const sym = cy.debug.getDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
-        const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
         if (endLocalsPc != cy.NullId) {
             cy.arc.runBlockEndReleaseOps(vm, stack, fpOffset, endLocalsPc);
         }
@@ -230,15 +226,17 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     const tFpOffset = getStackOffset(vm.stack.ptr, targetFp);
 
     while (fpOffset > tFpOffset) {
-        log.debug("release frame: {} {}", .{pcOffset, vm.ops[pcOffset].opcode()});
         // Perform cleanup for this frame.
 
-        // Release temporaries in the current frame.
-        const instLen = cy.getInstLenAt(vm.ops.ptr + pcOffset);
-        cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
-
-        const sym = cy.debug.getDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
+        const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
+        const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
+        const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
         const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+        log.debug("release frame: {} {}, tempIdx: {}, endLocals: {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, endLocalsPc});
+
+        // Release temporaries in the current frame.
+        cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
+
         if (endLocalsPc != cy.NullId) {
             cy.arc.runBlockEndReleaseOps(vm, vm.stack, fpOffset, endLocalsPc);
         }
@@ -255,12 +253,14 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     }
 
     // Release temporaries in the current frame.
-    log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].opcode()});
-    const instLen = cy.getInstLenAt(vm.ops.ptr + pcOffset);
-    cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset + instLen);
+    const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
+    const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+    log.debug("release temps: {} {}, {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx});
+    cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
 }
 
 pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?PcSp {
+    log.tracev("throw", .{});
     if (vm.tryStack.len > 0) {
         const tframe = vm.tryStack.buf[vm.tryStack.len-1];
 
@@ -283,8 +283,10 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?
             });
 
             // Release temporaries in the current frame.
-            log.debug("release temps: {} {}", .{pcOffset, vm.ops[pcOffset].opcode()});
-            cy.arc.runTempReleaseOps(vm, vm.stack, fpOffset, pcOffset);
+            const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
+            const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+            log.debug("release temps: {} {}, tempIdx: {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx});
+            cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
 
             // Goto catch block in current frame.
             return PcSp{
@@ -292,6 +294,7 @@ pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?
                 .sp = startFp,
             };
         } else {
+            log.tracev("unwind until fp", .{});
             // Unwind to next try frame.
             try cy.fiber.unwindThrowUntilFramePtr(vm, startFp, pc, @ptrCast(tframe.fp));
 

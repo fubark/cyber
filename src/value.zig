@@ -10,14 +10,11 @@ const rt = cy.rt;
 const fmt = @import("fmt.zig");
 const vmc = @import("vm_c.zig");
 
-/// Most significant bit.
 const SignMask: u64 = 1 << 63;
-
-/// QNAN and one extra bit to the right.
 const TaggedValueMask: u64 = 0x7ffc000000000000;
-
-/// TaggedMask + Sign bit indicates a pointer value.
 const PointerMask: u64 = TaggedValueMask | SignMask;
+const IntegerMask: u64 = 1 << 48;
+const TaggedIntegerMask: u64 = TaggedValueMask | IntegerMask;
 
 const BooleanMask: u64 = TaggedValueMask | (@as(u64, TagBoolean) << 32);
 const FalseMask: u64 = BooleanMask;
@@ -29,10 +26,10 @@ const StaticAstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticAstring) << 
 const StaticUstringMask: u64 = TaggedValueMask | (@as(u64, TagStaticUstring) << 32);
 const EnumMask: u64 = TaggedValueMask | (@as(u64, TagEnum) << 32);
 const SymbolMask: u64 = TaggedValueMask | (@as(u64, TagSymbol) << 32);
-const IntegerMask: u64 = TaggedValueMask | (@as(u64, TagInteger) << 32);
 
 const TagMask: u32 = (1 << 3) - 1;
-const TaggedPrimitiveMask = TaggedValueMask | (@as(u64, TagMask) << 32);
+const PrimitiveMask: u64 = TaggedValueMask | (@as(u64, TagMask) << 32) | IntegerMask;
+const TaggedPrimitiveMask = TaggedValueMask | PrimitiveMask;
 const BeforeTagMask: u32 = 0x7fff << 3;
 
 /// The tag id is also the primitive type id.
@@ -104,8 +101,8 @@ pub const Value = packed union {
         return @intCast(self.val & 0xff);
     }
 
-    pub inline fn asInteger(self: *const Value) i32 {
-        return @bitCast(@as(u32, @intCast(self.val & 0xffffffff)));
+    pub inline fn asInteger(self: *const Value) i48 {
+        return @bitCast(@as(u48, @intCast(self.val & 0xffffffffffff)));
     }
 
     pub inline fn asF64toI32(self: *const Value) i32 {
@@ -258,10 +255,19 @@ pub const Value = packed union {
     }
 
     pub inline fn getTypeId(self: *const Value) u32 {
-        if (self.isPointer()) {
-            return self.asHeapObject().head.typeId;
+        const bits = self.val & TaggedPrimitiveMask;
+        if (bits >= TaggedValueMask) {
+            if (self.isPointer()) {
+                return self.asHeapObject().head.typeId;
+            } else {
+                if (bits >= TaggedIntegerMask) {
+                    return rt.IntegerT;
+                } else {
+                    return self.getTag();
+                }
+            }
         } else {
-            return self.getPrimitiveTypeId();
+            return rt.FloatT;
         }
     }
 
@@ -276,7 +282,7 @@ pub const Value = packed union {
     }
 
     pub inline fn isInteger(self: *const Value) bool {
-        return self.val & (TaggedPrimitiveMask | SignMask) == IntegerMask;
+        return self.val & (TaggedIntegerMask | SignMask) == TaggedIntegerMask;
     }
 
     pub inline fn isPointer(self: *const Value) bool {
@@ -380,8 +386,12 @@ pub const Value = packed union {
         return .{ .val = @as(u64, @bitCast(val)) };
     }
 
+    pub inline fn initInt(val: i48) Value {
+        return .{ .val = TaggedIntegerMask | @as(u48, @bitCast(val)) };
+    }
+
     pub inline fn initI32(val: i32) Value {
-        return .{ .val = IntegerMask | @as(u32, @bitCast(val)) };
+        return initInt(@intCast(val));
     }
 
     pub inline fn initRaw(val: u64) Value {
@@ -443,77 +453,83 @@ pub const Value = packed union {
     }
 
     pub fn dump(self: *const Value) void {
-        if (self.isFloat()) {
-            log.info("Float {}", .{self.asF64()});
-        } else {
-            if (self.isPointer()) {
-                const obj = self.asHeapObject();
-                switch (obj.head.typeId) {
-                    rt.ListT => log.info("List {*} len={}", .{obj, obj.list.list.len}),
-                    rt.MapT => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
-                    rt.AstringT => {
-                        const str = obj.astring.getConstSlice();
-                        if (str.len > 20) {
-                            log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
-                        } else {
-                            log.info("String {*} len={} str={s}", .{obj, str.len, str});
-                        }
-                    },
-                    rt.UstringT => {
-                        const str = obj.ustring.getConstSlice();
-                        if (str.len > 20) {
-                            log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
-                        } else {
-                            log.info("String {*} len={} str={s}", .{obj, str.len, str});
-                        }
-                    },
-                    rt.LambdaT => log.info("Lambda {*}", .{obj}),
-                    rt.ClosureT => log.info("Closure {*}", .{obj}),
-                    rt.FiberT => log.info("Fiber {*}", .{obj}),
-                    rt.NativeFuncT => return log.info("NativeFunc {*}", .{obj}),
-                    rt.PointerT => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
-                    else => {
-                        log.info("HeapObject {*} {}", .{obj, obj.head.typeId});
-                    },
-                }
-            } else {
-                switch (self.getTag()) {
-                    TagNone => {
-                        log.info("None", .{});
-                    },
-                    TagInteger => {
-                        log.info("Integer {}", .{self.asInteger()});
-                    },
-                    TagEnum => {
-                        const enumv = self.asEnum();
-                        log.info("Enum {} {}", .{enumv.enumId, enumv.memberId});
-                    },
-                    TagError => {
-                        log.info("Error {}", .{self.asErrorSymbol()});
-                    },
-                    TagSymbol => {
-                        log.info("Symbol {}", .{self.asSymbolId()});
-                    },
-                    TagStaticUstring,
-                    TagStaticAstring => {
-                        const slice = self.asStaticStringSlice();
-                        log.info("Const String len={}", .{slice.len()});
-                    },
-                    else => {
-                        log.info("Unknown {}", .{self.getTag()});
-                    },
+        switch (self.getTypeId()) {
+            rt.FloatT => {
+                log.info("Float {}", .{self.asF64()});
+            },
+            rt.NoneT => {
+                log.info("None", .{});
+            },
+            rt.IntegerT => {
+                log.info("Integer {}", .{self.asInteger()});
+            },
+            rt.EnumT => {
+                const enumv = self.asEnum();
+                log.info("Enum {} {}", .{enumv.enumId, enumv.memberId});
+            },
+            rt.ErrorT => {
+                log.info("Error {}", .{self.asErrorSymbol()});
+            },
+            rt.SymbolT => {
+                log.info("Symbol {}", .{self.asSymbolId()});
+            },
+            rt.StaticUstringT,
+            rt.StaticAstringT => {
+                const slice = self.asStaticStringSlice();
+                log.info("Const String len={}", .{slice.len()});
+            },
+            else => {
+                if (self.isPointer()) {
+                    const obj = self.asHeapObject();
+                    switch (obj.head.typeId) {
+                        rt.ListT => log.info("List {*} len={}", .{obj, obj.list.list.len}),
+                        rt.MapT => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
+                        rt.AstringT => {
+                            const str = obj.astring.getConstSlice();
+                            if (str.len > 20) {
+                                log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
+                            } else {
+                                log.info("String {*} len={} str={s}", .{obj, str.len, str});
+                            }
+                        },
+                        rt.UstringT => {
+                            const str = obj.ustring.getConstSlice();
+                            if (str.len > 20) {
+                                log.info("String {*} len={} str=\"{s}\"...", .{obj, str.len, str[0..20]});
+                            } else {
+                                log.info("String {*} len={} str={s}", .{obj, str.len, str});
+                            }
+                        },
+                        rt.LambdaT => log.info("Lambda {*}", .{obj}),
+                        rt.ClosureT => log.info("Closure {*}", .{obj}),
+                        rt.FiberT => log.info("Fiber {*}", .{obj}),
+                        rt.NativeFuncT => return log.info("NativeFunc {*}", .{obj}),
+                        rt.PointerT => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
+                        else => {
+                            log.info("HeapObject {*} {}", .{obj, obj.head.typeId});
+                        },
+                    }
+                } else {
+                    log.info("Unknown {}", .{self.getTag()});
                 }
             }
         }
     }
 
     pub fn getUserTag(self: *const Value) linksection(cy.Section) ValueUserTag {
-        if (self.isFloat()) {
-            return .float;
-        } else {
-            if (self.isPointer()) {
-                const obj = self.asHeapObject();
-                switch (obj.head.typeId) {
+        const typeId = self.getTypeId();
+        switch (typeId) {
+            rt.FloatT => return .float,
+            rt.BooleanT => return .boolean,
+            rt.StaticAstringT => return .string,
+            rt.StaticUstringT => return .string,
+            rt.NoneT => return .none,
+            rt.EnumT => return .enumT,
+            rt.SymbolT => return .symbol,
+            rt.ErrorT => return .err,
+            rt.IntegerT => return .int,
+            else => {
+                switch (typeId) {
                     rt.ListT => return .list,
                     rt.MapT => return .map,
                     rt.AstringT => return .string,
@@ -532,21 +548,10 @@ pub const Value = packed union {
                     rt.DirT => return .dir,
                     rt.DirIteratorT => return .dirIter,
                     rt.MetaTypeT => return .metatype,
+                    cy.NullId => return .danglingObject,
                     else => {
                         return .object;
                     },
-                }
-            } else {
-                switch (self.getTag()) {
-                    TagBoolean => return .boolean,
-                    TagStaticAstring => return .string,
-                    TagStaticUstring => return .string,
-                    TagNone => return .none,
-                    TagEnum => return .enumT,
-                    TagSymbol => return .symbol,
-                    TagError => return .err,
-                    TagInteger => return .int,
-                    // else => unreachable,
                 }
             }
         }
@@ -581,6 +586,7 @@ pub const ValueUserTag = enum {
     dir,
     dirIter,
     metatype,
+    danglingObject,
     none,
 };
 

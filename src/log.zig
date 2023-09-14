@@ -32,7 +32,6 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
                             const elapsed = timer.?.read();
                             const secs = elapsed / 1000000000;
                             const msecs = (elapsed % 1000000000)/1000000;
-                            std.log.scoped(Scope).debug("{}.{}: " ++ format, .{secs, msecs} ++ args);
                             const prefix = @tagName(Scope) ++ ": {}.{}: ";
                             printStderr(prefix ++ format ++ "\n", .{secs, msecs} ++ args);
                         } else {

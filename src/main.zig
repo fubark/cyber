@@ -8,6 +8,7 @@ const fmt = @import("fmt.zig");
 
 var verbose = false;
 var reload = false;
+var dumpStats = false; // Only for trace build.
 var pc: ?u32 = null;
 
 const CP_UTF8 = 65001;
@@ -51,6 +52,11 @@ pub fn main() !void {
                 } else {
                     std.debug.print("Missing pc arg.\n", .{});
                     exit(1);
+                }
+            }
+            if (cy.Trace) {
+                if (std.mem.eql(u8, arg, "-stats")) {
+                    dumpStats = true;
                 }
             }
         } else {
@@ -183,9 +189,9 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     if (verbose) {
         std.debug.print("\n==VM Info==\n", .{});
         try vm.dumpInfo();
-        if (cy.Trace) {
-            vm.dumpStats();
-        }
+    }
+    if (cy.Trace and dumpStats) {
+        vm.dumpStats();
     }
     if (cy.TrackGlobalRC) {
         vm.compiler.deinitRtObjects();

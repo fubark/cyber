@@ -15,11 +15,11 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
     }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
+        log.tracev("release obj: {}, rc={}", .{val.getUserTag(), obj.head.rc});
         if (cy.Trace) {
             checkDoubleFree(vm, obj);
         }
         obj.head.rc -= 1;
-        log.tracev("release {} rc={}", .{val.getUserTag(), obj.head.rc});
         if (cy.TrackGlobalRC) {
             if (cy.Trace) {
                 if (vm.refCounts == 0) {
@@ -35,6 +35,8 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         if (obj.head.rc == 0) {
             @call(.never_inline, cy.heap.freeObject, .{vm, obj});
         }
+    } else {
+        log.tracev("release: {}, nop", .{val.getUserTag()});
     }
 }
 
@@ -83,18 +85,13 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
     }
 }
 
-pub fn runTempReleaseOps(vm: *cy.VM, stack: []const cy.Value, framePtr: usize, startPc: usize) void {
-    if (vm.ops[startPc].opcode() == .release) {
-        var pc = startPc;
-        while (true) {
-            const local = vm.ops[pc+1].val;
-            // stack[framePtr + local].dump();
-            release(vm, stack[framePtr + local]);
-            pc += 2;
-            if (vm.ops[pc].opcode() != .release) {
-                break;
-            }
-        }
+pub fn runTempReleaseOps(vm: *cy.VM, fp: [*]const cy.Value, tempIdx: u32) void {
+    log.tracev("unwind release temps", .{});
+    var curIdx = tempIdx;
+    while (curIdx != cy.NullId) {
+        log.tracev("unwind release: {}", .{vm.unwindTempRegs[curIdx]});
+        release(vm, fp[vm.unwindTempRegs[curIdx]]);
+        curIdx = vm.unwindTempPrevIndexes[curIdx];
     }
 }
 

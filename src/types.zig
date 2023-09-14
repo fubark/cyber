@@ -31,8 +31,6 @@ pub const BuiltinTypeSymIds = struct {
 
     /// Internal types.
 
-    /// Numeric literals can represent a number or integer.
-    pub const NumericLit: TypeId = vmc.SEMA_TYPE_NUMERICLIT;
     /// Used to indicate no type value.
     pub const Undefined: TypeId = vmc.SEMA_TYPE_UNDEFINED;
     /// Strings that aren't retained.
@@ -43,7 +41,7 @@ pub const BuiltinTypeSymIds = struct {
     /// This is not the same as bt.Any which is a static type.
     pub const Dynamic: TypeId = vmc.SEMA_TYPE_DYNAMIC;
 
-    pub const End: TypeId = 19;
+    pub const End: TypeId = vmc.NumSemaTypes;
 };
 
 test "Reserved names map to reserved sym ids." {
@@ -81,11 +79,6 @@ pub fn isTypeFuncSigCompat(c: *cy.VMcompiler, args: []const TypeId, ret: TypeId,
     // Check each param type. Attempt to satisfy constraints.
     for (target.params(), args) |cstrType, argType| {
         if (!isTypeSymCompat(c, argType, cstrType)) {
-            if (argType == bt.NumericLit) {
-                if (cstrType == bt.Integer or cstrType == bt.Float) {
-                    continue;
-                }
-            }
             return false;
         }
     }
@@ -151,14 +144,6 @@ pub fn toRtConcreteType(typeId: TypeId) ?rt.TypeId {
     };
 }
 
-pub fn toNonFlexType(typeId: TypeId) TypeId {
-    if (typeId == bt.NumericLit) {
-        return bt.Float;
-    } else {
-        return typeId;
-    }
-}
-
 pub fn assertTypeSym(c: *cy.Chunk, symId: SymbolId) !void {
     if (symId < bt.End) {
         return;
@@ -211,7 +196,6 @@ pub fn isRcCandidateType(c: *cy.VMcompiler, id: TypeId) bool {
         bt.Symbol,
         bt.None,
         bt.Error,
-        bt.NumericLit,
         bt.Undefined,
         bt.Boolean => return false,
         else => {

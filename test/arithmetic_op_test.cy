@@ -1,6 +1,7 @@
 -- Copyright (c) 2023 Cyber (See LICENSE)
 
 import t 'test'
+import m 'math'
 
 -- Addition.
 t.eq(1 + 2, 3)

@@ -854,7 +854,6 @@ pub fn allocStringTemplate(self: *cy.VM, strs: []const cy.Inst, vals: []const Va
     const writer = self.u8Buf.writer(self.alloc);
     for (vals, 0..) |val, i| {
         self.writeValueToString(writer, val);
-        cy.arc.release(self, val);
         try self.u8Buf.appendSlice(self.alloc, self.valueAsStaticString(Value.initRaw(self.consts[strs[i+1].val].val)));
     }
 

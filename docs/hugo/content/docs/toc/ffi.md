@@ -112,4 +112,4 @@ print ptr.value()     --'3735928559'
 ### `type pointer`
 | Method | Summary |
 | ------------- | ----- |
-| `value() float` | Returns the memory address as a `float`. |
+| `value() int` | Returns the memory address as an `int`. The value may be negative since it's bitcasted from an unsigned 48-bit integer but it retains the original pointer bits. |

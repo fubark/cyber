@@ -24,7 +24,7 @@ pub const KeyU64 = extern union {
         nameId: sema.NameSymId,
         funcSigId: cy.Nullable(sema.FuncSigId),
     },
-    relModuleSymKey: extern struct {
+    moduleSymKey: extern struct {
         nameId: sema.NameSymId,
         funcSigId: sema.FuncSigId,
     },
@@ -44,6 +44,15 @@ pub const KeyU64 = extern union {
         typeId: rt.TypeId,
         fieldId: rt.FieldId,
     },
+
+    pub fn initModuleSymKey(nameId: sema.NameSymId, funcSigId: ?sema.FuncSigId) KeyU64 {
+        return .{
+            .moduleSymKey = .{
+                .nameId = nameId,
+                .funcSigId = funcSigId orelse cy.NullId,
+            },
+        };
+    }
 
     pub fn initLocalSymKey(nameId: sema.NameSymId, funcSigId: ?sema.FuncSigId) KeyU64 {
         return .{

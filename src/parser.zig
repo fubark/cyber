@@ -2404,6 +2404,10 @@ pub const Parser = struct {
                 self.advanceToken();
                 break :b try self.pushNode(.number, start);
             },
+            .float => b: {
+                self.advanceToken();
+                break :b try self.pushNode(.float, start);
+            },
             .nonDecInt => b: {
                 self.advanceToken();
                 break :b try self.pushNode(.nonDecInt, start);
@@ -2610,7 +2614,7 @@ pub const Parser = struct {
                             self.advanceToken();
                             const access_id = try self.pushNode(.indexExpr, start);
                             self.nodes.items[access_id].head = .{
-                                .left_right = .{
+                                .indexExpr = .{
                                     .left = left_id,
                                     .right = expr_id,
                                 },
@@ -2700,6 +2704,7 @@ pub const Parser = struct {
                 .each_k,
                 .string,
                 .number,
+                .float,
                 .ident,
                 .templateString,
                 .new_line,
@@ -3051,6 +3056,10 @@ pub const Parser = struct {
         try self.tokens.append(self.alloc, Token.init(.number, start_pos, .{ .end_pos = end_pos }));
     }
 
+    inline fn pushFloatToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
+        try self.tokens.append(self.alloc, Token.init(.float, start_pos, .{ .end_pos = end_pos }));
+    }
+
     inline fn pushTemplateStringToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, Token.init(.templateString, start_pos, .{ .end_pos = end_pos }));
     }
@@ -3140,6 +3149,7 @@ pub const OperatorType = enum(u8) {
 pub const TokenType = enum(u8) {
     ident,
     number,
+    float,
     nonDecInt,
     string,
     templateString,
@@ -3258,6 +3268,7 @@ pub const NodeType = enum {
     binExpr,
     unary_expr,
     number,
+    float,
     nonDecInt,
     if_expr,
     if_stmt,
@@ -3368,6 +3379,11 @@ pub const Node = struct {
             typeSpecHead: NodeId,
             semaTypeSymId: cy.sema.SymbolId = cy.NullId,
         },
+        indexExpr: struct {
+            left: NodeId,
+            right: NodeId,
+            semaGenStrat: GenBinExprStrategy = .none,
+        },
         binExpr: struct {
             left: NodeId,
             right: NodeId,
@@ -3422,6 +3438,7 @@ pub const Node = struct {
         root: struct {
             headStmt: NodeId,
             genEndLocalsPc: u32 = NullId,
+            genTempStartReg: u8 = 255,
         },
         child_head: NodeId,
         atExpr: struct {
@@ -3535,7 +3552,7 @@ pub const Node = struct {
             partsHead: NodeId,
         },
         nonDecInt: struct {
-            semaNumberVal: f64,
+            semaNumberVal: u64,
         } align (4) ,
     },
 };
@@ -4450,25 +4467,28 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                 return;
             }
             var ch = peekChar(p);
-            if ((ch >= '0' and ch <= '9') or ch == '.') {
-                // Decimal notation.
+            if ((ch >= '0' and ch <= '9') or ch == 'e' or ch == '.') {
+                // Common path.
                 consumeDigits(p);
                 if (isAtEndChar(p)) {
                     try p.pushNumberToken(start, p.next_pos);
                     return;
                 }
+
+                // Check for decimal notation.
+                var isFloat = false;
                 ch = peekChar(p);
                 const ch2 = peekCharAhead(p, 1) orelse 0;
-                // Differentiate decimal from range operator.
-                if (ch == '.' and (ch2 >= '0' and ch2 <= '9')) {
-                    advanceChar(p);
+                if (ch == '.' and ch2 != '.') {
+                    // Differentiate decimal from range operator.
                     advanceChar(p);
                     consumeDigits(p);
                     if (isAtEndChar(p)) {
-                        try p.pushNumberToken(start, p.next_pos);
+                        try p.pushFloatToken(start, p.next_pos);
                         return;
                     }
                     ch = peekChar(p);
+                    isFloat = true;
                 }
                 if (ch == 'e') {
                     advanceChar(p);
@@ -4487,97 +4507,105 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         return p.reportTokenError("Expected number.", &.{});
                     }
                     consumeDigits(p);
+                    isFloat = true;
                 }
-                try p.pushNumberToken(start, p.next_pos);
+                if (isFloat) {
+                    try p.pushFloatToken(start, p.next_pos);
+                } else {
+                    try p.pushNumberToken(start, p.next_pos);
+                }
                 return;
-            } else {
-                if (p.src[p.next_pos-1] == '0') {
-                    if (ch == 'x') {
-                        // Hex integer.
-                        advanceChar(p);
-                        while (true) {
-                            if (isAtEndChar(p)) {
-                                break;
-                            }
-                            ch = peekChar(p);
-                            if ((ch >= '0' and ch <= '9') or (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z')) {
-                                advanceChar(p);
-                                continue;
-                            } else break;
+            }
+
+            if (p.src[p.next_pos-1] == '0') {
+                // Less common integer notation.
+                if (ch == 'x') {
+                    // Hex integer.
+                    advanceChar(p);
+                    while (true) {
+                        if (isAtEndChar(p)) {
+                            break;
                         }
-                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                        return;
-                    } else if (ch == 'o') {
-                        // Oct integer.
-                        advanceChar(p);
-                        while (true) {
-                            if (isAtEndChar(p)) {
-                                break;
-                            }
-                            ch = peekChar(p);
-                            if (ch >= '0' and ch <= '8') {
-                                advanceChar(p);
-                                continue;
-                            } else break;
+                        ch = peekChar(p);
+                        if ((ch >= '0' and ch <= '9') or (ch >= 'A' and ch <= 'Z') or (ch >= 'a' and ch <= 'z')) {
+                            advanceChar(p);
+                            continue;
+                        } else break;
+                    }
+                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                    return;
+                } else if (ch == 'o') {
+                    // Oct integer.
+                    advanceChar(p);
+                    while (true) {
+                        if (isAtEndChar(p)) {
+                            break;
                         }
-                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                        return;
-                    } else if (ch == 'b') {
-                        // Bin integer.
-                        advanceChar(p);
-                        while (true) {
-                            if (isAtEndChar(p)) {
-                                break;
-                            }
-                            ch = peekChar(p);
-                            if (ch == '0' or ch == '1') {
-                                advanceChar(p);
-                                continue;
-                            } else break;
+                        ch = peekChar(p);
+                        if (ch >= '0' and ch <= '8') {
+                            advanceChar(p);
+                            continue;
+                        } else break;
+                    }
+                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                    return;
+                } else if (ch == 'b') {
+                    // Bin integer.
+                    advanceChar(p);
+                    while (true) {
+                        if (isAtEndChar(p)) {
+                            break;
                         }
-                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                        return;
-                    } else if (ch == 'u') {
-                        // UTF-8 codepoint literal (rune).
-                        advanceChar(p);
+                        ch = peekChar(p);
+                        if (ch == '0' or ch == '1') {
+                            advanceChar(p);
+                            continue;
+                        } else break;
+                    }
+                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                    return;
+                } else if (ch == 'u') {
+                    // UTF-8 codepoint literal (rune).
+                    advanceChar(p);
+                    if (isAtEndChar(p)) {
+                        return p.reportTokenError("Expected UTF-8 rune.", &.{});
+                    }
+                    ch = peekChar(p);
+                    if (ch != '\'') {
+                        return p.reportTokenError("Expected single quote.", &.{});
+                    }
+                    advanceChar(p);
+                    while (true) {
                         if (isAtEndChar(p)) {
                             return p.reportTokenError("Expected UTF-8 rune.", &.{});
                         }
                         ch = peekChar(p);
-                        if (ch != '\'') {
-                            return p.reportTokenError("Expected single quote.", &.{});
-                        }
-                        advanceChar(p);
-                        while (true) {
+                        if (ch == '\\') {
+                            advanceChar(p);
                             if (isAtEndChar(p)) {
-                                return p.reportTokenError("Expected UTF-8 rune.", &.{});
+                                return p.reportTokenError("Expected single quote or backslash.", &.{});
                             }
-                            ch = peekChar(p);
-                            if (ch == '\\') {
-                                advanceChar(p);
-                                if (isAtEndChar(p)) {
-                                    return p.reportTokenError("Expected single quote or backslash.", &.{});
-                                }
-                                advanceChar(p);
-                            } else {
-                                advanceChar(p);
-                                if (ch == '\'') {
-                                    break;
-                                }
+                            advanceChar(p);
+                        } else {
+                            advanceChar(p);
+                            if (ch == '\'') {
+                                break;
                             }
-                        }
-                        try p.pushNonDecimalIntegerToken(start, p.next_pos);
-                        return;
-                    } else {
-                        if (std.ascii.isAlphabetic(ch)) {
-                            const char: []const u8 = &[_]u8{ ch };
-                            return p.reportTokenError("Unsupported integer notation: {}", &.{v(char)});
                         }
                     }
+                    try p.pushNonDecimalIntegerToken(start, p.next_pos);
+                    return;
+                } else {
+                    if (std.ascii.isAlphabetic(ch)) {
+                        const char: []const u8 = &[_]u8{ ch };
+                        return p.reportTokenError("Unsupported integer notation: {}", &.{v(char)});
+                    }
                 }
-                try p.pushNumberToken(start, p.next_pos);
-                return;
             }
+
+            // Push single digit number.
+            try p.pushNumberToken(start, p.next_pos);
+            return;
         }
     };
 }
@@ -4625,6 +4653,6 @@ test "parser internals." {
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 59);
+    try t.eq(std.enums.values(TokenType).len, 60);
     try t.eq(keywords.kvs.len, 33);
 }

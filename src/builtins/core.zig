@@ -21,7 +21,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     try b.mod().syms.ensureTotalCapacity(self.alloc, 13);
 
     // Funcs.
-    try b.setFunc("arrayFill", &.{bt.Any, bt.Float}, bt.List, arrayFill);
+    try b.setFunc("arrayFill", &.{bt.Any, bt.Integer}, bt.List, arrayFill);
     try b.setFunc("asciiCode", &.{bt.Any}, bt.Any, asciiCode);
     if (cy.hasJit) {
         try b.setFunc("bindLib", &.{bt.Any, bt.List}, bt.Any, bindLib);
@@ -45,15 +45,15 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     } else {
         try b.setFunc("execCmd", &.{bt.List}, bt.Any, execCmd);
     }
-    try b.setFunc("exit", &.{bt.Float}, bt.None, exit);
+    try b.setFunc("exit", &.{bt.Integer}, bt.None, exit);
     try b.setFunc("fetchUrl", &.{bt.Any}, bt.Any, fetchUrl);
     if (cy.hasStdFiles) {
         try b.setFunc("getInput", &.{}, bt.Any, getInput);
     } else {
         try b.setFunc("getInput", &.{}, bt.Any, bindings.nop0);
     }
-    try b.setFunc("isAlpha", &.{ bt.Float }, bt.Boolean, isAlpha);
-    try b.setFunc("isDigit", &.{ bt.Float }, bt.Boolean, isDigit);
+    try b.setFunc("isAlpha", &.{ bt.Integer }, bt.Boolean, isAlpha);
+    try b.setFunc("isDigit", &.{ bt.Integer }, bt.Boolean, isDigit);
     // try mod.setNativeFunc(alloc, "dump", 1, dump);
     try b.setFunc("must", &.{ bt.Any }, bt.Any, must);
     try b.setFunc("opaque", &.{ bt.Any }, bt.Pointer, coreOpaque);
@@ -71,9 +71,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
         try b.setFunc("readFile", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("readLine", &.{}, bt.Any, bindings.nop0);
     }
-    try b.setFunc("runestr", &.{ bt.Float }, bt.String, runestr);
+    try b.setFunc("runestr", &.{ bt.Integer }, bt.String, runestr);
     try b.setFunc("toCyon", &.{ bt.Any }, bt.String, toCyon);
-    try b.setFunc("typeid", &.{ bt.Any }, bt.Float, typeid);
+    try b.setFunc("typeid", &.{ bt.Any }, bt.Integer, typeid);
     try b.setFunc("valtag", &.{ bt.Any }, bt.Symbol, valtag);
     try b.setFunc("typesym", &.{ bt.Any }, bt.Symbol, typesym);
     try b.setFunc("typeof", &.{ bt.Any }, bt.MetaType, typeof);
@@ -85,16 +85,14 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
 }
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
-    return vm.allocListFill(args[0], @intFromFloat(args[1].asF64())) catch cy.fatal();
+    return vm.allocListFill(args[0], @intCast(args[1].asInteger())) catch cy.fatal();
 }
 
 pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("asciiCode", "0.2", "Use UTF-8 rune notation or string.runeAt(0) instead.", &.{});
-    defer vm.release(args[0]);
     const str = vm.valueToTempString(args[0]);
     if (str.len > 0) {
-        return Value.initF64(@floatFromInt(str[0]));
+        return Value.initInt(str[0]);
     } else {
         return Value.None;
     }
@@ -103,7 +101,6 @@ pub fn asciiCode(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 fn cacheUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const alloc = vm.allocator();
     const url = vm.valueToTempString(args[0]);
-    defer vm.release(args[0]);
 
     const specGroup = cache.getSpecHashGroup(alloc, url) catch cy.fatal();
     defer specGroup.deinit(alloc);
@@ -158,7 +155,6 @@ pub fn char(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
 
 pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const val = args[0];
-    defer vm.release(val);
     return cy.value.shallowCopy(@ptrCast(vm), val);
 }
 
@@ -204,8 +200,6 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
             alloc.free(arg);
         }
         buf.deinit(alloc);
-
-        vm.releaseObject(obj);
     }
     for (obj.list.items()) |arg| {
         buf.append(alloc, vm.valueToString(arg) catch cy.fatal()) catch cy.fatal();
@@ -252,14 +246,13 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
 }
 
 pub fn exit(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const status: u8 = @intFromFloat(args[0].asF64());
+    const status: u8 = @intCast(args[0].asInteger());
     std.os.exit(status);
 }
 
 pub fn fetchUrl(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const alloc = vm.allocator();
     const url = vm.valueToTempString(args[0]);
-    defer vm.release(args[0]);
     if (cy.isWasm) {
         hostFetchUrl(url.ptr, url.len);
         return Value.None;
@@ -306,7 +299,7 @@ pub fn panic(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 }
 
 fn isAlpha(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const num = args[0].asF64toI64();
+    const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
         return prepareThrowSymbol(vm, .InvalidRune);
     }
@@ -318,7 +311,7 @@ fn isAlpha(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 }
 
 fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const num = args[0].asF64toI64();
+    const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
         return prepareThrowSymbol(vm, .InvalidRune);
     }
@@ -330,7 +323,7 @@ fn isDigit(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSectio
 }
 
 fn runestr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const num = args[0].asF64toI64();
+    const num = args[0].asInteger();
     if (num < 0 or num >= 2 << 21) {
         return prepareThrowSymbol(vm, .InvalidRune);
     }
@@ -353,7 +346,10 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
                 const key = uservm.valueToTempString(e.key);
                 switch (e.value.getUserTag()) {
                     .float => {
-                        try ctx.encodeNumber(key, e.value.asF64());
+                        try ctx.encodeFloat(key, e.value.asF64());
+                    },
+                    .int => {
+                        try ctx.encodeInt(key, e.value.asInteger());
                     },
                     .string => {
                         const keyDupe = try uservm.allocator().dupe(u8, key);
@@ -379,7 +375,10 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             for (items) |it| {
                 switch (it.getUserTag()) {
                     .float => {
-                        try ctx.encodeNumber(it.asF64());
+                        try ctx.encodeFloat(it.asF64());
+                    },
+                    .int => {
+                        try ctx.encodeInt(it.asInteger());
                     },
                     .string => {
                         const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
@@ -404,7 +403,10 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
             if (T == Value) {
                 switch (val.getUserTag()) {
                     .float => {
-                        try ctx.encodeNumber(val.asF64());
+                        try ctx.encodeFloat(val.asF64());
+                    },
+                    .int => {
+                        try ctx.encodeInt(val.asInteger());
                     },
                     .string => {
                         const uservm = cy.ptrAlignCast(*cy.UserVM, ctx.user_ctx);
@@ -436,8 +438,6 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
         }
     };
     const root = args[0];
-    defer vm.release(root);
-
     const alloc = vm.allocator();
 
     const cyon = cy.encodeCyon(alloc, vm, root, S.encodeRoot) catch fatal();
@@ -447,7 +447,6 @@ pub fn toCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 
 fn parseCyber(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const src = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
 
     const alloc = vm.allocator();
     var parser = cy.Parser.init(alloc);
@@ -528,7 +527,6 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseRe
 
 pub fn parseCyon(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const src = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
     
     const alloc = vm.allocator();
     var parser = cy.Parser.init(alloc);
@@ -541,7 +539,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
     const ivm = self.internal();
     switch (val.getValueType()) {
         .list => {
-            var dlist = val.asList() catch cy.fatal();
+            var dlist = val.getList() catch cy.fatal();
             defer dlist.deinit();
             const elems = try ivm.alloc.alloc(Value, dlist.arr.len);
             for (elems, 0..) |*elem, i| {
@@ -550,7 +548,7 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             return try cy.heap.allocOwnedList(ivm, elems);
         },
         .map => {
-            var dmap = val.asMap() catch cy.fatal();
+            var dmap = val.getMap() catch cy.fatal();
             defer dmap.deinit();
             var iter = dmap.iterator();
 
@@ -569,11 +567,14 @@ fn fromCyonValue(self: *cy.UserVM, val: cy.DecodeValueIR) !Value {
             // TODO: Use allocOwnedString
             return try self.allocStringInfer(str);
         },
+        .integer => {
+            return Value.initInt(try val.getInt());
+        },
         .float => {
-            return Value.initF64(try val.asF64());
+            return Value.initF64(try val.getF64());
         },
         .boolean => {
-            return Value.initBool(val.asBool());
+            return Value.initBool(val.getBool());
         },
     }
 }
@@ -585,7 +586,6 @@ fn stdMapPut(vm: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void
 }
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const str = vm.valueToTempRawString(args[0]);
     if (cy.isWasmFreestanding) {
         hostFileWrite(1, str.ptr, str.len);
@@ -602,7 +602,6 @@ pub extern fn hostFileWrite(fid: u32, str: [*]const u8, strLen: usize) void;
 
 pub fn prints(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
     if (cy.isWasm) {
         hostFileWrite(1, str.ptr, str.len);
     } else {
@@ -620,7 +619,6 @@ pub fn readAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 }
 
 pub fn readFile(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     const content = std.fs.cwd().readFileAlloc(vm.allocator(), path, 10e8) catch |err| {
         if (err == error.FileNotFound) {
@@ -639,10 +637,9 @@ pub fn readLine(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.
     return getInput(vm, args, nargs);
 }
 
-pub fn typeid(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
-    defer vm.release(args[0]);
+pub fn typeid(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     fmt.printDeprecated("typeid", "0.2", "Use metatype.id() instead.", &.{});
-    return Value.initF64(@floatFromInt(args[0].getTypeId()));
+    return Value.initInt(@intCast(args[0].getTypeId()));
 }
 
 fn valtag(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
@@ -652,15 +649,12 @@ fn valtag(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSec
 
 fn typeof(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    defer vm.release(val);
-
     const typeId = val.getTypeId();
     return cy.heap.allocMetaType(vm.internal(), @intFromEnum(cy.heap.MetaTypeKind.object), typeId) catch fatal();
 }
 
-pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn typesym(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const val = args[0];
-    defer vm.release(val);
     switch (val.getUserTag()) {
         .float => return Value.initSymbol(@intFromEnum(Symbol.float)),
         .object => return Value.initSymbol(@intFromEnum(Symbol.object)),
@@ -684,10 +678,6 @@ pub fn typesym(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
     const path = vm.valueToTempRawString(args[0]);
     const pathDupe = vm.allocator().dupe(u8, path) catch fatal();
     defer vm.allocator().free(pathDupe);
@@ -697,7 +687,6 @@ pub fn writeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
 }
 
 pub fn evalJS(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const str = vm.valueToTempString(args[0]);
     hostEvalJS(str.ptr, str.len);
     return Value.None;

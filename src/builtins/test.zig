@@ -29,7 +29,8 @@ fn fail(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
 }
 
 /// Simply returns the value so the caller get's an erased `any` type.
-fn erase(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+fn erase(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    vm.retain(args[0]);
     return args[0];
 }
 
@@ -158,23 +159,15 @@ fn eq2(vm: *cy.UserVM, act: Value, exp: Value) linksection(cy.StdSection) bool {
     }
 }
 
-pub fn eq(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    _ = nargs;
-    const act = args[0];
-    const exp = args[1];
-    defer {
-        vm.release(act);
-        vm.release(exp);
-    }
-    if (eq2(vm, act, exp)) {
+pub fn eq(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    if (eq2(vm, args[0], args[1])) {
         return Value.True;
     } else {
         return vm.prepareThrowSymbol(@intFromEnum(Symbol.AssertError));
     }
 }
 
-pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
-    _ = nargs;
+pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const act = args[0];
     const exp = args[1];
 
@@ -202,10 +195,6 @@ pub fn eqNear(vm: *cy.UserVM, args: [*]const Value, nargs: u8) Value {
 pub fn eqList(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const act = args[0];
     const exp = args[1];
-    defer {
-        vm.release(act);
-        vm.release(exp);
-    }
 
     const actType = act.getUserTag();
     const expType = exp.getUserTag();

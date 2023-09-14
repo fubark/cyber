@@ -47,7 +47,7 @@ const Context = struct {
     }
 
     fn ensureArray(self: *Context, bindT: Value) !void {
-        const n: u32 = @intFromFloat((try self.ivm.getField(bindT, self.nField)).asF64());
+        const n: u32 = @intCast((try self.ivm.getField(bindT, self.nField)).asInteger());
         const elem = try self.ivm.getField(bindT, self.elemField);
         const elemName = try self.getTempBaseTypeName(elem);
         const key = try std.fmt.bufPrint(&Context.buf, "{s}[{}]", .{elemName, n});
@@ -58,34 +58,13 @@ const Context = struct {
         }
     }
 
-    fn genFuncReleaseOps(_: *Context, w: anytype, cargs: []const Value) !void {
-        for (cargs, 0..) |carg, i| {
-            if (carg.isObjectType(rt.MetaTypeT)) {
-                try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-            } else if (carg.isObjectType(os.CArrayT)) {
-                try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-            } else {
-                const argTag = carg.asSymbolId();
-                switch (@as(Symbol, @enumFromInt(argTag))) {
-                    .charPtr => {
-                        try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-                    },
-                    .voidPtr => {
-                        try w.print("  icyRelease(vm, args[{}]);\n", .{i});
-                    },
-                    else => {},
-                }
-            }
-        }
-    }
-
     /// eg. int a; int a[4];
     fn genNamedCType(self: *Context, w: anytype, val: Value, name: []const u8) !void {
         if (val.isObjectType(os.CArrayT)) {
-            const n = (try self.ivm.getField(val, self.nField)).asF64();
+            const n = (try self.ivm.getField(val, self.nField)).asInteger();
             const elem = try self.ivm.getField(val, self.elemField);
             try self.genCType(w, elem);
-            try w.print(" {s}[{}]", .{ name, @as(u32, @intFromFloat(n)) });
+            try w.print(" {s}[{}]", .{ name, n });
         } else {
             try self.genCType(w, val);
             try w.print(" {s}", .{name});
@@ -103,10 +82,10 @@ const Context = struct {
                 return error.InvalidArgument;
             }
         } else if (val.isObjectType(os.CArrayT)) {
-            const n = (try self.ivm.getField(val, self.nField)).asF64();
+            const n = (try self.ivm.getField(val, self.nField)).asInteger();
             const elem = try self.ivm.getField(val, self.elemField);
             try self.genCType(w, elem);
-            try w.print("[{}]", .{ @as(u32, @intFromFloat(n)) });
+            try w.print("[{}]", .{ n });
         } else {
             if (val.isSymbol()) {
                 const tag = val.asSymbolId();
@@ -353,11 +332,6 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
     var success = false;
 
-    defer {
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
-
     var lib = try alloc.create(std.DynLib);
     defer {
         if (!success) {
@@ -541,7 +515,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         var iter = ctx.arrays.iterator();
         while (iter.next()) |entry| {
             const carr = entry.value_ptr.*;
-            const n: u32 = @intFromFloat((try ivm.getField(carr, ctx.nField)).asF64());
+            const n: u32 = @intCast((try ivm.getField(carr, ctx.nField)).asInteger());
             const elem = try ivm.getField(carr, ctx.elemField);
             const elemName = try ctx.getTempBaseTypeName(elem);
 
@@ -630,10 +604,6 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             }
             try w.print("  uint64_t ptr = *((uint64_t*)(args[0] & ~PointerMask) + 1);\n", .{});
             try w.print("  uint64_t res = fromStruct{}(vm, *(Struct{}*)ptr);\n", .{objSymId, objSymId});
-            try w.print("  icyRelease(vm, args[0]);\n", .{});
-            if (!config.genMap) {
-                try w.print("  icyRelease(vm, recv);\n", .{});
-            }
             try w.print("  return res;\n", .{});
             try w.print("}}\n", .{});
         }
@@ -644,7 +614,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         var iter = ctx.arrays.iterator();
         while (iter.next()) |entry| {
             const carr = entry.value_ptr.*;
-            const n: u32 = @intFromFloat((try ivm.getField(carr, ctx.nField)).asF64());
+            const n: u32 = @intCast((try ivm.getField(carr, ctx.nField)).asInteger());
             const elem = try ivm.getField(carr, ctx.elemField);
             const elemName = try ctx.getTempBaseTypeName(elem);
 
@@ -870,7 +840,7 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         for (cargs, 0..) |carg, i| {
             if (carg.isObjectType(os.CArrayT)) {
-                const n: u32 = @intFromFloat((try ivm.getField(carg, ctx.nField)).asF64());
+                const n: u32 = @intCast((try ivm.getField(carg, ctx.nField)).asInteger());
                 const elem = try ivm.getField(carg, ctx.elemField);
                 const elemName = try ctx.getTempBaseTypeName(elem);
 
@@ -946,12 +916,6 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
 
     // End of args.
     try w.print(");\n", .{});
-
-    try ctx.genFuncReleaseOps(w, cargs);
-    if (!ctx.config.genMap) {
-        // Release obj.
-        try w.print("  icyRelease(vm, recv);\n", .{});
-    }
 
     // Gen return.
     try w.print("  return ", .{});

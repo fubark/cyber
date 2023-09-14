@@ -9,6 +9,7 @@ typedef int16_t i16;
 typedef uint32_t u32;
 typedef int32_t i32;
 typedef uint64_t u64;
+typedef int64_t i64;
 
 typedef struct Str {
     const char* ptr;
@@ -29,6 +30,7 @@ typedef enum {
     FMT_TYPE_U16,
     FMT_TYPE_U32,
     FMT_TYPE_I32,
+    FMT_TYPE_I48,
     FMT_TYPE_U64,
     FMT_TYPE_F64,
     FMT_TYPE_BOOL,
@@ -61,8 +63,9 @@ typedef struct FmtValue {
 
 typedef enum {
     CodeConstOp = 0,
+    
+    /// Sets an immediate i8 value as an integer to a dst local.
     CodeConstI8,
-    CodeConstI8Int,
 
     /// Add first two locals and stores result to a dst local.
     CodeAddFloat,
@@ -79,12 +82,12 @@ typedef enum {
     CodeSetIndex,
     CodeSetIndexRelease,
     CodeCopyRetainSrc,
-    CodeIndex,
-    CodeReverseIndex,
+    CodeIndexList,
+    CodeIndexMap,
     CodeList,
     CodeMap,
     CodeMapEmpty,
-    CodeSlice,
+    CodeSliceList,
     CodeJumpNotCond,
     CodeJumpCond,
     CodeJump,
@@ -107,10 +110,14 @@ typedef enum {
     CodeLambda,
     CodeClosure,
     CodeCompare,
-    CodeLess,
-    CodeGreater,
-    CodeLessEqual,
-    CodeGreaterEqual,
+    CodeLessFloat,
+    CodeGreaterFloat,
+    CodeLessEqualFloat,
+    CodeGreaterEqualFloat,
+    CodeLessInt,
+    CodeGreaterInt,
+    CodeLessEqualInt,
+    CodeGreaterEqualInt,
     /// Multiplies first two locals and stores result to a dst local.
     CodeMulFloat,
     /// Divides second local from first local and stores result to a dst local.
@@ -162,7 +169,6 @@ typedef enum {
     CodePowInt,
     CodeModInt,
     CodeNegInt,
-    CodeLessInt,
     CodeForRangeInit,
     CodeForRange,
     CodeForRangeReverse,
@@ -226,12 +232,12 @@ typedef enum {
     SEMA_TYPE_FIBER = 12,
     SEMA_TYPE_METATYPE = 13,
 
-    SEMA_TYPE_NUMERICLIT = 14,
-    SEMA_TYPE_UNDEFINED = 15,
-    SEMA_TYPE_STATICSTRING = 16,
-    SEMA_TYPE_FILE = 17,
+    SEMA_TYPE_UNDEFINED = 14,
+    SEMA_TYPE_STATICSTRING = 15,
+    SEMA_TYPE_FILE = 16,
 
-    SEMA_TYPE_DYNAMIC = 18,
+    SEMA_TYPE_DYNAMIC = 17,
+    NumSemaTypes = 18,
 } SemaType;
 
 typedef uint8_t Inst;
@@ -372,6 +378,12 @@ typedef struct StringSlice {
     u64 extra;
 } StringSlice;
 
+typedef struct ZCyList {
+    void* buf;
+    size_t cap;
+    size_t len;
+} ZCyList;
+
 typedef struct Object {
     TypeId typeId;
     uint32_t rc;
@@ -413,18 +425,26 @@ typedef struct MetaType {
     uint32_t symId;
 } MetaType;
 
+typedef struct ValueMap {
+    u64* metadata;
+    void* entries;
+    u32 size;
+    u32 cap;
+    u32 available;
+    u32 padding;
+} ValueMap;
+
 typedef struct Map {
     TypeId typeId;
     uint32_t rc;
-    struct {
-        u64* metadata;
-        void* entries;
-        u32 size;
-        u32 cap;
-        u32 available;
-        u32 padding;
-    } inner;
+    ValueMap inner;
 } Map;
+
+typedef struct List {
+    TypeId typeId;
+    u32 rc;
+    ZCyList list;
+} List;
 
 typedef union HeapObject {
     struct {
@@ -438,6 +458,7 @@ typedef union HeapObject {
     Closure closure;
     Box box;
     Map map;
+    List list;
     NativeFunc1 nativeFunc1;
 } HeapObject;
 
@@ -457,12 +478,6 @@ typedef struct ZList {
     size_t len;
     size_t cap;
 } ZList;
-
-typedef struct ZCyList {
-    void* buf;
-    size_t cap;
-    size_t len;
-} ZCyList;
 
 typedef struct StackTrace {
     void* framePtr;
@@ -502,8 +517,12 @@ typedef struct ByteCodeBuffer {
     ZHashMap strMap;
 
     ZList debugTable;
+    ZList debugReleaseTable;
 
     ZList debugMarkers;
+
+    ZList unwindReleaseRegs;
+    ZList unwindReleaseBacklinks;
 
     u32 mainStackSize;
 } ByteCodeBuffer;
@@ -674,6 +693,12 @@ typedef struct VM {
     ZCyList methodExts;
     DebugSym* debugTablePtr;
     size_t debugTableLen;
+    u32* debugTempIndexTablePtr;
+    size_t debugTempIndexTableLen;
+    u8* unwindTempRegsPtr;
+    size_t unwindTempRegsLen;
+    u8* unwindTempPrevIndexesPtr;
+    size_t unwindTempPrevIndexesLen;
 
     Fiber* curFiber;
 #if !IS_32BIT
@@ -700,11 +725,7 @@ typedef struct VM {
         void* vtable;
     } httpClient;
     void* stdHttpClient;
-    MethodGroupId iteratorMGID;
-    MethodGroupId pairIteratorMGID;
-    MethodGroupId nextMGID;
-    MethodGroupId nextPairMGID;
-    MethodGroupId padding[13];
+    MethodGroupId padding[23];
     size_t expGlobalRC;
     ZHashMap varSymExtras;
 #else
@@ -719,11 +740,7 @@ typedef struct VM {
     #if TRACE
     u32 debugPc;
     #endif
-    MethodGroupId iteratorMGID;
-    MethodGroupId pairIteratorMGID;
-    MethodGroupId nextMGID;
-    MethodGroupId nextPairMGID;
-    MethodGroupId padding[13];
+    MethodGroupId padding[23];
 #endif
 
 } VM;
@@ -803,8 +820,6 @@ ValueResult zAllocObjectSmall(VM* vm, TypeId typeId, Value* fields, uint8_t nfie
 uint8_t zGetFieldOffsetFromTable(VM* vm, TypeId typeId, uint32_t symId);
 Value zEvalCompare(VM* vm, Value left, Value right);
 Value zEvalCompareNot(VM* vm, Value left, Value right);
-ValueResult zGetIndex(VM* vm, Value* recv, Value indexv); 
-ValueResult zGetReverseIndex(VM* vm, Value* recv, Value indexv); 
 PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs, Value retInfo);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
@@ -817,9 +832,9 @@ void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArg
 ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
 PcSpResult zThrow(VM* vm, Value* startFp, const Inst* pc, Value err);
-ValueResult zSliceOp(VM* vm, Value* recv, Value startV, Value endV);
 u16 zOpMatch(VM* vm, const Inst* pc, Value* framePtr);
 void zPrintStderr(const char* fmt, const FmtValue* vals, size_t len);
 void zCheckDoubleFree(VM* vm, HeapObject* obj);
 void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);
+Value zValueMapGet(VM* vm, ValueMap* map, Value key, bool* found);

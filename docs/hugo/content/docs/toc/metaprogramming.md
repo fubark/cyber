@@ -38,8 +38,8 @@ print boolean       -- 'type: boolean'
 
 ### `type metatype`
 ```cy
-func id(self) float
--- Returns the type ID as a float.
+func id(self) int
+-- Returns the type ID as an `int`.
 ```
 
 ## Annotations.

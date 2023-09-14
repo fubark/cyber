@@ -20,14 +20,39 @@ When other value types are coerced to the boolean type, the truthy value is dete
 - Other objects and values are always `true`.
 
 ## Numbers.
+
+### Integers.
+`int` is the default integer type. It has 48-bits and can represent integers in the range -(2{{<sup "47">}}) to 2{{<sup "47">}}-1.
+
+When a numeric literal is used and the type can not be inferred, it will default to the `int` type:
+```cy
+var a = 123
+```
+
+Integer notations always produce a `int` value:
+```cy
+var a = 0xFF     -- hex.
+a = 0o17         -- octal.
+a = 0b1010       -- binary.
+a = 0u'🐶'       -- UTF-8 rune.
+```
+
+Arbitrary values can be converted to a `int` using the type as a function. 
+```cy
+var a = '123'
+var b = int(a) 
+```
+
+In addition to arithmetic operations, integers can also perform [bitwise operations]({{<relref "/docs/toc/syntax#bitwise-operators">}}).
+
 ### Floats.
-`float` is the default number type and has an (IEEE 754) 64-bit floating point format.
+`float` is the default floating point type. It has a (IEEE 754) 64-bit floating point format.
 
 Although a `float` represents a decimal number, it can also represent integers between -(2{{<sup "53">}}-1) and (2{{<sup "53">}}-1). Any integers beyond the safe integer range is not guaranteed to have a unique representation.
 
-When a numeric literal is used and the type can not be inferred, it will default to the `float` type:
+A numeric literal can be used to create a `float` if the inferred type is a `float`:
 ```cy
-var a = 123
+a float = 123
 ```
 
 Decimal and scientific notations always produce a `float` value:
@@ -41,24 +66,6 @@ Arbitrary values can be converted to a `float` using the type as a function.
 var a = '12.3'
 var b = float(a) 
 ```
-
-### Integers.
-`int` is a number type that represents a 32-bit integer.
-
-A numeric literal can be used to create an `int` if the inferred type is an `int`:
-```cy
-a int = 123
-```
-
-Integer notations always produce a `int` value:
-```cy
-var a = 0xFF     -- hex.
-a = 0o17         -- octal.
-a = 0b1010       -- binary.
-a = 0u'🐶'       -- UTF-8 rune.
-```
-
-In addition to arithmetic operations, integers can also perform [bitwise operations]({{<relref "/docs/toc/syntax#bitwise-operators">}}).
 
 ### Big Numbers.
 Big numbers will be supported in a future version of Cyber.
@@ -154,22 +161,22 @@ func concat(self, str string) string
 func endsWith(self, suffix string) bool
 -- Returns whether the string ends with `suffix`.
 
-func find(self, needle string) float?
+func find(self, needle string) int?
 -- Returns the first index of substring `needle` in the string or `none` if not found.
 
-func findAnyRune(self, set string) float?
+func findAnyRune(self, set string) int?
 -- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
 
-func findRune(self, needle float) float?
+func findRune(self, needle int) int?
 -- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
 
-func insert(self, idx float, str string) string
+func insert(self, idx int, str string) string
 -- Returns a new string with `str` inserted at index `idx`.
 
 func isAscii(self) bool
 -- Returns whether the string contains all ASCII runes.
 
-func len(self) float
+func len(self) int
 -- Returns the number of UTF-8 runes in the string.
 
 func less(self, str string) bool
@@ -181,16 +188,16 @@ func lower(self) string
 func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`. | 
 
-func repeat(self, n float) string
+func repeat(self, n int) string
 -- Returns a new string with this string repeated `n` times.
 
-func runeAt(self, idx float) float
+func runeAt(self, idx int) int
 -- Returns the UTF-8 rune at index `idx`.
 
-func slice(self, start float, end float) string
+func slice(self, start int, end int) string
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
-func sliceAt(self, idx float) string
+func sliceAt(self, idx int) string
 -- Returns the UTF-8 rune at index `idx` as a single rune string.
 
 func split(self, delim string) List
@@ -235,7 +242,7 @@ print str[-1]    -- "d"
 
 ### `type rawstring`
 ```cy
-func byteAt(self, idx float) float
+func byteAt(self, idx int) int
 -- Returns the byte value (0-255) at the given index `idx`.
 
 func concat(self, str string) string
@@ -244,25 +251,25 @@ func concat(self, str string) string
 func endsWith(self, suffix string) bool
 -- Returns whether the string ends with `suffix`.
 
-func find(self, needle string) float?
+func find(self, needle string) int?
 -- Returns the first index of substring `needle` in the string or `none` if not found.
 
-func findAnyRune(self, set string) float?
+func findAnyRune(self, set string) int?
 -- Returns the first index of any UTF-8 rune in `set` or `none` if not found.
 
-func findRune(self, needle float) float?
+func findRune(self, needle int) int?
 -- Returns the first index of UTF-8 rune `needle` in the string or `none` if not found.
 
-func insert(self, idx float, str string) string
+func insert(self, idx int, str string) string
 -- Returns a new string with `str` inserted at index `idx`.
 
-func insertByte(self, idx float, byte float) string
+func insertByte(self, idx int, byte int) string
 -- Returns a new string with `byte` inserted at index `idx`.
 
 func isAscii(self) bool
 -- Returns whether the string contains all ASCII runes.
 
-func len(self) float
+func len(self) int
 -- Returns the number of bytes in the string.
 
 func less(self, str rawstring) bool
@@ -271,19 +278,19 @@ func less(self, str rawstring) bool
 func lower(self) string
 -- Returns this string in lowercase.
 
-func repeat(self, n float) rawstring
+func repeat(self, n int) rawstring
 -- Returns a new rawstring with this rawstring repeated `n` times.
 
 func replace(self, needle string, replacement string) string
 -- Returns a new string with all occurrences of `needle` replaced with `replacement`.
 
-func runeAt(self, idx float) float
+func runeAt(self, idx int) int
 -- Returns the UTF-8 rune at index `idx`. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
-func slice(self, start float, end float) rawstring
+func slice(self, start int, end int) rawstring
 -- Returns a slice into this string from `start` to `end` (exclusive) indexes. This is equivalent to using the slice index operator `[start..end]`.
 
-func sliceAt(self, idx float) string
+func sliceAt(self, idx int) string
 -- Returns the UTF-8 rune at index `idx` as a single rune string. If the index does not begin a UTF-8 rune, `error.InvalidRune` is returned.
 
 func split(self, delim string) List
@@ -354,13 +361,13 @@ list.remove(1)
 | ------------- | ----- |
 | `append(val any) none` | Appends a value to the end of the list. |
 | `concat(val any) none` | Concats the elements of another list to the end of this list. |
-| `insert(idx float, val any) none` | Inserts a value at index `idx`. |
+| `insert(idx int, val any) none` | Inserts a value at index `idx`. |
 | `iterator() Iterator<any>` | Returns a new iterator over the list elements. |
 | `joinString(separator any) string` | Returns a new string that joins the elements with `separator`. |
-| `len() float` | Returns the number of elements in the list. |
-| `pairIterator() PairIterator<float, any>` | Returns a new pair iterator over the list elements. |
-| `remove(idx float) none` | Removes an element at index `idx`. |
-| `resize(len float) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
+| `len() int` | Returns the number of elements in the list. |
+| `pairIterator() PairIterator<int, any>` | Returns a new pair iterator over the list elements. |
+| `remove(idx int) none` | Removes an element at index `idx`. |
+| `resize(len int) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
 | `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
 
 ## Maps.
@@ -418,9 +425,9 @@ for map each val, key:
 | Method | Summary |
 | ------------- | ----- |
 | `iterator() Iterator<any>` | Returns a new iterator over the map elements. |
-| `pairIterator() PairIterator<float, any>` | Returns a new pair iterator over the map elements. |
+| `pairIterator() PairIterator<any, any>` | Returns a new pair iterator over the map elements. |
 | `remove(key any) none` | Removes the element with the given key `key`. |
-| `size() float` | Returns the number of key-value pairs in the map. |
+| `size() int` | Returns the number of key-value pairs in the map. |
 
 ## Objects.
 Any value that isn't a primitive is an object. You can declare your own object types using the `type object` declaration. Object types are similar to structs and classes in other languages. You can declare members and methods. Unlike classes, there is no concept of inheritance at the language level.
@@ -475,7 +482,7 @@ type Fruit enum:
 
 var fruit = Fruit.kiwi
 print fruit       -- 'Fruit.kiwi'
-print float(fruit)  -- '3'
+print int(fruit)  -- '3'
 ```
 When the type of the value is known to be an enum, it can be assigned using a symbol literal.
 ```cy
@@ -489,5 +496,5 @@ Symbol literals begin with `#`, followed by an identifier. They have their own g
 ```cy
 var currency = #usd
 print(currency == #usd)   -- 'true'
-print float(currency)       -- '123' or some arbitrary id.
+print int(currency)       -- '123' or some arbitrary id.
 ```

@@ -93,7 +93,9 @@ pub const Chunk = struct {
     blockJumpStack: std.ArrayListUnmanaged(BlockJump),
     subBlockJumpStack: std.ArrayListUnmanaged(SubBlockJump),
 
-    operandStack: std.ArrayListUnmanaged(cy.Inst),
+    regStack: std.ArrayListUnmanaged(u8),
+    operandStack: std.ArrayListUnmanaged(u8),
+    unwindTempIndexStack: std.ArrayListUnmanaged(UnwindTempIndex),
 
     /// Used to advance to the next saved sema sub block.
     nextSemaSubBlockId: u32,
@@ -134,7 +136,9 @@ pub const Chunk = struct {
             .subBlockJumpStack = .{},
             .assignedVarStack = .{},
             .declaredVarStack = .{},
+            .regStack = .{},
             .operandStack = .{},
+            .unwindTempIndexStack = .{},
             .curBlock = undefined,
             .curSemaBlockId = undefined,
             .curObjectSymId = cy.NullId,
@@ -186,7 +190,9 @@ pub const Chunk = struct {
         self.subBlockJumpStack.deinit(self.alloc);
         self.assignedVarStack.deinit(self.alloc);
         self.declaredVarStack.deinit(self.alloc);
+        self.regStack.deinit(self.alloc);
         self.operandStack.deinit(self.alloc);
+        self.unwindTempIndexStack.deinit(self.alloc);
         self.vars.deinit(self.alloc);
         self.capVarDescs.deinit(self.alloc);
 
@@ -328,7 +334,11 @@ pub const Chunk = struct {
     }
 
     pub fn pushTempOperand(self: *Chunk, operand: u8) !void {
-        try self.operandStack.append(self.alloc, cy.Inst.initArg(operand));
+        try self.operandStack.append(self.alloc, operand);
+    }
+
+    pub fn pushReg(self: *Chunk, reg: u8) !void {
+        try self.regStack.append(self.alloc, reg);
     }
 
     pub fn reserveLocal(self: *Chunk, block: *GenBlock) !u8 {
@@ -441,16 +451,10 @@ pub const Chunk = struct {
         const start = self.operandStack.items.len;
         defer self.operandStack.items.len = start;
 
-        for (sblock.params.items) |varId| {
-            const svar = self.vars.items[varId];
-            if (svar.lifetimeRcCandidate and !svar.isParentLocalAlias()) {
-                try self.operandStack.append(self.alloc, cy.Inst.initArg(svar.local));
-            }
-        }
         for (sblock.locals.items) |varId| {
             const svar = self.vars.items[varId];
             if (svar.lifetimeRcCandidate and svar.isDefinedOnce) {
-                try self.operandStack.append(self.alloc, cy.Inst.initArg(svar.local));
+                try self.operandStack.append(self.alloc, svar.local);
             }
         }
         
@@ -698,16 +702,101 @@ pub const Chunk = struct {
     /// An optional debug sym is only included in Debug builds.
     pub fn pushOptionalDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
         if (builtin.mode == .Debug or self.compiler.vm.config.genAllDebugSyms) {
-            try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc);
+            try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, cy.NullId);
+        }
+    }
+
+    pub fn pushUnwindIndex(self: *Chunk, reg: u8) !void {
+        try self.unwindTempIndexStack.append(self.alloc, .{
+            .created = false,
+            .idxOrReg = reg,
+        });
+    }
+
+    pub fn pushUnwindIndexIfRetainedTemp(self: *Chunk, val: cy.codegen.GenValue) !bool {
+        if (val.isTempLocal and val.retained) {
+            try self.unwindTempIndexStack.append(self.alloc, .{
+                .created = false,
+                .idxOrReg = val.local,
+            });
+            return true;
+        }
+        return false;
+    }
+
+    pub fn popUnwindTempIndexN(self: *Chunk, n: u32) void {
+        self.unwindTempIndexStack.items.len -= n;
+    }
+
+    pub fn popUnwindTempIndex(self: *Chunk) void {
+        _ = self.unwindTempIndexStack.pop();
+    }
+
+    pub fn getLastUnwindTempIndex(self: *Chunk) !u32 {
+        const tempIdx = self.unwindTempIndexStack.items[self.unwindTempIndexStack.items.len-1];
+        if (@as(u32, @bitCast(tempIdx)) == cy.NullId) {
+            return cy.NullId;
+        }
+        if (!tempIdx.created) {
+            var prev: u32 = cy.NullId;
+            if (self.unwindTempIndexStack.items.len > 1) {
+                const prevIdx = self.unwindTempIndexStack.items[self.unwindTempIndexStack.items.len-2];
+                if (@as(u32, @bitCast(prevIdx)) != cy.NullId) {
+                    if (!prevIdx.created) {
+                        // Multiple uncreated temp indexes. 
+
+                        // Find first uncreated.
+                        var first = self.unwindTempIndexStack.items.len-2;
+                        while (first > 0) {
+                            first -= 1;
+                            if (@as(u32, @bitCast(self.unwindTempIndexStack.items[first])) == cy.NullId) {
+                                first += 1;
+                                break;
+                            }
+                            if (self.unwindTempIndexStack.items[first].created) {
+                                first += 1;
+                                break;
+                            }
+                        }
+
+                        if (first > 0) {
+                            prev = self.unwindTempIndexStack.items[first-1].idxOrReg;
+                        }
+                        for (first..self.unwindTempIndexStack.items.len-1) |i| {
+                            const idx = self.buf.unwindTempRegs.items.len;
+                            try self.buf.unwindTempRegs.append(self.alloc, @intCast(self.unwindTempIndexStack.items[i].idxOrReg));
+                            try self.buf.unwindTempPrevIndexes.append(self.alloc, prev);
+                            prev = @intCast(idx);
+                        }
+                    } else {
+                        prev = prevIdx.idxOrReg;
+                    }
+                }
+            }
+
+            // Insert unwind temp now that it's needed by a failable inst.
+            const idx = self.buf.unwindTempRegs.items.len;
+            try self.buf.unwindTempRegs.append(self.alloc, @intCast(tempIdx.idxOrReg));
+            try self.buf.unwindTempPrevIndexes.append(self.alloc, prev);
+
+            // Update temp index record.
+            self.unwindTempIndexStack.items[self.unwindTempIndexStack.items.len-1] = .{
+                .created = true,
+                .idxOrReg = @intCast(idx),
+            };
+            return @intCast(idx);
+        } else {
+            return tempIdx.idxOrReg;
         }
     }
 
     pub fn pushDebugSym(self: *Chunk, nodeId: cy.NodeId) !void {
-        try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc);
+        const unwindTempIdx = try self.getLastUnwindTempIndex();
+        try self.buf.pushDebugSym(self.buf.ops.items.len, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
     }
 
-    fn pushDebugSymAt(self: *Chunk, pc: usize, nodeId: cy.NodeId) !void {
-        try self.buf.pushDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc);
+    fn pushDebugSymAt(self: *Chunk, pc: usize, nodeId: cy.NodeId, unwindTempIdx: u32) !void {
+        try self.buf.pushDebugSym(pc, self.id, nodeId, self.curBlock.frameLoc, unwindTempIdx);
     }
 
     pub fn getModule(self: *Chunk) *cy.Module {
@@ -798,3 +887,8 @@ const ReservedTempLocal = struct {
 };
 
 const LocalId = u8;
+
+const UnwindTempIndex = packed struct {
+    created: bool,
+    idxOrReg: u31,
+};

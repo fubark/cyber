@@ -115,6 +115,9 @@ pub const VM = struct {
     methodGroupExts: cy.List(rt.MethodGroupExt),
     methodExts: cy.List(rt.MethodExt),
     debugTable: []const cy.DebugSym,
+    debugTempIndexTable: []const u32,
+    unwindTempRegs: []const u8,
+    unwindTempPrevIndexes: []const u32,
 
     curFiber: *cy.Fiber,
     mainFiber: cy.Fiber,
@@ -146,19 +149,25 @@ pub const VM = struct {
     pairIteratorMGID: vmc.MethodGroupId = cy.NullId,
     nextMGID: vmc.MethodGroupId = cy.NullId,
     nextPairMGID: vmc.MethodGroupId = cy.NullId,
-    @"$prefix~MGID": vmc.MethodGroupId = cy.NullId,
-    @"$prefix-MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix+MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix-MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix*MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix/MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix%MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix^MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix&MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix|MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix||MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix<<MGID": vmc.MethodGroupId = cy.NullId,
-    @"$infix>>MGID": vmc.MethodGroupId = cy.NullId,
+    indexMGID: vmc.MethodGroupId = cy.NullId,
+    sliceMGID: vmc.MethodGroupId = cy.NullId,
+    @"prefix~MGID": vmc.MethodGroupId = cy.NullId,
+    @"prefix-MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix>MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix>=MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix<MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix<=MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix+MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix-MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix*MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix/MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix%MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix^MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix&MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix|MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix||MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix<<MGID": vmc.MethodGroupId = cy.NullId,
+    @"infix>>MGID": vmc.MethodGroupId = cy.NullId,
 
     expGlobalRC: usize,
 
@@ -218,6 +227,9 @@ pub const VM = struct {
             .u8Buf2 = .{},
             .stackTrace = .{},
             .debugTable = undefined,
+            .debugTempIndexTable = undefined,
+            .unwindTempRegs = undefined,
+            .unwindTempPrevIndexes = undefined,
             .refCounts = if (cy.TrackGlobalRC) 0 else undefined,
             .throwTrace = .{},
             .mainFiber = undefined,
@@ -572,12 +584,12 @@ pub const VM = struct {
 
     pub fn dumpStats(self: *const VM) void {
         const S = struct {
-            fn opCountLess(_: void, a: cy.OpCount, b: cy.OpCount) bool {
+            fn opCountLess(_: void, a: vmc.OpCount, b: vmc.OpCount) bool {
                 return a.count > b.count;
             }
         };
         std.debug.print("total ops evaled: {}\n", .{self.trace.totalOpCounts});
-        std.sort.pdq(cy.OpCount, self.trace.opCounts, {}, S.opCountLess);
+        std.sort.pdq(vmc.OpCount, &self.trace.opCounts, {}, S.opCountLess);
         var i: u32 = 0;
 
         const numOps = comptime std.enums.values(cy.OpCode).len;
@@ -665,6 +677,9 @@ pub const VM = struct {
         debug.freePanicPayload(self);
         self.curFiber.panicType = vmc.PANIC_NONE;
         self.debugTable = buf.debugTable.items;
+        self.debugTempIndexTable = buf.debugTempIndexTable.items;
+        self.unwindTempRegs = buf.unwindTempRegs.items;
+        self.unwindTempPrevIndexes = buf.unwindTempPrevIndexes.items;
 
         // Set these last to hint location to cache before eval.
         self.pc = @ptrCast(buf.ops.items.ptr);
@@ -690,81 +705,6 @@ pub const VM = struct {
             return Value.None;
         } else {
             return self.stack[self.endLocal];
-        }
-    }
-
-    fn sliceOp(self: *VM, recv: *Value, startV: Value, endV: Value) !Value {
-        if (recv.isPointer()) {
-            const obj = recv.asHeapObject();
-            const res = switch (obj.head.typeId) {
-                rt.ListT => {
-                    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    var start: i32 = @intFromFloat(startV.toF64());
-                    if (start < 0) {
-                        start = @as(i32, @intCast(list.len)) + start;
-                    }
-                    var end: i32 = if (endV.isNone()) @intCast(list.len) else @intFromFloat(endV.toF64());
-                    if (end < 0) {
-                        end = @as(i32, @intCast(list.len)) + end;
-                    }
-                    if (start < 0 or start > list.len) {
-                        return self.interruptThrowSymbol(.OutOfBounds);
-                    }
-                    if (end < start or end > list.len) {
-                        return self.interruptThrowSymbol(.OutOfBounds);
-                    }
-
-                    const elems = list.buf[@intCast(start) .. @intCast(end)];
-                    for (elems) |elem| {
-                        retain(self, elem);
-                    }
-                    return cy.heap.allocList(self, elems);
-                },
-                rt.AstringT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSlice(.astring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
-                },
-                rt.UstringT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSlice(.ustring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
-                },
-                rt.StringSliceT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSlice(.slice)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
-                },
-                rt.RawstringT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSlice(.rawstring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
-                },
-                rt.RawstringSliceT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSlice(.rawSlice)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2);
-                },
-                else => {
-                    const vmType = self.types.buf[obj.head.typeId];
-                    return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(vmType.namePtr[0..vmType.nameLen])});
-                },
-            };
-            if (res.isInterrupt()) {
-                return error.Panic;
-            }
-            return res;
-        } else {
-            if (recv.isFloat()) {
-                return self.panic("Unsupported slice operation on type `number`.");
-            } else {
-                const res = switch (recv.getTag()) {
-                    rt.StaticAstringT => bindings.stringSlice(.staticAstring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2),
-                    rt.StaticUstringT => bindings.stringSlice(.staticUstring)(@ptrCast(self), recv.*, &[_]Value{startV, endV}, 2),
-                    else => {
-                        return self.panicFmt("Unsupported slice operation on type `{}`.", &.{v(@as(u8, @intCast(recv.getTag())))});
-                    },
-                };
-                if (res.isInterrupt()) {
-                    return error.Panic;
-                }
-                return res;
-            }
         }
     }
 
@@ -1088,7 +1028,7 @@ pub const VM = struct {
         }
     }
 
-    fn storeMethod(self: *VM, tmgId: vmc.TypeMethodGroupId, method: rt.Method, funcSigId: sema.FuncSigId) !void {
+    fn storeMethod(self: *VM, tmgId: vmc.TypeMethodGroupId, method: rt.Method, funcSigId: sema.FuncSigId) !vmc.MethodId {
         const methodId: vmc.MethodId = @intCast(self.methods.len);
         try self.methods.append(self.alloc, method);
         try self.methodExts.append(self.alloc, .{ .funcSigId = funcSigId });
@@ -1102,6 +1042,7 @@ pub const VM = struct {
             self.methods.buf[tmg.tail].next = methodId;
             tmg.tail = methodId;
         }
+        return methodId;
     }
 
     pub fn addMethod(self: *VM, id: rt.TypeId, mgId: vmc.MethodGroupId, method: rt.MethodInit) !void {
@@ -1111,17 +1052,18 @@ pub const VM = struct {
             if (mgExt.mruTypeMethodGroupId == cy.NullId) {
                 // Store existing method.
                 const tmgId = try self.ensureTypeMethodGroup(mg.mruTypeId, mgId);
-                try self.storeMethod(tmgId, rt.Method{
+                const methodId = try self.storeMethod(tmgId, rt.Method{
                     .type = mg.mruMethodType,
                     .data = mg.mruMethodData,
                     .next = cy.NullId,
                 }, method.funcSigId);
                 mgExt.mruTypeMethodGroupId = tmgId;
+                mgExt.mruMethodId = methodId;
             }
 
             const tmgId = if (mg.mruTypeId == id) mgExt.mruTypeMethodGroupId
                 else try self.ensureTypeMethodGroup(id, mgId);
-            try self.storeMethod(tmgId, rt.Method{
+            _ = try self.storeMethod(tmgId, rt.Method{
                 .type = method.type,
                 .data = method.data,
                 .next = cy.NullId,
@@ -1148,8 +1090,11 @@ pub const VM = struct {
             const obj = left.asHeapObject();
             switch (obj.head.typeId) {
                 rt.ListT => {
+                    if (!index.isInteger()) {
+                        return self.interruptThrowSymbol(.InvalidArgument);
+                    }
                     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx: u32 = @intFromFloat(index.toF64());
+                    const idx: u32 = @intCast(index.asInteger());
                     if (idx < list.len) {
                         release(self, list.buf[idx]);
                         list.buf[idx] = right;
@@ -1217,165 +1162,6 @@ pub const VM = struct {
             }
         } else {
             return self.interruptThrowSymbol(.InvalidArgument);
-        }
-    }
-
-    /// Assumes sign of index is preserved.
-    fn getReverseIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
-        if (left.isPointer()) {
-            const obj = left.asHeapObject();
-            const res = switch (obj.head.typeId) {
-                rt.ListT => {
-                    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx: i32 = @as(i32, @intCast(list.len)) - @as(i32, @intFromFloat(index.toF64()));
-                    if (idx < list.len) {
-                        const res = list.buf[@intCast(idx)];
-                        retain(self, res);
-                        return res;
-                    } else {
-                        return self.interruptThrowSymbol(.OutOfBounds);
-                    }
-                },
-                rt.MapT => {
-                    const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                    const key = Value.initF64(index.toF64());
-                    if (map.get(self, key)) |val| {
-                        retain(self, val);
-                        return val;
-                    } else return Value.None;
-                },
-                rt.AstringT => b: {
-                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.astring.len)) - @as(i32, @intFromFloat(index.toF64())));
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.astring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                },
-                rt.UstringT => b: {
-                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.ustring.charLen)) - @as(i32, @intFromFloat(index.toF64())));
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.ustring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                },
-                rt.StringSliceT => b: {
-                    if (cy.heap.StringSlice.isAstring(obj.stringSlice)) {
-                        const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.stringSlice.len)) - @as(i32, @intFromFloat(index.toF64())));
-                        retainObject(self, obj);
-                        break :b bindings.stringSliceAt(.slice)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                    } else {
-                        const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.stringSlice.uCharLen)) - @as(i32, @intFromFloat(index.toF64())));
-                        retainObject(self, obj);
-                        break :b bindings.stringSliceAt(.slice)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                    }
-                },
-                rt.RawstringT => b: {
-                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.rawstring.len)) - @as(i32, @intFromFloat(index.toF64())));
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawstring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                },
-                rt.RawstringSliceT => b: {
-                    const idx: f64 = @floatFromInt(@as(i32, @intCast(obj.rawstringSlice.len)) - @as(i32, @intFromFloat(index.toF64())));
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                },
-                else => {
-                    const vmType = self.types.buf[obj.head.typeId];
-                    return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(vmType.namePtr[0..vmType.nameLen])});
-                },
-            };
-            if (res.isInterrupt()) {
-                return error.Panic;
-            }
-            return res;
-        } else {
-            if (left.isFloat()) {
-                return self.panic("Unsupported reverse index operation on type `number`.");
-            } else {
-                const res = switch (left.getTag()) {
-                    rt.StaticAstringT => {
-                        const idx: f64 = @floatFromInt(@as(i32, @intCast(left.asStaticStringSlice().len())) - @as(i32, @intFromFloat(index.toF64())));
-                        return bindings.stringSliceAt(.staticAstring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                    },
-                    rt.StaticUstringT => {
-                        const start = left.asStaticStringSlice().start;
-                        const idx: f64 = @floatFromInt(@as(i32, @intCast(cy.string.getStaticUstringHeader(self, start).charLen)) - @as(i32, @intFromFloat(index.toF64())));
-                        return bindings.stringSliceAt(.staticUstring)(@ptrCast(self), left.*, &[_]Value{Value.initF64(idx)}, 1);
-                    },
-                    else => {
-                        return self.panicFmt("Unsupported reverse index operation on type `{}`.", &.{v(@as(u8, @intCast(left.getTag())))});
-                    },
-                };
-                if (res.isInterrupt()) {
-                    return error.Panic;
-                }
-                return res;
-            }
-        }
-    }
-
-    pub fn getIndex(self: *VM, left: *Value, index: Value) linksection(cy.Section) !Value {
-        if (left.isPointer()) {
-            const obj = left.asHeapObject();
-            const res = switch (obj.head.typeId) {
-                rt.ListT => {
-                    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx: u32 = @intFromFloat(index.toF64());
-                    if (idx < list.len) {
-                        retain(self, list.buf[idx]);
-                        return list.buf[idx];
-                    } else {
-                        return self.interruptThrowSymbol(.OutOfBounds);
-                    }
-                },
-                rt.MapT => {
-                    const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                    if (@call(.never_inline, cy.MapInner.get, .{map.*, self, index})) |val| {
-                        retain(self, val);
-                        return val;
-                    } else return Value.None;
-                },
-                rt.AstringT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.astring)(@ptrCast(self), left.*, &[_]Value{index}, 1);
-                },
-                rt.UstringT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.ustring)(@ptrCast(self), left.*, &[_]Value{index}, 1);
-                },
-                rt.StringSliceT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.slice)(@ptrCast(self), left.*, &[_]Value{index}, 1);
-                },
-                rt.RawstringT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawstring)(@ptrCast(self), left.*, &[_]Value{index}, 1);
-                },
-                rt.RawstringSliceT => b: {
-                    retainObject(self, obj);
-                    break :b bindings.stringSliceAt(.rawSlice)(@ptrCast(self), left.*, &[_]Value{index}, 1);
-                },
-                else => {
-                    const vmType = self.types.buf[obj.head.typeId];
-                    return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(vmType.namePtr[0..vmType.nameLen])});
-                },
-            };
-            if (res.isInterrupt()) {
-                return error.Panic;
-            }
-            return res;
-        } else {
-            if (left.isFloat()) {
-                return self.panic("Unsupported index operation on type `number`.");
-            } else {
-                const res = switch (left.getTag()) {
-                    rt.StaticAstringT => bindings.stringSliceAt(.staticAstring)(@ptrCast(self), left.*, &[_]Value{index}, 1),
-                    rt.StaticUstringT => bindings.stringSliceAt(.staticUstring)(@ptrCast(self), left.*, &[_]Value{index}, 1),
-                    else => {
-                        return self.panicFmt("Unsupported index operation on type `{}`.", &.{v(@as(u8, @intCast(left.getTag())))});
-                    },
-                };
-                if (res.isInterrupt()) {
-                    return error.Panic;
-                }
-                return res;
-            }
         }
     }
 
@@ -1616,7 +1402,7 @@ pub const VM = struct {
 
     fn reportMissingFuncSym(vm: *VM, pc: [*]const cy.Inst, rtSymId: SymbolId) error{Panic, OutOfMemory} {
         const relPc = getInstOffset(vm, pc);
-        if (debug.getDebugSym(vm, relPc)) |sym| {
+        if (debug.getDebugSymByPc(vm, relPc)) |sym| {
             const chunk = vm.compiler.chunks.items[sym.file];
             const callExpr = chunk.nodes[sym.loc];
             const callee = chunk.nodes[callExpr.head.callExpr.callee];
@@ -1685,7 +1471,7 @@ pub const VM = struct {
                     // Persist most recent TypeMethodGroup data.
                     if (mgExt.mruMethodId == cy.NullId) {
                         const curTmgId = try self.ensureTypeMethodGroup(mg.mruTypeId, mgId);
-                        try self.storeMethod(curTmgId, rt.Method{
+                        _ = try self.storeMethod(curTmgId, rt.Method{
                             .type = mg.mruMethodType,
                             .data = mg.mruMethodData,
                             .next = cy.NullId,
@@ -1830,27 +1616,104 @@ pub const VM = struct {
 
     /// Conversion goes into a temporary buffer. Must use the result before a subsequent call.
     pub fn getOrWriteValueString(self: *const VM, writer: anytype, val: Value, outCharLen: *u32, comptime getCharLen: bool) linksection(cy.Section) []const u8 {
-        if (val.isFloat()) {
-            const f = val.asF64();
-            const start = writer.pos();
-            if (Value.floatIsSpecial(f)) {
-                std.fmt.format(writer, "{}", .{f}) catch cy.fatal();
-            } else {
-                if (Value.floatCanBeInteger(f)) {
-                    std.fmt.format(writer, "{d:.0}", .{f}) catch cy.fatal();
+        const typeId = val.getTypeId();
+        switch (typeId) {
+            rt.FloatT => {
+                const f = val.asF64();
+                const start = writer.pos();
+                if (Value.floatIsSpecial(f)) {
+                    std.fmt.format(writer, "{}", .{f}) catch cy.fatal();
                 } else {
-                    std.fmt.format(writer, "{d}", .{f}) catch cy.fatal();
+                    if (Value.floatCanBeInteger(f)) {
+                        std.fmt.format(writer, "{d:.0}", .{f}) catch cy.fatal();
+                    } else {
+                        std.fmt.format(writer, "{d}", .{f}) catch cy.fatal();
+                    }
                 }
-            }
-            const slice = writer.sliceFrom(start);
-            if (getCharLen) {
-                outCharLen.* = @intCast(slice.len);
-            }
-            return slice;
-        } else {
-            if (val.isPointer()) {
+                const slice = writer.sliceFrom(start);
+                if (getCharLen) {
+                    outCharLen.* = @intCast(slice.len);
+                }
+                return slice;
+            },
+            rt.NoneT => {
+                if (getCharLen) {
+                    outCharLen.* = "none".len;
+                }
+                return "none";
+            },
+            rt.BooleanT => {
+                if (val.asBool()) {
+                    if (getCharLen) {
+                        outCharLen.* = "true".len;
+                    }
+                    return "true";
+                } else {
+                    if (getCharLen) {
+                        outCharLen.* = "false".len;
+                    }
+                    return "false";
+                }
+            },
+            rt.ErrorT => {
+                const start = writer.pos();
+                const symId = val.asErrorSymbol();
+                std.fmt.format(writer, "error.{s}", .{self.getSymbolName(symId)}) catch cy.fatal();
+                const slice = writer.sliceFrom(start);
+                if (getCharLen) {
+                    outCharLen.* = @intCast(slice.len);
+                }
+                return slice;
+            },
+            rt.StaticAstringT => {
+                const slice = val.asStaticStringSlice();
+                const buf = self.strBuf[slice.start..slice.end];
+                if (getCharLen) {
+                    outCharLen.* = @intCast(buf.len);
+                }
+                return buf;
+            },
+            rt.StaticUstringT => {
+                const slice = val.asStaticStringSlice();
+                if (getCharLen) {
+                    outCharLen.* = @as(*align (1) cy.StaticUstringHeader, @ptrCast(self.strBuf.ptr + slice.start - 12)).charLen;
+                }
+                return self.strBuf[slice.start..slice.end];
+            },
+            rt.EnumT => {
+                const start = writer.pos();
+                const enumv = val.asEnum();
+                const enumSym = self.enums.buf[enumv.enumId];
+                const memberName = sema.getName(self.compiler, enumSym.members[enumv.memberId]);
+                std.fmt.format(writer, "{s}.{s}", .{enumSym.name, memberName}) catch cy.fatal();
+                const slice = writer.sliceFrom(start);
+                if (getCharLen) {
+                    outCharLen.* = @intCast(slice.len);
+                }
+                return slice;
+            },
+            rt.SymbolT => {
+                const start = writer.pos();
+                const litId = val.asSymbolId();
+                std.fmt.format(writer, "#{s}", .{self.getSymbolName(litId)}) catch cy.fatal();
+                const slice = writer.sliceFrom(start);
+                if (getCharLen) {
+                    outCharLen.* = @intCast(slice.len);
+                }
+                return slice;
+            },
+            rt.IntegerT => {
+                const start = writer.pos();
+                std.fmt.format(writer, "{}", .{val.asInteger()}) catch cy.fatal();
+                const slice = writer.sliceFrom(start);
+                if (getCharLen) {
+                    outCharLen.* = @intCast(slice.len);
+                }
+                return slice;
+            },
+            else => {
                 const obj = val.asHeapObject();
-                switch (obj.head.typeId) {
+                switch (typeId) {
                     rt.AstringT => {
                         const res = obj.astring.getConstSlice();
                         if (getCharLen) {
@@ -1935,84 +1798,6 @@ pub const VM = struct {
                         }
                         return buf;
                     }
-                }
-            } else {
-                switch (val.getTag()) {
-                    rt.NoneT => {
-                        if (getCharLen) {
-                            outCharLen.* = "none".len;
-                        }
-                        return "none";
-                    },
-                    rt.BooleanT => {
-                        if (val.asBool()) {
-                            if (getCharLen) {
-                                outCharLen.* = "true".len;
-                            }
-                            return "true";
-                        } else {
-                            if (getCharLen) {
-                                outCharLen.* = "false".len;
-                            }
-                            return "false";
-                        }
-                    },
-                    rt.ErrorT => {
-                        const start = writer.pos();
-                        const symId = val.asErrorSymbol();
-                        std.fmt.format(writer, "error.{s}", .{self.getSymbolName(symId)}) catch cy.fatal();
-                        const slice = writer.sliceFrom(start);
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(slice.len);
-                        }
-                        return slice;
-                    },
-                    rt.StaticAstringT => {
-                        const slice = val.asStaticStringSlice();
-                        const buf = self.strBuf[slice.start..slice.end];
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(buf.len);
-                        }
-                        return buf;
-                    },
-                    rt.StaticUstringT => {
-                        const slice = val.asStaticStringSlice();
-                        if (getCharLen) {
-                            outCharLen.* = @as(*align (1) cy.StaticUstringHeader, @ptrCast(self.strBuf.ptr + slice.start - 12)).charLen;
-                        }
-                        return self.strBuf[slice.start..slice.end];
-                    },
-                    rt.EnumT => {
-                        const start = writer.pos();
-                        const enumv = val.asEnum();
-                        const enumSym = self.enums.buf[enumv.enumId];
-                        const memberName = sema.getName(self.compiler, enumSym.members[enumv.memberId]);
-                        std.fmt.format(writer, "{s}.{s}", .{enumSym.name, memberName}) catch cy.fatal();
-                        const slice = writer.sliceFrom(start);
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(slice.len);
-                        }
-                        return slice;
-                    },
-                    rt.SymbolT => {
-                        const start = writer.pos();
-                        const litId = val.asSymbolId();
-                        std.fmt.format(writer, "#{s}", .{self.getSymbolName(litId)}) catch cy.fatal();
-                        const slice = writer.sliceFrom(start);
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(slice.len);
-                        }
-                        return slice;
-                    },
-                    rt.IntegerT => {
-                        const start = writer.pos();
-                        std.fmt.format(writer, "{}", .{val.asInteger()}) catch cy.fatal();
-                        const slice = writer.sliceFrom(start);
-                        if (getCharLen) {
-                            outCharLen.* = @intCast(slice.len);
-                        }
-                        return slice;
-                    },
                 }
             }
         }
@@ -2128,12 +1913,17 @@ fn toF64OrPanic(vm: *cy.VM, val: Value) linksection(cy.HotSection) !f64 {
     }
 }
 
-fn panicExpectedInteger(vm: *cy.VM) error{Panic, OutOfMemory} {
+pub fn panicDivisionByZero(vm: *cy.VM) error{Panic, OutOfMemory} {
+    @setCold(true);
+    return vm.panic("Division by zero.");
+}
+
+pub fn panicExpectedInteger(vm: *cy.VM) error{Panic, OutOfMemory} {
     @setCold(true);
     return vm.panic("Expected integer operand.");
 }
 
-fn panicExpectedFloat(vm: *cy.VM) error{Panic, OutOfMemory} {
+pub fn panicExpectedFloat(vm: *cy.VM) error{Panic, OutOfMemory} {
     @setCold(true);
     return vm.panic("Expected float operand.");
 }
@@ -2209,12 +1999,15 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "methodGroupExts"), @offsetOf(vmc.VM, "methodGroupExts"));
     try t.eq(@offsetOf(VM, "methodExts"), @offsetOf(vmc.VM, "methodExts"));
     try t.eq(@offsetOf(VM, "debugTable"), @offsetOf(vmc.VM, "debugTablePtr"));
+    try t.eq(@offsetOf(VM, "debugTempIndexTable"), @offsetOf(vmc.VM, "debugTempIndexTablePtr"));
+    try t.eq(@offsetOf(VM, "unwindTempRegs"), @offsetOf(vmc.VM, "unwindTempRegsPtr"));
+    try t.eq(@offsetOf(VM, "unwindTempPrevIndexes"), @offsetOf(vmc.VM, "unwindTempPrevIndexesPtr"));
     try t.eq(@offsetOf(VM, "curFiber"), @offsetOf(vmc.VM, "curFiber"));
     try t.eq(@offsetOf(VM, "mainFiber"), @offsetOf(vmc.VM, "mainFiber"));
     try t.eq(@offsetOf(VM, "throwTrace"), @offsetOf(vmc.VM, "throwTrace"));
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
     try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
-    try t.eq(@offsetOf(VM, "iteratorMGID"), @offsetOf(vmc.VM, "iteratorMGID"));
+    try t.eq(@offsetOf(VM, "iteratorMGID"), @offsetOf(vmc.VM, "padding"));
     try t.eq(@offsetOf(VM, "httpClient"), @offsetOf(vmc.VM, "httpClient"));
     try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
     try t.eq(@offsetOf(VM, "varSymExtras"), @offsetOf(vmc.VM, "varSymExtras"));
@@ -2357,15 +2150,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 if (GenLabels) {
                     _ = asm volatile ("LOpConstI8:"::);
                 }
-                framePtr[pc[2].val] = Value.initF64(@floatFromInt(@as(i8, @bitCast(pc[1].val))));
-                pc += 3;
-                continue;
-            },
-            .constI8Int => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpConstI8Int:"::);
-                }
-                framePtr[pc[2].val] = Value.initI32(@intCast(@as(i8, @bitCast(pc[1].val))));
+                framePtr[pc[2].val] = Value.initInt(@intCast(@as(i8, @bitCast(pc[1].val))));
                 pc += 3;
                 continue;
             },
@@ -2730,17 +2515,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 pc += 4 + numEntries * 2;
                 continue;
             },
-            .slice => {
-                if (GenLabels) {
-                    _ = asm volatile ("LOpSlice:"::);
-                }
-                const slice = &framePtr[pc[1].val];
-                const start = framePtr[pc[2].val];
-                const end = framePtr[pc[3].val];
-                framePtr[pc[4].val] = try @call(.never_inline, VM.sliceOp, .{vm, slice, start, end});
-                pc += 5;
-                continue;
-            },
             .init => {
                 if (GenLabels) {
                     _ = asm volatile ("LOpInit:"::);
@@ -2867,7 +2641,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const startLocal = pc[1].val;
                 const numArgs = pc[2].val;
                 const numRet = pc[3].val;
-                pc += 4;
 
                 const callee = framePtr[startLocal + numArgs + 4];
                 const retInfo = buildReturnInfo(numRet, true, cy.bytecode.CallInstLen);
@@ -3919,10 +3692,6 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
             rt.ClosureT => {
                 if (numArgs != obj.closure.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
-                    // Release func and args.
-                    for (framePtr[startLocal + 4..startLocal + 4 + numArgs]) |val| {
-                        release(vm, val);
-                    }
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -3932,7 +3701,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
 
                 const retFramePtr = Value{ .retFramePtr = framePtr };
                 framePtr[startLocal + 1] = retInfo;
-                framePtr[startLocal + 2] = Value{ .retPcPtr = pc };
+                framePtr[startLocal + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
                 framePtr[startLocal + 3] = retFramePtr;
 
                 // Copy closure to local.
@@ -3945,10 +3714,6 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
             rt.LambdaT => {
                 if (numArgs != obj.lambda.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
-                    // Release func and args.
-                    for (framePtr[startLocal + 4..startLocal + 4 + numArgs]) |val| {
-                        release(vm, val);
-                    }
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -3958,7 +3723,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
 
                 const retFramePtr = Value{ .retFramePtr = framePtr };
                 framePtr[startLocal + 1] = retInfo;
-                framePtr[startLocal + 2] = Value{ .retPcPtr = pc };
+                framePtr[startLocal + 2] = Value{ .retPcPtr = pc + cy.bytecode.CallInstLen };
                 framePtr[startLocal + 3] = retFramePtr;
                 return cy.fiber.PcSp{
                     .pc = cy.fiber.toVmPc(vm, obj.lambda.funcPc),
@@ -3968,9 +3733,6 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
             rt.NativeFuncT => {
                 if (numArgs != obj.nativeFunc1.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
-                    for (framePtr[startLocal + 4..startLocal + 4 + numArgs]) |val| {
-                        release(vm, val);
-                    }
                     return vm.interruptThrowSymbol(.InvalidSignature);
                 }
 
@@ -3980,7 +3742,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
                 const res = obj.nativeFunc1.func(@ptrCast(vm), newFramePtr + 4, numArgs);
                 newFramePtr[0] = res;
                 return cy.fiber.PcSp{
-                    .pc = pc,
+                    .pc = pc + cy.bytecode.CallInstLen,
                     .sp = framePtr,
                 };
             },
@@ -4140,16 +3902,10 @@ pub fn getMruFuncSigId(vm: *cy.VM, mgExt: rt.MethodGroupExt) sema.FuncSigId {
     }
 }
 
-
 /// TODO: Once methods are recorded in the object/builtin type's module, this should look there instead of the rt table.
 fn panicIncompatibleMethodSig(
     vm: *cy.VM, mgId: vmc.MethodGroupId, recv: Value, args: []const Value
 ) error{Panic, OutOfMemory} {
-    release(vm, recv);
-    for (args) |arg| {
-        release(vm, arg);
-    }
-
     const typeId = recv.getTypeId();
 
     const semaTypeIds = try allocMethodCallSemaTypeIds(vm, args);
@@ -4515,10 +4271,6 @@ fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.FuncSigId, dstFuncSigId: se
 }
 
 fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
-    errdefer {
-        // TODO: This should be taken care of by panic stack unwinding.
-        cy.arc.release(vm, val);
-    }
     if (val.isPointer()) {
         const obj = val.asHeapObject();
         switch (obj.head.typeId) {
@@ -4888,7 +4640,6 @@ export fn zCallSym(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, symId: u16, star
                 .code = vmc.RES_CODE_STACK_OVERFLOW,
             };
         } else {
-            log.debug("err {}", .{err});
             return .{
                 .pc = undefined,
                 .sp = undefined,
@@ -5045,46 +4796,6 @@ export fn zEvalCompare(vm: *VM, left: Value, right: Value) vmc.Value {
 export fn zEvalCompareNot(vm: *VM, left: Value, right: Value) vmc.Value {
     return @bitCast(evalCompareNot(vm, left, right));
 }
-
-export fn zGetIndex(vm: *VM, recv: *Value, indexv: Value) vmc.ValueResult {
-    const val = vm.getIndex(recv, indexv) catch |err| {
-        if (err == error.Panic) {
-            return .{
-                .val = undefined,
-                .code = vmc.RES_CODE_PANIC,
-            };
-        } else {
-            return .{
-                .val = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
-        }
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-} 
-
-export fn zGetReverseIndex(vm: *VM, recv: *Value, indexv: Value) vmc.ValueResult {
-    const val = vm.getReverseIndex(recv, indexv) catch |err| {
-        if (err == error.Panic) {
-            return .{
-                .val = undefined,
-                .code = vmc.RES_CODE_PANIC,
-            };
-        } else {
-            return .{
-                .val = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
-        }
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-} 
 
 export fn zCall(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) vmc.PcSpResult {
     const res = call(vm, pc, framePtr, callee, startLocal, numArgs, retInfo) catch |err| {
@@ -5252,26 +4963,6 @@ export fn zThrow(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value
     }
 }
 
-export fn zSliceOp(vm: *VM, recv: *Value, startV: Value, endV: Value) vmc.ValueResult {
-    const val = vm.sliceOp(recv, startV, endV) catch |err| {
-        if (err == error.Panic) {
-            return .{
-                .val = undefined,
-                .code = vmc.RES_CODE_PANIC,
-            };
-        } else {
-            return .{
-                .val = undefined,
-                .code = vmc.RES_CODE_UNKNOWN,
-            };
-        }
-    };
-    return .{
-        .val = @bitCast(val),
-        .code = vmc.RES_CODE_SUCCESS,
-    };
-}
-
 export fn zOpMatch(vm: *const VM, pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
     return opMatch(vm, pc, framePtr);
 }
@@ -5309,6 +5000,16 @@ export fn zPanicFmt(vm: *VM, formatz: [*:0]const u8, argsPtr: [*]const fmt.FmtVa
     vm.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
     vm.curFiber.panicType = vmc.PANIC_MSG;
     log.tracev("{s}", .{msg});
+}
+
+export fn zValueMapGet(vm: *VM, map: *cy.ValueMap, key: Value, found: *bool) Value {
+    if (map.get(vm, key)) |val| {
+        found.* = true;
+        return val;
+    } else {
+        found.* = false;
+        return undefined;
+    }
 }
 
 fn c_strlen(s: [*:0]const u8) callconv(.C) usize {

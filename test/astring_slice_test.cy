@@ -126,7 +126,6 @@ t.eq(str.runeAt(5), 122)
 t.eq(try str.runeAt(6), error.OutOfBounds)
 
 -- sliceAt()
-t.eq(try str.sliceAt(-1), error.OutOfBounds)
 t.eq(str.sliceAt(0), 'a')
 t.eq(str.sliceAt(3), 'x')
 t.eq(str.sliceAt(5), 'z')

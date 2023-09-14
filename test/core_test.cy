@@ -77,12 +77,12 @@ t.eq(newS.bar, rcList)
 -- float(), see float_test.cy
 
 -- int()
-var res = int(100)
+var res = int('100')
 t.eq(typesym(res), #int)
-t.eq(float(res), 100)
-t.eq(float(int(100.1)), 100)
-t.eq(float(int('100')), 100)
-t.eq(float(int('100.1')), 100)
+t.eq(res, 100)
+t.eq(int(100.1), 100)
+t.eq(int('100'), 100)
+t.eq(int('100.1'), 100)
 
 -- isAlpha()
 t.eq(isAlpha(0u'3'), false)
@@ -194,7 +194,8 @@ t.eq(cyon, "\{
 
 -- typeof()
 t.eq(typeof(true), boolean)
-t.eq(typeof(123), float)
+t.eq(typeof(123), int)
+t.eq(typeof(123.0), float)
 t.eq(typeof(pointer(123)), pointer)
 t.eq(typeof('abc'), typeof('xyz'))
 t.eq(typeof(rawstring('abc')), typeof(rawstring('xyz')))
@@ -203,7 +204,8 @@ t.eq(typeof([]), List)
 t.eq(typeof({}), Map)
 
 -- typesym()
-t.eq(typesym(123), #float)
+t.eq(typesym(123), #int)
+t.eq(typesym(123.0), #float)
 t.eq(typesym('abc'), #string)
 t.eq(typesym(pointer(0)), #pointer)
 

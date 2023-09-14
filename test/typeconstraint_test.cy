@@ -4,10 +4,10 @@ import t 'test'
 --| Generic primitive type.
 --|
 
-func staticPrim(a float):
+func staticPrim(a int):
 	return a == 123
 type PrimType object:
-	a float
+	a int
 
 -- Call static function with literal.
 t.eq(staticPrim(123), true)
@@ -18,28 +18,28 @@ t.eq(staticPrim(n), true)
 
 -- Call static function from cast.
 n = t.erase(123)
-t.eq(staticPrim(n as float), true)
+t.eq(staticPrim(n as int), true)
 
 -- Call static function with object access.
 var o = PrimType{ a: 123 }
 t.eq(staticPrim(o.a), true)
 
 --|
---| float
+--| int
 --|
-func fooFloat(a float):
+func fooInt(a int):
   return a == 123
 
 -- Literal.
-t.eq(fooFloat(123), true)
+t.eq(fooInt(123), true)
         
 -- From var.
 n = 123
-t.eq(fooFloat(n), true)
+t.eq(fooInt(n), true)
 
 -- Cast erased type.
 n = t.erase(123)
-t.eq(fooFloat(n as float), true)
+t.eq(fooInt(n as int), true)
 
 --|
 --| none.

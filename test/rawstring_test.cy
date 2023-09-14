@@ -129,7 +129,6 @@ t.eq(try str.runeAt(13), error.InvalidRune)
 t.eq(try str.runeAt(14), error.OutOfBounds)
 
 -- sliceAt().
-t.eq(try str.sliceAt(-1), error.OutOfBounds)
 t.eq(str.sliceAt(0), 'a')
 t.eq(str.sliceAt(0).isAscii(), true)
 t.eq(str.sliceAt(3), '🦊')

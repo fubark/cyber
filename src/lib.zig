@@ -168,7 +168,7 @@ export fn cyValueFloat(n: f64) Value {
 }
 
 export fn cyValueInteger(n: i32) Value {
-    return Value.initI32(n);
+    return Value.initInt(n);
 }
 
 export fn cyValueHeapObject(o: *c.CyHeapObject) Value {
@@ -266,7 +266,7 @@ test "cyValueAsBool()" {
     try t.eq(c.cyValueAsBool(c.cyValueFalse()), false);
 }
 
-export fn cyValueAsInteger(val: Value) c_int {
+export fn cyValueAsInteger(val: Value) i64 {
     return val.asInteger();
 }
 
@@ -409,7 +409,7 @@ test "List ops." {
 
     // Get.
     res = c.cyListGet(vm, list, 1);
-    try t.eq(c.cyValueAsFloat(res), 2);
+    try t.eq(c.cyValueAsInteger(res), 2);
 
     // Set.
     c.cyListSet(vm, list, 1, c.cyValueFloat(100));

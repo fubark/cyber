@@ -205,8 +205,6 @@ pub const VMcompiler = struct {
         id = try sema.addBuiltinSym(self, "metatype", rt.MetaTypeT);
         std.debug.assert(id == bt.MetaType);
 
-        id = try sema.addResolvedInternalSym(self, "float");
-        std.debug.assert(id == bt.NumericLit);
         id = try sema.addResolvedInternalSym(self, "undefined");
         std.debug.assert(id == bt.Undefined);
         id = try sema.addResolvedInternalSym(self, "string");
@@ -497,6 +495,10 @@ pub const VMcompiler = struct {
             try gen.initVarLocals(chunk);
             const jumpStackStart = chunk.blockJumpStack.items.len;
             const root = chunk.nodes[0];
+
+            try chunk.unwindTempIndexStack.append(self.alloc, @bitCast(@as(u32, cy.NullId)));
+            defer chunk.popUnwindTempIndex();
+
             try gen.genStatements(chunk, root.head.root.headStmt, true);
             chunk.patchBlockJumps(jumpStackStart);
             chunk.blockJumpStack.items.len = jumpStackStart;

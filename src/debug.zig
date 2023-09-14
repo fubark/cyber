@@ -56,8 +56,16 @@ pub fn countNewLines(str: []const u8, outLastIdx: *u32) u32 {
     return count;
 }
 
-pub fn getDebugSym(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
+pub fn getDebugSymByPc(vm: *const cy.VM, pc: usize) ?cy.DebugSym {
     return getDebugSymFromTable(vm.debugTable, pc);
+}
+
+pub fn getDebugSymByIndex(vm: *const cy.VM, idx: usize) cy.DebugSym {
+    return vm.debugTable[idx];
+}
+
+pub fn getDebugTempIndex(vm: *const cy.VM, idx: usize) u32 {
+    return vm.debugTempIndexTable[idx];
 }
 
 pub fn getDebugSymFromTable(table: []const cy.DebugSym, pc: usize) ?cy.DebugSym {
@@ -345,7 +353,7 @@ test "debug internals." {
 }
 
 pub fn compactToStackFrame(vm: *cy.VM, cframe: vmc.CompactFrame) !StackFrame {
-    const sym = getDebugSym(vm, cframe.pcOffset) orelse return error.NoDebugSym;
+    const sym = getDebugSymByPc(vm, cframe.pcOffset) orelse return error.NoDebugSym;
     return getStackFrame(vm, sym);
 }
 
@@ -395,7 +403,7 @@ pub fn buildStackTrace(self: *cy.VM) !void {
     var fpOffset = cy.getStackOffset(self, self.framePtr);
     var pcOffset = cy.getInstOffset(self, self.pc);
     while (true) {
-        const sym = getDebugSym(self, pcOffset) orelse return error.NoDebugSym;
+        const sym = getDebugSymByPc(self, pcOffset) orelse return error.NoDebugSym;
 
         const frame = getStackFrame(self, sym);
         try frames.append(self.alloc, frame);
@@ -628,6 +636,11 @@ pub fn dumpInst(vm: *const cy.VM, pcOffset: u32, code: cy.OpCode, pc: [*]const c
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{name});
         },
         .callObjSym => {
+            const symId = pc[4].val;
+            const symName = vm.methodGroupExts.buf[symId].getName();
+            extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});
+        },
+        .callObjNativeFuncIC => {
             const symId = pc[4].val;
             const symName = vm.methodGroupExts.buf[symId].getName();
             extra = try std.fmt.bufPrint(&buf, "[sym={s}]", .{symName});

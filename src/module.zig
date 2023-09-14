@@ -10,12 +10,12 @@ const bt = types.BuiltinTypeSymIds;
 const fmt = cy.fmt;
 const v = fmt.v;
 
-const RelModuleSymKey = cy.hash.KeyU64;
+pub const ModuleSymKey = cy.hash.KeyU64;
 
 pub const ModuleId = u32;
 
 pub const Module = struct {
-    syms: std.HashMapUnmanaged(RelModuleSymKey, ModuleSym, cy.hash.KeyU64Context, 80),
+    syms: std.HashMapUnmanaged(ModuleSymKey, ModuleSym, cy.hash.KeyU64Context, 80),
 
     id: ModuleId,
 
@@ -41,8 +41,8 @@ pub const Module = struct {
 
         // AnyType for params and return.
         const funcSigId = try sema.ensureFuncSig(c, sig, retSymId);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = funcSigId,
             },
@@ -70,8 +70,8 @@ pub const Module = struct {
 
         // AnyType for params and return.
         const funcSigId = try sema.ensureResolvedUntypedFuncSig(c, numParams);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = funcSigId,
             },
@@ -92,8 +92,8 @@ pub const Module = struct {
 
     pub fn getVarVal(self: *const Module, c: *cy.VMcompiler, name: []const u8) !?cy.Value {
         const nameId = try sema.ensureNameSym(c, name);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = cy.NullId,
             },
@@ -113,8 +113,8 @@ pub const Module = struct {
 
     pub fn setVarExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, typeSymId: sema.SymbolId, val: cy.Value) !void {
         const nameId = try sema.ensureNameSymExt(c, name, dupeName);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = cy.NullId,
             },
@@ -136,8 +136,8 @@ pub const Module = struct {
 
     pub fn setTypeAlias(self: *Module, c: *cy.VMcompiler, name: []const u8, declId: cy.NodeId) !void {
         const nameId = try sema.ensureNameSym(c, name);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = cy.NullId,
             },
@@ -154,8 +154,8 @@ pub const Module = struct {
 
     pub fn declareEnumMember(self: *Module, c: *cy.VMcompiler, name: []const u8, enumId: u32, memberId: u32) !void {
         const nameId = try sema.ensureNameSym(c, name);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = cy.NullId,
             },
@@ -176,8 +176,8 @@ pub const Module = struct {
 
     pub fn declareEnumType(self: *Module, c: *cy.VMcompiler, name: []const u8, rtEnumId: u32, modId: ModuleId) !void {
         const nameId = try sema.ensureNameSym(c, name);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = cy.NullId,
             },
@@ -200,8 +200,8 @@ pub const Module = struct {
         const nameId = try sema.ensureNameSym(c, name);
 
         const funcSigId = try sema.ensureResolvedUntypedFuncSig(c, numParams);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = funcSigId, 
             },
@@ -222,8 +222,8 @@ pub const Module = struct {
 
     pub fn setUserVar(self: *Module, c: *cy.VMcompiler, name: []const u8, declId: cy.NodeId) !void {
         const nameId = try sema.ensureNameSym(c, name);
-        const key = RelModuleSymKey{
-            .relModuleSymKey = .{
+        const key = ModuleSymKey{
+            .moduleSymKey = .{
                 .nameId = nameId,
                 .funcSigId = cy.NullId,
             },
@@ -260,7 +260,7 @@ pub const Module = struct {
         var iter = self.syms.iterator();
         while (iter.next()) |e| {
             const sym = e.value_ptr.*;
-            const key = e.key_ptr.*.relModuleSymKey;
+            const key = e.key_ptr.*.moduleSymKey;
             const name = sema.getName(c, key.nameId);
             std.debug.print("{s}: {}\n", .{name, sym.symT});
         }
@@ -342,8 +342,8 @@ const ModuleFuncNode = struct {
 
 pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, chunkId: cy.ChunkId, declId: cy.NodeId) !ModuleId {
     const nameId = try sema.ensureNameSym(c, name);
-    const key = RelModuleSymKey{
-        .relModuleSymKey = .{
+    const key = ModuleSymKey{
+        .moduleSymKey = .{
             .nameId = nameId,
             .funcSigId = cy.NullId,
         },
@@ -375,8 +375,8 @@ pub fn declareUserFunc(
     declId: sema.FuncDeclId, hasStaticInitializer: bool
 ) !void {
     const nameId = try sema.ensureNameSym(c, name);
-    const key = RelModuleSymKey{
-        .relModuleSymKey = .{
+    const key = ModuleSymKey{
+        .moduleSymKey = .{
             .nameId = nameId,
             .funcSigId = funcSigId, 
         },
@@ -402,8 +402,8 @@ pub fn declareUserFunc(
 fn declareFuncForNameSym(
     c: *cy.VMcompiler, mod: *Module, nameId: sema.NameSymId, funcSigId: sema.FuncSigId
 ) !void {
-    const key = RelModuleSymKey{
-        .relModuleSymKey = .{
+    const key = ModuleSymKey{
+        .moduleSymKey = .{
             .nameId = nameId,
             .funcSigId = cy.NullId,
         },
@@ -452,8 +452,8 @@ fn declareFuncForNameSym(
 }
 
 pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId) !bool {
-    const relKey = RelModuleSymKey{
-        .relModuleSymKey = .{
+    const relKey = ModuleSymKey{
+        .moduleSymKey = .{
             .nameId = nameId,
             .funcSigId = cy.NullId,
         },
@@ -485,8 +485,8 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
 }
 
 // fn pushModuleFuncCandidates(c: *cy.Chunk, modId: ModuleId, nameId: NameSymId, numParams: u32) !void {
-//     const key = RelModuleSymKey{
-//         .relModuleSymKey = .{
+//     const key = ModuleSymKey{
+//         .moduleSymKey = .{
 //             .nameId = nameId,
 //             .funcSigId = cy.NullId,
 //         },
@@ -526,8 +526,8 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
 pub fn findModuleSymForDynamicFuncCall(
     chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId,
 ) !?sema.FuncSigId {
-    const relKey = RelModuleSymKey{
-        .relModuleSymKey = .{
+    const relKey = ModuleSymKey{
+        .moduleSymKey = .{
             .nameId = nameId,
             .funcSigId = cy.NullId,
         },
@@ -549,34 +549,53 @@ pub fn findModuleSymForDynamicFuncCall(
     return null;
 }
 
+const FindModuleFuncResult = struct {
+    funcSigId: sema.FuncSigId,
+    typeChecked: bool,
+};
+
 /// Finds the first function that matches the constrained signature.
 pub fn findModuleSymForFuncCall(
     chunk: *cy.Chunk, modId: ModuleId, nameId: sema.NameSymId,
-    args: []const types.TypeId, ret: types.TypeId
-) !?sema.FuncSigId {
-    const relKey = RelModuleSymKey{
-        .relModuleSymKey = .{
-            .nameId = nameId,
-            .funcSigId = cy.NullId,
-        },
-    };
-
+    args: []const types.TypeId, ret: types.TypeId, hasDynamicArg: bool,
+) !?FindModuleFuncResult {
+    const relKey = ModuleSymKey.initModuleSymKey(nameId, null);
     const mod = chunk.compiler.sema.modules.items[modId];
     if (mod.syms.get(relKey)) |modSym| {
         switch (modSym.symT) {
             .symToManyFuncs => {
-                var optNode: ?*ModuleFuncNode = modSym.inner.symToManyFuncs.head;
-                while (optNode) |node| {
-                    if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, node.funcSigId)) {
-                        return node.funcSigId;
+                if (hasDynamicArg) {
+                    return FindModuleFuncResult{
+                        .funcSigId = modSym.inner.symToManyFuncs.head.funcSigId,
+                        .typeChecked = true,
+                    };
+                } else {
+                    var optNode: ?*ModuleFuncNode = modSym.inner.symToManyFuncs.head;
+                    while (optNode) |node| {
+                        if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, node.funcSigId)) {
+                            return FindModuleFuncResult{
+                                .funcSigId = node.funcSigId,
+                                .typeChecked = true,
+                            };
+                        }
+                        optNode = node.next;
                     }
-                    optNode = node.next;
                 }
             },
             .symToOneFunc => {
-                const funcSigId = modSym.inner.symToOneFunc.funcSigId;
-                if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, funcSigId)) {
-                    return funcSigId;
+                if (hasDynamicArg) {
+                    return FindModuleFuncResult{
+                        .funcSigId = modSym.inner.symToOneFunc.funcSigId,
+                        .typeChecked = true,
+                    };
+                } else {
+                    const funcSigId = modSym.inner.symToOneFunc.funcSigId;
+                    if (cy.types.isTypeFuncSigCompat(chunk.compiler, args, ret, funcSigId)) {
+                        return FindModuleFuncResult{
+                            .funcSigId = funcSigId,
+                            .typeChecked = true,
+                        };
+                    }
                 }
             },
             else => {

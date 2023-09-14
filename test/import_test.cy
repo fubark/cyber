@@ -33,9 +33,9 @@ func sameFuncName():
     return 123
 t.eq(a.sameFuncName(), sameFuncName())
 
--- Reference the alias `float` in `a.cy` that was already resolved in main.
-t.eq(float(1), 1)
-t.eq(a.useFloat(1), 1)
+-- Reference the alias `int` in `a.cy` that was already resolved in main.
+t.eq(int(1), 1)
+t.eq(a.useInt(1), 1)
 
 type Vec2 object:
     x float

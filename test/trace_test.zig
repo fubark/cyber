@@ -63,7 +63,7 @@ test "ARC." {
         \\1 + S{ value: 123 }.value
     );
     trace = run.getTrace();
-    try t.eq(val.asF64toI32(), 124);
+    try t.eq(val.asInteger(), 124);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
@@ -125,7 +125,7 @@ test "ARC for static variable declarations." {
     run.vm.internal().deinit(true);
     const trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 3);
-    try t.eq(trace.numReleaseAttempts, 6);
+    try t.eq(trace.numReleaseAttempts, 5);
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 }
@@ -145,7 +145,7 @@ test "ARC assignments." {
     );
     var trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 2);
-    try t.eq(trace.numReleaseAttempts, 5);
+    try t.eq(trace.numReleaseAttempts, 4);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);
 
@@ -159,7 +159,7 @@ test "ARC assignments." {
     );
     trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 4);
-    try t.eq(trace.numReleaseAttempts, 7);
+    try t.eq(trace.numReleaseAttempts, 5);
     try t.eq(trace.numRetains, 4);
     try t.eq(trace.numReleases, 4);
 }
@@ -225,7 +225,7 @@ test "ARC on temp locals in expressions." {
         \\{ a: [123] }.a[0]
     );
     var trace = run.getTrace();
-    try run.valueIsI32(val, 123);
+    try t.eq(val.asInteger(), 123);
     try t.eq(trace.numRetains, 3);
     try t.eq(trace.numReleases, 3);
 
@@ -297,12 +297,12 @@ test "ARC in loops." {
         \\func foo(it):
         \\  pass
         \\var list = [123, 234] -- +1a +1 
-        \\for list each it:   -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
-        \\  foo(it)         -- +2a
+        \\for list each it:     -- +7a +5 (iterator is retained once, list is retained four times: one for iterator and others for calls to next(), and 2 retains for next() returning the child item.)
+        \\  foo(it)             -- +2a
     );
     trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 10);
-    try t.eq(trace.numRetains, 6);
+    try t.eq(trace.numRetainAttempts, 11);
+    try t.eq(trace.numRetains, 7);
 
     // For iter with `any` temp value, the last temp value is released at the end of the block.
     _ = try run.eval(
@@ -312,9 +312,9 @@ test "ARC in loops." {
         \\                                --        -8
     );
     trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 10);
-    try t.eq(trace.numRetains, 10);
-    try t.eq(trace.numReleases, 10);
+    try t.eq(trace.numRetainAttempts, 11);
+    try t.eq(trace.numRetains, 11);
+    try t.eq(trace.numReleases, 11);
 }
 
 var testVm: cy.VM = undefined;

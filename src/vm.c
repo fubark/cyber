@@ -19,10 +19,39 @@
     do { if (!(cond)) zFatal(); } while (false)
 #define BITCAST(type, x) (((union {typeof(x) src; type dst;})(x)).dst)
 
-#define SIGN_MASK ((uint64_t)1 << 63)
-#define TAGGED_VALUE_MASK ((uint64_t)0x7ffc000000000000)
+// 1000000000000000: Most significant bit.
+#define SIGN_MASK ((u64)1 << 63)
+
+// 0111111111110000 (7FF0): +INF (from math.inf, +/zero, overflow)
+// 1111111111110000 (FFF0): -INF (from math.neginf, -/zero, overflow)
+// 0111111111111000 (7FF8): QNAN (from neg op on -QNAN, math.nan, zero/zero non-intel, QNAN arithmetic)
+// 1111111111111000 (FFF8): -QNAN (from neg op on QNAN, zero/zero intel, -QNAN arithmetic, -QNAN/zero)
+// Intel uses the sign bit for an indefinite real or -QNAN.
+
+// 0111111111111100 (7FFC): QNAN and one extra bit to the right.
+#define TAGGED_VALUE_MASK ((u64)0x7ffc000000000000)
+
+// 0000000000000001
+#define INTEGER_MASK ((u64)1 << 48)
+
+// 0111111111111101 0000000000000111
+#define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | PRIMITIVE_MASK)
+// 0000000000000001 0000000000000111: Bits relevant to the primitive's type.
+#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | INTEGER_MASK)
+
+// 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
+#define POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
+
+// 0111111111111101 
+#define TAGGED_INTEGER_MASK (TAGGED_VALUE_MASK | INTEGER_MASK)
+
+// 0111111111111100 0000000000000000
+#define NONE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_NONE << 32))
+
+// 0111111111111100 0000000000000001
+#define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
+
 #define TAG_MASK (((uint32_t)1 << 3) - 1)
-#define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((uint64_t)TAG_MASK << 32))
 #define TAG_NONE ((uint8_t)0)
 #define TAG_BOOLEAN ((uint8_t)1)
 #define TAG_ERROR ((uint8_t)2)
@@ -30,14 +59,10 @@
 #define TAG_STATIC_USTRING ((uint8_t)4)
 #define TAG_ENUM ((uint8_t)5)
 #define TAG_SYMBOL ((uint8_t)6)
-#define TAG_INTEGER ((uint8_t)7)
-#define INTEGER_MASK (TAGGED_VALUE_MASK | ((u64)TAG_INTEGER << 32))
-#define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
 #define FALSE_MASK BOOLEAN_MASK
 #define TRUE_BIT_MASK ((uint64_t)1)
 #define TRUE_MASK (BOOLEAN_MASK | TRUE_BIT_MASK)
-#define NONE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_NONE << 32))
-#define POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
+
 #define ERROR_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ERROR << 32))
 #define ENUM_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ENUM << 32))
 #define SYMBOL_MASK (TAGGED_VALUE_MASK | ((u64)TAG_SYMBOL << 32))
@@ -48,7 +73,11 @@
 #define NULL_U8 UINT8_MAX
 
 // Construct value.
-#define VALUE_INTEGER(n) (INTEGER_MASK | BITCAST(u32, n))
+
+// _BitInt zeroes padding bits after cast.
+#define VALUE_INTEGER_CAST(n) (TAGGED_INTEGER_MASK | (_BitInt(48))n)
+// Assumes _BitInt(48) param. `or` op automatically generates trunc on n's undefined padding bits.
+#define VALUE_INTEGER(n) (TAGGED_INTEGER_MASK | BITCAST(unsigned _BitInt(48), n))
 #define VALUE_BOOLEAN(b) (b ? TRUE_MASK : FALSE_MASK)
 #define VALUE_NONE NONE_MASK
 #define VALUE_FLOAT(n) ((ValueUnion){ .d = n }.u)
@@ -60,30 +89,36 @@
 #define VALUE_RAW(u) u
 #define VALUE_PTR(ptr) (POINTER_MASK | (uint64_t)ptr)
 #define VALUE_STATIC_STRING_SLICE(v) ((IndexSlice){ .start = v & 0xffffffff, .len = (((u32)(v >> 32)) & BEFORE_TAG_MASK) >> 3 })
-#define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId);
+#define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
 
 // Value ops.
 #define VALUE_AS_HEAPOBJECT(v) ((HeapObject*)(v & ~POINTER_MASK))
-#define VALUE_AS_INTEGER(v) BITCAST(i32, (u32)(v & 0xffffffff))
+#define VALUE_AS_INTEGER(v) BITCAST(_BitInt(48), v) // Padding bits returned are undefined.
+#define VALUE_AS_UINTEGER(v) BITCAST(unsigned _BitInt(48), v) // Padding bits returned are undefined.
 #define VALUE_AS_U32(v) ((u32)(v & 0xffffffff))
 #define VALUE_AS_FLOAT(v) ((ValueUnion){ .u = v }.d)
 #define VALUE_AS_FLOAT_TO_INT(v) ((int32_t)VALUE_AS_FLOAT(v))
 #define VALUE_AS_FLOAT_TO_INT64(v) ((int64_t)VALUE_AS_FLOAT(v))
 #define VALUE_AS_BOOLEAN(v) (v == TRUE_MASK)
+#define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
+#define VALUE_GET_TAG(v) ((BITCAST(u32, v >> 32)) & TAG_MASK)
+#define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
+#define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
+
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
-#define VALUE_IS_POINTER(v) ((v & POINTER_MASK) == POINTER_MASK)
+#define VALUE_IS_POINTER(v) (v >= POINTER_MASK)
 #define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_CLOSURE))
 #define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_BOX))
-#define VALUE_ASSUME_NOT_BOOL_TO_BOOL(v) (!VALUE_IS_NONE(v))
 #define VALUE_IS_NONE(v) (v == NONE_MASK)
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
+
+#define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_LIST))
+#define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_MAP))
 #define VALUE_BOTH_FLOATS(a, b) (VALUE_IS_FLOAT(a) && VALUE_IS_FLOAT(b))
-#define VALUE_IS_INTEGER(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == INTEGER_MASK)
-#define VALUE_BOTH_INTEGERS(a, b) ((a & b & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == INTEGER_MASK)
-#define VALUE_GET_TAG(v) (((uint32_t)(v >> 32)) & TAG_MASK)
-#define VALUE_RETINFO_NUMRETVALS(v) (v & 0xff)
-#define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
+#define VALUE_IS_INTEGER(v) ((v & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
+#define VALUE_BOTH_INTEGERS(a, b) ((a & b & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
+#define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
 
 #define FMT_STRZ(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = strlen(s) }})
 #define FMT_STR(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s.ptr }, .data2 = { .string = s.len }})
@@ -141,11 +176,11 @@ static inline void release(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
+        VLOG("release obj: {}, rc={}\n", FMT_STR(getTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
 #if TRACE
         zCheckDoubleFree(vm, obj);
 #endif
         obj->head.rc -= 1;
-        VLOG("release {} rc={}\n", FMT_STR(getTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
 #if TRACK_GLOBAL_RC
     #if TRACE
         if (vm->refCounts == 0) {
@@ -161,15 +196,17 @@ static inline void release(VM* vm, Value val) {
         if (obj->head.rc == 0) {
             zFreeObject(vm, obj);
         }
+    } else {
+        VLOG("release: {}, nop\n", FMT_STR(getTypeName(vm, getTypeId(val))));
     }
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
+    VLOG("release obj: {}, rc={}\n", FMT_STR(getTypeName(vm, obj->head.typeId)), FMT_U32(obj->head.rc));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
     obj->head.rc -= 1;
-    VLOG("release {} rc={}\n", FMT_STR(getTypeName(vm, obj->head.typeId)), FMT_U32(obj->head.rc));
 #if TRACK_GLOBAL_RC
     #if TRACE
     if (vm->refCounts == 0) {
@@ -209,10 +246,10 @@ static inline void retain(VM* vm, Value val) {
 #endif
     if (VALUE_IS_POINTER(val)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(val);
+        VLOG("retain obj: {}, rc={}\n", FMT_STR(getTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
         obj->head.rc += 1;
 #if TRACE
         zCheckRetainDanglingPointer(vm, obj);
-        VLOG("retain {} rc={}\n", FMT_STR(getTypeName(vm, getTypeId(val))), FMT_U32(obj->head.rc));
 #endif
 #if TRACK_GLOBAL_RC
         vm->refCounts += 1;
@@ -220,6 +257,8 @@ static inline void retain(VM* vm, Value val) {
 #if TRACE
         vm->trace->numRetains += 1;
 #endif
+    } else {
+        VLOG("retain: {}, nop\n", FMT_STR(getTypeName(vm, getTypeId(val))));
     }
 }
 
@@ -231,23 +270,30 @@ static inline double toF64(Value val) {
     }
 }
 
-static inline TypeId getPrimitiveTypeId(Value val) {
-    if (VALUE_IS_FLOAT(val)) {
-        return TYPE_FLOAT;
-    } else {
-        return VALUE_GET_TAG(val);
-    }
-}
-
 static inline TypeId getTypeId(Value val) {
-    if (VALUE_IS_POINTER(val)) {
-        return VALUE_AS_HEAPOBJECT(val)->head.typeId;
+    u64 bits = val & TAGGED_PRIMITIVE_MASK;
+    if (bits >= TAGGED_VALUE_MASK) {
+        // Tagged.
+        if (VALUE_IS_POINTER(val)) {
+            return VALUE_AS_HEAPOBJECT(val)->head.typeId;
+        } else {
+            if (bits >= TAGGED_INTEGER_MASK) {
+                return TYPE_INTEGER;
+            } else {
+                return VALUE_GET_TAG(bits);
+            }
+        }
     } else {
-        return getPrimitiveTypeId(val);
+        return TYPE_FLOAT;
     }
 }
 
 static Str getTypeName(VM* vm, TypeId id) {
+#if TRACE
+    if (id == NULL_U32) {
+        return (Str){ .ptr = "DanglingObject", .len = strlen("DanglingObject") };
+    }
+#endif
     Type t = ((Type*)vm->types.buf)[id];
     return (Str){ .ptr = t.namePtr, .len = t.nameLen };
 }
@@ -456,7 +502,7 @@ static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
 }
 
 // Exponentiation by squaring.
-static int ipow(int b, int e) {
+static _BitInt(48) ipow(_BitInt(48) b, _BitInt(48) e) {
     if (e < 0) {
         if (b == 1 && e == -1) {
             return 1;
@@ -466,7 +512,7 @@ static int ipow(int b, int e) {
         }
         return 0;
     }
-    int result = 1;
+    _BitInt(48) result = 1;
     for (;;) {
         if (e & 1) {
             result *= b;
@@ -495,6 +541,10 @@ static inline void panicDivisionByZero(VM* vm) {
     return panicStaticMsg(vm, "Division by zero.");
 }
 
+static inline void panicOutOfBounds(VM* vm) {
+    return panicStaticMsg(vm, "Out of bounds.");
+}
+
 static inline void panicExpectedInteger(VM* vm) {
     return panicStaticMsg(vm, "Expected integer operand.");
 }
@@ -518,7 +568,7 @@ static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, Value
     release(vm, rightv);
 }
 
-#define DEOPTIMIZE_BINOP() \
+#define DEOPTIMIZE_TERNOP() \
     do { \
         pc[0] = CodeCallObjSym; \
         pc[1] = pc[8]; \
@@ -527,12 +577,19 @@ static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, Value
         pc[4] = pc[11]; \
     } while (false)
 
-#define DEOPTIMIZE_UNARYOP() \
+#define DEOPTIMIZE_BINOP() \
     do { \
         pc[0] = CodeCallObjSym; \
         pc[1] = pc[8]; \
         pc[2] = pc[9]; \
         pc[3] = pc[10]; \
+    } while (false)
+
+#define DEOPTIMIZE_UNARYOP() \
+    do { \
+        pc[0] = CodeCallObjSym; \
+        pc[1] = pc[8]; \
+        pc[2] = pc[9]; \
     } while (false)
 
 #define RETURN(code) \
@@ -541,6 +598,67 @@ static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, Value
         vm->curStack = stack; \
         return code; \
     } while (false)
+
+#define INTEGER_UNOP(...) \
+    Value val = stack[pc[1]]; \
+    if (VALUE_IS_INTEGER(val)) { \
+        /* Body... */ \
+        __VA_ARGS__; \
+        pc += CALL_OBJ_SYM_INST_LEN; \
+        NEXT(); \
+    } else { \
+        /* Always deopt, compiler would not gen if recv is dynamic. */ \
+        DEOPTIMIZE_UNARYOP(); \
+        NEXT(); \
+    }
+
+#define FLOAT_UNOP(...) \
+    Value val = stack[pc[1]]; \
+    if (VALUE_IS_FLOAT(val)) { \
+        /* Body... */ \
+        __VA_ARGS__; \
+        pc += CALL_OBJ_SYM_INST_LEN; \
+        NEXT(); \
+    } else { \
+        /* Always deopt, compiler would not gen if recv is dynamic. */ \
+        DEOPTIMIZE_UNARYOP(); \
+        NEXT(); \
+    }
+
+#define INTEGER_BINOP(...) \
+    Value left = stack[pc[1]]; \
+    Value right = stack[pc[2]]; \
+    if (VALUE_BOTH_INTEGERS(left, right)) { \
+        /* Body... */ \
+        __VA_ARGS__; \
+        pc += CALL_OBJ_SYM_INST_LEN; \
+        NEXT(); \
+    } else { \
+        if (!VALUE_IS_INTEGER(left)) { \
+            DEOPTIMIZE_BINOP(); \
+            NEXT(); \
+        } \
+        panicExpectedInteger(vm); \
+        RETURN(RES_CODE_PANIC); \
+    }
+
+#define FLOAT_BINOP(...) \
+    Value left = stack[pc[1]]; \
+    Value right = stack[pc[2]]; \
+    if (VALUE_BOTH_FLOATS(left, right)) { \
+        /* Body... */ \
+        __VA_ARGS__; \
+        pc += CALL_OBJ_SYM_INST_LEN; \
+        NEXT(); \
+    } else { \
+        /* Always deopt, compiler would not gen if recv is dynamic. */ \
+        if (!VALUE_IS_FLOAT(left)) { \
+            DEOPTIMIZE_BINOP(); \
+            NEXT(); \
+        } \
+        panicExpectedFloat(vm); \
+        RETURN(RES_CODE_PANIC); \
+    }
 
 ResultCode execBytecode(VM* vm) {
     #define READ_I16(offset) ((int16_t)(pc[offset] | ((uint16_t)pc[offset + 1] << 8)))
@@ -567,7 +685,6 @@ ResultCode execBytecode(VM* vm) {
     static void* jumpTable[] = {
         JENTRY(ConstOp),
         JENTRY(ConstI8),
-        JENTRY(ConstI8Int),
         JENTRY(AddFloat),
         JENTRY(SubFloat),
         JENTRY(True),
@@ -579,12 +696,12 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(SetIndex),
         JENTRY(SetIndexRelease),
         JENTRY(CopyRetainSrc),
-        JENTRY(Index),
-        JENTRY(ReverseIndex),
+        JENTRY(IndexList),
+        JENTRY(IndexMap),
         JENTRY(List),
         JENTRY(Map),
         JENTRY(MapEmpty),
-        JENTRY(Slice),
+        JENTRY(SliceList),
         JENTRY(JumpNotCond),
         JENTRY(JumpCond),
         JENTRY(Jump),
@@ -607,10 +724,14 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Lambda),
         JENTRY(Closure),
         JENTRY(Compare),
-        JENTRY(Less),
-        JENTRY(Greater),
-        JENTRY(LessEqual),
-        JENTRY(GreaterEqual),
+        JENTRY(LessFloat),
+        JENTRY(GreaterFloat),
+        JENTRY(LessEqualFloat),
+        JENTRY(GreaterEqualFloat),
+        JENTRY(LessInt),
+        JENTRY(GreaterInt),
+        JENTRY(LessEqualInt),
+        JENTRY(GreaterEqualInt),
         JENTRY(MulFloat),
         JENTRY(DivFloat),
         JENTRY(PowFloat),
@@ -658,7 +779,6 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(PowInt),
         JENTRY(ModInt),
         JENTRY(NegInt),
-        JENTRY(LessInt),
         JENTRY(ForRangeInit),
         JENTRY(ForRange),
         JENTRY(ForRangeReverse),
@@ -707,46 +827,14 @@ beginSwitch:
         pc += 4;
         NEXT();
     CASE(ConstI8):
-        stack[pc[2]] = VALUE_FLOAT((double)(int8_t)pc[1]);
-        pc += 3;
-        NEXT();
-    CASE(ConstI8Int):
-        stack[pc[2]] = VALUE_INTEGER((int32_t)pc[1]);
+        stack[pc[2]] = VALUE_INTEGER_CAST(pc[1]);
         pc += 3;
         NEXT();
     CASE(AddFloat): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) + VALUE_AS_FLOAT(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) + VALUE_AS_FLOAT(right)))
     }
     CASE(SubFloat): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) - VALUE_AS_FLOAT(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) - VALUE_AS_FLOAT(right)))
     }
     CASE(True): {
         stack[pc[1]] = VALUE_TRUE;
@@ -811,27 +899,65 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
-    CASE(Index): {
-        Value* recv = &stack[pc[1]];
-        Value indexv = stack[pc[2]];
-        ValueResult res = zGetIndex(vm, recv, indexv);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
+    CASE(IndexList): {
+        Value listv = stack[pc[1]];
+        Value index = stack[pc[2]];
+        if (VALUE_IS_LIST(listv) && VALUE_IS_INTEGER(index)) {
+            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+
+            _BitInt(48) idx = VALUE_AS_INTEGER(index);
+            if (idx < 0) {
+                // Reverse index.
+                idx = listo->list.list.len + idx;
+                if (idx >= 0) {
+                    Value val = ((Value*)listo->list.list.buf)[idx];
+                    retain(vm, val);
+                    stack[pc[3]] = val;
+                    pc += CALL_OBJ_SYM_INST_LEN;
+                    NEXT();
+                } else {
+                    panicOutOfBounds(vm);
+                    RETURN(RES_CODE_PANIC);
+                }
+            }
+            if (idx < listo->list.list.len) {
+                Value val = ((Value*)listo->list.list.buf)[idx];
+                retain(vm, val);
+                stack[pc[3]] = val;
+                pc += CALL_OBJ_SYM_INST_LEN;
+                NEXT();
+            } else {
+                panicOutOfBounds(vm);
+                RETURN(RES_CODE_PANIC);
+            }
+        } else {
+            if (!VALUE_IS_LIST(listv)) {
+                DEOPTIMIZE_BINOP();
+                NEXT();
+            }
+            panicExpectedInteger(vm);
+            RETURN(RES_CODE_PANIC);
         }
-        stack[pc[3]] = res.val;
-        pc += 4;
-        NEXT();
     }
-    CASE(ReverseIndex): {
-        Value* recv = &stack[pc[1]];
-        Value indexv = stack[pc[2]];
-        ValueResult res = zGetReverseIndex(vm, recv, indexv);
-        if (res.code != RES_CODE_SUCCESS) {
-            RETURN(res.code);
+    CASE(IndexMap): {
+        Value mapv = stack[pc[1]];
+        Value index = stack[pc[2]];
+        if (VALUE_IS_MAP(mapv)) {
+            HeapObject* mapo = VALUE_AS_HEAPOBJECT(mapv);
+            bool found;
+            Value val = zValueMapGet(vm, &mapo->map.inner, index, &found);
+            if (found) {
+                retain(vm, val);
+                stack[pc[3]] = val;
+            } else {
+                stack[pc[3]] = VALUE_NONE;
+            }
+            pc += CALL_OBJ_SYM_INST_LEN;
+            NEXT();
+        } else {
+            DEOPTIMIZE_BINOP();
+            NEXT();
         }
-        stack[pc[3]] = res.val;
-        pc += 4;
-        NEXT();
     }
     CASE(List): {
         uint8_t startLocal = pc[1];
@@ -866,17 +992,54 @@ beginSwitch:
         pc += 2;
         NEXT();
     }
-    CASE(Slice): {
-        Value* slice = &stack[pc[1]];
-        Value start = stack[pc[2]];
-        Value end = stack[pc[3]];
-        ValueResult res = zSliceOp(vm, slice, start, end);
-        if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
-            RETURN(res.code);
+    CASE(SliceList): {
+        Value listv = stack[pc[1]];
+        Value startv = stack[pc[2]];
+        Value endv = stack[pc[3]];
+        if (VALUE_IS_LIST(listv) && VALUE_IS_INTEGER(startv) && (VALUE_IS_INTEGER(endv) || VALUE_IS_NONE(endv))) {
+            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+
+            _BitInt(48) start = VALUE_AS_INTEGER(startv);
+            if (start < 0) {
+                start = listo->list.list.len + start;
+            }
+            _BitInt(48) end;
+            if (VALUE_IS_NONE(endv)) {
+                end = listo->list.list.len;
+            } else {
+                end = VALUE_AS_INTEGER(endv);
+            }
+            if (end < 0) {
+                end = listo->list.list.len + end;
+            }
+            if (start < 0 || start > listo->list.list.len) {
+                panicOutOfBounds(vm);
+                RETURN(RES_CODE_PANIC);
+            }
+            if (end < start || end > listo->list.list.len) {
+                panicOutOfBounds(vm);
+                RETURN(RES_CODE_PANIC);
+            }
+
+            Value* elems = ((Value*)listo->list.list.buf);
+            for (int i = start; i < end; i += 1) {
+                retain(vm, elems[i]);
+            }
+            ValueResult res = zAllocList(vm, elems + start, end - start);
+            if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
+                RETURN(res.code);
+            }
+            stack[pc[4]] = res.val;
+            pc += CALL_OBJ_SYM_INST_LEN;
+            NEXT();
+        } else {
+            if (!VALUE_IS_LIST(listv)) {
+                DEOPTIMIZE_TERNOP();
+                NEXT();
+            }
+            panicExpectedInteger(vm);
+            RETURN(RES_CODE_PANIC);
         }
-        stack[pc[4]] = res.val;
-        pc += 5;
-        NEXT();
     }
     CASE(JumpNotCond): {
         Value cond = stack[pc[1]];
@@ -911,9 +1074,10 @@ beginSwitch:
         NEXT();
     }
     CASE(ReleaseN): {
-        uint8_t numLocals = pc[1];
-        uint8_t i;
+        u8 numLocals = pc[1];
+        u8 i;
         for (i = 2; i < 2 + numLocals; i += 1) {
+            VLOG("release reg {}\n", FMT_U32(pc[i]));
             release(vm, stack[pc[i]]);
         }
         pc += 2 + numLocals;
@@ -1153,10 +1317,9 @@ beginSwitch:
         }
     }
     CASE(Call): {
-        uint8_t startLocal = pc[1];
-        uint8_t numArgs = pc[2];
-        uint8_t numRet = pc[3];
-        pc += 4;
+        u8 startLocal = pc[1];
+        u8 numArgs = pc[2];
+        u8 numRet = pc[3];
 
         Value callee = stack[startLocal + numArgs + 4];
         Value retInfo = VALUE_RETINFO(numRet, false, CALL_INST_LEN);
@@ -1284,121 +1447,41 @@ beginSwitch:
         pc += 4;
         NEXT();
     }
-    CASE(Less): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) < VALUE_AS_FLOAT(right));
-            pc += 4;
-            NEXT();
-        } else {
-            panicExpectedFloat(vm);
-            RETURN(RES_CODE_PANIC);
-        }
+    CASE(LessFloat): {
+        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) < VALUE_AS_FLOAT(right)))
     }
-    CASE(Greater): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) > VALUE_AS_FLOAT(right));
-            pc += 4;
-            NEXT();
-        } else {
-            panicExpectedFloat(vm);
-            RETURN(RES_CODE_PANIC);
-        }
+    CASE(GreaterFloat): {
+        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) > VALUE_AS_FLOAT(right)))
     }
-    CASE(LessEqual): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) <= VALUE_AS_FLOAT(right));
-            pc += 4;
-            NEXT();
-        } else {
-            panicExpectedFloat(vm);
-            RETURN(RES_CODE_PANIC);
-        }
+    CASE(LessEqualFloat): {
+        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) <= VALUE_AS_FLOAT(right)))
     }
-    CASE(GreaterEqual): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) >= VALUE_AS_FLOAT(right));
-            pc += 4;
-            NEXT();
-        } else {
-            panicExpectedFloat(vm);
-            RETURN(RES_CODE_PANIC);
-        }
+    CASE(GreaterEqualFloat): {
+        FLOAT_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_FLOAT(left) >= VALUE_AS_FLOAT(right)))
+    }
+    CASE(LessInt): {
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) < VALUE_AS_INTEGER(right)))
+    }
+    CASE(GreaterInt): {
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) > VALUE_AS_INTEGER(right)))
+    }
+    CASE(LessEqualInt): {
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) <= VALUE_AS_INTEGER(right)))
+    }
+    CASE(GreaterEqualInt): {
+        INTEGER_BINOP(stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) >= VALUE_AS_INTEGER(right)))
     }
     CASE(MulFloat): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) * VALUE_AS_FLOAT(right)))
     }
     CASE(DivFloat): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) / VALUE_AS_FLOAT(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(VALUE_AS_FLOAT(left) / VALUE_AS_FLOAT(right)))
     }
     CASE(PowFloat): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_FLOAT(pow(VALUE_AS_FLOAT(left), VALUE_AS_FLOAT(right)));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(pow(VALUE_AS_FLOAT(left), VALUE_AS_FLOAT(right))))
     }
     CASE(ModFloat): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_FLOATS(left, right)) {
-            stack[pc[3]] = VALUE_FLOAT(fmod(VALUE_AS_FLOAT(left), VALUE_AS_FLOAT(right)));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_BINOP(stack[pc[3]] = VALUE_FLOAT(fmod(VALUE_AS_FLOAT(left), VALUE_AS_FLOAT(right))))
     }
     CASE(CompareNot): {
         Value left = stack[pc[1]];
@@ -1427,20 +1510,7 @@ beginSwitch:
         RETURN(res.code);
     }
     CASE(NegFloat): {
-        Value val = stack[pc[1]];
-        if (VALUE_IS_FLOAT(val)) {
-            stack[pc[2]] = VALUE_FLOAT(-VALUE_AS_FLOAT(val));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[3] == 1) {
-                DEOPTIMIZE_UNARYOP();
-                NEXT();
-            } else {
-                panicExpectedFloat(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        FLOAT_UNOP(stack[pc[2]] = VALUE_FLOAT(-VALUE_AS_FLOAT(val)))
     }
     CASE(Init): {
         uint8_t start = pc[1];
@@ -1616,11 +1686,11 @@ beginSwitch:
         }
     }
     CASE(Coinit): {
-        uint8_t startArgsLocal = pc[1];
-        uint8_t numArgs = pc[2];
-        uint8_t jump = pc[3];
-        uint8_t initialStackSize = pc[4];
-        uint8_t dst = pc[5];
+        u8 startArgsLocal = pc[1];
+        u8 numArgs = pc[2];
+        u8 jump = pc[3];
+        u8 initialStackSize = pc[4];
+        u8 dst = pc[5];
 
         ValueResult res = zAllocFiber(vm, pcOffset(vm, pc + 6), stack + startArgsLocal, numArgs, initialStackSize);
         if (res.code != RES_CODE_SUCCESS) {
@@ -1767,7 +1837,7 @@ beginSwitch:
     }
     CASE(TagLiteral): {
         u8 symId = pc[1];
-        stack[pc[2]] = VALUE_SYMBOL(symId)
+        stack[pc[2]] = VALUE_SYMBOL(symId);
         pc += 3;
         NEXT();
     }
@@ -1814,105 +1884,36 @@ beginSwitch:
         RETURN(RES_CODE_PANIC);
     }
     CASE(BitwiseAnd): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) & VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) & VALUE_AS_INTEGER(right)))
     }
     CASE(BitwiseOr): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) | VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) | VALUE_AS_INTEGER(right)))
     }
     CASE(BitwiseXor): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) ^ VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) ^ VALUE_AS_INTEGER(right)))
     }
     CASE(BitwiseNot): {
-        Value val = stack[pc[1]];
-        if (VALUE_IS_INTEGER(val)) {
-            stack[pc[2]] = VALUE_INTEGER(~VALUE_AS_INTEGER(val));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[3] == 1) {
-                DEOPTIMIZE_UNARYOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_UNOP(stack[pc[2]] = VALUE_INTEGER(~VALUE_AS_INTEGER(val)))
     }
     CASE(BitwiseLeftShift): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) << VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
+        INTEGER_BINOP(
+            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
+            if (rightInt > 48 || rightInt < 0) {
+                panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }
-        }
+            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) << rightInt);
+        )
     }
     CASE(BitwiseRightShift): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) >> VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
+        INTEGER_BINOP(
+            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
+            if (rightInt > 48 || rightInt < 0) {
+                panicOutOfBounds(vm);
                 RETURN(RES_CODE_PANIC);
             }
-        }
+            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) >> rightInt);
+        )
     }
     CASE(JumpNotNone): {
         int16_t offset = READ_I16(1);
@@ -1925,172 +1926,76 @@ beginSwitch:
         }
     }
     CASE(AddInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) + VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) + VALUE_AS_INTEGER(right)))
     }
     CASE(SubInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) - VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) - VALUE_AS_INTEGER(right)))
     }
     CASE(MulInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) * VALUE_AS_INTEGER(right));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) * VALUE_AS_INTEGER(right)))
     }
     CASE(DivInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            int rightInt = VALUE_AS_INTEGER(right);
-            if (rightInt != 0) {
-                stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) / rightInt);
-                pc += CALL_OBJ_SYM_INST_LEN;
-                NEXT();
-            } else {
+        INTEGER_BINOP(
+            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
+            if (rightInt == 0) {
                 panicDivisionByZero(vm);
                 RETURN(RES_CODE_PANIC);
             }
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) / VALUE_AS_INTEGER(right));
+        )
     }
     CASE(PowInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            stack[pc[3]] = VALUE_INTEGER(ipow(VALUE_AS_INTEGER(left), VALUE_AS_INTEGER(right)));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+        INTEGER_BINOP(stack[pc[3]] = VALUE_INTEGER(ipow(VALUE_AS_INTEGER(left), VALUE_AS_INTEGER(right))))
     }
     CASE(ModInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        if (VALUE_BOTH_INTEGERS(left, right)) {
-            int rightInt = VALUE_AS_INTEGER(right);
-            if (rightInt != 0) {
-                stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) % rightInt);
-                pc += CALL_OBJ_SYM_INST_LEN;
-                NEXT();
-            } else {
+        INTEGER_BINOP(
+            _BitInt(48) rightInt = VALUE_AS_INTEGER(right);
+            if (rightInt == 0) {
                 panicDivisionByZero(vm);
                 RETURN(RES_CODE_PANIC);
             }
-        } else {
-            if (pc[4] == 1) {
-                DEOPTIMIZE_BINOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
+            stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) % VALUE_AS_INTEGER(right));
+        )
     }
     CASE(NegInt): {
-        Value val = stack[pc[1]];
-        if (VALUE_IS_INTEGER(val)) {
-            stack[pc[2]] = VALUE_INTEGER(-VALUE_AS_INTEGER(val));
-            pc += CALL_OBJ_SYM_INST_LEN;
-            NEXT();
-        } else {
-            if (pc[3] == 1) {
-                DEOPTIMIZE_UNARYOP();
-                NEXT();
-            } else {
-                panicExpectedInteger(vm);
-                RETURN(RES_CODE_PANIC);
-            }
-        }
-    }
-    CASE(LessInt): {
-        Value left = stack[pc[1]];
-        Value right = stack[pc[2]];
-        stack[pc[3]] = VALUE_BOOLEAN(VALUE_AS_INTEGER(left) < VALUE_AS_INTEGER(right));
-        pc += 4;
-        NEXT();
+        INTEGER_UNOP(stack[pc[2]] = VALUE_INTEGER(-VALUE_AS_INTEGER(val)))
     }
     CASE(ForRangeInit): {
-        double start = toF64(stack[pc[1]]);
-        double end = toF64(stack[pc[2]]);
-        stack[pc[2]] = VALUE_FLOAT(end);
-        double step = toF64(stack[pc[3]]);
-        if (step < 0) {
-            step = -step;
-        }
-        stack[pc[3]] = VALUE_FLOAT(step);
-        if (start == end) {
-            pc += READ_U16(6) + 7;
-            NEXT();
-        } else {
-            stack[pc[4]] = VALUE_FLOAT(start);
-            stack[pc[5]] = VALUE_FLOAT(start);
-            uint16_t offset = READ_U16(6);
-            if (start < end) {
-                pc[offset] = CodeForRange;
-            } else {
-                pc[offset] = CodeForRangeReverse;
+        Value startv = stack[pc[1]];
+        Value endv = stack[pc[2]];
+        Value stepv = stack[pc[3]];
+        if (VALUE_ALL3_INTEGERS(startv, endv, stepv)) {
+            _BitInt(48) start = VALUE_AS_INTEGER(startv);
+            _BitInt(48) end = VALUE_AS_INTEGER(endv);
+            _BitInt(48) step = VALUE_AS_INTEGER(stepv);
+            if (step < 0) {
+                step = -step;
             }
-            pc += 8;
-            NEXT();
+            if (start == end) {
+                pc += READ_U16(6) + 7;
+                NEXT();
+            } else {
+                stack[pc[4]] = startv;
+                stack[pc[5]] = startv;
+                u16 offset = READ_U16(6);
+                if (start < end) {
+                    pc[offset] = CodeForRange;
+                } else {
+                    pc[offset] = CodeForRangeReverse;
+                }
+                pc += 8;
+                NEXT();
+            }
+        } else {
+            panicExpectedInteger(vm);
+            RETURN(RES_CODE_PANIC);
         }
     }
     CASE(ForRange): {
-        double counter = VALUE_AS_FLOAT(stack[pc[1]]) + VALUE_AS_FLOAT(stack[pc[2]]);
-        if (counter < VALUE_AS_FLOAT(stack[pc[3]])) {
-            stack[pc[1]] = VALUE_FLOAT(counter);
-            stack[pc[4]] = VALUE_FLOAT(counter);
+        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) + VALUE_AS_INTEGER(stack[pc[2]]);
+        if (counter < VALUE_AS_INTEGER(stack[pc[3]])) {
+            stack[pc[1]] = VALUE_INTEGER(counter);
+            stack[pc[4]] = VALUE_INTEGER(counter);
             pc -= READ_U16(5);
         } else {
             pc += 7;
@@ -2098,10 +2003,10 @@ beginSwitch:
         NEXT();
     }
     CASE(ForRangeReverse): {
-        double counter = VALUE_AS_FLOAT(stack[pc[1]]) - VALUE_AS_FLOAT(stack[pc[2]]);
-        if (counter > VALUE_AS_FLOAT(stack[pc[3]])) {
-            stack[pc[1]] = VALUE_FLOAT(counter);
-            stack[pc[4]] = VALUE_FLOAT(counter);
+        _BitInt(48) counter = VALUE_AS_INTEGER(stack[pc[1]]) - VALUE_AS_INTEGER(stack[pc[2]]);
+        if (counter > VALUE_AS_INTEGER(stack[pc[3]])) {
+            stack[pc[1]] = VALUE_INTEGER(counter);
+            stack[pc[4]] = VALUE_INTEGER(counter);
             pc -= READ_U16(5);
         } else {
             pc += 7;

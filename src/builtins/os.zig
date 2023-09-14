@@ -50,9 +50,9 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
     try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
     
     if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        try b.setVar("vecBitSize", bt.Float, cy.Value.initI32(VecSize * 8));
+        try b.setVar("vecBitSize", bt.Integer, cy.Value.initI32(VecSize * 8));
     } else {
-        try b.setVar("vecBitSize", bt.Float, cy.Value.initI32(0));
+        try b.setVar("vecBitSize", bt.Integer, cy.Value.initI32(0));
     }
 
     // Functions.
@@ -85,7 +85,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
         try b.setFunc("fromCstr", &.{bt.Pointer}, bt.Rawstring, bindings.nop1);
         try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, bindings.nop1);
         try b.setFunc("getEnvAll", &.{}, bt.Map, bindings.nop0);
-        try b.setFunc("malloc", &.{bt.Float}, bt.Pointer, bindings.nop1);
+        try b.setFunc("malloc", &.{bt.Integer}, bt.Pointer, bindings.nop1);
     } else {
         try b.setFunc("copyFile", &.{bt.Any, bt.Any}, bt.Any, copyFile);
         try b.setFunc("createDir", &.{bt.Any}, bt.Any, createDir);
@@ -103,7 +103,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitS
             try b.setFunc("getEnv", &.{ bt.Any }, bt.Any, getEnv);
             try b.setFunc("getEnvAll", &.{}, bt.Map, getEnvAll);
         }
-        try b.setFunc("malloc", &.{bt.Float}, bt.Pointer, malloc);
+        try b.setFunc("malloc", &.{bt.Integer}, bt.Pointer, malloc);
     }
     try b.setFunc("milliTime", &.{}, bt.Float, milliTime);
     if (cy.isWasm) {
@@ -159,7 +159,6 @@ fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSe
 }
 
 fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     const iterable = args[1].asBool();
     var fd: std.os.fd_t = undefined;
@@ -186,7 +185,6 @@ fn openDir2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 }
 
 fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteDir(path) catch |err| {
         if (err == error.FileNotFound) {
@@ -199,10 +197,6 @@ fn removeDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 }
 
 fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer {
-        vm.release(args[0]);
-        vm.release(args[1]);
-    }
     const src = vm.valueToTempRawString(args[0]);
     const alloc = vm.allocator();
     const srcDupe = alloc.dupe(u8, src) catch fatal();
@@ -219,7 +213,6 @@ fn copyFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 }
 
 fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().deleteFile(path) catch |err| {
         if (err == error.FileNotFound) {
@@ -232,7 +225,6 @@ fn removeFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 }
 
 fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     std.fs.cwd().makeDir(path) catch |err| {
         return fromUnsupportedError(vm, "createDir", err, @errorReturnTrace());
@@ -241,7 +233,6 @@ fn createDir(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
 }
 
 fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     const truncate = args[1].asBool();
     const file = std.fs.cwd().createFile(path, .{ .truncate = truncate }) catch |err| {
@@ -252,7 +243,6 @@ fn createFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSec
 
 pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
 
     const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
@@ -276,7 +266,6 @@ pub fn access(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 
 fn openFile(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const path = vm.valueToTempRawString(args[0]);
     const mode: Symbol = @enumFromInt(args[1].asSymbolId());
     const zmode: std.fs.File.OpenMode = switch (mode) {
@@ -302,7 +291,6 @@ fn parseArgs(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     const alloc = vm.allocator();
 
     const list = args[0].asHeapObject().list.items();
-    defer vm.release(args[0]);
 
     // Build options map.
     const OptionType = enum {
@@ -469,27 +457,24 @@ pub fn getEnvAll(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {
     return map;
 }
 
-pub fn free(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
+pub fn free(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const ptr = args[0].asHeapObject().pointer.ptr;
     std.c.free(ptr);
     return Value.None;
 }
 
 pub fn malloc(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const size: usize = @intFromFloat(args[0].asF64());
+    const size: usize = @intCast(args[0].asInteger());
     const ptr = std.c.malloc(size);
     return cy.heap.allocPointer(vm.internal(), ptr) catch cy.fatal();
 }
 
 fn fromCstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const bytes = std.mem.span(@as([*:0]const u8, @ptrCast(args[0].asHeapObject().pointer.ptr)));
     return vm.allocRawString(bytes) catch fatal();
 }
 
 fn cstr(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
     const bytes = vm.valueToTempRawString(args[0]);
     const new: [*]u8 = @ptrCast(std.c.malloc(bytes.len + 1));
     @memcpy(new[0..bytes.len], bytes);
@@ -503,7 +488,6 @@ pub fn milliTime(_: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSect
 
 pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
     if (std.fs.path.dirname(path)) |res| {
         return vm.allocStringInfer(res) catch cy.fatal();
     } else {
@@ -513,7 +497,6 @@ pub fn dirName(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 
 pub fn realPath(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const path = vm.valueToTempRawString(args[0]);
-    defer vm.release(args[0]);
     const res = std.fs.cwd().realpathAlloc(vm.allocator(), path) catch |err| {
         return fromUnsupportedError(vm, "realPath", err, @errorReturnTrace());
     };
@@ -535,8 +518,7 @@ pub fn setEnv(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
 }
 pub extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
-pub fn sleep(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    defer vm.release(args[0]);
+pub fn sleep(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     if (builtin.os.tag == .windows) {
         const ms: u32 = @intFromFloat(args[0].asF64());
         std.os.windows.kernel32.Sleep(ms);
@@ -581,12 +563,9 @@ pub fn bindLibExt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     var configV = args[2];
     const ivm = vm.internal();
     const genMapV = vm.allocAstring("genMap") catch cy.fatal();
-    defer {
-        vm.release(args[2]);
-        vm.release(genMapV);
-    }
+    defer vm.release(genMapV);
     var config: ffi.BindLibConfig = .{};
-    const val = ivm.getIndex(&configV, genMapV) catch cy.fatal();
+    const val = configV.asHeapObject().map.map().get(ivm, genMapV) orelse Value.False;
     if (val.isTrue()) {
         config.genMap = true;
     }

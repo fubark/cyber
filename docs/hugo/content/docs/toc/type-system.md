@@ -64,7 +64,7 @@ print add(3, 4)
 
 ## Static typing.
 In Cyber, types can be optionally declared with variables, parameters, and return values.
-The following builtin types are available in every namespace: `bool`, `float`, `int`, `string`, `list`, `map`, `error`, `fiber`, `any`.
+The following builtin types are available in every namespace: `bool`, `float`, `int`, `string`, `List`, `Map`, `error`, `fiber`, `any`.
 
 A `type object` declaration creates a new object type.
 ```cy

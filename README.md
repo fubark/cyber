@@ -1,3 +1,6 @@
+[![Latest Build](https://github.com/fubark/cyber/actions/workflows/latest-build.yml/badge.svg)](https://github.com/fubark/cyber/actions/workflows/latest-build.yml)
+[![Discord Server](https://img.shields.io/discord/828041790711136274.svg?color=7289da&label=Discord&logo=discord&style=flat-square)](https://discord.gg/YF82GYvBxQ)
+
 ## Cyber
 Cyber is a fast, efficient, and concurrent scripting language. You can embed it into your applications, games, or engines on desktop or web. Cyber also comes with a CLI so you can do scripting on your computer.
 

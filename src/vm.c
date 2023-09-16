@@ -693,8 +693,8 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(Not),
         JENTRY(Copy),
         JENTRY(CopyReleaseDst),
-        JENTRY(SetIndex),
-        JENTRY(SetIndexRelease),
+        JENTRY(SetIndexList),
+        JENTRY(SetIndexMap),
         JENTRY(CopyRetainSrc),
         JENTRY(IndexList),
         JENTRY(IndexMap),
@@ -870,27 +870,56 @@ beginSwitch:
         pc += 3;
         NEXT();
     }
-    CASE(SetIndex): {
-        Value leftv = stack[pc[1]];
-        Value indexv = stack[pc[2]];
-        Value rightv = stack[pc[3]];
-        ResultCode code = zSetIndex(vm, leftv, indexv, rightv);
-        if (UNLIKELY(code != RES_CODE_SUCCESS)) {
-            RETURN(code);
+    CASE(SetIndexList): {
+        Value listv = stack[pc[1]];
+        Value index = stack[pc[2]];
+        Value right = stack[pc[3]];
+        if (VALUE_IS_LIST(listv) && VALUE_IS_INTEGER(index)) {
+            HeapObject* listo = VALUE_AS_HEAPOBJECT(listv);
+
+            _BitInt(48) idx = VALUE_AS_INTEGER(index);
+            if (idx < 0) {
+                // Reverse index.
+                idx = listo->list.list.len + idx;
+            }
+            if (idx >= 0 && idx < listo->list.list.len) {
+                Value existing = ((Value*)listo->list.list.buf)[idx];
+                release(vm, existing);
+                retain(vm, right);
+                ((Value*)listo->list.list.buf)[idx] = right;
+                pc += CALL_OBJ_SYM_INST_LEN;
+                NEXT();
+            } else {
+                panicOutOfBounds(vm);
+                RETURN(RES_CODE_PANIC);
+            }
+        } else {
+            if (!VALUE_IS_LIST(listv)) {
+                // Reuse binop layout because of no dst.
+                DEOPTIMIZE_BINOP();
+                NEXT();
+            }
+            panicExpectedInteger(vm);
+            RETURN(RES_CODE_PANIC);
         }
-        pc += 4;
-        NEXT();
     }
-    CASE(SetIndexRelease): {
-        Value leftv = stack[pc[1]];
-        Value indexv = stack[pc[2]];
-        Value rightv = stack[pc[3]];
-        ResultCode code = zSetIndexRelease(vm, leftv, indexv, rightv);
-        if (UNLIKELY(code != RES_CODE_SUCCESS)) {
+    CASE(SetIndexMap): {
+        Value mapv = stack[pc[1]];
+        Value index = stack[pc[2]];
+        Value right = stack[pc[3]];
+        if (VALUE_IS_MAP(mapv)) {
+            Map* mapo = (Map*)VALUE_AS_HEAPOBJECT(mapv);
+            ResultCode code = zMapSet(vm, mapo, index, right);
+            if (LIKELY(code == RES_CODE_SUCCESS)) {
+                pc += CALL_OBJ_SYM_INST_LEN;
+                NEXT();
+            }
             RETURN(code);
+        } else {
+            // Reuse binop layout because of no dst.
+            DEOPTIMIZE_BINOP();
+            NEXT();
         }
-        pc += 4;
-        NEXT();
     }
     CASE(CopyRetainSrc): {
         Value val = stack[pc[1]];
@@ -909,18 +938,8 @@ beginSwitch:
             if (idx < 0) {
                 // Reverse index.
                 idx = listo->list.list.len + idx;
-                if (idx >= 0) {
-                    Value val = ((Value*)listo->list.list.buf)[idx];
-                    retain(vm, val);
-                    stack[pc[3]] = val;
-                    pc += CALL_OBJ_SYM_INST_LEN;
-                    NEXT();
-                } else {
-                    panicOutOfBounds(vm);
-                    RETURN(RES_CODE_PANIC);
-                }
             }
-            if (idx < listo->list.list.len) {
+            if (idx >= 0 && idx < listo->list.list.len) {
                 Value val = ((Value*)listo->list.list.buf)[idx];
                 retain(vm, val);
                 stack[pc[3]] = val;

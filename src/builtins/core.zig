@@ -232,15 +232,17 @@ pub fn execCmd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSe
     // TODO: Use allocOwnedString
     defer alloc.free(res.stdout);
     const out = vm.allocStringInfer(res.stdout) catch cy.fatal();
-    ivm.setIndex(map, outKey, out) catch cy.fatal();
+    defer vm.release(out);
+    map.asHeapObject().map.set(ivm, outKey, out) catch cy.fatal();
     // TODO: Use allocOwnedString
     defer alloc.free(res.stderr);
     const err = vm.allocStringInfer(res.stderr) catch cy.fatal();
-    ivm.setIndex(map, errKey, err) catch cy.fatal();
+    defer vm.release(err);
+    map.asHeapObject().map.set(ivm, errKey, err) catch cy.fatal();
     if (res.term == .Exited) {
         const exitedKey = vm.allocAstring("exited") catch cy.fatal();
         defer vm.release(exitedKey);
-        ivm.setIndex(map, exitedKey, Value.initF64(@floatFromInt(res.term.Exited))) catch cy.fatal();
+        map.asHeapObject().map.set(ivm, exitedKey, Value.initF64(@floatFromInt(res.term.Exited))) catch cy.fatal();
     }
     return map;
 }

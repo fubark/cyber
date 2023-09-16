@@ -476,9 +476,23 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     _ = try assignVar(c, node.head.left_right.left, rtype);
                 }
             } else if (left.node_t == .indexExpr) {
-                _ = try semaExpr(c, left.head.indexExpr.left);
-                _ = try semaExpr(c, left.head.indexExpr.right);
-                _ = try semaExpr(c, node.head.left_right.right);
+                const leftId = node.head.left_right.left;
+                const leftT = try semaExpr(c, left.head.indexExpr.left);
+                if (leftT == bt.List) {
+                    // Specialized.
+                    _ = try semaExprType(c, left.head.indexExpr.right, bt.Integer);
+                    _ = try semaExpr(c, node.head.left_right.right);
+                    c.nodes[leftId].head.indexExpr.semaGenStrat = .specialized;
+                } else if (leftT == bt.Map) {
+                    // Specialized.
+                    _ = try semaExprType(c, left.head.indexExpr.right, bt.Any);
+                    _ = try semaExpr(c, node.head.left_right.right);
+                    c.nodes[leftId].head.indexExpr.semaGenStrat = .specialized;
+                } else {
+                    _ = try semaExpr(c, left.head.indexExpr.right);
+                    _ = try semaExpr(c, node.head.left_right.right);
+                    c.nodes[leftId].head.indexExpr.semaGenStrat = .generic;
+                }
             } else if (left.node_t == .accessExpr) {
                 const res = try accessExpr(c, node.head.left_right.left);
                 const rightT = try semaExpr(c, node.head.left_right.right);
@@ -1285,9 +1299,14 @@ fn semaExprInner(c: *cy.Chunk, nodeId: cy.NodeId, preferType: TypeId) anyerror!T
         },
         .indexExpr => {
             const leftT = try semaExpr(c, node.head.indexExpr.left);
-            if (leftT == bt.List or leftT == bt.Map) {
+            if (leftT == bt.List) {
                 // Specialized.
                 _ = try semaExprType(c, node.head.indexExpr.right, bt.Integer);
+                c.nodes[nodeId].head.indexExpr.semaGenStrat = .specialized;
+                return bt.Dynamic;
+            } else if (leftT == bt.Map) {
+                // Specialized.
+                _ = try semaExprType(c, node.head.indexExpr.right, bt.Any);
                 c.nodes[nodeId].head.indexExpr.semaGenStrat = .specialized;
                 return bt.Dynamic;
             } else {

@@ -144,7 +144,7 @@ test "ARC assignments." {
         \\t.eq(a[0], 234)
     );
     var trace = run.getTrace();
-    try t.eq(trace.numRetainAttempts, 2);
+    try t.eq(trace.numRetainAttempts, 3);
     try t.eq(trace.numReleaseAttempts, 4);
     try t.eq(trace.numRetains, 1);
     try t.eq(trace.numReleases, 1);

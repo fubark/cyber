@@ -217,6 +217,19 @@ pub const Map = extern struct {
     pub fn map(self: *Map) *MapInner {
         return cy.ptrAlignCast(*MapInner, &self.inner);
     }
+
+    pub fn set(self: *Map, vm: *cy.VM, index: Value, val: Value) !void {
+        const m = cy.ptrAlignCast(*cy.MapInner, &self.inner);
+        const res = try m.getOrPut(vm.alloc, vm, index);
+        if (res.foundExisting) {
+            cy.arc.release(vm, res.valuePtr.*);
+        } else {
+            // No previous entry, retain key.
+            cy.arc.retain(vm, index);
+        }
+        cy.arc.retain(vm, val);
+        res.valuePtr.* = val;
+    }
 };
 
 pub const MapIterator = extern struct {

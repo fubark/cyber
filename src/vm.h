@@ -79,8 +79,13 @@ typedef enum {
     CodeNot,
     CodeCopy,
     CodeCopyReleaseDst,
-    CodeSetIndex,
-    CodeSetIndexRelease,
+
+    /// [listReg] [indexReg] [rightReg]
+    /// Releases existing value and retains right.
+    CodeSetIndexList,
+
+    CodeSetIndexMap,
+
     CodeCopyRetainSrc,
     CodeIndexList,
     CodeIndexMap,
@@ -725,7 +730,7 @@ typedef struct VM {
         void* vtable;
     } httpClient;
     void* stdHttpClient;
-    MethodGroupId padding[23];
+    MethodGroupId padding[24];
     size_t expGlobalRC;
     ZHashMap varSymExtras;
 #else
@@ -740,7 +745,7 @@ typedef struct VM {
     #if TRACE
     u32 debugPc;
     #endif
-    MethodGroupId padding[23];
+    MethodGroupId padding[24];
 #endif
 
 } VM;
@@ -826,8 +831,6 @@ HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocMap(VM* vm, u16* keyIdxs, Value* vals, u32 numEntries);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);
-ResultCode zSetIndexRelease(VM* vm, Value left, Value index, Value right);
-ResultCode zSetIndex(VM* vm, Value left, Value index, Value right);
 void zPanicIncompatibleFuncSig(VM* vm, FuncId funcId, Value* args, size_t numArgs, FuncSigId targetFuncSigId);
 ResultCode zSetStaticFunc(VM* vm, FuncId funcId, Value val);
 ResultCode zGrowTryStackTotalCapacity(ZCyList* list, ZAllocator alloc, size_t minCap);
@@ -838,3 +841,4 @@ void zCheckDoubleFree(VM* vm, HeapObject* obj);
 void zCheckRetainDanglingPointer(VM* vm, HeapObject* obj);
 void zPanicFmt(VM* vm, const char* format, FmtValue* args, size_t numArgs);
 Value zValueMapGet(VM* vm, ValueMap* map, Value key, bool* found);
+ResultCode zMapSet(VM* vm, Map* map, Value key, Value val);

@@ -275,14 +275,8 @@ pub const ByteCodeBuffer = struct {
 };
 
 fn printStderr(comptime format: []const u8, args: anytype) void {
-    if (builtin.is_test) {
-        if (@intFromEnum(std.log.Level.debug) <= @intFromEnum(std.testing.log_level)) {
-            std.debug.print(format, args);
-        }
-    } else {
-        if (!cy.isWasm) {
-            std.debug.print(format, args);
-        }
+    if (cy.verbose and !cy.isWasm) {
+        std.debug.print(format, args);
     }
 }
 
@@ -484,11 +478,11 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const symId = pc[3].val;
             fmt.printStderr("{} {} recv={}, val={}, sym={}", &.{v(pcOffset), v(code), v(recv), v(val), v(symId)});
         },
-        .setIndexRelease => {
-            const left = pc[1].val;
+        .setIndexList => {
+            const list = pc[1].val;
             const index = pc[2].val;
             const right = pc[3].val;
-            fmt.printStderr("{} {} left={}, index={}, right={}", &.{v(pcOffset), v(code), v(left), v(index), v(right)});
+            fmt.printStderr("{} {} list={}, index={}, right={}", &.{v(pcOffset), v(code), v(list), v(index), v(right)});
         },
         .init => {
             const start = pc[1].val;
@@ -711,8 +705,6 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .staticFunc,
         .setStaticFunc,
         .pushTry,
-        .setIndex,
-        .setIndexRelease,
         .jumpNotNone,
         .jumpCond,
         .setField,
@@ -803,6 +795,8 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .bitwiseRightShift,
         .callObjSym,
         .callObjNativeFuncIC,
+        .setIndexList,
+        .setIndexMap,
         .callObjFuncIC => {
             return CallObjSymInstLen;
         },
@@ -826,11 +820,8 @@ pub const OpCode = enum(u8) {
     /// Copies a local from src to dst.
     copy = vmc.CodeCopy,
     copyReleaseDst = vmc.CodeCopyReleaseDst,
-
-    /// [leftLocal] [indexLocal] [rightLocal]
-    setIndex = vmc.CodeSetIndex,
-    /// setIndex in addition to a release on leftLocal.
-    setIndexRelease = vmc.CodeSetIndexRelease,
+    setIndexList = vmc.CodeSetIndexList,
+    setIndexMap = vmc.CodeSetIndexMap,
 
     copyRetainSrc = vmc.CodeCopyRetainSrc,
 

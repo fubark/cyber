@@ -2208,6 +2208,20 @@ test "Local variable declaration." {
 test "Local variable assignment." {
     try evalPass(.{}, @embedFile("localvar_assign_test.cy"));
 
+    // Assign to missing $setIndex method.
+    try eval(.{ .silent = true },
+        \\1[0] = 2
+    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
+        try run.expectErrorReport(res, error.Panic,
+            \\panic: `func $setIndex(any, int, int) any` can not be found in `integer`.
+            \\
+            \\main:1:1 main:
+            \\1[0] = 2
+            \\^
+            \\
+        );
+    }}.func);
+
     // Assign to undeclared var.
     try eval(.{ .silent = true },
         \\foo = 1

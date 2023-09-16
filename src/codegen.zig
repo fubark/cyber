@@ -1516,23 +1516,56 @@ fn assignStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             }
         }
     } else if (left.node_t == .indexExpr) {
-        const leftv = try expression(c, left.head.indexExpr.left, RegisterCstr.simple);
-        const leftRetained = try c.pushUnwindIndexIfRetainedTemp(leftv);
+        switch (left.head.indexExpr.semaGenStrat) {
+            .none => cy.fatal(),
+            .specialized => {
+                const selfT = c.nodeTypes[left.head.indexExpr.left];
 
-        const indexv = try expression(c, left.head.indexExpr.right, RegisterCstr.simple);
-        const indexRetained = try c.pushUnwindIndexIfRetainedTemp(indexv);
+                const regStart = c.regStack.items.len;
+                defer c.regStack.items.len = regStart;
 
-        const rightv = try expression(c, node.head.left_right.right, RegisterCstr.simpleMustRetain);
+                const leftv = try expression(c, left.head.indexExpr.left, RegisterCstr.simple);
+                const leftRetained = try c.pushUnwindIndexIfRetainedTemp(leftv);
+                if (leftRetained) {
+                    try c.pushReg(leftv.local);
+                }
 
-        if (leftRetained) c.popUnwindTempIndex();
-        if (indexRetained) c.popUnwindTempIndex();
+                const indexv = try expression(c, left.head.indexExpr.right, RegisterCstr.simple);
+                const indexRetained = try c.pushUnwindIndexIfRetainedTemp(indexv);
+                if (indexRetained) {
+                    try c.pushReg(indexv.local);
+                }
 
-        try c.pushDebugSym(nodeId);
-        try c.buf.pushOp3(.setIndexRelease, leftv.local, indexv.local, rightv.local);
+                const rightv = try expression(c, node.head.left_right.right, RegisterCstr.simple);
+                const rightRetained = try c.pushUnwindIndexIfRetainedTemp(rightv);
+                if (rightRetained) {
+                    try c.pushReg(rightv.local);
+                }
 
-        // ARC cleanup. Right is not released since it's being assigned to the index.
-        if (leftRetained) try pushRelease(c, leftv.local, left.head.indexExpr.left);
-        if (indexRetained) try pushRelease(c, indexv.local, left.head.indexExpr.right);
+                const retainedTemps = c.regStack.items[regStart..];
+                defer c.popUnwindTempIndexN(@intCast(retainedTemps.len));
+
+                if (selfT == bt.List) {
+                    // Reuse binExpr layout since there is no dst.
+                    try pushInlineBinExpr(c, .setIndexList, leftv.local, indexv.local, rightv.local, nodeId);
+                } else if (selfT == bt.Map) {
+                    try pushInlineBinExpr(c, .setIndexMap, leftv.local, indexv.local, rightv.local, nodeId);
+                } else {
+                    cy.fatal();
+                }
+
+                // ARC cleanup.
+                try pushReleases(c, retainedTemps, nodeId);
+            },
+            .generic => {
+                _ = try callObjSymTernNoRet(c, c.compiler.vm.setIndexMGID, 
+                    left.head.indexExpr.left, 
+                    left.head.indexExpr.right,
+                    node.head.left_right.right,
+                    nodeId,
+                );
+            },
+        }
     } else if (left.node_t == .accessExpr) {
         const leftv = try expression(c, left.head.accessExpr.left, RegisterCstr.simple);
         const leftRetained = try c.pushUnwindIndexIfRetainedTemp(leftv);
@@ -2343,6 +2376,44 @@ fn callObjSymArgs(
     return GenValue.initTempValue(callStartLocal, bt.Any, true);
 }
 
+fn callObjSymTernNoRet(self: *Chunk, mgId: vmc.MethodGroupId, a: cy.NodeId, b: cy.NodeId, c: cy.NodeId, debugNodeId: cy.NodeId) !GenValue {
+    const callStartLocal = try beginCall(self, RegisterCstr.none);
+    defer endCall(self, callStartLocal);
+
+    const regStart = self.regStack.items.len;
+    defer self.regStack.items.len = regStart;
+
+    const av = try expression(self, a, RegisterCstr.temp);
+    const aRetained = try self.pushUnwindIndexIfRetainedTemp(av);
+    if (aRetained) {
+        try self.pushReg(av.local);
+    }
+
+    const bv = try expression(self, b, RegisterCstr.temp);
+    const bRetained = try self.pushUnwindIndexIfRetainedTemp(bv);
+    if (bRetained) {
+        try self.pushReg(bv.local);
+    }
+
+    const cv = try expression(self, c, RegisterCstr.temp);
+    const cRetained = try self.pushUnwindIndexIfRetainedTemp(cv);
+    if (cRetained) {
+        try self.pushReg(cv.local);
+    }
+
+    const retainedTemps = self.regStack.items[regStart..];
+    defer self.popUnwindTempIndexN(@intCast(retainedTemps.len));
+
+    const bType = self.nodeTypes[b];
+    const cType = self.nodeTypes[c];
+    const funcSigId = try sema.ensureFuncSig(self.compiler, &.{ bt.Any, bType, cType }, bt.Any);
+    try pushCallObjSym(self, callStartLocal, 3, 0, @intCast(mgId), @intCast(funcSigId), debugNodeId);
+
+    try pushReleases(self, retainedTemps, debugNodeId);
+
+    return GenValue.initTempValue(callStartLocal, bt.None, false);
+}
+
 fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOptions) !GenValue {
     const callStartLocal = try beginCall(self, opts.cstr);
     defer endCall(self, callStartLocal);
@@ -2392,16 +2463,7 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
     const funcSigId = try sema.ensureFuncSig(self.compiler, &.{ bt.Any, argT }, bt.Any);
     try pushCallObjSym(self, callStartLocal, 2, 1, @intCast(mgId), @intCast(funcSigId), opts.debugNodeId);
 
-    if (selfv.retained and argv.retained) {
-        try pushReleases(self, &.{ selfv.local, argv.local }, opts.debugNodeId);
-    } else {
-        if (selfv.retained) {
-            try pushRelease(self, selfv.local, opts.debugNodeId);
-        }
-        if (argv.retained) {
-            try pushRelease(self, argv.local, opts.debugNodeId);
-        }
-    }
+    try pushReleaseOpt2(self, selfv.retained, selfv.local, argv.retained, argv.local, opts.debugNodeId);
 
     if (opts.cstr.type == .exact) {
         if (opts.cstr.reg != callStartLocal) {
@@ -2447,6 +2509,19 @@ fn callObjSym(self: *Chunk, callStartLocal: u8, callExprId: cy.NodeId) !GenValue
         @intCast(methodSymId), funcSigId, callExprId);
     try pushReleases(self, retainedTemps, callExprId);
     return GenValue.initTempValue(callStartLocal, bt.Any, true);
+}
+
+fn pushReleaseOpt2(self: *Chunk, pushRegA: bool, rega: u8, pushRegB: bool, regb: u8, debugNodeId: cy.NodeId) !void {
+    if (pushRegA and pushRegB) {
+        try pushReleases(self, &.{ rega, regb }, debugNodeId);
+    } else {
+        if (pushRegA) {
+            try pushRelease(self, rega, debugNodeId);
+        }
+        if (pushRegB) {
+            try pushRelease(self, regb, debugNodeId);
+        }
+    }
 }
 
 fn pushReleases(self: *Chunk, regs: []const u8, debugNodeId: cy.NodeId) !void {
@@ -2994,28 +3069,115 @@ fn binOpAssignToIndex(
 ) !void {
     const left = c.nodes[leftId];
 
-    const recv = try expression(c, left.head.indexExpr.left, RegisterCstr.simple);
-    const indexv = try expression(c, left.head.indexExpr.right, RegisterCstr.simple);
-    const leftLocal = try c.rega.consumeNextTemp();
+    const selfT = c.nodeTypes[left.head.indexExpr.left];
+    switch (left.head.indexExpr.semaGenStrat) {
+        .none => cy.fatal(),
+        .specialized => {
+            const regStart = c.regStack.items.len;
+            defer c.regStack.items.len = regStart;
 
-    _ = try indexExpr(c, leftId, recv, indexv, RegisterCstr.exact(leftLocal));
+            const selfv = try expression(c, left.head.indexExpr.left, RegisterCstr.simple);
+            const selfRetained = try c.pushUnwindIndexIfRetainedTemp(selfv);
+            if (selfRetained) {
+                try c.pushReg(selfv.local);
+            }
 
-    const resv = try binExpr2(c, .{
-        .leftId = leftId,
-        .rightId = rightId,
-        .debugNodeId = debugNodeId,
-        .op = op,
-        .genStrat = genStrat,
-        .leftv = c.initGenValue(leftLocal, bt.Any, false),
-        .cstr = RegisterCstr.simple,
-    });
+            const indexv = try expression(c, left.head.indexExpr.right, RegisterCstr.simple);
+            const indexRetained = try c.pushUnwindIndexIfRetainedTemp(indexv);
+            if (indexRetained) {
+                try c.pushReg(indexv.local);
+            }
 
-    try c.pushDebugSym(leftId);
-    try c.buf.pushOp3(.setIndexRelease, recv.local, indexv.local, resv.local);
+            const leftLocal = try c.rega.consumeNextTemp();
 
-    // ARC cleanup. Right is not released since it's being assigned to the index.
-    try releaseIfRetainedTempAt(c, recv, left.head.indexExpr.left);
-    try releaseIfRetainedTempAt(c, indexv, left.head.indexExpr.right);
+            const leftv = try indexExpr(c, leftId, selfv, indexv, RegisterCstr.exact(leftLocal));
+            const leftRetained = try c.pushUnwindIndexIfRetainedTemp(leftv);
+            if (leftRetained) {
+                try c.pushReg(leftv.local);
+            }
+
+            const resv = try binExpr2(c, .{
+                .leftId = leftId,
+                .rightId = rightId,
+                .debugNodeId = debugNodeId,
+                .op = op,
+                .genStrat = genStrat,
+                .leftv = c.initGenValue(leftLocal, bt.Any, false),
+                .cstr = RegisterCstr.simple,
+            });
+            const resRetained = try c.pushUnwindIndexIfRetainedTemp(resv);
+            if (resRetained) {
+                try c.pushReg(resv.local);
+            }
+
+            const retainedTemps = c.regStack.items[regStart..];
+            defer c.popUnwindTempIndexN(@intCast(retainedTemps.len));
+
+            if (selfT == bt.List) {
+                // Reuse binExpr layout since there is no dst.
+                try pushInlineBinExpr(c, .setIndexList, selfv.local, indexv.local, resv.local, debugNodeId);
+            } else if (selfT == bt.Map) {
+                try pushInlineBinExpr(c, .setIndexMap, selfv.local, indexv.local, resv.local, debugNodeId);
+            } else {
+                cy.fatal();
+            }
+
+            // ARC cleanup.
+            try pushReleases(c, retainedTemps, debugNodeId);
+        },
+        .generic => {
+            const callStartLocal = try beginCall(c, RegisterCstr.none);
+            defer endCall(c, callStartLocal);
+
+            const regStart = c.regStack.items.len;
+            defer c.regStack.items.len = regStart;
+
+            const selfv = try expression(c, left.head.indexExpr.left, RegisterCstr.temp);
+            const selfRetained = try c.pushUnwindIndexIfRetainedTemp(selfv);
+            if (selfRetained) {
+                try c.pushReg(selfv.local);
+            }
+
+            const indexv = try expression(c, left.head.indexExpr.right, RegisterCstr.temp);
+            const indexRetained = try c.pushUnwindIndexIfRetainedTemp(indexv);
+            if (indexRetained) {
+                try c.pushReg(indexv.local);
+            }
+
+            const resLocal = try c.rega.consumeNextTemp();
+            const leftLocal = try c.rega.consumeNextTemp();
+
+            const leftv = try indexExpr(c, leftId, selfv, indexv, RegisterCstr.exact(leftLocal));
+            const leftRetained = try c.pushUnwindIndexIfRetainedTemp(leftv);
+            if (leftRetained) {
+                try c.pushReg(leftv.local);
+            }
+
+            const resv = try binExpr2(c, .{
+                .leftId = leftId,
+                .rightId = rightId,
+                .debugNodeId = debugNodeId,
+                .op = op,
+                .genStrat = genStrat,
+                .leftv = c.initGenValue(leftLocal, bt.Any, false),
+                .cstr = RegisterCstr.exact(resLocal),
+            });
+            const resRetained = try c.pushUnwindIndexIfRetainedTemp(resv);
+            if (resRetained) {
+                try c.pushReg(resv.local);
+            }
+
+            const retainedTemps = c.regStack.items[regStart..];
+            defer c.popUnwindTempIndexN(@intCast(retainedTemps.len));
+
+            const indexType = c.nodeTypes[left.head.indexExpr.right];
+            const funcSigId = try sema.ensureFuncSig(c.compiler, &.{ bt.Any, indexType, resv.vtype }, bt.Any);
+            try pushCallObjSym(c, callStartLocal, 3, 0, @intCast(c.compiler.vm.setIndexMGID), @intCast(funcSigId), debugNodeId);
+
+            // ARC cleanup.
+            try pushReleases(c, retainedTemps, debugNodeId);
+        },
+    }
 }
 
 fn binOpAssignToField(

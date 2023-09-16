@@ -727,8 +727,9 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
             const funcVal = cy.heap.allocNativeFunc1(ivm, func, @intCast(cargs.len),
                 cfunc.funcSigId, cyState) catch cy.fatal();
-            ivm.setIndex(map, symKey, funcVal) catch cy.fatal();
+            map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
+            vm.release(funcVal);
         }
         var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
@@ -745,8 +746,9 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
 
             const funcSigId = try vm.ensureUntypedFuncSig(1);
             const funcVal = cy.heap.allocNativeFunc1(ivm, func, 1, funcSigId, cyState) catch cy.fatal();
-            ivm.setIndex(map, symKey, funcVal) catch cy.fatal();
+            map.asHeapObject().map.set(ivm, symKey, funcVal) catch cy.fatal();
             vm.release(symKey);
+            vm.release(funcVal);
         }
         success = true;
         return map;

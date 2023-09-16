@@ -75,6 +75,7 @@ pub const Allocator = struct {
             .temp => {
                 return self.consumeNextTemp();
             },
+            .none => return error.NoneType,
         }
     }
 
@@ -95,6 +96,7 @@ pub const Allocator = struct {
             .simple => {
                 return self.consumeNextTemp();
             },
+            .none => return error.NoneType,
         }
     }
 
@@ -128,6 +130,9 @@ const RegisterCstrType = enum {
 
     /// Must select given `RegisterCstr.reg`.
     exact,
+
+    /// No register selection.
+    none,
 };
 
 /// Preference on which register to use or allocate.
@@ -146,6 +151,12 @@ pub const RegisterCstr = struct {
     /// TODO: provide hint whether the allocated reg will be used or not.
     /// eg. For expr statements, the top level expr reg isn't used.
     /// If it's not used and the current expr does not produce side-effects, it can omit generating its code.
+
+    pub const none = RegisterCstr{
+        .type = .none,
+        .reg = undefined,
+        .mustRetain = false,
+    };
 
     pub const simple = RegisterCstr{
         .type = .simple,

@@ -109,6 +109,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     // Builtin methods.
     self.indexMGID = try b.ensureMethodGroup("$index");
+    self.setIndexMGID = try b.ensureMethodGroup("$setIndex");
     self.sliceMGID = try b.ensureMethodGroup("$slice");
     self.@"infix<MGID" = try b.ensureMethodGroup("$infix<");
     self.@"infix<=MGID" = try b.ensureMethodGroup("$infix<=");
@@ -226,45 +227,46 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     try sb.addOptimizingMethod(rt.IntegerT, self.@"prefix-MGID", &.{ bt.Any }, bt.Integer, intNeg);
     // Inlined opcodes allow the right arg to be dynamic so the compiler can gen more of those.
     // So for now, the runtime signature reflects that.
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessEqualInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterEqualInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.addInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.addInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.addInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.subInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.mulInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.divInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.modInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.powInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix&MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseAnd));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix|MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseOr));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix||MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseXor));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<<MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseLeftShift));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>>MGID", &.{ bt.Any, bt.Any }, bt.Integer, binOp(.bitwiseRightShift));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessEqualInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterEqualInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.addInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.addInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.addInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.subInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.mulInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.divInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.modInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.powInt));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix&MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseAnd));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix|MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseOr));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix||MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseXor));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<<MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseLeftShift));
+    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>>MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseRightShift));
 
     id = try self.addBuiltinType("float", bt.Float);
     std.debug.assert(id == rt.FloatT);
     rsym = self.compiler.sema.getSymbol(bt.Float);
     sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("$call", &.{ bt.Any }, bt.Float, floatCall);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.lessEqualFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, binOp(.greaterEqualFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessEqualFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterEqualFloat));
     try sb.addOptimizingMethod(rt.FloatT, self.@"prefix-MGID", &.{ bt.Any }, bt.Float, floatNeg);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.addFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.subFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.mulFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.divFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.modFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Float, binOp(.powFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.addFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.subFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.mulFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.divFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.modFloat));
+    try sb.addOptimizingMethod(rt.FloatT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.powFloat));
 
     id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
 
-    try b.addOptimizingMethod(rt.ListT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, binOp(.indexList));
+    try b.addOptimizingMethod(rt.ListT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, inlineBinOp(.indexList));
+    try b.addOptimizingMethod(rt.ListT, self.setIndexMGID, &.{ bt.Any, bt.Any, bt.Any }, bt.None, inlineTernNoRetOp(.setIndexList));
     try b.addMethod(rt.ListT, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
     try b.addMethod(rt.ListT, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
     try b.addMethod(rt.ListT, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
@@ -284,7 +286,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
-    try b.addOptimizingMethod(rt.MapT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, binOp(.indexMap));
+    try b.addOptimizingMethod(rt.MapT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, inlineBinOp(.indexMap));
+    try b.addOptimizingMethod(rt.MapT, self.setIndexMGID, &.{ bt.Any, bt.Any, bt.Any }, bt.None, inlineTernNoRetOp(.setIndexMap));
     try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
     try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Integer, mapSize);
     try b.addMethod(rt.MapT, self.iteratorMGID,     &.{ bt.Any }, bt.Any, mapIterator);
@@ -2221,17 +2224,17 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
         vm.release(ctimeKey);
         vm.release(mtimeKey);
     }
-    ivm.setIndex(map, sizeKey, Value.initF64(@floatFromInt(stat.size))) catch fatal();
-    ivm.setIndex(map, modeKey, Value.initF64(@floatFromInt(stat.mode))) catch fatal();
+    map.asHeapObject().map.set(ivm, sizeKey, Value.initF64(@floatFromInt(stat.size))) catch fatal();
+    map.asHeapObject().map.set(ivm, modeKey, Value.initF64(@floatFromInt(stat.mode))) catch fatal();
     const typeTag: Symbol = switch (stat.kind) {
         .file => .file,
         .directory => .dir,
         else => .unknown,
     };
-    ivm.setIndex(map, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
-    ivm.setIndex(map, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000)))) catch fatal();
-    ivm.setIndex(map, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000)))) catch fatal();
-    ivm.setIndex(map, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000)))) catch fatal();
+    map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
+    map.asHeapObject().map.set(ivm, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000)))) catch fatal();
+    map.asHeapObject().map.set(ivm, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000)))) catch fatal();
+    map.asHeapObject().map.set(ivm, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000)))) catch fatal();
     return map;
 }
 
@@ -2260,14 +2263,20 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
                 vm.release(nameKey);
                 vm.release(typeKey);
             }
-            ivm.setIndex(map, pathKey, vm.allocRawString(entry.path) catch fatal()) catch fatal();
-            ivm.setIndex(map, nameKey, vm.allocRawString(entry.basename) catch fatal()) catch fatal();
+            const entryPath = vm.allocRawString(entry.path) catch fatal();
+            const entryName = vm.allocRawString(entry.basename) catch fatal();
+            defer {
+                vm.release(entryPath);
+                vm.release(entryName);
+            }
+            map.asHeapObject().map.set(ivm, pathKey, entryPath) catch fatal();
+            map.asHeapObject().map.set(ivm, nameKey, entryName) catch fatal();
             const typeTag: Symbol = switch (entry.kind) {
                 .file => .file,
                 .directory => .dir,
                 else => .unknown,
             };
-            ivm.setIndex(map, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
+            map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2281,17 +2290,19 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
             const map = vm.allocEmptyMap() catch fatal();
             const nameKey = vm.allocAstring("name") catch fatal();
             const typeKey = vm.allocAstring("type") catch fatal();
+            const entryName = vm.allocRawString(entry.name) catch fatal();
             defer {
                 vm.release(nameKey);
                 vm.release(typeKey);
+                vm.release(entryName);
             }
-            ivm.setIndex(map, nameKey, vm.allocRawString(entry.name) catch fatal()) catch fatal();
+            map.asHeapObject().map.set(ivm, nameKey, entryName) catch fatal();
             const typeTag: Symbol = switch (entry.kind) {
                 .file => .file,
                 .directory => .dir,
                 else => .unknown,
             };
-            ivm.setIndex(map, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
+            map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
             return map;
         } else {
             return Value.None;
@@ -2421,20 +2432,6 @@ inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     pc[2].val = startLocal;
 }
 
-inline fn inlineBinOp(pc: [*]cy.Inst, code: cy.OpCode) void {
-    const startLocal = pc[1].val;
-    // Save callObjSym data.
-    pc[8].val = startLocal;
-    pc[9] = pc[2];
-    pc[10] = pc[3];
-
-    // Inline bin op.
-    pc[0] = cy.Inst.initOpCode(code);
-    pc[1].val = startLocal + 4;
-    pc[2].val = startLocal + 5;
-    pc[3].val = startLocal;
-}
-
 pub fn intBitwiseNot(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
     inlineUnaryOp(pc, .bitwiseNot);
 }
@@ -2447,10 +2444,38 @@ pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u
     inlineUnaryOp(pc, .negFloat);
 }
 
-fn binOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
+fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
     const S = struct {
         pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
-            inlineBinOp(pc, code);
+            const startLocal = pc[1].val;
+            // Save callObjSym data.
+            pc[8].val = startLocal;
+            pc[9] = pc[2];
+            pc[10] = pc[3];
+
+            pc[0] = cy.Inst.initOpCode(code);
+            pc[1].val = startLocal + 4;
+            pc[2].val = startLocal + 5;
+            pc[3].val = startLocal + 6;
+        }
+    };
+    return S.method;
+}
+
+fn inlineBinOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
+    const S = struct {
+        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+            const startLocal = pc[1].val;
+            // Save callObjSym data.
+            pc[8].val = startLocal;
+            pc[9] = pc[2];
+            pc[10] = pc[3];
+
+            // Inline bin op.
+            pc[0] = cy.Inst.initOpCode(code);
+            pc[1].val = startLocal + 4;
+            pc[2].val = startLocal + 5;
+            pc[3].val = startLocal;
         }
     };
     return S.method;

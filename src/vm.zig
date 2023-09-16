@@ -150,6 +150,7 @@ pub const VM = struct {
     nextMGID: vmc.MethodGroupId = cy.NullId,
     nextPairMGID: vmc.MethodGroupId = cy.NullId,
     indexMGID: vmc.MethodGroupId = cy.NullId,
+    setIndexMGID: vmc.MethodGroupId = cy.NullId,
     sliceMGID: vmc.MethodGroupId = cy.NullId,
     @"prefix~MGID": vmc.MethodGroupId = cy.NullId,
     @"prefix-MGID": vmc.MethodGroupId = cy.NullId,
@@ -1082,86 +1083,6 @@ pub const VM = struct {
                 .mruTypeMethodOverloaded = false,
             };
             mgExt.initialFuncSigId = method.funcSigId;
-        }
-    }
-
-    pub fn setIndexRelease(self: *VM, left: Value, index: Value, right: Value) !void {
-        if (left.isPointer()) {
-            const obj = left.asHeapObject();
-            switch (obj.head.typeId) {
-                rt.ListT => {
-                    if (!index.isInteger()) {
-                        return self.interruptThrowSymbol(.InvalidArgument);
-                    }
-                    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx: u32 = @intCast(index.asInteger());
-                    if (idx < list.len) {
-                        release(self, list.buf[idx]);
-                        list.buf[idx] = right;
-                    } else {
-                        // var i: u32 = @intCast(u32, list.val.items.len);
-                        // try list.val.resize(self.alloc, idx + 1);
-                        // while (i < idx) : (i += 1) {
-                        //     list.val.items[i] = Value.None;
-                        // }
-                        // list.val.items[idx] = right;
-                        return self.interruptThrowSymbol(.OutOfBounds);
-                    }
-                },
-                rt.MapT => {
-                    const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                    const res = try map.getOrPut(self.alloc, self, index);
-                    if (res.foundExisting) {
-                        release(self, res.valuePtr.*);
-                    } else {
-                        // No previous entry, retain key.
-                        retain(self, index);
-                    }
-                    res.valuePtr.* = right;
-                },
-                else => {
-                    return self.interruptThrowSymbol(.InvalidArgument);
-                },
-            }
-        } else {
-            return self.interruptThrowSymbol(.InvalidArgument);
-        }
-    }
-
-    pub fn setIndex(self: *VM, left: Value, index: Value, right: Value) !void {
-        if (left.isPointer()) {
-            const obj = left.asHeapObject();
-            switch (obj.head.typeId) {
-                rt.ListT => {
-                    const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-                    const idx: u32 = @intFromFloat(index.toF64());
-                    if (idx < list.len) {
-                        list.buf[idx] = right;
-                    } else {
-                        // var i: u32 = @intCast(u32, list.val.items.len);
-                        // try list.val.resize(self.alloc, idx + 1);
-                        // while (i < idx) : (i += 1) {
-                        //     list.val.items[i] = Value.None;
-                        // }
-                        // list.val.items[idx] = right;
-                        return self.interruptThrowSymbol(.OutOfBounds);
-                    }
-                },
-                rt.MapT => {
-                    const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-                    const res = try map.getOrPut(self.alloc, self, index);
-                    if (!res.foundExisting) {
-                        // No previous entry, retain key.
-                        retain(self, index);
-                    }
-                    res.valuePtr.* = right;
-                },
-                else => {
-                    return self.interruptThrowSymbol(.InvalidArgument);
-                },
-            }
-        } else {
-            return self.interruptThrowSymbol(.InvalidArgument);
         }
     }
 
@@ -2525,28 +2446,6 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                     framePtr[i] = Value.None;
                 }
                 pc += 3;
-                continue;
-            },
-            .setIndex => {
-                if (GenLabels) {
-                    _ = asm volatile ("LSetIndex:"::);
-                }
-                const leftv = framePtr[pc[1].val];
-                const indexv = framePtr[pc[2].val];
-                const rightv = framePtr[pc[3].val];
-                try @call(.never_inline, VM.setIndex, .{vm, leftv, indexv, rightv});
-                pc += 4;
-                continue;
-            },
-            .setIndexRelease => {
-                if (GenLabels) {
-                    _ = asm volatile ("LSetIndexRelease:"::);
-                }
-                const leftv = framePtr[pc[1].val];
-                const indexv = framePtr[pc[2].val];
-                const rightv = framePtr[pc[3].val];
-                try @call(.never_inline, VM.setIndexRelease, .{vm, leftv, indexv, rightv});
-                pc += 4;
                 continue;
             },
             .copy => {
@@ -4880,20 +4779,6 @@ export fn zGetFieldFallback(vm: *const VM, obj: *const HeapObject, nameId: sema.
     return @bitCast(vm.getFieldFallback(obj, nameId));
 }
 
-export fn zSetIndexRelease(vm: *VM, left: Value, index: Value, right: Value) vmc.ResultCode {
-    vm.setIndexRelease(left, index, right) catch {
-        return vmc.RES_CODE_UNKNOWN;
-    };
-    return vmc.RES_CODE_SUCCESS;
-}
-
-export fn zSetIndex(vm: *VM, left: Value, index: Value, right: Value) vmc.ResultCode {
-    vm.setIndex(left, index, right) catch {
-        return vmc.RES_CODE_UNKNOWN;
-    };
-    return vmc.RES_CODE_SUCCESS;
-}
-
 export fn zAlloc(alloc: vmc.ZAllocator, n: usize) vmc.BufferResult {
     const zalloc = std.mem.Allocator{
         .ptr = @ptrCast(alloc.ptr),
@@ -5000,6 +4885,13 @@ export fn zPanicFmt(vm: *VM, formatz: [*:0]const u8, argsPtr: [*]const fmt.FmtVa
     vm.curFiber.panicPayload = @as(u64, @intFromPtr(msg.ptr)) | (@as(u64, msg.len) << 48);
     vm.curFiber.panicType = vmc.PANIC_MSG;
     log.tracev("{s}", .{msg});
+}
+
+export fn zMapSet(vm: *VM, map: *cy.heap.Map, key: Value, val: Value) vmc.ResultCode {
+    map.set(vm, key, val) catch {
+        return vmc.RES_CODE_UNKNOWN;
+    };
+    return vmc.RES_CODE_SUCCESS;
 }
 
 export fn zValueMapGet(vm: *VM, map: *cy.ValueMap, key: Value, found: *bool) Value {

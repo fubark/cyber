@@ -5,11 +5,11 @@ Statements. # A statement ends with the new line.
 Statements. # A statement ends with the new line.
 -- An assignment statement. var a = 123 Blocks. # A new block starts with a colon. This is intended to give structure to nested statements without an ending delimiter.
 -- This `if` statement begins a new block. if true: var a = 234 The first statement in a block must be indented further."><meta property="og:type" content="article"><meta property="og:url" content="https://fubark.github.io/cyber/docs/toc/syntax/"><meta property="article:section" content="docs"><title>Syntax | Cyber Docs v0.2</title><link rel=manifest href=/cyber/manifest.json><link rel=icon href=/cyber/favicon.png><link rel=stylesheet href=/cyber/book.min.4f0117e74e5337280f18eb9641eae520cb4b25adcf5dd64fafad4664145a5957.css integrity="sha256-TwEX505TNygPGOuWQerlIMtLJa3PXdZPr61GZBRaWVc=" crossorigin=anonymous><script defer src=/cyber/flexsearch.min.js></script>
-<script defer src=/cyber/en.search.min.377d706dc39befb2b36d4f389576885c805f7cb0e4c34ab377a78c74dc5ab834.js integrity="sha256-N31wbcOb77KzbU84lXaIXIBffLDkw0qzd6eMdNxauDQ=" crossorigin=anonymous></script>
+<script defer src=/cyber/en.search.min.436a98919e3cc9dc331a63b9d377785de95eec900cfb65b7ed9a0acf873a4d8a.js integrity="sha256-Q2qYkZ48ydwzGmO503d4Xele7JAM+2W37ZoKz4c6TYo=" crossorigin=anonymous></script>
 <link rel=preconnect href=https://fonts.googleapis.com><link rel=preconnect href=https://fonts.gstatic.com crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel=stylesheet><link rel=stylesheet href=/cyber/hljs.min.css><link rel=stylesheet href=/cyber/style.css></head><body dir=ltr><input type=checkbox class="hidden toggle" id=menu-control>
-<input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/ class=active>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
+<input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/cyber/><span>Cyber Docs v0.2</span></a></h2><div class=book-search><input type=text id=book-search-input placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><ul><li><a href=https://cyberscript.dev target=_blank rel=noopener>Homepage</a></li><li><a href=https://cyberscript.dev/play.html target=_blank rel=noopener>Playground</a></li></ul><ul><li class=book-section-flat><span>Table of Contents</span><ul><li><a href=/cyber/docs/toc/syntax/ class=active>Syntax</a></li><li><a href=/cyber/docs/toc/data-types/>Data Types</a></li><li><a href=/cyber/docs/toc/control-flow/>Control Flow</a></li><li><a href=/cyber/docs/toc/functions/>Functions</a></li><li><a href=/cyber/docs/toc/modules/>Modules</a></li><li><a href=/cyber/docs/toc/ffi/>FFI</a></li><li><a href=/cyber/docs/toc/errors/>Error Handling</a></li><li><a href=/cyber/docs/toc/concurrency/>Concurrency</a></li><li><a href=/cyber/docs/toc/type-system/>Type System</a></li><li><a href=/cyber/docs/toc/metaprogramming/>Metaprogramming</a></li><li><a href=/cyber/docs/toc/embedding/>Embedding</a></li><li><a href=/cyber/docs/toc/memory/>Memory</a></li><li><a href=/cyber/docs/toc/aot-jit/>AOT/JIT</a></li></ul></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class=book-header><div class="flex align-center justify-between"><label for=menu-control><img src=/cyber/svg/menu.svg class=book-icon alt=Menu></label>
 <strong>Syntax</strong>
-<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#statements>Statements.</a></li><li><a href=#blocks>Blocks.</a></li><li><a href=#variables>Variables.</a><ul><li><a href=#local-variables>Local Variables.</a></li><li><a href=#static-variables>Static Variables.</a></li></ul></li><li><a href=#keywords>Keywords.</a></li><li><a href=#operators>Operators.</a><ul><li><a href=#arithmetic-operators>Arithmetic Operators.</a></li><li><a href=#comparison-operators>Comparison Operators.</a></li><li><a href=#logic-operators>Logic Operators.</a></li><li><a href=#bitwise-operators>Bitwise Operators.</a></li></ul></li><li><a href=#comments>Comments.</a></li><li><a href=#cyon>CYON.</a></li></ul></nav></aside></header><article class=markdown><h1 id=syntax>Syntax
+<label for=toc-control><img src=/cyber/svg/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class="hidden clearfix"><nav id=TableOfContents><ul><li><a href=#statements>Statements.</a></li><li><a href=#blocks>Blocks.</a></li><li><a href=#variables>Variables.</a><ul><li><a href=#local-variables>Local Variables.</a></li><li><a href=#static-variables>Static Variables.</a></li></ul></li><li><a href=#keywords>Keywords.</a></li><li><a href=#operators>Operators.</a><ul><li><a href=#arithmetic-operators>Arithmetic Operators.</a></li><li><a href=#comparison-operators>Comparison Operators.</a></li><li><a href=#logic-operators>Logic Operators.</a></li><li><a href=#bitwise-operators>Bitwise Operators.</a></li><li><a href=#operator-overloading>Operator Overloading.</a></li></ul></li><li><a href=#comments>Comments.</a></li><li><a href=#cyon>CYON.</a></li></ul></nav></aside></header><article class=markdown><h1 id=syntax>Syntax
 <a class=anchor href=#syntax>#</a></h1><p>Cyber&rsquo;s syntax is concise and easy to read.</p><h2 id=statements>Statements.
 <a class=anchor href=#statements>#</a></h2><p>A statement ends with the new line.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- An assignment statement.
 var a = 123
@@ -40,7 +40,7 @@ var a = 123
 
 -- Subsequent assignment.
 a = 234
-</code></pre><p>Variables from parent main/function blocks can be shadowed.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+</code></pre><p>A new variable can be declared in function blocks with the same name as a variable from a parent block.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 foo = func():
     -- A new local `a` inside function `foo`.
     var a = 234
@@ -50,24 +50,23 @@ print a      -- &#39;123&#39;
 if true:
     -- CompileError, `a` is already declared in the main block.
     var a = 234 
-</code></pre><p>When a parent local is referenced in an anonymous function, the variable is automatically captured. Note that static functions can not capture parent locals.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+</code></pre><p>When a parent local is referenced in a <a href=/cyber/docs/toc/functions/#lambdas>lambda function</a>, the variable is automatically captured. Note that <a href=/cyber/docs/toc/functions/#static-functions>static functions</a> can not capture parent locals.</p><blockquote><p><em>Incomplete: Only variables one parent block away can be captured.</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 var foo = func():
     a = 234
 foo()
 print a      -- &#39;234&#39;
 </code></pre><h3 id=static-variables>Static Variables.
 <a class=anchor href=#static-variables>#</a></h3><p>Static variables live until the end of the script.
-They act as global variables and are visible from anywhere in the script.
-Static variables are also declared with <code>var</code> but <code>:</code> is used instead of <code>=</code> to initialize a value to them.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
+They act as global variables and are visible from anywhere in the script.</p><p>Static variables are also declared with <code>var</code> but <code>:</code> is used instead of <code>=</code> to initialize a value to them.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: 123
 func foo():
     print a     -- &#39;123&#39;
-</code></pre><p>Static variables are always exported from the current script. You can read more about exports and <a href=#modules>Modules</a>.</p><p>When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.</p><pre tabindex=0><code class=language-cy data-lang=cy>func add(a):
+</code></pre><p>Static variables are always exported from the current script. You can read more about exports and <a href=/cyber/docs/toc/modules/>Modules</a>.</p><p>When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.</p><blockquote><p><em>Planned Feature</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>func add(a):
     var sum: 0
     sum += a
     return sum
 print add(5)     -- &#39;5&#39;
 print add(5)     -- &#39;10&#39;
-</code></pre><p>Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
+</code></pre><p>Since static variable declarations are initialized outside of a fiber&rsquo;s execution flow, they can not reference any local variables.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 var b: a      -- Compile error, initializer can not reference a local variable.
 </code></pre><p>However, you can reassign any value to them with an assignment statement.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a = 123
 var b: 0
@@ -85,7 +84,7 @@ In the following, <code>a</code> attempts to initialize first because of its nat
 When <code>b</code> is found to reference an already visited <code>a</code> (causing the circular dependency), it evaluatues to <code>a</code>&rsquo;s current value which is <code>none</code>. At the end of initialization, both <code>a</code> and <code>b</code> have the value <code>none</code>.</p><pre tabindex=0><code class=language-cy data-lang=cy>var a: b
 var b: a
 </code></pre><p>Sometimes, you may want to initialize a static variable by executing multiple statements in order.
-For this use case, you can use a declaration block.</p><pre tabindex=0><code class=language-cy data-lang=cy>var myImage:
+For this use case, you can use a declaration block.</p><blockquote><p><em>Planned Feature</em></p></blockquote><pre tabindex=0><code class=language-cy data-lang=cy>var myImage:
     var img = loadImage(&#39;me.png&#39;)
     img.resize(100, 100)
     img.filter(#blur, 5)
@@ -102,23 +101,25 @@ For this use case, you can use a declaration block.</p><pre tabindex=0><code cla
 -(10)     -- Apply negative, evaluates to -10.
 </code></pre><h3 id=comparison-operators>Comparison Operators.
 <a class=anchor href=#comparison-operators>#</a></h3><p>Cyber supports the following comparison operators.
-A comparison expression always evaluates to a <a href=/cyber/docs/toc/data-types/#booleans>Boolean</a> value.</p><p>The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.</p><pre tabindex=0><code class=language-cy data-lang=cy>1 == 1      -- Evaluates to `true`
+By default, a comparison operator evaluates to a <a href=/cyber/docs/toc/data-types/#booleans>Boolean</a> value.</p><p>The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object.</p><pre tabindex=0><code class=language-cy data-lang=cy>1 == 1      -- Evaluates to `true`
 1 == 2      -- Evaluates to `false`
 1 == true   -- Evaluates to `false`
+
+var a = &#39;abc&#39;
+a == &#39;abc&#39;  -- Evaluates to `true`
 
 a = []
 b = a
 a == b      -- Evaluates to `true`
 a == []     -- Evaluates to `false`
-
-1 != 1      -- Evaluates to `false`
+</code></pre><p>The not equals operator returns true if the two values are not equal.</p><pre tabindex=0><code class=language-cy data-lang=cy>1 != 1      -- Evaluates to `false`
 1 != 2      -- Evaluates to `true`
 </code></pre><p>Number types have additional comparison operators.</p><pre tabindex=0><code class=language-cy data-lang=cy>a &gt; b    -- `true` if a is greater than b
 a &gt;= b   -- `true` if a is greater than or equal to b
 a &lt; b    -- `true` if a is less than b
 a &lt;= b   -- `true` if a is less than or equal to b
 </code></pre><h3 id=logic-operators>Logic Operators.
-<a class=anchor href=#logic-operators>#</a></h3><p>The logical operators <code>and</code>, <code>or</code>, and <code>not</code> are supported.</p><p><code>and</code> evaluates to <code>a</code> if <code>a</code> is not truthy. Otherwise, it evaluates to <code>b</code>. If <code>a</code> is not truthy, the evaluation of <code>b</code> is not executed. A number value that isn&rsquo;t 0 is truthy. An object reference is always truthy. The none value is not truthy.</p><pre tabindex=0><code class=language-cy data-lang=cy>true and true  -- Evaluates to true
+<a class=anchor href=#logic-operators>#</a></h3><p>The logical operators <code>and</code>, <code>or</code>, and <code>not</code> are supported.</p><p><code>and</code> evaluates to <code>a</code> if <code>a</code> is not truthy. Otherwise, it evaluates to <code>b</code>. If <code>a</code> is not truthy, the evaluation of <code>b</code> is not executed. A numeric value that isn&rsquo;t 0 is truthy. An object reference is always truthy. The none value is not truthy.</p><pre tabindex=0><code class=language-cy data-lang=cy>true and true  -- Evaluates to true
 123 and 234    -- Evaluates to 234
 123 and 0      -- Evaluates to false
 </code></pre><p><code>or</code> evaluates to <code>a</code> if <code>a</code> is truthy. Otherwise, it evaluates to <code>b</code>. If <code>a</code> is found to be truthy, the evaluation of <code>b</code> is not executed.</p><pre tabindex=0><code class=language-cy data-lang=cy>true or false  -- Evaluates to true
@@ -132,7 +133,7 @@ not 123       -- Evaluates to false
 !false        -- Evaluates to true
 !true         -- Evaluates to false
 </code></pre><h3 id=bitwise-operators>Bitwise Operators.
-<a class=anchor href=#bitwise-operators>#</a></h3><p>Cyber supports the following bitwise operators for <code>int</code> number values.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Bitwise and: any underlying bits that are set in both integers are set in the new integer.
+<a class=anchor href=#bitwise-operators>#</a></h3><p>The following bitwise operators are supported for <code>int</code> number values.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- Bitwise and: any underlying bits that are set in both integers are set in the new integer.
 a &amp; b
 
 -- Bitwise or: any underlying bits that are set in either integer a or integer b are set in the new integer.
@@ -149,7 +150,8 @@ a &lt;&lt; b
 
 -- Bitwise not: a&#39;s integer bits are flipped.
 ~a
-</code></pre><h2 id=comments>Comments.
+</code></pre><h3 id=operator-overloading>Operator Overloading.
+<a class=anchor href=#operator-overloading>#</a></h3><p>See <a href=/cyber/docs/toc/metaprogramming/#operator-overloading>Operator Overloading</a> in Metaprogramming.</p><h2 id=comments>Comments.
 <a class=anchor href=#comments>#</a></h2><p>A single line comment starts with two hyphens and ends at the end of the line.</p><pre tabindex=0><code class=language-cy data-lang=cy>-- This is a comment.
 
 var a = 123   -- This is a comment on the same line as a statement.
@@ -165,6 +167,6 @@ var a = 123   -- This is a comment on the same line as a statement.
     ]
 }
 </code></pre></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div><a class="flex align-center" href=https://github.com/fubark/cyber/edit/master/docs/hugo/content/docs/toc/syntax.md target=_blank rel=noopener><img src=/cyber/svg/edit.svg class=book-icon alt=Edit>
-<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#statements>Statements.</a></li><li><a href=#blocks>Blocks.</a></li><li><a href=#variables>Variables.</a><ul><li><a href=#local-variables>Local Variables.</a></li><li><a href=#static-variables>Static Variables.</a></li></ul></li><li><a href=#keywords>Keywords.</a></li><li><a href=#operators>Operators.</a><ul><li><a href=#arithmetic-operators>Arithmetic Operators.</a></li><li><a href=#comparison-operators>Comparison Operators.</a></li><li><a href=#logic-operators>Logic Operators.</a></li><li><a href=#bitwise-operators>Bitwise Operators.</a></li></ul></li><li><a href=#comments>Comments.</a></li><li><a href=#cyon>CYON.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
+<span>Edit this page</span></a></div></div><script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script></footer><div class=book-comments></div><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#statements>Statements.</a></li><li><a href=#blocks>Blocks.</a></li><li><a href=#variables>Variables.</a><ul><li><a href=#local-variables>Local Variables.</a></li><li><a href=#static-variables>Static Variables.</a></li></ul></li><li><a href=#keywords>Keywords.</a></li><li><a href=#operators>Operators.</a><ul><li><a href=#arithmetic-operators>Arithmetic Operators.</a></li><li><a href=#comparison-operators>Comparison Operators.</a></li><li><a href=#logic-operators>Logic Operators.</a></li><li><a href=#bitwise-operators>Bitwise Operators.</a></li><li><a href=#operator-overloading>Operator Overloading.</a></li></ul></li><li><a href=#comments>Comments.</a></li><li><a href=#cyon>CYON.</a></li></ul></nav></div></aside></main><script src=/cyber/highlight.min.js></script>
 <script>hljs.registerLanguage("cy",function(){return{keywords:{keyword:["func","import","for","coinit","coresume","coyield","return","if","then","else","as","each","while","var","object","break","continue","match","pass","or","and","not","is","some","error","static","capture","true","false","none","throw","try","catch","recover","enum","type"],type:["float","string","bool","any","int","List","Map","rawstring","symbol","pointer"]},contains:[{scope:"string",begin:"'",end:"'"},{scope:"symbol",begin:"#",end:/\w(?=[^\w])/},hljs.COMMENT("--",`
 `,{contains:[]}),hljs.C_NUMBER_MODE]}}),hljs.highlightAll()</script></body></html>

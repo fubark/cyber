@@ -155,6 +155,7 @@ pub const isWasmFreestanding = isWasm and builtin.os.tag == .freestanding;
 pub const is32Bit = build_options.is32Bit;
 pub const hasJit = !isWasm;
 pub const hasStdFiles = !isWasm;
+pub const hasGC = build_options.gc;
 
 const build_options = @import("build_options");
 pub const Trace = build_options.trace;

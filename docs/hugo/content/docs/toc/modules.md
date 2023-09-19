@@ -115,6 +115,7 @@ print contents
 | `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyber(src any) map` | Parses Cyber source string into structured map object. Currently, only metadata about static declarations is made available but this will be extended to include an AST. | 
 | `parseCyon(src any) any` | Parses a CYON string into a value. | 
+| `performGC() map` | Runs the garbage collector once to detect reference cycles and abandoned objects. Returns the statistics of the run in a map value. | 
 | `pointer(val any) pointer` | Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 

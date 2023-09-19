@@ -2716,3 +2716,72 @@ test "Arithmetic operators." {
 
     try evalPass(.{}, @embedFile("arithmetic_op_test.cy"));
 }
+
+test "ARC cycles." {
+    // GC is able to detect reference cycle.
+    _ = try evalPass(.{},
+        \\import t 'test'
+        \\func foo():
+        \\  var a = []
+        \\  var b = []
+        \\  a.append(b)
+        \\  b.append(a)
+        \\  var res = performGC()
+        \\  -- Cycle still alive in the current stack so no gc.
+        \\  t.eq(res['numCycFreed'], 0)
+        \\  t.eq(res['numObjFreed'], 0)
+        \\foo()
+        \\var res = performGC()
+        \\t.eq(res['numCycFreed'], 2)
+        \\t.eq(res['numObjFreed'], 2)
+    );
+
+    // Reference cycle but still reachable from a root value.
+    _ = try evalPass(.{ .cleanupGC = true }, 
+        \\import t 'test'
+        \\var g: none
+        \\var a = []
+        \\var b = []
+        \\a.append(b)
+        \\b.append(a)
+        \\g = a
+        \\var res = performGC()
+        \\t.eq(res['numCycFreed'], 0)
+        \\t.eq(res['numObjFreed'], 0)
+    );
+
+    // Reference cycle with child non cyclable.
+    _ = try evalPass(.{}, 
+        \\import t 'test'
+        \\func foo():
+        \\  var a = []
+        \\  var b = []
+        \\  a.append(b)
+        \\  b.append(a)
+        \\  a.append(pointer(1))
+        \\foo()
+        \\var res = performGC()
+        \\t.eq(res['numCycFreed'], 2)
+        \\t.eq(res['numObjFreed'], 3)
+    );
+
+    // Reference cycle with non pool objects.
+    _ = try evalPass(.{}, 
+        \\import t 'test'
+        \\type T object:
+        \\  a any
+        \\  b any
+        \\  c any
+        \\  d any
+        \\  e any
+        \\func foo():
+        \\  var a = T{}
+        \\  var b = T{} 
+        \\  a.c = b
+        \\  b.c = a
+        \\foo()
+        \\var res = performGC()
+        \\t.eq(res['numCycFreed'], 2)
+        \\t.eq(res['numObjFreed'], 2)
+    );
+}

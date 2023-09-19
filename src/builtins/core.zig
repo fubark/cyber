@@ -60,6 +60,7 @@ pub fn initModule(self: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
     try b.setFunc("panic", &.{ bt.Any }, bt.None, panic);
     try b.setFunc("parseCyber", &.{ bt.Any }, bt.Map, parseCyber);
     try b.setFunc("parseCyon", &.{ bt.Any }, bt.Any, parseCyon);
+    try b.setFunc("performGC", &.{}, bt.Map, performGC);
     try b.setFunc("print", &.{bt.Any}, bt.None, print);
     try b.setFunc("prints", &.{bt.Any}, bt.None, prints);
     if (cy.hasStdFiles) {
@@ -160,9 +161,6 @@ pub fn copy(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSecti
 
 pub fn errorReport(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const ivm = vm.internal();
-
-    // Unwind the fp to before the function call.
-    ivm.framePtr -= 4;
 
     cy.debug.buildStackTrace(ivm) catch |err| {
         log.debug("unexpected {}", .{err});
@@ -585,6 +583,20 @@ fn stdMapPut(vm: *cy.UserVM, obj: *cy.HeapObject, key: Value, value: Value) void
     const ivm = vm.internal();
     const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner); 
     map.put(vm.allocator(), ivm, key, value) catch cy.fatal();
+}
+
+pub fn performGC(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const res = cy.arc.performGC(vm.internal()) catch cy.fatal();
+    const map = vm.allocEmptyMap() catch cy.fatal();
+    const cycKey = vm.allocAstring("numCycFreed") catch cy.fatal();
+    const objKey = vm.allocAstring("numObjFreed") catch cy.fatal();
+    defer {
+        vm.release(cycKey);
+        vm.release(objKey);
+    }
+    map.asHeapObject().map.set(vm.internal(), cycKey, Value.initInt(@intCast(res.numCycFreed))) catch cy.fatal();
+    map.asHeapObject().map.set(vm.internal(), objKey, Value.initInt(@intCast(res.numObjFreed))) catch cy.fatal();
+    return map;
 }
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {

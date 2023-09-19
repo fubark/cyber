@@ -2191,7 +2191,7 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
 pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = recv.asHeapObject();
 
-    if (obj.head.typeId == rt.FileT) {
+    if (obj.getTypeId() == rt.FileT) {
         if (obj.file.closed) {
             return prepareThrowSymbol(vm, .Closed);
         }

@@ -18,6 +18,9 @@ pub const Config = struct {
 
     checkGlobalRc: bool = true,
 
+    // Whether to performGC at end of eval.
+    cleanupGC: bool = false,
+
     preEval: ?*const fn (run: *VMrunner) void = null,
 
     debug: bool = false,
@@ -288,6 +291,10 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     // Deinit, so global objects from builtins are released.
     run.vm.internal().compiler.deinitRtObjects();
     run.vm.internal().deinitRtObjects();
+
+    if (config.cleanupGC) {
+        _ = try cy.arc.performGC(run.vm.internal());
+    }
 
     if (config.checkGlobalRc) {
         try cy.arc.checkGlobalRC(run.vm.internal());

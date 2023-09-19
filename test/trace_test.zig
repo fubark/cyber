@@ -94,21 +94,6 @@ test "ARC." {
     try t.eq(trace.numRetains, 2);
     try t.eq(trace.numReleases, 2);
 
-    // vm.checkMemory is able to detect retain cycle.
-    val = try run.eval(
-        \\var a = []
-        \\var b = []
-        \\a.append(b)
-        \\b.append(a)
-    );
-    trace = run.getTrace();
-    try t.eq(trace.numRetains, 6);
-    try t.eq(trace.numReleases, 4);
-    try t.eq(trace.numForceReleases, 0);
-    try t.eq(try run.checkMemory(), false);
-    try t.eq(trace.numRetainCycles, 1);
-    try t.eq(trace.numRetainCycleRoots, 2);
-    try t.eq(trace.numForceReleases, 2);
 }
 
 test "ARC for static variable declarations." {
@@ -335,10 +320,6 @@ const VMrunner = struct {
 
     fn deinitValue(self: *VMrunner, val: cy.Value) void {
         self.vm.release(val);
-    }
-
-    fn checkMemory(self: *VMrunner) !bool {
-        return self.vm.checkMemory();
     }
 
     fn compile(self: *VMrunner, src: []const u8) !cy.ByteCodeBuffer {

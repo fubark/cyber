@@ -42,6 +42,7 @@ pub const MetaTypeT: TypeId = vmc.TYPE_METATYPE;
 pub const AnyT: TypeId = 29;
 pub const StringUnionT: TypeId = 30;
 pub const RawstringUnionT: TypeId = 31;
+pub const NumBuiltinTypes: TypeId = 32;
 
 pub const TypeKey = cy.hash.KeyU64;
 

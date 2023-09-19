@@ -283,6 +283,7 @@ pub const Options = struct {
     target: std.zig.CrossTarget,
     optimize: std.builtin.OptimizeMode,
     useMimalloc: bool,
+    gc: bool,
 };
 
     // deps: struct {
@@ -296,6 +297,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .trace = trace,
         .target = target,
         .optimize = optimize,
+        .gc = true,
 
         // Use mimalloc for fast builds.
         .useMimalloc = optimize == .ReleaseFast and !target.getCpuArch().isWasm(),
@@ -328,6 +330,7 @@ fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Opt
     build_options.addOption(bool, "trace", opts.trace);
     build_options.addOption(bool, "trackGlobalRC", opts.trackGlobalRc);
     build_options.addOption(bool, "is32Bit", is32Bit(opts.target));
+    build_options.addOption(bool, "gc", opts.gc);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     return build_options;
 }
@@ -439,6 +442,11 @@ pub fn buildCVM(alloc: std.mem.Allocator, step: *std.build.CompileStep, opts: Op
         try cflags.append("-DIS_32BIT=1");
     } else {
         try cflags.append("-DIS_32BIT=0");
+    }
+    if (opts.gc) {
+        try cflags.append("-DHAS_GC=1");
+    } else {
+        try cflags.append("-DHAS_GC=0");
     }
 
     // Disable traps for arithmetic/bitshift overflows.

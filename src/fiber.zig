@@ -41,10 +41,10 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
     // Assumes call start local is at 1.
     std.mem.copy(Value, stack[5..5+args.len], args);
 
-    const obj: *vmc.Fiber = @ptrCast(try cy.heap.allocExternalObject(vm, @sizeOf(vmc.Fiber)));
+    const obj: *vmc.Fiber = @ptrCast(try cy.heap.allocExternalObject(vm, @sizeOf(vmc.Fiber), true));
     const parentDstLocal = cy.NullU8;
     obj.* = .{
-        .typeId = rt.FiberT,
+        .typeId = rt.FiberT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .stackPtr = @ptrCast(stack.ptr),
         .stackLen = @intCast(stack.len),
@@ -63,7 +63,7 @@ pub fn allocFiber(vm: *cy.VM, pc: usize, args: []const cy.Value, initialStackSiz
         .prevFiber = undefined,
     };
 
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 /// Since this is called from a coresume expression, the fiber should already be retained.
@@ -192,7 +192,7 @@ pub fn releaseFiberStack(vm: *cy.VM, fiber: *cy.Fiber) !void {
 /// TODO: See if releaseFiberStack can resuse the same code.
 pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]const Value, startPc: [*]const cy.Inst) !void {
     var pcOffset = getInstOffset(vm.ops.ptr, startPc);
-    var fpOffset = getStackOffset(vm.stack.ptr, startFramePtr);
+    var fpOffset = getStackOffset(stack.ptr, startFramePtr);
 
     while (true) {
         const symIdx = cy.debug.indexOfDebugSym(vm, pcOffset) orelse return error.NoDebugSym;
@@ -202,7 +202,9 @@ pub fn unwindReleaseStack(vm: *cy.VM, stack: []const Value, startFramePtr: [*]co
         log.debug("release frame: {} {} {} {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx, endLocalsPc});
 
         // Release temporaries in the current frame.
-        cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
+        if (tempIdx != cy.NullId) {
+            cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
+        }
 
         if (endLocalsPc != cy.NullId) {
             cy.arc.runBlockEndReleaseOps(vm, stack, fpOffset, endLocalsPc);
@@ -257,6 +259,13 @@ pub fn unwindThrowUntilFramePtr(vm: *cy.VM, startFp: [*]const Value, pc: [*]cons
     const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
     log.debug("release temps: {} {}, {}", .{pcOffset, vm.ops[pcOffset].opcode(), tempIdx});
     cy.arc.runTempReleaseOps(vm, vm.stack.ptr + fpOffset, tempIdx);
+
+    // Frame inside the try block.
+    const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
+    try vm.throwTrace.append(vm.alloc, .{
+        .pcOffset = sym.pc,
+        .fpOffset = fpOffset,
+    });
 }
 
 pub fn throw(vm: *cy.VM, startFp: [*]Value, pc: [*]const cy.Inst, err: Value) !?PcSp {

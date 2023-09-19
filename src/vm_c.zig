@@ -8,6 +8,7 @@ const c = @cImport({
     @cDefine("TRACK_GLOBAL_RC", if (build_options.trackGlobalRC) "1" else "0");
     @cDefine("TRACE", if (build_options.trace) "1" else "0");
     @cDefine("IS_32BIT", if (cy.is32Bit) "1" else "0");
+    @cDefine("HAS_GC", if (cy.hasGC) "1" else "0");
     @cInclude("vm.h");
 });
 

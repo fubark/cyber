@@ -22,7 +22,7 @@ pub const HeapStringBuilder = struct {
     pub fn init(vm: *cy.VM) !HeapStringBuilder {
         const obj = try vm.allocPoolObject();
         obj.astring = .{
-            .structId = rt.AstringT,
+            .typeId = rt.AstringT,
             .rc = 1,
             .len = cy.MaxPoolObjectStringByteLen,
             .bufStart = undefined,
@@ -90,7 +90,7 @@ pub const HeapStringBuilder = struct {
                 const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
                 const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
                 obj.astring = .{
-                    .structId = if (self.isAstring) rt.AstringT else rt.UstringT,
+                    .typeId = if (self.isAstring) rt.AstringT else rt.UstringT,
                     .rc = 1,
                     .len = 0,
                     .bufStart = undefined,
@@ -105,7 +105,7 @@ pub const HeapStringBuilder = struct {
             const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), 16 + newCap);
             const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
             obj.astring = .{
-                .structId = if (self.isAstring) rt.AstringT else rt.UstringT,
+                .typeId = if (self.isAstring) rt.AstringT else rt.UstringT,
                 .rc = 1,
                 .len = 0,
                 .bufStart = undefined,
@@ -140,7 +140,7 @@ pub const HeapRawStringBuilder = struct {
     pub fn init(vm: *cy.VM) !HeapRawStringBuilder {
         const obj = try cy.heap.allocPoolObject(vm);
         obj.rawstring = .{
-            .structId = rt.RawstringT,
+            .typeId = rt.RawstringT,
             .rc = 1,
             .len = cy.MaxPoolObjectRawStringByteLen,
             .bufStart = undefined,
@@ -161,7 +161,7 @@ pub const HeapRawStringBuilder = struct {
         if (self.hasObject) {
             const obj = self.getHeapObject();
             obj.rawstring.len = self.len;
-            cy.heap.freeObject(self.vm, obj);
+            cy.heap.freeObject(self.vm, obj, true, false, true, false);
             self.hasObject = false;
         }
     }
@@ -201,7 +201,7 @@ pub const HeapRawStringBuilder = struct {
                 const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
                 const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
                 obj.rawstring = .{
-                    .structId = rt.RawstringT,
+                    .typeId = rt.RawstringT,
                     .rc = 1,
                     .len = 0,
                     .bufStart = undefined,
@@ -216,7 +216,7 @@ pub const HeapRawStringBuilder = struct {
             const objSlice = try alloc.alignedAlloc(u8, @alignOf(cy.HeapObject), cy.RawString.BufOffset + newCap);
             const obj: *cy.HeapObject = @ptrCast(objSlice.ptr);
             obj.rawstring = .{
-                .structId = rt.RawstringT,
+                .typeId = rt.RawstringT,
                 .rc = 1,
                 .len = 0,
                 .bufStart = undefined,
@@ -226,7 +226,7 @@ pub const HeapRawStringBuilder = struct {
 
             // Free pool object.
             oldObj.rawstring.len = self.len;
-            cy.heap.freeObject(self.vm, oldObj);
+            cy.heap.freeObject(self.vm, oldObj, true, false, true, false);
         }
     }
 

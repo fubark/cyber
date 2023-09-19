@@ -62,8 +62,12 @@ pub const VM = struct {
     /// Object heap pages.
     heapPages: cy.List(*cy.heap.HeapPage),
     heapFreeHead: ?*HeapObject,
-    /// Tail is only used in debug mode.
+    /// Tail is only used in trace mode.
     heapFreeTail: if (cy.Trace) ?*HeapObject else void,
+
+    /// GC: Contains the head to the first cyclable object.
+    /// Always contains one dummy node to avoid null checking.
+    cyclableHead: if (cy.hasGC) *cy.heap.DListNode else void,
 
     tryStack: cy.List(vmc.TryFrame),
 
@@ -199,6 +203,7 @@ pub const VM = struct {
             .heapPages = .{},
             .heapFreeHead = null,
             .heapFreeTail = if (cy.Trace) null else undefined,
+            .cyclableHead = if (cy.hasGC) @ptrCast(&dummyCyclableHead) else {},
             .pc = undefined,
             .framePtr = undefined,
             .tryStack = .{},
@@ -299,6 +304,7 @@ pub const VM = struct {
         for (self.varSyms.items()) |vsym| {
             release(self, vsym.value);
         }
+        self.varSyms.clearRetainingCapacity();
 
         {
             var iter = self.funcSymDeps.iterator();
@@ -563,11 +569,9 @@ pub const VM = struct {
             self.trace.totalOpCounts = 0;
             self.trace.numReleases = 0;
             self.trace.numReleaseAttempts = 0;
-            self.trace.numForceReleases = 0;
             self.trace.numRetains = 0;
             self.trace.numRetainAttempts = 0;
-            self.trace.numRetainCycles = 0;
-            self.trace.numRetainCycleRoots = 0;
+            self.trace.numCycFrees = 0;
         }
 
         tt = cy.debug.timer();
@@ -637,6 +641,9 @@ pub const VM = struct {
     }
 
     pub fn getTypeName(vm: *const cy.VM, typeId: rt.TypeId) []const u8 {
+        if (typeId == cy.NullId >> 2) {
+            return "danglingObject";
+        }
         const vmType = vm.types.buf[typeId];
         return vmType.namePtr[0..vmType.nameLen];
     }
@@ -1129,7 +1136,7 @@ pub const VM = struct {
             const obj = recv.asHeapObject();
             const symMap = &self.fieldSyms.buf[fieldId];
 
-            if (obj.head.typeId == symMap.mruTypeId) {
+            if (obj.getTypeId() == symMap.mruTypeId) {
                 obj.object.getValuePtr(symMap.mruOffset).* = val;
             } else {
                 const offset = self.getFieldOffset(obj, fieldId);
@@ -1171,10 +1178,10 @@ pub const VM = struct {
 
     pub fn getFieldOffset(self: *VM, obj: *HeapObject, symId: SymbolId) linksection(cy.HotSection) u8 {
         const symMap = self.fieldSyms.buf[symId];
-        if (obj.head.typeId == symMap.mruTypeId) {
+        if (obj.getTypeId() == symMap.mruTypeId) {
             return @intCast(symMap.mruOffset);
         } else {
-            return @call(.never_inline, VM.getFieldOffsetFromTable, .{self, obj.head.typeId, symId});
+            return @call(.never_inline, VM.getFieldOffsetFromTable, .{self, obj.getTypeId(), symId});
         }
     }
 
@@ -1228,13 +1235,13 @@ pub const VM = struct {
     fn getFieldFallback(self: *const VM, obj: *const HeapObject, nameId: sema.NameSymId) linksection(cy.HotSection) Value {
         @setCold(true);
         const name = sema.getName(self.compiler, nameId);
-        if (obj.head.typeId == rt.MapT) {
+        if (obj.getTypeId() == rt.MapT) {
             const map = cy.ptrAlignCast(*const cy.MapInner, &obj.map.inner);
             if (map.getByString(self, name)) |val| {
                 return val;
             } else return Value.None;
         } else {
-            log.debug("Missing symbol for object: {}", .{obj.head.typeId});
+            log.debug("Missing symbol for object: {}", .{obj.getTypeId()});
             return Value.None;
         }
     }
@@ -1254,7 +1261,7 @@ pub const VM = struct {
                 @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(sym.inner.nativeFunc1));
 
                 self.pc = pc;
-                self.framePtr = newFramePtr;
+                self.framePtr = framePtr;
                 const res = sym.inner.nativeFunc1(@ptrCast(self), @ptrCast(newFramePtr + 4), numArgs);
                 if (res.isInterrupt()) {
                     return error.Panic;
@@ -1434,15 +1441,15 @@ pub const VM = struct {
     pub fn tryValueAsComparableString(self: *const VM, val: Value) linksection(cy.Section) ?[]const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            if (obj.head.typeId == rt.AstringT) {
+            if (obj.getTypeId() == rt.AstringT) {
                 return obj.astring.getConstSlice();
-            } else if (obj.head.typeId == rt.UstringT) {
+            } else if (obj.getTypeId() == rt.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.head.typeId == rt.StringSliceT) {
+            } else if (obj.getTypeId() == rt.StringSliceT) {
                 return cy.heap.StringSlice.getConstSlice(obj.stringSlice);
-            } else if (obj.head.typeId == rt.RawstringT) {
+            } else if (obj.getTypeId() == rt.RawstringT) {
                 return obj.rawstring.getConstSlice();
-            } else if (obj.head.typeId == rt.RawstringSliceT) {
+            } else if (obj.getTypeId() == rt.RawstringSliceT) {
                 return obj.rawstringSlice.getConstSlice();
             } else return null;
         } else {
@@ -1487,11 +1494,11 @@ pub const VM = struct {
     pub fn valueAsString(self: *const VM, val: Value) linksection(cy.Section) []const u8 {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            if (obj.head.typeId == rt.AstringT) {
+            if (obj.getTypeId() == rt.AstringT) {
                 return obj.astring.getConstSlice();
-            } else if (obj.head.typeId == rt.UstringT) {
+            } else if (obj.getTypeId() == rt.UstringT) {
                 return obj.ustring.getConstSlice();
-            } else if (obj.head.typeId == rt.StringSliceT) {
+            } else if (obj.getTypeId() == rt.StringSliceT) {
                 return cy.heap.StringSlice.getConstSlice(obj.stringSlice);
             } else unreachable;
         } else {
@@ -1712,7 +1719,7 @@ pub const VM = struct {
                         return slice;
                     },
                     else => {
-                        const vmType = self.types.buf[obj.head.typeId];
+                        const vmType = self.types.buf[obj.getTypeId()];
                         const buf = vmType.namePtr[0..vmType.nameLen];
                         if (getCharLen) {
                             outCharLen.* = @intCast(buf.len);
@@ -1743,15 +1750,15 @@ pub const StringType = enum {
 fn getComparableStringType(val: Value) ?StringType {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        if (obj.head.typeId == rt.AstringT) {
+        if (obj.getTypeId() == rt.AstringT) {
             return .astring;
-        } else if (obj.head.typeId == rt.UstringT) {
+        } else if (obj.getTypeId() == rt.UstringT) {
             return .ustring;
-        } else if (obj.head.typeId == rt.StringSliceT) {
+        } else if (obj.getTypeId() == rt.StringSliceT) {
             return .slice;
-        } else if (obj.head.typeId == rt.RawstringT) {
+        } else if (obj.getTypeId() == rt.RawstringT) {
             return .rawstring;
-        } else if (obj.head.typeId == rt.RawstringSliceT) {
+        } else if (obj.getTypeId() == rt.RawstringSliceT) {
             return .rawSlice;
         }
         return null;
@@ -1890,6 +1897,9 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "strInterns"), @offsetOf(vmc.VM, "strInterns"));
     try t.eq(@offsetOf(VM, "heapPages"), @offsetOf(vmc.VM, "heapPages"));
     try t.eq(@offsetOf(VM, "heapFreeHead"), @offsetOf(vmc.VM, "heapFreeHead"));
+    if (cy.hasGC) {
+        try t.eq(@offsetOf(VM, "cyclableHead"), @offsetOf(vmc.VM, "cyclableHead"));
+    }
     try t.eq(@offsetOf(VM, "tryStack"), @offsetOf(vmc.VM, "tryStack"));
     if (cy.TrackGlobalRC) {
         try t.eq(@offsetOf(VM, "refCounts"), @offsetOf(vmc.VM, "refCounts"));
@@ -2102,7 +2112,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[2].val;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.head.typeId == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
+                    if (obj.getTypeId() == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
                         framePtr[dst] = obj.object.getValue(pc[7].val);
                         pc += 8;
                         continue;
@@ -2728,7 +2738,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const recv = framePtr[pc[1].val];
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.head.typeId == @as(*align (1) u16, @ptrCast(pc + 4)).*) {
+                    if (obj.getTypeId() == @as(*align (1) u16, @ptrCast(pc + 4)).*) {
                         const lastValue = obj.object.getValuePtr(pc[6].val);
                         release(vm, lastValue.*);
                         lastValue.* = framePtr[pc[2].val];
@@ -2752,7 +2762,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 const dst = pc[2].val;
                 if (recv.isPointer()) {
                     const obj = recv.asHeapObject();
-                    if (obj.head.typeId == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
+                    if (obj.getTypeId() == @as(*align (1) u16, @ptrCast(pc + 5)).*) {
                         framePtr[dst] = obj.object.getValue(pc[7].val);
                         retain(vm, framePtr[dst]);
                         pc += 8;
@@ -2863,7 +2873,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.Inst.initOpCode(.fieldIC);
-                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.head.typeId);
+                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.getTypeId());
                         pc[7] = cy.Inst{ .val = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
@@ -2890,7 +2900,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                         framePtr[dst] = obj.object.getValue(offset);
                         // Inline cache.
                         pc[0] = cy.Inst.initOpCode(.fieldRetainIC);
-                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.head.typeId);
+                        @as(*align (1) u16, @ptrCast(pc + 5)).* = @intCast(obj.getTypeId());
                         pc[7] = cy.Inst { .val = offset };
                     } else {
                         const sym = vm.fieldSyms.buf[symId];
@@ -2920,7 +2930,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                         // Inline cache.
                         pc[0] = cy.Inst.initOpCode(.setFieldReleaseIC);
-                        @as(*align (1) u16, @ptrCast(pc + 4)).* = @intCast(obj.head.typeId);
+                        @as(*align (1) u16, @ptrCast(pc + 4)).* = @intCast(obj.getTypeId());
                         pc[6] = cy.Inst { .val = offset };
                         pc += 7;
                         continue;
@@ -3165,7 +3175,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = box.asHeapObject();
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.head.typeId == rt.BoxT);
+                    std.debug.assert(obj.getTypeId() == rt.BoxT);
                 }
                 obj.box.val = rval;
                 pc += 3;
@@ -3182,7 +3192,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
                 }
                 const obj = box.asHeapObject();
                 if (builtin.mode == .Debug) {
-                    std.debug.assert(obj.head.typeId == rt.BoxT);
+                    std.debug.assert(obj.getTypeId() == rt.BoxT);
                 }
                 @call(.never_inline, release, .{vm, obj.box.val});
                 obj.box.val = rval;
@@ -3587,7 +3597,7 @@ const FieldEntry = struct {
 pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !cy.fiber.PcSp {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
-        switch (obj.head.typeId) {
+        switch (obj.getTypeId()) {
             rt.ClosureT => {
                 if (numArgs != obj.closure.numParams) {
                     log.debug("params/args mismatch {} {}", .{numArgs, obj.lambda.numParams});
@@ -3659,7 +3669,7 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
 pub fn callNoInline(vm: *VM, pc: *[*]cy.Inst, framePtr: *[*]Value, callee: Value, startLocal: u8, numArgs: u8, retInfo: Value) !void {
     if (callee.isPointer()) {
         const obj = callee.asHeapObject();
-        switch (obj.head.typeId) {
+        switch (obj.getTypeId()) {
             rt.ClosureT => {
                 if (numArgs != obj.closure.numParams) {
                     cy.panic("params/args mismatch");
@@ -3958,7 +3968,7 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
     } else {
         if (val.isPointer()) {
             const obj = val.asHeapObject();
-            switch (obj.head.typeId) {
+            switch (obj.getTypeId()) {
                 rt.ListT => fmt.printStdout("List {} len={}\n", &.{v(obj), v(obj.list.list.len)}),
                 rt.MapT => fmt.printStdout("Map {} size={}\n", &.{v(obj), v(obj.map.inner.size)}),
                 rt.AstringT => {
@@ -3982,8 +3992,8 @@ pub fn dumpValue(vm: *const VM, val: Value) void {
                 rt.FiberT => fmt.printStdout("Fiber {}\n", &.{v(obj)}),
                 rt.NativeFuncT => fmt.printStdout("NativeFunc {}\n", &.{v(obj)}),
                 else => {
-                    const vmType = vm.types.buf[obj.head.typeId];
-                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.head.typeId), v(vmType.namePtr[0..vmType.nameLen])});
+                    const vmType = vm.types.buf[obj.getTypeId()];
+                    fmt.printStdout("HeapObject {} {} {}\n", &.{v(obj), v(obj.getTypeId()), v(vmType.namePtr[0..vmType.nameLen])});
                 },
             }
         } else {
@@ -4172,7 +4182,7 @@ fn isAssignFuncSigCompat(vm: *VM, srcFuncSigId: sema.FuncSigId, dstFuncSigId: se
 fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !void {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        switch (obj.head.typeId) {
+        switch (obj.getTypeId()) {
             rt.NativeFuncT => {
                 const dstRFuncSigId = getFuncSigIdOfSym(vm, symId);
                 if (!isAssignFuncSigCompat(vm, obj.nativeFunc1.funcSigId, dstRFuncSigId)) {
@@ -4230,7 +4240,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 // Don't set func sym dep since the closure is assigned into the func sym entry.
             },
             else => {
-                return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.head.typeId)});
+                return vm.panicFmt("Assigning to static function with unsupported type {}.", &.{v(obj.getTypeId())});
             }
         }
     } else {
@@ -4558,7 +4568,7 @@ export fn zDumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) void {
 }
 
 export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    cy.heap.freeObject(vm, obj);
+    cy.heap.freeObject(vm, obj, true, false, true, false);
 } 
 
 export fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) void {
@@ -4732,8 +4742,21 @@ export fn zAllocPoolObject(vm: *cy.VM) vmc.HeapObjectResult {
     };
 }
 
+export fn zAllocExternalCycObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
+    const obj = cy.heap.allocExternalObject(vm, size, true) catch {
+        return .{
+            .obj = undefined,
+            .code = vmc.RES_CODE_UNKNOWN,
+        };
+    };
+    return .{
+        .obj = @ptrCast(obj),
+        .code = vmc.RES_CODE_SUCCESS,
+    };
+}
+
 export fn zAllocExternalObject(vm: *cy.VM, size: usize) vmc.HeapObjectResult {
-    const obj = cy.heap.allocExternalObject(vm, size) catch {
+    const obj = cy.heap.allocExternalObject(vm, size, false) catch {
         return .{
             .obj = undefined,
             .code = vmc.RES_CODE_UNKNOWN,
@@ -4918,3 +4941,15 @@ comptime {
         @export(c_pow, .{ .name = "pow", .linkage = .Strong });
     }
 }
+
+const DummyCyclableNode = extern struct {
+    prev: ?*cy.heap.DListNode,
+    next: ?*cy.heap.DListNode,
+    typeId: u32,
+};
+pub var dummyCyclableHead = DummyCyclableNode{
+    .prev = null,
+    .next = null,
+    // This will be marked automatically before sweep, so it's never considered as a cyc object.
+    .typeId = vmc.GC_MARK_MASK | rt.NoneT,
+};

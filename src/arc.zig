@@ -7,9 +7,14 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const log = cy.log.scoped(.arc);
 const cy = @import("cyber.zig");
+const vmc = cy.vmc;
 const rt = cy.rt;
 
 pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
+    releaseExt(vm, val, false);
+}
+
+pub fn releaseExt(vm: *cy.VM, val: cy.Value, comptime trackFrees: bool) linksection(cy.HotSection) void {
     if (cy.Trace) {
         vm.trace.numReleaseAttempts += 1;
     }
@@ -23,7 +28,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
         if (cy.TrackGlobalRC) {
             if (cy.Trace) {
                 if (vm.refCounts == 0) {
-                    cy.fmt.printStderr("Double free. {}\n", &.{cy.fmt.v(obj.head.typeId)});
+                    cy.fmt.printStderr("Double free. {}\n", &.{cy.fmt.v(obj.getTypeId())});
                     cy.fatal();
                 }
             }
@@ -33,7 +38,11 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
             vm.trace.numReleases += 1;
         }
         if (obj.head.rc == 0) {
-            @call(.never_inline, cy.heap.freeObject, .{vm, obj});
+            // Free children and the object.
+            @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true, trackFrees});
+            if (trackFrees) {
+                numObjectsFreed += 1;
+            }
         }
     } else {
         log.tracev("release: {}, nop", .{val.getUserTag()});
@@ -41,7 +50,7 @@ pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
 }
 
 pub fn isObjectAlreadyFreed(vm: *cy.VM, obj: *cy.HeapObject) bool {
-    if (obj.head.typeId == cy.NullId) {
+    if (obj.isFreed()) {
         // Can check structId for pool objects since they are still in memory.
         return true;
     }
@@ -68,6 +77,10 @@ pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
 }
 
 pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
+    releaseObjectExt(vm, obj, false);
+}
+
+pub fn releaseObjectExt(vm: *cy.VM, obj: *cy.HeapObject, comptime trackFrees: bool) linksection(cy.HotSection) void {
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
@@ -81,7 +94,10 @@ pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection)
         vm.trace.numReleaseAttempts += 1;
     }
     if (obj.head.rc == 0) {
-        @call(.never_inline, cy.heap.freeObject, .{vm, obj});
+        @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true, trackFrees});
+        if (trackFrees) {
+            numObjectsFreed += 1;
+        }
     }
 }
 
@@ -167,33 +183,6 @@ pub inline fn retainInc(self: *cy.VM, val: cy.Value, inc: u32) linksection(cy.Ho
     }
 }
 
-pub fn forceRelease(self: *cy.VM, obj: *cy.HeapObject) void {
-    if (cy.Trace) {
-        self.trace.numForceReleases += 1;
-    }
-    switch (obj.head.typeId) {
-        rt.ListT => {
-            const list = cy.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
-            list.deinit(self.alloc);
-            cy.heap.freePoolObject(self, obj);
-            if (cy.TrackGlobalRC) {
-                self.refCounts -= obj.head.rc;
-            }
-        },
-        rt.MapT => {
-            const map = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-            map.deinit(self.alloc);
-            cy.heap.freePoolObject(self, obj);
-            if (cy.TrackGlobalRC) {
-                self.refCounts -= obj.head.rc;
-            }
-        },
-        else => {
-            return cy.panic("unsupported struct type");
-        },
-    }
-}
-
 pub fn getGlobalRC(self: *const cy.VM) usize {
     if (cy.TrackGlobalRC) {
         return self.refCounts;
@@ -202,78 +191,227 @@ pub fn getGlobalRC(self: *const cy.VM) usize {
     }
 }
 
-/// Performs an iteration over the heap pages to check whether there are retain cycles.
-pub fn checkMemory(self: *cy.VM) !bool {
-    var nodes: std.AutoHashMapUnmanaged(*cy.HeapObject, RcNode) = .{};
-    defer nodes.deinit(self.alloc);
+const GCResult = struct {
+    numCycFreed: u32,
+    numObjFreed: u32,
+};
 
-    var cycleRoots: std.ArrayListUnmanaged(*cy.HeapObject) = .{};
-    defer cycleRoots.deinit(self.alloc);
+/// Mark-sweep leveraging refcounts and deals only with cyclable objects.
+/// 1. Looks at all root nodes from the stack and globals.
+///    Traverse the children and sets the mark flag to true.
+///    Only cyclable objects that aren't marked are visited.
+/// 2. Sweep iterates all cyclable objects.
+///    If the mark flag is not set:
+///       - the object's children are released exlcuding confirmed child cyc objects.
+///       - the object is queued to be freed later.
+///    If the mark flag is set, reset the flag for the next gc run.
+///    TODO: Allocate using separate pages for cyclable and non-cyclable objects,
+///          so only cyclable objects are iterated.
+pub fn performGC(vm: *cy.VM) !GCResult {
+    log.tracev("Run gc.", .{});
+    try performMark(vm);
 
-    // No concept of root vars yet. Just report any existing retained objects.
-    // First construct the graph.
-    for (self.heapPages.items()) |page| {
-        for (page.objects[1..]) |*obj| {
-            if (obj.head.typeId != cy.NullId) {
-                try nodes.put(self.alloc, obj, .{
-                    .visited = false,
-                    .entered = false,
-                });
-            }
-        }
-    }
-    const S = struct {
-        fn visit(alloc: std.mem.Allocator, graph: *std.AutoHashMapUnmanaged(*cy.HeapObject, RcNode), cycleRoots_: *std.ArrayListUnmanaged(*cy.HeapObject), obj: *cy.HeapObject, node: *RcNode) bool {
-            if (node.visited) {
-                return false;
-            }
-            if (node.entered) {
-                return true;
-            }
-            node.entered = true;
+    // Make sure dummy node has mark bit.
+    cy.vm.dummyCyclableHead.typeId = vmc.GC_MARK_MASK | rt.NoneT;
 
-            switch (obj.head.typeId) {
-                rt.ListT => {
-                    const list = cy.ptrAlignCast(*cy.List(cy.Value), &obj.list.list);
-                    for (list.items()) |it| {
-                        if (it.isPointer()) {
-                            const ptr = it.asHeapObject();
-                            if (visit(alloc, graph, cycleRoots_, ptr, graph.getPtr(ptr).?)) {
-                                cycleRoots_.append(alloc, obj) catch cy.fatal();
-                                return true;
-                            }
-                        }
-                    }
-                },
-                else => {
-                },
-            }
-            node.entered = false;
-            node.visited = true;
-            return false;
-        }
-    };
-    var iter = nodes.iterator();
-    while (iter.next()) |*entry| {
-        if (S.visit(self.alloc, &nodes, &cycleRoots, entry.key_ptr.*, entry.value_ptr)) {
-            if (cy.Trace) {
-                self.trace.numRetainCycles = 1;
-                self.trace.numRetainCycleRoots = @intCast(cycleRoots.items.len);
-            }
-            for (cycleRoots.items) |root| {
-                // Force release.
-                forceRelease(self, root);
-            }
-            return false;
-        }
-    }
-    return true;
+    return try performSweep(vm);
 }
 
-const RcNode = struct {
-    visited: bool,
-    entered: bool,
-};
+fn performMark(vm: *cy.VM) !void {
+    try markMainStackRoots(vm);
+
+    // Mark globals.
+    for (vm.varSyms.items()) |sym| {
+        if (sym.value.isCycPointer()) {
+            markValue(vm, sym.value);
+        }
+    }
+}
+
+var numObjectsFreed: u32 = 0;
+
+fn performSweep(vm: *cy.VM) !GCResult {
+    // Collect cyc nodes and release their children (child cyc nodes are skipped).
+    numObjectsFreed = 0;
+    var cycObjs: std.ArrayListUnmanaged(*cy.HeapObject) = .{};
+    defer cycObjs.deinit(vm.alloc);
+    for (vm.heapPages.items()) |page| {
+        var i: u32 = 1;
+        while (i < page.objects.len) {
+            const obj = &page.objects[i];
+            if (obj.freeSpan.typeId != cy.NullId) {
+                if (obj.isGcConfirmedCyc()) {
+                    try cycObjs.append(vm.alloc, obj);
+                    cy.heap.freeObject(vm, obj, true, true, false, true);
+                } else if (obj.isGcMarked()) {
+                    obj.resetGcMarked();
+                }
+                i += 1;
+            } else {
+                // Freespan, skip to end.
+                i += obj.freeSpan.len;
+            }
+        }
+    }
+
+    // Traverse non-pool cyc nodes.
+    var mbNode: ?*cy.heap.DListNode = vm.cyclableHead;
+    while (mbNode) |node| {
+        const obj = node.getHeapObject();
+        if (obj.isGcConfirmedCyc()) {
+            try cycObjs.append(vm.alloc, obj);
+            cy.heap.freeObject(vm, obj, true, true, false, true);
+        } else if (obj.isGcMarked()) {
+            obj.resetGcMarked();
+        }
+        mbNode = node.next;
+    }
+
+    // Free cyc nodes.
+    for (cycObjs.items) |obj| {
+        log.tracev("cyc free: {s}, rc={}", .{vm.getTypeName(obj.getTypeId()), obj.head.rc});
+        if (cy.Trace) {
+            checkDoubleFree(vm, obj);
+        }
+        if (cy.TrackGlobalRC) {
+            vm.refCounts -= obj.head.rc;
+        }
+        // No need to bother with their refcounts.
+        cy.heap.freeObject(vm, obj, false, false, true, false);
+    }
+
+    if (cy.Trace) {
+        vm.trace.numCycFrees += @intCast(cycObjs.items.len);
+    }
+
+    return GCResult{
+        .numCycFreed = @intCast(cycObjs.items.len),
+        .numObjFreed = @intCast(cycObjs.items.len + numObjectsFreed),
+    };
+}
+
+fn markMainStackRoots(vm: *cy.VM) !void {
+    if (vm.pc[0].opcode() == .end) {
+        return;
+    }
+
+    var pcOff = cy.fiber.getInstOffset(vm.ops.ptr, vm.pc);
+    var fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.framePtr);
+
+    while (true) {
+        const symIdx = cy.debug.indexOfDebugSym(vm, pcOff) orelse return error.NoDebugSym;
+        const sym = cy.debug.getDebugSymByIndex(vm, symIdx);
+        const tempIdx = cy.debug.getDebugTempIndex(vm, symIdx);
+        const endLocalsPc = cy.debug.debugSymToEndLocalsPc(vm, sym);
+        log.debug("mark frame: {} {} {} {}", .{pcOff, vm.ops[pcOff].opcode(), tempIdx, endLocalsPc});
+
+        if (tempIdx != cy.NullId) {
+            const fp = vm.stack.ptr + fpOff;
+            log.tracev("mark temps", .{});
+            var curIdx = tempIdx;
+            while (curIdx != cy.NullId) {
+                log.tracev("mark reg: {}", .{vm.unwindTempRegs[curIdx]});
+                const v = fp[vm.unwindTempRegs[curIdx]];
+                if (v.isCycPointer()) {
+                    markValue(vm, v);
+                }
+                curIdx = vm.unwindTempPrevIndexes[curIdx];
+            }
+        }
+
+        if (endLocalsPc != cy.NullId) {
+            if (vm.ops[endLocalsPc].opcode() == .releaseN) {
+                const numLocals = vm.ops[endLocalsPc+1].val;
+                for (vm.ops[endLocalsPc+2..endLocalsPc+2+numLocals]) |local| {
+                    const v = vm.stack[fpOff + local.val];
+                    if (v.isCycPointer()) {
+                        markValue(vm, v);
+                    }
+                }
+            }
+        }
+        if (fpOff == 0) {
+            // Done, at main block.
+            return;
+        } else {
+            // Unwind.
+            pcOff = cy.fiber.getInstOffset(vm.ops.ptr, vm.stack[fpOff + 2].retPcPtr) - vm.stack[fpOff + 1].retInfoCallInstOffset();
+            fpOff = cy.fiber.getStackOffset(vm.stack.ptr, vm.stack[fpOff + 3].retFramePtr);
+        }
+    }
+}
+
+/// Assumes `v` is a cyclable pointer.
+fn markValue(vm: *cy.VM, v: cy.Value) void {
+    const obj = v.asHeapObject();
+    if (!obj.isGcMarked()) {
+        obj.setGcMarked();
+    } else {
+        // Already marked.
+        return;
+    }
+    // Visit children.
+    const typeId = obj.getTypeId();
+    switch (typeId) {
+        rt.ListT => {
+            const items = obj.list.items();
+            for (items) |it| {
+                if (it.isCycPointer()) {
+                    markValue(vm, it);
+                }
+            }
+        },
+        rt.MapT => {
+            const map = obj.map.map();
+            var iter = map.iterator();
+            while (iter.next()) |entry| {
+                if (entry.key.isCycPointer()) {
+                    markValue(vm, entry.key);
+                }
+                if (entry.value.isCycPointer()) {
+                    markValue(vm, entry.value);
+                }
+            }
+        },
+        rt.ListIteratorT => {
+            markValue(vm, cy.Value.initPtr(obj.listIter.list));
+        },
+        rt.MapIteratorT => {
+            markValue(vm, cy.Value.initPtr(obj.mapIter.map));
+        },
+        rt.ClosureT => {
+            const vals = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
+            for (vals) |val| {
+                // TODO: Can this be assumed to always be a Box value?
+                if (val.isCycPointer()) {
+                    markValue(vm, val);
+                }
+            }
+        },
+        rt.BoxT => {
+            if (obj.box.val.isCycPointer()) {
+                markValue(vm, obj.box.val);
+            }
+        },
+        rt.FiberT => {
+            // TODO: Visit other fiber stacks.
+        },
+        else => {
+            if (typeId < rt.NumBuiltinTypes) {
+                // Skip, non-cyclable object.
+            } else {
+                // User type.
+                const numMembers = vm.types.buf[typeId].numFields;
+                const members = obj.object.getValuesConstPtr()[0..numMembers];
+                for (members) |m| {
+                    if (m.isCycPointer()) {
+                        markValue(vm, m);
+                    }
+                }
+            }
+        },
+    }
+}
 
 pub fn checkGlobalRC(vm: *cy.VM) !void {
     const rc = getGlobalRC(vm);
@@ -286,7 +424,7 @@ pub fn checkGlobalRC(vm: *cy.VM) !void {
             while (iter.next()) |it| {
                 const trace = it.value_ptr.*;
                 if (trace.freePc == cy.NullId) {
-                    const typeName = vm.getTypeName(it.key_ptr.*.head.typeId);
+                    const typeName = vm.getTypeName(it.key_ptr.*.getTypeId());
                     const msg = try std.fmt.bufPrint(&buf, "Init alloc: {*}, type: {s}, rc: {} at pc: {}\nval={s}", .{
                         it.key_ptr.*, typeName, it.key_ptr.*.head.rc, trace.allocPc,
                         vm.valueToTempString(cy.Value.initPtr(it.key_ptr.*)),

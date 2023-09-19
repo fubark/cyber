@@ -21,6 +21,76 @@ typedef struct IndexSlice {
     u32 len;
 } IndexSlice;
 
+// 1000000000000000: Most significant bit.
+#define SIGN_MASK ((u64)1 << 63)
+
+// 0111111111110000 (7FF0): +INF (from math.inf, +/zero, overflow)
+// 1111111111110000 (FFF0): -INF (from math.neginf, -/zero, overflow)
+// 0111111111111000 (7FF8): QNAN (from neg op on -QNAN, math.nan, zero/zero non-intel, QNAN arithmetic)
+// 1111111111111000 (FFF8): -QNAN (from neg op on QNAN, zero/zero intel, -QNAN arithmetic, -QNAN/zero)
+// Intel uses the sign bit for an indefinite real or -QNAN.
+
+// 0111111111111100 (7FFC): QNAN and one extra bit to the right.
+#define TAGGED_VALUE_MASK ((u64)0x7ffc000000000000)
+
+// 0000000000000001
+#define INTEGER_MASK ((u64)1 << 48)
+
+// 0111111111111101 0000000000000111
+#define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | PRIMITIVE_MASK)
+// 0000000000000001 0000000000000111: Bits relevant to the primitive's type.
+#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | INTEGER_MASK)
+
+// 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
+#define NOCYC_POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
+
+// 1111111111111110: Extra bit indicating cycable pointer.
+#define CYC_POINTER_MASK (NOCYC_POINTER_MASK | ((u64)1 << 49))
+
+#define POINTER_MASK (CYC_POINTER_MASK)
+
+// 0111111111111101 
+#define TAGGED_INTEGER_MASK (TAGGED_VALUE_MASK | INTEGER_MASK)
+
+// 0111111111111100 0000000000000000
+#define NONE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_NONE << 32))
+
+// 0111111111111100 0000000000000001
+#define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
+
+#define TAG_MASK (((uint32_t)1 << 3) - 1)
+#define TAG_NONE ((uint8_t)0)
+#define TAG_BOOLEAN ((uint8_t)1)
+#define TAG_ERROR ((uint8_t)2)
+#define TAG_STATIC_ASTRING ((uint8_t)3)
+#define TAG_STATIC_USTRING ((uint8_t)4)
+#define TAG_ENUM ((uint8_t)5)
+#define TAG_SYMBOL ((uint8_t)6)
+#define FALSE_MASK BOOLEAN_MASK
+#define TRUE_BIT_MASK ((uint64_t)1)
+#define TRUE_MASK (BOOLEAN_MASK | TRUE_BIT_MASK)
+
+#define ERROR_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ERROR << 32))
+#define ENUM_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ENUM << 32))
+#define SYMBOL_MASK (TAGGED_VALUE_MASK | ((u64)TAG_SYMBOL << 32))
+#define STATIC_ASTRING_MASK (TAGGED_VALUE_MASK | ((u64)TAG_STATIC_ASTRING << 32))
+#define STATIC_USTRING_MASK (TAGGED_VALUE_MASK | ((u64)TAG_STATIC_USTRING << 32))
+#define BEFORE_TAG_MASK ((u32)(0x00007fff << 3))
+#define NULL_U32 UINT32_MAX
+#define NULL_U8 UINT8_MAX
+
+// 0011111111111111
+#define TYPE_MASK ((u32)0x3fffffff)
+
+// 0100000000000000: Cyclable type bit.
+#define CYC_TYPE_MASK ((u32)0x40000000)
+
+// 1000000000000000: Mark bit.
+#define GC_MARK_MASK ((u32)0x80000000)
+
+// 1100000000000000
+#define GC_MARK_CYC_TYPE_MASK ((u32)0xC0000000)
+
 typedef enum {
     FMT_TYPE_CHAR,
     FMT_TYPE_STRING,
@@ -453,8 +523,8 @@ typedef struct List {
 
 typedef union HeapObject {
     struct {
-        uint32_t typeId;
-        uint32_t rc;
+        u32 typeId;
+        u32 rc;
     } head;
     Fiber fiber;
     Object object;
@@ -585,9 +655,9 @@ typedef struct TraceInfo {
     u32 numRetainAttempts;
     u32 numReleases;
     u32 numReleaseAttempts;
-    u32 numForceReleases;
-    u32 numRetainCycles;
-    u32 numRetainCycleRoots;
+
+    // Number cycle objects freed by gc.
+    u32 numCycFrees;
 } TraceInfo;
 
 typedef enum {
@@ -654,6 +724,9 @@ typedef struct VM {
     HeapObject* heapFreeHead;
 #if TRACE
     HeapObject* heapFreeTail;
+#endif
+#if HAS_GC
+    void* cyclableHead;
 #endif
 
     ZCyList tryStack;
@@ -828,6 +901,7 @@ Value zEvalCompareNot(VM* vm, Value left, Value right);
 PcSpResult zCall(VM* vm, Inst* pc, Value* stack, Value callee, uint8_t startLocal, uint8_t numArgs, Value retInfo);
 HeapObjectResult zAllocPoolObject(VM* vm);
 HeapObjectResult zAllocExternalObject(VM* vm, size_t size);
+HeapObjectResult zAllocExternalCycObject(VM* vm, size_t size);
 ValueResult zAllocStringTemplate(VM* vm, Inst* strs, u8 strCount, Value* vals, u8 valCount);
 ValueResult zAllocMap(VM* vm, u16* keyIdxs, Value* vals, u32 numEntries);
 Value zGetFieldFallback(VM* vm, HeapObject* obj, NameId nameId);

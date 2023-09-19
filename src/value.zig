@@ -12,7 +12,6 @@ const vmc = @import("vm_c.zig");
 
 const SignMask: u64 = 1 << 63;
 const TaggedValueMask: u64 = 0x7ffc000000000000;
-const PointerMask: u64 = TaggedValueMask | SignMask;
 const IntegerMask: u64 = 1 << 48;
 const TaggedIntegerMask: u64 = TaggedValueMask | IntegerMask;
 
@@ -150,17 +149,17 @@ pub const Value = packed union {
     pub fn otherToF64(self: *const Value) linksection(cy.HotSection) !f64 {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
-            if (obj.head.typeId == rt.AstringT) {
+            if (obj.getTypeId() == rt.AstringT) {
                 const str = obj.astring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
-            } else if (obj.head.typeId == rt.UstringT) {
+            } else if (obj.getTypeId() == rt.UstringT) {
                 const str = obj.ustring.getConstSlice();
                 return std.fmt.parseFloat(f64, str) catch 0;
-            } else if (obj.head.typeId == rt.StringSliceT) {
+            } else if (obj.getTypeId() == rt.StringSliceT) {
                 const str = cy.heap.StringSlice.getConstSlice(obj.stringSlice);
                 return std.fmt.parseFloat(f64, str) catch 0;
             } else {
-                log.debug("unsupported conv to number: {}", .{obj.head.typeId});
+                log.debug("unsupported conv to number: {}", .{obj.getTypeId()});
                 return error.Unsupported;
             }
         } else {
@@ -191,14 +190,14 @@ pub const Value = packed union {
         if (!self.isPointer()) {
             return false;
         }
-        const typeId = self.asHeapObject().head.typeId;
+        const typeId = self.asHeapObject().getTypeId();
         return typeId == rt.RawstringT or typeId == rt.RawstringSliceT;
     }
 
     pub fn isString(self: *const Value) linksection(cy.HotSection) bool {
         if (self.isPointer()) {
             const obj = self.asHeapObject();
-            return obj.head.typeId == rt.AstringT or obj.head.typeId == rt.UstringT or obj.head.typeId == rt.StringSliceT;
+            return obj.getTypeId() == rt.AstringT or obj.getTypeId() == rt.UstringT or obj.getTypeId() == rt.StringSliceT;
         } else {
             return self.assumeNotPtrIsStaticString();
         }
@@ -258,7 +257,7 @@ pub const Value = packed union {
         const bits = self.val & TaggedPrimitiveMask;
         if (bits >= TaggedValueMask) {
             if (self.isPointer()) {
-                return self.asHeapObject().head.typeId;
+                return self.asHeapObject().getTypeId();
             } else {
                 if (bits >= TaggedIntegerMask) {
                     return rt.IntegerT;
@@ -286,53 +285,63 @@ pub const Value = packed union {
     }
 
     pub inline fn isPointer(self: *const Value) bool {
-        // Only a pointer if nan bits and sign bit are set.
-        return self.val & PointerMask == PointerMask;
+        return self.val >= vmc.NOCYC_POINTER_MASK;
+    }
+
+    pub inline fn isCycPointer(self: *const Value) bool {
+        return self.val >= vmc.CYC_POINTER_MASK;
     }
 
     pub inline fn isObjectType(self: *const Value, typeId: rt.TypeId) bool {
-        return isPointer(self) and self.asHeapObject().head.typeId == typeId;
+        return isPointer(self) and self.asHeapObject().getTypeId() == typeId;
     }
 
     pub inline fn isPointerT(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == rt.PointerT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == rt.PointerT;
     }
 
     pub inline fn isMap(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == rt.MapT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == rt.MapT;
     }
 
     pub inline fn isList(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == rt.ListT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == rt.ListT;
     }
 
     pub inline fn isBox(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == rt.BoxT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == rt.BoxT;
     }
 
     pub inline fn isClosure(self: *const Value) bool {
-        return self.isPointer() and self.asHeapObject().head.typeId == rt.ClosureT;
+        return self.isPointer() and self.asHeapObject().getTypeId() == rt.ClosureT;
     }
 
     pub inline fn asRawString(self: *const Value) []const u8 {
         const obj = self.asHeapObject();
-        if (obj.head.typeId == rt.RawstringT) {
+        if (obj.getTypeId() == rt.RawstringT) {
             return obj.rawstring.getConstSlice();
-        } else if (obj.head.typeId == rt.RawstringSliceT) {
+        } else if (obj.getTypeId() == rt.RawstringSliceT) {
             return obj.rawstringSlice.getConstSlice();
         } else unreachable;
     }
 
+    pub fn isGcConfirmedCyc(self: *const Value) bool {
+        if (self.isCycPointer()) {
+            return self.asHeapObject().isGcConfirmedCyc();
+        }
+        return false;
+    }
+
     pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~PointerMask)));
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
 
     pub inline fn asPointer(self: *const Value, comptime Ptr: type) Ptr {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~PointerMask)));
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
 
     pub inline fn asAnyOpaque(self: *const Value) ?*anyopaque {
-        return @ptrFromInt(@as(usize, @intCast(self.val & ~PointerMask)));
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
 
     pub inline fn asBool(self: *const Value) linksection(cy.HotSection) bool {
@@ -395,7 +404,6 @@ pub const Value = packed union {
     }
 
     pub inline fn initRaw(val: u64) Value {
-        @setRuntimeSafety(debug);
         return .{ .val = val };
     }
 
@@ -408,8 +416,11 @@ pub const Value = packed union {
     }
 
     pub inline fn initPtr(ptr: ?*anyopaque) Value {
-        @setRuntimeSafety(debug);
-        return .{ .val = PointerMask | @intFromPtr(ptr) };
+        return .{ .val = vmc.NOCYC_POINTER_MASK | @intFromPtr(ptr) };
+    }
+
+    pub inline fn initCycPtr(ptr: ?*anyopaque) Value {
+        return .{ .val = vmc.CYC_POINTER_MASK | @intFromPtr(ptr) };
     }
 
     pub inline fn initStaticAstring(start: u32, len: u15) Value {
@@ -481,7 +492,7 @@ pub const Value = packed union {
             else => {
                 if (self.isPointer()) {
                     const obj = self.asHeapObject();
-                    switch (obj.head.typeId) {
+                    switch (obj.getTypeId()) {
                         rt.ListT => log.info("List {*} len={}", .{obj, obj.list.list.len}),
                         rt.MapT => log.info("Map {*} size={}", .{obj, obj.map.inner.size}),
                         rt.AstringT => {
@@ -506,7 +517,7 @@ pub const Value = packed union {
                         rt.NativeFuncT => return log.info("NativeFunc {*}", .{obj}),
                         rt.PointerT => return log.info("Pointer {*} ptr={*}", .{obj, obj.pointer.ptr}),
                         else => {
-                            log.info("HeapObject {*} {}", .{obj, obj.head.typeId});
+                            log.info("HeapObject {*} {}", .{obj, obj.getTypeId()});
                         },
                     }
                 } else {
@@ -593,7 +604,7 @@ pub const ValueUserTag = enum {
 pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
     if (val.isPointer()) {
         const obj = val.asHeapObject();
-        switch (obj.head.typeId) {
+        switch (obj.getTypeId()) {
             rt.ListT => {
                 const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
                 const new = cy.heap.allocList(vm, list.items()) catch cy.fatal();
@@ -649,13 +660,13 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
-                const numFields = @as(*const cy.VM, @ptrCast(vm)).types.buf[obj.head.typeId].numFields;
+                const numFields = @as(*const cy.VM, @ptrCast(vm)).types.buf[obj.getTypeId()].numFields;
                 const fields = obj.object.getValuesConstPtr()[0..numFields];
                 var new: Value = undefined;
                 if (numFields <= 4) {
-                    new = cy.heap.allocObjectSmall(vm, obj.head.typeId, fields) catch cy.fatal();
+                    new = cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields) catch cy.fatal();
                 } else {
-                    new = cy.heap.allocObject(vm, obj.head.typeId, fields) catch cy.fatal();
+                    new = cy.heap.allocObject(vm, obj.getTypeId(), fields) catch cy.fatal();
                 }
                 for (fields) |field| {
                     cy.arc.retain(vm, field);
@@ -694,7 +705,7 @@ test "value internals." {
     try t.eq(StaticUstringMask, 0x7FFC000400000000);
     try t.eq(NoneMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
-    try t.eq(PointerMask, 0xFFFC000000000000);
+    try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
 
     // Check Zig/C struct compat.
     try t.eq(@sizeOf(Value), @sizeOf(vmc.Value));

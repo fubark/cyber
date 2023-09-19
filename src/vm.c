@@ -19,59 +19,6 @@
     do { if (!(cond)) zFatal(); } while (false)
 #define BITCAST(type, x) (((union {typeof(x) src; type dst;})(x)).dst)
 
-// 1000000000000000: Most significant bit.
-#define SIGN_MASK ((u64)1 << 63)
-
-// 0111111111110000 (7FF0): +INF (from math.inf, +/zero, overflow)
-// 1111111111110000 (FFF0): -INF (from math.neginf, -/zero, overflow)
-// 0111111111111000 (7FF8): QNAN (from neg op on -QNAN, math.nan, zero/zero non-intel, QNAN arithmetic)
-// 1111111111111000 (FFF8): -QNAN (from neg op on QNAN, zero/zero intel, -QNAN arithmetic, -QNAN/zero)
-// Intel uses the sign bit for an indefinite real or -QNAN.
-
-// 0111111111111100 (7FFC): QNAN and one extra bit to the right.
-#define TAGGED_VALUE_MASK ((u64)0x7ffc000000000000)
-
-// 0000000000000001
-#define INTEGER_MASK ((u64)1 << 48)
-
-// 0111111111111101 0000000000000111
-#define TAGGED_PRIMITIVE_MASK (TAGGED_VALUE_MASK | PRIMITIVE_MASK)
-// 0000000000000001 0000000000000111: Bits relevant to the primitive's type.
-#define PRIMITIVE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_MASK << 32) | INTEGER_MASK)
-
-// 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
-#define POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
-
-// 0111111111111101 
-#define TAGGED_INTEGER_MASK (TAGGED_VALUE_MASK | INTEGER_MASK)
-
-// 0111111111111100 0000000000000000
-#define NONE_MASK (TAGGED_VALUE_MASK | ((u64)TAG_NONE << 32))
-
-// 0111111111111100 0000000000000001
-#define BOOLEAN_MASK (TAGGED_VALUE_MASK | ((u64)TAG_BOOLEAN << 32))
-
-#define TAG_MASK (((uint32_t)1 << 3) - 1)
-#define TAG_NONE ((uint8_t)0)
-#define TAG_BOOLEAN ((uint8_t)1)
-#define TAG_ERROR ((uint8_t)2)
-#define TAG_STATIC_ASTRING ((uint8_t)3)
-#define TAG_STATIC_USTRING ((uint8_t)4)
-#define TAG_ENUM ((uint8_t)5)
-#define TAG_SYMBOL ((uint8_t)6)
-#define FALSE_MASK BOOLEAN_MASK
-#define TRUE_BIT_MASK ((uint64_t)1)
-#define TRUE_MASK (BOOLEAN_MASK | TRUE_BIT_MASK)
-
-#define ERROR_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ERROR << 32))
-#define ENUM_MASK (TAGGED_VALUE_MASK | ((u64)TAG_ENUM << 32))
-#define SYMBOL_MASK (TAGGED_VALUE_MASK | ((u64)TAG_SYMBOL << 32))
-#define STATIC_ASTRING_MASK (TAGGED_VALUE_MASK | ((u64)TAG_STATIC_ASTRING << 32))
-#define STATIC_USTRING_MASK (TAGGED_VALUE_MASK | ((u64)TAG_STATIC_USTRING << 32))
-#define BEFORE_TAG_MASK ((u32)(0x00007fff << 3))
-#define NULL_U32 UINT32_MAX
-#define NULL_U8 UINT8_MAX
-
 // Construct value.
 
 // _BitInt zeroes padding bits after cast.
@@ -87,7 +34,8 @@
 #define VALUE_FALSE FALSE_MASK
 #define VALUE_INTERRUPT (ERROR_MASK | 0xffff) 
 #define VALUE_RAW(u) u
-#define VALUE_PTR(ptr) (POINTER_MASK | (uint64_t)ptr)
+#define VALUE_PTR(ptr) (NOCYC_POINTER_MASK | (u64)ptr)
+#define VALUE_CYCPTR(ptr) (CYC_POINTER_MASK | (u64)ptr)
 #define VALUE_STATIC_STRING_SLICE(v) ((IndexSlice){ .start = v & 0xffffffff, .len = (((u32)(v >> 32)) & BEFORE_TAG_MASK) >> 3 })
 #define VALUE_SYMBOL(symId) (SYMBOL_MASK | symId)
 
@@ -106,19 +54,20 @@
 #define VALUE_RETINFO_RETFLAG(v) ((v & 0xff00) >> 8)
 
 #define VALUE_IS_BOOLEAN(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == BOOLEAN_MASK)
-#define VALUE_IS_POINTER(v) (v >= POINTER_MASK)
-#define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_CLOSURE))
-#define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_BOX))
+#define VALUE_IS_POINTER(v) (v >= NOCYC_POINTER_MASK)
+#define VALUE_IS_CLOSURE(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_CLOSURE))
+#define VALUE_IS_BOX(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_BOX))
 #define VALUE_IS_NONE(v) (v == NONE_MASK)
 #define VALUE_IS_FLOAT(v) ((v & TAGGED_VALUE_MASK) != TAGGED_VALUE_MASK)
 #define VALUE_IS_ERROR(v) ((v & (TAGGED_PRIMITIVE_MASK | SIGN_MASK)) == ERROR_MASK)
 
-#define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_LIST))
-#define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (VALUE_AS_HEAPOBJECT(v)->head.typeId == TYPE_MAP))
+#define VALUE_IS_LIST(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_LIST))
+#define VALUE_IS_MAP(v) (VALUE_IS_POINTER(v) && (OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v)) == TYPE_MAP))
 #define VALUE_BOTH_FLOATS(a, b) (VALUE_IS_FLOAT(a) && VALUE_IS_FLOAT(b))
 #define VALUE_IS_INTEGER(v) ((v & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
 #define VALUE_BOTH_INTEGERS(a, b) ((a & b & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
 #define VALUE_ALL3_INTEGERS(a, b, c) ((a & b & c & (TAGGED_INTEGER_MASK | SIGN_MASK)) == TAGGED_INTEGER_MASK)
+#define OBJ_TYPEID(o) (o->head.typeId & TYPE_MASK)
 
 #define FMT_STRZ(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s }, .data2 = { .string = strlen(s) }})
 #define FMT_STR(s) ((FmtValue){ .type = FMT_TYPE_STRING, .data = { .string = s.ptr }, .data2 = { .string = s.len }})
@@ -136,7 +85,7 @@ static inline bool valueAssumeNotPtrIsStaticString(Value v) {
 static inline bool valueIsString(Value v) {
     if (VALUE_IS_POINTER(v)) {
         HeapObject* obj = VALUE_AS_HEAPOBJECT(v);
-        return (obj->head.typeId == TYPE_ASTRING) || (obj->head.typeId == TYPE_USTRING) || (obj->head.typeId == TYPE_STRING_SLICE);
+        return (OBJ_TYPEID(obj) == TYPE_ASTRING) || (OBJ_TYPEID(obj) == TYPE_USTRING) || (OBJ_TYPEID(obj) == TYPE_STRING_SLICE);
     } else {
         return valueAssumeNotPtrIsStaticString(v);
     }
@@ -146,7 +95,7 @@ static inline bool valueIsRawString(Value v) {
     if (!VALUE_IS_POINTER(v)) {
         return false;
     }
-    TypeId typeId = VALUE_AS_HEAPOBJECT(v)->head.typeId;
+    TypeId typeId = OBJ_TYPEID(VALUE_AS_HEAPOBJECT(v));
     return (typeId == TYPE_RAWSTRING) || (typeId == TYPE_RAWSTRING_SLICE);
 }
 
@@ -202,7 +151,7 @@ static inline void release(VM* vm, Value val) {
 }
 
 static inline void releaseObject(VM* vm, HeapObject* obj) {
-    VLOG("release obj: {}, rc={}\n", FMT_STR(getTypeName(vm, obj->head.typeId)), FMT_U32(obj->head.rc));
+    VLOG("release obj: {}, rc={}\n", FMT_STR(getTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
 #if (TRACE)
     zCheckDoubleFree(vm, obj);
 #endif
@@ -210,7 +159,7 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 #if TRACK_GLOBAL_RC
     #if TRACE
     if (vm->refCounts == 0) {
-        PRINT("Double free. {}\n", FMT_U32(obj->head.typeId));
+        PRINT("Double free. {}\n", FMT_U32(OBJ_TYPEID(obj)));
         zFatal();
     }
     #endif
@@ -229,7 +178,7 @@ static inline void retainObject(VM* vm, HeapObject* obj) {
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
-    VLOG("retain {} rc={}\n", FMT_STR(getTypeName(vm, obj->head.typeId)), FMT_U32(obj->head.rc));
+    VLOG("retain {} rc={}\n", FMT_STR(getTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
 #endif
 #if TRACK_GLOBAL_RC
     vm->refCounts += 1;
@@ -275,7 +224,7 @@ static inline TypeId getTypeId(Value val) {
     if (bits >= TAGGED_VALUE_MASK) {
         // Tagged.
         if (VALUE_IS_POINTER(val)) {
-            return VALUE_AS_HEAPOBJECT(val)->head.typeId;
+            return OBJ_TYPEID(VALUE_AS_HEAPOBJECT(val));
         } else {
             if (bits >= TAGGED_INTEGER_MASK) {
                 return TYPE_INTEGER;
@@ -308,10 +257,10 @@ static inline uint32_t stackOffset(VM* vm, Value* stack) {
 
 static inline uint8_t getFieldOffset(VM* vm, HeapObject* obj, uint32_t symId) {
     FieldSymbolMap* symMap = ((FieldSymbolMap*)vm->fieldSyms.buf) + symId;
-    if (obj->head.typeId == symMap->mruTypeId) {
+    if (OBJ_TYPEID(obj) == symMap->mruTypeId) {
         return (uint8_t)symMap->mruOffset;
     } else {
-        return zGetFieldOffsetFromTable(vm, obj->head.typeId, symId);
+        return zGetFieldOffsetFromTable(vm, OBJ_TYPEID(obj), symId);
     }
 }
 
@@ -348,19 +297,19 @@ static inline FuncSig getResolvedFuncSig(VM* vm, FuncSigId id) {
 
 static inline ValueResult allocObject(VM* vm, TypeId typeId, Value* fields, u8 numFields) {
     // First slot holds the typeId and rc.
-    HeapObjectResult res = zAllocExternalObject(vm, (1 + numFields) * sizeof(Value));
+    HeapObjectResult res = zAllocExternalCycObject(vm, (1 + numFields) * sizeof(Value));
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };
     }
     res.obj->object = (Object){
-        .typeId = typeId,
+        .typeId = typeId | CYC_TYPE_MASK,
         .rc = 1,
     };
 
     Value* dst = objectGetValuesPtr(&res.obj->object);
     memcpy(dst, fields, numFields * sizeof(Value));
 
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocEmptyMap(VM* vm) {
@@ -369,7 +318,7 @@ static inline ValueResult allocEmptyMap(VM* vm) {
         return (ValueResult){ .code = res.code };
     }
     res.obj->map = (Map){
-        .typeId = TYPE_MAP,
+        .typeId = TYPE_MAP | CYC_TYPE_MASK,
         .rc = 1,
         .inner = {
             .metadata = 0,
@@ -379,7 +328,7 @@ static inline ValueResult allocEmptyMap(VM* vm) {
             .available = 0,
         },
     };
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocClosure(
@@ -390,13 +339,13 @@ static inline ValueResult allocClosure(
     if (numCapturedVals <= 2) {
         res = zAllocPoolObject(vm);
     } else {
-        res = zAllocExternalObject(vm, (2 + numCapturedVals) * sizeof(Value));
+        res = zAllocExternalCycObject(vm, (2 + numCapturedVals) * sizeof(Value));
     }
     if (UNLIKELY(res.code != RES_CODE_SUCCESS)) {
         return (ValueResult){ .code = res.code };
     }
     res.obj->closure = (Closure){
-        .typeId = TYPE_CLOSURE,
+        .typeId = TYPE_CLOSURE | CYC_TYPE_MASK,
         .rc = 1,
         .funcPc = funcPc,
         .numParams = numParams,
@@ -417,7 +366,7 @@ static inline ValueResult allocClosure(
         retain(vm, fp[local]);
         dst[i] = fp[local];
     }
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocLambda(VM* vm, uint32_t funcPc, uint8_t numParams, uint8_t stackSize, uint16_t rFuncSigId) {
@@ -442,11 +391,11 @@ static inline ValueResult allocBox(VM* vm, Value val) {
         return (ValueResult){ .code = res.code };
     }
     res.obj->box = (Box){
-        .typeId = TYPE_BOX,
+        .typeId = TYPE_BOX | CYC_TYPE_MASK,
         .rc = 1,
         .val = val,
     };
-    return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
+    return (ValueResult){ .val = VALUE_CYCPTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
 static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId) {
@@ -1362,7 +1311,7 @@ beginSwitch:
         if (offset != NULL_U8) { \
             stack[dst] = objectGetField((Object*)obj, offset); \
             pc[0] = FIELD_BODY_IC_##v; \
-            WRITE_U16(5, obj->head.typeId); \
+            WRITE_U16(5, OBJ_TYPEID(obj)); \
             pc[7] = offset; \
         } else { \
             stack[dst] = zGetFieldFallback(vm, obj, ((FieldSymbolMap*)vm->fieldSyms.buf)[symId].nameId); \
@@ -1383,7 +1332,7 @@ beginSwitch:
         uint8_t dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (obj->head.typeId == READ_U16(5)) {
+            if (OBJ_TYPEID(obj) == READ_U16(5)) {
                 stack[dst] = objectGetField((Object*)obj, pc[7]);
                 pc += 8;
                 NEXT();
@@ -1407,7 +1356,7 @@ beginSwitch:
         uint8_t dst = pc[2];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (obj->head.typeId == READ_U16(5)) {
+            if (OBJ_TYPEID(obj) == READ_U16(5)) {
                 stack[dst] = objectGetField((Object*)obj, pc[7]);
                 retain(vm, stack[dst]);
                 pc += 8;
@@ -1599,7 +1548,7 @@ beginSwitch:
                 *lastValue = val;
 
                 pc[0] = CodeSetFieldReleaseIC;
-                WRITE_U16(4, obj->head.typeId);
+                WRITE_U16(4, OBJ_TYPEID(obj));
                 pc[6] = offset;
                 pc += 7;
                 NEXT();
@@ -1616,7 +1565,7 @@ beginSwitch:
         Value recv = stack[pc[1]];
         if (VALUE_IS_POINTER(recv)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(recv);
-            if (obj->head.typeId == READ_U16(4)) {
+            if (OBJ_TYPEID(obj) == READ_U16(4)) {
                 Value* lastValue = objectGetFieldPtr((Object*)obj, pc[6]);
                 release(vm, *lastValue);
                 *lastValue = stack[pc[2]];
@@ -1732,7 +1681,7 @@ beginSwitch:
         Value fiber = stack[pc[1]];
         if (VALUE_IS_POINTER(fiber)) {
             HeapObject* obj = VALUE_AS_HEAPOBJECT(fiber);
-            if (obj->head.typeId == TYPE_FIBER) {
+            if (OBJ_TYPEID(obj) == TYPE_FIBER) {
                 if ((Fiber*)obj != vm->curFiber) {
                     if (obj->fiber.pcOffset != NULL_U32) {
                         PcSp res = zPushFiber(vm, pcOffset(vm, pc + 3), stack, (Fiber*)obj, pc[2]);
@@ -1788,7 +1737,7 @@ beginSwitch:
 #endif
         HeapObject* obj = VALUE_AS_HEAPOBJECT(box);
 #if TRACE
-        ASSERT(obj->head.typeId == TYPE_BOX);
+        ASSERT(OBJ_TYPEID(obj) == TYPE_BOX);
 #endif
         obj->box.val = rval;
         pc += 3;
@@ -1802,7 +1751,7 @@ beginSwitch:
 #endif
         HeapObject* obj = VALUE_AS_HEAPOBJECT(box);
 #if TRACE
-        ASSERT(obj->head.typeId == TYPE_BOX);
+        ASSERT(OBJ_TYPEID(obj) == TYPE_BOX);
 #endif
         release(vm, obj->box.val);
         obj->box.val = rval;

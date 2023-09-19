@@ -122,8 +122,36 @@ pub const HeapObject = extern union {
     pointer: Pointer,
     metatype: MetaType,
 
+    pub inline fn getTypeId(self: HeapObject) u32 {
+        return self.head.typeId & vmc.TYPE_MASK;
+    }
+
+    pub inline fn isFreed(self: HeapObject) bool {
+        return self.head.typeId == cy.NullId;
+    }
+
+    pub inline fn isGcMarked(self: HeapObject) bool {
+        return (self.head.typeId & vmc.GC_MARK_MASK) == vmc.GC_MARK_MASK;
+    }
+
+    pub inline fn setGcMarked(self: *HeapObject) void {
+        self.head.typeId = self.head.typeId | vmc.GC_MARK_MASK;
+    }
+
+    pub inline fn resetGcMarked(self: *HeapObject) void {
+        self.head.typeId = self.head.typeId & ~vmc.GC_MARK_MASK;
+    }
+
+    pub inline fn isGcConfirmedCyc(self: *HeapObject) bool {
+        return (self.head.typeId & vmc.GC_MARK_CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
+    }
+
+    pub inline fn getDListNode(self: *HeapObject) *DListNode {
+        return @ptrCast(@as([*]DListNode, @ptrCast(self)) - 1);
+    }
+
     pub fn getUserTag(self: *const HeapObject) cy.ValueUserTag {
-        switch (self.head.typeId) {
+        switch (self.getTypeId()) {
             rt.ListT => return .list,
             rt.MapT => return .map,
             rt.AstringT => return .string,
@@ -159,7 +187,7 @@ pub const MetaType = extern struct {
 };
 
 pub const List = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     list: extern struct {
         ptr: [*]Value,
@@ -193,7 +221,7 @@ pub const List = extern struct {
 };
 
 pub const ListIterator = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     list: *List,
     nextIdx: u32,
@@ -201,7 +229,7 @@ pub const ListIterator = extern struct {
 
 pub const MapInner = cy.ValueMap;
 pub const Map = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     inner: extern struct {
         metadata: ?[*]u64,
@@ -233,14 +261,14 @@ pub const Map = extern struct {
 };
 
 pub const MapIterator = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     map: *Map,
     nextIdx: u32,
 };
 
 pub const Closure = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     funcPc: u32, 
     numParams: u8,
@@ -259,7 +287,7 @@ pub const Closure = extern struct {
 };
 
 const Lambda = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     funcPc: u32, 
     numParams: u8,
@@ -272,7 +300,7 @@ const Lambda = extern struct {
 pub const MaxPoolObjectAstringByteLen = 28;
 
 pub const Astring = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     len: u32,
     bufStart: u8,
@@ -292,7 +320,7 @@ pub const Astring = extern struct {
 pub const MaxPoolObjectUstringByteLen = 16;
 
 const Ustring = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     len: u32,
     charLen: u32,
@@ -328,7 +356,7 @@ pub const StringSlice = struct {
 pub const MaxPoolObjectRawStringByteLen = 28;
 
 pub const RawString = extern struct {
-    structId: if (cy.isWasm) rt.TypeId else rt.TypeId align(8),
+    typeId: if (cy.isWasm) rt.TypeId else rt.TypeId align(8),
     rc: u32,
     len: u32,
     bufStart: u8,
@@ -345,7 +373,7 @@ pub const RawString = extern struct {
 };
 
 const RawStringSlice = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     buf: [*]const u8,
     len: u32,
@@ -358,7 +386,7 @@ const RawStringSlice = extern struct {
 };
 
 pub const Object = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     firstValue: Value,
 
@@ -380,13 +408,13 @@ pub const Object = extern struct {
 };
 
 const Box = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     val: Value,
 };
 
 const NativeFunc1 = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     func: *const fn (*cy.UserVM, [*]const Value, u8) Value,
     numParams: u32,
@@ -396,14 +424,14 @@ const NativeFunc1 = extern struct {
 };
 
 const TccState = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     state: *tcc.TCCState,
     lib: *std.DynLib,
 };
 
 const File = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     readBuf: [*]u8,
     /// Can be up to 8 bytes on windows, otherwise 4 bytes.
@@ -433,7 +461,7 @@ const File = extern struct {
 };
 
 pub const DirIterator = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     dir: *Dir,
     inner: extern union {
@@ -445,7 +473,7 @@ pub const DirIterator = extern struct {
 };
 
 pub const Dir = extern struct {
-    structId: rt.TypeId align(8),
+    typeId: rt.TypeId align(8),
     rc: u32,
     /// Padding to make Dir.fd match the offset of File.fd.
     padding: usize = 0,
@@ -477,7 +505,7 @@ pub const Dir = extern struct {
 };
 
 pub const Pointer = extern struct {
-    structId: rt.TypeId,
+    typeId: rt.TypeId,
     rc: u32,
     ptr: ?*anyopaque,
 };
@@ -535,13 +563,36 @@ const HeapObjectList = struct {
     tail: *HeapObject,
 };
 
-pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
+pub const DListNode = extern struct {
+    prev: ?*DListNode,
+    next: ?*DListNode,
+
+    pub fn getHeapObject(self: *DListNode) *HeapObject {
+        return @ptrCast(@alignCast(@as([*]DListNode, @ptrCast(self)) + 1));
+    }
+};
+
+pub fn allocExternalObject(vm: *cy.VM, size: usize, comptime cyclable: bool) !*HeapObject {
     // Align with HeapObject so it can be casted.
-    const slice = try vm.alloc.alignedAlloc(u8, @alignOf(HeapObject), size);
+    const addToCyclableList = comptime (cy.hasGC and cyclable);
+    const slice = try vm.alloc.alignedAlloc(u8, @alignOf(HeapObject), if (addToCyclableList) size + @sizeOf(DListNode) else size);
     defer {
         if (cy.Trace) {
-            cy.heap.traceAlloc(vm, @ptrCast(slice.ptr));
+            if (addToCyclableList) {
+                cy.heap.traceAlloc(vm, @ptrCast(slice.ptr + @sizeOf(DListNode)));
+            } else {
+                cy.heap.traceAlloc(vm, @ptrCast(slice.ptr));
+            }
         }
+    }
+    if (addToCyclableList) {
+        const node: *DListNode = @ptrCast(slice.ptr);
+        vm.cyclableHead.prev = node;
+        node.* = .{
+            .prev = null,
+            .next = vm.cyclableHead,
+        };
+        vm.cyclableHead = node;
     }
     if (cy.TrackGlobalRC) {
         vm.refCounts += 1;
@@ -550,7 +601,11 @@ pub fn allocExternalObject(vm: *cy.VM, size: usize) !*HeapObject {
         vm.trace.numRetains += 1;
         vm.trace.numRetainAttempts += 1;
     }
-    return @ptrCast(slice.ptr);
+    if (addToCyclableList) {
+        return @ptrCast(slice.ptr + @sizeOf(DListNode));
+    } else {
+        return @ptrCast(slice.ptr);
+    }
 }
 
 /// Assumes new object will have an RC = 1.
@@ -598,30 +653,53 @@ pub fn allocPoolObject(self: *cy.VM) linksection(cy.HotSection) !*HeapObject {
     }
 }
 
-fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize) void {
+fn freeExternalObject(vm: *cy.VM, obj: *HeapObject, len: usize, comptime cyclable: bool) void {
+    // Unlink.
+    if (cy.hasGC) {
+        if (cyclable) {
+            const node = obj.getDListNode();
+            if (node.prev) |prev| {
+                prev.next = node.next;
+                if (node.next) |next| {
+                    next.prev = prev;
+                }
+            } else {
+                // It's the head.
+                vm.cyclableHead = node.next.?;
+                node.next.?.prev = null;
+            }
+        }
+    }
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
-            trace.freeTypeId = obj.head.typeId;
+            trace.freeTypeId = obj.getTypeId();
         } else {
-            log.debug("Missing object trace {*} {}", .{obj, obj.head.typeId});
+            log.debug("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
     }
-    const slice = @as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj))[0..len];
-    vm.alloc.free(slice);
+    if (cy.hasGC and cyclable) {
+        const slice = (@as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj)) - @sizeOf(DListNode))[0..len + @sizeOf(DListNode)];
+        vm.alloc.free(slice);
+    } else {
+        const slice = @as([*]align(@alignOf(HeapObject)) u8, @ptrCast(obj))[0..len];
+        vm.alloc.free(slice);
+    }
 }
 
+/// typeId should be cleared in trace mode since tracking may still hold a reference to the object.
+/// The gc also needs it for now to traverse objects in pages.
 pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
     if (cy.Trace) {
         if (vm.objectTraceMap.getPtr(obj)) |trace| {
             trace.freePc = vm.debugPc;
-            trace.freeTypeId = obj.head.typeId;
+            trace.freeTypeId = obj.getTypeId();
         } else {
-            log.debug("Missing object trace {*} {}", .{obj, obj.head.typeId});
+            log.debug("Missing object trace {*} {}", .{obj, obj.getTypeId()});
         }
     }
     const prev = &(@as([*]HeapObject, @ptrCast(obj)) - 1)[0];
-    if (prev.head.typeId == NullId) {
+    if (prev.freeSpan.typeId == NullId) {
         // Left is a free span. Extend length.
         prev.freeSpan.start.freeSpan.len += 1;
         obj.freeSpan.start = prev.freeSpan.start;
@@ -651,6 +729,7 @@ pub fn freePoolObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) v
                 .start = obj,
                 .next = vm.heapFreeHead,
             };
+            // Update MRU free list head.
             vm.heapFreeHead = obj;
         }
     }
@@ -670,7 +749,7 @@ pub fn allocMetaType(self: *cy.VM, symType: u8, symId: u32) !Value {
 pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = rt.ListT,
+        .typeId = rt.ListT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -678,13 +757,13 @@ pub fn allocEmptyList(self: *cy.VM) linksection(cy.Section) !Value {
             .cap = 0,
         },
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = rt.ListT,
+        .typeId = rt.ListT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = elems.ptr,
@@ -692,13 +771,13 @@ pub fn allocOwnedList(self: *cy.VM, elems: []Value) !Value {
             .cap = elems.len,
         },
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = rt.ListT,
+        .typeId = rt.ListT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -718,13 +797,13 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
             list.buf[i] = cy.value.shallowCopy(self, val);
         }
     }
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) !Value {
     const obj = try allocPoolObject(self);
     obj.list = .{
-        .structId = rt.ListT,
+        .typeId = rt.ListT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = .{
             .ptr = undefined,
@@ -737,25 +816,25 @@ pub fn allocList(self: *cy.VM, elems: []const Value) linksection(cy.HotSection) 
     try list.ensureTotalCapacityPrecise(self.alloc, elems.len);
     list.len = elems.len;
     std.mem.copy(Value, list.items(), elems);
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 /// Assumes list is already retained for the iterator.
 pub fn allocListIterator(self: *cy.VM, list: *List) linksection(cy.HotSection) !Value {
     const obj = try allocPoolObject(self);
     obj.listIter = .{
-        .structId = rt.ListIteratorT,
+        .typeId = rt.ListIteratorT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .list = list,
         .nextIdx = 0,
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocEmptyMap(self: *cy.VM) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
-        .structId = rt.MapT,
+        .typeId = rt.MapT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .inner = .{
             .metadata = null,
@@ -765,13 +844,13 @@ pub fn allocEmptyMap(self: *cy.VM) !Value {
             .available = 0,
         },
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.map = .{
-        .structId = rt.MapT,
+        .typeId = rt.MapT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .inner = .{
             .metadata = null,
@@ -796,19 +875,19 @@ pub fn allocMap(self: *cy.VM, keyIdxs: []const align(1) u16, vals: []const Value
         }
     }
 
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 /// Assumes map is already retained for the iterator.
 pub fn allocMapIterator(self: *cy.VM, map: *Map) linksection(cy.HotSection) !Value {
     const obj = try allocPoolObject(self);
     obj.mapIter = .{
-        .structId = rt.MapIteratorT,
+        .typeId = rt.MapIteratorT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .map = map,
         .nextIdx = 0,
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 /// Captured values are retained during alloc.
@@ -823,7 +902,7 @@ pub fn allocClosure(
         obj = try allocExternalObject(self, (2 + capturedVals.len) * @sizeOf(Value));
     }
     obj.closure = .{
-        .structId = rt.ClosureT,
+        .typeId = rt.ClosureT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .funcPc = @intCast(funcPc),
         .numParams = numParams,
@@ -843,13 +922,13 @@ pub fn allocClosure(
         cy.arc.retain(self, fp[local.val]);
         dst[i] = fp[local.val];
     }
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocLambda(self: *cy.VM, funcPc: usize, numParams: u8, stackSize: u8, funcSigId: u16) !Value {
     const obj = try allocPoolObject(self);
     obj.lambda = .{
-        .structId = rt.LambdaT,
+        .typeId = rt.LambdaT,
         .rc = 1,
         .funcPc = @intCast(funcPc),
         .numParams = numParams,
@@ -888,10 +967,10 @@ pub fn allocRawStringConcat(self: *cy.VM, str: []const u8, str2: []const u8) lin
     if (len <= MaxPoolObjectRawStringByteLen) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, len + RawString.BufOffset);
+        obj = try allocExternalObject(self, len + RawString.BufOffset, false);
     }
     obj.rawstring = .{
-        .structId = rt.RawstringT,
+        .typeId = rt.RawstringT,
         .rc = 1,
         .len = len,
         .bufStart = undefined,
@@ -1082,10 +1161,10 @@ pub fn allocUnsetAstringObject(self: *cy.VM, len: usize) linksection(cy.Section)
     if (len <= MaxPoolObjectAstringByteLen) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, len + Astring.BufOffset);
+        obj = try allocExternalObject(self, len + Astring.BufOffset, false);
     }
     obj.astring = .{
-        .structId = rt.AstringT,
+        .typeId = rt.AstringT,
         .rc = 1,
         .len = @intCast(len),
         .bufStart = undefined,
@@ -1146,10 +1225,10 @@ pub fn allocUnsetUstringObject(self: *cy.VM, len: usize, charLen: u32) linksecti
     if (len <= MaxPoolObjectUstringByteLen) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, len + Ustring.BufOffset);
+        obj = try allocExternalObject(self, len + Ustring.BufOffset, false);
     }
     obj.ustring = .{
-        .structId = rt.UstringT,
+        .typeId = rt.UstringT,
         .rc = 1,
         .len = @intCast(len),
         .charLen = charLen,
@@ -1195,10 +1274,10 @@ pub fn allocUnsetRawStringObject(self: *cy.VM, len: usize) linksection(cy.Sectio
     if (len <= MaxPoolObjectRawStringByteLen) {
         obj = try allocPoolObject(self);
     } else {
-        obj = try allocExternalObject(self, len + RawString.BufOffset);
+        obj = try allocExternalObject(self, len + RawString.BufOffset, false);
     }
     obj.rawstring = .{
-        .structId = rt.RawstringT,
+        .typeId = rt.RawstringT,
         .rc = 1,
         .len = @intCast(len),
         .bufStart = undefined,
@@ -1216,7 +1295,7 @@ pub fn allocRawString(self: *cy.VM, str: []const u8) linksection(cy.Section) !Va
 pub fn allocRawStringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject) !Value {
     const obj = try allocPoolObject(self);
     obj.rawstringSlice = .{
-        .structId = rt.RawstringSliceT,
+        .typeId = rt.RawstringSliceT,
         .rc = 1,
         .buf = slice.ptr,
         .len = @intCast(slice.len),
@@ -1228,17 +1307,17 @@ pub fn allocRawStringSlice(self: *cy.VM, slice: []const u8, parent: *HeapObject)
 pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     const obj = try allocPoolObject(vm);
     obj.box = .{
-        .structId = rt.BoxT,
+        .typeId = rt.BoxT | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .val = val,
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
-        .structId = rt.NativeFuncT,
+        .typeId = rt.NativeFuncT,
         .rc = 1,
         .func = func,
         .numParams = numParams,
@@ -1256,7 +1335,7 @@ pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Valu
 pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.tccState = .{
-        .structId = rt.TccStateT,
+        .typeId = rt.TccStateT,
         .rc = 1,
         .state = state,
         .lib = lib,
@@ -1267,7 +1346,7 @@ pub fn allocTccState(self: *cy.VM, state: *tcc.TCCState, lib: *std.DynLib) links
 pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
     const obj = try allocPoolObject(self);
     obj.pointer = .{
-        .structId = rt.PointerT,
+        .typeId = rt.PointerT,
         .rc = 1,
         .ptr = ptr,
     };
@@ -1277,7 +1356,7 @@ pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
 pub fn allocFile(self: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.file = .{
-        .structId = rt.FileT,
+        .typeId = rt.FileT,
         .rc = 1,
         .fd = fd,
         .curPos = 0,
@@ -1294,7 +1373,7 @@ pub fn allocFile(self: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Valu
 pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.StdSection) !Value {
     const obj = try allocPoolObject(self);
     obj.dir = .{
-        .structId = rt.DirT,
+        .typeId = rt.DirT,
         .rc = 1,
         .fd = fd,
         .iterable = iterable,
@@ -1304,9 +1383,9 @@ pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.St
 }
 
 pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy.StdSection) !Value {
-    const obj: *cy.DirIterator = @ptrCast(try allocExternalObject(self, @sizeOf(cy.DirIterator)));
+    const obj: *cy.DirIterator = @ptrCast(try allocExternalObject(self, @sizeOf(cy.DirIterator), false));
     obj.* = .{
-        .structId = rt.DirIteratorT,
+        .typeId = rt.DirIteratorT,
         .rc = 1,
         .dir = dir,
         .inner = undefined,
@@ -1324,34 +1403,34 @@ pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy
 
 /// Allocates an object outside of the object pool.
 pub fn allocObject(self: *cy.VM, sid: rt.TypeId, fields: []const Value) !Value {
-    // First slot holds the structId and rc.
-    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + fields.len) * @sizeOf(Value)));
+    // First slot holds the typeId and rc.
+    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + fields.len) * @sizeOf(Value), true));
     obj.* = .{
-        .structId = sid,
+        .typeId = sid | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
     const dst = obj.getValuesPtr();
     std.mem.copy(Value, dst[0..fields.len], fields);
 
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocEmptyObject(self: *cy.VM, sid: rt.TypeId, numFields: u32) !Value {
-    // First slot holds the structId and rc.
-    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + numFields) * @sizeOf(Value)));
+    // First slot holds the typeId and rc.
+    const obj: *Object = @ptrCast(try allocExternalObject(self, (1 + numFields) * @sizeOf(Value), true));
     obj.* = .{
-        .structId = sid,
+        .typeId = sid | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocObjectSmall(self: *cy.VM, sid: rt.TypeId, fields: []const Value) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
-        .structId = sid,
+        .typeId = sid | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
@@ -1359,17 +1438,17 @@ pub fn allocObjectSmall(self: *cy.VM, sid: rt.TypeId, fields: []const Value) !Va
     const dst = obj.object.getValuesPtr();
     std.mem.copy(Value, dst[0..fields.len], fields);
 
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocEmptyObjectSmall(self: *cy.VM, sid: rt.TypeId) !Value {
     const obj = try allocPoolObject(self);
     obj.object = .{
-        .structId = sid,
+        .typeId = sid | vmc.CYC_TYPE_MASK,
         .rc = 1,
         .firstValue = undefined,
     };
-    return Value.initPtr(obj);
+    return Value.initCycPtr(obj);
 }
 
 pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
@@ -1395,196 +1474,302 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
     }
 }
 
-pub fn freeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
+/// Use comptime options to keep closely related logic together.
+/// TODO: flatten recursion.
+pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
+    comptime freeChildren: bool, comptime skipCycChildren: bool, comptime free: bool, comptime trackFrees: bool,
+) linksection(cy.HotSection) void {
     if (cy.Trace) {
-        if (obj.head.typeId == cy.NullId) {
+        if (obj.isFreed()) {
             cy.panicFmt("Double free object: {*} Should have been discovered in release op.", .{obj});
         } else {
-            if (cy.verbose) {
-                log.debug("free type={}({s})", .{
-                    obj.head.typeId, vm.getTypeName(obj.head.typeId),
-                });
-            }
+            log.tracev("free type={}({s})", .{
+                obj.getTypeId(), vm.getTypeName(obj.getTypeId()),
+            });
         }
     }
-    switch (obj.head.typeId) {
+    switch (obj.getTypeId()) {
         rt.ListT => {
             const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-            for (list.items()) |it| {
-                cy.arc.release(vm, it);
+            if (freeChildren) {
+                for (list.items()) |it| {
+                    if (skipCycChildren and it.isGcConfirmedCyc()) {
+                        continue;
+                    }
+                    cy.arc.releaseExt(vm, it, trackFrees);
+                }
             }
-            list.deinit(vm.alloc);
-            freePoolObject(vm, obj);
+            if (free) {
+                list.deinit(vm.alloc);
+                freePoolObject(vm, obj);
+            }
         },
         rt.ListIteratorT => {
-            cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list));
-            freePoolObject(vm, obj);
+            if (freeChildren) {
+                if (skipCycChildren) {
+                    if (!@as(*HeapObject, @ptrCast(@alignCast(obj.listIter.list))).isGcConfirmedCyc()) {
+                        cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list), trackFrees);
+                    }
+                } else {
+                    cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list), trackFrees);
+                }
+            }
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.MapT => {
             const map = cy.ptrAlignCast(*MapInner, &obj.map.inner);
-            var iter = map.iterator();
-            while (iter.next()) |entry| {
-                cy.arc.release(vm, entry.key);
-                cy.arc.release(vm, entry.value);
+            if (freeChildren) {
+                var iter = map.iterator();
+                while (iter.next()) |entry| {
+                    if (skipCycChildren) {
+                        if (!entry.key.isGcConfirmedCyc()) {
+                            cy.arc.releaseExt(vm, entry.key, trackFrees);
+                        }
+                        if (!entry.value.isGcConfirmedCyc()) {
+                            cy.arc.releaseExt(vm, entry.value, trackFrees);
+                        }
+                    } else {
+                        cy.arc.releaseExt(vm, entry.key, trackFrees);
+                        cy.arc.releaseExt(vm, entry.value, trackFrees);
+                    }
+                }
             }
-            map.deinit(vm.alloc);
-            freePoolObject(vm, obj);
+            if (free) {
+                map.deinit(vm.alloc);
+                freePoolObject(vm, obj);
+            }
         },
         rt.MapIteratorT => {
-            cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map));
-            freePoolObject(vm, obj);
+            if (freeChildren) {
+                if (skipCycChildren) {
+                    if (!@as(*HeapObject, @ptrCast(@alignCast(obj.mapIter.map))).isGcConfirmedCyc()) {
+                        cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map), trackFrees);
+                    }
+                } else {
+                    cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map), trackFrees);
+                }
+            }
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.ClosureT => {
-            const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
-            for (src) |capturedVal| {
-                cy.arc.release(vm, capturedVal);
+            if (freeChildren) {
+                const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
+                for (src) |capturedVal| {
+                    if (skipCycChildren and capturedVal.isGcConfirmedCyc()) {
+                        continue;
+                    }
+                    cy.arc.releaseExt(vm, capturedVal, trackFrees);
+                }
             }
-            if (obj.closure.numCaptured <= 3) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, (2 + obj.closure.numCaptured) * @sizeOf(Value));
+            if (free) {
+                if (obj.closure.numCaptured <= 3) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, (2 + obj.closure.numCaptured) * @sizeOf(Value), true);
+                }
             }
         },
         rt.LambdaT => {
-            freePoolObject(vm, obj);
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.AstringT => {
-            if (obj.astring.len <= DefaultStringInternMaxByteLen) {
-                // Check both the key and value to make sure this object is the intern entry.
-                const key = obj.astring.getConstSlice();
-                if (vm.strInterns.get(key)) |val| {
-                    if (val == obj) {
-                        _ = vm.strInterns.remove(key);
+            if (free) {
+                if (obj.astring.len <= DefaultStringInternMaxByteLen) {
+                    // Check both the key and value to make sure this object is the intern entry.
+                    const key = obj.astring.getConstSlice();
+                    if (vm.strInterns.get(key)) |val| {
+                        if (val == obj) {
+                            _ = vm.strInterns.remove(key);
+                        }
                     }
                 }
-            }
-            if (obj.astring.len <= MaxPoolObjectAstringByteLen) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, Astring.BufOffset + obj.astring.len);
+                if (obj.astring.len <= MaxPoolObjectAstringByteLen) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, Astring.BufOffset + obj.astring.len, false);
+                }
             }
         },
         rt.UstringT => {
-            if (obj.ustring.len <= DefaultStringInternMaxByteLen) {
-                const key = obj.ustring.getConstSlice();
-                if (vm.strInterns.get(key)) |val| {
-                    if (val == obj) {
-                        _ = vm.strInterns.remove(key);
+            if (free) {
+                if (obj.ustring.len <= DefaultStringInternMaxByteLen) {
+                    const key = obj.ustring.getConstSlice();
+                    if (vm.strInterns.get(key)) |val| {
+                        if (val == obj) {
+                            _ = vm.strInterns.remove(key);
+                        }
                     }
                 }
-            }
-            if (obj.ustring.len <= MaxPoolObjectUstringByteLen) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, Ustring.BufOffset + obj.ustring.len);
+                if (obj.ustring.len <= MaxPoolObjectUstringByteLen) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, Ustring.BufOffset + obj.ustring.len, false);
+                }
             }
         },
         rt.StringSliceT => {
-            if (cy.heap.StringSlice.getParentPtr(obj.stringSlice)) |parent| {
-                cy.arc.releaseObject(vm, parent);
+            if (freeChildren) {
+                if (cy.heap.StringSlice.getParentPtr(obj.stringSlice)) |parent| {
+                    cy.arc.releaseObjectExt(vm, parent, trackFrees);
+                }
             }
-            freePoolObject(vm, obj);
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.RawstringT => {
-            if (obj.rawstring.len <= MaxPoolObjectRawStringByteLen) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, RawString.BufOffset + obj.rawstring.len);
+            if (free) {
+                if (obj.rawstring.len <= MaxPoolObjectRawStringByteLen) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, RawString.BufOffset + obj.rawstring.len, false);
+                }
             }
         },
         rt.RawstringSliceT => {
-            const parent: *cy.HeapObject = @ptrCast(obj.rawstringSlice.parent);
-            cy.arc.releaseObject(vm, parent);
-            freePoolObject(vm, obj);
+            if (freeChildren) {
+                const parent: *cy.HeapObject = @ptrCast(obj.rawstringSlice.parent);
+                cy.arc.releaseObjectExt(vm, parent, trackFrees);
+            }
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.FiberT => {
-            const fiber: *vmc.Fiber = @ptrCast(obj);
-            cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
-                cy.panicFmt("release fiber: {}", .{err});
-            };
-            freeExternalObject(vm, obj, @sizeOf(vmc.Fiber));
+            if (freeChildren) {
+                const fiber: *vmc.Fiber = @ptrCast(obj);
+                // TODO: isCyc + trackFrees.
+                cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
+                    cy.panicFmt("release fiber: {}", .{err});
+                };
+            }
+            if (free) {
+                freeExternalObject(vm, obj, @sizeOf(vmc.Fiber), true);
+            }
         },
         rt.BoxT => {
-            cy.arc.release(vm, obj.box.val);
-            freePoolObject(vm, obj);
+            if (freeChildren) {
+                if (skipCycChildren) {
+                    if (!obj.box.val.isGcConfirmedCyc()) {
+                        cy.arc.releaseExt(vm, obj.box.val, trackFrees);
+                    }
+                } else {
+                    cy.arc.releaseExt(vm, obj.box.val, trackFrees);
+                }
+            }
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.NativeFuncT => {
-            if (obj.nativeFunc1.hasTccState) {
-                cy.arc.releaseObject(vm, obj.nativeFunc1.tccState.asHeapObject());
+            if (freeChildren) {
+                if (obj.nativeFunc1.hasTccState) {
+                    cy.arc.releaseObjectExt(vm, obj.nativeFunc1.tccState.asHeapObject(), trackFrees);
+                }
             }
-            freePoolObject(vm, obj);
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.TccStateT => {
             if (cy.hasJit) {
-                tcc.tcc_delete(obj.tccState.state);
-                obj.tccState.lib.close();
-                vm.alloc.destroy(obj.tccState.lib);
-                freePoolObject(vm, obj);
+                if (free) {
+                    tcc.tcc_delete(obj.tccState.state);
+                    obj.tccState.lib.close();
+                    vm.alloc.destroy(obj.tccState.lib);
+                    freePoolObject(vm, obj);
+                }
             } else {
                 unreachable;
             }
         },
         rt.PointerT => {
-            freePoolObject(vm, obj);
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         rt.FileT => {
-            if (cy.hasStdFiles) {
-                if (obj.file.hasReadBuf) {
-                    vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
+            if (free) {
+                if (cy.hasStdFiles) {
+                    if (obj.file.hasReadBuf) {
+                        vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
+                    }
+                    obj.file.close();
                 }
-                obj.file.close();
+                freePoolObject(vm, obj);
             }
-            freePoolObject(vm, obj);
         },
         rt.DirT => {
-            if (cy.hasStdFiles) {
-                obj.dir.close();
+            if (free) {
+                if (cy.hasStdFiles) {
+                    obj.dir.close();
+                }
+                freePoolObject(vm, obj);
             }
-            freePoolObject(vm, obj);
         },
         rt.DirIteratorT => {
             if (cy.hasStdFiles) {
                 var dir: *DirIterator = @ptrCast(obj);
-                if (dir.recursive) {
-                    const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
-                    walker.deinit();   
+                if (free) {
+                    if (dir.recursive) {
+                        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
+                        walker.deinit();   
+                    }
                 }
-                cy.arc.releaseObject(vm, @ptrCast(dir.dir));
+                if (freeChildren) {
+                    cy.arc.releaseObjectExt(vm, @ptrCast(dir.dir), trackFrees);
+                }
             }
-            freeExternalObject(vm, obj, @sizeOf(DirIterator));
+            if (free) {
+                freeExternalObject(vm, obj, @sizeOf(DirIterator), false);
+            }
         },
         rt.MetaTypeT => {
-            freePoolObject(vm, obj);
+            if (free) {
+                freePoolObject(vm, obj);
+            }
         },
         else => {
             // Struct deinit.
             if (cy.Trace) {
-
                 if (cy.verbose) {
-                    log.debug("free {s}", .{vm.getTypeName(obj.head.typeId)});
+                    log.debug("free {s}", .{vm.getTypeName(obj.getTypeId())});
                 }
 
                 // Check range.
-                if (obj.head.typeId >= vm.types.len) {
-                    log.debug("unsupported struct type {}", .{obj.head.typeId});
+                if (obj.getTypeId() >= vm.types.len) {
+                    log.debug("unsupported struct type {}", .{obj.getTypeId()});
                     cy.fatal();
                 }
             }
-            const numFields = vm.types.buf[obj.head.typeId].numFields;
-            for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                cy.arc.release(vm, child);
+            const numFields = vm.types.buf[obj.getTypeId()].numFields;
+            if (freeChildren) {
+                for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
+                    if (skipCycChildren and child.isGcConfirmedCyc()) {
+                        continue;
+                    }
+                    cy.arc.releaseExt(vm, child, trackFrees);
+                }
             }
-            if (numFields <= 4) {
-                freePoolObject(vm, obj);
-            } else {
-                freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value));
+            if (free) {
+                if (numFields <= 4) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                }
             }
         },
     }
 }
 
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
-    // log.debug("alloc {*} {} {}", .{ptr, ptr.head.typeId, vm.debugPc});
+    // log.debug("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.debugPc});
     vm.objectTraceMap.put(vm.alloc, ptr, .{
         .allocPc = vm.debugPc,
         .freePc = cy.NullId,
@@ -1616,10 +1801,10 @@ test "Free object invalidation." {
         try t.eq(obj2.head.typeId, cy.NullId);
 
         // Free external object invalidates object pointer.
-        obj = try allocExternalObject(&vm, 40);
+        obj = try allocExternalObject(&vm, 40, false);
         obj.head.typeId = 100;
         vm.debugPc = 123;
-        freeExternalObject(&vm, obj, 40);
+        freeExternalObject(&vm, obj, 40, false);
         try t.eq(cy.arc.isObjectAlreadyFreed(&vm, obj), true);
     }
 }
@@ -1630,12 +1815,47 @@ test "heap internals." {
         try t.eq(@alignOf(List), 4);
         try t.eq(@alignOf(ListIterator), 4);
         try t.eq(@alignOf(DirIterator), 4);
+        try t.eq(@sizeOf(List), 20);
+        try t.eq(@sizeOf(ListIterator), 16);
+        try t.eq(@sizeOf(Map), 32);
+        try t.eq(@sizeOf(MapIterator), 16);
+        try t.eq(@sizeOf(RawStringSlice), 24);
+        try t.eq(@sizeOf(Pointer), 12);
     } else {
         try t.eq(@sizeOf(MapInner), 32);
         try t.eq(@alignOf(List), 8);
         try t.eq(@alignOf(ListIterator), 8);
         try t.eq(@alignOf(DirIterator), 8);
+
+        if (builtin.os.tag != .windows) {
+            try t.eq(@sizeOf(List), 32);
+            try t.eq(@sizeOf(ListIterator), 24);
+            try t.eq(@sizeOf(Map), 40);
+            try t.eq(@sizeOf(MapIterator), 24);
+            try t.eq(@sizeOf(RawStringSlice), 32);
+            try t.eq(@sizeOf(Pointer), 16);
+        }
     }
+    if (builtin.os.tag != .windows) {
+        try t.eq(@sizeOf(Closure), 32);
+        try t.eq(@sizeOf(Lambda), 24);
+        try t.eq(@sizeOf(Astring), 16);
+        try t.eq(@sizeOf(Ustring), 28);
+        try t.eq(@sizeOf(vmc.StringSlice), 40);
+        try t.eq(@sizeOf(RawString), 16);
+        try t.eq(@sizeOf(Object), 16);
+        try t.eq(@sizeOf(Box), 16);
+        try t.eq(@sizeOf(NativeFunc1), 40);
+        try t.eq(@sizeOf(MetaType), 16);
+        if (cy.hasJit) {
+            try t.eq(@sizeOf(TccState), 24);
+        }
+        if (cy.hasStdFiles) {
+            try t.eq(@sizeOf(File), 40);
+            try t.eq(@sizeOf(Dir), 24);
+        }
+    }
+
     try t.eq(@sizeOf(HeapObject), 40);
     try t.eq(@alignOf(HeapObject), 8);
     try t.eq(@sizeOf(HeapPage), 40 * 102);
@@ -1646,39 +1866,39 @@ test "heap internals." {
 
     try t.eq(@alignOf(Dir), 8);
     var dir: Dir = undefined;
-    try t.eq(@intFromPtr(&dir.structId), @intFromPtr(&dir));
+    try t.eq(@intFromPtr(&dir.typeId), @intFromPtr(&dir));
     try t.eq(@intFromPtr(&dir.rc), @intFromPtr(&dir) + 4);
 
     var dirIter: DirIterator = undefined;
-    try t.eq(@intFromPtr(&dirIter.structId), @intFromPtr(&dirIter));
+    try t.eq(@intFromPtr(&dirIter.typeId), @intFromPtr(&dirIter));
     try t.eq(@intFromPtr(&dirIter.rc), @intFromPtr(&dirIter) + 4);
 
     const rstr = RawString{
-        .structId = rt.RawstringT,
+        .typeId = rt.RawstringT,
         .rc = 1,
         .len = 1,
         .bufStart = undefined,
     };
-    try t.eq(@intFromPtr(&rstr.structId), @intFromPtr(&rstr));
+    try t.eq(@intFromPtr(&rstr.typeId), @intFromPtr(&rstr));
     try t.eq(@intFromPtr(&rstr.rc), @intFromPtr(&rstr) + 4);
     try t.eq(@intFromPtr(&rstr.len), @intFromPtr(&rstr) + 8);
     try t.eq(RawString.BufOffset, 12);
     try t.eq(@intFromPtr(&rstr.bufStart), @intFromPtr(&rstr) + RawString.BufOffset);
 
     const astr = Astring{
-        .structId = rt.AstringT,
+        .typeId = rt.AstringT,
         .rc = 1,
         .len = 1,
         .bufStart = undefined,
     };
-    try t.eq(@intFromPtr(&astr.structId), @intFromPtr(&astr));
+    try t.eq(@intFromPtr(&astr.typeId), @intFromPtr(&astr));
     try t.eq(@intFromPtr(&astr.rc), @intFromPtr(&astr) + 4);
     try t.eq(@intFromPtr(&astr.len), @intFromPtr(&astr) + 8);
     try t.eq(Astring.BufOffset, 12);
     try t.eq(@intFromPtr(&astr.bufStart), @intFromPtr(&astr) + Astring.BufOffset);
 
     const ustr = Ustring{
-        .structId = rt.UstringT,
+        .typeId = rt.UstringT,
         .rc = 1,
         .len = 1,
         .charLen = 1,
@@ -1686,7 +1906,7 @@ test "heap internals." {
         .mruCharIdx = 0,
         .bufStart = undefined,
     };
-    try t.eq(@intFromPtr(&ustr.structId), @intFromPtr(&ustr));
+    try t.eq(@intFromPtr(&ustr.typeId), @intFromPtr(&ustr));
     try t.eq(@intFromPtr(&ustr.rc), @intFromPtr(&ustr) + 4);
     try t.eq(@intFromPtr(&ustr.len), @intFromPtr(&ustr) + 8);
     try t.eq(@intFromPtr(&ustr.charLen), @intFromPtr(&ustr) + 12);
@@ -1695,6 +1915,6 @@ test "heap internals." {
     try t.eq(Ustring.BufOffset, 24);
     try t.eq(@intFromPtr(&ustr.bufStart), @intFromPtr(&ustr) + Ustring.BufOffset);
 
-    try t.eq(@offsetOf(List, "structId"), 0);    
+    try t.eq(@offsetOf(List, "typeId"), 0);    
     try t.eq(@offsetOf(List, "rc"), 4);    
 }

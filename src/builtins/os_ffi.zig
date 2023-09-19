@@ -477,7 +477,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
         \\#define int16_t short
         \\#define uint16_t unsigned short
         \\#define uint32_t unsigned int
-        \\#define PointerMask 0xFFFC000000000000
+        \\#define PointerMask 0xFFFE000000000000
         \\typedef struct UserVM *UserVM;
         \\extern void icyRelease(UserVM*, uint64_t);
         \\extern void* icyGetPtr(uint64_t);

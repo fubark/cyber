@@ -6,6 +6,7 @@ weight: 9
 
 # Type System.
 Cyber supports gradual typing which allows the use of both dynamically and statically typed code.
+> _Incomplete: Types in general is in development. One of the goals of Cyber is to let dynamic code mix with typed code. At the moment, there are places where it works and other places where it won't. Keep that in mind when using types._
 
 Dynamic typing can reduce the amount of friction when writing code, but it can also result in more runtime errors.
 Gradual typing allows you to add static typing incrementally which provides compile-time guarantees and prevents runtime errors.
@@ -75,6 +76,7 @@ type Student object:    -- Creates a new type named `Student`
 ```
 
 When a type specifier follows a variable name, it declares the variable with the type. Any operation afterwards that violates the type constraint will result in a compile error.
+> _Incomplete: Only function parameter and object member type specifiers have meaning to the VM at the moment. Variable type specifiers have no meaning and will be discarded._
 ```cy
 a float = 123
 a = 'hello'        -- CompileError. Type mismatch.
@@ -103,6 +105,12 @@ type Node object:
     val any
     next Node      -- Valid type specifier.
 ```
+
+## Union types.
+> _Planned Feature_
+
+## Interfaces.
+> _Planned Feature_
 
 ## Type aliases.
 A type alias is declared from a single line `type` statement. This creates a new type symbol for an existing data type.

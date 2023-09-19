@@ -7,7 +7,7 @@ weight: 4
 In Cyber, there are first-class functions (or function values) and static functions.
 
 ## Static Functions.
-Static functions are not initally values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
+Static functions are not initially values themselves. They allow function calls to be optimal since they don't need to resolve a dynamic value.
 
 Static functions are declared with the `func` keyword and must have a name.
 ```cy
@@ -123,6 +123,15 @@ func foo():
     print a       -- Compile Error: Can't reference local from static function.
 ```
 
+## Named Parameters.
+> _Planned Feature_
+
+## Optional Parameters.
+> _Planned Feature_
+
+## Variadic Parameters.
+> _Planned Feature_
+
 ## Function Calls.
 The straightforward way to call a function is to use parentheses.
 
@@ -136,6 +145,7 @@ var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
 ```
 
 The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:
+> _Incomplete: Only the most trivial cases work with the shorthand method. The case with operators being separated by spaces might not end up being implemented._
 ```cy
 var d = dist 100 100 200 200  -- Calls the function `dist`.
 
@@ -168,6 +178,7 @@ a = myFunc 'hello' (otherFunc 1+2 'world')
 ```
 
 The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the `..` syntax. Arguments mapped to named parameters have a key value syntax separated by a `:`. All other arguments are added into a list and passed as the last argument.
+> _Planned Feature_
 ```cy
 foo(123):
     ..func ():

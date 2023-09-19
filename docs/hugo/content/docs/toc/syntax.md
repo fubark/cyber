@@ -55,7 +55,7 @@ var a = 123
 a = 234
 ```
 
-Variables from parent main/function blocks can be shadowed.
+A new variable can be declared in function blocks with the same name as a variable from a parent block.
 ```cy
 var a = 123
 foo = func():
@@ -73,7 +73,10 @@ if true:
     var a = 234 
 ```
 
-When a parent local is referenced in an anonymous function, the variable is automatically captured. Note that static functions can not capture parent locals.
+When a parent local is referenced in a [lambda function]({{<relref "/docs/toc/functions#lambdas">}}), the variable is automatically captured. Note that [static functions]({{<relref "/docs/toc/functions#static-functions">}}) can not capture parent locals.
+
+> _Incomplete: Only variables one parent block away can be captured._
+
 ```cy
 var a = 123
 var foo = func():
@@ -85,6 +88,7 @@ print a      -- '234'
 ### Static Variables.
 Static variables live until the end of the script.
 They act as global variables and are visible from anywhere in the script. 
+
 Static variables are also declared with `var` but `:` is used instead of `=` to initialize a value to them.
 ```cy
 var a: 123
@@ -92,9 +96,10 @@ func foo():
     print a     -- '123'
 ```
 
-Static variables are always exported from the current script. You can read more about exports and [Modules](#modules).
+Static variables are always exported from the current script. You can read more about exports and [Modules]({{<relref "/docs/toc/modules">}}).
 
 When declared in functions, static variables are initialized once and continue to exist for subsequent function calls.
+> _Planned Feature_
 ```cy
 func add(a):
     var sum: 0
@@ -104,7 +109,7 @@ print add(5)     -- '5'
 print add(5)     -- '10'
 ```
 
-Since static variable declarations are initialized outside of the normal execution flow, they can not reference any local variables.
+Since static variable declarations are initialized outside of a fiber's execution flow, they can not reference any local variables.
 ```cy
 var a = 123
 var b: a      -- Compile error, initializer can not reference a local variable.
@@ -143,6 +148,7 @@ var b: a
 
 Sometimes, you may want to initialize a static variable by executing multiple statements in order.
 For this use case, you can use a declaration block.
+> _Planned Feature_
 ```cy
 var myImage:
     var img = loadImage('me.png')
@@ -194,19 +200,25 @@ The following arithmetic operators are supported for the [numeric data types]({{
 ### Comparison Operators.
 
 Cyber supports the following comparison operators.
-A comparison expression always evaluates to a [Boolean]({{<relref "/docs/toc/data-types#booleans">}}) value.
+By default, a comparison operator evaluates to a [Boolean]({{<relref "/docs/toc/data-types#booleans">}}) value.
 
-The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object. The not equals operator returns true if the two values are not equal.
+The equals operator returns true if the two values are equal. For primitive types, the comparison checks the types and the underlying value. For strings, the underlying bytes are compared for equality. For objects, the comparison checks that the two values reference the same object.
 ```cy
 1 == 1      -- Evaluates to `true`
 1 == 2      -- Evaluates to `false`
 1 == true   -- Evaluates to `false`
 
+var a = 'abc'
+a == 'abc'  -- Evaluates to `true`
+
 a = []
 b = a
 a == b      -- Evaluates to `true`
 a == []     -- Evaluates to `false`
+```
 
+The not equals operator returns true if the two values are not equal.
+```cy
 1 != 1      -- Evaluates to `false`
 1 != 2      -- Evaluates to `true`
 ```
@@ -223,7 +235,7 @@ a <= b   -- `true` if a is less than or equal to b
 
 The logical operators `and`, `or`, and `not` are supported.
 
-`and` evaluates to `a` if `a` is not truthy. Otherwise, it evaluates to `b`. If `a` is not truthy, the evaluation of `b` is not executed. A number value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.
+`and` evaluates to `a` if `a` is not truthy. Otherwise, it evaluates to `b`. If `a` is not truthy, the evaluation of `b` is not executed. A numeric value that isn't 0 is truthy. An object reference is always truthy. The none value is not truthy.
 ```cy
 true and true  -- Evaluates to true
 123 and 234    -- Evaluates to 234
@@ -249,7 +261,7 @@ not 123       -- Evaluates to false
 
 ### Bitwise Operators.
 
-Cyber supports the following bitwise operators for `int` number values.
+The following bitwise operators are supported for `int` number values.
 ```cy
 -- Bitwise and: any underlying bits that are set in both integers are set in the new integer.
 a & b
@@ -269,6 +281,9 @@ a << b
 -- Bitwise not: a's integer bits are flipped.
 ~a
 ```
+
+### Operator Overloading.
+See [Operator Overloading]({{<relref "/docs/toc/metaprogramming#operator-overloading">}}) in Metaprogramming.
 
 ## Comments.
 A single line comment starts with two hyphens and ends at the end of the line.

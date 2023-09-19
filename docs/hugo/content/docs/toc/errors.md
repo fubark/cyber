@@ -7,7 +7,7 @@ weight: 7
 Cyber provides error values and try/catch mechanisms to handle expected errors. For unexpected errors, panics can be used as a fail-fast mechanism to abort the currently running fiber.
 
 ## Error value.
-The `error` type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won't be consistent. Use your own enums if you want reliable ID values. In a future version of Cyber, you'll be able to attach an optional payload value.
+The `error` type is a primitive that contains either an enum value or a symbol value. Errors can wrap symbols for convenience but the underlying ID value won't be consistent. Use your own enums if you want reliable ID values.
 ```cy
 -- Shorthand for creating an error value with a symbol.
 var err = error.Oops
@@ -23,6 +23,10 @@ type MyError enum:
 -- Creates an error that wraps an enum value.
 err = error(MyError.boom)
 ```
+
+You can attach an optional payload value to an error.
+> _Planned Feature_
+
 Since errors are primitives, they can be compared using the `==` operator.
 ```cy
 if err == error.Oops:

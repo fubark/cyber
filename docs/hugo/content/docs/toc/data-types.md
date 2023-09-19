@@ -37,7 +37,7 @@ a = 0b1010       -- binary.
 a = 0u'🐶'       -- UTF-8 rune.
 ```
 
-Arbitrary values can be converted to a `int` using the type as a function. 
+Arbitrary values can be converted to a `int` using the type as a function.
 ```cy
 var a = '123'
 var b = int(a) 
@@ -68,12 +68,13 @@ var b = float(a)
 ```
 
 ### Big Numbers.
-Big numbers will be supported in a future version of Cyber.
+> _Planned Feature_
 
 ## Strings.
 The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
 
 Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](#string-buffer).
+> _Planned Feature_
 
 A string is always UTF-8 validated. [rawstrings](#rawstring) outperform strings but you'll have to validate them and take care of indexing yourself.
 
@@ -388,6 +389,7 @@ map = {
 Entries can also follow a `{}:` block.
 This gives structure to the entries and has
 the added benefit of allowing multi-line lambdas.
+> _Planned Feature_
 ```cy
 var colors = {}:
     red: 0xFF0000

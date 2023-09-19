@@ -39,7 +39,7 @@ func bar():
 var fiber = coinit foo()
 coresume fiber
 ```
-`coresume` also returns the resulting value. In a future version of Cyber, you will be able to yield back results and pass values back when resuming.
+`coresume` also returns the resulting value.
 ```cy
 func foo():
   return 123
@@ -47,6 +47,10 @@ func foo():
 var fiber = coinit foo()
 print(coresume fiber)    -- '123'
 ```
+
+`coyield` can return a value back to `coresume`.
+> _Planned Feature_
+
 Use `Fiber.status()` to get the current state of the fiber.
 ```cy
 func foo():
@@ -63,7 +67,10 @@ print fiber.status()   -- '#done'
 The main execution context is a fiber as well. Once the main fiber has finished, the VM is done and control is returned to the host.
 
 ## Gas mileage.
+> _Planned Feature_
 
 ## Async.
+> _Planned Feature_
 
 ## Multi-thread.
+> _Planned Feature_

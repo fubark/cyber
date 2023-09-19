@@ -7,23 +7,103 @@ weight: 10
 # Metaprogramming.
 
 ## Operator overloading.
+All operators are implemented as object methods.
+> _Incomplete: Not all operators have transitioned to the method paradigm._ 
 
-## Custom operators.
+Normally this would impact performance, but Cyber's compiler generates specialized bytecode ops for builtin types like `int` and `float`. The VM performs inline caching at runtime to eliminate the overhead of evaluating operators on dynamic operands.
 
-## Magic functions.
-
-### Calling a module symbol.
-Declare a `<call>` function to allow invoking a module as a function. Currently, this is only available to builtin types like `float`.
+To overload an operator for a object type, declare `$prefix`, `$infix`, `$postfix` methods:
+> _Incomplete: Although operator overloading is supported in the VM and builtin types use it, it is not currently enabled for user types._ 
 ```cy
--- Type declarations are also modules.
 type Vec2 object:
   x float
   y float
 
-  func <call>(x float, y float) Vec2:
+  func $infix+(self, o):
+    return Vec2{
+      x: x + o.x,
+      y: y + o.y,
+    }
+
+  func $prefix-(self):
+    return Vec2{ x: -x, y: -y }
+
+var a = Vec2{ x: 1, y: 2}
+var b = a + Vec2{ x: 3, y: 4 }
+var c = -a
+```
+
+Some special operators have their own name:
+```cy
+type MyCollection object:
+  arr List
+
+  func $index(self, idx):
+    return arr[idx * 2]
+
+  func $setIndex(self, idx, val):
+    arr[idx * 2] = val 
+
+var a = MyCollection{ arr: [1, 2, 3, 4] }
+print a[1]        -- Prints `3`
+```
+
+A list of all supported operators:
+* `$prefix~(_)`
+* `$prefix-(_)`
+* `$infix>(_, _)`
+* `$infix>=(_, _)`
+* `$infix<(_, _)`
+* `$infix<=(_, _)`
+* `$infix+(_, _)`
+* `$infix-(_, _)`
+* `$infix*(_, _)`
+* `$infix/(_, _)`
+* `$infix%(_, _)`
+* `$infix^(_, _)`
+* `$infix&(_, _)`
+* `$infix|(_, _)`
+* `$infix||(_, _)`
+* `$infix<<(_, _)`
+* `$infix>>(_, _)`
+* `$index(_, _)`
+* `$setIndex(_, _, _)`
+* `$slice(_, _, _)`
+
+## Custom operators.
+> _Planned Feature_
+
+## Magic functions.
+
+### Call module.
+Declare a `$call` function to allow invoking a module as a function.
+> _Incomplete: Although $call function is supported in the VM and builtin modules use it, it is not currently enabled for user modules._ 
+```cy
+-- Object types are also modules.
+type Vec2 object:
+  x float
+  y float
+
+  func $call(x float, y float) Vec2:
     return Vec2{ x: x, y: y }
 
 var v = Vec2(1, 2)
+```
+
+### Getter/Setter.
+> _Planned Feature_
+
+### Missing method.
+Declare a `$missing` method as a fallback when a method was not found in an instance.
+> _Planned Feature_
+```cy
+type A object:
+  func $missing(self, args...):
+    return args.len
+
+var a = A{};
+print a.foo()      -- Output: '0'
+print a.bar(1, 2)  -- Output: '2'
 ```
 
 ## Reflection.
@@ -43,9 +123,13 @@ func id(self) int
 ```
 
 ## Annotations.
+> _Planned Feature_
 
 ## Runtime eval.
+> _Planned Feature_
 
 ## Generics.
+> _Planned Feature_
 
 ## Compile-time.
+> _Planned Feature_

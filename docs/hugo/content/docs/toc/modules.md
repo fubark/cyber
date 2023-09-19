@@ -75,7 +75,8 @@ type Thing object:  -- Exported type.
     a float
 ```
 
-In a future version of Cyber, the annotation `@hide` would provide a hint to editors that the static symbol should not appear in the auto-complete. Despite this, the symbol would still be reachable.
+The annotation `@hide` provides a hint to editors that the static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
+> _Planned Feature_
 
 ## Builtin Modules.
 
@@ -84,6 +85,8 @@ Cyber currently contains the builtin modules:
 - [math](#math-module): Math constants and functions.
 - [os](#os-module): System level functions.
 - [test](#test-module): Utilities for testing.
+
+> _Incomplete: The docs for builtins are not completely up-to-date. They will be auto generated in the future._
 
 ## Core Module.
 The core module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 

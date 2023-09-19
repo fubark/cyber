@@ -122,6 +122,7 @@ for 0..10 each i:
 
 ## Matching.
 Matching is similar to a switch statement. The expression to the right of `match` is evaluated and execution jumps to the declared case with the matching value. Multiple cases can be grouped together using a comma separator. An optional `else` fallback case is executed when no other cases were matched.
+> _Incomplete: Not all types can be used in the case clause such as ranges._
 ```cy
 var val = 1000
 match val:
@@ -139,3 +140,4 @@ match val:
 The `try catch` statement, `try else` and `try` expressions provide a way to catch a throwing error and resume execution in a different branch. Learn more about [Error Handling]({{<relref "/docs/toc/errors">}}).
 
 ## Deferred Execution.
+> _Planned Feature_

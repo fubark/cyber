@@ -5,7 +5,7 @@ const tcc = @import("tcc");
 const cy = @import("../cyber.zig");
 const rt = cy.rt;
 const Value = cy.Value;
-const bindings = @import("bindings.zig");
+const bindings = @import("../builtins/bindings.zig");
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const Symbol = bindings.Symbol;
 const os = @import("os.zig");
@@ -597,12 +597,13 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             try w.print("}}\n", .{});
 
             // Generate ptrTo[Object].
-            if (config.genMap) {
-                try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{ivm.getTypeName(objSymId)});
+            const isMethod = !config.genMap;
+            try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{ivm.getTypeName(objSymId)});
+            if (isMethod) {
+                try w.print("  uint64_t ptr = *((uint64_t*)(args[1] & ~PointerMask) + 1);\n", .{});
             } else {
-                try w.print("uint64_t cyPtrTo{s}(UserVM* vm, uint64_t recv, uint64_t* args, char numArgs) {{\n", .{ivm.getTypeName(objSymId)});
+                try w.print("  uint64_t ptr = *((uint64_t*)(args[0] & ~PointerMask) + 1);\n", .{});
             }
-            try w.print("  uint64_t ptr = *((uint64_t*)(args[0] & ~PointerMask) + 1);\n", .{});
             try w.print("  uint64_t res = fromStruct{}(vm, *(Struct{}*)ptr);\n", .{objSymId, objSymId});
             try w.print("  return res;\n", .{});
             try w.print("}}\n", .{});
@@ -771,7 +772,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const cargsv = try ivm.getField2(cfunc.decl, argsf);
             const cargs = cargsv.asPointer(*cy.CyList).items();
 
-            const func = cy.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
+            const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
             const mgId = try ivm.ensureMethodGroup(sym);
             try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initTypedNative(cfunc.funcSigId, func, @as(u8, @intCast(cargs.len)) + 1) });
@@ -786,7 +787,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const funcPtr = tcc.tcc_get_symbol(state, symGen.ptr) orelse {
                 cy.panic("Failed to get symbol.");
             };
-            const func = cy.ptrAlignCast(cy.NativeObjFuncPtr, funcPtr);
+            const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
             const methodName = try std.fmt.allocPrint(alloc, "ptrTo{s}", .{rtTypeName});
             defer alloc.free(methodName);
@@ -831,27 +832,28 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     }
     try w.print(");\n", .{});
 
-    if (ctx.config.genMap) {
-        try w.print("uint64_t cy{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{sym});
-    } else {
-        try w.print("uint64_t cy{s}(UserVM* vm, uint64_t recv, uint64_t* args, char numArgs) {{\n", .{sym});
+    const isMethod = !ctx.config.genMap;
+    try w.print("uint64_t cy{s}(UserVM* vm, uint64_t* args, char numArgs) {{\n", .{sym});
+    if (isMethod) {
+        try w.print("  uint64_t recv = args[0];\n", .{});
     }
     // w.print("  printF64(*(double*)&args[0]);\n", .{}) catch cy.fatal();
 
     // Temps.
     if (cargs.len > 0) {
         for (cargs, 0..) |carg, i| {
+            const argIdx = if (isMethod) i + 1 else i;
             if (carg.isObjectType(os.CArrayT)) {
                 const n: u32 = @intCast((try ivm.getField(carg, ctx.nField)).asInteger());
                 const elem = try ivm.getField(carg, ctx.elemField);
                 const elemName = try ctx.getTempBaseTypeName(elem);
 
                 try w.print("  ", .{});
-                const cval = try std.fmt.bufPrint(&Context.buf, "arr{}", .{i});
+                const cval = try std.fmt.bufPrint(&Context.buf, "arr{}", .{argIdx});
                 try ctx.genNamedCType(w, carg, cval);
                 try w.print(";\n", .{});
 
-                try w.print("  to{s}Array{}(vm, args[{}], &arr{}[0]);", .{elemName, n, i, i});
+                try w.print("  to{s}Array{}(vm, args[{}], &arr{}[0]);", .{elemName, n, argIdx, argIdx});
             } else {
                 continue;
             }
@@ -905,10 +907,11 @@ fn genCFunc(ctx: *Context, vm: *cy.UserVM, w: anytype, cfunc: CFuncData) !void {
     if (cargs.len > 0) {
         const lastArg = cargs.len-1;
         for (cargs, 0..) |carg, i| {
+            const argIdx = if (isMethod) i + 1 else i;
             if (carg.isObjectType(os.CArrayT)) {
-                try w.print("arr{}", .{i});
+                try w.print("arr{}", .{argIdx});
             } else {
-                try ctx.genToCValueFromArg(w, carg, i);
+                try ctx.genToCValueFromArg(w, carg, argIdx);
             }
             if (i != lastArg) {
                 try w.print(", ", .{});

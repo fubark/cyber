@@ -69,21 +69,21 @@ pub const MethodType = enum {
 
 pub const MethodData = extern union {
     typedNative: extern struct {
-        ptr: cy.NativeObjFuncPtr,
+        ptr: vmc.HostFuncFn,
         funcSigId: sema.FuncSigId,
         /// Includes self param.
         numParams: u8,
     },
     untypedNative1: extern struct {
-        ptr: cy.NativeObjFuncPtr,
+        ptr: vmc.HostFuncFn,
         numParams: u8,
     },
     untypedNative2: extern struct {
-        ptr: cy.NativeObjFunc2Ptr,
+        ptr: cy.ZHostFuncPairFn,
         numParams: u8,
     },
     optimizing: extern struct {
-        ptr: cy.OptimizingNativeMethod,
+        ptr: cy.OptimizingFuncFn,
         numParams: u8,
     },
     typed: extern struct {
@@ -124,12 +124,12 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initUntypedNative1(funcSigId: sema.FuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
+    pub fn initUntypedNative1(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .untypedNative1,
             .data = .{
                 .untypedNative1 = .{
-                    .ptr = func,
+                    .ptr = @ptrCast(func),
                     .numParams = numParams,
                 },
             },
@@ -137,7 +137,7 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initUntypedNative2(funcSigId: sema.FuncSigId, func: cy.NativeObjFunc2Ptr, numParams: u8) MethodInit {
+    pub fn initUntypedNative2(funcSigId: sema.FuncSigId, func: cy.ZHostFuncPairFn, numParams: u8) MethodInit {
         return .{
             .type = .untypedNative2,
             .data = .{
@@ -165,13 +165,13 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initTypedNative(funcSigId: sema.FuncSigId, func: cy.NativeObjFuncPtr, numParams: u8) MethodInit {
+    pub fn initTypedNative(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .typedNative,
             .data = .{
                 .typedNative = .{
                     .funcSigId = funcSigId,
-                    .ptr = func,
+                    .ptr = @ptrCast(func),
                     .numParams = numParams,
                 },
             },
@@ -179,7 +179,7 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initOptimizing(funcSigId: sema.FuncSigId, func: cy.OptimizingNativeMethod, numParams: u8) MethodInit {
+    pub fn initOptimizing(funcSigId: sema.FuncSigId, func: cy.OptimizingFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .optimizing,
             .data = .{
@@ -276,7 +276,7 @@ pub const FuncSymbolEntry = extern struct {
         },
     } = undefined,
     inner: extern union {
-        nativeFunc1: cy.NativeFuncPtr,
+        nativeFunc1: vmc.HostFuncFn,
         func: extern struct {
             pc: u32,
             /// Stack size required by the func.
@@ -287,7 +287,7 @@ pub const FuncSymbolEntry = extern struct {
         closure: *cy.Closure,
     },
 
-    pub fn initNativeFunc1(func: cy.NativeFuncPtr, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbolEntry {
+    pub fn initNativeFunc1(func: vmc.HostFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbolEntry {
         const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
             .entryT = @intFromEnum(FuncSymbolEntryType.nativeFunc1),

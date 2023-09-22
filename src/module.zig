@@ -9,6 +9,7 @@ const types = cy.types;
 const bt = types.BuiltinTypeSymIds;
 const fmt = cy.fmt;
 const v = fmt.v;
+const vmc = cy.vmc;
 
 pub const ModuleSymKey = cy.hash.KeyU64;
 
@@ -31,12 +32,12 @@ pub const Module = struct {
     absSpec: []const u8,
 
     pub fn setNativeTypedFunc(self: *Module, c: *cy.VMcompiler, name: []const u8,
-        sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.NativeFuncPtr) !void {
+        sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.ZHostFuncFn) !void {
         return self.setNativeTypedFuncExt(c, name, false, sig, retSymId, func);
     } 
 
     pub fn setNativeTypedFuncExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool,
-        sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.NativeFuncPtr) !void {
+        sig: []const sema.SymbolId, retSymId: sema.SymbolId, func: cy.ZHostFuncFn) !void {
         const nameId = try sema.ensureNameSymExt(c, name, dupeName);
 
         // AnyType for params and return.
@@ -49,10 +50,10 @@ pub const Module = struct {
         };
         const res = try self.syms.getOrPut(c.alloc, key);
         res.value_ptr.* = .{
-            .symT = .nativeFunc1,
+            .symT = .hostFunc,
             .inner = .{
-                .nativeFunc1 = .{
-                    .func = func,
+                .hostFunc = .{
+                    .func = @ptrCast(func),
                 },
             },
         };
@@ -61,11 +62,11 @@ pub const Module = struct {
         }
     }
 
-    pub fn setNativeFunc(self: *Module, c: *cy.VMcompiler, name: []const u8, numParams: u32, func: cy.NativeFuncPtr) !void {
+    pub fn setNativeFunc(self: *Module, c: *cy.VMcompiler, name: []const u8, numParams: u32, func: cy.ZHostFuncFn) !void {
         return self.setNativeFuncExt(c, name, false, numParams, func);
     }
 
-    pub fn setNativeFuncExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, numParams: u32, func: cy.NativeFuncPtr) !void {
+    pub fn setNativeFuncExt(self: *Module, c: *cy.VMcompiler, name: []const u8, dupeName: bool, numParams: u32, func: cy.ZHostFuncFn) !void {
         const nameId = try sema.ensureNameSymExt(c, name, dupeName);
 
         // AnyType for params and return.
@@ -78,10 +79,10 @@ pub const Module = struct {
         };
         const res = try self.syms.getOrPut(c.alloc, key);
         res.value_ptr.* = .{
-            .symT = .nativeFunc1,
+            .symT = .hostFunc,
             .inner = .{
-                .nativeFunc1 = .{
-                    .func = func,
+                .hostFunc = .{
+                    .func = @ptrCast(func),
                 },
             },
         };
@@ -269,7 +270,7 @@ pub const Module = struct {
 
 const ModuleSymType = enum {
     variable,
-    nativeFunc1,
+    hostFunc,
 
     /// Symbol that points to one function signature.
     symToOneFunc,
@@ -294,8 +295,8 @@ const ModuleSym = struct {
         }
     } = undefined,
     inner: union {
-        nativeFunc1: struct {
-            func: cy.NativeFuncPtr,
+        hostFunc: struct {
+            func: vmc.HostFuncFn,
         },
         variable: struct {
             val: cy.Value,
@@ -368,6 +369,35 @@ pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, c
         },
     });
     return objModId;
+}
+
+pub fn declareHostFunc(
+    c: *cy.VMcompiler, modId: ModuleId, name: []const u8, funcSigId: sema.FuncSigId,
+    declId: sema.FuncDeclId, funcPtr: vmc.HostFuncFn,
+) !void {
+    _ = declId;
+    const nameId = try sema.ensureNameSym(c, name);
+    const key = ModuleSymKey{
+        .moduleSymKey = .{
+            .nameId = nameId,
+            .funcSigId = funcSigId, 
+        },
+    };
+    const mod = c.sema.getModulePtr(modId);
+    if (mod.syms.contains(key)) {
+        return error.DuplicateFuncSig;
+    }
+
+    try mod.syms.put(c.alloc, key, .{
+        .symT = .hostFunc,
+        .inner = .{
+            .hostFunc = .{
+                .func = funcPtr,
+            },
+        },
+    });
+
+    try declareFuncForNameSym(c, mod, nameId, funcSigId);
 }
 
 pub fn declareUserFunc(
@@ -471,7 +501,7 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
             .typeAlias,
             .symToOneFunc,
             .userObject,
-            .nativeFunc1 => {
+            .hostFunc => {
                 return true;
             },
             .symToManyFuncs => {

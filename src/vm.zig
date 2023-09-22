@@ -138,6 +138,9 @@ pub const VM = struct {
     /// User data ptr. Useful for embedders.
     userData: ?*anyopaque,
 
+    /// Host print callback.
+    print: cy.PrintFn,
+
     /// Object to pc of instruction that allocated it.
     objectTraceMap: if (cy.Trace) std.AutoHashMapUnmanaged(*HeapObject, debug.ObjectTrace) else void,
 
@@ -254,6 +257,7 @@ pub const VM = struct {
             .userData = null,
             .expGlobalRC = 0,
             .varSymExtras = .{},
+            .print = defaultPrint,
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
@@ -614,9 +618,9 @@ pub const VM = struct {
             fmt.printStderr("global rc: {}\n", &.{v(self.refCounts)});
         }
 
-        // Dump object symbols.
+        // Dump func symbols.
         {
-            fmt.printStderr("obj syms:\n", &.{});
+            fmt.printStderr("func syms:\n", &.{});
             var iter = self.funcSymSigs.iterator();
             while (iter.next()) |it| {
                 const key = it.key_ptr.*;
@@ -1262,12 +1266,12 @@ pub const VM = struct {
 
                 self.pc = pc;
                 self.framePtr = framePtr;
-                const res = sym.inner.nativeFunc1(@ptrCast(self), @ptrCast(newFramePtr + 4), numArgs);
+                const res: Value = @bitCast(sym.inner.nativeFunc1.?(@ptrCast(self), @ptrCast(newFramePtr + 4), numArgs));
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
                 if (reqNumRetVals == 1) {
-                    newFramePtr[0] = res;
+                    newFramePtr[0] = @bitCast(res);
                 } else {
                     switch (reqNumRetVals) {
                         0 => {
@@ -1938,6 +1942,7 @@ test "vm internals." {
     try t.eq(@offsetOf(VM, "throwTrace"), @offsetOf(vmc.VM, "throwTrace"));
     try t.eq(@offsetOf(VM, "compiler"), @offsetOf(vmc.VM, "compiler"));
     try t.eq(@offsetOf(VM, "userData"), @offsetOf(vmc.VM, "userData"));
+    try t.eq(@offsetOf(VM, "print"), @offsetOf(vmc.VM, "print"));
     try t.eq(@offsetOf(VM, "iteratorMGID"), @offsetOf(vmc.VM, "padding"));
     try t.eq(@offsetOf(VM, "httpClient"), @offsetOf(vmc.VM, "httpClient"));
     try t.eq(@offsetOf(VM, "stdHttpClient"), @offsetOf(vmc.VM, "stdHttpClient"));
@@ -3407,7 +3412,7 @@ fn evalLoop(vm: *VM) linksection(cy.HotSection) error{StackOverflow, OutOfMemory
 
                 if (try vm.getCachedMethodGroupForType(typeId, mgId)) |mg| {
                     if (try @call(.never_inline, callMethodGroup, .{
-                        vm, pc, framePtr, mgId, mg, recv, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
+                        vm, pc, framePtr, mgId, mg, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
                     })) |res| {
                         pc = res.pc;
                         framePtr = res.sp;
@@ -3648,8 +3653,8 @@ pub fn call(vm: *VM, pc: [*]cy.Inst, framePtr: [*]Value, callee: Value, startLoc
                 vm.pc = pc;
                 const newFramePtr = framePtr + startLocal;
                 vm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func(@ptrCast(vm), newFramePtr + 4, numArgs);
-                newFramePtr[0] = res;
+                const res = obj.nativeFunc1.func.?(@ptrCast(vm), @ptrCast(newFramePtr + 4), numArgs);
+                newFramePtr[0] = @bitCast(res);
                 return cy.fiber.PcSp{
                     .pc = pc + cy.bytecode.CallInstLen,
                     .sp = framePtr,
@@ -3708,8 +3713,8 @@ pub fn callNoInline(vm: *VM, pc: *[*]cy.Inst, framePtr: *[*]Value, callee: Value
                 vm.pc = pc.*;
                 const newFramePtr = framePtr.* + startLocal;
                 vm.framePtr = newFramePtr;
-                const res = obj.nativeFunc1.func(@ptrCast(vm), newFramePtr + 4, numArgs);
-                newFramePtr[0] = res;
+                const res = obj.nativeFunc1.func.?(@ptrCast(vm), @ptrCast(newFramePtr + 4), numArgs);
+                newFramePtr[0] = @bitCast(res);
                 cy.arc.releaseObject(vm, obj);
                 pc.* += 14;
             },
@@ -4266,14 +4271,14 @@ fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
 }
 
 fn callMethodNoInline(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData, recv: Value,
+    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
     typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
 ) !?cy.fiber.PcSp {
-    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, recv, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId});
+    return @call(.always_inline, callMethod, .{vm, pc, sp, methodType, data, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId});
 }
 
 fn callMethod(
-    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData, recv: Value,
+    vm: *VM, pc: [*]cy.Inst, sp: [*]cy.Value, methodType: rt.MethodType, data: rt.MethodData,
     typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
 ) !?cy.fiber.PcSp {
     switch (methodType) {
@@ -4310,7 +4315,7 @@ fn callMethod(
             @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
             vm.framePtr = sp;
-            const res = data.untypedNative1.ptr(@ptrCast(vm), recv, @ptrCast(sp + startLocal + 5), numArgs);
+            const res: Value = @bitCast(data.untypedNative1.ptr.?(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -4337,7 +4342,7 @@ fn callMethod(
                 return null;
             }
             vm.framePtr = sp;
-            const res = data.untypedNative2.ptr(@ptrCast(vm), recv, @ptrCast(sp + startLocal + 5), numArgs);
+            const res = data.untypedNative2.ptr(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs);
             if (res.left.isInterrupt()) {
                 return error.Panic;
             }
@@ -4374,7 +4379,7 @@ fn callMethod(
             @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.optimizing.ptr));
             @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
-            data.optimizing.ptr(@ptrCast(vm), pc, recv, @ptrCast(sp + startLocal + 5), numArgs);
+            data.optimizing.ptr(@ptrCast(vm), pc, @ptrCast(sp + startLocal + 4), numArgs);
             return cy.fiber.PcSp{
                 .pc = pc,
                 .sp = sp,
@@ -4439,7 +4444,7 @@ fn callMethod(
             }
 
             vm.framePtr = sp;
-            const res = data.typedNative.ptr(@ptrCast(vm), recv, @ptrCast(sp + startLocal + 5), numArgs);
+            const res: Value = @bitCast(data.typedNative.ptr.?(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -4467,7 +4472,7 @@ fn callMethod(
 /// Assumes there are overloaded methods.
 fn callFirstOverloadedMethod(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId,
-    recv: Value, typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
 ) !?cy.fiber.PcSp {
     const mgExt = &vm.methodGroupExts.buf[mgId];
     std.debug.assert(mgExt.mruTypeMethodGroupId != cy.NullId);
@@ -4483,7 +4488,7 @@ fn callFirstOverloadedMethod(
             methodId = method.next;
             continue;
         }
-        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, recv, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId})) |res| {
+        if (try @call(.never_inline, callMethodNoInline, .{vm, pc, sp, method.type, method.data, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId})) |res| {
             // Update MethodGroup cache.
             // TypeMethodGroup is updated on MethodGroup cache miss.
             const mgPtr = &vm.methodGroups.buf[mgId];
@@ -4501,13 +4506,13 @@ fn callFirstOverloadedMethod(
 /// Assumes cache hit on TypeMethodGroup.
 fn callMethodGroup(
     vm: *VM, pc: [*]cy.Inst, sp: [*]Value, mgId: vmc.MethodGroupId, mg: rt.MethodGroup,
-    recv: Value, typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
+    typeId: vmc.TypeId, startLocal: u8, numArgs: u8, reqNumRetVals: u8, anySelfFuncSigId: sema.FuncSigId,
 ) linksection(cy.HotSection) !?cy.fiber.PcSp {
-    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, recv, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId})) |res| {
+    if (try @call(.always_inline, callMethod, .{vm, pc, sp, mg.mruMethodType, mg.mruMethodData, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId})) |res| {
         return res;
     }
     if (mg.mruTypeMethodOverloaded) {
-        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, recv, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId});
+        return @call(.never_inline, callFirstOverloadedMethod, .{vm, pc, sp, mgId, typeId, startLocal, numArgs, reqNumRetVals, anySelfFuncSigId});
     }
     return null;
 }
@@ -4606,7 +4611,7 @@ export fn zCallObjSym(
     };
     if (mbMethodGroup) |sym| {
         const mb_res = @call(.always_inline, callMethodGroup, .{
-            vm, pc, stack, mgId, sym, recv, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
+            vm, pc, stack, mgId, sym, typeId, startLocal, numArgs, numRet, anySelfFuncSigId,
         }) catch |err| {
             if (err == error.Panic) {
                 return .{
@@ -4953,3 +4958,7 @@ pub var dummyCyclableHead = DummyCyclableNode{
     // This will be marked automatically before sweep, so it's never considered as a cyc object.
     .typeId = vmc.GC_MARK_MASK | rt.NoneT,
 };
+
+pub fn defaultPrint(_: *UserVM, _: cy.Str) callconv(.C) void {
+    // Default print is a nop.
+}

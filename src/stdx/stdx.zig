@@ -1,4 +1,5 @@
 // Copied only what is used from the cosmic project.
+// TODO: Remove this package.
 
 pub const testing = @import("testing.zig");
 

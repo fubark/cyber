@@ -26,13 +26,11 @@ var initedAllocator = false;
 
 fn initAllocator() void {
     defer initedAllocator = true;
-    if (build_options.useMalloc) {
-        return;
-    } else {
-        if (cy.UseMimalloc) {
+    switch (cy.Malloc) {
+        .zig,
+        .malloc => return,
+        .mimalloc => {
             miAlloc.init();
-        } else {
-            return;
         }
     }
     // var traceAlloc: stdx.heap.TraceAllocator = undefined;
@@ -46,18 +44,20 @@ pub fn getAllocator() std.mem.Allocator {
     if (!initedAllocator) {
         initAllocator();
     }
-    if (build_options.useMalloc) {
-        return std.heap.c_allocator;
-    } else {
-        if (cy.UseMimalloc) {
+    switch (cy.Malloc) {
+        .mimalloc => {
             return miAlloc.allocator();
-        } else {
+        },
+        .malloc => {
+            return std.heap.c_allocator;
+        },
+        .zig => {
             if (cy.isWasm) {
                 return std.heap.wasm_allocator;
             } else {
                 return gpa.allocator();
             }
-        }
+        },
     }
 }
 
@@ -116,7 +116,7 @@ pub const HeapObject = extern union {
     object: Object,
     box: Box,
     nativeFunc1: NativeFunc1,
-    tccState: if (cy.hasJit) TccState else void,
+    tccState: if (cy.hasFFI) TccState else void,
     file: if (cy.hasStdFiles) File else void,
     dir: if (cy.hasStdFiles) Dir else void,
     pointer: Pointer,
@@ -416,7 +416,7 @@ const Box = extern struct {
 const NativeFunc1 = extern struct {
     typeId: rt.TypeId,
     rc: u32,
-    func: *const fn (*cy.UserVM, [*]const Value, u8) Value,
+    func: vmc.HostFuncFn,
     numParams: u32,
     funcSigId: u32,
     tccState: Value,
@@ -441,6 +441,7 @@ const File = extern struct {
     readBufEnd: u32,
     iterLines: bool,
     hasReadBuf: bool,
+    closeOnFree: bool,
     closed: bool,
 
     pub fn getStdFile(self: *const File) std.fs.File {
@@ -1314,12 +1315,12 @@ pub fn allocBox(vm: *cy.VM, val: Value) !Value {
     return Value.initCycPtr(obj);
 }
 
-pub fn allocNativeFunc1(self: *cy.VM, func: *const fn (*cy.UserVM, [*]const Value, u8) Value, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value) !Value {
+pub fn allocNativeFunc1(self: *cy.VM, func: cy.ZHostFuncFn, numParams: u32, funcSigId: cy.sema.FuncSigId, tccState: ?Value) !Value {
     const obj = try allocPoolObject(self);
     obj.nativeFunc1 = .{
         .typeId = rt.NativeFuncT,
         .rc = 1,
-        .func = func,
+        .func = @ptrCast(func),
         .numParams = numParams,
         .funcSigId = funcSigId,
         .tccState = undefined,
@@ -1366,6 +1367,7 @@ pub fn allocFile(self: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Valu
         .readBufCap = 0,
         .readBufEnd = 0,
         .closed = false,
+        .closeOnFree = true,
     };
     return Value.initPtr(obj);
 }
@@ -1678,7 +1680,7 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.TccStateT => {
-            if (cy.hasJit) {
+            if (cy.hasFFI) {
                 if (free) {
                     tcc.tcc_delete(obj.tccState.state);
                     obj.tccState.lib.close();
@@ -1700,7 +1702,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     if (obj.file.hasReadBuf) {
                         vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
                     }
-                    obj.file.close();
+                    if (obj.file.closeOnFree) {
+                        obj.file.close();
+                    }
                 }
                 freePoolObject(vm, obj);
             }
@@ -1847,7 +1851,7 @@ test "heap internals." {
         try t.eq(@sizeOf(Box), 16);
         try t.eq(@sizeOf(NativeFunc1), 40);
         try t.eq(@sizeOf(MetaType), 16);
-        if (cy.hasJit) {
+        if (cy.hasFFI) {
             try t.eq(@sizeOf(TccState), 24);
         }
         if (cy.hasStdFiles) {

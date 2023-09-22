@@ -44,7 +44,7 @@ typedef struct IndexSlice {
 // 1111111111111100: TaggedMask + Sign bit indicates a pointer value.
 #define NOCYC_POINTER_MASK (TAGGED_VALUE_MASK | SIGN_MASK)
 
-// 1111111111111110: Extra bit indicating cycable pointer.
+// 1111111111111110: Extra bit indicating cyclable pointer.
 #define CYC_POINTER_MASK (NOCYC_POINTER_MASK | ((u64)1 << 49))
 
 #define POINTER_MASK (CYC_POINTER_MASK)
@@ -332,6 +332,7 @@ typedef u32 MethodGroupId;
 typedef u32 TypeMethodGroupId;
 typedef u32 SymbolId;
 typedef u32 FuncSigId;
+typedef u32 ModuleId;
 typedef u32 NameId;
 
 typedef struct Name {
@@ -789,6 +790,7 @@ typedef struct VM {
 #endif
     Compiler* compiler;
     void* userData;
+    void* print;
 #if TRACE
     ZHashMap objectTraceMap;
 #endif
@@ -870,8 +872,7 @@ typedef struct PcSpResult {
     ResultCode code;
 } PcSpResult;
 
-typedef Value (*FuncPtr)(VM* vm, Value* args, uint8_t nargs);
-typedef Value (*MethodPtr)(VM* vm, Value recv, Value* args, uint8_t nargs);
+typedef Value (*HostFuncFn)(VM* vm, const Value* args, uint8_t nargs);
 
 // C API.
 ResultCode execBytecode(VM* vm);

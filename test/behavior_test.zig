@@ -7,6 +7,7 @@ const t = stdx.testing;
 
 const vm_ = @import("../src/vm.zig");
 const cy = @import("../src/cyber.zig");
+const vmc = cy.vmc;
 const http = @import("../src/http.zig");
 const bindings = @import("../src/builtins/bindings.zig");
 const log = cy.log.scoped(.behavior_test);
@@ -568,8 +569,17 @@ test "Custom modules." {
         }
     };
 
-    try run.vm.addModuleLoader("mod1", struct {
-        fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
+    run.vm.internal().compiler.importBuiltins = false;
+    run.vm.setModuleResolver(cy.vm_compiler.defaultModuleResolver);
+    run.vm.setModuleLoader(struct {
+        fn postLoadMod2(vm: *cy.UserVM, modId: vmc.ModuleId) callconv(.C) void {
+            // Test dangling pointer.
+            const s1 = allocString("test");
+            defer t.alloc.free(s1);
+            const mod = vm.internal().compiler.sema.getModulePtr(modId);
+            mod.setNativeFuncExt(vm.internal().compiler, s1, true, 0, S.test3) catch fatal();
+        }
+        fn postLoadMod1(vm: *cy.UserVM, modId: vmc.ModuleId) callconv(.C) void {
             // Test dangling pointer.
             const s1 = allocString("test");
             const s2 = allocString("test2");
@@ -578,18 +588,26 @@ test "Custom modules." {
             const mod = vm.internal().compiler.sema.getModulePtr(modId);
             mod.setNativeFuncExt(vm.internal().compiler, s1, true, 0, S.test1) catch fatal();
             mod.setNativeFuncExt(vm.internal().compiler, s2, true, 0, S.test2) catch fatal();
-            return true;
         }
-    }.loader);
-
-    try run.vm.addModuleLoader("mod2", struct {
-        fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
-            // Test dangling pointer.
-            const s1 = allocString("test");
-            defer t.alloc.free(s1);
-            const mod = vm.internal().compiler.sema.getModulePtr(modId);
-            mod.setNativeFuncExt(vm.internal().compiler, s1, true, 0, S.test3) catch fatal();
-            return true;
+        fn loader(_: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
+            if (std.mem.eql(u8, spec.slice(), "mod1")) {
+                out.* = .{
+                    .src = cy.Str.initSlice(""),
+                    .srcIsStatic = true,
+                    .funcLoader = null,
+                    .postLoad = postLoadMod1,
+                };
+                return true;
+            } else if (std.mem.eql(u8, spec.slice(), "mod2")) {
+                out.* = .{
+                    .src = cy.Str.initSlice(""),
+                    .srcIsStatic = true,
+                    .funcLoader = null,
+                    .postLoad = postLoadMod2,
+                };
+                return true;
+            }
+            return false;
         }
     }.loader);
 
@@ -600,9 +618,7 @@ test "Custom modules." {
         \\m.test2()
         \\n.test()
     );
-    _ = try run.evalExtNoReset(.{},
-        src1
-    );
+    _ = try run.evalExtNoReset(.{}, src1);
 
     // Test dangling pointer.
     t.alloc.free(src1);
@@ -630,12 +646,23 @@ test "Multiple evals persisting state." {
     defer run.vm.release(global);
     run.vm.setUserData(&global);
 
-    try run.vm.addModuleLoader("core", struct {
-        fn loader(vm: *cy.UserVM, modId: cy.ModuleId) bool {
+    run.vm.setModuleLoader(struct {
+        fn postLoad(vm: *cy.UserVM, modId: vmc.ModuleId) callconv(.C) void {
             const g = cy.ptrAlignCast(*cy.Value, vm.getUserData()).*;
             const mod = vm.internal().compiler.sema.getModulePtr(modId);
             mod.setVar(vm.internal().compiler, "g", g) catch fatal();
-            return true;
+        }
+        fn loader(vm: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
+            if (std.mem.eql(u8, spec.slice(), "builtins")) {
+                out.* = .{
+                    .src = cy.Str.initSlice(""),
+                    .srcIsStatic = true,
+                    .postLoad = postLoad,
+                };
+                return true;
+            } else {
+                return cy.cli.loader(vm, spec, out);
+            }
         }
     }.loader);
 
@@ -1578,7 +1605,7 @@ test "Stack trace unwinding." {
         try t.eq(trace.frames.len, 1);
         try eqStackFrame(trace.frames[0], .{
             .name = "main",
-            .chunkId = 1,
+            .chunkId = 2,
             .line = 0,
             .col = 9,
             .lineStartPos = 0,
@@ -1604,7 +1631,7 @@ test "Stack trace unwinding." {
             try t.eq(trace_.frames.len, 1);
             try eqStackFrame(trace_.frames[0], .{
                 .name = "main",
-                .chunkId = 1,
+                .chunkId = 2,
                 .line = 0,
                 .col = 9,
                 .lineStartPos = 0,
@@ -1788,18 +1815,8 @@ test "Statements." {
         );
     }}.func);
 
-    // Expects one statement.
-    try eval(.{ .silent = true }, "   ",
-    struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.ParseError,
-            \\ParseError: Expected one statement.
-            \\
-            \\main:1:4:
-            \\   
-            \\   ^
-            \\
-        );
-    }}.func);
+    // Allows compiling without any statements.
+    try evalPass(.{}, "   ");
 }
 
 test "Indentation." {
@@ -2061,23 +2078,14 @@ test "Static variable declaration." {
         \\t.eq(b, 444) 
         \\t.eq(c, 567) 
     );
+    run.deinit();
 
-    // Declaration for an existing alias symbol.
-    res = run.evalExt(.{ .silent = true },
+    // Declaration over using builtin module. 
+    try evalPass(.{},
         \\var print: 123
     );
-    try t.expectError(res, error.CompileError);
-    const err = try run.vm.allocLastUserCompileError();
-    try t.eqStrFree(t.alloc, err,
-        \\CompileError: The symbol `print` was already declared.
-        \\
-        \\main:1:5:
-        \\var print: 123
-        \\    ^
-        \\
-    );
 
-    _ = try run.eval(@embedFile("staticvar_decl_test.cy"));
+    try evalPass(.{}, @embedFile("staticvar_decl_test.cy"));
 }
 
 test "Static variable assignment." {
@@ -2511,19 +2519,13 @@ test "Static functions." {
         );
     }}.func);
 
-    // Declaration initializer for a function already imported from core.
-    try eval(.{ .silent = true },
-        \\func print(val) = float
-    , struct { fn func(run: *VMrunner, res: EvalResult) !void {
-        try run.expectErrorReport(res, error.CompileError,
-            \\CompileError: The symbol `print` was already declared.
-            \\
-            \\main:1:6:
-            \\func print(val) = float
-            \\     ^
-            \\
-        );
-    }}.func);
+    // Allow declaring over using builtins namespace.
+    try evalPass(.{},
+        \\import t 'test'
+        \\func print(v):
+        \\  return v + 2
+        \\t.eq(print(1), 3)
+    );
 
     // Capture local from static function is not allowed.
     try eval(.{ .silent = true },

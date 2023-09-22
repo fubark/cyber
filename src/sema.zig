@@ -536,6 +536,9 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .funcDecl => {
             try funcDecl(c, nodeId);
         },
+        .hostFuncDecl => {
+            return;
+        },
         .whileCondStmt => {
             try pushIterSubBlock(c);
 
@@ -673,6 +676,35 @@ pub fn declareTypeAlias(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     });
 }
 
+pub fn getOrInitModule(self: *cy.Chunk, spec: []const u8, nodeId: cy.NodeId) !cy.ModuleId {
+    var resUri: cy.Str = undefined;
+    self.compiler.hasApiError = false;
+    if (!self.compiler.moduleResolver(@ptrCast(self.compiler.vm), self.id, cy.Str.initSlice(self.srcUri), cy.Str.initSlice(spec), &resUri)) {
+        if (self.compiler.hasApiError) {
+            return self.reportError(self.compiler.apiError, &.{});
+        } else {
+            return self.reportError("Failed to resolve module.", &.{});
+        }
+    }
+
+    if (self.compiler.sema.moduleMap.get(resUri.slice())) |modId| {
+        return modId;
+    } else {
+        // resUri is duped.
+        const modId = try appendResolvedRootModule(self.compiler, resUri.slice());
+        const dupedAbsSpec = self.compiler.sema.getModule(modId).absSpec;
+
+        // Queue import task.
+        try self.compiler.importTasks.append(self.alloc, .{
+            .chunkId = self.id,
+            .nodeId = nodeId,
+            .absSpec = dupedAbsSpec,
+            .modId = modId,
+        });
+        return modId;
+    }
+}
+
 pub fn declareImport(chunk: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = chunk.nodes[nodeId];
     const ident = chunk.nodes[node.head.left_right.left];
@@ -682,7 +714,8 @@ pub fn declareImport(chunk: *cy.Chunk, nodeId: cy.NodeId) !void {
     const spec = chunk.nodes[node.head.left_right.right];
     const specPath = chunk.getNodeTokenString(spec);
 
-    const modId = try getOrLoadModule(chunk, specPath, nodeId);
+    const modId = try getOrInitModule(chunk, specPath, nodeId);
+
     const mod = chunk.compiler.sema.getModule(modId);
     try setLocalSym(chunk, nameId, .{
         .symId = mod.resolvedRootSymId,
@@ -971,6 +1004,38 @@ fn funcDeclInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             return err;
         }
     };
+}
+
+pub fn declareHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    const declId = try appendFuncDecl(c, nodeId, true);
+    const func = &c.semaFuncDecls.items[declId];
+    const name = func.getName(c);
+    const nameId = try ensureNameSym(c.compiler, name);
+    c.nodes[nodeId].head.func.semaDeclId = declId;
+
+    const mod = c.getModule();
+    try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
+
+    const info = cy.HostFuncInfo{
+        .modId = c.modId,
+        .name = cy.Str.initSlice(name),
+        .funcSigId = func.funcSigId,
+        .idx = c.curHostFuncIdx,
+    };
+    c.curHostFuncIdx += 1;
+    if (c.funcLoader.?(@ptrCast(c.compiler.vm), info)) |funcPtr| {
+        cy.module.declareHostFunc(c.compiler, c.modId, name, func.funcSigId, declId, funcPtr) catch |err| {
+            if (err == error.DuplicateSymName) {
+                return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+            } else if (err == error.DuplicateFuncSig) {
+                return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+            } else return err;
+        };
+        const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
+        _ = try resolveHostFunc(c, key, func.funcSigId, funcPtr);
+    } else {
+        return c.reportErrorAt("Host func `{}` failed to load.", &.{v(name)}, nodeId);
+    }
 }
 
 pub fn declareFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -2581,6 +2646,33 @@ fn getOrResolveDistinctSym(chunk: *cy.Chunk, parentSymId: SymbolId, nameId: Name
         }
     }
 
+    // Look in using modules.
+    for (chunk.usingModules.items) |modId| {
+        if (try cy.module.findDistinctModuleSym(chunk, modId, nameId)) {
+            const mod = chunk.compiler.sema.getModule(modId);
+            // Cache to local syms.
+            try setLocalSym(chunk, nameId, .{
+                .symId = cy.NullId,
+                .funcSymId = cy.NullId,
+                .parentSymId = mod.resolvedRootSymId,
+            });
+
+            const csymId = (try resolveSymFromModule(chunk, modId, nameId, cy.NullId)).?;
+            if (csymId.isFuncSymId) {
+                const rFuncSym = chunk.compiler.sema.getFuncSym(csymId.id);
+                return SymbolResult{
+                    .symId = rFuncSym.key.resolvedFuncSymKey.symId,
+                    .funcSymId = csymId.id,
+                };
+            } else {
+                return SymbolResult{
+                    .symId = csymId.id,
+                    .funcSymId = cy.NullId,
+                };
+            }
+        }
+    }
+
     return null;
 }
 
@@ -2802,7 +2894,9 @@ fn getOrResolveSymForFuncCall(
                 cy.panic("unexpected");
             }
         } else {
-            try reportIncompatibleFuncSig(chunk, nameId, funcSigId, modId);
+            if (rParentSymId != chunk.semaRootSymId) {
+                try reportIncompatibleFuncSig(chunk, nameId, funcSigId, modId);
+            }
         }
     }
 
@@ -2853,6 +2947,67 @@ fn getOrResolveSymForFuncCall(
             }
         }
     }
+
+    // Look in using modules.
+    for (chunk.usingModules.items) |modId| {
+        if (try cy.module.findModuleSymForFuncCall(chunk, modId, nameId, args, ret, hasDynamicArg)) |modRes| {
+            const mod = chunk.compiler.sema.getModule(modId);
+            // Cache to local syms.
+            try setLocalSym(chunk, nameId, .{
+                .symId = cy.NullId,
+                .funcSymId = cy.NullId,
+                .parentSymId = mod.resolvedRootSymId,
+            });
+
+            key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
+            symId = chunk.compiler.sema.resolvedSymMap.get(key) orelse cy.NullId;
+            if (symId != cy.NullId) {
+                key = ResolvedFuncSymKey{
+                    .resolvedFuncSymKey = .{
+                        .symId = symId,
+                        .funcSigId = modRes.funcSigId,
+                    },
+                };
+                if (chunk.compiler.sema.resolvedFuncSymMap.get(key)) |funcSymId| {
+                    const rFuncSym = chunk.compiler.sema.getFuncSym(funcSymId);
+                    return FuncCallSymResult{
+                        .csymId = CompactSymbolId.initFuncSymId(funcSymId),
+                        .retType = rFuncSym.retType,
+                        .funcSigId = modRes.funcSigId,
+                        .typeChecked = modRes.typeChecked,
+                    };
+                }
+            }
+
+            if (try resolveSymFromModule(chunk, modId, nameId, modRes.funcSigId)) |csymId| {
+                if (csymId.isFuncSymId) {
+                    const rFuncSym = chunk.compiler.sema.getFuncSym(csymId.id);
+                    return FuncCallSymResult{
+                        .csymId = csymId,
+                        .retType = rFuncSym.retType,
+                        .funcSigId = modRes.funcSigId,
+                        .typeChecked = modRes.typeChecked,
+                    };
+                } else {
+                    return FuncCallSymResult{
+                        .csymId = csymId,
+                        .retType = bt.Any,
+                        .funcSigId = modRes.funcSigId,
+                        .typeChecked = modRes.typeChecked,
+                    };
+                }
+            } else {
+                cy.panic("unexpected");
+            }
+        }
+    }
+
+    if (rParentSymId != cy.NullId) {
+        const parentSym = chunk.compiler.sema.getSymbol(rParentSymId);
+        const modId = parentSym.getModuleId().?;
+        try reportIncompatibleFuncSig(chunk, nameId, funcSigId, modId);
+    }
+
     return null;
 }
 
@@ -3009,8 +3164,8 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
         };
 
         switch (modSym.symT) {
-            .nativeFunc1 => {
-                const res = try resolveNativeFunc(chunk, key, funcSigId, modSym.inner.nativeFunc1.func);
+            .hostFunc => {
+                const res = try resolveHostFunc(chunk, key, funcSigId, modSym.inner.hostFunc.func);
                 return CompactSymbolId.initFuncSymId(res.funcSymId);
             },
             .variable => {
@@ -3437,6 +3592,10 @@ fn endIterSubBlock(self: *cy.Chunk) !void {
     try endSubBlock(self);
 }
 
+pub fn declareUsingModule(chunk: *cy.Chunk, modId: cy.ModuleId) !void {
+    try chunk.usingModules.append(chunk.alloc, modId);
+}
+
 pub fn importAllFromModule(self: *cy.Chunk, modId: cy.ModuleId) !void {
     const mod = self.compiler.sema.modules.items[modId];
     var iter = mod.syms.iterator();
@@ -3453,7 +3612,7 @@ pub fn importAllFromModule(self: *cy.Chunk, modId: cy.ModuleId) !void {
                     .parentSymId = mod.resolvedRootSymId,
                 });
             },
-            .nativeFunc1 => {
+            .hostFunc => {
                 // Skip exact func syms.
             },
             else => {
@@ -3461,57 +3620,6 @@ pub fn importAllFromModule(self: *cy.Chunk, modId: cy.ModuleId) !void {
             },
         }
     }
-}
-
-/// Writes resolved spec to temp buf.
-fn resolveSpecTemp(self: *cy.Chunk, spec: []const u8, outBuiltin: *bool) ![]const u8 {
-    if (self.compiler.moduleLoaders.contains(spec)) {
-        outBuiltin.* = true;
-        return spec;
-    }
-
-    if (cy.isWasm) {
-        return error.NotSupported;
-    }
-
-    if (std.mem.startsWith(u8, spec, "http://") or std.mem.startsWith(u8, spec, "https://")) {
-        outBuiltin.* = false;
-        const uri = try std.Uri.parse(spec);
-        if (std.mem.endsWith(u8, uri.host.?, "github.com")) {
-            if (std.mem.count(u8, uri.path, "/") == 2 and uri.path[uri.path.len-1] != '/') {
-                self.tempBufU8.clearRetainingCapacity();
-                try self.tempBufU8.appendSlice(self.alloc, uri.scheme);
-                try self.tempBufU8.appendSlice(self.alloc, "://raw.githubusercontent.com");
-                try self.tempBufU8.appendSlice(self.alloc, uri.path);
-                try self.tempBufU8.appendSlice(self.alloc, "/master/mod.cy");
-                std.debug.print("{s}\n", .{self.tempBufU8.items});
-                return self.tempBufU8.items;
-            }
-        }
-        return spec;
-    }
-
-    self.tempBufU8.clearRetainingCapacity();
-
-    // Create path from the current script.
-    // There should always be a parent directory since `srcUri` should be absolute when dealing with file modules.
-    const dir = std.fs.path.dirname(self.srcUri) orelse return error.NoParentDir;
-    try self.tempBufU8.ensureTotalCapacity(self.alloc, dir.len + 1 + spec.len + std.fs.MAX_PATH_BYTES);
-    try self.tempBufU8.appendSlice(self.alloc, dir);
-    try self.tempBufU8.append(self.alloc, '/');
-    try self.tempBufU8.appendSlice(self.alloc, spec);
-    const path = self.tempBufU8.items;
-
-    // Get canonical path.
-    self.tempBufU8.items.len += std.fs.MAX_PATH_BYTES;
-    outBuiltin.* = false;
-    return std.fs.cwd().realpath(path, self.tempBufU8.items[path.len..]) catch |err| {
-        if (err == error.FileNotFound) {
-            return self.reportError("Import path does not exist: `{}`", &.{v(path)});
-        } else {
-            return err;
-        }
-    };
 }
 
 pub fn resolveEnumSym(c: *cy.VMcompiler, parentSymId: SymbolId, name: []const u8, modId: cy.ModuleId) !SymbolId {
@@ -3701,8 +3809,8 @@ const SymbolResult = struct {
     }
 };
 
-fn resolveNativeFunc(
-    c: *cy.Chunk, key: ResolvedSymKey, funcSigId: FuncSigId, func: cy.NativeFuncPtr,
+fn resolveHostFunc(
+    c: *cy.Chunk, key: ResolvedSymKey, funcSigId: FuncSigId, func: vmc.HostFuncFn,
 ) !SymbolResult {
     const parentSymId = key.resolvedSymKey.parentSymId;
     const nameId = key.resolvedSymKey.nameId;
@@ -4244,28 +4352,6 @@ pub fn appendResolvedRootModule(c: *cy.VMcompiler, absSpec: []const u8) !cy.Modu
     const rModSymId = try resolveRootModuleSym(c, mod.absSpec, modId);
     mod.resolvedRootSymId = rModSymId;
     return modId;
-}
-
-pub fn getOrLoadModule(self: *cy.Chunk, spec: []const u8, nodeId: cy.NodeId) !cy.ModuleId {
-    var isBuiltin: bool = undefined;
-    const absSpec = try resolveSpecTemp(self, spec, &isBuiltin);
-
-    if (self.compiler.sema.moduleMap.get(absSpec)) |modId| {
-        return modId;
-    } else {
-        const modId = try appendResolvedRootModule(self.compiler, absSpec);
-        const dupedAbsSpec = self.compiler.sema.getModule(modId).absSpec;
-
-        // Queue import task.
-        try self.compiler.importTasks.append(self.alloc, .{
-            .chunkId = self.id,
-            .nodeId = nodeId,
-            .absSpec = dupedAbsSpec,
-            .modId = modId,
-            .builtin = isBuiltin,
-        });
-        return modId;
-    }
 }
 
 test "sema internals." {

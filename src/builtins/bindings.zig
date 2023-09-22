@@ -445,18 +445,18 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, fileStreamLines1);
         try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
     } else {
-        try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, objNop0);
-        try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Integer }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, objNop1);
-        try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, objNop1);
+        try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, nop);
+        try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Integer }, bt.Any, nop);
+        try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Integer }, bt.Any, nop);
+        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Integer }, bt.Any, nop);
+        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Integer }, bt.Any, nop);
+        try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, nop);
+        try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, nop);
     }
 
     id = try self.addBuiltinType("Dir", cy.NullId);
@@ -466,9 +466,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
         try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
         try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
     } else {
-        try b.addMethod(rt.DirT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, objNop0);
-        try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, nop);
+        try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, nop);
     }
 
     id = try self.addBuiltinType("DirIterator", cy.NullId);
@@ -476,7 +476,7 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     if (cy.hasStdFiles) {
         try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, dirIteratorNext);
     } else {
-        try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, objNop0);
+        try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, nop);
     }
 
     id = try self.addBuiltinType("MetaType", bt.MetaType);
@@ -562,8 +562,8 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
     std.debug.assert(id == @intFromEnum(sym));
 }
 
-fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
+fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
         lessFn: Value,
@@ -571,7 +571,7 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linkse
         newFramePtr: u32,
     };
     var lessCtx = LessContext{
-        .lessFn = args[0],
+        .lessFn = args[1],
         .vm = vm,
         .newFramePtr = vm.getNewFramePtrOffset(args, nargs),
     };
@@ -589,9 +589,9 @@ fn listSort(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linkse
     return Value.None;
 }
 
-fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index: i64 = @intCast(args[0].asInteger());
-    const list = recv.asHeapObject();
+fn listRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const index: i64 = @intCast(args[1].asInteger());
+    const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index >= inner.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
@@ -601,10 +601,10 @@ fn listRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     return Value.None;
 }
 
-fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const index: i64 = @intCast(args[0].asInteger());
-    const value = args[1];
-    const list = recv.asHeapObject();
+fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const index: i64 = @intCast(args[1].asInteger());
+    const value = args[2];
+    const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     if (index < 0 or index > inner.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
@@ -614,24 +614,24 @@ fn listInsert(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     return Value.None;
 }
 
-fn listAdd(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
+fn listAdd(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
     fmt.printDeprecated("list.add()", "0.1", "Use list.append() instead.", &.{});
-    return listAppend(vm, recv, args, nargs);
+    return listAppend(vm, args, nargs);
 }
 
-fn listAppend(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
-    vm.retain(args[0]);
-    obj.list.append(vm.allocator(), args[0]);
+fn listAppend(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
+    vm.retain(args[1]);
+    obj.list.append(vm.allocator(), args[1]);
     return Value.None;
 }
 
-fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
+fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
         var sepCharLen: u32 = undefined;
-        const sep = vm.valueToTempString2(args[0], &sepCharLen);
+        const sep = vm.valueToTempString2(args[1], &sepCharLen);
 
         const alloc = vm.allocator();
         const tempSlices = &@as(*cy.VM, @ptrCast(vm)).u8Buf2;
@@ -690,9 +690,9 @@ fn listJoinString(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) link
     }
 }
 
-fn listConcat(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
-    const list = args[0].asHeapObject();
+fn listConcat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
+    const list = args[1].asHeapObject();
     for (list.list.items()) |it| {
         vm.retain(it);
         obj.list.append(vm.allocator(), it);
@@ -700,8 +700,8 @@ fn listConcat(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     return Value.None;
 }
 
-fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
-    const obj = recv.asHeapObject();
+fn listIteratorNextPair(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
+    const obj = args[0].asHeapObject();
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
         defer obj.listIter.nextIdx += 1;
@@ -717,8 +717,8 @@ fn listIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) l
     };
 }
 
-fn listIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
+fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
         defer obj.listIter.nextIdx += 1;
@@ -728,16 +728,17 @@ fn listIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) links
     } else return Value.None;
 }
 
-fn listIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
+fn listIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
-fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+fn listResize(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const recv = args[0];
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
-    const size: u32 = @intCast(args[0].asInteger());
+    const size: u32 = @intCast(args[1].asInteger());
     if (inner.len < size) {
         const oldLen = inner.len;
         inner.resize(vm.allocator(), size) catch cy.fatal();
@@ -754,14 +755,14 @@ fn listResize(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksect
     return Value.None;
 }
 
-fn mapIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) Value {
-    const obj = recv.asHeapObject();
+fn mapIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
+    const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
-    const obj = recv.asHeapObject();
+fn mapIteratorNextPair(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
+    const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
@@ -776,8 +777,8 @@ fn mapIteratorNextPair(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     };
 }
 
-fn mapIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
+fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.value);
@@ -785,21 +786,21 @@ fn mapIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
     } else return Value.None;
 }
 
-fn mapSize(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
+fn mapSize(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     return Value.initInt(@intCast(inner.size));
 }
 
-fn mapRemove(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
+fn mapRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
-    _ = inner.remove(@ptrCast(vm), args[0]);
+    _ = inner.remove(@ptrCast(vm), args[1]);
     return Value.None;
 }
 
-fn listLen(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const list = recv.asHeapObject();
+fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     return Value.initInt(@intCast(inner.len));
 }
@@ -829,7 +830,8 @@ fn listLen(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.
 //     return Value.None;
 // }
 
-fn errorValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
+fn errorValue(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const recv = args[0];
     const enumId = (recv.val & 0xFF00) >> 8;
     if (enumId == cy.NullU8) {
         return Value.initSymbol(recv.asErrorSymbol());
@@ -839,13 +841,13 @@ fn errorValue(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     }
 }
 
-fn pointerValue(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
-    const obj = recv.asHeapObject();
+fn pointerValue(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const obj = args[0].asHeapObject();
     return Value.initInt(@bitCast(@as(u48, (@intCast(@intFromPtr(obj.pointer.ptr))))));
 }
 
-fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
-    const fiber = recv.asPointer(*vmc.Fiber);
+fn fiberStatus(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+    const fiber = args[0].asPointer(*vmc.Fiber);
 
     if (vm.internal().curFiber == fiber) {
         return Value.initSymbol(@intFromEnum(Symbol.running));
@@ -859,10 +861,10 @@ fn fiberStatus(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) Value {
     }
 }
 
-pub fn stringUpper(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringUpper(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 const new = vm.allocUnsetAstringObject(str.len) catch fatal();
@@ -885,10 +887,10 @@ pub fn stringUpper(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn stringLower(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringLower(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 const new = vm.allocUnsetAstringObject(str.len) catch fatal();
@@ -911,21 +913,21 @@ pub fn stringLower(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn stringLess(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringLess(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             if (isRawStringObject(T)) {
                 var right: []const u8 = undefined;
-                if (args[0].isRawString()) {
-                    right = args[0].asRawString();
+                if (args[1].isRawString()) {
+                    right = args[1].asRawString();
                 } else {
-                    right = vm.valueToTempString(args[0]);
+                    right = vm.valueToTempString(args[1]);
                 }
                 return Value.initBool(std.mem.lessThan(u8, str, right));
             } else {
-                const right = vm.valueToTempString(args[0]);
+                const right = vm.valueToTempString(args[1]);
                 return Value.initBool(std.mem.lessThan(u8, str, right));
             }
         }
@@ -933,10 +935,10 @@ pub fn stringLess(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn stringLen(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringLen(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.Section) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+            const obj = getStringObject(T, args[0]);
             if (isAstringObject(T, obj)) {
                 if (T == .astring) {
                     return Value.initInt(@intCast(obj.astring.len));
@@ -957,22 +959,22 @@ pub fn stringLen(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringCharAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringCharAt(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.charAt()", "0.2", "Use string.sliceAt() instead.", &.{});
-            return @call(.never_inline, stringSliceAt(T), .{vm, recv, args, nargs});
+            return @call(.never_inline, stringSliceAt(T), .{vm, args, nargs});
         }
     };
     return S.inner;
 }
 
-pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringSliceAt(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            var idx = args[0].asInteger();
+            var idx = args[1].asInteger();
 
             if (isAstringObject(T, obj)) {
                 if (idx < 0) {
@@ -1033,22 +1035,22 @@ pub fn stringSliceAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn stringCodeAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringCodeAt(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.codeAt()", "0.2", "Use string.runeAt() instead.", &.{});
-            return @call(.never_inline, stringRuneAt(T), .{vm, recv, args, nargs});
+            return @call(.never_inline, stringRuneAt(T), .{vm, args, nargs});
         }
     };
     return S.inner;
 }
 
-fn stringRuneAt(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringRuneAt(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const idx = args[0].asInteger();
+            const idx = args[1].asInteger();
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx >= str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
@@ -1098,16 +1100,16 @@ fn rawStringInsertByteCommon(vm: *cy.UserVM, str: []const u8, indexv: Value, val
     return Value.initPtr(new);
 }
 
-fn rawStringInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
+fn rawStringInsertByte(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
     const str = obj.rawstring.getConstSlice();
-    return rawStringInsertByteCommon(vm, str, args[0], args[1]);
+    return rawStringInsertByteCommon(vm, str, args[1], args[2]);
 }
 
-fn rawStringSliceInsertByte(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.Section) Value {
-    const obj = recv.asHeapObject();
+fn rawStringSliceInsertByte(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+    const obj = args[0].asHeapObject();
     const str = obj.rawstringSlice.getConstSlice();
-    return rawStringInsertByteCommon(vm, str, args[0], args[1]);
+    return rawStringInsertByteCommon(vm, str, args[1], args[2]);
 }
 
 fn ustringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replacev: Value) linksection(cy.StdSection) ?Value {
@@ -1144,13 +1146,13 @@ inline fn isAstringObject(comptime T: cy.StringType, obj: StringObject(T)) bool 
     return T == .staticAstring or T == .astring or (T == .slice and cy.heap.StringSlice.isAstring(obj.stringSlice));
 }
 
-fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringRepeat(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
 
-            const n = args[0].asInteger();
+            const n = args[1].asInteger();
             if (n < 0) {
                 return prepareThrowSymbol(vm, .InvalidArgument);
             }
@@ -1193,7 +1195,7 @@ fn stringRepeat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return recv;
+                        return args[0];
                     }
                 }
             }
@@ -1309,12 +1311,12 @@ inline fn getStringSlice(comptime T: cy.StringType, vm: *cy.UserVM, obj: StringO
     }
 }
 
-fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringSplit(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const delim = vm.valueToTempString(args[0]);
+            const delim = vm.valueToTempString(args[1]);
 
             const res = vm.allocEmptyList() catch fatal();
             if (delim.len == 0) {
@@ -1372,16 +1374,16 @@ fn stringSplit(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringTrim(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
 
             const str = getStringSlice(T, vm, obj);
-            const trimRunes = vm.valueToTempString(args[1]);
+            const trimRunes = vm.valueToTempString(args[2]);
 
             var res: []const u8 = undefined;
-            const mode = getBuiltinSymbol(args[0].asSymbolId()) orelse {
+            const mode = getBuiltinSymbol(args[1].asSymbolId()) orelse {
                 return prepareThrowSymbol(vm, .InvalidArgument);
             };
             switch (mode) {
@@ -1406,36 +1408,36 @@ fn stringTrim(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringReplace(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringReplace(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
-                if (astringReplaceCommon(vm, str, args[0], args[1])) |val| {
+                if (astringReplaceCommon(vm, str, args[1], args[2])) |val| {
                     return val;
                 } else {
                     if (T != .staticAstring) {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return recv;
+                        return args[0];
                     }
                 }
             } else if (isUstringObject(T, obj)) {
-                if (ustringReplaceCommon(vm, str, args[0], args[1])) |val| {
+                if (ustringReplaceCommon(vm, str, args[1], args[2])) |val| {
                     return val;
                 } else {
                     if (T != .staticUstring) {
                         vm.retainObject(obj);
                         return Value.initPtr(obj);
                     } else {
-                        return recv;
+                        return args[0];
                     }
                 }
             } else if (isRawStringObject(T)) {
-                const needle = vm.valueToTempString(args[0]);
-                const replacement = vm.valueToNextTempString(args[1]);
+                const needle = vm.valueToTempString(args[1]);
+                const replacement = vm.valueToNextTempString(args[2]);
 
                 const idxBuf = &@as(*cy.VM, @ptrCast(vm)).u8Buf;
                 idxBuf.clearRetainingCapacity();
@@ -1486,22 +1488,22 @@ fn astringReplaceCommon(vm: *cy.UserVM, str: []const u8, needlev: Value, replace
     }
 }
 
-pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringSlice(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
 
             if (isAstringObject(T, obj)) {
-                var start = args[0].asInteger();
+                var start = args[1].asInteger();
                 if (start < 0) {
                     start = @as(i48, @intCast(str.len)) + start;
                 }
                 var end: i48 = undefined;
-                if (args[1].isNone()) {
+                if (args[2].isNone()) {
                     end = @intCast(str.len);
-                } else if (args[1].isInteger()) {
-                    end = args[1].asInteger();
+                } else if (args[2].isInteger()) {
+                    end = args[2].asInteger();
                 } else {
                     return prepareThrowSymbol(vm, .InvalidArgument);
                 }
@@ -1522,11 +1524,11 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isUstringObject(T, obj)) {
                 const charLen = getStringCharLen(T, vm, obj);
-                var start: i48 = args[0].asInteger();
+                var start: i48 = args[1].asInteger();
                 if (start < 0) {
                     start = @as(i48, @intCast(charLen)) + start;
                 }
-                var end: i48 = if (args[1].isNone()) @intCast(charLen) else args[1].asInteger();
+                var end: i48 = if (args[2].isNone()) @intCast(charLen) else args[2].asInteger();
                 if (end < 0) {
                     end = @as(i48, @intCast(charLen)) + end;
                 }
@@ -1548,11 +1550,11 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return vm.allocUstringSlice(str[startByteIdx..endByteIdx], uend - ustart, obj) catch fatal();
                 }
             } else if (isRawStringObject(T)) {
-                var start: i48 = args[0].asInteger();
+                var start: i48 = args[1].asInteger();
                 if (start < 0) {
                     start = @as(i48, @intCast(str.len)) + start;
                 }
-                var end: i48 = if (args[1].isNone()) @intCast(str.len) else args[1].asInteger();
+                var end: i48 = if (args[2].isNone()) @intCast(str.len) else args[2].asInteger();
                 if (end < 0) {
                     end = @as(i48, @intCast(str.len)) + end;
                 }
@@ -1568,24 +1570,24 @@ pub fn stringSlice(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringAppend(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringAppend(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.append()", "0.1", "Use string.concat() instead.", &.{});
-            return stringConcat(T)(vm, recv, args, nargs);
+            return stringConcat(T)(vm, args, nargs);
         }
     };
     return S.inner;
 }
 
-fn stringConcat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringConcat(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             if (isAstringObject(T, obj)) {
                 var rcharLen: u32 = undefined;
-                const rstr = vm.valueToTempString2(args[0], &rcharLen);
+                const rstr = vm.valueToTempString2(args[1], &rcharLen);
                 if (rcharLen == rstr.len) {
                     return vm.allocAstringConcat(str, rstr) catch fatal();
                 } else {
@@ -1593,11 +1595,11 @@ fn stringConcat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 }
             } else if (isUstringObject(T, obj)) {
                 var rcharLen: u32 = undefined;
-                const rstr = vm.valueToTempString2(args[0], &rcharLen);
+                const rstr = vm.valueToTempString2(args[1], &rcharLen);
                 const charLen = getStringCharLen(T, vm, obj);
                 return vm.allocUstringConcat(str, rstr, charLen + rcharLen) catch fatal();
             } else if (isRawStringObject(T)) {
-                const rstr = vm.valueToTempString(args[0]);
+                const rstr = vm.valueToTempString(args[1]);
                 return vm.allocRawStringConcat(str, rstr) catch fatal();
             } else fatal();
         }
@@ -1605,18 +1607,18 @@ fn stringConcat(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringInsert(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const idx = args[0].asInteger();
+            const idx = args[1].asInteger();
             if (isAstringObject(T, obj)) {
                 if (idx < 0 or idx > str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 var insertCharLen: u32 = undefined;
-                const insert = vm.valueToTempString2(args[1], &insertCharLen);
+                const insert = vm.valueToTempString2(args[2], &insertCharLen);
                 const uidx: u32 = @intCast(idx);
                 if (insertCharLen == insert.len) {
                     return vm.allocAstringConcat3(str[0..uidx], insert, str[uidx..]) catch fatal();
@@ -1629,7 +1631,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 }
                 var insertCharLen: u32 = undefined;
-                const insert = vm.valueToTempString2(args[1], &insertCharLen);
+                const insert = vm.valueToTempString2(args[2], &insertCharLen);
                 const uidx: u32 = @intCast(idx);
                 const mru = getUstringMruChar(T, vm, obj);
                 const start: u32 = @intCast(cy.string.ustringSeekByCharIndex(str, mru.byteIdx, mru.charIdx, uidx));
@@ -1640,7 +1642,7 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
                 if (idx < 0 or idx > str.len) {
                     return prepareThrowSymbol(vm, .OutOfBounds);
                 } 
-                const insert = vm.valueToTempString(args[1]);
+                const insert = vm.valueToTempString(args[2]);
                 const new = vm.allocUnsetRawStringObject(str.len + insert.len) catch cy.fatal();
                 const buf = new.rawstring.getSlice();
                 const uidx: u32 = @intCast(idx);
@@ -1654,22 +1656,22 @@ fn stringInsert(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringIndex(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringIndex(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.index()", "0.2", "Use string.find() instead.", &.{});
-            return @call(.never_inline, stringFind(T), .{vm, recv, args, nargs});
+            return @call(.never_inline, stringFind(T), .{vm, args, nargs});
         }
     };
     return S.inner;
 }
 
-fn stringFind(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringFind(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const needle = vm.valueToTempString(args[0]);
+            const needle = vm.valueToTempString(args[1]);
             if (needle.len > 0 and needle.len <= str.len) {
                 if (needle.len == 1) {
                     // One ascii char special case. Perform indexOfChar.
@@ -1697,37 +1699,37 @@ fn stringFind(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringStartsWith(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringStartsWith(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const needle = vm.valueToTempString(args[0]);
+            const needle = vm.valueToTempString(args[1]);
             return Value.initBool(std.mem.startsWith(u8, str, needle));
         }
     };
     return S.inner;
 }
 
-fn stringEndsWith(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringEndsWith(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const needle = vm.valueToTempString(args[0]);
+            const needle = vm.valueToTempString(args[1]);
             return Value.initBool(std.mem.endsWith(u8, str, needle));
         }
     };
     return S.inner;
 }
 
-fn rawStringSliceToString(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+fn rawStringSliceToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
-    return rawStringSliceUtf8(vm, recv, args, nargs);
+    return rawStringSliceUtf8(vm, args, nargs);
 }
 
-fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
+fn rawStringSliceUtf8(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
     const str = obj.rawstringSlice.getConstSlice();
     if (cy.validateUtf8(str)) |size| {
         if (size == str.len) {
@@ -1740,13 +1742,13 @@ fn rawStringSliceUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) lin
     }
 }
 
-fn rawStringToString(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+fn rawStringToString(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     fmt.printDeprecated("rawstring.toString()", "0.1", "Use rawstring.utf8() instead.", &.{});
-    return rawStringUtf8(vm, recv, args, nargs);
+    return rawStringUtf8(vm, args, nargs);
 }
 
-fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
+fn rawStringUtf8(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
     const str = obj.rawstring.getConstSlice();
     if (cy.validateUtf8(str)) |size| {
         if (size == str.len) {
@@ -1759,9 +1761,9 @@ fn rawStringUtf8(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksect
     }
 }
 
-fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
-    const idx: i48 = args[0].asInteger();
+fn rawStringSliceByteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
+    const idx: i48 = args[1].asInteger();
     if (idx < 0 or idx >= obj.rawstringSlice.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     }
@@ -1770,9 +1772,9 @@ fn rawStringSliceByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
     return Value.initInt(@intCast(str[uidx]));
 }
 
-fn rawStringByteAt(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const obj = recv.asHeapObject();
-    const idx: i48 = args[0].asInteger();
+fn rawStringByteAt(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+    const obj = args[0].asHeapObject();
+    const idx: i48 = args[1].asInteger();
     if (idx < 0 or idx >= obj.rawstring.len) {
         return prepareThrowSymbol(vm, .OutOfBounds);
     }
@@ -1794,15 +1796,15 @@ fn valueToChar(vm: *cy.UserVM, val: Value) u8 {
     }
 }
 
-fn stringIsAscii(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringIsAscii(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+        fn inner(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             if (T == .staticAstring) {
                 return Value.True;
             } else if (T == .staticUstring) {
                 return Value.False;
             } else {
-                const obj = getStringObject(T, recv);
+                const obj = getStringObject(T, args[0]);
                 if (isAstringObject(T, obj)) {
                     return Value.True;
                 } else if (isUstringObject(T, obj)) {
@@ -1816,23 +1818,23 @@ fn stringIsAscii(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn stringIndexCharSet(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringIndexCharSet(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.indexCharSet()", "0.2", "Use string.findAnyRune() instead.", &.{});
-            return @call(.never_inline, stringFindAnyRune(T), .{vm, recv, args, nargs});
+            return @call(.never_inline, stringFindAnyRune(T), .{vm, args, nargs});
         }
     };
     return S.inner;
 }
 
-fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringFindAnyRune(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
             var setCharLen: u32 = undefined;
-            const set = vm.valueToTempString2(args[0], &setCharLen);
+            const set = vm.valueToTempString2(args[1], &setCharLen);
             const setIsAscii = setCharLen == set.len;
 
             if (set.len > 0) {
@@ -1917,22 +1919,22 @@ fn stringFindAnyRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn stringIndexCode(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+pub fn stringIndexCode(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.indexCode()", "0.2", "Use string.findRune() instead.", &.{});
-            return @call(.never_inline, stringFindRune(T), .{vm, recv, args, nargs});
+            return @call(.never_inline, stringFindRune(T), .{vm, args, nargs});
         }
     };
     return S.inner;
 }
 
-fn stringFindRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringFindRune(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-            const obj = getStringObject(T, recv);
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+            const obj = getStringObject(T, args[0]);
             const str = getStringSlice(T, vm, obj);
-            const needle = args[0].asInteger();
+            const needle = args[1].asInteger();
 
             if (needle > 0) {
                 const code: u21 = @intCast(needle);
@@ -1977,14 +1979,14 @@ fn stringFindRune(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-fn stringIndexChar(comptime T: cy.StringType) cy.NativeObjFuncPtr {
+fn stringIndexChar(comptime T: cy.StringType) cy.ZHostFuncFn {
     const S = struct {
-        fn inner(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+        fn inner(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
             fmt.printDeprecated("string.indexChar()", "0.2", "Use string.findRune() instead.", &.{});
-            const needle = vm.valueToTempString(args[0]);
+            const needle = vm.valueToTempString(args[1]);
             if (needle.len > 0) {
                 const cp = cy.string.utf8CodeAtNoCheck(needle, 0);
-                return @call(.never_inline, stringFindRune(T), .{vm, recv, &[_]Value{Value.initF64(@floatFromInt(cp))}, 1});
+                return @call(.never_inline, stringFindRune(T), .{vm, &[_]Value{Value.initF64(@floatFromInt(cp))}, 1});
             }
             return Value.None;
         }
@@ -1992,14 +1994,14 @@ fn stringIndexChar(comptime T: cy.StringType) cy.NativeObjFuncPtr {
     return S.inner;
 }
 
-pub fn fileStreamLines(vm: *cy.UserVM, recv: Value, _: [*]const Value, nargs: u8) linksection(StdSection) Value {
-    return fileStreamLines1(vm, recv, &[_]Value{ Value.initF64(@floatFromInt(4096)) }, nargs);
+pub fn fileStreamLines(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
+    return fileStreamLines1(vm, &[_]Value{ args[0], Value.initF64(@floatFromInt(4096)) }, nargs);
 }
 
-pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
-    const obj = recv.asHeapObject();
-    const bufSize: u32 = @intFromFloat(args[0].asF64());
+    const obj = args[0].asHeapObject();
+    const bufSize: u32 = @intFromFloat(args[1].asF64());
     var createReadBuf = true;
     if (obj.file.hasReadBuf) {
         if (bufSize != obj.file.readBufCap) {
@@ -2017,11 +2019,11 @@ pub fn fileStreamLines1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8
         obj.file.readBufCap = @intCast(readBuf.len);
         obj.file.hasReadBuf = true;
     }
-    return recv;
+    return args[0];
 }
 
-pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn dirWalk(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
     if (obj.dir.iterable) {
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(obj), true) catch fatal();
@@ -2030,8 +2032,8 @@ pub fn dirWalk(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksectio
     }
 }
 
-pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn dirIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
     if (obj.dir.iterable) {
         vm.retainObject(obj);
         return vm.allocDirIterator(@ptrCast(obj), false) catch fatal();
@@ -2040,22 +2042,22 @@ pub fn dirIterator(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linkse
     }
 }
 
-pub fn fileIterator(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
+pub fn fileIterator(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
     // Don't need to release obj since it's being returned.
-    const obj = recv.asHeapObject();
+    const obj = args[0].asHeapObject();
     obj.file.curPos = 0;
     obj.file.readBufEnd = 0;
-    return recv;
+    return args[0];
 }
 
-pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileSeekFromEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = args[0].asInteger();
+    const numBytes = args[1].asInteger();
     if (numBytes > 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
@@ -2067,14 +2069,14 @@ pub fn fileSeekFromEnd(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     return Value.None;
 }
 
-pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileSeekFromCur(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = args[0].asInteger();
+    const numBytes = args[1].asInteger();
 
     const file = obj.file.getStdFile();
     file.seekBy(numBytes) catch |err| {
@@ -2083,14 +2085,14 @@ pub fn fileSeekFromCur(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8)
     return Value.None;
 }
 
-pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileSeek(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = args[0].asInteger();
+    const numBytes = args[1].asInteger();
     if (numBytes < 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
@@ -2103,14 +2105,14 @@ pub fn fileSeek(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     return Value.None;
 }
 
-pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileWrite(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    var buf = vm.valueToTempRawString(args[0]);
+    var buf = vm.valueToTempRawString(args[1]);
     const file = obj.file.getStdFile();
     const numWritten = file.write(buf) catch |err| {
         return fromUnsupportedError(vm, "write", err, @errorReturnTrace());
@@ -2119,20 +2121,20 @@ pub fn fileWrite(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) links
     return Value.initInt(@intCast(numWritten));
 }
 
-pub fn fileClose(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileClose(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
     obj.file.close();
     return Value.None;
 }
 
-pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileRead(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
     }
 
-    const numBytes = args[0].asInteger();
+    const numBytes = args[1].asInteger();
     if (numBytes <= 0) {
         return prepareThrowSymbol(vm, .InvalidArgument);
     }
@@ -2153,8 +2155,8 @@ pub fn fileRead(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linkse
     return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
 }
 
-pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileReadToEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.file.closed) {
         return prepareThrowSymbol(vm, .Closed);
@@ -2188,8 +2190,8 @@ pub fn fileReadToEnd(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     }
 }
 
-pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     if (obj.getTypeId() == rt.FileT) {
         if (obj.file.closed) {
@@ -2238,13 +2240,13 @@ pub fn fileOrDirStat(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) link
     return map;
 }
 
-pub fn metatypeId(_: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn metatypeId(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
     return Value.initInt(obj.metatype.symId);
 }
 
-pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn dirIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
 
     const ivm = vm.internal();
     const iter: *cy.DirIterator = @ptrCast(obj);
@@ -2310,8 +2312,8 @@ pub fn dirIteratorNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) li
     }
 }
 
-pub fn fileNext(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
+pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
+    const obj = args[0].asHeapObject();
     if (obj.file.iterLines) {
         const alloc = vm.allocator();
         const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
@@ -2432,21 +2434,21 @@ inline fn inlineUnaryOp(pc: [*]cy.Inst, code: cy.OpCode) void {
     pc[2].val = startLocal;
 }
 
-pub fn intBitwiseNot(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+pub fn intBitwiseNot(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
     inlineUnaryOp(pc, .bitwiseNot);
 }
 
-pub fn intNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+pub fn intNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
     inlineUnaryOp(pc, .negInt);
 }
 
-pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void  {
+pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void  {
     inlineUnaryOp(pc, .negFloat);
 }
 
-fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
+fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.OptimizingFuncFn {
     const S = struct {
-        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
             const startLocal = pc[1].val;
             // Save callObjSym data.
             pc[8].val = startLocal;
@@ -2462,9 +2464,9 @@ fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
     return S.method;
 }
 
-fn inlineBinOp(comptime code: cy.OpCode) cy.OptimizingNativeMethod {
+fn inlineBinOp(comptime code: cy.OpCode) cy.OptimizingFuncFn {
     const S = struct {
-        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: Value, _: [*]const Value, _: u8) void {
+        pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
             const startLocal = pc[1].val;
             // Save callObjSym data.
             pc[8].val = startLocal;
@@ -2525,38 +2527,7 @@ pub fn errorCall(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Std
     }
 }
 
-pub fn nop0(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    return vm.returnPanic("Unsupported.");
-}
-
-pub fn nop1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    vm.release(args[0]);
-    return vm.returnPanic("Unsupported.");
-}
-
-pub fn nop2(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    vm.release(args[0]);
-    vm.release(args[1]);
-    return vm.returnPanic("Unsupported.");
-}
-
-pub fn nop3(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    vm.release(args[0]);
-    vm.release(args[1]);
-    vm.release(args[2]);
-    return vm.returnPanic("Unsupported.");
-}
-
-pub fn objNop0(vm: *cy.UserVM, recv: Value, _: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
-    vm.releaseObject(obj);
-    return vm.returnPanic("Unsupported.");
-}
-
-pub fn objNop1(vm: *cy.UserVM, recv: Value, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = recv.asHeapObject();
-    vm.releaseObject(obj);
-    vm.release(args[0]);
+pub fn nop(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return vm.returnPanic("Unsupported.");
 }
 
@@ -2590,7 +2561,7 @@ pub const ModuleBuilder = struct {
         try self.mod().setTypedVar(self.compiler, name, typeSymId, val);
     }
 
-    pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.SymbolId, ret: sema.SymbolId, ptr: cy.NativeFuncPtr) !void {
+    pub fn setFunc(self: *const ModuleBuilder, name: []const u8, params: []const sema.SymbolId, ret: sema.SymbolId, ptr: cy.ZHostFuncFn) !void {
         try self.mod().setNativeTypedFunc(self.compiler, name, params, ret, ptr);
     }
 
@@ -2600,7 +2571,7 @@ pub const ModuleBuilder = struct {
 
     pub fn addOptimizingMethod(
         self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
-        params: []const types.TypeId, ret: types.TypeId, ptr: cy.OptimizingNativeMethod
+        params: []const types.TypeId, ret: types.TypeId, ptr: cy.OptimizingFuncFn,
     ) !void {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);
@@ -2612,7 +2583,7 @@ pub const ModuleBuilder = struct {
 
     pub fn addMethod(
         self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
-        params: []const types.TypeId, ret: types.TypeId, ptr: cy.NativeObjFuncPtr
+        params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncFn,
     ) !void {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);
@@ -2625,7 +2596,7 @@ pub const ModuleBuilder = struct {
 
     pub fn addMethod2(
         self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
-        params: []const types.TypeId, ret: types.TypeId, ptr: cy.NativeObjFunc2Ptr
+        params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncPairFn,
     ) !void {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);

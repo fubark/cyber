@@ -12,11 +12,8 @@ const sema = cy.sema;
 const types = cy.types;
 const bt = types.BuiltinTypeSymIds;
 const gen = cy.codegen;
-const cache = @import("cache.zig");
-const core_mod = @import("builtins/core.zig");
+const cy_mod = @import("builtins/builtins.zig");
 const math_mod = @import("builtins/math.zig");
-const os_mod = @import("builtins/os.zig");
-const test_mod = @import("builtins/test.zig");
 
 const log = cy.log.scoped(.vm_compiler);
 
@@ -43,8 +40,11 @@ pub const VMcompiler = struct {
     /// Used to return additional info for an error.
     errorPayload: cy.NodeId,
 
-    /// Absolute specifier to additional loaders.
-    moduleLoaders: std.StringHashMapUnmanaged(std.ArrayListUnmanaged(cy.ModuleLoaderFunc)),
+    /// Determines how modules are loaded.
+    moduleLoader: cy.ModuleLoaderFn,
+
+    /// Determines how module uris are resolved.
+    moduleResolver: cy.ModuleResolverFn,
 
     /// Compilation units indexed by their id.
     chunks: std.ArrayListUnmanaged(cy.Chunk),
@@ -58,9 +58,14 @@ pub const VMcompiler = struct {
     /// Reused for SymIds.
     tempSyms: std.ArrayListUnmanaged(sema.SymbolId),
 
-    deinitedRtObjects: bool,
-
     config: CompileConfig,
+
+    /// Tracks whether an error was set from the API.
+    hasApiError: bool,
+    apiError: []const u8, // Duped so Cyber owns the msg.
+
+    /// Whether builtins should be imported.
+    importBuiltins: bool = true,
 
     pub fn init(self: *VMcompiler, vm: *cy.VM) !void {
         self.* = .{
@@ -72,30 +77,17 @@ pub const VMcompiler = struct {
             .lastErrChunk = undefined,
             .errorPayload = undefined,
             .sema = sema.Model.init(vm.alloc),
+            .moduleLoader = defaultModuleLoader,
+            .moduleResolver = defaultModuleResolver,
             .chunks = .{},
             .importTasks = .{},
-            .moduleLoaders = .{},
-            .deinitedRtObjects = false,
             .tempSyms = .{},
             .typeStack = .{},
             .config = .{}, 
+            .hasApiError = false,
+            .apiError = "",
         };
-        try self.addModuleLoader("core", initModuleCompat("core", core_mod.initModule));
-        try self.addModuleLoader("math", initModuleCompat("math", math_mod.initModule));
-        try self.addModuleLoader("os", initModuleCompat("os", os_mod.initModule));
-        try self.addModuleLoader("test", initModuleCompat("test", test_mod.initModule));
-
         try self.reinit();    
-    }
-
-    pub fn deinitRtObjects(self: *VMcompiler) void {
-        if (self.deinitedRtObjects) {
-            return;
-        }
-        if (self.sema.moduleMap.get("os")) |id| {
-            os_mod.deinitModule(self, self.sema.modules.items[id]) catch cy.fatal();
-        }
-        self.deinitedRtObjects = true;
     }
 
     pub fn deinit(self: *VMcompiler, comptime reset: bool) void {
@@ -107,10 +99,10 @@ pub const VMcompiler = struct {
             self.buf.deinit();
         }
 
-        self.deinitRtObjects();
-        self.sema.deinit(self.alloc, reset);
-
         for (self.chunks.items) |*chunk| {
+            if (chunk.destroy) |destroy| {
+                destroy(@ptrCast(self.vm), chunk.modId);
+            }
             chunk.deinit();
         }
         if (reset) {
@@ -121,16 +113,8 @@ pub const VMcompiler = struct {
             self.importTasks.deinit(self.alloc);
         }
 
-        if (reset) {
-            // `moduleLoaders` persists.
-        } else {
-            var iter = self.moduleLoaders.iterator();
-            while (iter.next()) |e| {
-                self.alloc.free(e.key_ptr.*);
-                e.value_ptr.deinit(self.alloc);
-            }
-            self.moduleLoaders.deinit(self.alloc);
-        }
+        // Chunks depends on modules.
+        self.sema.deinit(self.alloc, reset);
 
         if (reset) {
             self.typeStack.clearRetainingCapacity();
@@ -139,10 +123,12 @@ pub const VMcompiler = struct {
             self.typeStack.deinit(self.alloc);
             self.tempSyms.deinit(self.alloc);
         }
+
+        self.alloc.free(self.apiError);
+        self.apiError = "";
     }
 
     pub fn reinit(self: *VMcompiler) !void {
-        self.deinitedRtObjects = false;
         self.lastErrNode = cy.NullId;
         self.lastErrChunk = cy.NullId;
 
@@ -280,15 +266,17 @@ pub const VMcompiler = struct {
         try self.chunks.append(self.alloc, mainChunk);
 
         // Load core module first since the members are imported into each user module.
-        const coreModId = try sema.appendResolvedRootModule(self, "core");
-        const importCore = ImportTask{
-            .chunkId = nextId,
-            .nodeId = cy.NullId,
-            .absSpec = "core",
-            .modId = coreModId,
-            .builtin = true,
-        };
-        try performImportTask(self, importCore);
+        var builtinModId: cy.ModuleId = undefined;
+        if (self.importBuiltins) {
+            builtinModId = try sema.appendResolvedRootModule(self, "builtins");
+            const importCore = ImportTask{
+                .chunkId = nextId,
+                .nodeId = cy.NullId,
+                .absSpec = "builtins",
+                .modId = builtinModId,
+            };
+            try performImportTask(self, importCore);
+        }
 
         // All modules and data types are loaded first.
         var id: u32 = 0;
@@ -300,6 +288,11 @@ pub const VMcompiler = struct {
                 const chunk = &self.chunks.items[id];
                 const mod = self.sema.getModule(chunk.modId);
                 chunk.semaRootSymId = mod.resolvedRootSymId;
+
+                if (self.importBuiltins) {
+                    // Import builtin module into local namespace.
+                    try sema.declareUsingModule(chunk, builtinModId);
+                }
 
                 // Process static declarations.
                 for (chunk.parser.staticDecls.items) |decl| {
@@ -317,6 +310,7 @@ pub const VMcompiler = struct {
                             try sema.declareTypeAlias(chunk, decl.inner.typeAlias);
                         },
                         .variable,
+                        .hostFunc,
                         .func,
                         .funcInit => {},
                     }
@@ -336,11 +330,7 @@ pub const VMcompiler = struct {
         // Declare static vars and funcs after types have been resolved.
         id = 0;
         while (id < self.chunks.items.len) : (id += 1) {
-            const chunk = &self.chunks.items[id];
-
-            // Import core module into local namespace.
-            const modId = try sema.getOrLoadModule(chunk, "core", cy.NullId);
-            try sema.importAllFromModule(chunk, modId);
+            var chunk = &self.chunks.items[id];
 
             // Process static declarations.
             for (chunk.parser.staticDecls.items) |decl| {
@@ -354,6 +344,9 @@ pub const VMcompiler = struct {
                     .funcInit => {
                         try sema.declareFuncInit(chunk, decl.inner.funcInit);
                     },
+                    .hostFunc => {
+                        try sema.declareHostFunc(chunk, decl.inner.hostFunc);
+                    },
                     .object => {
                         try sema.declareObjectMembers(chunk, decl.inner.object);
                     },
@@ -361,6 +354,10 @@ pub const VMcompiler = struct {
                     .import,
                     .typeAlias => {},
                 }
+            }
+
+            if (chunk.postLoad) |postLoad| {
+                postLoad(@ptrCast(self.vm), chunk.modId);
             }
         }
 
@@ -513,129 +510,39 @@ pub const VMcompiler = struct {
     }
 
     fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
-        if (task.builtin) {
-            if (self.moduleLoaders.get(task.absSpec)) |loaders| {
-                for (loaders.items) |loader| {
-                    if (!loader(@ptrCast(self.vm), task.modId)) {
-                        return error.LoadModuleError;
-                    }
-                }
-            } else {
-                const chunk = &self.chunks.items[task.chunkId];
-                return chunk.reportErrorAt("Unsupported builtin. {}", &.{fmt.v(task.absSpec)}, task.nodeId);
-            }
-        } else {
-            // Default loader.
-
-            if (cy.isWasm) {
-                return error.Unsupported;
-            }
-
-            var src: []const u8 = undefined;
-            if (std.mem.startsWith(u8, task.absSpec, "http://") or std.mem.startsWith(u8, task.absSpec, "https://")) {
-                src = try self.importUrl(task);
-            } else {
-                src = try std.fs.cwd().readFileAlloc(self.alloc, task.absSpec, 1e10);
-            }
-
+        var res: cy.ModuleLoaderResult = undefined;
+        self.hasApiError = false;
+        if (self.moduleLoader(@ptrCast(self.vm), cy.Str.initSlice(task.absSpec), &res)) {
             // Push another chunk.
             const newChunkId: u32 = @intCast(self.chunks.items.len);
+
+            const src = res.src.slice();
             var newChunk = try cy.Chunk.init(self, newChunkId, task.absSpec, src);
-            newChunk.srcOwned = true;
+            newChunk.funcLoader = res.funcLoader;
+            newChunk.postLoad = res.postLoad;
+            newChunk.srcOwned = !res.srcIsStatic;
+            newChunk.destroy = res.destroy;
             newChunk.modId = task.modId;
 
             try self.chunks.append(self.alloc, newChunk);
             self.sema.modules.items[task.modId].chunkId = newChunkId;
-        }
-    }
-
-    pub fn addModuleLoader(self: *VMcompiler, absSpec: []const u8, func: cy.ModuleLoaderFunc) !void {
-        const res = try self.moduleLoaders.getOrPut(self.alloc, absSpec);
-        if (res.found_existing) {
-            const list = res.value_ptr;
-            try list.append(self.alloc, func);
         } else {
-            const keyDupe = try self.alloc.dupe(u8, absSpec);
-            // Start with initial cap = 1.
-            res.value_ptr.* = try std.ArrayListUnmanaged(cy.ModuleLoaderFunc).initCapacity(self.alloc, 1);
-            res.key_ptr.* = keyDupe;
-            const list = res.value_ptr;
-            list.items.len = 1;
-            list.items[0] = func;
-        }
-    }
-
-    fn importUrl(self: *VMcompiler, task: ImportTask) ![]const u8 {
-        const specGroup = try cache.getSpecHashGroup(self.alloc, task.absSpec);
-        defer specGroup.deinit(self.alloc);
-
-        if (self.vm.config.reload) {
-            // Remove cache entry.
-            try specGroup.markEntryBySpecForRemoval(task.absSpec);
-        } else {
-            // First check local cache.
-            if (try specGroup.findEntryBySpec(task.absSpec)) |entry| {
-                var found = true;
-                const src = cache.allocSpecFileContents(self.alloc, entry) catch |err| b: {
-                    if (err == error.FileNotFound) {
-                        // Fallthrough.
-                        found = false;
-                        break :b "";
-                    } else {
-                        return err;
-                    }
-                };
-                if (found) {
-                    log.debug("Using cached {s}", .{task.absSpec});
-                    return src;
+            const chunk = &self.chunks.items[task.chunkId];
+            if (task.nodeId == cy.NullId) {
+                if (self.hasApiError) {
+                    return chunk.reportError(self.apiError, &.{});
+                } else {
+                    return chunk.reportError("Failed to load module: {}", &.{v(task.absSpec)});
+                }
+            } else {
+                const stmt = chunk.nodes[task.nodeId];
+                if (self.hasApiError) {
+                    return chunk.reportErrorAt(self.apiError, &.{}, stmt.head.left_right.right);
+                } else {
+                    return chunk.reportErrorAt("Failed to load module: {}", &.{v(task.absSpec)}, stmt.head.left_right.right);
                 }
             }
         }
-
-        const client = self.vm.httpClient;
-
-        const uri = try std.Uri.parse(task.absSpec);
-        var req = client.request(.GET, uri, .{ .allocator = self.alloc }) catch |err| {
-            if (err == error.UnknownHostName) {
-                const chunk = &self.chunks.items[task.chunkId];
-                const stmt = chunk.nodes[task.nodeId];
-                return chunk.reportErrorAt("Can not connect to `{}`.", &.{v(uri.host.?)}, stmt.head.left_right.right);
-            } else {
-                return err;
-            }
-        };
-        defer client.deinitRequest(&req);
-
-        try client.startRequest(&req);
-        try client.waitRequest(&req);
-
-        switch (req.response.status) {
-            .ok => {
-                // Whitelisted status codes.
-            },
-            else => {
-                // Stop immediately.
-                const chunk = &self.chunks.items[task.chunkId];
-                const stmt = chunk.nodes[task.nodeId];
-                return chunk.reportErrorAt("Can not load `{}`. Response code: {}", &.{v(task.absSpec), v(req.response.status)}, stmt.head.left_right.right);
-            },
-        }
-
-        var buf: std.ArrayListUnmanaged(u8) = .{};
-        errdefer buf.deinit(self.alloc);
-        var readBuf: [4096]u8 = undefined;
-        var read: usize = readBuf.len;
-
-        while (read == readBuf.len) {
-            read = try client.readAll(&req, &readBuf);
-            try buf.appendSlice(self.alloc, readBuf[0..read]);
-        }
-
-        // Cache to local.
-        const entry = try cache.saveNewSpecFile(self.alloc, specGroup, task.absSpec, buf.items);
-        entry.deinit(self.alloc);
-
-        return try buf.toOwnedSlice(self.alloc);
     }
 };
 
@@ -689,7 +596,6 @@ const ImportTask = struct {
     nodeId: cy.NodeId,
     absSpec: []const u8,
     modId: cy.ModuleId,
-    builtin: bool,
 };
 
 pub fn initModuleCompat(comptime name: []const u8, comptime initFn: fn (vm: *VMcompiler, modId: cy.ModuleId) anyerror!void) cy.ModuleLoaderFunc {
@@ -713,6 +619,32 @@ pub const CompileConfig = struct {
 pub const ValidateConfig = struct {
     enableFileModules: bool = false,
 };
+
+pub fn defaultModuleResolver(_: *cy.UserVM, _: cy.ChunkId, _: cy.Str, spec_: cy.Str, outUri: *cy.Str) callconv(.C) bool {
+    outUri.* = spec_;
+    return true;
+}
+
+pub fn defaultModuleLoader(_: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
+    if (std.mem.eql(u8, spec.slice(), "builtins")) {
+        out.* = .{
+            .src = cy.Str.initSlice(cy_mod.Src),
+            .srcIsStatic = true,
+            .funcLoader = cy_mod.defaultFuncLoader,
+            .postLoad = cy_mod.postLoad,
+        };
+        return true;
+    } else if (std.mem.eql(u8, spec.slice(), "math")) {
+        out.* = .{
+            .src = cy.Str.initSlice(math_mod.Src),
+            .srcIsStatic = true,
+            .funcLoader = math_mod.defaultFuncLoader,
+            .postLoad = math_mod.postLoad,
+        };
+        return true;
+    }
+    return false;
+}
 
 test "vm compiler internals." {
     try t.eq(@offsetOf(VMcompiler, "buf"), @offsetOf(vmc.Compiler, "buf"));

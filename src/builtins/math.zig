@@ -1,9 +1,64 @@
 const std = @import("std");
 const cy = @import("../cyber.zig");
+const vmc = cy.vmc;
 const Value = cy.Value;
 const bt = cy.types.BuiltinTypeSymIds;
 
-pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
+pub const Src = @embedFile("math.cy");
+pub fn defaultFuncLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
+    if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
+        return @ptrCast(funcs[func.idx].@"1");
+    }
+    return null;
+}
+
+const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
+const funcs = [_]NameHostFunc{
+    .{"abs",    abs},
+    .{"acos",   acos},
+    .{"acosh",  acosh},
+    .{"asin",   asin},
+    .{"asinh",  asinh},
+    .{"atan",   atan},
+    .{"atan2",  atan2},
+    .{"atanh",  atanh},
+    .{"cbrt",   cbrt},
+    .{"ceil",   ceil},
+    .{"clz32",  clz32},
+    .{"cos",    cos},
+    .{"cosh",   cosh},
+    .{"exp",    exp},
+    .{"expm1",  expm1},
+    .{"floor",  floor},
+    .{"hypot",  hypot},
+    .{"isNaN",  isNaN},
+    .{"ln",     ln},
+    .{"log",    log},
+    .{"log10",  log10},
+    .{"log1p",  log1p},
+    .{"log2",   log2},
+    .{"max",    max},
+    .{"min",    min},
+    .{"mul32",  mul32},
+    .{"pow",    pow},
+    .{"random", random},
+    .{"round",  round},
+    .{"sign",   sign},
+    .{"sin",    sin},
+    .{"sinh",   sinh},
+    .{"sqrt",   sqrt},
+    .{"tan",    tan},
+    .{"tanh",   tanh},
+    .{"trunc",  trunc},
+};
+
+pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
+    zPostLoad(vm.internal().compiler, modId) catch |err| {
+        cy.panicFmt("math module: {}", .{err});
+    };
+}
+
+fn zPostLoad(c: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) anyerror!void {
     const b = cy.bindings.ModuleBuilder.init(c, modId);
 
     // Euler's number and the base of natural logarithms; approximately 2.718.
@@ -38,46 +93,6 @@ pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) anyerror!void {
 
     // Square root of 2; approximately 1.414.
     try b.setVar("sqrt2", bt.Float, Value.initF64(std.math.sqrt2));
-
-    const num1: []const cy.sema.SymbolId = &.{bt.Float};
-    const num2: []const cy.sema.SymbolId = &.{bt.Float, bt.Float};
-
-    try b.setFunc("abs",    num1, bt.Float, abs);
-    try b.setFunc("acos",   num1, bt.Float, acos);
-    try b.setFunc("acosh",  num1, bt.Float, acosh);
-    try b.setFunc("asin",   num1, bt.Float, asin);
-    try b.setFunc("asinh",  num1, bt.Float, asinh);
-    try b.setFunc("atan",   num1, bt.Float, atan);
-    try b.setFunc("atan2",  num2, bt.Float, atan2);
-    try b.setFunc("atanh",  num1, bt.Float, atanh);
-    try b.setFunc("cbrt",   num1, bt.Float, cbrt);
-    try b.setFunc("ceil",   num1, bt.Float, ceil);
-    try b.setFunc("clz32",  num1, bt.Float, clz32);
-    try b.setFunc("cos",    num1, bt.Float, cos);
-    try b.setFunc("cosh",   num1, bt.Float, cosh);
-    try b.setFunc("exp",    num1, bt.Float, exp);
-    try b.setFunc("expm1",  num1, bt.Float, expm1);
-    try b.setFunc("floor",  num1, bt.Float, floor);
-    try b.setFunc("hypot",  num2, bt.Float, hypot);
-    try b.setFunc("isNaN",  num1, bt.Float, isNaN);
-    try b.setFunc("ln",     num1, bt.Float, ln);
-    try b.setFunc("log",    num2, bt.Float, log);
-    try b.setFunc("log10",  num1, bt.Float, log10);
-    try b.setFunc("log1p",  num1, bt.Float, log1p);
-    try b.setFunc("log2",   num1, bt.Float, log2);
-    try b.setFunc("max",    num2, bt.Float, max);
-    try b.setFunc("min",    num2, bt.Float, min);
-    try b.setFunc("mul32",  num2, bt.Float, mul32);
-    try b.setFunc("pow",    num2, bt.Float, pow);
-    try b.setFunc("random", &.{}, bt.Float, random);
-    try b.setFunc("round",  num1, bt.Float, round);
-    try b.setFunc("sign",   num1, bt.Float, sign);
-    try b.setFunc("sin",    num1, bt.Float, sin);
-    try b.setFunc("sinh",   num1, bt.Float, sinh);
-    try b.setFunc("sqrt",   num1, bt.Float, sqrt);
-    try b.setFunc("tan",    num1, bt.Float, tan);
-    try b.setFunc("tanh",   num1, bt.Float, tanh);
-    try b.setFunc("trunc",  num1, bt.Float, trunc);
 }
 
 /// Returns the absolute value of x.

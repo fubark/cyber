@@ -85,6 +85,9 @@ pub const Chunk = struct {
     /// It's useful to store imports, importAlls that are only visible to the module.
     localSyms: std.HashMapUnmanaged(sema.LocalSymKey, sema.LocalSym, cy.hash.KeyU64Context, 80),
 
+    /// Using modules.
+    usingModules: std.ArrayListUnmanaged(cy.ModuleId),
+
     ///
     /// Codegen pass
     ///
@@ -113,6 +116,15 @@ pub const Chunk = struct {
     /// Points to this chunk's `Module`.
     /// Its exported members will be populated in the Module as sema encounters them.
     modId: cy.ModuleId,
+
+    /// For binding hostfunc declarations.
+    funcLoader: ?cy.HostFuncLoaderFn = null,
+    /// Run after declarations have been loaded.
+    postLoad: ?cy.PostLoadModuleFn = null,
+    /// Run before chunk is destroyed.
+    destroy: ?cy.ModuleDestroyFn = null,
+    /// Counter for loading hostfuncs.
+    curHostFuncIdx: u32,
 
     pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
@@ -159,6 +171,8 @@ pub const Chunk = struct {
             .semaFuncDecls = .{},
             .localSyms = .{},
             .rega = cy.register.Allocator.init(c, id),
+            .curHostFuncIdx = 0,
+            .usingModules = .{},
             // .funcCandidateStack = .{},
         };
         try new.parser.tokens.ensureTotalCapacityPrecise(c.alloc, 511);
@@ -205,6 +219,7 @@ pub const Chunk = struct {
 
         self.semaFuncDecls.deinit(self.alloc);
         self.localSyms.deinit(self.alloc);
+        self.usingModules.deinit(self.alloc);
         self.alloc.free(self.nodeTypes);
         // self.funcCandidateStack.deinit(self.alloc);
     }

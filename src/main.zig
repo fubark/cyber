@@ -130,6 +130,7 @@ fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     defer alloc.free(src);
 
     try vm.init(alloc);
+    cy.cli.setupVMForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     const res = vm.compile(path, src, .{
@@ -162,6 +163,7 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
     cy.verbose = verbose;
 
     try vm.init(alloc);
+    cy.cli.setupVMForCLI(@ptrCast(&vm));
     defer vm.deinit(false);
 
     _ = vm.eval(path, src, .{

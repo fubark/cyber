@@ -25,7 +25,7 @@ pub const module = @import("module.zig");
 pub const ModuleId = module.ModuleId;
 pub const Module = module.Module;
 
-const vm_compiler = @import("vm_compiler.zig");
+pub const vm_compiler = @import("vm_compiler.zig");
 pub const VMcompiler = vm_compiler.VMcompiler;
 pub const CompileResultView = vm_compiler.CompileResultView;
 pub const CompileConfig = vm_compiler.CompileConfig;
@@ -153,14 +153,14 @@ pub const simd = @import("simd.zig");
 pub const isWasm = builtin.cpu.arch.isWasm();
 pub const isWasmFreestanding = isWasm and builtin.os.tag == .freestanding;
 pub const is32Bit = build_options.is32Bit;
-pub const hasJit = !isWasm;
 pub const hasStdFiles = !isWasm;
 pub const hasGC = build_options.gc;
+pub const hasFFI = build_options.ffi;
 
 const build_options = @import("build_options");
 pub const Trace = build_options.trace;
 pub const TrackGlobalRC = build_options.trackGlobalRC;
-pub const UseMimalloc = build_options.useMimalloc;
+pub const Malloc = build_options.malloc;
 
 const std = @import("std");
 pub const NullId = std.math.maxInt(u32);
@@ -171,13 +171,48 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const NativeObjFuncPtr = *const fn (*UserVM, Value, [*]const Value, u8) Value;
-pub const OptimizingNativeMethod = *const fn (*UserVM, pc: [*]Inst, Value, [*]const Value, u8) void;
-pub const NativeObjFunc2Ptr = *const fn (*UserVM, Value, [*]const Value, u8) ValuePair;
-pub const NativeFuncPtr = *const fn (*UserVM, [*]const Value, u8) Value;
-pub const NativeErrorFunc = fn (*UserVM, [*]const Value, u8) anyerror!Value;
-pub const ModuleLoaderFunc = *const fn (*UserVM, ModuleId) bool;
+pub const OptimizingFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
+pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
+pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
+pub const ZHostFuncPairFn = *const fn (*UserVM, [*]const Value, u8) ValuePair;
 
+/// Overlap with `include/cyber.h`.
+pub const Str = extern struct {
+    buf: [*]const u8,
+    len: usize,
+
+    pub fn initSlice(s: []const u8) Str {
+        return .{
+            .buf = s.ptr,
+            .len = s.len,
+        };
+    }
+
+    pub fn slice(self: Str) []const u8 {
+        return self.buf[0..self.len];
+    }
+};
+pub const HostFuncInfo = extern struct {
+    modId: vmc.ModuleId,
+    name: Str,
+    funcSigId: vmc.FuncSigId,
+    idx: u32,
+};
+pub const ModuleLoaderResult = extern struct {
+    src: Str,
+    srcIsStatic: bool,
+    funcLoader: ?HostFuncLoaderFn = null,
+    postLoad: ?PostLoadModuleFn = null,
+    destroy: ?ModuleDestroyFn = null,
+};
+pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, outUri: *Str) callconv(.C) bool;
+pub const ModuleLoaderFn = *const fn (*UserVM, Str, out: *ModuleLoaderResult) callconv(.C) bool;
+pub const HostFuncLoaderFn = *const fn (*UserVM, HostFuncInfo) callconv(.C) vmc.HostFuncFn;
+pub const PostLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const ModuleDestroyFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const PrintFn = *const fn (*UserVM, str: Str) callconv(.C) void;
+
+pub const cli = @import("cli.zig");
 pub const log = @import("log.zig");
 pub const utils = @import("utils.zig");
 pub const IndexSlice = utils.IndexSlice;

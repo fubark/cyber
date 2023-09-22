@@ -79,42 +79,34 @@ The annotation `@hide` provides a hint to editors that the static symbol should 
 > _Planned Feature_
 
 ## Builtin Modules.
+Builtin modules are the bare minimum that comes with Cyber. The [embeddable library]({{<relref "/docs/toc/embedding">}}) contains these modules and nothing more. They include:
+- [builtins](#builtins): Cyber related functions and commonly used utilities.
+- [math](#math): Math constants and functions.
+> _Incomplete: The docs for builtin modules are not completely up-to-date. They will be auto generated in the future._
 
-Cyber currently contains the builtin modules:
-- [core](#core-module): Cyber related functions and commonly used utilities.
-- [math](#math-module): Math constants and functions.
-- [os](#os-module): System level functions.
-- [test](#test-module): Utilities for testing.
-
-> _Incomplete: The docs for builtins are not completely up-to-date. They will be auto generated in the future._
-
-## Core Module.
-The core module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
+## builtins.
+The `builtins` module contains functions related to Cyber and common utilities. It is automatically imported into each script's namespace. 
 
 Sample usage:
 ```cy
+-- `print` and `typeid` are available without imports.
 print 'hello'
-var contents = readFile 'foo.txt'
-print contents
+var id = typeid('my str')
+print id
 ```
 
 | Function | Summary |
 | ------------- | ----- |
 | `arrayFill(val any, n int) List` | Creates a list with initial capacity of `n` and values set to `val`. If the value is an object, it is shallow copied `n` times. | 
 | `boolean(val any) boolean` | Converts a value to either `true` or `false`. | 
-| `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `copy(val any) any` | Copies a primitive value or creates a shallow copy of an object value. | 
 | `error(e (enum \| symbol)) error` | Create an error from an enum or symbol. | 
-| `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
-| `exit(status int) noreturn` | Exits the program with a status code. | 
 | `evalJS(val string) none` | Evals JS from the host environment. This is only available in a web WASM build of Cyber. | 
-| `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
-| `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
+| `float(val any) float` | Casts or converts the value to a `float`. Panics if type conversion fails. | 
 | `int(val any) int` | Converts a value to an 32-bit integer. | 
 | `isAlpha(val int) boolean` | Returns whether a rune is an alphabetic letter. | 
 | `isDigit(val int) boolean` | Returns whether a rune is a digit. | 
 | `must(val any) any \| noreturn` | If `val` is an error, `panic(val)` is invoked. Otherwise, `val` is returned. | 
-| `float(val any) float` | Casts or converts the value to a `float`. Panics if type conversion fails. | 
 | `panic(e symbol) noreturn` | Stop execution in the current fiber and starts unwinding the call stack. See [Unexpected Errors]({{<relref "/docs/toc/errors#unexpected-errors">}}). |
 | `parseCyber(src any) map` | Parses Cyber source string into structured map object. Currently, only metadata about static declarations is made available but this will be extended to include an AST. | 
 | `parseCyon(src any) any` | Parses a CYON string into a value. | 
@@ -123,16 +115,13 @@ print contents
 | `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
 | `prints(s string) none` | Prints a value as a string to stdout. | 
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
-| `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
-| `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
 | `runestr(val int) string` | Converts a rune to a string. | 
 | `string(val any) string` | Converts a value to a string. | 
 | `toCyon(val any) string` | Encodes a value to CYON string. | 
 | `typeof(any) metatype` | Returns the value's type as a `metatype` object. |
 | `typesym(any) symbol` | Returns the value's type as one of the predefined symbols: #float, #int, #boolean, #object, #list, #map, #string, #rawstring, #function, #fiber, #pointer, #symbol, #metatype, #none, #error |
-| `writeFile(path string, contents string) none` | Writes a string value to a file. | 
 
-## Math Module.
+## math.
 The math module contains commonly used math constants and functions.
 
 Sample usage:
@@ -195,7 +184,13 @@ print(m.pi * r^2)
 | tanh(float) float | Returns the hyperbolic tangent of x. |
 | trunc(float) float | Returns the integer portion of x, removing any fractional digits. |
 
-## Os Module.
+## Std Modules.
+Std modules come with Cyber's CLI. They include:
+- [os](#os): System level functions.
+- [test](#test): Utilities for testing.
+> _Incomplete: The docs for std modules are not completely up-to-date. They will be auto generated in the future._
+
+## os.
 Cyber's os module contains system level functions. It's still undecided as to how much should be included here so it's incomplete. You can still access os and libc functions yourself using Cyber's FFI or embedding API.
 
 Sample usage:
@@ -222,29 +217,37 @@ for map each k, v:
 | `args() List<string \| rawstring>` | Returns the command line arguments as a list. Each argument is validated and returned as a UTF-8 `string` or `rawstring` if the validation failed. |
 | `bindLib(path any, decls [](CFunc\|CStruct)) Object \| Map` | Calls `bindLib(path, decls, {})`. | 
 | `bindLib(path any, decls [](CFunc\|CStruct), config: BindLibConfig) Object \| Map` | Creates an FFI binding to a dynamic library and it's symbols. By default, an anonymous object is returned with the C-functions binded as the object's methods. If `config` contains `genMap: true`, a `Map` is returned instead with C-functions binded as function values. | 
+| `cacheUrl(url string) string` | Returns the path of a locally cached file of `url`. If no such file exists locally, it's fetched from `url`. |
 | `copyFile(srcPath any, dstPath any) none \| error` | Copies a file to a destination path. |
 | `createDir(path any) true \| error` | Creates the directory at `path`. Returns `true` if successful. | 
 | `createFile(path any, truncate boolean) File \| error` | Creates and opens the file at `path`. If `truncate` is true, an existing file will be truncated. |
 | `cstr(any) pointer` | Returns a null terminated C string. |
 | `cwd() string` | Returns the current working directory. |
 | `dirName(path any) string \| none` | Returns the given path with its last component removed. |
+| `execCmd(args []string) Map{ out, err, exited }` | Runs a shell command and returns the stdout/stderr. | 
 | `exePath() string` | Returns the current executable's path. |
+| `exit(status int) noreturn` | Exits the program with a status code. | 
+| `fetchUrl(url string) rawstring` | Fetches the contents at `url` using the HTTP GET request method. | 
 | `free(ptr pointer) none` | Frees the memory located at `ptr`. |
 | `fromCstr(pointer) rawstring` | Returns a `rawstring` from a null terminated C string. |
 | `getEnv(key any) string \| none` | Returns an environment value by key. |
 | `getEnvAll() Map` | Returns all environment entries as a `Map`. |
+| `getInput() rawstring` | Reads stdin until a new line is reached. This is intended to read user input from the command line. For bulk reads from stdin, use `os.stdin`. | 
 | `malloc(size int) pointer` | Allocates `size` bytes of memory and returns a pointer. |
 | `milliTime() float` | Return the calendar timestamp, in milliseconds, relative to UTC 1970-01-01. |
 | `openDir(path any) Dir \| error` | Invokes `openDir(path, false)`. |
 | `openDir(path any, iterable boolean) Dir \| error` | Opens a directory at the given `path`. `iterable` indicates that the directory's entries can be iterated. |
 | `openFile(path any, mode (#read \| #write \| #readWrite)) File \| error` | Opens a file at the given `path` with the `#read`, `#write`, or `#readWrite` mode. |
 | `parseArgs(options list[ArgOption]) map` | Given expected `ArgOption`s, returns a map of the options and a `rest` entry which contains the non-option arguments. |
+| `readAll() rawstring` | Reads stdin to the EOF as a `rawstring`. | 
+| `readFile(path string) rawstring` | Reads the file contents into a `rawstring` value. | 
 | `realPath(path any) string \| error` | Returns the absolute path of the given path. |
 | `removeDir(path any) true \| error` | Removes an empty directory at `path`. Returns `true` if successful. |
 | `removeFile(path any) true \| error` | Removes the file at `path`. Returns `true` if successful. |
 | `setEnv(key any, value any) none` | Sets an environment value by key. |
 | `sleep(ms float) none` | Pauses the current thread for given milliseconds. |
 | `unsetEnv(key any) none` | Removes an environment value by key. |
+| `writeFile(path string, contents string) none` | Writes a string value to a file. | 
 
 ### `type File`
 | Method | Summary |
@@ -287,7 +290,7 @@ for map each k, v:
 | `'type' -> metatype(string \| float \| boolean)` | Parse as given value type. |
 | `'default' -> any` | Optional: Default value if option is missing. `none` is used if this is not provided. |
 
-## Test Module.
+## test.
 The `test` module contains utilities for testing.
 
 Sample usage:

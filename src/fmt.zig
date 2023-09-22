@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const stdx = @import("stdx");
 const t = stdx.testing;
 const cy = @import("cyber.zig");
-const core = @import("builtins/core.zig");
+const os = @import("std/os.zig");
 
 const log = cy.log.scoped(.fmt);
 
@@ -377,15 +377,15 @@ const HostFileWriter = struct {
     pub const Error = error{};
 
     pub fn writeByte(self: HostFileWriter, byte: u8) linksection(cy.Section) Error!void {
-        core.hostFileWrite(self.fid, @ptrCast(&byte), 1);
+        os.hostFileWrite(self.fid, @ptrCast(&byte), 1);
     }
 
     pub fn writeAll(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
-        core.hostFileWrite(self.fid, data.ptr, data.len);
+        os.hostFileWrite(self.fid, data.ptr, data.len);
     }
 
     pub fn write(self: HostFileWriter, data: []const u8) linksection(cy.Section) Error!void {
-        core.hostFileWrite(self.fid, data.ptr, data.len);
+        os.hostFileWrite(self.fid, data.ptr, data.len);
     }
 
     pub fn writeByteNTimes(self: HostFileWriter, byte: u8, n: usize) linksection(cy.Section) Error!void {

@@ -16,7 +16,7 @@ const Value = cy.Value;
 
 /// A simplified VM handle.
 pub const UserVM = struct {
-    dummy: u64 align(@alignOf(cy.VM)) = undefined,
+    dummy: u64 = undefined,
 
     pub fn init(self: *UserVM, alloc: std.mem.Allocator) !void {
         try self.internal().init(alloc);
@@ -34,6 +34,29 @@ pub const UserVM = struct {
         return @ptrCast(self);
     }
 
+    pub fn setApiError(self: *const UserVM, str: []const u8) void {
+        const vm = self.constInternal();
+        vm.compiler.hasApiError = true;
+        vm.alloc.free(vm.compiler.apiError);
+        vm.compiler.apiError = vm.alloc.dupe(u8, str) catch cy.fatal();
+    }
+
+    pub fn setPrint(self: *UserVM, print: cy.PrintFn) void {
+        self.internal().print = print;
+    }
+
+    pub fn getModuleLoader(self: *const UserVM) cy.ModuleLoaderFn {
+        return self.constInternal().compiler.moduleLoader;
+    }
+
+    pub fn setModuleLoader(self: *const UserVM, loader: cy.ModuleLoaderFn) void {
+        self.constInternal().compiler.moduleLoader = loader;
+    }
+
+    pub fn setModuleResolver(self: *const UserVM, resolver: cy.ModuleResolverFn) void {
+        self.constInternal().compiler.moduleResolver = resolver;
+    }
+
     pub fn ensureUntypedFuncSig(self: *UserVM, numParams: u32) !cy.sema.FuncSigId {
         return cy.sema.ensureResolvedUntypedFuncSig(self.internal().compiler, numParams);
     }
@@ -44,10 +67,6 @@ pub const UserVM = struct {
 
     pub fn setUserData(self: *UserVM, userData: ?*anyopaque) void {
         self.internal().userData = userData;
-    }
-
-    pub fn addModuleLoader(self: *UserVM, absSpec: []const u8, func: cy.ModuleLoaderFunc) !void {
-        return self.internal().compiler.addModuleLoader(absSpec, func);
     }
 
     pub fn getStackTrace(self: *UserVM) *const cy.StackTrace {

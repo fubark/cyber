@@ -1109,6 +1109,11 @@ fn shouldGenMainScopeReleaseOps(self: *cy.VMcompiler) bool {
 }
 
 pub fn genStatements(self: *Chunk, head: cy.NodeId, comptime attachEnd: bool) anyerror!void {
+    if (head == cy.NullId) {
+        try self.buf.pushOp1(.end, 255);
+        return;
+    }
+    
     var cur_id = head;
     var node = self.nodes[cur_id];
 

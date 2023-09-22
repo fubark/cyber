@@ -51,6 +51,7 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "type", .type_k },
     .{ "var", .var_k },
     .{ "while", .while_k },
+    .{ "hostfunc", .hostfunc_k },
 });
 
 const BlockState = struct {
@@ -220,7 +221,12 @@ pub const Parser = struct {
         defer self.popBlock();
 
         const indent = (try self.consumeIndentBeforeStmt()) orelse {
-            return self.reportParseError("Expected one statement.", &.{});
+            self.nodes.items[root_id].head = .{
+                .root = .{
+                    .headStmt = cy.NullId,
+                },
+            };
+            return 0;
         };
         if (indent != 0) {
             return self.reportParseError("Unexpected indentation.", &.{});
@@ -808,6 +814,64 @@ pub const Parser = struct {
             return self.pushObjectDecl(start, name, firstField, firstFunc);
         } else {
             return self.reportParseError("Unexpected token.", &.{});
+        }
+    }
+
+    fn parseHostFuncDecl(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assumes first token is the `func` keyword.
+        self.advanceToken();
+
+        // Parse function name.
+        var token = self.peekToken();
+        const left_pos = self.next_pos;
+        _ = left_pos;
+        if (token.tag() != .ident) {
+            return self.reportParseError("Expected function name identifier.", &.{});
+        }
+        const name = try self.pushIdentNode(self.next_pos);
+        self.advanceToken();
+
+        token = self.peekToken();
+        if (token.tag() == .left_paren) {
+            const paramHead = try self.parseFuncParams();
+            const ret = try self.parseFuncReturn();
+            try self.consumeNewLineOrEnd();
+
+            const nameToken = self.tokens.items[self.nodes.items[name].start_token];
+            const nameStr = self.src[nameToken.pos()..nameToken.data.end_pos];
+            const block = &self.block_stack.items[self.block_stack.items.len-1];
+            try block.vars.put(self.alloc, nameStr, {});
+
+            const header = try self.pushNode(.funcHeader, start);
+            self.nodes.items[header].head = .{
+                .funcHeader = .{
+                    .name = name,
+                    .paramHead = paramHead orelse cy.NullId,
+                    .ret = ret orelse cy.NullId,
+                },
+            };
+
+            const id = try self.pushNode(.hostFuncDecl, start);
+            self.nodes.items[id].head = .{
+                .func = .{
+                    .header = header,
+                    .bodyHead = cy.NullId,
+                },
+            };
+
+            if (!self.inObjectDecl) {
+                try self.staticDecls.append(self.alloc, .{
+                    .declT = .hostFunc,
+                    .inner = .{
+                        .hostFunc = id,
+                    },
+                });
+            }
+
+            return id;
+        } else {
+            return self.reportParseError("Expected left paren.", &.{});
         }
     }
 
@@ -1604,6 +1668,9 @@ pub const Parser = struct {
             },
             .func_k => {
                 return try self.parseFuncDecl();
+            },
+            .hostfunc_k => {
+                return try self.parseHostFuncDecl();
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -3196,6 +3263,7 @@ pub const TokenType = enum(u8) {
     error_k,
     symbol,
     func_k,
+    hostfunc_k,
     is_k,
     coinit_k,
     coyield_k,
@@ -3281,6 +3349,7 @@ pub const NodeType = enum {
     range_clause,
     eachClause,
     label_decl,
+    hostFuncDecl,
     funcDecl,
     funcDeclInit,
     funcHeader,
@@ -4623,6 +4692,7 @@ const ParseExprOptions = struct {
 const StaticDeclType = enum {
     variable,
     typeAlias,
+    hostFunc,
     func,
     funcInit,
     import,
@@ -4635,6 +4705,7 @@ const StaticDecl = struct {
     inner: extern union {
         variable: NodeId,
         typeAlias: NodeId,
+        hostFunc: NodeId,
         func: NodeId,
         funcInit: NodeId,
         import: NodeId,
@@ -4653,6 +4724,6 @@ test "parser internals." {
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 60);
-    try t.eq(keywords.kvs.len, 33);
+    try t.eq(std.enums.values(TokenType).len, 61);
+    try t.eq(keywords.kvs.len, 34);
 }

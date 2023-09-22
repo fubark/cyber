@@ -208,11 +208,3 @@ t.eq(typesym(123), #int)
 t.eq(typesym(123.0), #float)
 t.eq(typesym('abc'), #string)
 t.eq(typesym(pointer(0)), #pointer)
-
--- writeFile() rawstring
-if os.cpu != 'wasm32':
-  s = rawstring('').insertByte(0, 255)
-  writeFile('test.txt', s)
-  var read = readFile('test.txt')
-  t.eq(read.len(), 1)
-  t.eq(read.byteAt(0), 255)

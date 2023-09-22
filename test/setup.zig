@@ -66,6 +66,7 @@ pub const VMrunner = struct {
             .vm = @ptrCast(&testVm),
         };
         self.vm.init(t.alloc) catch fatal();
+        cy.cli.setupVMForCLI(self.vm);
     }
 
     pub fn deinit(self: *VMrunner) void {
@@ -184,6 +185,7 @@ pub const VMrunner = struct {
             return error.UnreleasedObjects;
         }
         try self.vm.init(t.alloc);
+        cy.cli.setupVMForCLI(self.vm);
     }
 
     fn evalNoReset(self: *VMrunner, src: []const u8) !cy.Value {
@@ -241,11 +243,9 @@ pub const EvalResult = anyerror!cy.Value;
 
 pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalResult) anyerror!void) !void {
     const run = VMrunner.create();
+    defer t.alloc.destroy(run);
+    errdefer run.vm.deinit();
     var checkGlobalRC = true;
-    defer {
-        run.deinitExt(checkGlobalRC);
-        t.alloc.destroy(run);
-    }
 
     if (config.silent) {
         cy.silentError = true;
@@ -289,12 +289,13 @@ pub fn eval(config: Config, src: []const u8, optCb: ?*const fn (*VMrunner, EvalR
     }
 
     // Deinit, so global objects from builtins are released.
-    run.vm.internal().compiler.deinitRtObjects();
     run.vm.internal().deinitRtObjects();
 
     if (config.cleanupGC) {
         _ = try cy.arc.performGC(run.vm.internal());
     }
+
+    run.vm.deinit();
 
     if (config.checkGlobalRc) {
         try cy.arc.checkGlobalRC(run.vm.internal());

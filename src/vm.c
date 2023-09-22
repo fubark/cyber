@@ -175,10 +175,10 @@ static inline void releaseObject(VM* vm, HeapObject* obj) {
 }
 
 static inline void retainObject(VM* vm, HeapObject* obj) {
+    VLOG("retain {} rc={}\n", FMT_STR(getTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
     obj->head.rc += 1;
 #if TRACE
     zCheckRetainDanglingPointer(vm, obj);
-    VLOG("retain {} rc={}\n", FMT_STR(getTypeName(vm, OBJ_TYPEID(obj))), FMT_U32(obj->head.rc));
 #endif
 #if TRACK_GLOBAL_RC
     vm->refCounts += 1;
@@ -1079,8 +1079,8 @@ beginSwitch:
         if (typeId == cachedTypeId) {
             // const newFramePtr = framePtr + startLocal;
             vm->curStack = stack;
-            MethodPtr fn = (MethodPtr)READ_U48(8);
-            Value res = fn(vm, recv, stack + startLocal + 5, numArgs);
+            HostFuncFn fn = (HostFuncFn)READ_U48(8);
+            Value res = fn(vm, stack + startLocal + 4, numArgs);
             if (res == VALUE_INTERRUPT) {
                 RETURN(RES_CODE_PANIC);
             }
@@ -1201,7 +1201,7 @@ beginSwitch:
 
         Value* newStack = stack + startLocal;
         vm->curStack = newStack;
-        FuncPtr fn = (FuncPtr)READ_U48(6);
+        HostFuncFn fn = (HostFuncFn)READ_U48(6);
         Value res = fn(vm, newStack + 4, numArgs);
         if (res == VALUE_INTERRUPT) {
             RETURN(RES_CODE_PANIC);
@@ -2021,8 +2021,8 @@ beginSwitch:
         NEXT();
     }
     CASE(Sym): {
-        uint8_t symType = pc[1];
-        uint32_t symId = READ_U32(2);
+        u8 symType = pc[1];
+        u32 symId = READ_U32(2);
         ValueResult res = allocMetaType(vm, symType, symId);
         if (LIKELY(res.code == RES_CODE_SUCCESS)) {
             stack[pc[6]] = res.val;

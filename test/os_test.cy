@@ -27,13 +27,13 @@ t.eq(dir.stat().type, #dir)
 try os.removeFile('test/assets/write.txt')
 var file = os.createFile('test/assets/write.txt', false)
 file.write('foobar')
-t.eq(readFile('test/assets/write.txt'), rawstring('foobar'))
+t.eq(os.readFile('test/assets/write.txt'), rawstring('foobar'))
 -- createFile() no truncate.
 file = os.createFile('test/assets/write.txt', false)
-t.eq(readFile('test/assets/write.txt'), rawstring('foobar'))
+t.eq(os.readFile('test/assets/write.txt'), rawstring('foobar'))
 -- createFile() truncate.
 file = os.createFile('test/assets/write.txt', true)
-t.eq(readFile('test/assets/write.txt'), rawstring(''))
+t.eq(os.readFile('test/assets/write.txt'), rawstring(''))
 
 -- dirName()
 t.eq(os.dirName('.'), none)
@@ -103,13 +103,13 @@ t.eq(file.read(3), rawstring('foo'))
 -- File.write() from create
 file = os.createFile('test/assets/write.txt', true)
 t.eq(file.write('foobar'), 6)
-t.eq(readFile('test/assets/write.txt'), rawstring('foobar'))
+t.eq(os.readFile('test/assets/write.txt'), rawstring('foobar'))
 
 -- File.write() from open
 file = os.openFile('test/assets/write.txt', #write)
 file.seekFromEnd(0)
 t.eq(file.write('abcxyz'), 6)
-t.eq(readFile('test/assets/write.txt'), rawstring('foobarabcxyz'))
+t.eq(os.readFile('test/assets/write.txt'), rawstring('foobarabcxyz'))
 
 -- Dir.iterator()
 dir = os.openDir('test/assets/dir', true)
@@ -141,3 +141,11 @@ else:
     t.eq(entries[1].path, rawstring('dir2/file.txt'))
 t.eq(entries[2].path, rawstring('file.txt'))
 t.eq(entries[3].path, rawstring('file2.txt'))
+
+-- writeFile() rawstring
+if os.cpu != 'wasm32':
+  var s = rawstring('').insertByte(0, 255)
+  os.writeFile('test.txt', s)
+  var read = os.readFile('test.txt')
+  t.eq(read.len(), 1)
+  t.eq(read.byteAt(0), 255)

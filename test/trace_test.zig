@@ -312,6 +312,7 @@ const VMrunner = struct {
             .vm = @ptrCast(&testVm),
         };
         self.vm.init(t.alloc) catch cy.fatal();
+        cy.cli.setupVMForCLI(self.vm);
     }
 
     fn deinit(self: *VMrunner) void {

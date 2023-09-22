@@ -2,26 +2,38 @@ const std = @import("std");
 const builtin = @import("builtin");
 const stdx = @import("stdx");
 const cy = @import("../cyber.zig");
+const vmc = cy.vmc;
 const Value = cy.Value;
 const vm_ = @import("../vm.zig");
 const fmt = @import("../fmt.zig");
-const bindings = @import("bindings.zig");
+const bindings = @import("../builtins/bindings.zig");
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const bt = cy.types.BuiltinTypeSymIds;
 const v = fmt.v;
 
-pub fn initModule(c: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) anyerror!void {
-    const b = bindings.ModuleBuilder.init(c, modId);
+pub const Src = @embedFile("test.cy");
+pub fn defaultFuncLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
+    if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
+        return @ptrCast(funcs[func.idx].@"1");
+    }
+    return null;
+}
 
-    try b.setFunc("eq", &.{bt.Any, bt.Any}, bt.Any, eq);
-    try b.setFunc("eqList", &.{bt.Any, bt.Any}, bt.Any, eqList);
-    try b.setFunc("eqNear", &.{bt.Any, bt.Any}, bt.Any, eqNear);
+const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
+const funcs = [_]NameHostFunc{
+    .{"eq", eq},
+    .{"eqList", eqList},
+    .{"eqNear", eqNear},
+    .{"fail", fail},
+};
+
+pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
+    const b = bindings.ModuleBuilder.init(vm.internal().compiler, modId);
     if (builtin.is_test) {
         // Only available for zig test, until `any` local type specifier is implemented.
-        try b.setFunc("erase", &.{bt.Any}, bt.Any, erase);
+        b.setFunc("erase", &.{bt.Any}, bt.Any, erase) catch cy.fatal();
     }
-    try b.setFunc("fail", &.{}, bt.Any, fail);
 }
 
 fn fail(vm: *cy.UserVM, _: [*]const Value, _: u8) Value {

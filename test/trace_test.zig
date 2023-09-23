@@ -140,7 +140,7 @@ test "ARC assignments." {
         \\var a = [123]
         \\var b = {}
         \\a[0] = b
-        \\t.eq(typesym(a[0]), #map)
+        \\t.eq(typesym(a[0]), .map)
     );
     trace = run.getTrace();
     try t.eq(trace.numRetainAttempts, 4);
@@ -166,7 +166,7 @@ test "ARC for passing call args." {
     try t.eq(trace.numReleases, 1);
 }
 
-test "ARC for function returns values." {
+test "ARC for function return values." {
     var run: VMrunner = undefined;
     try run.init();
     defer run.deinit();

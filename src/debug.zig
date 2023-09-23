@@ -375,8 +375,7 @@ fn getStackFrame(vm: *cy.VM, sym: cy.DebugSym) StackFrame {
         };
     } else {
         const chunk = vm.compiler.chunks.items[sym.file];
-        const frameNode = chunk.nodes[sym.frameLoc];
-        const func = chunk.semaFuncDecls.items[frameNode.head.func.semaDeclId];
+        const func = chunk.getNodeFuncDecl(sym.frameLoc);
         const name = func.getName(&chunk);
 
         const node = chunk.nodes[sym.loc];
@@ -441,8 +440,7 @@ pub fn pcToEndLocalsPc(vm: *const cy.VM, pc: usize) u32 {
 pub fn debugSymToEndLocalsPc(vm: *const cy.VM, sym: cy.DebugSym) u32 {
     if (sym.frameLoc != cy.NullId) {
         const chunk = vm.compiler.chunks.items[sym.file];
-        const node = chunk.nodes[sym.frameLoc];
-        return chunk.semaFuncDecls.items[node.head.func.semaDeclId].genEndLocalsPc;
+        return chunk.getNodeFuncDecl(sym.frameLoc).genEndLocalsPc;
     } else {
         // Located in the main block.
         const chunk = vm.compiler.chunks.items[0];

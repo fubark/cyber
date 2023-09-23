@@ -647,7 +647,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
             const retType = try block.getReturnType(c);
             _ = try semaExprType(c, node.head.child_head, retType);
         },
-        .atStmt => {
+        .comptimeStmt => {
             return;
         },
         else => return c.reportErrorAt("Unsupported node: {}", &.{v(node.node_t)}, nodeId),
@@ -963,24 +963,40 @@ fn checkForDuplicateUsingSym(c: *cy.Chunk, parentSymId: SymbolId, nameId: NameSy
 }
 
 pub fn declareFuncInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
-    const declId = try appendFuncDecl(c, nodeId, true);
-    c.nodes[nodeId].head.func.semaDeclId = declId;
+    const node = c.nodes[nodeId];
+    if (node.head.func.bodyHead == cy.NullId) {
+        // No initializer. Check if @host func.
+        const modifierId = c.nodes[node.head.func.header].next;
+        if (modifierId != cy.NullId) {
+            const modifier = c.nodes[modifierId];
+            if (modifier.head.annotation.type == .host) {
+                try declareHostFunc(c, nodeId);
+                return;
+            }
+        }
+        const name = c.getNodeTokenString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
+        return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
+    } else {
+        const declId = try appendFuncDecl(c, nodeId, true);
+        c.nodes[nodeId].head.func.semaDeclId = declId;
 
-    const func = &c.semaFuncDecls.items[declId];
-    const name = func.getName(c);
-    const nameId = try ensureNameSym(c.compiler, name);
+        // Determine if it's a host func.
+        const func = &c.semaFuncDecls.items[declId];
+        const name = func.getName(c);
+        const nameId = try ensureNameSym(c.compiler, name);
 
-    const mod = c.getModule();
-    try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
-    cy.module.declareUserFunc(c.compiler, c.modId, name, func.funcSigId, declId, true) catch |err| {
-        if (err == error.DuplicateSymName) {
-            return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
-        } else if (err == error.DuplicateFuncSig) {
-            return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
-        } else return err;
-    };
-    const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
-    _ = try resolveUserFunc(c, key, func.funcSigId, declId, true);
+        const mod = c.getModule();
+        try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
+        cy.module.declareUserFunc(c.compiler, c.modId, name, func.funcSigId, declId, true) catch |err| {
+            if (err == error.DuplicateSymName) {
+                return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+            } else if (err == error.DuplicateFuncSig) {
+                return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+            } else return err;
+        };
+        const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
+        _ = try resolveUserFunc(c, key, func.funcSigId, declId, true);
+    }
 }
 
 fn funcDeclInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -1007,6 +1023,7 @@ fn funcDeclInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 }
 
 pub fn declareHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    c.nodes[nodeId].node_t = .hostFuncDecl;
     const declId = try appendFuncDecl(c, nodeId, true);
     const func = &c.semaFuncDecls.items[declId];
     const name = func.getName(c);
@@ -1043,7 +1060,7 @@ pub fn declareFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const func = &c.semaFuncDecls.items[declId];
     const name = func.getName(c);
     const nameId = try ensureNameSym(c.compiler, name);
-    c.nodes[nodeId].head.func.semaDeclId = declId;
+    c.setNodeFuncDecl(nodeId, declId);
 
     const mod = c.getModule();
     try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
@@ -3835,8 +3852,7 @@ fn resolveUserFunc(
         c.compiler.sema.resolvedFuncSyms.items[res.funcSymId].hasStaticInitializer = true;
     }
     const nodeId = c.semaFuncDecls.items[declId].nodeId;
-    const node = c.nodes[nodeId];
-    const func = &c.semaFuncDecls.items[node.head.func.semaDeclId];
+    const func = c.getNodeFuncDeclPtr(nodeId);
     func.inner.staticFunc = .{
         .semaFuncSymId = res.funcSymId,
         .semaSymId = res.symId,

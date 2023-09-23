@@ -409,6 +409,20 @@ pub const Chunk = struct {
         }
     }
 
+    pub fn setNodeFuncDecl(self: *Chunk, nodeId: cy.NodeId, declId: sema.FuncDeclId) void {
+        self.nodes[nodeId].head.func.semaDeclId = declId;
+    }
+
+    pub fn getNodeFuncDecl(self: *const Chunk, nodeId: cy.NodeId) sema.FuncDecl {
+        const node = self.nodes[nodeId];
+        return self.semaFuncDecls.items[node.head.func.semaDeclId];
+    }
+
+    pub fn getNodeFuncDeclPtr(self: *Chunk, nodeId: cy.NodeId) *sema.FuncDecl {
+        const node = self.nodes[nodeId];
+        return &self.semaFuncDecls.items[node.head.func.semaDeclId];
+    }
+
     pub fn genEnsureRtFuncSym(self: *Chunk, funcSymId: sema.FuncSymId) !u32 {
         const rFuncSym = self.compiler.sema.getFuncSym(funcSymId);
         const rSym = self.compiler.sema.getSymbol(rFuncSym.getSymbolId());

@@ -1627,7 +1627,7 @@ pub const VM = struct {
             rt.SymbolT => {
                 const start = writer.pos();
                 const litId = val.asSymbolId();
-                std.fmt.format(writer, "#{s}", .{self.getSymbolName(litId)}) catch cy.fatal();
+                std.fmt.format(writer, ".{s}", .{self.getSymbolName(litId)}) catch cy.fatal();
                 const slice = writer.sliceFrom(start);
                 if (getCharLen) {
                     outCharLen.* = @intCast(slice.len);

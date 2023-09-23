@@ -310,7 +310,6 @@ pub const VMcompiler = struct {
                             try sema.declareTypeAlias(chunk, decl.inner.typeAlias);
                         },
                         .variable,
-                        .hostFunc,
                         .func,
                         .funcInit => {},
                     }
@@ -343,9 +342,6 @@ pub const VMcompiler = struct {
                     },
                     .funcInit => {
                         try sema.declareFuncInit(chunk, decl.inner.funcInit);
-                    },
-                    .hostFunc => {
-                        try sema.declareHostFunc(chunk, decl.inner.hostFunc);
                     },
                     .object => {
                         try sema.declareObjectMembers(chunk, decl.inner.object);
@@ -390,10 +386,13 @@ pub const VMcompiler = struct {
                         try gen.genStaticInitializerDFS(chunk, csymId);
                     } else if (decl.declT == .funcInit) {
                         const node = chunk.nodes[decl.inner.funcInit];
-                        const declId = node.head.func.semaDeclId;
-                        const func = chunk.semaFuncDecls.items[declId];
-                        const csymId = sema.CompactSymbolId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
-                        try gen.genStaticInitializerDFS(chunk, csymId);
+                        if (node.node_t == .funcDeclInit) {
+                            // Nodetype could have changed after declaration. eg. hostFuncDecl.
+                            const declId = node.head.func.semaDeclId;
+                            const func = chunk.semaFuncDecls.items[declId];
+                            const csymId = sema.CompactSymbolId.initFuncSymId(func.inner.staticFunc.semaFuncSymId);
+                            try gen.genStaticInitializerDFS(chunk, csymId);
+                        }
                     }
                 }
             }

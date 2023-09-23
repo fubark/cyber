@@ -332,12 +332,6 @@ fn parseCyberGenResult(vm: *cy.UserVM, parser: *const cy.Parser, res: cy.ParseRe
                 name = res.getFirstNodeString(header.head.funcHeader.name);
                 pos = res.tokens[node.start_token].pos();
             },
-            .hostFunc => {
-                const node = nodes[decl.inner.hostFunc];
-                const header = nodes[node.head.func.header];
-                name = res.getFirstNodeString(header.head.funcHeader.name);
-                pos = res.tokens[node.start_token].pos();
-            },
             .import => {
                 const node = nodes[decl.inner.import];
                 name = res.getFirstNodeString(node.head.left_right.left);

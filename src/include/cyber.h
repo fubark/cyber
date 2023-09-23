@@ -65,13 +65,14 @@ typedef struct CsStr {
     size_t len;
 } CsStr;
 
-typedef CsValue (*CsHostFuncFn)(CsVM* vm, CsValue* args, uint8_t nargs);
-
 // Top level.
 CsStr csGetFullVersion();
 CsStr csGetVersion();
 CsStr csGetBuild();
 CsStr csGetCommit();
+
+// @host func is binded to this function pointer signature.
+typedef CsValue (*CsHostFuncFn)(CsVM* vm, CsValue* args, uint8_t nargs);
 
 // Given the current module's resolved URI and the "to be" imported module specifier,
 // write the resolved specifier in `outUri` and return true, otherwise return false.
@@ -79,10 +80,16 @@ CsStr csGetCommit();
 // simply returns `spec` without any adjustments.
 typedef bool (*CsModuleResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
 
+// Callback invoked after all symbols in module's src are loaded.
+// This would be a convenient time to inject symbols not declared in the module's src.
 typedef void (*CsPostLoadModuleFn)(CsVM* vm, uint32_t modId);
+
+// Callback invoked just before the module is destroyed.
+// When you have explicity injected symbols into a module from `CsPostLoadModuleFn`,
+// this can be a convenient time to do cleanup logic (eg. release objects).
 typedef void (*CsModuleDestroyFn)(CsVM* vm, uint32_t modId);
 
-// Info about a `hostfunc`.
+// Info about a @host func.
 typedef struct CsHostFuncInfo {
     // The module it belongs to.
     uint32_t modId;
@@ -90,12 +97,12 @@ typedef struct CsHostFuncInfo {
     CsStr name;
     // The function's signature.
     uint32_t funcSigId;
-    // A counter that tracks it's current position among all `hostfunc` in the module.
-    // This is useful if you want to bind an array of function pointers to `hostfunc`s.
+    // A counter that tracks it's current position among all @host funcs in the module.
+    // This is useful if you want to bind an array of function pointers to @host funcs.
     uint32_t idx;
 } CsHostFuncInfo;
 
-// Given info about a function, return it's function pointer or null.
+// Given info about a @host func, return it's function pointer or null.
 typedef CsHostFuncFn (*CsHostFuncLoaderFn)(CsVM* vm, CsHostFuncInfo funcInfo);
 
 // Module loader config.
@@ -104,11 +111,11 @@ typedef struct CsModuleLoaderResult {
     CsStr src;
     // Whether the provided `src` is from static memory or heap memory.
     bool srcIsStatic;
-    // Callback to load `hostfunc`s or null.
+    // Pointer to callback or null.
     CsHostFuncLoaderFn funcLoader;
-    // Callback after all symbols in module are loaded or null.
+    // Pointer to callback or null.
     CsPostLoadModuleFn postLoad;
-    // Callback just before the module is destroyed or null.
+    // Pointer to callback or null.
     CsModuleDestroyFn destroy;
 } CsModuleLoaderResult;
 
@@ -116,22 +123,39 @@ typedef struct CsModuleLoaderResult {
 // and return true, otherwise return false.
 typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
 
+// Override the behavior of `print` from the `builtins` module.
+// The default behavior is a no-op.
 typedef void (*CsPrintFn)(CsVM* vm, CsStr str);
+
+// Stats of a GC run.
+typedef struct CsGCResult {
+    // Objects freed that were part of a reference cycle.
+    uint32_t numCycFreed;
+    // Total number of objects freed.
+    uint32_t numObjFreed;
+} CsGCResult;
 
 //
 // [ VM ]
 //
 CsVM* csCreate();
 void csDestroy(CsVM* vm);
+CsModuleResolverFn csGetModuleResolver(CsVM* vm);
+void csSetModuleResolver(CsVM* vm, CsModuleResolverFn resolver);
 CsModuleLoaderFn csGetModuleLoader(CsVM* vm);
 void csSetModuleLoader(CsVM* vm, CsModuleLoaderFn loader);
+CsPrintFn csGetPrint(CsVM* vm);
+void csSetPrint(CsVM* vm, CsPrintFn print);
 CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
 CsResultCode csValidate(CsVM* vm, CsStr src);
 CsStr csGetLastErrorReport(CsVM* vm);
-void csRelease(CsVM* vm, CsValue val);
-void csRetain(CsVM* vm, CsValue val);
 void* csGetUserData(CsVM* vm);
 void csSetUserData(CsVM* vm, void* userData);
+
+// Memory.
+void csRelease(CsVM* vm, CsValue val);
+void csRetain(CsVM* vm, CsValue val);
+CsGCResult csPerformGC(CsVM* vm);
 
 // Modules.
 void csSetModuleFunc(CsVM* vm, CsModuleId modId, CsStr name, uint32_t numParams, CsHostFuncFn func);

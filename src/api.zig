@@ -41,6 +41,10 @@ pub const UserVM = struct {
         vm.compiler.apiError = vm.alloc.dupe(u8, str) catch cy.fatal();
     }
 
+    pub fn getPrint(self: *UserVM) cy.PrintFn {
+        return self.internal().print;
+    }
+
     pub fn setPrint(self: *UserVM, print: cy.PrintFn) void {
         self.internal().print = print;
     }
@@ -51,6 +55,10 @@ pub const UserVM = struct {
 
     pub fn setModuleLoader(self: *const UserVM, loader: cy.ModuleLoaderFn) void {
         self.constInternal().compiler.moduleLoader = loader;
+    }
+
+    pub fn getModuleResolver(self: *const UserVM) cy.ModuleResolverFn {
+        return self.constInternal().compiler.moduleResolver;
     }
 
     pub fn setModuleResolver(self: *const UserVM, resolver: cy.ModuleResolverFn) void {

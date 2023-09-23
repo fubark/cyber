@@ -6,4 +6,4 @@ func fib(n int) int:
     return fib(n - 1) + fib(n - 2)
 var res = fib(6)
 t.eq(res, 8)
-t.eq(typesym(res), #int)
+t.eq(typesym(res), .int)

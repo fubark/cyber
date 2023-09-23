@@ -22,7 +22,7 @@ func barNoExport():
     return 234
 
 -- Test that there is no main block execution for imported modules.
-panic(#ExecutedModuleMain)
+panic(.ExecutedModuleMain)
 
 func declAssign(val) int = toInt
 func toInt(val) int:

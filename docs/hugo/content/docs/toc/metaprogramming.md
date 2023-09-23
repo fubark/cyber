@@ -123,6 +123,12 @@ func id(self) int
 ```
 
 ## Annotations.
+Annotations are used to attach modifiers to declarative statements. The `@host` annotation is used for [embedding]({{<relref "/docs/toc/embedding">}}) to bind a host function to a Cyber function:
+```cy
+@host func compute() float
+```
+
+Custom annotations.
 > _Planned Feature_
 
 ## Runtime eval.

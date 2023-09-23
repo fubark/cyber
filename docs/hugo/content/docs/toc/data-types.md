@@ -489,14 +489,14 @@ print int(fruit)  -- '3'
 When the type of the value is known to be an enum, it can be assigned using a symbol literal.
 ```cy
 var fruit = Fruit.kiwi
-fruit = #orange
+fruit = .orange
 print(fruit == Fruit.orange)   -- 'true'
 ```
 
 ## Symbols.
-Symbol literals begin with `#`, followed by an identifier. They have their own global unique id.
+Symbol literals begin with `.`, followed by an identifier. They have their own global unique id.
 ```cy
-var currency = #usd
-print(currency == #usd)   -- 'true'
+var currency = .usd
+print(currency == .usd)   -- 'true'
 print int(currency)       -- '123' or some arbitrary id.
 ```

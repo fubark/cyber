@@ -1,36 +1,36 @@
-hostfunc access(path any, mode symbol) any
-hostfunc args() List
-hostfunc bindLib(path any, decls List) any
-hostfunc bindLib(path any, decls List, config Map) any
-hostfunc cacheUrl(url any) any
-hostfunc copyFile(srcPath any, dstPath any) any
-hostfunc createDir(path any) any
-hostfunc createFile(path any, truncate boolean) any
-hostfunc cstr(s any) pointer
-hostfunc cwd() string
-hostfunc dirName(path any) any
-hostfunc execCmd(args List) any
-hostfunc exePath() string
-hostfunc exit(status int) none
-hostfunc fetchUrl(url any) any
-hostfunc free(ptr pointer) none
-hostfunc fromCstr(ptr pointer) rawstring
-hostfunc getEnv(key any) any
-hostfunc getEnvAll() Map
-hostfunc getInput() any
-hostfunc malloc(size int) pointer
-hostfunc milliTime() float
-hostfunc openDir(path any) any
-hostfunc openDir(path any, iterable boolean) any
-hostfunc openFile(path any, mode symbol) any
-hostfunc parseArgs(options List) Map
-hostfunc readAll() any
-hostfunc readFile(path any) any
-hostfunc readLine() any
-hostfunc realPath(path any) any
-hostfunc removeDir(path any) any
-hostfunc removeFile(path any) any
-hostfunc setEnv(key any, val any) none
-hostfunc sleep(ms float) none
-hostfunc unsetEnv(key any) none
-hostfunc writeFile(path any, contents any) any
+@host func access(path any, mode symbol) any
+@host func args() List
+@host func bindLib(path any, decls List) any
+@host func bindLib(path any, decls List, config Map) any
+@host func cacheUrl(url any) any
+@host func copyFile(srcPath any, dstPath any) any
+@host func createDir(path any) any
+@host func createFile(path any, truncate boolean) any
+@host func cstr(s any) pointer
+@host func cwd() string
+@host func dirName(path any) any
+@host func execCmd(args List) any
+@host func exePath() string
+@host func exit(status int) none
+@host func fetchUrl(url any) any
+@host func free(ptr pointer) none
+@host func fromCstr(ptr pointer) rawstring
+@host func getEnv(key any) any
+@host func getEnvAll() Map
+@host func getInput() any
+@host func malloc(size int) pointer
+@host func milliTime() float
+@host func openDir(path any) any
+@host func openDir(path any, iterable boolean) any
+@host func openFile(path any, mode symbol) any
+@host func parseArgs(options List) Map
+@host func readAll() any
+@host func readFile(path any) any
+@host func readLine() any
+@host func realPath(path any) any
+@host func removeDir(path any) any
+@host func removeFile(path any) any
+@host func setEnv(key any, val any) none
+@host func sleep(ms float) none
+@host func unsetEnv(key any) none
+@host func writeFile(path any, contents any) any

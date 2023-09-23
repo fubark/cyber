@@ -16,6 +16,10 @@ const IndexSlice = cy.IndexSlice(u32);
 
 const dumpParseErrorStackTrace = builtin.mode == .Debug and !cy.isWasm and true;
 
+const annotations = std.ComptimeStringMap(AnnotationType, .{
+    .{ "host", .host },
+});
+
 const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "and", .and_k },
     .{ "as", .as_k },
@@ -51,7 +55,6 @@ const keywords = std.ComptimeStringMap(TokenType, .{
     .{ "type", .type_k },
     .{ "var", .var_k },
     .{ "while", .while_k },
-    .{ "hostfunc", .hostfunc_k },
 });
 
 const BlockState = struct {
@@ -791,7 +794,7 @@ pub const Parser = struct {
 
         token = self.peekToken();
         if (token.tag() == .func_k) {
-            var firstFunc = try self.parseFuncDecl();
+            var firstFunc = try self.parseFuncDecl(cy.NullId);
             var lastFunc = firstFunc;
 
             while (true) {
@@ -800,7 +803,7 @@ pub const Parser = struct {
                 if (indent == reqIndent) {
                     token = self.peekToken();
                     if (token.tag() == .func_k) {
-                        const id = try self.parseFuncDecl();
+                        const id = try self.parseFuncDecl(cy.NullId);
                         self.nodes.items[lastFunc].next = id;
                         lastFunc = id;
                     } else return self.reportParseError("Unexpected token.", &.{});
@@ -817,65 +820,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseHostFuncDecl(self: *Parser) !NodeId {
-        const start = self.next_pos;
-        // Assumes first token is the `func` keyword.
-        self.advanceToken();
-
-        // Parse function name.
-        var token = self.peekToken();
-        const left_pos = self.next_pos;
-        _ = left_pos;
-        if (token.tag() != .ident) {
-            return self.reportParseError("Expected function name identifier.", &.{});
-        }
-        const name = try self.pushIdentNode(self.next_pos);
-        self.advanceToken();
-
-        token = self.peekToken();
-        if (token.tag() == .left_paren) {
-            const paramHead = try self.parseFuncParams();
-            const ret = try self.parseFuncReturn();
-            try self.consumeNewLineOrEnd();
-
-            const nameToken = self.tokens.items[self.nodes.items[name].start_token];
-            const nameStr = self.src[nameToken.pos()..nameToken.data.end_pos];
-            const block = &self.block_stack.items[self.block_stack.items.len-1];
-            try block.vars.put(self.alloc, nameStr, {});
-
-            const header = try self.pushNode(.funcHeader, start);
-            self.nodes.items[header].head = .{
-                .funcHeader = .{
-                    .name = name,
-                    .paramHead = paramHead orelse cy.NullId,
-                    .ret = ret orelse cy.NullId,
-                },
-            };
-
-            const id = try self.pushNode(.hostFuncDecl, start);
-            self.nodes.items[id].head = .{
-                .func = .{
-                    .header = header,
-                    .bodyHead = cy.NullId,
-                },
-            };
-
-            if (!self.inObjectDecl) {
-                try self.staticDecls.append(self.alloc, .{
-                    .declT = .hostFunc,
-                    .inner = .{
-                        .hostFunc = id,
-                    },
-                });
-            }
-
-            return id;
-        } else {
-            return self.reportParseError("Expected left paren.", &.{});
-        }
-    }
-
-    fn parseFuncDecl(self: *Parser) !NodeId {
+    fn parseFuncDecl(self: *Parser, modifierHead: cy.NodeId) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `func` keyword.
         self.advanceToken();
@@ -979,6 +924,7 @@ pub const Parser = struct {
                         .ret = ret orelse cy.NullId,
                     },
                 };
+                self.nodes.items[header].next = modifierHead;
 
                 const id = try self.pushNode(.funcDecl, start);
                 self.nodes.items[id].head = .{
@@ -1012,6 +958,7 @@ pub const Parser = struct {
                         .ret = ret orelse cy.NullId,
                     },
                 };
+                self.nodes.items[header].next = modifierHead;
 
                 const id = try self.pushNode(.funcDeclInit, start);
                 self.nodes.items[id].head = .{
@@ -1032,7 +979,34 @@ pub const Parser = struct {
 
                 return id;
             } else {
-                return self.reportParseError("Expected colon or an assignment equal operator.", &.{});
+                // Just a declaration, no body.
+                const header = try self.pushNode(.funcHeader, start);
+                self.nodes.items[header].head = .{
+                    .funcHeader = .{
+                        .name = name,
+                        .paramHead = paramHead orelse cy.NullId,
+                        .ret = ret orelse cy.NullId,
+                    },
+                };
+                self.nodes.items[header].next = modifierHead;
+
+                const id = try self.pushNode(.funcDeclInit, start);
+                self.nodes.items[id].head = .{
+                    .func = .{
+                        .header = header,
+                        .bodyHead = cy.NullId,
+                    },
+                };
+
+                if (!self.inObjectDecl) {
+                    try self.staticDecls.append(self.alloc, .{
+                        .declT = .funcInit,
+                        .inner = .{
+                            .func = id,
+                        },
+                    });
+                }
+                return id;
             }
         } else {
             return self.reportParseError("Expected left paren.", &.{});
@@ -1631,6 +1605,33 @@ pub const Parser = struct {
             },
             .at => {
                 const start = self.next_pos;
+                _ = start;
+                self.advanceToken();
+                token = self.peekToken();
+
+                if (token.tag() == .ident) {
+                    const identName = self.src[token.pos()..token.data.end_pos];
+
+                    const modifier = try self.pushNode(.annotation, self.next_pos);
+                    const atype = annotations.get(identName) orelse .custom;
+                    self.nodes.items[modifier].head = .{
+                        .annotation = .{
+                            .type = atype,
+                        }
+                    };
+                    self.advanceToken();
+
+                    if (self.peekToken().tag() != .func_k) {
+                        return self.reportParseError("Expected func declaration.", &.{});
+                    }
+
+                    return try self.parseFuncDecl(modifier);
+                } else {
+                    return self.reportParseError("Expected ident after @.", &.{});
+                }
+            },
+            .pound => {
+                const start = self.next_pos;
                 self.advanceToken();
                 token = self.peekToken();
 
@@ -1645,32 +1646,22 @@ pub const Parser = struct {
                     const callExpr = try self.parseCallExpression(ident);
                     try self.consumeNewLineOrEnd();
 
-                    const atExpr = try self.pushNode(.atExpr, start);
-                    self.nodes.items[atExpr].head = .{
-                        .atExpr = .{
-                            .child = callExpr,
+                    const stmt = try self.pushNode(.comptimeStmt, start);
+                    self.nodes.items[stmt].head = .{
+                        .comptimeStmt = .{
+                            .expr = callExpr,
                         },
                     };
-
-                    const atStmt = try self.pushNode(.atStmt, start);
-                    self.nodes.items[atStmt].head = .{
-                        .atStmt = .{
-                            .expr = atExpr,
-                        },
-                    };
-                    return atStmt;
+                    return stmt;
                 } else {
-                    return self.reportParseError("Expected ident after @.", &.{});
+                    return self.reportParseError("Expected ident after #.", &.{});
                 }
             },
             .type_k => {
                 return try self.parseTypeDecl();
             },
             .func_k => {
-                return try self.parseFuncDecl();
-            },
-            .hostfunc_k => {
-                return try self.parseHostFuncDecl();
+                return try self.parseFuncDecl(cy.NullId);
             },
             .if_k => {
                 return try self.parseIfStatement();
@@ -2451,9 +2442,16 @@ pub const Parser = struct {
                     break :b id;
                 }
             },
-            .symbol => {
+            .dot => {
                 self.advanceToken();
-                return try self.pushNode(.symbolLit, start);
+                token = self.peekToken();
+                if (token.tag() == .ident or token.tag() == .error_k) {
+                    const sym = try self.pushNode(.symbolLit, self.next_pos);
+                    self.advanceToken();
+                    return sym;
+                } else {
+                    return self.reportParseError("Expected symbol identifier.", &.{});
+                }
             },
             .true_k => {
                 self.advanceToken();
@@ -2486,19 +2484,19 @@ pub const Parser = struct {
             .templateString => b: {
                 break :b try self.parseStringTemplate();
             },
-            .at => b: {
+            .pound => b: {
                 self.advanceToken();
                 token = self.peekToken();
                 if (token.tag() == .ident) {
                     const ident = try self.pushIdentNode(self.next_pos);
                     self.advanceToken();
-                    const atExpr = try self.pushNode(.atExpr, start);
-                    self.nodes.items[atExpr].head = .{
-                        .atExpr = .{
+                    const expr = try self.pushNode(.comptimeExpr, start);
+                    self.nodes.items[expr].head = .{
+                        .comptimeExpr = .{
                             .child = ident,
                         },
                     };
-                    break :b atExpr;
+                    break :b expr;
                 } else {
                     return self.reportParseError("Expected identifier.", &.{});
                 }
@@ -3107,10 +3105,6 @@ pub const Parser = struct {
         return id;
     }
 
-    inline fn pushSymbolToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
-        try self.tokens.append(self.alloc, Token.init(.symbol, start_pos, .{ .end_pos = end_pos }));
-    }
-
     inline fn pushIdentToken(self: *Parser, start_pos: u32, end_pos: u32) !void {
         try self.tokens.append(self.alloc, Token.init(.ident, start_pos, .{ .end_pos = end_pos }));
     }
@@ -3223,6 +3217,7 @@ pub const TokenType = enum(u8) {
     templateExprStart,
     operator,
     at,
+    pound,
     left_paren,
     right_paren,
     left_brace,
@@ -3261,9 +3256,7 @@ pub const TokenType = enum(u8) {
     type_k,
     enum_k,
     error_k,
-    symbol,
     func_k,
-    hostfunc_k,
     is_k,
     coinit_k,
     coyield_k,
@@ -3319,8 +3312,9 @@ pub const NodeType = enum {
     continueStmt,
     return_stmt,
     return_expr_stmt,
-    atExpr,
-    atStmt,
+    comptimeExpr,
+    comptimeStmt,
+    annotation,
     ident,
     true_literal,
     false_literal,
@@ -3393,6 +3387,11 @@ pub const GenBinExprStrategy = enum {
     none,
     specialized,
     generic,
+};
+
+pub const AnnotationType = enum {
+    host,
+    custom,
 };
 
 pub const BinaryExprOp = enum {
@@ -3477,6 +3476,9 @@ pub const Node = struct {
             expr: NodeId,
             firstCase: NodeId,
         },
+        annotation: struct {
+            type: AnnotationType,
+        },
         left_right: struct {
             left: NodeId,
             right: NodeId,
@@ -3510,11 +3512,10 @@ pub const Node = struct {
             genTempStartReg: u8 = 255,
         },
         child_head: NodeId,
-        atExpr: struct {
+        comptimeExpr: struct {
             child: NodeId,
         },
-        atStmt: struct {
-            /// atExpr node.
+        comptimeStmt: struct {
             expr: NodeId,
         },
         func: struct {
@@ -3527,6 +3528,7 @@ pub const Node = struct {
             name: Nullable(NodeId),
             paramHead: Nullable(NodeId),
             ret: Nullable(NodeId),
+            // modifierHead is stored in `next`.
         },
         funcParam: struct {
             name: NodeId,
@@ -4164,10 +4166,7 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
                         });
                     }
                 },
-                '#' => {
-                    try tokenizeSymbol(p, p.next_pos);
-                    return .{ .stateT = .token };
-                },
+                '#' => try p.pushToken(.pound, start),
                 else => {
                     if (std.ascii.isAlphabetic(ch)) {
                         try tokenizeKeywordOrIdent(p, start);
@@ -4430,27 +4429,6 @@ pub fn Tokenizer(comptime Config: TokenizerConfig) type {
             }
         }
 
-        fn tokenizeSymbol(p: *Parser, start: u32) !void {
-            // Consume alpha, numeric, underscore.
-            while (true) {
-                if (isAtEndChar(p)) {
-                    try p.pushSymbolToken(start, p.next_pos);
-                    return;
-                }
-                const ch = peekChar(p);
-                if (std.ascii.isAlphanumeric(ch)) {
-                    advanceChar(p);
-                    continue;
-                }
-                if (ch == '_') {
-                    advanceChar(p);
-                    continue;
-                }
-                try p.pushSymbolToken(start, p.next_pos);
-                return;
-            }
-        }
-
         fn tokenizeKeywordOrIdent(p: *Parser, start: u32) !void {
             // Consume alpha.
             while (true) {
@@ -4692,7 +4670,6 @@ const ParseExprOptions = struct {
 const StaticDeclType = enum {
     variable,
     typeAlias,
-    hostFunc,
     func,
     funcInit,
     import,
@@ -4705,7 +4682,6 @@ const StaticDecl = struct {
     inner: extern union {
         variable: NodeId,
         typeAlias: NodeId,
-        hostFunc: NodeId,
         func: NodeId,
         funcInit: NodeId,
         import: NodeId,
@@ -4724,6 +4700,6 @@ test "parser internals." {
     }
     try t.eq(@sizeOf(TokenizeState), 4);
 
-    try t.eq(std.enums.values(TokenType).len, 61);
-    try t.eq(keywords.kvs.len, 34);
+    try t.eq(std.enums.values(TokenType).len, 60);
+    try t.eq(keywords.kvs.len, 33);
 }

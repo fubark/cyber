@@ -17,8 +17,8 @@ var o2 = o
 t.eq(o != o2, false)
 
 -- Compare symbols.
-t.eq(#abc != #xyz, true) 
-t.eq(#abc != #abc, false)
+t.eq(.abc != .xyz, true) 
+t.eq(.abc != .abc, false)
 
 -- Compare errors.
 t.eq(error.SomeError != error.OtherError, true)

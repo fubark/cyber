@@ -16,7 +16,7 @@ t.eq(int(n), 1)
 
 -- Reassign using symbol literal.
 n = Animal2.Tiger
-n = #Dragon
+n = .Dragon
 t.eq(int(n), 2)
 
 type Animal2 enum:

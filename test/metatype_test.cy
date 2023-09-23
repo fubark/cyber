@@ -7,7 +7,7 @@ t.eq(typeof(false).id(), 1)
 t.eq(typeof(error.err).id(), 2)
 t.eq(typeof('abc').id(), 3)
 t.eq(typeof('abc🦊').id(), 4)
-t.eq(typeof(#abc).id(), 6)
+t.eq(typeof(.abc).id(), 6)
 t.eq(typeof(123).id(), 7)
 t.eq(typeof(123.0).id(), 8)
 t.eq(typeof([]).id(), 9)
@@ -36,4 +36,4 @@ t.eq((metatype).id(), 28)
 
 -- Referencing type name path.
 import os 'os'
-t.eq(typesym(os.CFunc), #metatype)
+t.eq(typesym(os.CFunc), .metatype)

@@ -120,5 +120,5 @@ t.eq(n3.b, 6)
 
 -- Using Object sym as a value.
 var sym = Node
-t.eq(typesym(sym), #metatype)
+t.eq(typesym(sym), .metatype)
 t.eq(string(sym), 'type: Node')

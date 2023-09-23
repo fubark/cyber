@@ -212,7 +212,7 @@ test "Typed fiber." {
         \\import t 'test'
         \\
         \\func foo(a fiber):
-        \\  return typesym(a) == #fiber
+        \\  return typesym(a) == .fiber
         \\
         \\func start():
         \\  pass
@@ -472,17 +472,17 @@ test "Typed symbol." {
         \\import t 'test'
         \\
         \\func foo(a symbol):
-        \\  return a == #sometag
+        \\  return a == .sometag
         \\
         \\-- Literal.
-        \\t.eq(foo(#sometag), true)
+        \\t.eq(foo(.sometag), true)
         \\
         \\-- From var.
-        \\var tag = #sometag
+        \\var tag = .sometag
         \\t.eq(foo(tag), true)
         \\
         \\-- Cast erased type.
-        \\tag = t.erase(#sometag)
+        \\tag = t.erase(.sometag)
         \\t.eq(foo(tag as symbol), true)
     );
 }
@@ -716,7 +716,7 @@ test "Multiple evals with same VM." {
 test "Debug labels." {
     try eval(.{},
         \\var a = 1
-        \\@genLabel('MyLabel')
+        \\#genLabel('MyLabel')
         \\a = 1
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         try t.eq(std.meta.isError(res), false);
@@ -914,7 +914,7 @@ test "Imports." {
     try eval(Config.initFileModules("./test/import_test.cy").withSilent(),
         \\import a 'test_mods/init_func_error.cy'
         \\import t 'test'
-        \\t.eq(typesym(a.foo), #function)
+        \\t.eq(typesym(a.foo), .function)
     , struct { fn func(runner: *VMrunner, evalRes: EvalResult) !void {
         try runner.expectErrorReport(evalRes, error.Panic,
             \\panic: Assigning to static function `func () any` with a different function signature `func (any) float`.
@@ -977,7 +977,7 @@ test "Dump locals." {
     defer cy.silentInternal = false;
     _ = try run.eval(
         \\func foo(a):
-        \\  @dumpLocals()
+        \\  #dumpLocals()
     );
 }
 
@@ -1196,7 +1196,7 @@ test "FFI." {
         \\  libPath = none
         \\
         \\var lib = try os.bindLib(libPath, [
-        \\  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+        \\  os.CFunc{ sym: 'testAdd', args: [.int, .int], ret: .int }
         \\])
         \\lib.testAdd(123.0, '321')
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -1224,7 +1224,7 @@ test "FFI." {
         \\  libPath = none
         \\
         \\var lib = try os.bindLib(libPath, [
-        \\  os.CFunc{ sym: 'testAdd', args: [#int, #int], ret: #int }
+        \\  os.CFunc{ sym: 'testAdd', args: [.int, .int], ret: .int }
         \\])
         \\lib.testAdd(123.0, 234.0, 345.0)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
@@ -1245,7 +1245,7 @@ test "FFI." {
 test "Symbols." {
     // Literal.
     try eval(.{},
-        \\var n = #Tiger
+        \\var n = .Tiger
         \\int(n)
     , struct { fn func(run: *VMrunner, res: EvalResult) !void {
         const val = try res;
@@ -1471,11 +1471,11 @@ test "panic()" {
 
     var res = run.evalExt(.{ .silent = true },
         \\var a = 123
-        \\1 + panic(#boom)
+        \\1 + panic(.boom)
     );
     try t.expectError(res, error.Panic);
     var trace = run.getStackTrace();
-    try run.assertPanicMsg("#boom");
+    try run.assertPanicMsg(".boom");
     try t.eq(trace.frames.len, 1);
     try eqStackFrame(trace.frames[0], .{
         .name = "main",

@@ -1,22 +1,22 @@
-hostfunc arrayFill(val any, n int) List
-hostfunc asciiCode(val any) any
-hostfunc bool(val any) boolean
-hostfunc char(val any) any
-hostfunc copy(val any) any
-hostfunc errorReport() string
-hostfunc isAlpha(val int) boolean
-hostfunc isDigit(val int) boolean
-hostfunc must(val any) any
-hostfunc opaque(val any) pointer
-hostfunc panic(err any) none
-hostfunc parseCyber(src any) Map
-hostfunc parseCyon(src any) any
-hostfunc performGC() Map
-hostfunc print(str any) none
-hostfunc prints(str any) none
-hostfunc runestr(val int) string
-hostfunc toCyon(val any) string
-hostfunc typeid(val any) int
-hostfunc valtag(val any) symbol
-hostfunc typesym(val any) symbol
-hostfunc typeof(val any) metatype
+@host func arrayFill(val any, n int) List
+@host func asciiCode(val any) any
+@host func bool(val any) boolean
+@host func char(val any) any
+@host func copy(val any) any
+@host func errorReport() string
+@host func isAlpha(val int) boolean
+@host func isDigit(val int) boolean
+@host func must(val any) any
+@host func opaque(val any) pointer
+@host func panic(err any) none
+@host func parseCyber(src any) Map
+@host func parseCyon(src any) any
+@host func performGC() Map
+@host func print(str any) none
+@host func prints(str any) none
+@host func runestr(val int) string
+@host func toCyon(val any) string
+@host func typeid(val any) int
+@host func valtag(val any) symbol
+@host func typesym(val any) symbol
+@host func typeof(val any) metatype

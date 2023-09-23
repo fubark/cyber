@@ -190,9 +190,9 @@ t.eq(str.startsWith('abc'), true)
 t.eq(str.startsWith('bc'), false)
 
 -- trim()
-t.eq(str.trim(#left, 'a'), 'bcxyz')
-t.eq(str.trim(#right, 'z'), 'abcxy')
-t.eq(str.trim(#ends, 'az'), 'bcxy')
+t.eq(str.trim(.left, 'a'), 'bcxyz')
+t.eq(str.trim(.right, 'z'), 'abcxy')
+t.eq(str.trim(.ends, 'az'), 'bcxy')
 
 -- upper()
 t.eq(str.upper(), 'ABCXYZ')

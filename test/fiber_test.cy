@@ -62,11 +62,11 @@ t.eq(list.len(), 2)
 func foo7():
   coyield
 f = coinit foo7()
-t.eq(f.status(), #paused)
+t.eq(f.status(), .paused)
 coresume f
-t.eq(f.status(), #paused)
+t.eq(f.status(), .paused)
 coresume f
-t.eq(f.status(), #done)
+t.eq(f.status(), .done)
 
 -- Resuming after fiber is done is a nop.
 func foo8():
@@ -74,9 +74,9 @@ func foo8():
 f = coinit foo8()
 coresume f
 coresume f
-t.eq(f.status(), #done)
+t.eq(f.status(), .done)
 coresume f
-t.eq(f.status(), #done)
+t.eq(f.status(), .done)
 
 -- Grow fiber stack.
 func sum(n):

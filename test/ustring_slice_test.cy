@@ -138,9 +138,9 @@ t.eq(str.startsWith('abc🦊'), true)
 t.eq(str.startsWith('bc🦊'), false)
 
 -- trim()
-t.eq(str.trim(#left, 'a'), 'bc🦊xyz🐶')
-t.eq(str.trim(#right, '🐶'), 'abc🦊xyz')
-t.eq(str.trim(#ends, 'a🐶'), 'bc🦊xyz')
+t.eq(str.trim(.left, 'a'), 'bc🦊xyz🐶')
+t.eq(str.trim(.right, '🐶'), 'abc🦊xyz')
+t.eq(str.trim(.ends, 'a🐶'), 'bc🦊xyz')
 
 -- upper()
 t.eq(str.upper(), 'ABC🦊XYZ🐶')

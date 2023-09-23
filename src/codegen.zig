@@ -1367,8 +1367,8 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                 try c.buf.pushOp(.ret1);
             }
         },
-        .atStmt => {
-            try atStmt(c, nodeId);
+        .comptimeStmt => {
+            try comptimeStmt(c, nodeId);
         },
         else => {
             return c.reportErrorAt("Unsupported statement: {}", &.{v(node.node_t)}, nodeId);
@@ -1670,10 +1670,9 @@ fn ifStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 }
 
-fn atStmt(c: *Chunk, nodeId: cy.NodeId) !void {
+fn comptimeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
-    const atExpr = c.nodes[node.head.atStmt.expr];
-    const expr = c.nodes[atExpr.head.atExpr.child];
+    const expr = c.nodes[node.head.comptimeStmt.expr];
     if (expr.node_t == .callExpr) {
         const callee = c.nodes[expr.head.callExpr.callee];
         const name = c.getNodeTokenString(callee);
@@ -1699,7 +1698,7 @@ fn atStmt(c: *Chunk, nodeId: cy.NodeId) !void {
             return c.reportErrorAt("Unsupported annotation: {}", &.{v(name)}, nodeId);
         }
     } else {
-        return c.reportErrorAt("Unsupported atExpr: {}", &.{v(expr.node_t)}, nodeId);
+        return c.reportErrorAt("Unsupported expr: {}", &.{v(expr.node_t)}, nodeId);
     }
 }
 

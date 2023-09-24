@@ -142,6 +142,10 @@ pub const InitSection = if (builtin.os.tag == .macos) "__TEXT,.cyInit" else ".cy
 /// Whether to print verbose logs.
 pub export var verbose = false;
 
+comptime {
+    @export(verbose, .{ .name = "csVerbose", .linkage = .Strong });
+}
+
 /// Compile errors are not printed.
 pub var silentError = false;
 
@@ -165,6 +169,7 @@ pub const Malloc = build_options.malloc;
 const std = @import("std");
 pub const NullId = std.math.maxInt(u32);
 pub const NullU8 = std.math.maxInt(u8);
+pub const NullU16 = std.math.maxInt(u16);
 
 /// Document that a id type can contain NullId.
 pub fn Nullable(comptime T: type) type {
@@ -176,7 +181,7 @@ pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
 pub const ZHostFuncPairFn = *const fn (*UserVM, [*]const Value, u8) ValuePair;
 
-/// Overlap with `include/cyber.h`.
+/// Overlap with `include/cyber.h` for Cyber types.
 pub const Str = extern struct {
     buf: [*]const u8,
     len: usize,
@@ -192,24 +197,33 @@ pub const Str = extern struct {
         return self.buf[0..self.len];
     }
 };
+pub const PreLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const PostLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const ModuleDestroyFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, outUri: *Str) callconv(.C) bool;
+pub const ModuleLoaderResult = extern struct {
+    src: Str,
+    srcIsStatic: bool,
+    funcLoader: ?HostFuncLoaderFn = null,
+    varLoader: ?HostVarLoaderFn = null,
+    preLoad: ?PreLoadModuleFn = null,
+    postLoad: ?PostLoadModuleFn = null,
+    destroy: ?ModuleDestroyFn = null,
+};
+pub const ModuleLoaderFn = *const fn (*UserVM, Str, out: *ModuleLoaderResult) callconv(.C) bool;
 pub const HostFuncInfo = extern struct {
     modId: vmc.ModuleId,
     name: Str,
     funcSigId: vmc.FuncSigId,
     idx: u32,
 };
-pub const ModuleLoaderResult = extern struct {
-    src: Str,
-    srcIsStatic: bool,
-    funcLoader: ?HostFuncLoaderFn = null,
-    postLoad: ?PostLoadModuleFn = null,
-    destroy: ?ModuleDestroyFn = null,
-};
-pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, outUri: *Str) callconv(.C) bool;
-pub const ModuleLoaderFn = *const fn (*UserVM, Str, out: *ModuleLoaderResult) callconv(.C) bool;
 pub const HostFuncLoaderFn = *const fn (*UserVM, HostFuncInfo) callconv(.C) vmc.HostFuncFn;
-pub const PostLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
-pub const ModuleDestroyFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const HostVarInfo = extern struct {
+    modId: vmc.ModuleId,
+    name: Str,
+    idx: u32,
+};
+pub const HostVarLoaderFn = *const fn (*UserVM, HostVarInfo, *Value) callconv(.C) bool; 
 pub const PrintFn = *const fn (*UserVM, str: Str) callconv(.C) void;
 
 pub const cli = @import("cli.zig");

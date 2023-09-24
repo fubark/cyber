@@ -238,22 +238,22 @@ jobs:
       - name: Move. (windows lib)
         if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'lib'
         run: |
-          mv zig-out/lib/cyber.dll cyber.dll
+          mv zig-out/lib/cyber.lib cyber-windows-x64.lib
 
       - name: Move. (linux lib)
         if: env.BUILD_TARGET == 'x86_64-linux-gnu' && env.BUILD_CMD == 'lib'
         run: |
-          mv zig-out/lib/libcyber.so libcyber.so
+          mv zig-out/lib/libcyber.a libcyber-linux-x64.a
 
       - name: Move. (macos lib)
         if: env.BUILD_TARGET == 'x86_64-macos-none' && env.BUILD_CMD == 'lib'
         run: |
-          mv zig-out/lib/libcyber.dylib libcyber.dylib
+          mv zig-out/lib/libcyber.a libcyber-macos-x64.a
 
       - name: Move. (macos lib)
         if: env.BUILD_TARGET == 'aarch64-macos-none' && env.BUILD_CMD == 'lib'
         run: |
-          mv zig-out/lib/libcyber.dylib libcyber-arm64.dylib
+          mv zig-out/lib/libcyber.a libcyber-macos-arm64.a
 
       - name: Move. (wasm)
         if: env.BUILD_TARGET == 'wasm32-freestanding'
@@ -274,10 +274,10 @@ jobs:
         with:
           name: bin
           path: |
-            cyber.dll
-            libcyber.so
-            libcyber.dylib
-            libcyber-arm64.dylib
+            cyber-windows-x64.lib
+            libcyber-linux-x64.a
+            libcyber-macos-x64.a
+            libcyber-macos-arm64.a
             cyber.wasm
 
     outputs:
@@ -293,6 +293,7 @@ jobs:
         with:
           name: bin
 
+      # Manual dispatch.
       - name: Github Latest Release.
         uses: marvinpinto/action-automatic-releases@latest
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -307,12 +308,13 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
-            cyber.dll
-            libcyber.so
-            libcyber.dylib
-            libcyber-arm64.dylib
+            cyber-windows-x64.lib
+            libcyber-linux-x64.a
+            libcyber-macos-x64.a
+            libcyber-macos-arm64.a
             cyber.wasm
 
+      # Auto dispatch.
       - name: Github Release.
         uses: softprops/action-gh-release@v1
         # Releases for tags only.
@@ -324,8 +326,8 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
-            cyber.dll
-            libcyber.so
-            libcyber.dylib
-            libcyber-arm64.dylib
+            cyber-windows-x64.lib
+            libcyber-linux-x64.a
+            libcyber-macos-x64.a
+            libcyber-macos-arm64.a
             cyber.wasm

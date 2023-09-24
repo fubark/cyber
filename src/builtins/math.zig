@@ -5,15 +5,37 @@ const Value = cy.Value;
 const bt = cy.types.BuiltinTypeSymIds;
 
 pub const Src = @embedFile("math.cy");
-pub fn defaultFuncLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
+pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
     if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
         return @ptrCast(funcs[func.idx].@"1");
     }
     return null;
 }
+pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) bool {
+    if (std.mem.eql(u8, vars[v.idx].@"0", v.name.slice())) {
+        out.* = vars[v.idx].@"1";
+        return true;
+    }
+    return false;
+}
 
-const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameHostFunc{
+const NameVar = struct { []const u8, cy.Value };
+const vars = [_]NameVar{
+    .{"e", Value.initF64(std.math.e)},
+    .{"inf", Value.initF64(std.math.inf(f64))},
+    .{"log10e", Value.initF64(std.math.log10e)},
+    .{"log2e", Value.initF64(std.math.log2e)},
+    .{"ln10", Value.initF64(std.math.ln10)},
+    .{"ln2", Value.initF64(std.math.ln2)},
+    .{"nan", Value.initF64(std.math.nan_f64)},
+    .{"neginf", Value.initF64(-std.math.inf(f64))},
+    .{"pi", Value.initF64(std.math.pi)},
+    .{"sqrt1_2", Value.initF64(std.math.sqrt1_2)},
+    .{"sqrt2", Value.initF64(std.math.sqrt2)},
+};
+
+const NameFunc = struct { []const u8, cy.ZHostFuncFn };
+const funcs = [_]NameFunc{
     .{"abs",    abs},
     .{"acos",   acos},
     .{"acosh",  acosh},
@@ -51,49 +73,6 @@ const funcs = [_]NameHostFunc{
     .{"tanh",   tanh},
     .{"trunc",  trunc},
 };
-
-pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    zPostLoad(vm.internal().compiler, modId) catch |err| {
-        cy.panicFmt("math module: {}", .{err});
-    };
-}
-
-fn zPostLoad(c: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSection) anyerror!void {
-    const b = cy.bindings.ModuleBuilder.init(c, modId);
-
-    // Euler's number and the base of natural logarithms; approximately 2.718.
-    try b.setVar("e", bt.Float, Value.initF64(std.math.e));
-
-    // Infinity.
-    try b.setVar("inf", bt.Float, Value.initF64(std.math.inf(f64)));
-
-    // Base-10 logarithm of E; approximately 0.434.
-    try b.setVar("log10e", bt.Float, Value.initF64(std.math.log10e));
-
-    // Base-2 logarithm of E; approximately 1.443.
-    try b.setVar("log2e", bt.Float, Value.initF64(std.math.log2e));
-
-    // Natural logarithm of 10; approximately 2.303.
-    try b.setVar("ln10", bt.Float, Value.initF64(std.math.ln10));
-
-    // Natural logarithm of 2; approximately 0.693.
-    try b.setVar("ln2", bt.Float, Value.initF64(std.math.ln2));
-
-    // Not a number.
-    try b.setVar("nan", bt.Float, Value.initF64(-std.math.nan_f64));
-
-    // Neg infinity.
-    try b.setVar("neginf", bt.Float, Value.initF64(-std.math.inf(f64)));
-
-    // Ratio of a circle's circumference to its diameter; approximately 3.14159.
-    try b.setVar("pi", bt.Float, Value.initF64(std.math.pi));
-
-    // Square root of ½; approximately 0.707.
-    try b.setVar("sqrt1_2", bt.Float, Value.initF64(std.math.sqrt1_2));
-
-    // Square root of 2; approximately 1.414.
-    try b.setVar("sqrt2", bt.Float, Value.initF64(std.math.sqrt2));
-}
 
 /// Returns the absolute value of x.
 pub fn abs(_: *cy.UserVM, args: [*]const Value, _: u8) Value {

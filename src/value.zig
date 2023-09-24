@@ -705,7 +705,9 @@ test "value internals." {
     try t.eq(StaticUstringMask, 0x7FFC000400000000);
     try t.eq(NoneMask, 0x7FFC000000000000);
     try t.eq(TrueMask, 0x7FFC000100000001);
+    try t.eq(FalseMask, 0x7FFC000100000000);
     try t.eq(vmc.POINTER_MASK, 0xFFFE000000000000);
+    try t.eq(Value.initInt(0).val, 0x7ffd000000000000);
 
     // Check Zig/C struct compat.
     try t.eq(@sizeOf(Value), @sizeOf(vmc.Value));

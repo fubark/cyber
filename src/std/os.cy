@@ -1,3 +1,11 @@
+@host var cpu string
+@host var endian symbol
+@host var stdin any
+@host var stdout any
+@host var stderr any
+@host var system string
+@host var vecBitSize int
+
 @host func access(path any, mode symbol) any
 @host func args() List
 @host func bindLib(path any, decls List) any

@@ -144,6 +144,7 @@ You can call functions with named parameters.
 var d = dist(x0: 10, x1: 20, y0: 30, y1: 40)
 ```
 
+### Shorthand syntax.
 The shorthand method for calling functions omits parentheses and commas. This only works for functions that accept parameters:
 > _Incomplete: Only the most trivial cases work with the shorthand method. The case with operators being separated by spaces might not end up being implemented._
 ```cy
@@ -177,6 +178,7 @@ var a = myFunc 'hello' (1 + 2 * 3)
 a = myFunc 'hello' (otherFunc 1+2 'world')
 ```
 
+### Call block syntax.
 The call expression block continues to add arguments from the block's body. If arguments are omitted from the initial call expression they can be added inside using the `..` syntax. Arguments mapped to named parameters have a key value syntax separated by a `:`. All other arguments are added into a list and passed as the last argument.
 > _Planned Feature_
 ```cy

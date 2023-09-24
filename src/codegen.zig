@@ -2767,24 +2767,27 @@ pub fn genStaticInitializerDFS(self: *Chunk, csymId: sema.CompactSymbolId) anyer
             const chunk = &self.compiler.chunks.items[rSym.inner.variable.chunkId];
             const decl = chunk.nodes[declId];
 
-            // Generate deps first.
-            try genStaticInitializerDeps(chunk, csymId);
+            // Only generate for user vars.
+            if (decl.node_t == .staticDecl) {
+                // Generate deps first.
+                try genStaticInitializerDeps(chunk, csymId);
 
-            log.debug("gen static var init: {s}", .{sema.getName(self.compiler, rSym.key.resolvedSymKey.nameId)});
+                log.debug("gen static var init: {s}", .{sema.getName(self.compiler, rSym.key.resolvedSymKey.nameId)});
 
-            // Clear register state.
-            chunk.rega.resetNextTemp();
+                // Clear register state.
+                chunk.rega.resetNextTemp();
 
-            try self.unwindTempIndexStack.append(self.alloc, @bitCast(@as(u32, cy.NullId)));
-            defer self.popUnwindTempIndex();
+                try self.unwindTempIndexStack.append(self.alloc, @bitCast(@as(u32, cy.NullId)));
+                defer self.popUnwindTempIndex();
 
-            const exprv = try expression(chunk, decl.head.staticDecl.right, RegisterCstr.tempMustRetain);
+                const exprv = try expression(chunk, decl.head.staticDecl.right, RegisterCstr.tempMustRetain);
 
-            const rtSymId = try self.compiler.vm.ensureVarSym(rSym.key.resolvedSymKey.parentSymId, rSym.key.resolvedSymKey.nameId);
+                const rtSymId = try self.compiler.vm.ensureVarSym(rSym.key.resolvedSymKey.parentSymId, rSym.key.resolvedSymKey.nameId);
 
-            const pc = self.buf.len();
-            try self.buf.pushOp3(.setStaticVar, 0, 0, exprv.local);
-            self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
+                const pc = self.buf.len();
+                try self.buf.pushOp3(.setStaticVar, 0, 0, exprv.local);
+                self.buf.setOpArgU16(pc + 1, @intCast(rtSymId));
+            }
         } else {
             cy.panicFmt("Unsupported sym {}", .{rSym.symT});
         }
@@ -2920,7 +2923,11 @@ fn expression(c: *Chunk, nodeId: cy.NodeId, cstr: RegisterCstr) anyerror!GenValu
                             return c.initGenValue(dst, childT, false);
                         },
                         .generic => {
-                            return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix~MGID", node.head.unary.child, cstr, nodeId);
+                            if (op == .minus) {
+                                return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix-MGID", node.head.unary.child, cstr, nodeId);
+                            } else {
+                                return callObjSymUnaryExpr(c, c.compiler.vm.@"prefix~MGID", node.head.unary.child, cstr, nodeId);
+                            }
                         }
                     }
                 },

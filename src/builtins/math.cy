@@ -1,3 +1,36 @@
+-- Euler's number and the base of natural logarithms; approximately 2.718.
+@host var e float
+
+-- Infinity.
+@host var inf float
+
+-- Base-10 logarithm of E; approximately 0.434.
+@host var log10e float
+
+-- Base-2 logarithm of E; approximately 1.443.
+@host var log2e float
+
+-- Natural logarithm of 10; approximately 2.303.
+@host var ln10 float
+
+-- Natural logarithm of 2; approximately 0.693.
+@host var ln2 float
+
+-- Not a number.
+@host var nan float
+
+-- Neg infinity.
+@host var neginf float
+
+-- Ratio of a circle's circumference to its diameter; approximately 3.14159.
+@host var pi float
+
+-- Square root of ½; approximately 0.707.
+@host var sqrt1_2 float
+
+-- Square root of 2; approximately 1.414.
+@host var sqrt2 float
+
 @host func abs(a float) float
 @host func acos(a float) float
 @host func acosh(a float) float

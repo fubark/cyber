@@ -13,19 +13,6 @@ const DebugLog = builtin.mode == .Debug and true;
 /// This allows small logs to still work without an allocator.
 var small_buf: [1024]u8 = undefined;
 
-/// Larger logs will use a growing heap allocation.
-var large_buf_inner: std.ArrayList(u8) = undefined;
-var large_buf: *std.ArrayList(u8) = undefined;
-
-pub fn init(alloc: std.mem.Allocator) void {
-    large_buf_inner = std.ArrayList(u8).init(alloc);
-    large_buf = &large_buf_inner;
-}
-
-pub fn deinit() void {
-    large_buf.deinit();
-}
-
 pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
     return struct {
         pub fn debug(
@@ -71,10 +58,8 @@ pub fn scoped(comptime Scope: @Type(.EnumLiteral)) type {
             if (len <= small_buf.len) {
                 return std.fmt.bufPrint(&small_buf, prefix ++ format, args) catch @panic("error");
             } else {
-                large_buf.clearRetainingCapacity();
-                const writer = large_buf.writer();
-                std.fmt.format(writer, prefix ++ format, args) catch @panic("error");
-                return large_buf.items[0..len];
+                // TODO: Instead of building buffer, write to wasm.
+                @panic("log too big");
             }
         }
     };

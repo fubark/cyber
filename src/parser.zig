@@ -1621,11 +1621,14 @@ pub const Parser = struct {
                     };
                     self.advanceToken();
 
-                    if (self.peekToken().tag() != .func_k) {
+                    if (self.peekToken().tag() == .func_k) {
+                        return try self.parseFuncDecl(modifier);
+                    } else if (self.peekToken().tag() == .var_k) {
+                        return try self.parseVarDecl(modifier);
+                    } else {
                         return self.reportParseError("Expected func declaration.", &.{});
                     }
 
-                    return try self.parseFuncDecl(modifier);
                 } else {
                     return self.reportParseError("Expected ident after @.", &.{});
                 }
@@ -1706,77 +1709,7 @@ pub const Parser = struct {
                 return try self.parseReturnStatement();
             },
             .var_k => {
-                const start = self.next_pos;
-                self.advanceToken();
-
-                // Static var name.
-                token = self.peekToken();
-                var name: NodeId = undefined;
-                if (token.tag() == .ident) {
-                    name = try self.pushIdentNode(self.next_pos);
-                    self.advanceToken();
-                } else return self.reportParseError("Expected local name identifier.", &.{});
-
-                const typeSpecHead = (try self.parseOptTypeSpec()) orelse cy.NullId;
-
-                token = self.peekToken();
-                var isStatic: bool = undefined;
-                if (token.tag() == .colon) {
-                    isStatic = true;
-                } else if (token.tag() == .equal) {
-                    isStatic = false;
-                } else {
-                    return self.reportParseError("Expected `:` after local variable name.", &.{});
-                }
-                self.advanceToken();
-
-                var right: NodeId = undefined;
-                switch (self.peekToken().tag()) {
-                    .func_k => {
-                        right = try self.parseMultilineLambdaFunction();
-                    },
-                    .match_k => {
-                        right = try self.parseStatement();
-                    },
-                    else => {
-                        right = (try self.parseExpr(.{})) orelse {
-                            return self.reportParseError("Expected right expression for assignment statement.", &.{});
-                        };
-                    },
-                }
-                const varSpec = try self.pushNode(.varSpec, start);
-                self.nodes.items[varSpec].head = .{
-                    .varSpec = .{
-                        .name = name,
-                        .typeSpecHead = typeSpecHead,
-                    },
-                };
-
-                if (isStatic) {
-                    const decl = try self.pushNode(.staticDecl, start);
-                    self.nodes.items[decl].head = .{
-                        .staticDecl = .{
-                            .varSpec = varSpec,
-                            .right = right,
-                        },
-                    };
-                    try self.staticDecls.append(self.alloc, .{
-                        .declT = .variable,
-                        .inner = .{
-                            .variable = decl,
-                        }
-                    });
-                    return decl;
-                } else {
-                    const decl = try self.pushNode(.localDecl, start);
-                    self.nodes.items[decl].head = .{
-                        .localDecl = .{
-                            .varSpec = varSpec,
-                            .right = right,
-                        },
-                    };
-                    return decl;
-                }
+                return try self.parseVarDecl(cy.NullId);
             },
             else => {},
         }
@@ -2941,6 +2874,98 @@ pub const Parser = struct {
         return left_id;
     }
 
+    fn parseVarDecl(self: *Parser, modifierHead: cy.NodeId) !cy.NodeId {
+        const start = self.next_pos;
+        self.advanceToken();
+
+        // Var name.
+        var token = self.peekToken();
+        var name: NodeId = undefined;
+        if (token.tag() == .ident) {
+            name = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+        } else return self.reportParseError("Expected local name identifier.", &.{});
+
+        const typeSpecHead = (try self.parseOptTypeSpec()) orelse cy.NullId;
+        const varSpec = try self.pushNode(.varSpec, start);
+        self.nodes.items[varSpec].head = .{
+            .varSpec = .{
+                .name = name,
+                .typeSpecHead = typeSpecHead,
+                .modifierHead = modifierHead,
+            },
+        };
+
+        token = self.peekToken();
+        var isStatic: bool = undefined;
+        if (token.tag() == .colon) {
+            isStatic = true;
+        } else if (token.tag() == .equal) {
+            isStatic = false;
+        } else if (token.tag() == .new_line or token.tag() == .none) {
+            const decl = try self.pushNode(.staticDecl, start);
+            self.nodes.items[decl].head = .{
+                .staticDecl = .{
+                    .varSpec = varSpec,
+                    .right = cy.NullId,
+                },
+            };
+            try self.staticDecls.append(self.alloc, .{
+                .declT = .variable,
+                .inner = .{
+                    .variable = decl,
+                }
+            });
+            return decl;
+        } else {
+            return self.reportParseError("Expected `:` after local variable name.", &.{});
+        }
+        self.advanceToken();
+
+        // Continue parsing right expr.
+
+        var right: NodeId = undefined;
+        switch (self.peekToken().tag()) {
+            .func_k => {
+                right = try self.parseMultilineLambdaFunction();
+            },
+            .match_k => {
+                right = try self.parseStatement();
+            },
+            else => {
+                right = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected right expression for assignment statement.", &.{});
+                };
+            },
+        }
+
+        if (isStatic) {
+            const decl = try self.pushNode(.staticDecl, start);
+            self.nodes.items[decl].head = .{
+                .staticDecl = .{
+                    .varSpec = varSpec,
+                    .right = right,
+                },
+            };
+            try self.staticDecls.append(self.alloc, .{
+                .declT = .variable,
+                .inner = .{
+                    .variable = decl,
+                }
+            });
+            return decl;
+        } else {
+            const decl = try self.pushNode(.localDecl, start);
+            self.nodes.items[decl].head = .{
+                .localDecl = .{
+                    .varSpec = varSpec,
+                    .right = right,
+                },
+            };
+            return decl;
+        }
+    }
+
     /// Assumes next token is the return token.
     fn parseReturnStatement(self: *Parser) !NodeId {
         const start = self.next_pos;
@@ -3343,6 +3368,7 @@ pub const NodeType = enum {
     range_clause,
     eachClause,
     label_decl,
+    hostVarDecl,
     hostFuncDecl,
     funcDecl,
     funcDeclInit,
@@ -3563,6 +3589,8 @@ pub const Node = struct {
         varSpec: struct {
             name: NodeId,
             typeSpecHead: Nullable(NodeId),
+            modifierHead: Nullable(NodeId),
+            // `next` contains TypeId for @host var
         },
         staticDecl: struct {
             varSpec: NodeId,

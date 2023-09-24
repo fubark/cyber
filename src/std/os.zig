@@ -24,15 +24,15 @@ pub var CStructT: rt.TypeId = undefined;
 pub var CArrayT: rt.TypeId = undefined;
 
 pub const Src = @embedFile("os.cy");
-pub fn defaultFuncLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
+pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
     if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
         return @ptrCast(funcs[func.idx].@"1");
     }
     return null;
 }
 
-const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameHostFunc{
+const NameFunc = struct { []const u8, cy.ZHostFuncFn };
+const funcs = [_]NameFunc{
     .{"access", access},
     .{"args", osArgs},
     .{"bindLib", bindLib},
@@ -71,6 +71,54 @@ const funcs = [_]NameHostFunc{
     .{"writeFile", writeFile},
 };
 
+const NameValue = struct { []const u8, cy.Value };
+var vars: [7]NameValue = undefined;
+pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) bool {
+    if (std.mem.eql(u8, vars[v.idx].@"0", v.name.slice())) {
+        out.* = vars[v.idx].@"1";
+        return true;
+    }
+    return false;
+}
+
+pub fn preLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
+    zPreLoad(vm.internal().compiler, modId) catch |err| {
+        cy.panicFmt("os module: {}", .{err});
+    };
+}
+
+pub fn zPreLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
+    _ = modId;
+    vars[0] = .{ "cpu", try c.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)) };
+    if (builtin.cpu.arch.endian() == .Little) {
+        vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.little)) };
+    } else {
+        vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
+    }
+    if (cy.hasStdFiles) {
+        const stdin = try cy.heap.allocFile(c.vm, std.io.getStdIn().handle);
+        stdin.asHeapObject().file.closeOnFree = false;
+        vars[2] = .{ "stdin", stdin };
+        const stdout = try cy.heap.allocFile(c.vm, std.io.getStdOut().handle);
+        stdout.asHeapObject().file.closeOnFree = false;
+        vars[3] = .{ "stdout", stdout };
+        const stderr = try cy.heap.allocFile(c.vm, std.io.getStdErr().handle);
+        stderr.asHeapObject().file.closeOnFree = false;
+        vars[4] = .{ "stderr", stderr };
+    } else {
+        vars[2] = .{ "stdin", Value.None };
+        vars[3] = .{ "stdout", Value.None };
+        vars[4] = .{ "stderr", Value.None };
+    }
+    vars[5] = .{ "system", try c.buf.getOrPushStringValue(@tagName(builtin.os.tag)) };
+    
+    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
+        vars[6] = .{ "vecBitSize", cy.Value.initI32(VecSize * 8) };
+    } else {
+        vars[6] = .{ "vecBitSize", cy.Value.initI32(0) };
+    }
+}
+
 pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
     zPostLoad(vm.internal().compiler, modId) catch |err| {
         cy.panicFmt("os module: {}", .{err});
@@ -84,51 +132,6 @@ fn zPostLoad(self: *cy.VMcompiler, modId: cy.ModuleId) linksection(cy.InitSectio
     CFuncT = try b.createAndSetTypeObject("CFunc", &.{"sym", "args", "ret"});
     CStructT = try b.createAndSetTypeObject("CStruct", &.{"fields", "type"});
     CArrayT = try b.createAndSetTypeObject("CArray", &.{"n", "elem"});
-
-    // Variables.
-    try b.setVar("cpu", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)));
-    if (builtin.cpu.arch.endian() == .Little) {
-        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@intFromEnum(Symbol.little)));
-    } else {
-        try b.setVar("endian", bt.Symbol, cy.Value.initSymbol(@intFromEnum(Symbol.big)));
-    }
-    if (cy.hasStdFiles) {
-        const stdin = try cy.heap.allocFile(self.vm, std.io.getStdIn().handle);
-        stdin.asHeapObject().file.closeOnFree = false;
-        try b.setVar("stdin", bt.Any, stdin);
-        const stdout = try cy.heap.allocFile(self.vm, std.io.getStdOut().handle);
-        stdout.asHeapObject().file.closeOnFree = false;
-        try b.setVar("stdout", bt.Any, stdout);
-        const stderr = try cy.heap.allocFile(self.vm, std.io.getStdErr().handle);
-        stderr.asHeapObject().file.closeOnFree = false;
-        try b.setVar("stderr", bt.Any, stderr);
-    } else {
-        try b.setVar("stdin", bt.Any, Value.None);
-        try b.setVar("stdout", bt.Any, Value.None);
-        try b.setVar("stderr", bt.Any, Value.None);
-    }
-    try b.setVar("system", bt.String, try self.buf.getOrPushStringValue(@tagName(builtin.os.tag)));
-    
-    if (comptime std.simd.suggestVectorSize(u8)) |VecSize| {
-        try b.setVar("vecBitSize", bt.Integer, cy.Value.initI32(VecSize * 8));
-    } else {
-        try b.setVar("vecBitSize", bt.Integer, cy.Value.initI32(0));
-    }
-}
-
-pub fn destroy(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    const c = vm.internal().compiler;
-    const mod = c.sema.getModulePtr(modId);
-    if (cy.hasStdFiles) {
-        const stdin = (mod.getVarVal(c, "stdin") catch cy.fatal()).?;
-        cy.arc.release(c.vm, stdin);
-
-        const stdout = (mod.getVarVal(c, "stdout") catch cy.fatal()).?;
-        cy.arc.release(c.vm, stdout);
-
-        const stderr = (mod.getVarVal(c, "stderr") catch cy.fatal()).?;
-        cy.arc.release(c.vm, stderr);
-    }
 }
 
 fn openDir(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {

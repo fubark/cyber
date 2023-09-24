@@ -17,9 +17,10 @@ const builtins = std.ComptimeStringMap(void, .{
 const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
     .{"os", cy.ModuleLoaderResult{
         .src = cy.Str.initSlice(os_mod.Src), .srcIsStatic = true,
-        .funcLoader = os_mod.defaultFuncLoader,
+        .varLoader = os_mod.varLoader,
+        .funcLoader = os_mod.funcLoader,
+        .preLoad = os_mod.preLoad,
         .postLoad = os_mod.postLoad,
-        .destroy = os_mod.destroy,
     }},
     .{"test", cy.ModuleLoaderResult{
         .src = cy.Str.initSlice(test_mod.Src), .srcIsStatic = true,
@@ -39,9 +40,11 @@ pub fn setupVMForCLI(vm: *cy.UserVM) void {
 fn print(_: *cy.UserVM, str: cy.Str) callconv(.C) void {
     if (cy.isWasmFreestanding) {
         os_mod.hostFileWrite(1, str.buf, str.len);
+        os_mod.hostFileWrite(1, "\n", 1);
     } else {
         const w = std.io.getStdOut().writer();
         w.writeAll(str.slice()) catch cy.fatal();
+        w.writeByte('\n') catch cy.fatal();
     }
 }
 

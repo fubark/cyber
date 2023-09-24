@@ -112,8 +112,7 @@ print id
 | `parseCyon(src any) any` | Parses a CYON string into a value. | 
 | `performGC() map` | Runs the garbage collector once to detect reference cycles and abandoned objects. Returns the statistics of the run in a map value. | 
 | `pointer(val any) pointer` | Converts a `int` to a `pointer` value, or casts to a `pointer`. This is usually used with FFI. | 
-| `print(s string) none` | Prints a value as a string to stdout. The new line is also printed. | 
-| `prints(s string) none` | Prints a value as a string to stdout. | 
+| `print(s string) none` | Prints a value. The host determines how it is printed. | 
 | `rawstring(str string) rawstring` | Converts a string to a `rawstring`. | 
 | `runestr(val int) string` | Converts a rune to a string. | 
 | `string(val any) string` | Converts a value to a string. | 

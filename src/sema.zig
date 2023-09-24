@@ -536,6 +536,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .funcDecl => {
             try funcDecl(c, nodeId);
         },
+        .hostVarDecl,
         .hostFuncDecl => {
             return;
         },
@@ -1040,18 +1041,22 @@ pub fn declareHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .idx = c.curHostFuncIdx,
     };
     c.curHostFuncIdx += 1;
-    if (c.funcLoader.?(@ptrCast(c.compiler.vm), info)) |funcPtr| {
-        cy.module.declareHostFunc(c.compiler, c.modId, name, func.funcSigId, declId, funcPtr) catch |err| {
-            if (err == error.DuplicateSymName) {
-                return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
-            } else if (err == error.DuplicateFuncSig) {
-                return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
-            } else return err;
-        };
-        const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
-        _ = try resolveHostFunc(c, key, func.funcSigId, funcPtr);
+    if (c.funcLoader) |funcLoader| {
+        if (funcLoader(@ptrCast(c.compiler.vm), info)) |funcPtr| {
+            cy.module.declareHostFunc(c.compiler, c.modId, name, func.funcSigId, declId, funcPtr) catch |err| {
+                if (err == error.DuplicateSymName) {
+                    return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+                } else if (err == error.DuplicateFuncSig) {
+                    return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+                } else return err;
+            };
+            const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
+            _ = try resolveHostFunc(c, key, func.funcSigId, funcPtr);
+        } else {
+            return c.reportErrorAt("Host func `{}` failed to load.", &.{v(name)}, nodeId);
+        }
     } else {
-        return c.reportErrorAt("Host func `{}` failed to load.", &.{v(name)}, nodeId);
+        return c.reportErrorAt("No function loader set for `{}`.", &.{v(name)}, nodeId);
     }
 }
 
@@ -1092,22 +1097,78 @@ fn funcDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
 pub fn declareVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
+    if (node.head.staticDecl.right == cy.NullId) {
+        // No initializer. Check if @host var.
+        const modifierId = c.nodes[node.head.staticDecl.varSpec].head.varSpec.modifierHead;
+        if (modifierId != cy.NullId) {
+            const modifier = c.nodes[modifierId];
+            if (modifier.head.annotation.type == .host) {
+                try declareHostVar(c, nodeId);
+                return;
+            }
+        }
+        const name = c.getNodeTokenString(c.nodes[c.nodes[node.head.staticDecl.varSpec].head.varSpec.name]);
+        return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
+    } else {
+        const varSpec = c.nodes[node.head.staticDecl.varSpec];
+        const nameN = c.nodes[varSpec.head.varSpec.name];
+        const name = c.getNodeTokenString(nameN);
+        const nameId = try ensureNameSym(c.compiler, name);
+        try c.compiler.sema.modules.items[c.modId].setUserVar(c.compiler, name, nodeId);
+
+        // var type.
+        var typeSymId: SymbolId = undefined;
+        if (varSpec.head.varSpec.typeSpecHead != cy.NullId) {
+            typeSymId = try getOrResolveTypeSymFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+        } else {
+            typeSymId = bt.Any;
+        }
+
+        const symId = try resolveLocalVarSym(c, c.semaRootSymId, nameId, typeSymId, nodeId, true);
+        c.nodes[nodeId].head.staticDecl.sema_symId = symId;
+    }
+}
+
+fn declareHostVar(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    c.nodes[nodeId].node_t = .hostVarDecl;
+    const node = c.nodes[nodeId];
     const varSpec = c.nodes[node.head.staticDecl.varSpec];
     const nameN = c.nodes[varSpec.head.varSpec.name];
     const name = c.getNodeTokenString(nameN);
-    const nameId = try ensureNameSym(c.compiler, name);
-    try c.compiler.sema.modules.items[c.modId].setUserVar(c.compiler, name, nodeId);
+    // const nameId = try ensureNameSym(c.compiler, name);
 
-    // var type.
-    var typeSymId: SymbolId = undefined;
-    if (varSpec.head.varSpec.typeSpecHead != cy.NullId) {
-        typeSymId = try getOrResolveTypeSymFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+    const info = cy.HostVarInfo{
+        .modId = c.modId,
+        .name = cy.Str.initSlice(name),
+        .idx = c.curHostVarIdx,
+    };
+    c.curHostVarIdx += 1;
+    if (c.varLoader) |varLoader| {
+        var out: cy.Value = cy.Value.None;
+        if (varLoader(@ptrCast(c.compiler.vm), info, &out)) {
+            // var type.
+            var typeId: TypeId = undefined;
+            if (varSpec.head.varSpec.typeSpecHead != cy.NullId) {
+                typeId = try getOrResolveTypeSymFromSpecNode(c, varSpec.head.varSpec.typeSpecHead);
+            } else {
+                typeId = bt.Any;
+            }
+            c.nodes[node.head.staticDecl.varSpec].next = typeId;
+
+            const outTypeId = c.compiler.vm.types.buf[out.getTypeId()].semaTypeId;
+            if (!types.isTypeSymCompat(c.compiler, outTypeId, typeId)) {
+                const expTypeName = getSymName(c.compiler, typeId);
+                const actTypeName = getSymName(c.compiler, outTypeId);
+                return c.reportErrorAt("Host var `{}` expects type {}, got: {}.", &.{v(name), v(expTypeName), v(actTypeName)}, nodeId);
+            }
+
+            try c.compiler.sema.modules.items[c.modId].setHostVar(c.compiler, name, nodeId, out);
+        } else {
+            return c.reportErrorAt("Host var `{}` failed to load.", &.{v(name)}, nodeId);
+        }
     } else {
-        typeSymId = bt.Any;
+        return c.reportErrorAt("No var loader set for `{}`.", &.{v(name)}, nodeId);
     }
-
-    const symId = try resolveLocalVarSym(c, c.semaRootSymId, nameId, typeSymId, nodeId, true);
-    c.nodes[nodeId].head.staticDecl.sema_symId = symId;
 }
 
 fn localDecl(self: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -3185,6 +3246,23 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
                 const res = try resolveHostFunc(chunk, key, funcSigId, modSym.inner.hostFunc.func);
                 return CompactSymbolId.initFuncSymId(res.funcSymId);
             },
+            .hostVar => {
+                const rtSymId = try self.vm.ensureVarSym(mod.resolvedRootSymId, nameId);
+                const rtSym = rt.VarSym.init(modSym.inner.hostVar.val);
+                cy.arc.retain(self.vm, rtSym.value);
+                self.vm.setVarSym(rtSymId, rtSym);
+
+                const srcChunk = &chunk.compiler.chunks.items[mod.chunkId];
+                const typeId = srcChunk.nodes[srcChunk.nodes[modSym.extra.hostVar.declId].head.staticDecl.varSpec].next;
+                const id = try self.sema.addSymbol(key, .variable, .{
+                    .variable = .{
+                        .chunkId = self.sema.modules.items[modId].chunkId,
+                        .declId = modSym.extra.hostVar.declId,
+                        .rTypeSymId = typeId,
+                    },
+                });
+                return CompactSymbolId.initSymId(id);
+            },
             .variable => {
                 const rtSymId = try self.vm.ensureVarSym(mod.resolvedRootSymId, nameId);
                 const rtSym = rt.VarSym.init(modSym.inner.variable.val);
@@ -3613,6 +3691,7 @@ pub fn declareUsingModule(chunk: *cy.Chunk, modId: cy.ModuleId) !void {
     try chunk.usingModules.append(chunk.alloc, modId);
 }
 
+// Use `declareUsingModule` instead. Kept for reference.
 pub fn importAllFromModule(self: *cy.Chunk, modId: cy.ModuleId) !void {
     const mod = self.compiler.sema.modules.items[modId];
     var iter = mod.syms.iterator();
@@ -3718,7 +3797,10 @@ pub fn resolveRootModuleSym(self: *cy.VMcompiler, name: []const u8, modId: cy.Mo
 
 /// Given the local sym path, add a resolved var sym entry.
 /// Fail if there is already a symbol in this path with the same name.
-fn resolveLocalVarSym(self: *cy.Chunk, parentSymId: SymbolId, nameId: NameSymId, typeSymId: SymbolId, declId: cy.NodeId, exported: bool) !SymbolId {
+fn resolveLocalVarSym(
+    self: *cy.Chunk, parentSymId: SymbolId, nameId: NameSymId, typeSymId: SymbolId,
+    declId: cy.NodeId, exported: bool,
+) !SymbolId {
     if (parentSymId == self.semaRootSymId) {
         // Check for local sym.
         const key = LocalSymKey.initLocalSymKey(nameId, null);
@@ -4197,7 +4279,7 @@ pub const Model = struct {
         };
     }
 
-    pub fn deinit(self: *Model, alloc: std.mem.Allocator, comptime reset: bool) void {
+    pub fn deinit(self: *Model, vm: *cy.VM, alloc: std.mem.Allocator, comptime reset: bool) void {
         if (reset) {
             self.resolvedSyms.clearRetainingCapacity();
             self.resolvedSymMap.clearRetainingCapacity();
@@ -4213,7 +4295,7 @@ pub const Model = struct {
         }
 
         for (self.modules.items) |*mod| {
-            mod.deinit(alloc);
+            mod.deinit(vm, self.alloc);
         }
         if (reset) {
             self.modules.clearRetainingCapacity();

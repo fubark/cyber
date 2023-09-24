@@ -13,7 +13,6 @@
 @host func parseCyon(src any) any
 @host func performGC() Map
 @host func print(str any) none
-@host func prints(str any) none
 @host func runestr(val int) string
 @host func toCyon(val any) string
 @host func typeid(val any) int

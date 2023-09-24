@@ -13,6 +13,7 @@ var vmEngine: config.Engine = undefined;
 var testFilter: ?[]const u8 = undefined;
 var trace: bool = undefined;
 var optFFI: ?bool = undefined; 
+var optStatic: ?bool = undefined; 
 
 var stdx: *std.build.Module = undefined;
 var tcc: *std.build.Module = undefined;
@@ -27,6 +28,7 @@ pub fn build(b: *std.build.Builder) !void {
     vmEngine = b.option(config.Engine, "vm", "Build with `zig` or `c` VM.") orelse .c;
     optMalloc = b.option(config.Allocator, "malloc", "Override default allocator: `malloc`, `mimalloc`, `zig`");
     optFFI = b.option(bool, "ffi", "Override default FFI: true, false");
+    optStatic = b.option(bool, "static", "Override default lib build type: true=static, false=dynamic");
     trace = b.option(bool, "trace", "Enable tracing features.") orelse (optimize == .Debug);
 
     stdx = b.createModule(.{
@@ -86,12 +88,22 @@ pub fn build(b: *std.build.Builder) !void {
         opts.malloc = .malloc;
         opts.applyOverrides();
 
-        const lib = b.addSharedLibrary(.{
-            .name = "cyber",
-            .root_source_file = .{ .path = "src/lib.zig" },
-            .target = target,
-            .optimize = optimize,
-        });
+        var lib: *std.build.Step.Compile = undefined;
+        if (opts.static) {
+            lib = b.addStaticLibrary(.{
+                .name = "cyber",
+                .root_source_file = .{ .path = "src/lib.zig" },
+                .target = target,
+                .optimize = optimize,
+            });
+        } else {
+            lib = b.addSharedLibrary(.{
+                .name = "cyber",
+                .root_source_file = .{ .path = "src/lib.zig" },
+                .target = target,
+                .optimize = optimize,
+            });
+        }
         if (lib.optimize != .Debug) {
             lib.strip = true;
         }
@@ -294,6 +306,7 @@ pub const Options = struct {
     target: std.zig.CrossTarget,
     optimize: std.builtin.OptimizeMode,
     malloc: config.Allocator,
+    static: bool,
     gc: bool,
     ffi: bool,
 
@@ -303,6 +316,9 @@ pub const Options = struct {
         }
         if (optFFI) |ffi| {
             self.ffi = ffi;
+        }
+        if (optStatic) |static| {
+            self.static = static;
         }
     }
 };
@@ -329,6 +345,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .optimize = optimize,
         .gc = true,
         .malloc = malloc,
+        .static = !target.getCpuArch().isWasm(),
         .ffi = !target.getCpuArch().isWasm(),
     };
 }

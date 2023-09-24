@@ -117,14 +117,20 @@ pub const Chunk = struct {
     /// Its exported members will be populated in the Module as sema encounters them.
     modId: cy.ModuleId,
 
-    /// For binding hostfunc declarations.
+    /// For binding @host func declarations.
     funcLoader: ?cy.HostFuncLoaderFn = null,
+    /// For binding @host var declarations.
+    varLoader: ?cy.HostVarLoaderFn = null,
+    /// Run before declarations are loaded.
+    preLoad: ?cy.PreLoadModuleFn = null,
     /// Run after declarations have been loaded.
     postLoad: ?cy.PostLoadModuleFn = null,
     /// Run before chunk is destroyed.
     destroy: ?cy.ModuleDestroyFn = null,
-    /// Counter for loading hostfuncs.
+    /// Counter for loading @host funcs.
     curHostFuncIdx: u32,
+    /// Counter for loading @host vars.
+    curHostVarIdx: u32,
 
     pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
@@ -172,6 +178,7 @@ pub const Chunk = struct {
             .localSyms = .{},
             .rega = cy.register.Allocator.init(c, id),
             .curHostFuncIdx = 0,
+            .curHostVarIdx = 0,
             .usingModules = .{},
             // .funcCandidateStack = .{},
         };

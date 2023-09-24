@@ -153,10 +153,6 @@ pub const UserVM = struct {
         return cy.arc.getGlobalRC(@ptrCast(self));
     }
 
-    pub inline fn checkMemory(self: *UserVM) !bool {
-        return cy.arc.checkMemory(self.internal());
-    }
-
     pub inline fn validate(self: *UserVM, srcUri: []const u8, src: []const u8) !cy.ValidateResult {
         return self.internal().validate(srcUri, src, .{ .enableFileModules = true });
     }

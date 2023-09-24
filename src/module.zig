@@ -18,6 +18,9 @@ pub const ModuleId = u32;
 pub const Module = struct {
     syms: std.HashMapUnmanaged(ModuleSymKey, ModuleSym, cy.hash.KeyU64Context, 80),
 
+    /// Tracks which binded vars are retained.
+    retainedVars: std.ArrayListUnmanaged(sema.NameSymId),
+
     id: ModuleId,
 
     /// Chunk that contains the module declaration. `NullId` if this module is a builtin.
@@ -221,14 +224,37 @@ pub const Module = struct {
         }
     }
 
+    pub fn setHostVar(self: *Module, c: *cy.VMcompiler, name: []const u8, declId: cy.NodeId, value: cy.Value) !void {
+        const nameId = try sema.ensureNameSym(c, name);
+        const key = ModuleSymKey.initModuleSymKey(nameId, null);
+        var retainIdx: u16 = cy.NullU16;
+        if (value.isPointer()) {
+            retainIdx = @intCast(self.retainedVars.items.len);
+            try self.retainedVars.append(c.alloc, nameId);
+        }
+        try self.syms.put(c.alloc, key, .{
+            .symT = .hostVar,
+            .extraSmall = .{
+                .hostVar = .{
+                    .retainedIdx = retainIdx,
+                }
+            },
+            .extra = .{
+                .hostVar = .{
+                    .declId = declId,
+                }
+            },
+            .inner = .{
+                .hostVar = .{
+                    .val = value,
+                },
+            },
+        });
+    }
+
     pub fn setUserVar(self: *Module, c: *cy.VMcompiler, name: []const u8, declId: cy.NodeId) !void {
         const nameId = try sema.ensureNameSym(c, name);
-        const key = ModuleSymKey{
-            .moduleSymKey = .{
-                .nameId = nameId,
-                .funcSigId = cy.NullId,
-            },
-        };
+        const key = ModuleSymKey.initModuleSymKey(nameId, null);
         try self.syms.put(c.alloc, key, .{
             .symT = .userVar,
             .inner = .{
@@ -239,7 +265,19 @@ pub const Module = struct {
         });
     }
 
-    pub fn deinit(self: *Module, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Module, vm: *cy.VM, alloc: std.mem.Allocator) void {
+        for (self.retainedVars.items) |nameId| {
+            const key = ModuleSymKey.initModuleSymKey(nameId, null);
+            const sym = self.syms.get(key).?;
+            switch (sym.symT) {
+                .hostVar => {
+                    cy.arc.release(vm, sym.inner.hostVar.val);
+                },
+                else => {}
+            }
+        }
+        self.retainedVars.deinit(alloc);
+
         var iter = self.syms.iterator();
         while (iter.next()) |e| {
             const sym = e.value_ptr.*;
@@ -279,6 +317,7 @@ const ModuleSymType = enum {
     symToManyFuncs,
 
     userVar,
+    hostVar,
     userFunc,
     object,
     enumType,
@@ -289,10 +328,19 @@ const ModuleSymType = enum {
 
 const ModuleSym = struct {
     symT: ModuleSymType,
-    extra: union {
-        variable: struct {
+    extraSmall: extern union {
+        hostVar: extern struct {
+            // Index into `retainedVars`.
+            retainedIdx: u16,
+        },
+    } = undefined,
+    extra: extern union {
+        variable: extern struct {
             rTypeSymId: sema.SymbolId,
-        }
+        },
+        hostVar: extern struct {
+            declId: cy.NodeId,
+        },
     } = undefined,
     inner: union {
         hostFunc: struct {
@@ -309,6 +357,9 @@ const ModuleSym = struct {
         },
         userVar: struct {
             declId: cy.NodeId,
+        },
+        hostVar: struct {
+            val: cy.Value,
         },
         typeAlias: extern struct {
             /// Type aliases are lazily loaded.
@@ -493,6 +544,7 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
     if (mod.syms.get(relKey)) |modSym| {
         switch (modSym.symT) {
             .userVar,
+            .hostVar,
             .userFunc,
             .variable,
             .object,
@@ -643,6 +695,7 @@ pub fn appendModule(c: *cy.VMcompiler, name: []const u8) !ModuleId {
     try c.sema.modules.append(c.alloc, .{
         .id = id,
         .syms = .{},
+        .retainedVars = .{},
         .chunkId = cy.NullId,
         // Updated afterwards.
         .resolvedRootSymId = cy.NullId,

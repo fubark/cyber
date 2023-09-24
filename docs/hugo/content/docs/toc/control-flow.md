@@ -52,7 +52,8 @@ while iter.next() some entry:
     print entry.name
 ```
 
-`for` loops can iterate over a range that starts at a `int` (inclusive) to a target `int` (exclusive). When the range operator `..` is replaced with `..=`, the target `int` is inclusive. The range can be given a custom step.
+`for` loops can iterate over a range that starts at a `int` (inclusive) to a target `int` (exclusive).
+The range can be given a custom step.
 ```cy
 for 0..100 each i:
     print i    -- 0, 1, 2, ... , 99
@@ -63,6 +64,10 @@ for 0..100, 10 each i:
 for 100..0, 1 each i:
     print i    -- 100, 99, 98, ... , 1
 
+```
+When the range operator `..` is replaced with `..=`, the target `int` is inclusive.
+> _Planned Feature_
+```cy
 for 100..=0, 1 each i:
     print i    -- 100, 99, 98, ... , 0
 ```

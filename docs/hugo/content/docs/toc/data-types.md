@@ -73,7 +73,9 @@ var b = float(a)
 ## Strings.
 The `string` type represents a sequence of UTF-8 codepoints, also known as `runes`. Each rune is stored internally as 1-4 bytes and can be represented as an `int`. Under the hood, Cyber implements 6 different internal string types to optimize string operations, but the user just sees them as one type and doesn't need to care about this detail under normal usage.
 
-Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint. To mutate an existing string, use the [StringBuffer](#string-buffer).
+Strings are **immutable**, so operations that do string manipulation return a new string. By default, small strings are interned to reduce memory footprint.
+
+To mutate an existing string, use the [StringBuffer](#string-buffer).
 > _Planned Feature_
 
 A string is always UTF-8 validated. [rawstrings](#rawstring) outperform strings but you'll have to validate them and take care of indexing yourself.

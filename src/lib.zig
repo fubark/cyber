@@ -19,17 +19,22 @@ export fn csCreate() *cy.UserVM {
     const alloc = cy.heap.getAllocator();
     const vm = alloc.create(cy.VM) catch fatal();
     vm.init(alloc) catch fatal();
-    if (cy.isWasm) {
-        cy.log.wasm.init(alloc);
-    }
     return @ptrCast(vm);
 }
 
-export fn csDestroy(vm: *cy.UserVM) void {
-    vm.deinit();
-    if (cy.isWasm) {
-        cy.log.wasm.deinit();
-    }
+export fn csDeinit(uvm: *cy.UserVM) void {
+    uvm.deinit();
+}
+
+export fn csDestroy(uvm: *cy.UserVM) void {
+    uvm.deinit();
+    const alloc = cy.heap.getAllocator();
+    const vm = uvm.internal();
+    alloc.destroy(vm);
+}
+
+export fn csGetGlobalRC(vm: *cy.UserVM) usize {
+    return cy.arc.getGlobalRC(vm.internal());
 }
 
 /// This is useful when calling into wasm to allocate some memory.
@@ -40,6 +45,10 @@ export fn csAlloc(vm: *cy.UserVM, size: usize) [*]const align(8) u8 {
 
 export fn csFree(vm: *cy.UserVM, ptr: [*]const align(8) u8, size: usize) void {
     vm.allocator().free(ptr[0..size]);
+}
+
+export fn csFreeStr(vm: *cy.UserVM, str: cy.Str) void {
+    vm.allocator().free(str.slice());
 }
 
 export fn csEval(vm: *cy.UserVM, src: cy.Str, outVal: *cy.Value) c.CsResultCode {
@@ -104,9 +113,17 @@ test "csValidate()" {
 
 var tempBuf: [1024]u8 align(8) = undefined;
 
-export fn csGetLastErrorReport(vm: *cy.UserVM) cy.Str {
+export fn csAllocLastErrorReport(vm: *cy.UserVM) cy.Str {
     const report = vm.allocLastErrorReport() catch fatal();
     return cy.Str.initSlice(report);
+}
+
+export fn csGetModuleResolver(vm: *cy.UserVM) c.CsModuleResolverFn {
+    return @ptrCast(vm.getModuleResolver());
+}
+
+export fn csSetModuleResolver(vm: *cy.UserVM, resolver: c.CsModuleResolverFn) void {
+    vm.setModuleResolver(@ptrCast(resolver));
 }
 
 export fn csGetModuleLoader(vm: *cy.UserVM) c.CsModuleLoaderFn {
@@ -115,6 +132,22 @@ export fn csGetModuleLoader(vm: *cy.UserVM) c.CsModuleLoaderFn {
 
 export fn csSetModuleLoader(vm: *cy.UserVM, loader: c.CsModuleLoaderFn) void {
     vm.setModuleLoader(@ptrCast(loader));
+}
+
+export fn csGetPrint(vm: *cy.UserVM) c.CsPrintFn {
+    return @ptrCast(vm.getPrint());
+}
+
+export fn csSetPrint(vm: *cy.UserVM, print: c.CsPrintFn) void {
+    vm.setPrint(@ptrCast(print));
+}
+
+export fn csPerformGC(vm: *cy.UserVM) c.CsGCResult {
+    const res = cy.arc.performGC(vm.internal()) catch cy.fatal();
+    return .{
+        .numCycFreed = res.numCycFreed,
+        .numObjFreed = res.numObjFreed,
+    };
 }
 
 export fn csSetModuleFunc(vm: *cy.UserVM, modId: cy.ModuleId, cname: cy.Str, numParams: u32, func: c.CsHostFuncFn) void {
@@ -157,11 +190,19 @@ export fn csFalse() Value {
     return Value.False;
 }
 
+export fn csBool(b: bool) Value {
+    return Value.initBool(b);
+}
+
 export fn csFloat(n: f64) Value {
     return Value.initF64(n);
 }
 
-export fn csInteger(n: i32) Value {
+export fn csInteger(n: i64) Value {
+    return Value.initInt(@intCast(n));
+}
+
+export fn csInteger32(n: i32) Value {
     return Value.initInt(n);
 }
 

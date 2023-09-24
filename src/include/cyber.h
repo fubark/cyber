@@ -72,7 +72,7 @@ CsStr csGetBuild();
 CsStr csGetCommit();
 
 // @host func is binded to this function pointer signature.
-typedef CsValue (*CsHostFuncFn)(CsVM* vm, CsValue* args, uint8_t nargs);
+typedef CsValue (*CsHostFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
 
 // Given the current module's resolved URI and the "to be" imported module specifier,
 // write the resolved specifier in `outUri` and return true, otherwise return false.
@@ -80,13 +80,16 @@ typedef CsValue (*CsHostFuncFn)(CsVM* vm, CsValue* args, uint8_t nargs);
 // simply returns `spec` without any adjustments.
 typedef bool (*CsModuleResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
 
-// Callback invoked after all symbols in module's src are loaded.
-// This would be a convenient time to inject symbols not declared in the module's src.
+// Callback invoked before all symbols in the module's src are loaded.
+// This could be used to set up an array or hashmap for binding @host vars.
+typedef void (*CsPreLoadModuleFn)(CsVM* vm, uint32_t modId);
+
+// Callback invoked after all symbols in the module's src are loaded.
+// This could be used to inject symbols not declared in the module's src.
 typedef void (*CsPostLoadModuleFn)(CsVM* vm, uint32_t modId);
 
 // Callback invoked just before the module is destroyed.
-// When you have explicity injected symbols into a module from `CsPostLoadModuleFn`,
-// this can be a convenient time to do cleanup logic (eg. release objects).
+// This could be used to cleanup (eg. release) injected symbols from `CsPostLoadModuleFn`,
 typedef void (*CsModuleDestroyFn)(CsVM* vm, uint32_t modId);
 
 // Info about a @host func.
@@ -105,6 +108,22 @@ typedef struct CsHostFuncInfo {
 // Given info about a @host func, return it's function pointer or null.
 typedef CsHostFuncFn (*CsHostFuncLoaderFn)(CsVM* vm, CsHostFuncInfo funcInfo);
 
+// Info about a @host var.
+typedef struct CsHostVarInfo {
+    // The module it belongs to.
+    uint32_t modId;
+    // The name of the var.
+    CsStr name;
+    // A counter that tracks it's current position among all @host vars in the module.
+    // This is useful if you want to bind an array of `CsValue`s to @host vars.
+    uint32_t idx;
+} CsHostVarInfo;
+
+// Given info about a @host var, write a value to `out` and return true, otherwise return false.
+// The value is consumed by the module. If the value should outlive the module,
+// call `csRetain` before handing it over.
+typedef bool (*CsHostVarLoaderFn)(CsVM* vm, CsHostVarInfo funcInfo, CsValue* out);
+
 // Module loader config.
 typedef struct CsModuleLoaderResult {
     // The Cyber source code for the module.
@@ -113,6 +132,10 @@ typedef struct CsModuleLoaderResult {
     bool srcIsStatic;
     // Pointer to callback or null.
     CsHostFuncLoaderFn funcLoader;
+    // Pointer to callback or null.
+    CsHostVarLoaderFn varLoader;
+    // Pointer to callback or null.
+    CsPreLoadModuleFn preLoad;
     // Pointer to callback or null.
     CsPostLoadModuleFn postLoad;
     // Pointer to callback or null.
@@ -138,28 +161,55 @@ typedef struct CsGCResult {
 //
 // [ VM ]
 //
+
 CsVM* csCreate();
+// Deinitialize the VM. Afterwards, call `csDestroy` or perform a check on `csGetGlobalRC`.
+void csDeinit(CsVM* vm);
+// Deinitializes the VM and frees it. Any operation on `vm` afterwards is undefined.
 void csDestroy(CsVM* vm);
+
 CsModuleResolverFn csGetModuleResolver(CsVM* vm);
 void csSetModuleResolver(CsVM* vm, CsModuleResolverFn resolver);
+
+// The default module resolver. It returns `spec`.
+bool csDefaultModuleResolver(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
+
 CsModuleLoaderFn csGetModuleLoader(CsVM* vm);
 void csSetModuleLoader(CsVM* vm, CsModuleLoaderFn loader);
+
+// The default module loader. It knows how to load the `builtins` module.
+bool csDefaultModuleLoader(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
+
 CsPrintFn csGetPrint(CsVM* vm);
 void csSetPrint(CsVM* vm, CsPrintFn print);
+
+// Evalutes the source code and returns the result code.
+// If the last statement of the script is an expression, `outVal` will contain the value.
 CsResultCode csEval(CsVM* vm, CsStr src, CsValue* outVal);
 CsResultCode csValidate(CsVM* vm, CsStr src);
-CsStr csGetLastErrorReport(CsVM* vm);
+
+/// After receiving an error CsResultCode, this returns the error report. Call `csFreeStr` afterwards.
+CsStr csAllocLastErrorReport(CsVM* vm);
+
+// Attach a userdata pointer inside the VM.
 void* csGetUserData(CsVM* vm);
 void csSetUserData(CsVM* vm, void* userData);
 
-// Memory.
-void csRelease(CsVM* vm, CsValue val);
-void csRetain(CsVM* vm, CsValue val);
-CsGCResult csPerformGC(CsVM* vm);
+// Verbose flag. In a debug build, this would print more logs.
+extern bool csVerbose;
 
 // Modules.
 void csSetModuleFunc(CsVM* vm, CsModuleId modId, CsStr name, uint32_t numParams, CsHostFuncFn func);
 void csSetModuleVar(CsVM* vm, CsModuleId modId, CsStr name, CsValue val);
+
+// Memory.
+void csRelease(CsVM* vm, CsValue val);
+void csRetain(CsVM* vm, CsValue val);
+// Deinitialize the VM. Afterwards, you may do `csDestroy` or perform some checks on `csGetGlobalRC`.
+CsGCResult csPerformGC(CsVM* vm);
+// Get's the current global reference count. This will panic if the lib was not built with `TrackGlobalRC`.
+// Use this to see if all objects were cleaned up after `csDeinit`.
+size_t csGetGlobalRC(CsVM* vm);
 
 // For embedded, Cyber by default uses malloc (it can be configured to use the high-perf mimalloc).
 // If the host uses a different allocator than Cyber, use `csAlloc` to allocate memory
@@ -167,6 +217,7 @@ void csSetModuleVar(CsVM* vm, CsModuleId modId, CsStr name, CsValue val);
 // This is also used to manage accessible buffers when embedding WASM.
 void* csAlloc(CsVM* vm, size_t size);
 void csFree(CsVM* vm, void* ptr, size_t len);
+void csFreeStr(CsVM* vm, CsStr str);
 
 //
 // [ Values ]
@@ -176,8 +227,12 @@ void csFree(CsVM* vm, void* ptr, size_t len);
 CsValue csNone();
 CsValue csTrue();
 CsValue csFalse();
-CsValue csFloat(double n);
-CsValue csInteger(int n);
+CsValue csBool(bool b);
+
+// int64_t is downcasted to a 48-bit int.
+CsValue csInteger(int64_t n);
+CsValue csInteger32(int32_t n);
+CsValue csFloat(double f);
 CsValue csTagLiteral(CsVM* vm, CsStr str);
 CsValue csNewString(CsVM* vm, CsStr str);
 CsValue csNewAstring(CsVM* vm, CsStr str);

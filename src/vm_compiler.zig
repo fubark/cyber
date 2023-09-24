@@ -114,7 +114,7 @@ pub const VMcompiler = struct {
         }
 
         // Chunks depends on modules.
-        self.sema.deinit(self.alloc, reset);
+        self.sema.deinit(self.vm, self.alloc, reset);
 
         if (reset) {
             self.typeStack.clearRetainingCapacity();
@@ -279,6 +279,7 @@ pub const VMcompiler = struct {
         }
 
         // All modules and data types are loaded first.
+        log.tracev("Load imports and types.", .{});
         var id: u32 = 0;
         while (true) {
             while (id < self.chunks.items.len) : (id += 1) {
@@ -327,9 +328,14 @@ pub const VMcompiler = struct {
         }
 
         // Declare static vars and funcs after types have been resolved.
+        log.tracev("Load module symbols.", .{});
         id = 0;
         while (id < self.chunks.items.len) : (id += 1) {
             var chunk = &self.chunks.items[id];
+
+            if (chunk.preLoad) |preLoad| {
+                preLoad(@ptrCast(self.vm), chunk.modId);
+            }
 
             // Process static declarations.
             for (chunk.parser.staticDecls.items) |decl| {
@@ -359,6 +365,7 @@ pub const VMcompiler = struct {
 
         // Perform sema on all chunks.
         // TODO: Single pass sema/codegen.
+        log.tracev("Perform sema.", .{});
         id = 0;
         while (id < self.chunks.items.len) : (id += 1) {
             try self.performChunkSema(id);
@@ -374,6 +381,7 @@ pub const VMcompiler = struct {
         }
 
         if (!config.skipCodegen) {
+            log.tracev("Perform codegen.", .{});
             // Once all symbols have been resolved, the static initializers are generated in DFS order.
             for (self.chunks.items) |*chunk| {
                 log.debug("gen static initializer for chunk: {}", .{chunk.id});
@@ -381,9 +389,12 @@ pub const VMcompiler = struct {
                 for (chunk.parser.staticDecls.items) |decl| {
                     if (decl.declT == .variable) {
                         const node = chunk.nodes[decl.inner.variable];
-                        const symId = node.head.staticDecl.sema_symId;
-                        const csymId = sema.CompactSymbolId.initSymId(symId);
-                        try gen.genStaticInitializerDFS(chunk, csymId);
+                        if (node.node_t == .staticDecl) {
+                            // Nodetype could have changed after declaration. eg. hostVarDecl.
+                            const symId = node.head.staticDecl.sema_symId;
+                            const csymId = sema.CompactSymbolId.initSymId(symId);
+                            try gen.genStaticInitializerDFS(chunk, csymId);
+                        }
                     } else if (decl.declT == .funcInit) {
                         const node = chunk.nodes[decl.inner.funcInit];
                         if (node.node_t == .funcDeclInit) {
@@ -509,8 +520,14 @@ pub const VMcompiler = struct {
     }
 
     fn performImportTask(self: *VMcompiler, task: ImportTask) !void {
-        var res: cy.ModuleLoaderResult = undefined;
+        // Initialize defaults.
+        var res: cy.ModuleLoaderResult = .{
+            .src = cy.Str.initSlice(""),
+            .srcIsStatic = true,
+        };
+
         self.hasApiError = false;
+        log.tracev("Invoke module loader: {s}", .{task.absSpec});
         if (self.moduleLoader(@ptrCast(self.vm), cy.Str.initSlice(task.absSpec), &res)) {
             // Push another chunk.
             const newChunkId: u32 = @intCast(self.chunks.items.len);
@@ -518,6 +535,8 @@ pub const VMcompiler = struct {
             const src = res.src.slice();
             var newChunk = try cy.Chunk.init(self, newChunkId, task.absSpec, src);
             newChunk.funcLoader = res.funcLoader;
+            newChunk.varLoader = res.varLoader;
+            newChunk.preLoad = res.preLoad;
             newChunk.postLoad = res.postLoad;
             newChunk.srcOwned = !res.srcIsStatic;
             newChunk.destroy = res.destroy;
@@ -637,12 +656,17 @@ pub fn defaultModuleLoader(_: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderRes
         out.* = .{
             .src = cy.Str.initSlice(math_mod.Src),
             .srcIsStatic = true,
-            .funcLoader = math_mod.defaultFuncLoader,
-            .postLoad = math_mod.postLoad,
+            .funcLoader = math_mod.funcLoader,
+            .varLoader = math_mod.varLoader,
         };
         return true;
     }
     return false;
+}
+
+comptime {
+    @export(defaultModuleResolver, .{ .name = "csDefaultModuleResolver", .linkage = .Strong });
+    @export(defaultModuleLoader, .{ .name = "csDefaultModuleLoader", .linkage = .Strong });
 }
 
 test "vm compiler internals." {

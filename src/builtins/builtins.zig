@@ -46,7 +46,6 @@ const funcs = [_]NameHostFunc{
     .{"parseCyon", parseCyon},
     .{"performGC", performGC},
     .{"print", print},
-    .{"prints", prints},
     .{"runestr", runestr},
     .{"toCyon", toCyon},
     .{"typeid", typeid},
@@ -432,13 +431,6 @@ pub fn performGC(vm: *cy.UserVM, _: [*]const Value, _: u8) linksection(cy.StdSec
 }
 
 pub fn print(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
-    const str = vm.valueToTempRawString(args[0]);
-    vm.internal().print(vm, cy.Str.initSlice(str));
-    vm.internal().print(vm, cy.Str.initSlice("\n"));
-    return Value.None;
-}
-
-pub fn prints(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const str = vm.valueToTempRawString(args[0]);
     vm.internal().print(vm, cy.Str.initSlice(str));
     return Value.None;

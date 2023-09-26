@@ -109,7 +109,7 @@ type Node object:
 ## Union types.
 > _Planned Feature_
 
-## Interfaces.
+## Traits.
 > _Planned Feature_
 
 ## Type aliases.

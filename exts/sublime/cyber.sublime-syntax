@@ -11,6 +11,7 @@ file_extensions:
   - cyber
   - cyb
   - cx
+  - cs
 scope: source.cyber
 contexts:
   main:
@@ -41,7 +42,7 @@ contexts:
     - match: '\b(coyield|coresume|coinit)\b'
       scope: keyword.coroutine.cyber
 
-    - match: '\b(type|enum|object|true|false|none)\b'
+    - match: '\b(type|enum|object|trait|true|false|none)\b'
       scope: keyword.type.cyber
 
     - match: '\b(try|catch|error|throw)\b'

@@ -244,7 +244,7 @@ pub const Parser = struct {
     }
 
     /// Returns number of spaces that precedes a statement.
-    /// If current line is consumed if there is no statement.
+    /// The current line is consumed if there is no statement.
     fn consumeIndentBeforeStmt(self: *Parser) !?u32 {
         while (true) {
             var res: u32 = 0;
@@ -629,7 +629,7 @@ pub const Parser = struct {
         } else return null;
     }
 
-    fn parseTypeDecl(self: *Parser) !NodeId {
+    fn parseTypeDecl(self: *Parser, modifierHead: cy.NodeId) !NodeId {
         const start = self.next_pos;
         // Assumes first token is the `type` keyword.
         self.advanceToken();
@@ -648,7 +648,7 @@ pub const Parser = struct {
                 return self.parseEnumDecl(start, name);
             },
             .object_k => {
-                return self.parseObjectDecl(start, name);
+                return self.parseObjectDecl(start, name, modifierHead);
             },
             else => {
                 return self.parseTypeAliasDecl(start, name);
@@ -730,13 +730,21 @@ pub const Parser = struct {
         return id;
     }
 
-    fn pushObjectDecl(self: *Parser, start: TokenId, name: NodeId, fieldsHead: NodeId, funcsHead: NodeId) !NodeId {
+    fn pushObjectDecl(self: *Parser, start: TokenId, name: NodeId, modifierHead: NodeId, fieldsHead: NodeId, funcsHead: NodeId) !NodeId {
+        const body = try self.pushNode(.objectDeclBody, start);
+        self.nodes.items[body].head = .{
+            .objectDeclBody = .{
+                .fieldsHead = fieldsHead,
+                .funcsHead = funcsHead,
+            },
+        };
+
         const id = try self.pushNode(.objectDecl, start);
         self.nodes.items[id].head = .{
             .objectDecl = .{
                 .name = name,
-                .fieldsHead = fieldsHead,
-                .funcsHead = funcsHead,
+                .modifierHead = modifierHead,
+                .body = body,
             },
         };
         try self.staticDecls.append(self.alloc, .{
@@ -748,7 +756,7 @@ pub const Parser = struct {
         return id;
     }
 
-    fn parseObjectDecl(self: *Parser, start: TokenId, name: NodeId) !NodeId {
+    fn parseObjectDecl(self: *Parser, start: TokenId, name: NodeId, modifierHead: cy.NodeId) !NodeId {
         self.inObjectDecl = true;
         defer self.inObjectDecl = false;
 
@@ -777,7 +785,7 @@ pub const Parser = struct {
             while (true) {
                 const start2 = self.next_pos;
                 const indent = (try self.consumeIndentBeforeStmt()) orelse {
-                    return self.pushObjectDecl(start, name, firstField, NullId);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, NullId);
                 };
                 if (indent == reqIndent) {
                     const id = (try self.parseObjectField()) orelse break;
@@ -785,7 +793,7 @@ pub const Parser = struct {
                     lastField = id;
                 } else if (indent <= prevIndent) {
                     self.next_pos = start2;
-                    return self.pushObjectDecl(start, name, firstField, NullId);
+                    return self.pushObjectDecl(start, name, modifierHead, firstField, NullId);
                 } else {
                     return self.reportParseError("Unexpected indentation.", &.{});
                 }
@@ -793,8 +801,9 @@ pub const Parser = struct {
         }
 
         token = self.peekToken();
-        if (token.tag() == .func_k) {
-            var firstFunc = try self.parseFuncDecl(cy.NullId);
+        const firstFunc = try self.parseStatement();
+        var nodeT = self.nodes.items[firstFunc].node_t;
+        if (nodeT == .funcDecl or nodeT == .funcDeclInit) {
             var lastFunc = firstFunc;
 
             while (true) {
@@ -802,11 +811,12 @@ pub const Parser = struct {
                 const indent = (try self.consumeIndentBeforeStmt()) orelse break;
                 if (indent == reqIndent) {
                     token = self.peekToken();
-                    if (token.tag() == .func_k) {
-                        const id = try self.parseFuncDecl(cy.NullId);
-                        self.nodes.items[lastFunc].next = id;
-                        lastFunc = id;
-                    } else return self.reportParseError("Unexpected token.", &.{});
+                    const func = try self.parseStatement();
+                    nodeT = self.nodes.items[func].node_t;
+                    if (nodeT == .funcDecl or nodeT == .funcDeclInit) {
+                        self.nodes.items[lastFunc].next = func;
+                        lastFunc = func;
+                    } else return self.reportParseError("Expected function.", &.{});
                 } else if (indent <= prevIndent) {
                     self.next_pos = start2;
                     break;
@@ -814,9 +824,9 @@ pub const Parser = struct {
                     return self.reportParseError("Unexpected indentation.", &.{});
                 }
             }
-            return self.pushObjectDecl(start, name, firstField, firstFunc);
+            return self.pushObjectDecl(start, name, modifierHead, firstField, firstFunc);
         } else {
-            return self.reportParseError("Unexpected token.", &.{});
+            return self.reportParseError("Expected function.", &.{});
         }
     }
 
@@ -829,7 +839,7 @@ pub const Parser = struct {
         var token = self.peekToken();
         const left_pos = self.next_pos;
         _ = left_pos;
-        if (token.tag() != .ident) {
+        if (token.tag() != .ident and token.tag() != .string) {
             return self.reportParseError("Expected function name identifier.", &.{});
         }
         const name = try self.pushIdentNode(self.next_pos);
@@ -1620,13 +1630,16 @@ pub const Parser = struct {
                         }
                     };
                     self.advanceToken();
+                    self.consumeWhitespaceTokens();
 
                     if (self.peekToken().tag() == .func_k) {
                         return try self.parseFuncDecl(modifier);
                     } else if (self.peekToken().tag() == .var_k) {
                         return try self.parseVarDecl(modifier);
+                    } else if (self.peekToken().tag() == .type_k) {
+                        return try self.parseTypeDecl(modifier);
                     } else {
-                        return self.reportParseError("Expected func declaration.", &.{});
+                        return self.reportParseError("Expected declaration statement.", &.{});
                     }
 
                 } else {
@@ -1661,7 +1674,7 @@ pub const Parser = struct {
                 }
             },
             .type_k => {
-                return try self.parseTypeDecl();
+                return try self.parseTypeDecl(cy.NullId);
             },
             .func_k => {
                 return try self.parseFuncDecl(cy.NullId);
@@ -3375,6 +3388,7 @@ pub const NodeType = enum {
     funcHeader,
     funcParam,
     objectDecl,
+    objectDeclBody,
     objectField,
     objectInit,
     typeAliasDecl,
@@ -3583,6 +3597,10 @@ pub const Node = struct {
         objectDecl: struct {
             // `name` is an ident token with a semaSymId.
             name: NodeId,
+            modifierHead: Nullable(NodeId),
+            body: NodeId,
+        },
+        objectDeclBody: struct {
             fieldsHead: NodeId,
             funcsHead: NodeId,
         },

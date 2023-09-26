@@ -84,7 +84,7 @@ pub const VM = struct {
     typeMethodGroupKeys: std.HashMapUnmanaged(rt.TypeMethodGroupKey, vmc.TypeMethodGroupId, cy.hash.KeyU64Context, 80),
 
     /// Regular function symbol table.
-    funcSyms: cy.List(rt.FuncSymbolEntry),
+    funcSyms: cy.List(rt.FuncSymbol),
     funcSymSigs: std.HashMapUnmanaged(AbsFuncSigKey, SymbolId, KeyU96Context, 80),
     funcSymDetails: cy.List(rt.FuncSymDetail),
 
@@ -300,7 +300,7 @@ pub const VM = struct {
             return;
         }
         for (self.funcSyms.items()) |sym| {
-            if (sym.entryT == @intFromEnum(rt.FuncSymbolEntryType.closure)) {
+            if (sym.entryT == @intFromEnum(rt.FuncSymbolType.closure)) {
                 cy.arc.releaseObject(self, @ptrCast(sym.inner.closure));
             }
         }
@@ -877,7 +877,7 @@ pub const VM = struct {
             // const rFuncSig = self.compiler.sema.resolvedFuncSigs.items[funcSigId];
             // const typedFlag: u16 = if (rFuncSig.isTyped) 1 << 15 else 0;
             try self.funcSyms.append(self.alloc, .{
-                .entryT = @intFromEnum(rt.FuncSymbolEntryType.none),
+                .entryT = @intFromEnum(rt.FuncSymbolType.none),
                 .innerExtra = .{
                     .none = .{
                         // .typedFlagNumParams = typedFlag | rFuncSig.numParams(),
@@ -1019,7 +1019,7 @@ pub const VM = struct {
         self.varSyms.buf[symId] = sym;
     }
 
-    pub inline fn setFuncSym(self: *VM, symId: SymbolId, sym: rt.FuncSymbolEntry) void {
+    pub inline fn setFuncSym(self: *VM, symId: SymbolId, sym: rt.FuncSymbol) void {
         self.funcSyms.buf[symId] = sym;
     }
 
@@ -1256,17 +1256,17 @@ pub const VM = struct {
         numArgs: u8, reqNumRetVals: u2
     ) linksection(cy.HotSection) !cy.fiber.PcSp {
         const sym = self.funcSyms.buf[symId];
-        switch (@as(rt.FuncSymbolEntryType, @enumFromInt(sym.entryT))) {
-            .nativeFunc1 => {
+        switch (@as(rt.FuncSymbolType, @enumFromInt(sym.entryT))) {
+            .hostFunc => {
                 const newFramePtr = framePtr + startLocal;
 
                 // Optimize.
                 pc[0] = cy.Inst.initOpCode(.callNativeFuncIC);
-                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(sym.inner.nativeFunc1));
+                @as(*align(1) u48, @ptrCast(pc + 6)).* = @intCast(@intFromPtr(sym.inner.hostFunc));
 
                 self.pc = pc;
                 self.framePtr = framePtr;
-                const res: Value = @bitCast(sym.inner.nativeFunc1.?(@ptrCast(self), @ptrCast(newFramePtr + 4), numArgs));
+                const res: Value = @bitCast(sym.inner.hostFunc.?(@ptrCast(self), @ptrCast(newFramePtr + 4), numArgs));
                 if (res.isInterrupt()) {
                     return error.Panic;
                 }
@@ -1283,6 +1283,14 @@ pub const VM = struct {
                 }
                 return cy.fiber.PcSp{
                     .pc = pc + cy.bytecode.CallSymInstLen,
+                    .sp = framePtr,
+                };
+            },
+            .hostQuickenFunc => {
+                const newFramePtr = framePtr + startLocal;
+                sym.inner.hostQuickenFunc(@ptrCast(self), pc, @ptrCast(newFramePtr + 4), numArgs);
+                return cy.fiber.PcSp{
+                    .pc = pc,
                     .sp = framePtr,
                 };
             },
@@ -4132,7 +4140,7 @@ fn opMatch(vm: *const VM, pc: [*]const cy.Inst, framePtr: [*]const Value) u16 {
 
 fn releaseFuncSymDep(vm: *VM, symId: SymbolId) void {
     const entry = vm.funcSyms.buf[symId];
-    switch (@as(rt.FuncSymbolEntryType, @enumFromInt(entry.entryT))) {
+    switch (@as(rt.FuncSymbolType, @enumFromInt(entry.entryT))) {
         .closure => {
             cy.arc.releaseObject(vm, @ptrCast(entry.inner.closure));
         },
@@ -4197,15 +4205,15 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
 
                 const rFuncSig = vm.compiler.sema.resolvedFuncSigs.items[dstRFuncSigId];
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @intFromEnum(rt.FuncSymbolEntryType.nativeFunc1),
+                    .entryT = @intFromEnum(rt.FuncSymbolType.hostFunc),
                     .innerExtra = .{
-                        .nativeFunc1 = .{
+                        .hostFunc = .{
                             .typedFlagNumParams = rFuncSig.numParams(),
                             .funcSigId = @intCast(dstRFuncSigId),
                         }
                     },
                     .inner = .{
-                        .nativeFunc1 = obj.nativeFunc1.func,
+                        .hostFunc = obj.nativeFunc1.func,
                     },
                 };
                 vm.funcSymDeps.put(vm.alloc, symId, val) catch cy.fatal();
@@ -4218,7 +4226,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @intFromEnum(rt.FuncSymbolEntryType.func),
+                    .entryT = @intFromEnum(rt.FuncSymbolType.func),
                     .inner = .{
                         .func = .{
                             .pc = obj.lambda.funcPc,
@@ -4237,7 +4245,7 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
                 }
                 releaseFuncSymDep(vm, symId);
                 vm.funcSyms.buf[symId] = .{
-                    .entryT = @intFromEnum(rt.FuncSymbolEntryType.closure),
+                    .entryT = @intFromEnum(rt.FuncSymbolType.closure),
                     .inner = .{
                         .closure = val.asPointer(*cy.heap.Closure),
                     },
@@ -4254,9 +4262,12 @@ fn setStaticFunc(vm: *VM, symId: SymbolId, val: Value) linksection(cy.Section) !
 }
 
 fn getFuncSigIdOfSym(vm: *const VM, symId: SymbolId) sema.FuncSigId {
-    switch (@as(rt.FuncSymbolEntryType, @enumFromInt(vm.funcSyms.buf[symId].entryT))) {
-        .nativeFunc1 => {
-            return vm.funcSyms.buf[symId].innerExtra.nativeFunc1.funcSigId;
+    switch (@as(rt.FuncSymbolType, @enumFromInt(vm.funcSyms.buf[symId].entryT))) {
+        .hostFunc => {
+            return vm.funcSyms.buf[symId].innerExtra.hostFunc.funcSigId;
+        },
+        .hostQuickenFunc => {
+            return vm.funcSyms.buf[symId].innerExtra.hostFunc.funcSigId;
         },
         .func => {
             return vm.funcSyms.buf[symId].innerExtra.func.funcSigId;

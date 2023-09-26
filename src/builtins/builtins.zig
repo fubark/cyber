@@ -9,17 +9,20 @@ const bindings = @import("bindings.zig");
 const Symbol = bindings.Symbol;
 const prepareThrowSymbol = bindings.prepareThrowSymbol;
 const fmt = @import("../fmt.zig");
+const rt = cy.rt;
 const bt = cy.types.BuiltinTypeSymIds;
 const vmc = cy.vmc;
 
 const log = cy.log.scoped(.core);
 
 pub const Src = @embedFile("builtins.cy");
-pub fn defaultFuncLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
+pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
     if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
-        return @ptrCast(funcs[func.idx].@"1");
+        out.ptr = @ptrCast(@alignCast(funcs[func.idx].@"1"));
+        out.type = funcs[func.idx].@"2";
+        return true;
     }
-    return null;
+    return false;
 }
 
 pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
@@ -29,30 +32,63 @@ pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
     }
 }
 
-const NameHostFunc = struct { []const u8, cy.ZHostFuncFn };
-const funcs = [_]NameHostFunc{
-    .{"arrayFill", arrayFill},
-    .{"asciiCode", asciiCode},
-    .{"bool", btBool},
-    .{"char", char},
-    .{"copy", copy},
-    .{"errorReport", errorReport},
-    .{"isAlpha", isAlpha},
-    .{"isDigit", isDigit},
-    .{"must", must},
-    .{"opaque", btOpaque},
-    .{"panic", panic},
-    .{"parseCyber", parseCyber},
-    .{"parseCyon", parseCyon},
-    .{"performGC", performGC},
-    .{"print", print},
-    .{"runestr", runestr},
-    .{"toCyon", toCyon},
-    .{"typeid", typeid},
-    .{"valtag", valtag},
-    .{"typesym", typesym},
-    .{"typeof", typeof},
+const NameFunc = struct { []const u8, ?*const anyopaque, cy.HostFuncType };
+const funcs = [_]NameFunc{
+    // List
+    .{"$index", bindings.inlineBinOp(.indexList), .quicken},
+    .{"$setIndex", bindings.inlineTernNoRetOp(.setIndexList), .quicken},
+    .{"add", bindings.listAdd, .standard},
+    .{"append", bindings.listAppend, .standard},
+    .{"concat", bindings.listConcat, .standard},
+    .{"insert", bindings.listInsert, .standard},
+    .{"iterator", bindings.listIterator, .standard},
+    .{"joinString", bindings.listJoinString, .standard},
+    .{"len", bindings.listLen, .standard},
+    .{"pairIterator", bindings.listIterator, .standard},
+    .{"remove", bindings.listRemove, .standard},
+    .{"resize", bindings.listResize, .standard},
+    .{"sort", bindings.listSort, .standard},
+
+    // Utils.
+    .{"arrayFill", arrayFill, .standard},
+    .{"asciiCode", asciiCode, .standard},
+    .{"bool", btBool, .standard},
+    .{"char", char, .standard},
+    .{"copy", copy, .standard},
+    .{"errorReport", errorReport, .standard},
+    .{"isAlpha", isAlpha, .standard},
+    .{"isDigit", isDigit, .standard},
+    .{"must", must, .standard},
+    .{"opaque", btOpaque, .standard},
+    .{"panic", panic, .standard},
+    .{"parseCyber", parseCyber, .standard},
+    .{"parseCyon", parseCyon, .standard},
+    .{"performGC", performGC, .standard},
+    .{"print", print, .standard},
+    .{"runestr", runestr, .standard},
+    .{"toCyon", toCyon, .standard},
+    .{"typeid", typeid, .standard},
+    .{"valtag", valtag, .standard},
+    .{"typesym", typesym, .standard},
+    .{"typeof", typeof, .standard},
 };
+
+const NameType = struct { []const u8, cy.rt.TypeId, cy.types.TypeId };
+const types = [_]NameType{
+    .{"List", rt.ListT, bt.List },
+};
+
+pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {
+    if (std.mem.eql(u8, types[info.idx].@"0", info.name.slice())) {
+        out.type = .coreObject;
+        out.data.coreObject = .{
+            .typeId = types[info.idx].@"1",
+            .semaTypeId = types[info.idx].@"2",
+        };
+        return true;
+    }
+    return false;
+}
 
 pub fn arrayFill(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     return vm.allocListFill(args[0], @intCast(args[1].asInteger())) catch cy.fatal();

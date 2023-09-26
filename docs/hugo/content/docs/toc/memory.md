@@ -14,7 +14,7 @@ ARC is deterministic and has less overhead compared to a tracing garbage collect
 ### Reference Counting.
 In Cyber, there are [primitive and object]({{<relref "/docs/toc/data-types">}}) values. Primitives don't need any memory management, since they are copied by value and no heap allocation is required (with the exception of primitives being captured by a [closure]({{<relref "#closures">}})). 
 
-Object are managed by ARC and each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's `retained` and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is `released` and the reference count decrements by 1.
+Objects are managed by ARC. Each object has its own reference counter. Upon creating a new object, it receives a reference count of 1. When the object is copied, it's `retained` and the reference count increments by 1. When an object value is removed from it's parent or is no longer reachable in the current stack frame, it is `released` and the reference count decrements by 1.
 
 Once the reference count reaches 0 and the object (eg. List or Map) also contains child references, each child reference is released thereby decrementing their reference counts by 1. Afterwards, the object is freed from memory.
 

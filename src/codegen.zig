@@ -1221,7 +1221,8 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
             const robjSymId = crObjSymId.id;
             const sid = try c.compiler.vm.ensureObjectType(c.semaRootSymId, nameId, robjSymId);
 
-            var funcId = node.head.objectDecl.funcsHead;
+            const body = c.nodes[node.head.objectDecl.body];
+            var funcId = body.head.objectDeclBody.funcsHead;
             var func: cy.Node = undefined;
             while (funcId != cy.NullId) : (funcId = func.next) {
                 func = c.nodes[funcId];
@@ -2655,7 +2656,7 @@ fn funcDecl(self: *Chunk, parentSymId: sema.SymbolId, nodeId: cy.NodeId) !void {
         try self.compiler.buf.pushDebugFuncEnd(node.head.func.semaDeclId, self.id);
     }
     
-    const rtSym = rt.FuncSymbolEntry.initFunc(opStart, @intCast(stackSize), func.numParams, func.funcSigId);
+    const rtSym = rt.FuncSymbol.initFunc(opStart, @intCast(stackSize), func.numParams, func.funcSigId);
     self.compiler.vm.setFuncSym(symId, rtSym);
 }
 

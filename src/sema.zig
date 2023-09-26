@@ -809,8 +809,65 @@ pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     };
 }
 
+pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    const node = c.nodes[nodeId];
+    const nameN = c.nodes[node.head.objectDecl.name];
+    const name = c.getNodeTokenString(nameN);
+    const nameId = try ensureNameSym(c.compiler, name);
+
+    try checkForDuplicateUsingSym(c, c.getModule().resolvedRootSymId, nameId, nodeId);
+
+    if (c.typeLoader) |typeLoader| {
+        const info = cy.HostTypeInfo{
+            .modId = c.modId,
+            .name = cy.Str.initSlice(name),
+            .idx = c.curHostTypeIdx,
+        };
+        c.curHostTypeIdx += 1;
+        var res: cy.HostTypeResult = .{
+            .data = undefined,
+            .type = .object,
+        };
+        if (typeLoader(@ptrCast(c.compiler.vm), info, &res)) {
+            switch (res.type) {
+                .object => {
+                    const objModId = cy.module.declareTypeObject(c.compiler, c.modId, name, c.id, nodeId) catch |err| {
+                        if (err == error.DuplicateSymName) {
+                            return c.reportErrorAt("Object type `{}` already exists", &.{v(name)}, nodeId);
+                        } else return err;
+                    };
+                    const key = ResolvedSymKey.initResolvedSymKey(c.getModule().resolvedRootSymId, nameId);
+                    const objType = try resolveObjectSym(c.compiler, key, objModId);
+                    res.data.object.typeId.* = objType.typeId;
+                    res.data.object.semaTypeId.* = objType.sTypeId;
+
+                    // Persist for declareObjectMembers.
+                    c.nodes[node.head.objectDecl.name].head.ident.sema_csymId = CompactSymbolId.initSymId(objType.sTypeId);
+                },
+                .coreObject => {
+                    // Persist for declareObjectMembers.
+                    c.nodes[node.head.objectDecl.name].head.ident.sema_csymId = CompactSymbolId.initSymId(res.data.coreObject.semaTypeId);
+                },
+            }
+
+        } else {
+            return c.reportErrorAt("@host type `{}` object failed to load.", &.{v(name)}, nodeId);
+        }
+    } else {
+        return c.reportErrorAt("No object type loader set for `{}`.", &.{v(name)}, nodeId);
+    }
+}
+
 pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
+    // Check for @host modifier.
+    if (node.head.objectDecl.modifierHead != cy.NullId) {
+        const modifier = c.nodes[node.head.objectDecl.modifierHead];
+        if (modifier.head.annotation.type == .host) {
+            try declareHostObject(c, nodeId);
+            return;
+        }
+    }
     const nameN = c.nodes[node.head.objectDecl.name];
     const name = c.getNodeTokenString(nameN);
     const nameId = try ensureNameSym(c.compiler, name);
@@ -822,10 +879,10 @@ pub fn declareObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         } else return err;
     };
     const key = ResolvedSymKey.initResolvedSymKey(c.getModule().resolvedRootSymId, nameId);
-    const symId = try resolveObjectSym(c.compiler, key, objModId);
+    const res = try resolveObjectSym(c.compiler, key, objModId);
 
     // Persist for declareObjectMembers.
-    c.nodes[node.head.objectDecl.name].head.ident.sema_csymId = CompactSymbolId.initSymId(symId);
+    c.nodes[node.head.objectDecl.name].head.ident.sema_csymId = CompactSymbolId.initSymId(res.sTypeId);
 }
 
 pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
@@ -838,7 +895,8 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     // Load fields.
     var i: u32 = 0;
 
-    var fieldId = node.head.objectDecl.fieldsHead;
+    const body = c.nodes[node.head.objectDecl.body];
+    var fieldId = body.head.objectDeclBody.fieldsHead;
     while (fieldId != cy.NullId) : (i += 1) {
         const field = c.nodes[fieldId];
         const fieldName = c.getNodeTokenString(field);
@@ -864,39 +922,10 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
     c.compiler.vm.types.buf[rtTypeId].numFields = i;
 
-    var funcId = node.head.objectDecl.funcsHead;
+    var funcId = body.head.objectDeclBody.funcsHead;
     while (funcId != cy.NullId) {
-        const declId = try appendFuncDecl(c, funcId, true);
-        c.nodes[funcId].head.func.semaDeclId = declId;
-
-        const func = &c.semaFuncDecls.items[declId];
+        try declareObjectFunc(c, objModId, funcId);
         const funcN = c.nodes[funcId];
-
-        if (func.numParams > 0) {
-            const param = c.nodes[func.paramHead];
-            const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
-            if (std.mem.eql(u8, paramName, "self")) {
-                // Skip methods for now.
-
-                funcId = funcN.next;
-                continue;
-            }
-        }
-
-        // Object function.
-        const funcName = func.getName(c);
-        const funcNameId = try ensureNameSym(c.compiler, funcName);
-
-        cy.module.declareUserFunc(c.compiler, objModId, funcName, func.funcSigId, declId, false) catch |err| {
-            if (err == error.DuplicateSymName) {
-                return c.reportErrorAt("The symbol `{}` already exists.", &.{v(funcName)}, declId);
-            } else if (err == error.DuplicateFuncSig) {
-                return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(funcName)}, declId);
-            } else return err;
-        };
-        const key = ResolvedSymKey.initResolvedSymKey(objSymId, funcNameId);
-        _ = try resolveUserFunc(c, key, func.funcSigId, declId, false);
-
         funcId = funcN.next;
     }
 }
@@ -914,7 +943,9 @@ fn objectDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     c.curObjectSymId = c.nodes[node.head.objectDecl.name].head.ident.sema_csymId.id;
     defer c.curObjectSymId = cy.NullId;
 
-    var funcId = node.head.objectDecl.funcsHead;
+    const body = c.nodes[node.head.objectDecl.body];
+
+    var funcId = body.head.objectDeclBody.funcsHead;
     while (funcId != cy.NullId) {
         const declId = c.nodes[funcId].head.func.semaDeclId;
 
@@ -963,7 +994,7 @@ fn checkForDuplicateUsingSym(c: *cy.Chunk, parentSymId: SymbolId, nameId: NameSy
     }
 }
 
-pub fn declareFuncInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+pub fn declareFuncInit(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
     const node = c.nodes[nodeId];
     if (node.head.func.bodyHead == cy.NullId) {
         // No initializer. Check if @host func.
@@ -971,7 +1002,7 @@ pub fn declareFuncInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         if (modifierId != cy.NullId) {
             const modifier = c.nodes[modifierId];
             if (modifier.head.annotation.type == .host) {
-                try declareHostFunc(c, nodeId);
+                try declareHostFunc(c, modId, nodeId);
                 return;
             }
         }
@@ -988,7 +1019,7 @@ pub fn declareFuncInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         const mod = c.getModule();
         try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
-        cy.module.declareUserFunc(c.compiler, c.modId, name, func.funcSigId, declId, true) catch |err| {
+        cy.module.declareUserFunc(c.compiler, modId, name, func.funcSigId, declId, true) catch |err| {
             if (err == error.DuplicateSymName) {
                 return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
             } else if (err == error.DuplicateFuncSig) {
@@ -1023,7 +1054,86 @@ fn funcDeclInit(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     };
 }
 
-pub fn declareHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+fn declareObjectFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
+    const node = c.nodes[nodeId];
+    const header = c.nodes[node.head.func.header];
+
+    // Check for method.
+    if (header.head.funcHeader.paramHead != cy.NullId) {
+        const param = c.nodes[header.head.funcHeader.paramHead];
+        const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
+        if (std.mem.eql(u8, paramName, "self")) {
+            try declareMethod(c, modId, nodeId);
+            return;
+        }
+    }
+
+    // Object function.
+    if (node.node_t == .funcDecl) {
+        try declareFunc(c, modId, nodeId);
+    } else if (node.node_t == .funcDeclInit) {
+        try declareFuncInit(c, modId, nodeId);
+    } else {
+        cy.unexpected();
+    }
+}
+
+fn declareMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
+    const node = c.nodes[nodeId];
+    const declId = try appendFuncDecl(c, nodeId, true);
+    c.nodes[nodeId].head.func.semaDeclId = declId;
+
+    if (node.head.func.bodyHead == cy.NullId) {
+        // No initializer. Check if @host func.
+        const modifierId = c.nodes[node.head.func.header].next;
+        if (modifierId != cy.NullId) {
+            const modifier = c.nodes[modifierId];
+            if (modifier.head.annotation.type == .host) {
+                try declareHostMethod(c, modId, nodeId);
+                return;
+            }
+        }
+        const name = c.getNodeTokenString(c.nodes[c.nodes[node.head.func.header].head.funcHeader.name]);
+        return c.reportErrorAt("`{}` does not have an initializer.", &.{v(name)}, nodeId);
+    } else {
+        // Skip methods for now.
+        return;
+    }
+}
+
+fn declareHostMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
+    try declareHostFunc(c, modId, nodeId);
+    const declId = c.nodes[nodeId].head.func.semaDeclId;
+    const func = c.semaFuncDecls.items[declId];
+    const name = func.getName(c);
+    const nameId = try ensureNameSym(c.compiler, name);
+
+    const mod = c.compiler.sema.getModule(modId);
+    const key = ModuleSymKey.initModuleSymKey(nameId, func.funcSigId);
+    const sym = mod.syms.get(key).?;
+
+    const typeId = c.compiler.sema.getSymbol(mod.resolvedRootSymId).inner.object.typeId;
+    const mgId = try c.compiler.vm.ensureMethodGroup(name);
+
+    // Insert method entries into VM.
+    const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
+    if (sym.symT == .hostFunc) {
+        if (funcSig.isTyped) {
+            const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(sym.inner.hostFunc.func), func.numParams);
+            try c.compiler.vm.addMethod(typeId, mgId, m);
+        } else {
+            const m = rt.MethodInit.initHostUntyped(func.funcSigId, @ptrCast(sym.inner.hostFunc.func), func.numParams);
+            try c.compiler.vm.addMethod(typeId, mgId, m);
+        }
+    } else if (sym.symT == .hostQuickenFunc) {
+        const m = rt.MethodInit.initHostQuicken(func.funcSigId, sym.inner.hostQuickenFunc.func, func.numParams);
+        try c.compiler.vm.addMethod(typeId, mgId, m);
+    } else {
+        cy.unexpected();
+    }
+}
+
+pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
     c.nodes[nodeId].node_t = .hostFuncDecl;
     const declId = try appendFuncDecl(c, nodeId, true);
     const func = &c.semaFuncDecls.items[declId];
@@ -1031,27 +1141,49 @@ pub fn declareHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     const nameId = try ensureNameSym(c.compiler, name);
     c.nodes[nodeId].head.func.semaDeclId = declId;
 
-    const mod = c.getModule();
+    const mod = c.compiler.sema.getModule(modId);
     try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
 
     const info = cy.HostFuncInfo{
-        .modId = c.modId,
+        .modId = modId,
         .name = cy.Str.initSlice(name),
         .funcSigId = func.funcSigId,
         .idx = c.curHostFuncIdx,
     };
     c.curHostFuncIdx += 1;
     if (c.funcLoader) |funcLoader| {
-        if (funcLoader(@ptrCast(c.compiler.vm), info)) |funcPtr| {
-            cy.module.declareHostFunc(c.compiler, c.modId, name, func.funcSigId, declId, funcPtr) catch |err| {
-                if (err == error.DuplicateSymName) {
-                    return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
-                } else if (err == error.DuplicateFuncSig) {
-                    return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
-                } else return err;
-            };
-            const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
-            _ = try resolveHostFunc(c, key, func.funcSigId, funcPtr);
+        var res: cy.HostFuncResult = .{
+            .ptr = null,
+            .type = .standard,
+        };
+        if (funcLoader(@ptrCast(c.compiler.vm), info, &res)) {
+            if (res.type == .standard) {
+                cy.module.declareHostFunc(c.compiler, modId, name, func.funcSigId, declId, res.ptr) catch |err| {
+                    if (err == error.DuplicateSymName) {
+                        return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+                    } else if (err == error.DuplicateFuncSig) {
+                        return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+                    } else return err;
+                };
+                const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
+                _ = try resolveHostFunc(c, key, func.funcSigId, res.ptr);
+            } else if (res.type == .quicken) {
+                const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
+                if (funcSig.isParamsTyped) {
+                    return c.reportErrorAt("Failed to load: {}, Only untyped quicken func is supported.", &.{v(name)}, nodeId);
+                }
+                cy.module.declareHostQuickenFunc(c.compiler, modId, name, func.funcSigId, declId, @ptrCast(res.ptr)) catch |err| {
+                    if (err == error.DuplicateSymName) {
+                        return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+                    } else if (err == error.DuplicateFuncSig) {
+                        return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+                    } else return err;
+                };
+                const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
+                _ = try resolveHostQuickenFunc(c, key, func.funcSigId, @ptrCast(res.ptr));
+            } else {
+                cy.unexpected();
+            }
         } else {
             return c.reportErrorAt("Host func `{}` failed to load.", &.{v(name)}, nodeId);
         }
@@ -1060,16 +1192,17 @@ pub fn declareHostFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     }
 }
 
-pub fn declareFunc(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+/// Declares a bytecode function in a given module.
+pub fn declareFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void {
     const declId = try appendFuncDecl(c, nodeId, true);
     const func = &c.semaFuncDecls.items[declId];
     const name = func.getName(c);
     const nameId = try ensureNameSym(c.compiler, name);
     c.setNodeFuncDecl(nodeId, declId);
 
-    const mod = c.getModule();
+    const mod = c.compiler.sema.getModule(modId);
     try checkForDuplicateUsingSym(c, mod.resolvedRootSymId, nameId, func.getNameNode(c));
-    cy.module.declareUserFunc(c.compiler, c.modId, name, func.funcSigId, declId, false) catch |err| {
+    cy.module.declareUserFunc(c.compiler, modId, name, func.funcSigId, declId, false) catch |err| {
         if (err == error.DuplicateSymName) {
             return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
         } else if (err == error.DuplicateFuncSig) {
@@ -2876,7 +3009,8 @@ const FuncCallSymResult = struct {
 /// Returns CompileError if the symbol exists but can't be used for a function call.
 /// Returns null if the symbol is missing but can still be used as an accessor.
 fn getOrResolveSymForFuncCall(
-    chunk: *cy.Chunk, parentSymId: SymbolId, nameId: NameSymId, args: []const TypeId, ret: TypeId, hasDynamicArg: bool,
+    chunk: *cy.Chunk, parentSymId: SymbolId, nameId: NameSymId, args: []const TypeId,
+    ret: TypeId, hasDynamicArg: bool,
 ) !?FuncCallSymResult {
     const funcSigId = try ensureFuncSig(chunk.compiler, args, ret);
     log.debug("getFuncCallSym {}.{s}, sig: {s}", .{parentSymId, getName(chunk.compiler, nameId), try getFuncSigTempStr(chunk.compiler, funcSigId)} );
@@ -3204,8 +3338,8 @@ fn resolveTypeSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSy
 
         switch (modSym.symT) {
             .object => {
-                const id = try resolveObjectSym(chunk.compiler, key, modSym.inner.object.modId);
-                return id;
+                const res = try resolveObjectSym(chunk.compiler, key, modSym.inner.object.modId);
+                return res.sTypeId;
             },
             .userObject => {
                 return chunk.reportError("Unsupported module sym: userObject", &.{});
@@ -3244,6 +3378,10 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
         switch (modSym.symT) {
             .hostFunc => {
                 const res = try resolveHostFunc(chunk, key, funcSigId, modSym.inner.hostFunc.func);
+                return CompactSymbolId.initFuncSymId(res.funcSymId);
+            },
+            .hostQuickenFunc => {
+                const res = try resolveHostQuickenFunc(chunk, key, funcSigId, modSym.inner.hostQuickenFunc.func);
                 return CompactSymbolId.initFuncSymId(res.funcSymId);
             },
             .hostVar => {
@@ -3295,8 +3433,8 @@ fn resolveSymFromModule(chunk: *cy.Chunk, modId: cy.ModuleId, nameId: NameSymId,
                 return CompactSymbolId.initFuncSymId(res.funcSymId);
             },
             .object => {
-                const id = try resolveObjectSym(chunk.compiler, key, modSym.inner.object.modId);
-                return CompactSymbolId.initSymId(id);
+                const res = try resolveObjectSym(chunk.compiler, key, modSym.inner.object.modId);
+                return CompactSymbolId.initSymId(res.sTypeId);
             },
             .enumType => {
                 const id = try self.sema.addSymbol(key, .enumType, .{
@@ -3747,7 +3885,12 @@ pub fn resolveEnumSym(c: *cy.VMcompiler, parentSymId: SymbolId, name: []const u8
     return symId;
 }
 
-pub fn resolveObjectSym(c: *cy.VMcompiler, key: ResolvedSymKey, modId: cy.ModuleId) !SymbolId {
+const ObjectTypeResult = struct {
+    typeId: rt.TypeId,
+    sTypeId: TypeId,
+};
+
+pub fn resolveObjectSym(c: *cy.VMcompiler, key: ResolvedSymKey, modId: cy.ModuleId) !ObjectTypeResult {
     const rtTypeId = try c.vm.ensureObjectType(key.resolvedSymKey.parentSymId, key.resolvedSymKey.nameId, cy.NullId);
     const symId = try c.sema.addSymbol(key, .object, .{
         .object = .{
@@ -3760,7 +3903,10 @@ pub fn resolveObjectSym(c: *cy.VMcompiler, key: ResolvedSymKey, modId: cy.Module
     c.vm.types.buf[rtTypeId].semaTypeId = symId;
     const mod = c.sema.getModulePtr(modId);
     mod.resolvedRootSymId = symId;
-    return symId;
+    return ObjectTypeResult{
+        .typeId = rtTypeId,
+        .sTypeId = symId,
+    };
 }
 
 /// A root module symbol is used as the parent for it's members.
@@ -3908,6 +4054,19 @@ const SymbolResult = struct {
     }
 };
 
+fn resolveHostQuickenFunc(
+    c: *cy.Chunk, key: ResolvedSymKey, funcSigId: FuncSigId, func: cy.QuickenFuncFn,
+) !SymbolResult {
+    const parentSymId = key.resolvedSymKey.parentSymId;
+    const nameId = key.resolvedSymKey.nameId;
+    const rtSymId = try c.compiler.vm.ensureFuncSym(parentSymId, nameId, funcSigId);
+
+    const funcSig = c.compiler.sema.getFuncSig(funcSigId);
+    const rtSym = rt.FuncSymbol.initHostQuickenFunc(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
+    c.compiler.vm.setFuncSym(rtSymId, rtSym);
+    return try resolveFunc(c, key, funcSigId, cy.NullId);
+}
+
 fn resolveHostFunc(
     c: *cy.Chunk, key: ResolvedSymKey, funcSigId: FuncSigId, func: vmc.HostFuncFn,
 ) !SymbolResult {
@@ -3916,7 +4075,7 @@ fn resolveHostFunc(
     const rtSymId = try c.compiler.vm.ensureFuncSym(parentSymId, nameId, funcSigId);
 
     const funcSig = c.compiler.sema.getFuncSig(funcSigId);
-    const rtSym = rt.FuncSymbolEntry.initNativeFunc1(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
+    const rtSym = rt.FuncSymbol.initHostFunc(func, funcSig.isTyped, funcSig.numParams(), funcSigId);
     c.compiler.vm.setFuncSym(rtSymId, rtSym);
     return try resolveFunc(c, key, funcSigId, cy.NullId);
 }
@@ -4135,6 +4294,7 @@ pub const NameBuiltinTypeEnd = 14;
 
 pub const FuncDeclId = u32;
 
+/// Sema data about a named or anonymous function.
 pub const FuncDecl = struct {
     nodeId: cy.NodeId,
 
@@ -4233,10 +4393,8 @@ pub const Model = struct {
     nameSyms: std.ArrayListUnmanaged(Name),
     nameSymMap: std.StringHashMapUnmanaged(NameSymId),
 
-    /// Resolved symbols are shared among all modules.
-    /// Only resolved symbols are included in the execution runtime.
-    /// When a symbol is missing, sema will attempt to find it within the resolved parent module.
-    /// Each symbol is keyed by the absolute path to the symbol.
+    /// A global symbol table keyed by absolute path. Does not include overloaded functions.
+    /// TODO: Consider removing this and relying on modId/nameId.
     resolvedSyms: std.ArrayListUnmanaged(Symbol),
     resolvedSymMap: std.HashMapUnmanaged(ResolvedSymKey, SymbolId, cy.hash.KeyU64Context, 80),
 

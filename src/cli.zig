@@ -24,7 +24,7 @@ const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
     }},
     .{"test", cy.ModuleLoaderResult{
         .src = cy.Str.initSlice(test_mod.Src), .srcIsStatic = true,
-        .funcLoader = test_mod.defaultFuncLoader,
+        .funcLoader = test_mod.funcLoader,
         .postLoad = test_mod.postLoad,
     }},
 });

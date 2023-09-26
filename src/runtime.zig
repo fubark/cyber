@@ -83,7 +83,7 @@ pub const MethodData = extern union {
         numParams: u8,
     },
     optimizing: extern struct {
-        ptr: cy.OptimizingFuncFn,
+        ptr: cy.QuickenFuncFn,
         numParams: u8,
     },
     typed: extern struct {
@@ -124,7 +124,7 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initUntypedNative1(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
+    pub fn initHostUntyped(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .untypedNative1,
             .data = .{
@@ -165,7 +165,7 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initTypedNative(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
+    pub fn initHostTyped(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .typedNative,
             .data = .{
@@ -179,7 +179,7 @@ pub const MethodInit = struct {
         };
     }
 
-    pub fn initOptimizing(funcSigId: sema.FuncSigId, func: cy.OptimizingFuncFn, numParams: u8) MethodInit {
+    pub fn initHostQuicken(funcSigId: sema.FuncSigId, func: cy.QuickenFuncFn, numParams: u8) MethodInit {
         return .{
             .type = .optimizing,
             .data = .{
@@ -239,10 +239,11 @@ pub const MethodGroupExt = struct {
 
 pub const FuncId = u32;
 
-pub const FuncSymbolEntryType = enum {
-    nativeFunc1,
+pub const FuncSymbolType = enum {
+    hostFunc,
     func,
     closure,
+    hostQuickenFunc,
 
     /// Placeholder for a func symbol that contains a linked list of overloaded functions.
     /// The arg types are checked at runtime.
@@ -255,12 +256,12 @@ pub const FuncSymDetail = struct {
     nameId: sema.NameSymId,
 };
 
-/// TODO: Rename to FuncSymbol.
-pub const FuncSymbolEntry = extern struct {
+pub const FuncSymbol = extern struct {
     entryT: u32,
     innerExtra: extern union {
-        nativeFunc1: extern struct {
-            /// Used to wrap a native func as a function value.
+        // hostQuickenFunc shares the same field.
+        hostFunc: extern struct {
+            /// Used to wrap a host func as a function value.
             typedFlagNumParams: u16,
             funcSigId: u16,
 
@@ -276,7 +277,8 @@ pub const FuncSymbolEntry = extern struct {
         },
     } = undefined,
     inner: extern union {
-        nativeFunc1: vmc.HostFuncFn,
+        hostQuickenFunc: cy.QuickenFuncFn,
+        hostFunc: vmc.HostFuncFn,
         func: extern struct {
             pc: u32,
             /// Stack size required by the func.
@@ -287,25 +289,41 @@ pub const FuncSymbolEntry = extern struct {
         closure: *cy.Closure,
     },
 
-    pub fn initNativeFunc1(func: vmc.HostFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbolEntry {
+    pub fn initHostQuickenFunc(func: cy.QuickenFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
         const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
-            .entryT = @intFromEnum(FuncSymbolEntryType.nativeFunc1),
+            .entryT = @intFromEnum(FuncSymbolType.hostQuickenFunc),
             .innerExtra = .{
-                .nativeFunc1 = .{
+                .hostFunc = .{
                     .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
                     .funcSigId = @intCast(funcSigId),
                 }
             },
             .inner = .{
-                .nativeFunc1 = func,
+                .hostQuickenFunc = func,
             },
         };
     }
 
-    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId) FuncSymbolEntry {
+    pub fn initHostFunc(func: vmc.HostFuncFn, isTyped: bool, numParams: u32, funcSigId: sema.FuncSigId) FuncSymbol {
+        const isTypedMask: u16 = if (isTyped) 1 << 15 else 0;
         return .{
-            .entryT = @intFromEnum(FuncSymbolEntryType.func),
+            .entryT = @intFromEnum(FuncSymbolType.hostFunc),
+            .innerExtra = .{
+                .hostFunc = .{
+                    .typedFlagNumParams = isTypedMask | @as(u16, @intCast(numParams)),
+                    .funcSigId = @intCast(funcSigId),
+                }
+            },
+            .inner = .{
+                .hostFunc = func,
+            },
+        };
+    }
+
+    pub fn initFunc(pc: usize, stackSize: u16, numParams: u16, funcSigId: cy.sema.FuncSigId) FuncSymbol {
+        return .{
+            .entryT = @intFromEnum(FuncSymbolType.func),
             .innerExtra = .{
                 .func = .{
                     .funcSigId = funcSigId,
@@ -321,9 +339,9 @@ pub const FuncSymbolEntry = extern struct {
         };
     }
 
-    pub fn initClosure(closure: *cy.Closure) FuncSymbolEntry {
+    pub fn initClosure(closure: *cy.Closure) FuncSymbol {
         return .{
-            .entryT = @intFromEnum(FuncSymbolEntryType.closure),
+            .entryT = @intFromEnum(FuncSymbolType.closure),
             .inner = .{
                 .closure = closure,
             },
@@ -352,8 +370,8 @@ test "runtime internals." {
     try t.eq(@sizeOf(TypeMethodGroup), 12);
     try t.eq(@sizeOf(MethodGroup), 24);
 
-    try t.eq(@sizeOf(FuncSymbolEntry), 16);
-    var funcSymEntry: FuncSymbolEntry = undefined;
+    try t.eq(@sizeOf(FuncSymbol), 16);
+    var funcSymEntry: FuncSymbol = undefined;
     try t.eq(@intFromPtr(&funcSymEntry.entryT), @intFromPtr(&funcSymEntry));
     try t.eq(@intFromPtr(&funcSymEntry.innerExtra), @intFromPtr(&funcSymEntry) + 4);
     try t.eq(@intFromPtr(&funcSymEntry.inner), @intFromPtr(&funcSymEntry) + 8);

@@ -121,6 +121,8 @@ pub const Chunk = struct {
     funcLoader: ?cy.HostFuncLoaderFn = null,
     /// For binding @host var declarations.
     varLoader: ?cy.HostVarLoaderFn = null,
+    /// For binding @host type declarations.
+    typeLoader: ?cy.HostTypeLoaderFn = null,
     /// Run before declarations are loaded.
     preLoad: ?cy.PreLoadModuleFn = null,
     /// Run after declarations have been loaded.
@@ -131,6 +133,8 @@ pub const Chunk = struct {
     curHostFuncIdx: u32,
     /// Counter for loading @host vars.
     curHostVarIdx: u32,
+    /// Counter for loading @host types.
+    curHostTypeIdx: u32,
 
     pub fn init(c: *cy.VMcompiler, id: ChunkId, srcUri: []const u8, src: []const u8) !Chunk {
         var new = Chunk{
@@ -179,6 +183,7 @@ pub const Chunk = struct {
             .rega = cy.register.Allocator.init(c, id),
             .curHostFuncIdx = 0,
             .curHostVarIdx = 0,
+            .curHostTypeIdx = 0,
             .usingModules = .{},
             // .funcCandidateStack = .{},
         };

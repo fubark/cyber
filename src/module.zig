@@ -15,7 +15,13 @@ pub const ModuleSymKey = cy.hash.KeyU64;
 
 pub const ModuleId = u32;
 
+/// A module contains all child symbols declared in Cyber source code in addition
+/// to changes made through the embedded API.
+/// Each source chunk is a module and types can be modules.
+/// Overloaded functions are linked together so that type signatures can be checked sequentially.
+/// This is always created and populated whether or not each symbol will end up being generated for the VM.
 pub const Module = struct {
+    // TODO: This could be split into two maps. One by name and ther other by type sig for overloaded functions.
     syms: std.HashMapUnmanaged(ModuleSymKey, ModuleSym, cy.hash.KeyU64Context, 80),
 
     /// Tracks which binded vars are retained.
@@ -309,6 +315,7 @@ pub const Module = struct {
 const ModuleSymType = enum {
     variable,
     hostFunc,
+    hostQuickenFunc,
 
     /// Symbol that points to one function signature.
     symToOneFunc,
@@ -345,6 +352,9 @@ const ModuleSym = struct {
     inner: union {
         hostFunc: struct {
             func: vmc.HostFuncFn,
+        },
+        hostQuickenFunc: struct {
+            func: cy.QuickenFuncFn,
         },
         variable: struct {
             val: cy.Value,
@@ -422,18 +432,37 @@ pub fn declareTypeObject(c: *cy.VMcompiler, modId: ModuleId, name: []const u8, c
     return objModId;
 }
 
+pub fn declareHostQuickenFunc(
+    c: *cy.VMcompiler, modId: ModuleId, name: []const u8, funcSigId: sema.FuncSigId,
+    declId: sema.FuncDeclId, funcPtr: cy.QuickenFuncFn,
+) !void {
+    _ = declId;
+    const nameId = try sema.ensureNameSym(c, name);
+    const key = ModuleSymKey.initModuleSymKey(nameId, funcSigId);
+    const mod = c.sema.getModulePtr(modId);
+    if (mod.syms.contains(key)) {
+        return error.DuplicateFuncSig;
+    }
+
+    try mod.syms.put(c.alloc, key, .{
+        .symT = .hostQuickenFunc,
+        .inner = .{
+            .hostQuickenFunc = .{
+                .func = funcPtr,
+            },
+        },
+    });
+
+    try declareFuncForNameSym(c, mod, nameId, funcSigId);
+}
+
 pub fn declareHostFunc(
     c: *cy.VMcompiler, modId: ModuleId, name: []const u8, funcSigId: sema.FuncSigId,
     declId: sema.FuncDeclId, funcPtr: vmc.HostFuncFn,
 ) !void {
     _ = declId;
     const nameId = try sema.ensureNameSym(c, name);
-    const key = ModuleSymKey{
-        .moduleSymKey = .{
-            .nameId = nameId,
-            .funcSigId = funcSigId, 
-        },
-    };
+    const key = ModuleSymKey.initModuleSymKey(nameId, funcSigId);
     const mod = c.sema.getModulePtr(modId);
     if (mod.syms.contains(key)) {
         return error.DuplicateFuncSig;
@@ -553,6 +582,7 @@ pub fn findDistinctModuleSym(chunk: *cy.Chunk, modId: ModuleId, nameId: sema.Nam
             .typeAlias,
             .symToOneFunc,
             .userObject,
+            .hostQuickenFunc,
             .hostFunc => {
                 return true;
             },

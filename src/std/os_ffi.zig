@@ -775,7 +775,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             const func = cy.ptrAlignCast(cy.ZHostFuncFn, funcPtr);
 
             const mgId = try ivm.ensureMethodGroup(sym);
-            try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initTypedNative(cfunc.funcSigId, func, @as(u8, @intCast(cargs.len)) + 1) });
+            try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initHostTyped(cfunc.funcSigId, func, @as(u8, @intCast(cargs.len)) + 1) });
         }
         var iter = ctx.symToCStructFields.iterator();
         while (iter.next()) |e| {
@@ -793,7 +793,7 @@ pub fn bindLib(vm: *cy.UserVM, args: [*]const Value, config: BindLibConfig) !Val
             defer alloc.free(methodName);
             const mgId = try ivm.ensureMethodGroup2(methodName, true);
             const funcSigId = try sema.ensureFuncSig(ivm.compiler, &.{ bt.Any, bt.Pointer }, rtType.semaTypeId);
-            try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initTypedNative(funcSigId, func, 2) });
+            try @call(.never_inline, cy.VM.addMethod, .{ivm, sid, mgId, rt.MethodInit.initHostTyped(funcSigId, func, 2) });
         }
         success = true;
         return try vm.allocObjectSmall(sid, &.{cyState});

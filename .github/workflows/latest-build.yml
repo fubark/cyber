@@ -238,7 +238,7 @@ jobs:
       - name: Move. (windows lib)
         if: env.BUILD_TARGET == 'x86_64-windows-gnu' && env.BUILD_CMD == 'lib'
         run: |
-          mv zig-out/lib/cyber.lib cyber-windows-x64.lib
+          mv zig-out/lib/cyber.lib libcyber-windows-x64.lib
 
       - name: Move. (linux lib)
         if: env.BUILD_TARGET == 'x86_64-linux-gnu' && env.BUILD_CMD == 'lib'
@@ -274,7 +274,7 @@ jobs:
         with:
           name: bin
           path: |
-            cyber-windows-x64.lib
+            libcyber-windows-x64.lib
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
@@ -308,7 +308,7 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
-            cyber-windows-x64.lib
+            libcyber-windows-x64.lib
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a
@@ -326,7 +326,7 @@ jobs:
             cyber-macos-x64.tar.gz
             cyber-macos-arm64.tar.gz
             cyber-windows-x64.zip
-            cyber-windows-x64.lib
+            libcyber-windows-x64.lib
             libcyber-linux-x64.a
             libcyber-macos-x64.a
             libcyber-macos-arm64.a

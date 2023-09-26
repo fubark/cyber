@@ -344,10 +344,10 @@ pub const VMcompiler = struct {
                         try sema.declareVar(chunk, decl.inner.variable);
                     },
                     .func => {
-                        try sema.declareFunc(chunk, decl.inner.func);
+                        try sema.declareFunc(chunk, chunk.modId, decl.inner.func);
                     },
                     .funcInit => {
-                        try sema.declareFuncInit(chunk, decl.inner.funcInit);
+                        try sema.declareFuncInit(chunk, chunk.modId, decl.inner.funcInit);
                     },
                     .object => {
                         try sema.declareObjectMembers(chunk, decl.inner.object);
@@ -536,6 +536,7 @@ pub const VMcompiler = struct {
             var newChunk = try cy.Chunk.init(self, newChunkId, task.absSpec, src);
             newChunk.funcLoader = res.funcLoader;
             newChunk.varLoader = res.varLoader;
+            newChunk.typeLoader = res.typeLoader;
             newChunk.preLoad = res.preLoad;
             newChunk.postLoad = res.postLoad;
             newChunk.srcOwned = !res.srcIsStatic;
@@ -648,7 +649,8 @@ pub fn defaultModuleLoader(_: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderRes
         out.* = .{
             .src = cy.Str.initSlice(cy_mod.Src),
             .srcIsStatic = true,
-            .funcLoader = cy_mod.defaultFuncLoader,
+            .funcLoader = cy_mod.funcLoader,
+            .typeLoader = cy_mod.typeLoader,
             .postLoad = cy_mod.postLoad,
         };
         return true;

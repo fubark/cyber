@@ -53,13 +53,14 @@ typedef enum {
     CS_TYPE_METATYPE,
 } CsType;
 typedef uint32_t CsTypeId;
+typedef uint32_t CsSemaTypeId;
 
 // Cyber deals with string slices internally for efficiency.
 // Although some API functions could accept a null terminated string,
 // it's more consistent to use CsStr everywhere.
 // Creating a CsStr can be simplified with a macro:
 // #define str(x) ((CsStr){ x, strlen(x) })
-// Note: Returned `CsStr`s do not always end with a null char.
+// NOTE: Returned `CsStr`s do not always end with a null char.
 typedef struct CsStr {
     const char* buf;
     size_t len;
@@ -74,8 +75,11 @@ CsStr csGetCommit();
 // @host func is binded to this function pointer signature.
 typedef CsValue (*CsHostFuncFn)(CsVM* vm, const CsValue* args, uint8_t nargs);
 
+// Internal @host func used to do inline caching.
+typedef void (*CsHostQuickenFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, uint8_t nargs);
+
 // Given the current module's resolved URI and the "to be" imported module specifier,
-// write the resolved specifier in `outUri` and return true, otherwise return false.
+// write the resolved specifier in `outUri` and return true, or return false.
 // Most embedders do not need a resolver and can rely on the default resolver which
 // simply returns `spec` without any adjustments.
 typedef bool (*CsModuleResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
@@ -105,8 +109,24 @@ typedef struct CsHostFuncInfo {
     uint32_t idx;
 } CsHostFuncInfo;
 
-// Given info about a @host func, return it's function pointer or null.
-typedef CsHostFuncFn (*CsHostFuncLoaderFn)(CsVM* vm, CsHostFuncInfo funcInfo);
+typedef enum {
+    // Most @host funcs have this type.
+    HOST_FUNC_STANDARD,
+    // Some internal functions need this to perform inline caching.
+    HOST_FUNC_QUICKEN,
+} HostFuncType;
+
+// Result given to Cyber when binding a @host func.
+typedef struct CsHostFuncResult {
+    // Pointer to the binded function. (CsHostFuncFn/CsHostQuickenFuncFn)
+    void* ptr;
+    // `HostFuncType`. By default, this is `HOST_FUNC_STANDARD`.
+    uint8_t type;
+} CsHostFuncResult;
+
+// Given info about a @host func, write it's function pointer to `out->ptr` and return true,
+// or return false.
+typedef bool (*CsHostFuncLoaderFn)(CsVM* vm, CsHostFuncInfo funcInfo, CsHostFuncResult* out);
 
 // Info about a @host var.
 typedef struct CsHostVarInfo {
@@ -119,10 +139,66 @@ typedef struct CsHostVarInfo {
     uint32_t idx;
 } CsHostVarInfo;
 
-// Given info about a @host var, write a value to `out` and return true, otherwise return false.
+// Given info about a @host var, write a value to `out` and return true, or return false.
 // The value is consumed by the module. If the value should outlive the module,
 // call `csRetain` before handing it over.
 typedef bool (*CsHostVarLoaderFn)(CsVM* vm, CsHostVarInfo funcInfo, CsValue* out);
+
+// Info about a @host type.
+typedef struct CsHostTypeInfo {
+    // The module it belongs to.
+    uint32_t modId;
+    // The name of the type.
+    CsStr name;
+    // A counter that tracks it's current position among all @host types in the module.
+    // This is useful if you want to bind an array of data to @host types.
+    uint32_t idx;
+} CsHostTypeInfo;
+
+typedef enum {
+    // @host object type that needs to be created.
+    HOST_TYPE_OBJECT,
+    // @host object type that is hardcoded into the VM and already has a semantic and runtime type id.
+    HOST_TYPE_CORE_OBJECT,
+} HostTypeType;
+
+#define CS_MAX_POOL_OBJECT_SIZE 32
+
+// If objects allocated for the binded type ever exceeds `CS_MAX_POOL_OBJECT_SIZE`,
+// then a finalizer is required to explicitly free the memory with `csFree`.
+// A finalizer can also be used to perform cleanup tasks. eg. Freeing resource handles.
+// Unlike finalizers declared in user scripts, this finalizer is always guaranteed to be invoked.
+// NOTE: Although the VM handle is provided, using the VM at this point to mutate object dependencies
+//       is undefined behavior because the VM may be running a GC task.
+// NOTE: If the object retains child VM objects, accessing them is undefined behavior
+//       because they have been freed before the finalizer was invoked.
+typedef void (*CsObjectFinalizerFn)(CsVM* vm, void* obj);
+
+// Result given to Cyber when binding a @host type.
+typedef struct CsHostTypeResult {
+    union {
+        struct {
+            // The created runtime type id will be written to `outTypeId`.
+            // This typeId is then used to allocate a new instance of the object.
+            CsTypeId* outTypeId;
+            // The created semantic type id will be written to `outSemaTypeId`.
+            CsSemaTypeId* outSemaTypeId;
+            // Pointer to callback or null.
+            CsObjectFinalizerFn finalizer;
+        } object;
+        struct {
+            // Existing runtime typeId.
+            CsTypeId typeId;
+            // Existing semantic typeId.
+            CsSemaTypeId semaTypeId;
+        } coreObject;
+    } data;
+    // `HostTypeType`. By default, this is `HOST_TYPE_OBJECT`.
+    uint8_t type;
+} CsHostTypeResult;
+
+// Given info about a @host type, write the result to `out` and return true, or return false.
+typedef bool (*CsHostTypeLoaderFn)(CsVM* vm, CsHostTypeInfo typeInfo, CsHostTypeResult* out);
 
 // Module loader config.
 typedef struct CsModuleLoaderResult {
@@ -135,6 +211,8 @@ typedef struct CsModuleLoaderResult {
     // Pointer to callback or null.
     CsHostVarLoaderFn varLoader;
     // Pointer to callback or null.
+    CsHostTypeLoaderFn typeLoader;
+    // Pointer to callback or null.
     CsPreLoadModuleFn preLoad;
     // Pointer to callback or null.
     CsPostLoadModuleFn postLoad;
@@ -143,7 +221,7 @@ typedef struct CsModuleLoaderResult {
 } CsModuleLoaderResult;
 
 // Given the resolved import specifier of the module, write the loader details in `out`
-// and return true, otherwise return false.
+// and return true, or return false.
 typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderResult* out);
 
 // Override the behavior of `print` from the `builtins` module.
@@ -205,8 +283,10 @@ void csSetModuleVar(CsVM* vm, CsModuleId modId, CsStr name, CsValue val);
 // Memory.
 void csRelease(CsVM* vm, CsValue val);
 void csRetain(CsVM* vm, CsValue val);
-// Deinitialize the VM. Afterwards, you may do `csDestroy` or perform some checks on `csGetGlobalRC`.
+
+// Run the reference cycle detector once and return statistics.
 CsGCResult csPerformGC(CsVM* vm);
+
 // Get's the current global reference count. This will panic if the lib was not built with `TrackGlobalRC`.
 // Use this to see if all objects were cleaned up after `csDeinit`.
 size_t csGetGlobalRC(CsVM* vm);

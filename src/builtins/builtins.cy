@@ -1,3 +1,49 @@
+@host
+type List object:
+  @host func '$index'(self, idx any) any
+  @host func '$setIndex'(self, idx any, val any) none
+  @host func add(self, val any) none
+  @host func append(self, val any) none
+  @host func concat(self, list List) none
+  @host func insert(self, idx int, val any) any
+  @host func iterator(self) any
+  @host func joinString(self, sep any) string
+  @host func len(self) int
+  @host func pairIterator(self) any
+  @host func remove(self, idx int) any
+  @host func resize(self, size int) any
+  @host func sort(self, lessFn any) any
+
+-- type string trait:
+--   func append(self, str any) string
+--   func charAt(self, idx int) any
+--   func codeAt(self, idx int) any
+--   func concat(self, str any) string
+--   func endsWith(self, str any) boolean
+--   func find(self, str any) any
+--   func findAnyRune(self, runes any) any
+--   func findRune(self, rune int) any
+--   func index(self, str any) any
+--   func indexChar(self, ch any) any
+--   func indexCharSet(self, chars any) any
+--   func indexCode(self, rune int) any
+--   func insert(self, idx int, str any) string
+--   func isAscii(self) boolean
+--   func len(self) int
+--   func less(self, str any) boolean
+--   func lower(self) string
+--   func replace(self, needle any, replacement any) string
+--   func repeat(self, n int) any
+--   func runeAt(self, idx int) any
+--   func slice(self, start int, end int) any
+--   func $slice(self, start int, end any) any
+--   func sliceAt(self, idx int) any
+--   func $index(self, idx int) any
+--   func split(self, sep any) List
+--   func startsWith(self, str any) boolean
+--   func trim(self, mode symbol, str any) any
+--   func upper(self) string
+
 @host func arrayFill(val any, n int) List
 @host func asciiCode(val any) any
 @host func bool(val any) boolean

@@ -21,12 +21,13 @@ struct { char* n; CsHostFuncFn fn; } funcs[] = {
     {"add", add},
 };
 
-CsHostFuncFn funcLoader(CsVM* vm, CsHostFuncInfo funcInfo) {
+bool funcLoader(CsVM* vm, CsHostFuncInfo funcInfo, CsHostFuncResult* out) {
     // Check that the name matches before setting the function pointer.
     if (strncmp(funcs[funcInfo.idx].n, funcInfo.name.buf, funcInfo.name.len) == 0) {
-        return funcs[funcInfo.idx].fn;
+        out->ptr = funcs[funcInfo.idx].fn;
+        return true;
     } else {
-        return NULL;
+        return false;
     }
 }
 
@@ -49,8 +50,8 @@ bool modLoader(CsVM* vm, CsStr spec, CsModuleLoaderResult* out) {
     if (strncmp("my_engine", spec.buf, spec.len) == 0) {
         out->src = STR(
             "@host func add(a float, b float) float\n"
-            "@host var MyConstant\n"
-            "@host var MyList\n"
+            "@host var MyConstant float\n"
+            "@host var MyList List\n"
         );
         out->srcIsStatic = true;
         out->funcLoader = funcLoader;
@@ -94,10 +95,10 @@ int main() {
         PRINTS(err);
         csFreeStr(vm, err);
     }
+    csDeinit(vm);
 
     // Check that all references were accounted for. (Should be 0)
-    csDeinit(vm);
-    printf("Global RC %zu\n", csGetGlobalRC(vm));
+    printf("Global RC: %zu\n", csGetGlobalRC(vm));
     csDestroy(vm);
 
     return 0;

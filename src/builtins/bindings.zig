@@ -102,6 +102,35 @@ pub fn prepareThrowSymbol(vm: *cy.UserVM, sym: Symbol) Value {
 const StdSection = cy.StdSection;
 const Section = cy.Section;
 
+// TODO: Once traits is done, bind all string types using comptime.
+// const NameFunc = struct { []const u8, cy.ZHostFuncFn };
+// const funcs = b: {
+//     var arr: std.BoundedArray(NameFunc, 100) = .{};
+//     arr.appendSlice(&.{
+//         .{ "sort", listSort},
+//     }) catch cy.fatal();
+
+//     const stringTypes = &[_]rt.TypeId{ rt.StaticAstringT, rt.StaticUstringT, rt.AstringT, rt.UstringT, rt.StringSliceT };
+//     inline for (stringTypes) |stringT| {
+//         const tag: cy.StringType = switch (stringT) {
+//             rt.StaticAstringT => .staticAstring,
+//             rt.StaticUstringT => .staticUstring,
+//             rt.AstringT => .astring,
+//             rt.UstringT => .ustring,
+//             rt.StringSliceT => .slice,
+//             else => unreachable,
+//         };
+//         arr.appendSlice(&.{
+//             .{ "append", stringAppend(tag) },
+//         }) catch cy.fatal();
+//     }
+
+//     if (arr.len != arr.capacity()) {
+//         @compileError(std.fmt.comptimePrint("Len ({}) != Cap ({})", .{arr.len, arr.capacity()}));
+//     }
+//     break :b arr.slice();
+// };
+
 pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     @setCold(true);
 
@@ -128,7 +157,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     self.@"infix>>MGID" = try b.ensureMethodGroup("$infix>>");
     self.@"prefix~MGID" = try b.ensureMethodGroup("$prefix~");
     self.@"prefix-MGID" = try b.ensureMethodGroup("$prefix-");
-    const add = try b.ensureMethodGroup("add");
     const append = try b.ensureMethodGroup("append");
     const byteAt = try b.ensureMethodGroup("byteAt");
     const charAt = try b.ensureMethodGroup("charAt");
@@ -148,7 +176,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const insertByte = try b.ensureMethodGroup("insertByte");
     const isAscii = try b.ensureMethodGroup("isAscii");
     self.iteratorMGID = try b.ensureMethodGroup("iterator");
-    const joinString = try b.ensureMethodGroup("joinString");
     const len = try b.ensureMethodGroup("len");
     const less = try b.ensureMethodGroup("less");
     const lower = try b.ensureMethodGroup("lower");
@@ -160,7 +187,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const remove = try b.ensureMethodGroup("remove");
     const repeat = try b.ensureMethodGroup("repeat");
     const replace = try b.ensureMethodGroup("replace");
-    const resize = try b.ensureMethodGroup("resize");
     const runeAt = try b.ensureMethodGroup("runeAt");
     const seek = try b.ensureMethodGroup("seek");
     const seekFromCur = try b.ensureMethodGroup("seekFromCur");
@@ -168,7 +194,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const size = try b.ensureMethodGroup("size");
     const slice = try b.ensureMethodGroup("slice");
     const sliceAt = try b.ensureMethodGroup("sliceAt");
-    const sort = try b.ensureMethodGroup("sort");
     const split = try b.ensureMethodGroup("split");
     const startsWith = try b.ensureMethodGroup("startsWith");
     const stat = try b.ensureMethodGroup("stat");
@@ -264,20 +289,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
-
-    try b.addOptimizingMethod(rt.ListT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, inlineBinOp(.indexList));
-    try b.addOptimizingMethod(rt.ListT, self.setIndexMGID, &.{ bt.Any, bt.Any, bt.Any }, bt.None, inlineTernNoRetOp(.setIndexList));
-    try b.addMethod(rt.ListT, add, &.{bt.Any, bt.Any}, bt.None, listAdd);
-    try b.addMethod(rt.ListT, append, &.{bt.Any, bt.Any}, bt.None, listAppend);
-    try b.addMethod(rt.ListT, concat, &.{bt.Any, bt.List}, bt.None, listConcat);
-    try b.addMethod(rt.ListT, insert, &.{bt.Any, bt.Integer, bt.Any}, bt.Any, listInsert);
-    try b.addMethod(rt.ListT, self.iteratorMGID, &.{bt.Any}, bt.Any, listIterator);
-    try b.addMethod(rt.ListT, joinString, &.{bt.Any, bt.Any}, bt.String, listJoinString);
-    try b.addMethod(rt.ListT, len, &.{bt.Any}, bt.Integer, listLen);
-    try b.addMethod(rt.ListT, self.pairIteratorMGID, &.{bt.Any}, bt.Any, listIterator);
-    try b.addMethod(rt.ListT, remove, &.{bt.Any, bt.Integer}, bt.Any, listRemove);
-    try b.addMethod(rt.ListT, resize, &.{bt.Any, bt.Integer}, bt.Any, listResize);
-    try b.addMethod(rt.ListT, sort, &.{bt.Any, bt.Any }, bt.Any, listSort);
 
     id = try self.addBuiltinType("ListIterator", cy.NullId);
     std.debug.assert(id == rt.ListIteratorT);
@@ -562,7 +573,7 @@ fn ensureSymbol(vm: *cy.VM, name: []const u8, sym: Symbol) !void {
     std.debug.assert(id == @intFromEnum(sym));
 }
 
-fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
+pub fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
     const LessContext = struct {
@@ -589,7 +600,7 @@ fn listSort(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.StdS
     return Value.None;
 }
 
-fn listRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
@@ -601,7 +612,7 @@ fn listRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Sectio
     return Value.None;
 }
 
-fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const index: i64 = @intCast(args[1].asInteger());
     const value = args[2];
     const list = args[0].asHeapObject();
@@ -614,19 +625,19 @@ fn listInsert(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Sectio
     return Value.None;
 }
 
-fn listAdd(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
+pub fn listAdd(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(cy.Section) Value {
     fmt.printDeprecated("list.add()", "0.1", "Use list.append() instead.", &.{});
     return listAppend(vm, args, nargs);
 }
 
-fn listAppend(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listAppend(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     vm.retain(args[1]);
     obj.list.append(vm.allocator(), args[1]);
     return Value.None;
 }
 
-fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const items = obj.list.items();
     if (items.len > 0) {
@@ -690,7 +701,7 @@ fn listJoinString(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     }
 }
 
-fn listConcat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listConcat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const list = args[1].asHeapObject();
     for (list.list.items()) |it| {
@@ -728,13 +739,13 @@ fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.
     } else return Value.None;
 }
 
-fn listIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocListIterator(&obj.list) catch fatal();
 }
 
-fn listResize(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn listResize(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const recv = args[0];
     const list = recv.asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
@@ -799,7 +810,7 @@ fn mapRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSect
     return Value.None;
 }
 
-fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const list = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.List(Value), &list.list.list);
     return Value.initInt(@intCast(inner.len));
@@ -2446,7 +2457,7 @@ pub fn floatNeg(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void  {
     inlineUnaryOp(pc, .negFloat);
 }
 
-fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.OptimizingFuncFn {
+pub fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
     const S = struct {
         pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
             const startLocal = pc[1].val;
@@ -2464,7 +2475,7 @@ fn inlineTernNoRetOp(comptime code: cy.OpCode) cy.OptimizingFuncFn {
     return S.method;
 }
 
-fn inlineBinOp(comptime code: cy.OpCode) cy.OptimizingFuncFn {
+pub fn inlineBinOp(comptime code: cy.OpCode) cy.QuickenFuncFn {
     const S = struct {
         pub fn method(_: *cy.UserVM, pc: [*]cy.Inst, _: [*]const Value, _: u8) void {
             const startLocal = pc[1].val;
@@ -2571,14 +2582,14 @@ pub const ModuleBuilder = struct {
 
     pub fn addOptimizingMethod(
         self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
-        params: []const types.TypeId, ret: types.TypeId, ptr: cy.OptimizingFuncFn,
+        params: []const types.TypeId, ret: types.TypeId, ptr: cy.QuickenFuncFn,
     ) !void {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);
         if (funcSig.isParamsTyped) {
             return error.Unsupported;
         }
-        try self.vm.addMethod(typeId, mgId, rt.MethodInit.initOptimizing(funcSigId, ptr, @intCast(params.len)));
+        try self.vm.addMethod(typeId, mgId, rt.MethodInit.initHostQuicken(funcSigId, ptr, @intCast(params.len)));
     }
 
     pub fn addMethod(
@@ -2588,9 +2599,9 @@ pub const ModuleBuilder = struct {
         const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
         const funcSig = self.compiler.sema.getFuncSig(funcSigId);
         if (funcSig.isParamsTyped) {
-            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initTypedNative(funcSigId, ptr, @intCast(params.len)));
+            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initHostTyped(funcSigId, ptr, @intCast(params.len)));
         } else {
-            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initUntypedNative1(funcSigId, ptr, @intCast(params.len)));
+            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initHostUntyped(funcSigId, ptr, @intCast(params.len)));
         }
     }
 
@@ -2620,8 +2631,8 @@ pub const ModuleBuilder = struct {
             },
         };
         const modId = try cy.module.declareTypeObject(self.compiler, self.modId, name, cy.NullId, cy.NullId);
-        const symId = try cy.sema.resolveObjectSym(self.compiler, key, modId);
-        const sym = self.compiler.sema.getSymbol(symId);
+        const res = try cy.sema.resolveObjectSym(self.compiler, key, modId);
+        const sym = self.compiler.sema.getSymbol(res.sTypeId);
         const typeId = sym.inner.object.typeId;
 
         for (fields, 0..) |field, i| {

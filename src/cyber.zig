@@ -176,7 +176,7 @@ pub fn Nullable(comptime T: type) type {
     return T;
 }
 
-pub const OptimizingFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
+pub const QuickenFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
 pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
 pub const ZHostFuncPairFn = *const fn (*UserVM, [*]const Value, u8) ValuePair;
@@ -206,6 +206,7 @@ pub const ModuleLoaderResult = extern struct {
     srcIsStatic: bool,
     funcLoader: ?HostFuncLoaderFn = null,
     varLoader: ?HostVarLoaderFn = null,
+    typeLoader: ?HostTypeLoaderFn = null,
     preLoad: ?PreLoadModuleFn = null,
     postLoad: ?PostLoadModuleFn = null,
     destroy: ?ModuleDestroyFn = null,
@@ -217,13 +218,46 @@ pub const HostFuncInfo = extern struct {
     funcSigId: vmc.FuncSigId,
     idx: u32,
 };
-pub const HostFuncLoaderFn = *const fn (*UserVM, HostFuncInfo) callconv(.C) vmc.HostFuncFn;
+pub const HostFuncType = enum(u8) {
+    standard,
+    quicken,
+};
+pub const HostFuncResult = extern struct {
+    ptr: vmc.HostFuncFn,
+    type: HostFuncType,
+};
+pub const HostFuncLoaderFn = *const fn (*UserVM, HostFuncInfo, *HostFuncResult) callconv(.C) bool;
 pub const HostVarInfo = extern struct {
     modId: vmc.ModuleId,
     name: Str,
     idx: u32,
 };
 pub const HostVarLoaderFn = *const fn (*UserVM, HostVarInfo, *Value) callconv(.C) bool; 
+pub const HostTypeType = enum(u8) {
+    object,
+    coreObject,
+};
+pub const HostTypeInfo = extern struct {
+    modId: vmc.ModuleId,
+    name: Str,
+    idx: u32,
+};
+pub const HostTypeResult = extern struct {
+    data: extern union {
+        object: extern struct {
+            typeId: *rt.TypeId,
+            semaTypeId: *types.TypeId,
+            finalizer: ?ObjectFinalizerFn,
+        },
+        coreObject: extern struct {
+            typeId: rt.TypeId,
+            semaTypeId: types.TypeId,
+        },
+    },
+    type: HostTypeType,
+};
+pub const HostTypeLoaderFn = *const fn (*UserVM, HostTypeInfo, *HostTypeResult) callconv(.C) bool;
+pub const ObjectFinalizerFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) void;
 pub const PrintFn = *const fn (*UserVM, str: Str) callconv(.C) void;
 
 pub const cli = @import("cli.zig");
@@ -233,6 +267,10 @@ pub const IndexSlice = utils.IndexSlice;
 pub const ptrAlignCast = utils.ptrAlignCast;
 pub const panic = utils.panic;
 pub const panicFmt = utils.panicFmt;
+
+pub inline fn unexpected() noreturn {
+    panic("unexpected");
+}
 
 pub inline fn unsupported() noreturn {
     panic("unsupported");

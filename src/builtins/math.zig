@@ -5,11 +5,12 @@ const Value = cy.Value;
 const bt = cy.types.BuiltinTypeSymIds;
 
 pub const Src = @embedFile("math.cy");
-pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo) callconv(.C) vmc.HostFuncFn {
+pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult) callconv(.C) bool {
     if (std.mem.eql(u8, funcs[func.idx].@"0", func.name.slice())) {
-        return @ptrCast(funcs[func.idx].@"1");
+        out.ptr = @ptrCast(funcs[func.idx].@"1");
+        return true;
     }
-    return null;
+    return false;
 }
 pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) bool {
     if (std.mem.eql(u8, vars[v.idx].@"0", v.name.slice())) {

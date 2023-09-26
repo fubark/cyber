@@ -150,7 +150,7 @@ pub const VM = struct {
 
     /// Interface used for imports and fetch.
     httpClient: http.HttpClient,
-    stdHttpClient: if (!cy.isWasm) *http.StdHttpClient else *anyopaque,
+    stdHttpClient: if (cy.hasCLI) *http.StdHttpClient else *anyopaque,
 
     iteratorMGID: vmc.MethodGroupId = cy.NullId,
     pairIteratorMGID: vmc.MethodGroupId = cy.NullId,
@@ -264,7 +264,7 @@ pub const VM = struct {
         self.compiler = try self.alloc.create(cy.VMcompiler);
         try self.compiler.init(self);
 
-        if (!cy.isWasm) {
+        if (cy.hasCLI) {
             self.stdHttpClient = try alloc.create(http.StdHttpClient);
             self.stdHttpClient.* = http.StdHttpClient.init(self.alloc);
             self.httpClient = self.stdHttpClient.iface();
@@ -470,7 +470,7 @@ pub const VM = struct {
         }
 
         if (!reset) {
-            if (!cy.isWasm) {
+            if (cy.hasCLI) {
                 self.httpClient.deinit();
                 self.alloc.destroy(self.stdHttpClient);
             }

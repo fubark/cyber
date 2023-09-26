@@ -162,9 +162,11 @@ typedef enum {
     HOST_TYPE_CORE_OBJECT,
 } HostTypeType;
 
+// If an object's size in bytes is at or below this maximum,
+// it is automatically managed by Cyber's object pool.
 #define CS_MAX_POOL_OBJECT_SIZE 32
 
-// If objects allocated for the binded type ever exceeds `CS_MAX_POOL_OBJECT_SIZE`,
+// If the memory occupied by an object ever exceeds `CS_MAX_POOL_OBJECT_SIZE`,
 // then a finalizer is required to explicitly free the memory with `csFree`.
 // A finalizer can also be used to perform cleanup tasks. eg. Freeing resource handles.
 // Unlike finalizers declared in user scripts, this finalizer is always guaranteed to be invoked.

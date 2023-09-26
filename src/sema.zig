@@ -1118,7 +1118,7 @@ fn declareHostMethod(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !void 
     // Insert method entries into VM.
     const funcSig = c.compiler.sema.getFuncSig(func.funcSigId);
     if (sym.symT == .hostFunc) {
-        if (funcSig.isTyped) {
+        if (funcSig.isParamsTyped) {
             const m = rt.MethodInit.initHostTyped(func.funcSigId, @ptrCast(sym.inner.hostFunc.func), func.numParams);
             try c.compiler.vm.addMethod(typeId, mgId, m);
         } else {

@@ -86,6 +86,7 @@ pub fn build(b: *std.build.Builder) !void {
         var opts = getDefaultOptions(target, optimize);
         opts.ffi = false;
         opts.malloc = .malloc;
+        opts.cli = false;
         opts.applyOverrides();
 
         var lib: *std.build.Step.Compile = undefined;
@@ -309,6 +310,7 @@ pub const Options = struct {
     static: bool,
     gc: bool,
     ffi: bool,
+    cli: bool,
 
     fn applyOverrides(self: *Options) void {
         if (optMalloc) |malloc| {
@@ -347,6 +349,7 @@ fn getDefaultOptions(target: std.zig.CrossTarget, optimize: std.builtin.Optimize
         .malloc = malloc,
         .static = !target.getCpuArch().isWasm(),
         .ffi = !target.getCpuArch().isWasm(),
+        .cli  = !target.getCpuArch().isWasm(),
     };
 }
 
@@ -376,6 +379,7 @@ fn createBuildOptions(b: *std.build.Builder, opts: Options) !*std.build.Step.Opt
     build_options.addOption(bool, "is32Bit", is32Bit(opts.target));
     build_options.addOption(bool, "gc", opts.gc);
     build_options.addOption(bool, "ffi", opts.ffi);
+    build_options.addOption(bool, "cli", opts.cli);
     build_options.addOption([]const u8, "full_version", b.fmt("Cyber {s} build-{s}-{s}", .{Version, buildTag, commitTag}));
     return build_options;
 }

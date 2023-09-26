@@ -573,6 +573,10 @@ pub const Parser = struct {
             const id = try self.pushIdentNode(self.next_pos);
             self.advanceToken();
             return id;
+        } else if (token.tag() == .error_k) {
+            const id = try self.pushIdentNode(self.next_pos);
+            self.advanceToken();
+            return id;
         }
         return null;
     }
@@ -636,7 +640,7 @@ pub const Parser = struct {
 
         // Parse name.
         var token = self.peekToken();
-        if (token.tag() != .ident) {
+        if (token.tag() != .ident and token.tag() != .string) {
             return self.reportParseError("Expected type name identifier.", &.{});
         }
         const name = try self.pushIdentNode(self.next_pos);

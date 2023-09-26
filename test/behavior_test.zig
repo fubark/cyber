@@ -646,6 +646,7 @@ test "Multiple evals persisting state." {
     defer run.vm.release(global);
     run.vm.setUserData(&global);
 
+    run.vm.setModuleResolver(cy.vm_compiler.defaultModuleResolver);
     run.vm.setModuleLoader(struct {
         fn postLoad(vm: *cy.UserVM, modId: vmc.ModuleId) callconv(.C) void {
             const g = cy.ptrAlignCast(*cy.Value, vm.getUserData()).*;
@@ -653,7 +654,7 @@ test "Multiple evals persisting state." {
             mod.setVar(vm.internal().compiler, "g", g) catch fatal();
         }
         fn loader(vm: *cy.UserVM, spec: cy.Str, out: *cy.ModuleLoaderResult) callconv(.C) bool {
-            if (std.mem.eql(u8, spec.slice(), "builtins")) {
+            if (std.mem.eql(u8, spec.slice(), "mod")) {
                 out.* = .{
                     .src = cy.Str.initSlice(""),
                     .srcIsStatic = true,
@@ -667,7 +668,8 @@ test "Multiple evals persisting state." {
     }.loader);
 
     const src1 =
-        \\g['a'] = 1
+        \\import m 'mod'
+        \\m.g['a'] = 1
         ;
     _ = try run.vm.eval("main", src1, .{ 
         .singleRun = false,
@@ -676,8 +678,9 @@ test "Multiple evals persisting state." {
     });
 
     const src2 = 
+        \\import m 'mod'
         \\import t 'test'
-        \\t.eq(g['a'], 1)
+        \\t.eq(m.g['a'], 1)
         ;
     _ = try run.vm.eval("main", src2, .{ 
         .singleRun = false,

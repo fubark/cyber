@@ -34,6 +34,49 @@ pub fn postLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
 
 const NameFunc = struct { []const u8, ?*const anyopaque, cy.HostFuncType };
 const funcs = [_]NameFunc{
+    // boolean
+    .{"$call", bindings.booleanCall, .standard},
+
+    // error
+    .{"$call", bindings.errorCall, .standard},
+    .{"value", bindings.errorValue, .standard},
+
+    // int
+    .{"$call", bindings.integerCall, .standard},
+    .{"$prefix~", bindings.intBitwiseNot, .quicken},
+    .{"$prefix-", bindings.intNeg, .quicken},
+    // Inlined opcodes allow the right arg to be dynamic so the compiler can gen more of those.
+    // So for now, the runtime signature reflects that.
+    .{"$infix<", bindings.inlineBinOp(.lessInt), .quicken},
+    .{"$infix<=", bindings.inlineBinOp(.lessEqualInt), .quicken},
+    .{"$infix>", bindings.inlineBinOp(.greaterInt), .quicken},
+    .{"$infix>=", bindings.inlineBinOp(.greaterEqualInt), .quicken},
+    .{"$infix+", bindings.inlineBinOp(.addInt), .quicken},
+    .{"$infix-", bindings.inlineBinOp(.subInt), .quicken},
+    .{"$infix*", bindings.inlineBinOp(.mulInt), .quicken},
+    .{"$infix/", bindings.inlineBinOp(.divInt), .quicken},
+    .{"$infix%", bindings.inlineBinOp(.modInt), .quicken},
+    .{"$infix^", bindings.inlineBinOp(.powInt), .quicken},
+    .{"$infix&", bindings.inlineBinOp(.bitwiseAnd), .quicken},
+    .{"$infix|", bindings.inlineBinOp(.bitwiseOr), .quicken},
+    .{"$infix||", bindings.inlineBinOp(.bitwiseXor), .quicken},
+    .{"$infix<<", bindings.inlineBinOp(.bitwiseLeftShift), .quicken},
+    .{"$infix>>", bindings.inlineBinOp(.bitwiseRightShift), .quicken},
+
+    // float
+    .{"$call", bindings.floatCall, .standard},
+    .{"$prefix-", bindings.floatNeg, .quicken},
+    .{"$infix<", bindings.inlineBinOp(.lessFloat), .quicken},
+    .{"$infix<=", bindings.inlineBinOp(.lessEqualFloat), .quicken},
+    .{"$infix>", bindings.inlineBinOp(.greaterFloat), .quicken},
+    .{"$infix>=", bindings.inlineBinOp(.greaterEqualFloat), .quicken},
+    .{"$infix+", bindings.inlineBinOp(.addFloat), .quicken},
+    .{"$infix-", bindings.inlineBinOp(.subFloat), .quicken},
+    .{"$infix*", bindings.inlineBinOp(.mulFloat), .quicken},
+    .{"$infix/", bindings.inlineBinOp(.divFloat), .quicken},
+    .{"$infix%", bindings.inlineBinOp(.modFloat), .quicken},
+    .{"$infix^", bindings.inlineBinOp(.powFloat), .quicken},
+
     // List
     .{"$index", bindings.inlineBinOp(.indexList), .quicken},
     .{"$setIndex", bindings.inlineTernNoRetOp(.setIndexList), .quicken},
@@ -48,6 +91,14 @@ const funcs = [_]NameFunc{
     .{"remove", bindings.listRemove, .standard},
     .{"resize", bindings.listResize, .standard},
     .{"sort", bindings.listSort, .standard},
+
+    // Map
+    .{"$index", bindings.inlineBinOp(.indexMap), .quicken},
+    .{"$setIndex", bindings.inlineTernNoRetOp(.setIndexMap), .quicken},
+    .{"remove", bindings.mapRemove, .standard},
+    .{"size", bindings.mapSize, .standard},
+    .{"iterator", bindings.mapIterator, .standard},
+    .{"pairIterator", bindings.mapIterator, .standard},
 
     // Utils.
     .{"arrayFill", arrayFill, .standard},
@@ -75,7 +126,12 @@ const funcs = [_]NameFunc{
 
 const NameType = struct { []const u8, cy.rt.TypeId, cy.types.TypeId };
 const types = [_]NameType{
+    .{"boolean", rt.BooleanT, bt.Boolean },
+    .{"error", rt.ErrorT, bt.Error },
+    .{"int", rt.IntegerT, bt.Integer },
+    .{"float", rt.FloatT, bt.Float },
     .{"List", rt.ListT, bt.List },
+    .{"Map", rt.MapT, bt.Map },
 };
 
 pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {

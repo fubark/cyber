@@ -1,4 +1,49 @@
 @host
+type boolean object:
+  @host func '$call'(val any) boolean
+
+@host
+type 'error' object:
+  @host func '$call'(val any) error
+  @host func value(self) any
+
+@host
+type int object:
+  @host func '$call'(val any) int
+  @host func '$prefix~'(self) int
+  @host func '$prefix-'(self) int
+  @host func '$infix<'(self, o any) boolean
+  @host func '$infix<='(self, o any) boolean
+  @host func '$infix>'(self, o any) boolean
+  @host func '$infix>='(self, o any) boolean
+  @host func '$infix+'(self, o any) int
+  @host func '$infix-'(self, o any) int
+  @host func '$infix*'(self, o any) int
+  @host func '$infix/'(self, o any) int
+  @host func '$infix%'(self, o any) int
+  @host func '$infix^'(self, o any) int
+  @host func '$infix&'(self, o any) int
+  @host func '$infix|'(self, o any) int
+  @host func '$infix||'(self, o any) int
+  @host func '$infix<<'(self, o any) int
+  @host func '$infix>>'(self, o any) int
+
+@host
+type float object:
+  @host func '$call'(val any) float
+  @host func '$prefix-'(self) float
+  @host func '$infix<'(self, o any) boolean
+  @host func '$infix<='(self, o any) boolean
+  @host func '$infix>'(self, o any) boolean
+  @host func '$infix>='(self, o any) boolean
+  @host func '$infix+'(self, o any) float
+  @host func '$infix-'(self, o any) float
+  @host func '$infix*'(self, o any) float
+  @host func '$infix/'(self, o any) float
+  @host func '$infix%'(self, o any) float
+  @host func '$infix^'(self, o any) float
+
+@host
 type List object:
   @host func '$index'(self, idx any) any
   @host func '$setIndex'(self, idx any, val any) none
@@ -13,6 +58,15 @@ type List object:
   @host func remove(self, idx int) any
   @host func resize(self, size int) any
   @host func sort(self, lessFn any) any
+
+@host
+type Map object:
+  @host func '$index'(self, key any) any
+  @host func '$setIndex'(self, key any, val any) none
+  @host func remove(self, key any) none
+  @host func size(self) int
+  @host func iterator(self) any
+  @host func pairIterator(self) any
 
 -- type string trait:
 --   func append(self, str any) string

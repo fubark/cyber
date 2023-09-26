@@ -1233,8 +1233,10 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                     const param = c.nodes[decl.paramHead];
                     const paramName = c.getNodeTokenString(c.nodes[param.head.funcParam.name]);
                     if (std.mem.eql(u8, paramName, "self")) {
-                        // Struct method.
-                        try genMethodDecl(c, sid, func, decl, funcName);
+                        // Object method.
+                        if (func.node_t == .funcDecl) {
+                            try genMethodDecl(c, sid, func, decl, funcName);
+                        }
                         continue;
                     }
                 }
@@ -1243,7 +1245,9 @@ fn statement(c: *Chunk, nodeId: cy.NodeId) !void {
                 //     .name = try c.alloc.dupe(u8, funcName),
                 // };
                 // try c.compiler.vm.funcSymDetails.append(c.alloc, detail);
-                try funcDecl(c, robjSymId, funcId);
+                if (func.node_t == .funcDecl) {
+                    try funcDecl(c, robjSymId, funcId);
+                }
             }
         },
         .if_stmt => {

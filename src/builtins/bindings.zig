@@ -184,14 +184,12 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     self.pairIteratorMGID = try b.ensureMethodGroup("pairIterator");
     const read = try b.ensureMethodGroup("read");
     const readToEnd = try b.ensureMethodGroup("readToEnd");
-    const remove = try b.ensureMethodGroup("remove");
     const repeat = try b.ensureMethodGroup("repeat");
     const replace = try b.ensureMethodGroup("replace");
     const runeAt = try b.ensureMethodGroup("runeAt");
     const seek = try b.ensureMethodGroup("seek");
     const seekFromCur = try b.ensureMethodGroup("seekFromCur");
     const seekFromEnd = try b.ensureMethodGroup("seekFromEnd");
-    const size = try b.ensureMethodGroup("size");
     const slice = try b.ensureMethodGroup("slice");
     const sliceAt = try b.ensureMethodGroup("sliceAt");
     const split = try b.ensureMethodGroup("split");
@@ -208,6 +206,8 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const write = try b.ensureMethodGroup("write");
     
     // Init compile time builtins.
+    var rsym: sema.Symbol = undefined;
+    var sb: ModuleBuilder = undefined;
 
     // Builtin types.
     var id = try self.addBuiltinType("none", bt.None);
@@ -215,16 +215,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("boolean", bt.Boolean);
     std.debug.assert(id == rt.BooleanT);
-    var rsym = self.compiler.sema.getSymbol(bt.Boolean);
-    var sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.Boolean, booleanCall);
 
     id = try self.addBuiltinType("error", bt.Error);
     std.debug.assert(id == rt.ErrorT);
-    rsym = self.compiler.sema.getSymbol(bt.Error);
-    sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.Error, errorCall);
-    try b.addMethod(rt.ErrorT, value, &.{ bt.Any }, bt.Any, errorValue);
 
     id = try self.addBuiltinType("StaticAstring", bt.String);
     std.debug.assert(id == rt.StaticAstringT);
@@ -245,47 +238,9 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("integer", bt.Integer);
     std.debug.assert(id == rt.IntegerT);
-    rsym = self.compiler.sema.getSymbol(bt.Integer);
-    sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.Integer, integerCall);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"prefix~MGID", &.{ bt.Any }, bt.Integer, intBitwiseNot);
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"prefix-MGID", &.{ bt.Any }, bt.Integer, intNeg);
-    // Inlined opcodes allow the right arg to be dynamic so the compiler can gen more of those.
-    // So for now, the runtime signature reflects that.
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessEqualInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterEqualInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.addInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.addInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.addInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.subInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.mulInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.divInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.modInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.powInt));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix&MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseAnd));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix|MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseOr));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix||MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseXor));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix<<MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseLeftShift));
-    try sb.addOptimizingMethod(rt.IntegerT, self.@"infix>>MGID", &.{ bt.Any, bt.Any }, bt.Integer, inlineBinOp(.bitwiseRightShift));
 
     id = try self.addBuiltinType("float", bt.Float);
     std.debug.assert(id == rt.FloatT);
-    rsym = self.compiler.sema.getSymbol(bt.Float);
-    sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
-    try sb.setFunc("$call", &.{ bt.Any }, bt.Float, floatCall);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.lessEqualFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix>MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix<=MGID", &.{ bt.Any, bt.Any }, bt.Boolean, inlineBinOp(.greaterEqualFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"prefix-MGID", &.{ bt.Any }, bt.Float, floatNeg);
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix+MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.addFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix-MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.subFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix*MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.mulFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix/MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.divFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix%MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.modFloat));
-    try sb.addOptimizingMethod(rt.FloatT, self.@"infix^MGID", &.{ bt.Any, bt.Any }, bt.Float, inlineBinOp(.powFloat));
 
     id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
@@ -297,12 +252,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
 
     id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
-    try b.addOptimizingMethod(rt.MapT, self.indexMGID, &.{ bt.Any, bt.Any }, bt.Any, inlineBinOp(.indexMap));
-    try b.addOptimizingMethod(rt.MapT, self.setIndexMGID, &.{ bt.Any, bt.Any, bt.Any }, bt.None, inlineTernNoRetOp(.setIndexMap));
-    try b.addMethod(rt.MapT, remove,                  &.{ bt.Any, bt.Any }, bt.None, mapRemove);
-    try b.addMethod(rt.MapT, size,                    &.{ bt.Any }, bt.Integer, mapSize);
-    try b.addMethod(rt.MapT, self.iteratorMGID,     &.{ bt.Any }, bt.Any, mapIterator);
-    try b.addMethod(rt.MapT, self.pairIteratorMGID, &.{ bt.Any }, bt.Any, mapIterator);
 
     id = try self.addBuiltinType("MapIterator", cy.NullId);
     std.debug.assert(id == rt.MapIteratorT);
@@ -766,7 +715,7 @@ pub fn listResize(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     return Value.None;
 }
 
-fn mapIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
+pub fn mapIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
     const obj = args[0].asHeapObject();
     vm.retainObject(obj);
     return vm.allocMapIterator(&obj.map) catch fatal();
@@ -797,13 +746,13 @@ fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.S
     } else return Value.None;
 }
 
-fn mapSize(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn mapSize(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     return Value.initInt(@intCast(inner.size));
 }
 
-fn mapRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
+pub fn mapRemove(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.StdSection) Value {
     const obj = args[0].asHeapObject();
     const inner = cy.ptrAlignCast(*cy.MapInner, &obj.map.inner);
     _ = inner.remove(@ptrCast(vm), args[1]);
@@ -841,7 +790,7 @@ pub fn listLen(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Sectio
 //     return Value.None;
 // }
 
-fn errorValue(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
+pub fn errorValue(vm: *cy.UserVM, args: [*]const Value, _: u8) Value {
     const recv = args[0];
     const enumId = (recv.val & 0xFF00) >> 8;
     if (enumId == cy.NullU8) {

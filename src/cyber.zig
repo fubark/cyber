@@ -160,6 +160,7 @@ pub const is32Bit = build_options.is32Bit;
 pub const hasStdFiles = !isWasm;
 pub const hasGC = build_options.gc;
 pub const hasFFI = build_options.ffi;
+pub const hasCLI = build_options.cli;
 
 const build_options = @import("build_options");
 pub const Trace = build_options.trace;

@@ -2,8 +2,8 @@ const std = @import("std");
 const stdx = @import("stdx");
 const cy = @import("cyber.zig");
 
-const Request = if (!cy.isWasm) std.http.Client.Request else void;
-const StdResponse = if (!cy.isWasm) std.http.Client.Response else void;
+const Request = if (cy.hasCLI) std.http.Client.Request else void;
+const StdResponse = if (cy.hasCLI) std.http.Client.Response else void;
 
 /// Interface to http client.
 pub const HttpClient = struct {

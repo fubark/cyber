@@ -19,6 +19,7 @@ pub const FloatT: TypeId = vmc.TYPE_FLOAT;
 
 /// Reserved object types known at comptime.
 /// Starts at 9 since primitive types go up to 8.
+pub const TupleT: TypeId = vmc.TYPE_TUPLE;
 pub const ListT: TypeId = vmc.TYPE_LIST;
 pub const ListIteratorT: TypeId = vmc.TYPE_LIST_ITER;
 pub const MapT: TypeId = vmc.TYPE_MAP;
@@ -35,14 +36,11 @@ pub const BoxT: TypeId = vmc.TYPE_BOX;
 pub const NativeFuncT: TypeId = vmc.TYPE_NATIVE_FUNC;
 pub const TccStateT: TypeId = vmc.TYPE_TCC_STATE;
 pub const PointerT: TypeId = vmc.TYPE_POINTER;
-pub const FileT: TypeId = vmc.TYPE_FILE;
-pub const DirT: TypeId = vmc.TYPE_DIR;
-pub const DirIteratorT: TypeId = vmc.TYPE_DIR_ITER;
 pub const MetaTypeT: TypeId = vmc.TYPE_METATYPE;
-pub const AnyT: TypeId = 29;
-pub const StringUnionT: TypeId = 30;
-pub const RawstringUnionT: TypeId = 31;
-pub const NumBuiltinTypes: TypeId = 32;
+pub const AnyT: TypeId = 27;
+pub const StringUnionT: TypeId = 28;
+pub const RawstringUnionT: TypeId = 29;
+pub const NumBuiltinTypes: TypeId = 30;
 
 pub const TypeKey = cy.hash.KeyU64;
 
@@ -54,32 +52,27 @@ pub const TypeMethodGroupKey = cy.hash.KeyU64;
 
 pub const MethodType = enum {
     untyped,
-    untypedNative1,
-    untypedNative2,
+    untypedHost,
 
-    /// Native func that intends to do custom optimization.
+    /// Host func that intends to do custom optimization.
     /// Only funcs with untyped params are supported.
     optimizing,
 
     /// A func is typed if at least one of the params is not the any type.
     /// The return type does not count.
     typed,
-    typedNative,
+    typedHost,
 };
 
 pub const MethodData = extern union {
-    typedNative: extern struct {
+    typedHost: extern struct {
         ptr: vmc.HostFuncFn,
         funcSigId: sema.FuncSigId,
         /// Includes self param.
         numParams: u8,
     },
-    untypedNative1: extern struct {
+    untypedHost: extern struct {
         ptr: vmc.HostFuncFn,
-        numParams: u8,
-    },
-    untypedNative2: extern struct {
-        ptr: cy.ZHostFuncPairFn,
         numParams: u8,
     },
     optimizing: extern struct {
@@ -126,23 +119,10 @@ pub const MethodInit = struct {
 
     pub fn initHostUntyped(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
-            .type = .untypedNative1,
+            .type = .untypedHost,
             .data = .{
-                .untypedNative1 = .{
+                .untypedHost = .{
                     .ptr = @ptrCast(func),
-                    .numParams = numParams,
-                },
-            },
-            .funcSigId = funcSigId,
-        };
-    }
-
-    pub fn initUntypedNative2(funcSigId: sema.FuncSigId, func: cy.ZHostFuncPairFn, numParams: u8) MethodInit {
-        return .{
-            .type = .untypedNative2,
-            .data = .{
-                .untypedNative2 = .{
-                    .ptr = func,
                     .numParams = numParams,
                 },
             },
@@ -167,9 +147,9 @@ pub const MethodInit = struct {
 
     pub fn initHostTyped(funcSigId: sema.FuncSigId, func: cy.ZHostFuncFn, numParams: u8) MethodInit {
         return .{
-            .type = .typedNative,
+            .type = .typedHost,
             .data = .{
-                .typedNative = .{
+                .typedHost = .{
                     .funcSigId = funcSigId,
                     .ptr = @ptrCast(func),
                     .numParams = numParams,
@@ -381,10 +361,10 @@ test "runtime internals." {
     if (cy.is32Bit) {
         try t.eq(@alignOf(MethodGroup), 4);
         try t.eq(@sizeOf(MethodGroupExt), 20);
-        try t.eq(@sizeOf(vmc.Type), 16);
+        try t.eq(@sizeOf(vmc.Type), 20);
     } else {
         try t.eq(@alignOf(MethodGroup), 8);
         try t.eq(@sizeOf(MethodGroupExt), 24);
-        try t.eq(@sizeOf(vmc.Type), 24);
+        try t.eq(@sizeOf(vmc.Type), 32);
     }
 }

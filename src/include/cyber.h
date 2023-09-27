@@ -6,6 +6,10 @@
 typedef struct CsVM CsVM;
 
 typedef uint64_t CsValue;
+typedef struct CsValueSlice {
+    CsValue* ptr;
+    size_t len;
+} CsValueSlice;
 
 typedef struct CsModule CsModule;
 typedef uint32_t CsModuleId;
@@ -31,6 +35,7 @@ typedef enum {
     CS_TYPE_SYMBOL,
     CS_TYPE_INTEGER,
     CS_TYPE_FLOAT,
+    CS_TYPE_TUPLE,
     CS_TYPE_LIST,
     CS_TYPE_LISTITER,
     CS_TYPE_MAP,
@@ -47,9 +52,6 @@ typedef enum {
     CS_TYPE_NATIVEFUNC1,
     CS_TYPE_TCCSTATE,
     CS_TYPE_POINTER,
-    CS_TYPE_FILE,
-    CS_TYPE_DIR,
-    CS_TYPE_DIRITER,
     CS_TYPE_METATYPE,
 } CsType;
 typedef uint32_t CsTypeId;
@@ -84,9 +86,9 @@ typedef void (*CsHostQuickenFuncFn)(CsVM* vm, uint8_t* pc, const CsValue* args, 
 // simply returns `spec` without any adjustments.
 typedef bool (*CsModuleResolverFn)(CsVM* vm, uint32_t chunkId, CsStr curUri, CsStr spec, CsStr* outUri);
 
-// Callback invoked before all symbols in the module's src are loaded.
+// Callback invoked after all type symbols in the module's src are loaded.
 // This could be used to set up an array or hashmap for binding @host vars.
-typedef void (*CsPreLoadModuleFn)(CsVM* vm, uint32_t modId);
+typedef void (*CsPostTypeLoadModuleFn)(CsVM* vm, uint32_t modId);
 
 // Callback invoked after all symbols in the module's src are loaded.
 // This could be used to inject symbols not declared in the module's src.
@@ -162,19 +164,25 @@ typedef enum {
     HOST_TYPE_CORE_OBJECT,
 } HostTypeType;
 
-// If an object's size in bytes is at or below this maximum,
-// it is automatically managed by Cyber's object pool.
-#define CS_MAX_POOL_OBJECT_SIZE 32
+// Given an object, return the pointer of an array and the number of children.
+// If there are no children, return NULL and 0 for the length.
+typedef CsValueSlice (*CsObjectGetChildrenFn)(CsVM* vm, void* obj);
 
-// If the memory occupied by an object ever exceeds `CS_MAX_POOL_OBJECT_SIZE`,
-// then a finalizer is required to explicitly free the memory with `csFree`.
-// A finalizer can also be used to perform cleanup tasks. eg. Freeing resource handles.
-// Unlike finalizers declared in user scripts, this finalizer is always guaranteed to be invoked.
+// Use the finalizer to perform cleanup tasks for the object (eg. free a resource handle)
+// and return the number of bytes the object occupies.
+//
+// When objects of the same type have dynamically sized buffers, the size must be recorded somewhere
+// after instantiation so that the finalizer can return the correct size. In that case, it is
+// recommended to store the size inside your object layout for performance.
+//
+// Unlike finalizers declared in user scripts, this finalizer is guaranteed to be invoked.
+//
 // NOTE: Although the VM handle is provided, using the VM at this point to mutate object dependencies
 //       is undefined behavior because the VM may be running a GC task.
+//
 // NOTE: If the object retains child VM objects, accessing them is undefined behavior
 //       because they have been freed before the finalizer was invoked.
-typedef void (*CsObjectFinalizerFn)(CsVM* vm, void* obj);
+typedef size_t (*CsObjectFinalizerFn)(CsVM* vm, void* obj);
 
 // Result given to Cyber when binding a @host type.
 typedef struct CsHostTypeResult {
@@ -185,6 +193,8 @@ typedef struct CsHostTypeResult {
             CsTypeId* outTypeId;
             // The created semantic type id will be written to `outSemaTypeId`.
             CsSemaTypeId* outSemaTypeId;
+            // Pointer to callback or null.
+            CsObjectGetChildrenFn getChildren;
             // Pointer to callback or null.
             CsObjectFinalizerFn finalizer;
         } object;
@@ -215,7 +225,7 @@ typedef struct CsModuleLoaderResult {
     // Pointer to callback or null.
     CsHostTypeLoaderFn typeLoader;
     // Pointer to callback or null.
-    CsPreLoadModuleFn preLoad;
+    CsPostTypeLoadModuleFn preLoad;
     // Pointer to callback or null.
     CsPostLoadModuleFn postLoad;
     // Pointer to callback or null.
@@ -230,22 +240,17 @@ typedef bool (*CsModuleLoaderFn)(CsVM* vm, CsStr resolvedSpec, CsModuleLoaderRes
 // The default behavior is a no-op.
 typedef void (*CsPrintFn)(CsVM* vm, CsStr str);
 
-// Stats of a GC run.
-typedef struct CsGCResult {
-    // Objects freed that were part of a reference cycle.
-    uint32_t numCycFreed;
-    // Total number of objects freed.
-    uint32_t numObjFreed;
-} CsGCResult;
-
 //
 // [ VM ]
 //
 
 CsVM* csCreate();
-// Deinitialize the VM. Afterwards, call `csDestroy` or perform a check on `csGetGlobalRC`.
+
+// Deinitialize the VM but leaves heap pages alive to allow object counting.
+// Afterwards, call `csDestroy` or perform a check on `csCountObjects`.
 void csDeinit(CsVM* vm);
-// Deinitializes the VM and frees it. Any operation on `vm` afterwards is undefined.
+
+// Deinitializes the VM and frees all memory associated with it. Any operation on `vm` afterwards is undefined.
 void csDestroy(CsVM* vm);
 
 CsModuleResolverFn csGetModuleResolver(CsVM* vm);
@@ -282,16 +287,33 @@ extern bool csVerbose;
 void csSetModuleFunc(CsVM* vm, CsModuleId modId, CsStr name, uint32_t numParams, CsHostFuncFn func);
 void csSetModuleVar(CsVM* vm, CsModuleId modId, CsStr name, CsValue val);
 
-// Memory.
+// 
+// [ Memory ]
+//
 void csRelease(CsVM* vm, CsValue val);
 void csRetain(CsVM* vm, CsValue val);
+
+// Stats of a GC run.
+typedef struct CsGCResult {
+    // Objects freed that were part of a reference cycle.
+    uint32_t numCycFreed;
+
+    // Total number of objects freed.
+    // NOTE: This is only available if built with `trace` enabled.
+    uint32_t numObjFreed;
+} CsGCResult;
 
 // Run the reference cycle detector once and return statistics.
 CsGCResult csPerformGC(CsVM* vm);
 
-// Get's the current global reference count. This will panic if the lib was not built with `TrackGlobalRC`.
-// Use this to see if all objects were cleaned up after `csDeinit`.
+// Get's the current global reference count.
+// NOTE: This will panic if the lib was not built with `TrackGlobalRC`.
+// RELATED: `csCountObjects()`
 size_t csGetGlobalRC(CsVM* vm);
+
+// Returns the number of live objects.
+// This can be used to check if all objects were cleaned up after `csDeinit`.
+size_t csCountObjects(CsVM* vm);
 
 // For embedded, Cyber by default uses malloc (it can be configured to use the high-perf mimalloc).
 // If the host uses a different allocator than Cyber, use `csAlloc` to allocate memory

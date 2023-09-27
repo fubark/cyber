@@ -4,7 +4,7 @@ weight: 2
 ---
 
 # Data Types.
-In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
+In Cyber, there are primitive types and object types. Primitives are copied around by value and don't need additional heap memory or reference counts. Primitives include [Booleans](#booleans), [Floats](#floats), [Integers](#integers), [Enums](#enums), [Symbols](#symbols), [Errors]({{<relref "/docs/toc/errors">}}), [Static Strings](#strings), and the `none` value. Object types include [Lists](#lists), [Tuples](#tuples), [Maps](#maps), [Strings](#strings), [Custom Objects](#objects), [Lambdas]({{<relref "/docs/toc/functions#lambdas">}}), [Fibers]({{<relref "/docs/toc/concurrency#fibers">}}), [Errors with payloads]({{<relref "/docs/toc/errors">}}), [Pointers]({{<relref "/docs/toc/ffi#pointers">}}), and several internal object types.
 
 The `none` value represents an empty value. This is similar to null in other languages.
 
@@ -368,10 +368,13 @@ list.remove(1)
 | `iterator() Iterator<any>` | Returns a new iterator over the list elements. |
 | `joinString(separator any) string` | Returns a new string that joins the elements with `separator`. |
 | `len() int` | Returns the number of elements in the list. |
-| `pairIterator() PairIterator<int, any>` | Returns a new pair iterator over the list elements. |
+| `seqIterator() SequenceIterator<int, any>` | Returns a new sequence iterator over the list elements. |
 | `remove(idx int) none` | Removes an element at index `idx`. |
 | `resize(len int) none` | Resizes the list to `len` elements. If the new size is bigger, `none` values are appended to the list. If the new size is smaller, elements at the end of the list are removed. |
 | `sort(less func (a, b) bool) none` | Sorts the list with the given `less` function. If element `a` should be ordered before `b`, the function should return `true` otherwise `false`. |
+
+## Tuples.
+> _Incomplete: Tuples can only be created from @host funcs at the moment._
 
 ## Maps.
 Maps are a builtin type that store key value pairs in dictionaries.
@@ -421,7 +424,7 @@ print map.size()
 map.remove 123
 
 -- Iterating a list.
-for map each val, key:
+for map each [val, key]:
     print '{key} -> {value}'
 ```
 
@@ -429,7 +432,7 @@ for map each val, key:
 | Method | Summary |
 | ------------- | ----- |
 | `iterator() Iterator<any>` | Returns a new iterator over the map elements. |
-| `pairIterator() PairIterator<any, any>` | Returns a new pair iterator over the map elements. |
+| `seqIterator() SequenceIterator<any, any>` | Returns a new sequence iterator over the map elements. |
 | `remove(key any) none` | Removes the element with the given key `key`. |
 | `size() int` | Returns the number of key-value pairs in the map. |
 

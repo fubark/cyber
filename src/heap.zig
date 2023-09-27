@@ -62,21 +62,22 @@ pub fn getAllocator() std.mem.Allocator {
 }
 
 pub fn deinitAllocator() void {
-    if (builtin.mode == .Debug) {
-        if (build_options.useMalloc) {
+    switch (cy.Malloc) {
+        .mimalloc => {
+            miAlloc.deinit();
+            initedAllocator = false;
+        },
+        .malloc => {
             return;
-        } else {
-            if (cy.UseMimalloc) {
-                miAlloc.deinit();
+        },
+        .zig => {
+            if (cy.isWasm) {
+                return;
             } else {
-                if (cy.isWasm) {
-                    return;
-                } else {
-                    _ = gpa.deinit();
-                }
+                _ = gpa.deinit();
+                initedAllocator = false;
             }
-        }
-        initedAllocator = false;
+        },
     }
 }
 
@@ -102,6 +103,7 @@ pub const HeapObject = extern union {
         start: *HeapObject,
         next: ?*HeapObject,
     },
+    tuple: Tuple,
     list: List,
     listIter: ListIterator,
     map: Map,
@@ -117,8 +119,6 @@ pub const HeapObject = extern union {
     box: Box,
     nativeFunc1: NativeFunc1,
     tccState: if (cy.hasFFI) TccState else void,
-    file: if (cy.hasStdFiles) File else void,
-    dir: if (cy.hasStdFiles) Dir else void,
     pointer: Pointer,
     metatype: MetaType,
 
@@ -146,6 +146,10 @@ pub const HeapObject = extern union {
         return (self.head.typeId & vmc.GC_MARK_CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
     }
 
+    pub inline fn isCyclable(self: *HeapObject) bool {
+        return (self.head.typeId & vmc.CYC_TYPE_MASK) == vmc.CYC_TYPE_MASK;
+    }
+
     pub inline fn getDListNode(self: *HeapObject) *DListNode {
         return @ptrCast(@as([*]DListNode, @ptrCast(self)) - 1);
     }
@@ -163,9 +167,6 @@ pub const HeapObject = extern union {
             rt.NativeFuncT => return .nativeFunc,
             rt.TccStateT => return .tccState,
             rt.PointerT => return .pointer,
-            rt.FileT => return .file,
-            rt.DirT => return .dir,
-            rt.DirIteratorT => return .dirIter,
             rt.BoxT => return .box,
             else => {
                 return .object;
@@ -184,6 +185,18 @@ pub const MetaType = extern struct {
     rc: u32,
     type: u32,
     symId: u32,
+};
+
+pub const Tuple = extern struct {
+    typeId: rt.TypeId,
+    rc: u32,
+    len: u32,
+    padding: u32,
+    firstValue: Value,
+
+    pub fn getElemsPtr(self: *Tuple) [*]Value {
+        return @ptrCast(&self.firstValue);
+    }
 };
 
 pub const List = extern struct {
@@ -428,81 +441,6 @@ const TccState = extern struct {
     rc: u32,
     state: *tcc.TCCState,
     lib: *std.DynLib,
-};
-
-const File = extern struct {
-    typeId: rt.TypeId,
-    rc: u32,
-    readBuf: [*]u8,
-    /// Can be up to 8 bytes on windows, otherwise 4 bytes.
-    fd: std.os.fd_t,
-    curPos: u32,
-    readBufCap: u32,
-    readBufEnd: u32,
-    iterLines: bool,
-    hasReadBuf: bool,
-    closeOnFree: bool,
-    closed: bool,
-
-    pub fn getStdFile(self: *const File) std.fs.File {
-        return std.fs.File{
-            .handle = self.fd,
-            .capable_io_mode = .blocking,
-            .intended_io_mode = .blocking,
-        };
-    }
-
-    pub fn close(self: *File) void {
-        if (!self.closed) {
-            const file = self.getStdFile();
-            file.close();
-            self.closed = true;
-        }
-    }
-};
-
-pub const DirIterator = extern struct {
-    typeId: rt.TypeId,
-    rc: u32,
-    dir: *Dir,
-    inner: extern union {
-        iter: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Iterator)]u8 else void,
-        walker: if (cy.hasStdFiles) [@sizeOf(std.fs.IterableDir.Walker)]u8 else void,
-    },
-    /// If `recursive` is true, `walker` is used.
-    recursive: bool,
-};
-
-pub const Dir = extern struct {
-    typeId: rt.TypeId align(8),
-    rc: u32,
-    /// Padding to make Dir.fd match the offset of File.fd.
-    padding: usize = 0,
-    fd: if (cy.hasStdFiles) std.os.fd_t else u32,
-    iterable: bool,
-    closed: bool,
-
-    pub fn getStdDir(self: *const Dir) std.fs.Dir {
-        return std.fs.Dir{
-            .fd = self.fd,
-        };
-    }
-
-    pub fn getStdIterableDir(self: *const Dir) std.fs.IterableDir {
-        return std.fs.IterableDir{
-            .dir = std.fs.Dir{
-                .fd = self.fd,
-            },
-        };
-    }
-
-    pub fn close(self: *Dir) void {
-        if (!self.closed) {
-            var dir = self.getStdDir();
-            dir.close();
-            self.closed = true;
-        }
-    }
 };
 
 pub const Pointer = extern struct {
@@ -798,6 +736,61 @@ pub fn allocListFill(self: *cy.VM, val: Value, n: u32) linksection(cy.StdSection
             list.buf[i] = cy.value.shallowCopy(self, val);
         }
     }
+    return Value.initCycPtr(obj);
+}
+
+pub fn allocHostObject(vm: *cy.VM, typeId: rt.TypeId, numBytes: usize) linksection(cy.HotSection) !*anyopaque {
+    if (numBytes <= MaxPoolObjectUserBytes) {
+        const obj = try allocPoolObject(vm);
+        obj.head = .{
+            .typeId = typeId,
+            .rc = 1,
+        };
+        return @ptrFromInt(@intFromPtr(obj) + 8);
+    } else {
+        const obj = try allocExternalObject(vm, numBytes + 8, false);
+        obj.head = .{
+            .typeId = typeId,
+            .rc = 1,
+        };
+        return @ptrFromInt(@intFromPtr(obj) + 8);
+    }
+}
+
+pub fn allocHostCycObject(vm: *cy.VM, typeId: rt.TypeId, numBytes: usize) linksection(cy.HotSection) !*anyopaque {
+    if (numBytes <= MaxPoolObjectUserBytes) {
+        const obj = try allocPoolObject(vm);
+        obj.head = .{
+            .typeId = typeId | vmc.CYC_TYPE_MASK,
+            .rc = 1,
+        };
+        return @ptrFromInt(@intFromPtr(obj) + 8);
+    } else {
+        const obj = try allocExternalObject(vm, numBytes + 8, true);
+        obj.head = .{
+            .typeId = typeId | vmc.CYC_TYPE_MASK,
+            .rc = 1,
+        };
+        return @ptrFromInt(@intFromPtr(obj) + 8);
+    }
+}
+
+pub fn allocTuple(vm: *cy.VM, elems: []const Value) linksection(cy.HotSection) !Value {
+    var obj: *HeapObject = undefined;
+    if (elems.len <= 3) {
+        obj = try allocPoolObject(vm);
+    } else {
+        obj = try allocExternalObject(vm, elems.len * 8 + 16, true);
+    }
+    obj.tuple = .{
+        .typeId = rt.TupleT | vmc.CYC_TYPE_MASK,
+        .rc = 1,
+        .len = @intCast(elems.len),
+        .padding = undefined,
+        .firstValue = undefined,
+    };
+    const dst = obj.tuple.getElemsPtr()[0..elems.len];
+    std.mem.copy(Value, dst, elems);
     return Value.initCycPtr(obj);
 }
 
@@ -1354,55 +1347,6 @@ pub fn allocPointer(self: *cy.VM, ptr: ?*anyopaque) !Value {
     return Value.initPtr(obj);
 }
 
-pub fn allocFile(self: *cy.VM, fd: std.os.fd_t) linksection(cy.StdSection) !Value {
-    const obj = try allocPoolObject(self);
-    obj.file = .{
-        .typeId = rt.FileT,
-        .rc = 1,
-        .fd = fd,
-        .curPos = 0,
-        .iterLines = false,
-        .hasReadBuf = false,
-        .readBuf = undefined,
-        .readBufCap = 0,
-        .readBufEnd = 0,
-        .closed = false,
-        .closeOnFree = true,
-    };
-    return Value.initPtr(obj);
-}
-
-pub fn allocDir(self: *cy.VM, fd: std.os.fd_t, iterable: bool) linksection(cy.StdSection) !Value {
-    const obj = try allocPoolObject(self);
-    obj.dir = .{
-        .typeId = rt.DirT,
-        .rc = 1,
-        .fd = fd,
-        .iterable = iterable,
-        .closed = false,
-    };
-    return Value.initPtr(obj);
-}
-
-pub fn allocDirIterator(self: *cy.VM, dir: *Dir, recursive: bool) linksection(cy.StdSection) !Value {
-    const obj: *cy.DirIterator = @ptrCast(try allocExternalObject(self, @sizeOf(cy.DirIterator), false));
-    obj.* = .{
-        .typeId = rt.DirIteratorT,
-        .rc = 1,
-        .dir = dir,
-        .inner = undefined,
-        .recursive = recursive,
-    };
-    if (recursive) {
-        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &obj.inner.walker);
-        walker.* = try dir.getStdIterableDir().walk(self.alloc);
-    } else {
-        const iter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &obj.inner.iter);
-        iter.* = dir.getStdIterableDir().iterate();
-    }
-    return Value.initPtr(obj);
-}
-
 /// Allocates an object outside of the object pool.
 pub fn allocObject(self: *cy.VM, sid: rt.TypeId, fields: []const Value) !Value {
     // First slot holds the typeId and rc.
@@ -1479,7 +1423,7 @@ pub fn allocFuncFromSym(self: *cy.VM, symId: cy.vm.SymbolId) !Value {
 /// Use comptime options to keep closely related logic together.
 /// TODO: flatten recursion.
 pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
-    comptime freeChildren: bool, comptime skipCycChildren: bool, comptime free: bool, comptime trackFrees: bool,
+    comptime releaseChildren: bool, comptime skipCycChildren: bool, comptime free: bool,
 ) linksection(cy.HotSection) void {
     if (cy.Trace) {
         if (obj.isFreed()) {
@@ -1491,14 +1435,31 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         }
     }
     switch (obj.getTypeId()) {
+        rt.TupleT => {
+            if (releaseChildren) {
+                for (obj.tuple.getElemsPtr()[0..obj.tuple.len]) |it| {
+                    if (skipCycChildren and it.isGcConfirmedCyc()) {
+                        continue;
+                    }
+                    cy.arc.release(vm, it);
+                }
+            }
+            if (free) {
+                if (obj.tuple.len <= 3) {
+                    freePoolObject(vm, obj);
+                } else {
+                    freeExternalObject(vm, obj, (2 + obj.tuple.len) * @sizeOf(Value), true);
+                }
+            }
+        },
         rt.ListT => {
             const list = cy.ptrAlignCast(*cy.List(Value), &obj.list.list);
-            if (freeChildren) {
+            if (releaseChildren) {
                 for (list.items()) |it| {
                     if (skipCycChildren and it.isGcConfirmedCyc()) {
                         continue;
                     }
-                    cy.arc.releaseExt(vm, it, trackFrees);
+                    cy.arc.release(vm, it);
                 }
             }
             if (free) {
@@ -1507,13 +1468,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.ListIteratorT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 if (skipCycChildren) {
                     if (!@as(*HeapObject, @ptrCast(@alignCast(obj.listIter.list))).isGcConfirmedCyc()) {
-                        cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list), trackFrees);
+                        cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list));
                     }
                 } else {
-                    cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list), trackFrees);
+                    cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.listIter.list));
                 }
             }
             if (free) {
@@ -1522,19 +1483,19 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
         },
         rt.MapT => {
             const map = cy.ptrAlignCast(*MapInner, &obj.map.inner);
-            if (freeChildren) {
+            if (releaseChildren) {
                 var iter = map.iterator();
                 while (iter.next()) |entry| {
                     if (skipCycChildren) {
                         if (!entry.key.isGcConfirmedCyc()) {
-                            cy.arc.releaseExt(vm, entry.key, trackFrees);
+                            cy.arc.release(vm, entry.key);
                         }
                         if (!entry.value.isGcConfirmedCyc()) {
-                            cy.arc.releaseExt(vm, entry.value, trackFrees);
+                            cy.arc.release(vm, entry.value);
                         }
                     } else {
-                        cy.arc.releaseExt(vm, entry.key, trackFrees);
-                        cy.arc.releaseExt(vm, entry.value, trackFrees);
+                        cy.arc.release(vm, entry.key);
+                        cy.arc.release(vm, entry.value);
                     }
                 }
             }
@@ -1544,13 +1505,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.MapIteratorT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 if (skipCycChildren) {
                     if (!@as(*HeapObject, @ptrCast(@alignCast(obj.mapIter.map))).isGcConfirmedCyc()) {
-                        cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map), trackFrees);
+                        cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map));
                     }
                 } else {
-                    cy.arc.releaseObjectExt(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map), trackFrees);
+                    cy.arc.releaseObject(vm, cy.ptrAlignCast(*HeapObject, obj.mapIter.map));
                 }
             }
             if (free) {
@@ -1558,13 +1519,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.ClosureT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 const src = obj.closure.getCapturedValuesPtr()[0..obj.closure.numCaptured];
                 for (src) |capturedVal| {
                     if (skipCycChildren and capturedVal.isGcConfirmedCyc()) {
                         continue;
                     }
-                    cy.arc.releaseExt(vm, capturedVal, trackFrees);
+                    cy.arc.release(vm, capturedVal);
                 }
             }
             if (free) {
@@ -1616,9 +1577,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.StringSliceT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 if (cy.heap.StringSlice.getParentPtr(obj.stringSlice)) |parent| {
-                    cy.arc.releaseObjectExt(vm, parent, trackFrees);
+                    cy.arc.releaseObject(vm, parent);
                 }
             }
             if (free) {
@@ -1635,18 +1596,18 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.RawstringSliceT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 const parent: *cy.HeapObject = @ptrCast(obj.rawstringSlice.parent);
-                cy.arc.releaseObjectExt(vm, parent, trackFrees);
+                cy.arc.releaseObject(vm, parent);
             }
             if (free) {
                 freePoolObject(vm, obj);
             }
         },
         rt.FiberT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 const fiber: *vmc.Fiber = @ptrCast(obj);
-                // TODO: isCyc + trackFrees.
+                // TODO: isCyc.
                 cy.fiber.releaseFiberStack(vm, fiber) catch |err| {
                     cy.panicFmt("release fiber: {}", .{err});
                 };
@@ -1656,13 +1617,13 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.BoxT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 if (skipCycChildren) {
                     if (!obj.box.val.isGcConfirmedCyc()) {
-                        cy.arc.releaseExt(vm, obj.box.val, trackFrees);
+                        cy.arc.release(vm, obj.box.val);
                     }
                 } else {
-                    cy.arc.releaseExt(vm, obj.box.val, trackFrees);
+                    cy.arc.release(vm, obj.box.val);
                 }
             }
             if (free) {
@@ -1670,9 +1631,9 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
             }
         },
         rt.NativeFuncT => {
-            if (freeChildren) {
+            if (releaseChildren) {
                 if (obj.nativeFunc1.hasTccState) {
-                    cy.arc.releaseObjectExt(vm, obj.nativeFunc1.tccState.asHeapObject(), trackFrees);
+                    cy.arc.releaseObject(vm, obj.nativeFunc1.tccState.asHeapObject());
                 }
             }
             if (free) {
@@ -1696,44 +1657,6 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                 freePoolObject(vm, obj);
             }
         },
-        rt.FileT => {
-            if (free) {
-                if (cy.hasStdFiles) {
-                    if (obj.file.hasReadBuf) {
-                        vm.alloc.free(obj.file.readBuf[0..obj.file.readBufCap]);
-                    }
-                    if (obj.file.closeOnFree) {
-                        obj.file.close();
-                    }
-                }
-                freePoolObject(vm, obj);
-            }
-        },
-        rt.DirT => {
-            if (free) {
-                if (cy.hasStdFiles) {
-                    obj.dir.close();
-                }
-                freePoolObject(vm, obj);
-            }
-        },
-        rt.DirIteratorT => {
-            if (cy.hasStdFiles) {
-                var dir: *DirIterator = @ptrCast(obj);
-                if (free) {
-                    if (dir.recursive) {
-                        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &dir.inner.walker);
-                        walker.deinit();   
-                    }
-                }
-                if (freeChildren) {
-                    cy.arc.releaseObjectExt(vm, @ptrCast(dir.dir), trackFrees);
-                }
-            }
-            if (free) {
-                freeExternalObject(vm, obj, @sizeOf(DirIterator), false);
-            }
-        },
         rt.MetaTypeT => {
             if (free) {
                 freePoolObject(vm, obj);
@@ -1752,25 +1675,58 @@ pub fn freeObject(vm: *cy.VM, obj: *HeapObject,
                     cy.fatal();
                 }
             }
-            const numFields = vm.types.buf[obj.getTypeId()].numFields;
-            if (freeChildren) {
-                for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
-                    if (skipCycChildren and child.isGcConfirmedCyc()) {
-                        continue;
+            // TODO: Determine isHostObject from object to avoid extra read from `rt.Type`
+            const entry = &vm.types.buf[obj.getTypeId()];
+            if (!entry.isHostObject) {
+                const numFields = entry.data.numFields;
+                if (releaseChildren) {
+                    for (obj.object.getValuesConstPtr()[0..numFields]) |child| {
+                        if (skipCycChildren and child.isGcConfirmedCyc()) {
+                            continue;
+                        }
+                        cy.arc.release(vm, child);
                     }
-                    cy.arc.releaseExt(vm, child, trackFrees);
                 }
-            }
-            if (free) {
-                if (numFields <= 4) {
-                    freePoolObject(vm, obj);
-                } else {
-                    freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                if (free) {
+                    if (numFields <= 4) {
+                        freePoolObject(vm, obj);
+                    } else {
+                        freeExternalObject(vm, obj, (1 + numFields) * @sizeOf(Value), true);
+                    }
+                }
+            } else {
+                if (releaseChildren) {
+                    if (entry.data.hostObject.getChildren) |getChildren| {
+                        const children = @as(cy.ObjectGetChildrenFn, @ptrCast(@alignCast(getChildren)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        for (children.slice()) |child| {
+                            if (skipCycChildren and child.isGcConfirmedCyc()) {
+                                continue;
+                            }
+                            cy.arc.release(vm, child);
+                        }
+                    }
+                }
+                if (free) {
+                    if (entry.data.hostObject.finalizer) |finalizer| {
+                        const size = @as(cy.ObjectFinalizerFn, @ptrCast(@alignCast(finalizer)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                        if (size <= MaxPoolObjectUserBytes) {
+                            freePoolObject(vm, obj);
+                        } else {
+                            if (obj.isCyclable()) {
+                                freeExternalObject(vm, obj, 8 + size, true);
+                            } else {
+                                freeExternalObject(vm, obj, 8 + size, false);
+                            }
+                        }
+                    }
                 }
             }
         },
     }
 }
+
+// User bytes excludes the type header.
+const MaxPoolObjectUserBytes = @sizeOf(HeapObject) - 8;
 
 pub fn traceAlloc(vm: *cy.VM, ptr: *HeapObject) void {
     // log.debug("alloc {*} {} {}", .{ptr, ptr.getTypeId(), vm.debugPc});
@@ -1818,7 +1774,6 @@ test "heap internals." {
         try t.eq(@sizeOf(MapInner), 20);
         try t.eq(@alignOf(List), 4);
         try t.eq(@alignOf(ListIterator), 4);
-        try t.eq(@alignOf(DirIterator), 4);
         try t.eq(@sizeOf(List), 20);
         try t.eq(@sizeOf(ListIterator), 16);
         try t.eq(@sizeOf(Map), 32);
@@ -1829,7 +1784,6 @@ test "heap internals." {
         try t.eq(@sizeOf(MapInner), 32);
         try t.eq(@alignOf(List), 8);
         try t.eq(@alignOf(ListIterator), 8);
-        try t.eq(@alignOf(DirIterator), 8);
 
         if (builtin.os.tag != .windows) {
             try t.eq(@sizeOf(List), 32);
@@ -1854,10 +1808,6 @@ test "heap internals." {
         if (cy.hasFFI) {
             try t.eq(@sizeOf(TccState), 24);
         }
-        if (cy.hasStdFiles) {
-            try t.eq(@sizeOf(File), 40);
-            try t.eq(@sizeOf(Dir), 24);
-        }
     }
 
     try t.eq(@sizeOf(HeapObject), 40);
@@ -1867,15 +1817,6 @@ test "heap internals." {
 
     var list: List = undefined;
     try t.eq(@intFromPtr(&list.list.ptr), @intFromPtr(&list) + 8);
-
-    try t.eq(@alignOf(Dir), 8);
-    var dir: Dir = undefined;
-    try t.eq(@intFromPtr(&dir.typeId), @intFromPtr(&dir));
-    try t.eq(@intFromPtr(&dir.rc), @intFromPtr(&dir) + 4);
-
-    var dirIter: DirIterator = undefined;
-    try t.eq(@intFromPtr(&dirIter.typeId), @intFromPtr(&dirIter));
-    try t.eq(@intFromPtr(&dirIter.rc), @intFromPtr(&dirIter) + 4);
 
     const rstr = RawString{
         .typeId = rt.RawstringT,

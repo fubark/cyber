@@ -236,6 +236,7 @@ typedef enum {
     CodeBitwiseNot,
     CodeBitwiseLeftShift,
     CodeBitwiseRightShift,
+    CodeJumpNone,
     CodeJumpNotNone,
     CodeAddInt,
     CodeSubInt,
@@ -247,6 +248,7 @@ typedef enum {
     CodeForRangeInit,
     CodeForRange,
     CodeForRangeReverse,
+    CodeSeqDestructure,
     CodeMatch,
     CodeStaticFunc,
     CodeStaticVar,
@@ -268,26 +270,24 @@ enum {
     TYPE_SYMBOL = 6,
     TYPE_INTEGER = 7,
     TYPE_FLOAT = 8,
-    TYPE_LIST = 9,
-    TYPE_LIST_ITER = 10,
-    TYPE_MAP = 11,
-    TYPE_MAP_ITER = 12,
-    TYPE_CLOSURE = 13,
-    TYPE_LAMBDA = 14,
-    TYPE_ASTRING = 15,
-    TYPE_USTRING = 16,
-    TYPE_STRING_SLICE = 17,
-    TYPE_RAWSTRING = 18,
-    TYPE_RAWSTRING_SLICE = 19,
-    TYPE_FIBER = 20,
-    TYPE_BOX = 21,
-    TYPE_NATIVE_FUNC = 22,
-    TYPE_TCC_STATE = 23,
-    TYPE_POINTER = 24,
-    TYPE_FILE = 25,
-    TYPE_DIR = 26,
-    TYPE_DIR_ITER = 27,
-    TYPE_METATYPE = 28,
+    TYPE_TUPLE = 9,
+    TYPE_LIST = 10,
+    TYPE_LIST_ITER = 11,
+    TYPE_MAP = 12,
+    TYPE_MAP_ITER = 13,
+    TYPE_CLOSURE = 14,
+    TYPE_LAMBDA = 15,
+    TYPE_ASTRING = 16,
+    TYPE_USTRING = 17,
+    TYPE_STRING_SLICE = 18,
+    TYPE_RAWSTRING = 19,
+    TYPE_RAWSTRING_SLICE = 20,
+    TYPE_FIBER = 21,
+    TYPE_BOX = 22,
+    TYPE_NATIVE_FUNC = 23,
+    TYPE_TCC_STATE = 24,
+    TYPE_POINTER = 25,
+    TYPE_METATYPE = 26,
 };
 
 typedef uint32_t SemaTypeId;
@@ -299,20 +299,22 @@ typedef enum {
     SEMA_TYPE_STRING = 4,
     SEMA_TYPE_RAWSTRING = 5,
     SEMA_TYPE_SYMBOL = 6,
-    SEMA_TYPE_LIST = 7,
-    SEMA_TYPE_MAP = 8,
-    SEMA_TYPE_POINTER = 9,
-    SEMA_TYPE_NONE = 10,
-    SEMA_TYPE_ERROR = 11,
-    SEMA_TYPE_FIBER = 12,
-    SEMA_TYPE_METATYPE = 13,
+    SEMA_TYPE_TUPLE = 7,
+    SEMA_TYPE_LIST = 8,
+    SEMA_TYPE_LIST_ITER = 9,
+    SEMA_TYPE_MAP = 10,
+    SEMA_TYPE_MAP_ITER = 11,
+    SEMA_TYPE_POINTER = 12,
+    SEMA_TYPE_NONE = 13,
+    SEMA_TYPE_ERROR = 14,
+    SEMA_TYPE_FIBER = 15,
+    SEMA_TYPE_METATYPE = 16,
 
-    SEMA_TYPE_UNDEFINED = 14,
-    SEMA_TYPE_STATICSTRING = 15,
-    SEMA_TYPE_FILE = 16,
+    SEMA_TYPE_UNDEFINED = 17,
+    SEMA_TYPE_STATICSTRING = 18,
 
-    SEMA_TYPE_DYNAMIC = 17,
-    NumSemaTypes = 18,
+    SEMA_TYPE_DYNAMIC = 19,
+    NumSemaTypes = 20,
 } SemaType;
 
 typedef uint8_t Inst;
@@ -362,7 +364,7 @@ typedef struct FuncSig {
     bool isTyped;
 } FuncSig;
 
-typedef struct NativeFunc1 {
+typedef struct HostFunc {
     TypeId typeId;
     u32 rc;
     void* func;
@@ -370,7 +372,7 @@ typedef struct NativeFunc1 {
     u32 rFuncSigId;
     Value tccState;
     bool hasTccState;
-} NativeFunc1;
+} HostFunc;
 
 typedef enum {
     /// Uncaught thrown error. Error value is in `panicPayload`.
@@ -516,6 +518,14 @@ typedef struct Map {
     ValueMap inner;
 } Map;
 
+typedef struct Tuple {
+    TypeId typeId;
+    u32 rc;
+    u32 len;
+    u32 padding;
+    Value firstValue;
+} Tuple;
+
 typedef struct List {
     TypeId typeId;
     u32 rc;
@@ -535,7 +545,8 @@ typedef union HeapObject {
     Box box;
     Map map;
     List list;
-    NativeFunc1 nativeFunc1;
+    Tuple tuple;
+    HostFunc hostFunc;
 } HeapObject;
 
 typedef struct ZAllocator {
@@ -574,11 +585,20 @@ typedef struct FieldSymbolMap {
     uint32_t nameId;
 } FieldSymbolMap;
 
+// TODO: One idea to make the `Type` array more compact is to make @host objects take
+// up two slots, thereby skipping a typeId.
 typedef struct Type {
     const char* namePtr;
-    size_t nameLen;
-    uint32_t numFields;
     SemaTypeId semaTypeId;
+    uint16_t nameLen;
+    bool isHostObject;
+    union {
+        struct {
+            const void* getChildren;
+            const void* finalizer;
+        } hostObject;
+        uint32_t numFields;
+    } data;
 } Type;
 
 typedef struct ByteCodeBuffer {
@@ -604,9 +624,11 @@ typedef struct ByteCodeBuffer {
 } ByteCodeBuffer;
 
 typedef struct VM VM;
+typedef struct Compiler Compiler;
 
 typedef struct SemaModel {
     ZAllocator alloc;
+    Compiler* compiler;
 
     ZList nameSyms;
     ZHashMap nameSymMap;

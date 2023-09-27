@@ -144,7 +144,7 @@ t.eq(sum, 15)
 a = [10, 20, 30]
 sum = 0
 var idxSum = 0
-for a each idx, it:
+for a each [idx, it]:
   sum += it
   idxSum += idx
 t.eq(sum, 60)
@@ -164,10 +164,10 @@ t.eq(res, 36)
 a = [1, 2, 3]
 res = 0
 var idxRes = 0
-for a each i, n:
+for a each [i, n]:
   var innerSum = 0
   idxSum = 0
-  for a each j, m:
+  for a each [j, m]:
     innerSum += m
     idxSum += j
   res += n * innerSum

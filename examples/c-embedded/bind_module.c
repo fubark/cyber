@@ -98,7 +98,7 @@ int main() {
     csDeinit(vm);
 
     // Check that all references were accounted for. (Should be 0)
-    printf("Global RC: %zu\n", csGetGlobalRC(vm));
+    printf("Live objects: %zu\n", csCountObjects(vm));
     csDestroy(vm);
 
     return 0;

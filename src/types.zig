@@ -21,8 +21,11 @@ pub const BuiltinTypeSymIds = struct {
     pub const String: TypeId = vmc.SEMA_TYPE_STRING;
     pub const Rawstring: TypeId = vmc.SEMA_TYPE_RAWSTRING;
     pub const Symbol: TypeId = vmc.SEMA_TYPE_SYMBOL;
+    pub const Tuple: TypeId = vmc.SEMA_TYPE_TUPLE;
     pub const List: TypeId = vmc.SEMA_TYPE_LIST;
+    pub const ListIter: TypeId = vmc.SEMA_TYPE_LIST_ITER;
     pub const Map: TypeId = vmc.SEMA_TYPE_MAP;
+    pub const MapIter: TypeId = vmc.SEMA_TYPE_MAP_ITER;
     pub const Pointer: TypeId = vmc.SEMA_TYPE_POINTER;
     pub const None: TypeId = vmc.SEMA_TYPE_NONE;
     pub const Error: TypeId = vmc.SEMA_TYPE_ERROR;
@@ -35,7 +38,6 @@ pub const BuiltinTypeSymIds = struct {
     pub const Undefined: TypeId = vmc.SEMA_TYPE_UNDEFINED;
     /// Strings that aren't retained.
     pub const StaticString: TypeId = vmc.SEMA_TYPE_STATICSTRING;
-    pub const File: TypeId = vmc.SEMA_TYPE_FILE;
 
     /// A dynamic type does not have a static type.
     /// This is not the same as bt.Any which is a static type.
@@ -53,7 +55,9 @@ test "Reserved names map to reserved sym ids." {
     try t.eq(sema.NameRawstring, bt.Rawstring);
     try t.eq(sema.NameSymbol, bt.Symbol);
     try t.eq(sema.NameList, bt.List);
+    try t.eq(sema.NameListIterator, bt.ListIter);
     try t.eq(sema.NameMap, bt.Map);
+    try t.eq(sema.NameMapIterator, bt.MapIter);
     try t.eq(sema.NamePointer, bt.Pointer);
     try t.eq(sema.NameNone, bt.None);
     try t.eq(sema.NameError, bt.Error);

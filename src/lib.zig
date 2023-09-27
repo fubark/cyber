@@ -23,7 +23,8 @@ export fn csCreate() *cy.UserVM {
 }
 
 export fn csDeinit(uvm: *cy.UserVM) void {
-    uvm.deinit();
+    // Reset VM, don't free heap pages to allow object counting.
+    uvm.internal().deinit(true);
 }
 
 export fn csDestroy(uvm: *cy.UserVM) void {
@@ -35,6 +36,10 @@ export fn csDestroy(uvm: *cy.UserVM) void {
 
 export fn csGetGlobalRC(vm: *cy.UserVM) usize {
     return cy.arc.getGlobalRC(vm.internal());
+}
+
+export fn csCountObjects(vm: *cy.UserVM) usize {
+    return cy.arc.countObjects(vm.internal());
 }
 
 /// This is useful when calling into wasm to allocate some memory.
@@ -353,9 +358,7 @@ test "Constants." {
     try t.eq(c.CS_TYPE_NATIVEFUNC1, rt.NativeFuncT);
     try t.eq(c.CS_TYPE_TCCSTATE, rt.TccStateT);
     try t.eq(c.CS_TYPE_POINTER, rt.PointerT);
-    try t.eq(c.CS_TYPE_FILE, rt.FileT);
-    try t.eq(c.CS_TYPE_DIR, rt.DirT);
-    try t.eq(c.CS_TYPE_DIRITER, rt.DirIteratorT);
+    try t.eq(c.CS_TYPE_TUPLE, rt.TupleT);
     try t.eq(c.CS_TYPE_METATYPE, rt.MetaTypeT);
 }
 

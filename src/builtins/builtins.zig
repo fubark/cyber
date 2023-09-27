@@ -87,10 +87,14 @@ const funcs = [_]NameFunc{
     .{"iterator", bindings.listIterator, .standard},
     .{"joinString", bindings.listJoinString, .standard},
     .{"len", bindings.listLen, .standard},
-    .{"pairIterator", bindings.listIterator, .standard},
+    .{"seqIterator", bindings.listIterator, .standard},
     .{"remove", bindings.listRemove, .standard},
     .{"resize", bindings.listResize, .standard},
     .{"sort", bindings.listSort, .standard},
+
+    // ListIterator
+    .{"next", bindings.listIteratorNext, .standard},
+    .{"nextSeq", bindings.listIteratorNextSeq, .standard},
 
     // Map
     .{"$index", bindings.inlineBinOp(.indexMap), .quicken},
@@ -98,7 +102,11 @@ const funcs = [_]NameFunc{
     .{"remove", bindings.mapRemove, .standard},
     .{"size", bindings.mapSize, .standard},
     .{"iterator", bindings.mapIterator, .standard},
-    .{"pairIterator", bindings.mapIterator, .standard},
+    .{"seqIterator", bindings.mapIterator, .standard},
+
+    // MapIterator
+    .{"next", bindings.mapIteratorNext, .standard},
+    .{"nextSeq", bindings.mapIteratorNextSeq, .standard},
 
     // Utils.
     .{"arrayFill", arrayFill, .standard},
@@ -131,7 +139,9 @@ const types = [_]NameType{
     .{"int", rt.IntegerT, bt.Integer },
     .{"float", rt.FloatT, bt.Float },
     .{"List", rt.ListT, bt.List },
+    .{"ListIterator", rt.ListIteratorT, bt.ListIter },
     .{"Map", rt.MapT, bt.Map },
+    .{"MapIterator", rt.MapIteratorT, bt.MapIter },
 };
 
 pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {

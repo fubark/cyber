@@ -161,7 +161,7 @@ pub const HeapRawStringBuilder = struct {
         if (self.hasObject) {
             const obj = self.getHeapObject();
             obj.rawstring.len = self.len;
-            cy.heap.freeObject(self.vm, obj, true, false, true, false);
+            cy.heap.freeObject(self.vm, obj, true, false, true);
             self.hasObject = false;
         }
     }
@@ -226,7 +226,7 @@ pub const HeapRawStringBuilder = struct {
 
             // Free pool object.
             oldObj.rawstring.len = self.len;
-            cy.heap.freeObject(self.vm, oldObj, true, false, true, false);
+            cy.heap.freeObject(self.vm, oldObj, true, false, true);
         }
     }
 

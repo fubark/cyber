@@ -97,7 +97,7 @@ t.eq(sum, 9)
 -- Pair Iterator.
 sum = 0
 var codeSum = 0
-for m each k, v:
+for m each [k, v]:
   sum += v
   codeSum += k.runeAt(0)
 t.eq(sum, 9)
@@ -117,9 +117,9 @@ t.eq(res, 36)
 m = { a: 1, b: 2, c: 3 }
 res = 0
 codeSum = 0
-for m each k, n:
+for m each [k, n]:
   var innerSum = 0
-  for m each kk, nn:
+  for m each [kk, nn]:
     innerSum += nn
     codeSum += kk.runeAt(0)
   res += n * innerSum
@@ -131,7 +131,7 @@ t.eq(codeSum, 294 * 4)
 m = { a: [2], b: [3], c: [4] }
 sum = 0
 codeSum = 0
-for m each k, v:
+for m each [k, v]:
   sum += v[0]
   codeSum += k.runeAt(0)
 t.eq(sum, 9)

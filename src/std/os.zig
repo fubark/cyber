@@ -16,6 +16,7 @@ const bt = cy.types.BuiltinTypeSymIds;
 const ffi = @import("os_ffi.zig");
 const http = @import("../http.zig");
 const cache = @import("../cache.zig");
+const fs = @import("fs.zig");
 
 const log = cy.log.scoped(.os);
 
@@ -34,6 +35,29 @@ pub fn funcLoader(_: *cy.UserVM, func: cy.HostFuncInfo, out: *cy.HostFuncResult)
 
 const NameFunc = struct { []const u8, cy.ZHostFuncFn };
 const funcs = [_]NameFunc{
+    // File
+    .{"close", fs.fileClose},
+    .{"iterator", fs.fileIterator},
+    .{"next", fs.fileNext},
+    .{"read", fs.fileRead},
+    .{"readToEnd", fs.fileReadToEnd},
+    .{"seek", fs.fileSeek},
+    .{"seekFromCur", fs.fileSeekFromCur},
+    .{"seekFromEnd", fs.fileSeekFromEnd},
+    .{"stat", fs.fileOrDirStat},
+    .{"streamLines", fs.fileStreamLines},
+    .{"streamLines", fs.fileStreamLines1},
+    .{"write", fs.fileWrite},
+
+    // Dir
+    .{"iterator", fs.dirIterator},
+    .{"stat", fs.fileOrDirStat},
+    .{"walk", fs.dirWalk},
+
+    // DirIterator
+    .{"next", fs.dirIteratorNext},
+
+    // Top level
     .{"access", access},
     .{"args", osArgs},
     .{"bindLib", bindLib},
@@ -82,13 +106,34 @@ pub fn varLoader(_: *cy.UserVM, v: cy.HostVarInfo, out: *cy.Value) callconv(.C) 
     return false;
 }
 
-pub fn preLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
-    zPreLoad(vm.internal().compiler, modId) catch |err| {
+const NameType = struct { []const u8, *cy.rt.TypeId, *cy.types.TypeId, ?cy.ObjectGetChildrenFn, cy.ObjectFinalizerFn };
+const types = [_]NameType{
+    .{"File", &fs.FileT, &fs.SemaFileT, null, fs.fileFinalizer },
+    .{"Dir", &fs.DirT, &fs.SemaDirT, null, fs.dirFinalizer },
+    .{"DirIterator", &fs.DirIterT, &fs.SemaDirIterT, fs.dirIteratorGetChildren, fs.dirIteratorFinalizer },
+};
+
+pub fn typeLoader(_: *cy.UserVM, info: cy.HostTypeInfo, out: *cy.HostTypeResult) callconv(.C) bool {
+    if (std.mem.eql(u8, types[info.idx].@"0", info.name.slice())) {
+        out.type = .object;
+        out.data.object = .{
+            .typeId = types[info.idx].@"1",
+            .semaTypeId = types[info.idx].@"2",
+            .getChildren = types[info.idx].@"3",
+            .finalizer = types[info.idx].@"4",
+        };
+        return true;
+    }
+    return false;
+}
+
+pub fn postTypeLoad(vm: *cy.UserVM, modId: cy.ModuleId) callconv(.C) void {
+    zPostTypeLoad(vm.internal().compiler, modId) catch |err| {
         cy.panicFmt("os module: {}", .{err});
     };
 }
 
-pub fn zPreLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
+pub fn zPostTypeLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
     _ = modId;
     vars[0] = .{ "cpu", try c.buf.getOrPushStringValue(@tagName(builtin.cpu.arch)) };
     if (builtin.cpu.arch.endian() == .Little) {
@@ -97,14 +142,14 @@ pub fn zPreLoad(c: *cy.VMcompiler, modId: cy.ModuleId) !void {
         vars[1] = .{ "endian", cy.Value.initSymbol(@intFromEnum(Symbol.big)) };
     }
     if (cy.hasStdFiles) {
-        const stdin = try cy.heap.allocFile(c.vm, std.io.getStdIn().handle);
-        stdin.asHeapObject().file.closeOnFree = false;
+        const stdin = try fs.allocFile(c.vm, std.io.getStdIn().handle);
+        stdin.asHostObject(fs.File).closeOnFree = false;
         vars[2] = .{ "stdin", stdin };
-        const stdout = try cy.heap.allocFile(c.vm, std.io.getStdOut().handle);
-        stdout.asHeapObject().file.closeOnFree = false;
+        const stdout = try fs.allocFile(c.vm, std.io.getStdOut().handle);
+        stdout.asHostObject(fs.File).closeOnFree = false;
         vars[3] = .{ "stdout", stdout };
-        const stderr = try cy.heap.allocFile(c.vm, std.io.getStdErr().handle);
-        stderr.asHeapObject().file.closeOnFree = false;
+        const stderr = try fs.allocFile(c.vm, std.io.getStdErr().handle);
+        stderr.asHostObject(fs.File).closeOnFree = false;
         vars[4] = .{ "stderr", stderr };
     } else {
         vars[2] = .{ "stdin", Value.None };

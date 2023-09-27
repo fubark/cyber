@@ -11,10 +11,6 @@ const vmc = cy.vmc;
 const rt = cy.rt;
 
 pub fn release(vm: *cy.VM, val: cy.Value) linksection(cy.HotSection) void {
-    releaseExt(vm, val, false);
-}
-
-pub fn releaseExt(vm: *cy.VM, val: cy.Value, comptime trackFrees: bool) linksection(cy.HotSection) void {
     if (cy.Trace) {
         vm.trace.numReleaseAttempts += 1;
     }
@@ -39,9 +35,12 @@ pub fn releaseExt(vm: *cy.VM, val: cy.Value, comptime trackFrees: bool) linksect
         }
         if (obj.head.rc == 0) {
             // Free children and the object.
-            @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true, trackFrees});
-            if (trackFrees) {
-                numObjectsFreed += 1;
+            @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true});
+
+            if (cy.Trace) {
+                if (vm.countFrees) {
+                    vm.numFreed += 1;
+                }
             }
         }
     } else {
@@ -77,10 +76,6 @@ pub fn checkDoubleFree(vm: *cy.VM, obj: *cy.HeapObject) void {
 }
 
 pub fn releaseObject(vm: *cy.VM, obj: *cy.HeapObject) linksection(cy.HotSection) void {
-    releaseObjectExt(vm, obj, false);
-}
-
-pub fn releaseObjectExt(vm: *cy.VM, obj: *cy.HeapObject, comptime trackFrees: bool) linksection(cy.HotSection) void {
     if (cy.Trace) {
         checkDoubleFree(vm, obj);
     }
@@ -94,9 +89,11 @@ pub fn releaseObjectExt(vm: *cy.VM, obj: *cy.HeapObject, comptime trackFrees: bo
         vm.trace.numReleaseAttempts += 1;
     }
     if (obj.head.rc == 0) {
-        @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true, trackFrees});
-        if (trackFrees) {
-            numObjectsFreed += 1;
+        @call(.never_inline, cy.heap.freeObject, .{vm, obj, true, false, true});
+        if (cy.Trace) {
+            if (vm.countFrees) {
+                vm.numFreed += 1;
+            }
         }
     }
 }
@@ -228,11 +225,17 @@ fn performMark(vm: *cy.VM) !void {
     }
 }
 
-var numObjectsFreed: u32 = 0;
-
 fn performSweep(vm: *cy.VM) !GCResult {
     // Collect cyc nodes and release their children (child cyc nodes are skipped).
-    numObjectsFreed = 0;
+    if (cy.Trace) {
+        vm.countFrees = true;
+        vm.numFreed = 0;
+    }
+    defer {
+        if (cy.Trace) {
+            vm.countFrees = false;
+        }
+    }
     var cycObjs: std.ArrayListUnmanaged(*cy.HeapObject) = .{};
     defer cycObjs.deinit(vm.alloc);
     for (vm.heapPages.items()) |page| {
@@ -242,7 +245,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
             if (obj.freeSpan.typeId != cy.NullId) {
                 if (obj.isGcConfirmedCyc()) {
                     try cycObjs.append(vm.alloc, obj);
-                    cy.heap.freeObject(vm, obj, true, true, false, true);
+                    cy.heap.freeObject(vm, obj, true, true, false);
                 } else if (obj.isGcMarked()) {
                     obj.resetGcMarked();
                 }
@@ -260,7 +263,7 @@ fn performSweep(vm: *cy.VM) !GCResult {
         const obj = node.getHeapObject();
         if (obj.isGcConfirmedCyc()) {
             try cycObjs.append(vm.alloc, obj);
-            cy.heap.freeObject(vm, obj, true, true, false, true);
+            cy.heap.freeObject(vm, obj, true, true, false);
         } else if (obj.isGcMarked()) {
             obj.resetGcMarked();
         }
@@ -277,16 +280,17 @@ fn performSweep(vm: *cy.VM) !GCResult {
             vm.refCounts -= obj.head.rc;
         }
         // No need to bother with their refcounts.
-        cy.heap.freeObject(vm, obj, false, false, true, false);
+        cy.heap.freeObject(vm, obj, false, false, true);
     }
 
     if (cy.Trace) {
         vm.trace.numCycFrees += @intCast(cycObjs.items.len);
+        vm.numFreed += @intCast(cycObjs.items.len);
     }
 
     return GCResult{
         .numCycFreed = @intCast(cycObjs.items.len),
-        .numObjFreed = @intCast(cycObjs.items.len + numObjectsFreed),
+        .numObjFreed = if (cy.Trace) vm.numFreed else 0,
     };
 }
 
@@ -397,20 +401,58 @@ fn markValue(vm: *cy.VM, v: cy.Value) void {
             // TODO: Visit other fiber stacks.
         },
         else => {
-            if (typeId < rt.NumBuiltinTypes) {
-                // Skip, non-cyclable object.
-            } else {
+            // Assume caller used isCycPointer and obj is cyclable.
+            const entry = &vm.types.buf[typeId];
+            if (!entry.isHostObject) {
                 // User type.
-                const numMembers = vm.types.buf[typeId].numFields;
-                const members = obj.object.getValuesConstPtr()[0..numMembers];
+                const members = obj.object.getValuesConstPtr()[0..entry.data.numFields];
                 for (members) |m| {
                     if (m.isCycPointer()) {
                         markValue(vm, m);
                     }
                 }
+            } else {
+                // Host type.
+                if (entry.data.hostObject.getChildren) |getChildren| {
+                    const children = @as(cy.ObjectGetChildrenFn, @ptrCast(@alignCast(getChildren)))(@ptrCast(vm), @ptrFromInt(@intFromPtr(obj) + 8));
+                    for (children.slice()) |child| {
+                        if (child.isCycPointer()) {
+                            markValue(vm, child);
+                        }
+                    }
+                }
             }
         },
     }
+}
+
+pub fn countObjects(vm: *cy.VM) usize {
+    var count: usize = 0;
+    for (vm.heapPages.items()) |page| {
+        var i: u32 = 1;
+        while (i < page.objects.len) {
+            const obj = &page.objects[i];
+            if (obj.freeSpan.typeId != cy.NullId) {
+                count += 1;
+                i += 1;
+            } else {
+                // Freespan, skip to end.
+                i += obj.freeSpan.len;
+            }
+        }
+    }
+
+    // Traverse non-pool cyc nodes.
+    var mbNode: ?*cy.heap.DListNode = vm.cyclableHead;
+    while (mbNode) |node| {
+        count += 1;
+        mbNode = node.next;
+    }
+
+    // Account for the dummy cyclable node.
+    count -= 1;
+
+    return count;
 }
 
 pub fn checkGlobalRC(vm: *cy.VM) !void {

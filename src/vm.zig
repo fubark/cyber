@@ -153,9 +153,9 @@ pub const VM = struct {
     stdHttpClient: if (cy.hasCLI) *http.StdHttpClient else *anyopaque,
 
     iteratorMGID: vmc.MethodGroupId = cy.NullId,
-    pairIteratorMGID: vmc.MethodGroupId = cy.NullId,
+    seqIteratorMGID: vmc.MethodGroupId = cy.NullId,
     nextMGID: vmc.MethodGroupId = cy.NullId,
-    nextPairMGID: vmc.MethodGroupId = cy.NullId,
+    nextSeqMGID: vmc.MethodGroupId = cy.NullId,
     indexMGID: vmc.MethodGroupId = cy.NullId,
     setIndexMGID: vmc.MethodGroupId = cy.NullId,
     sliceMGID: vmc.MethodGroupId = cy.NullId,
@@ -189,9 +189,12 @@ pub const VM = struct {
 
     lastError: ?error{TokenError, ParseError, CompileError, Panic},
 
+    countFrees: if (cy.Trace) bool else void,
+    numFreed: if (cy.Trace) u32 else void,
+
     /// Whether this VM is already deinited. Used to skip the next deinit to avoid using undefined memory.
     deinited: bool,
-    deinitedRtObjects: bool,
+    deinitedRtObjects: bool, 
 
     pub fn init(self: *VM, alloc: std.mem.Allocator) !void {
         self.* = .{
@@ -258,6 +261,8 @@ pub const VM = struct {
             .expGlobalRC = 0,
             .varSymExtras = .{},
             .print = defaultPrint,
+            .countFrees = if (cy.Trace) false else {},
+            .numFreed = if (cy.Trace) 0 else {},
         };
         self.mainFiber.panicType = vmc.PANIC_NONE;
         self.curFiber = &self.mainFiber;
@@ -810,13 +815,16 @@ pub const VM = struct {
     /// Can provide a different display name.
     pub fn addObjectTypeExt(
         self: *VM, parentSymId: sema.SymbolId,
-        nameId: sema.NameSymId, name: []const u8, rTypeSymId: sema.SymbolId
+        nameId: sema.NameSymId, name: []const u8, sTypeId: types.TypeId,
     ) !rt.TypeId {
         const s = vmc.Type{
             .namePtr = name.ptr,
-            .nameLen = name.len,
-            .numFields = 0,
-            .semaTypeId = rTypeSymId,
+            .nameLen = @intCast(name.len),
+            .isHostObject = false,
+            .data = .{
+                .numFields = 0,
+            },
+            .semaTypeId = sTypeId,
         };
         const id: u32 = @intCast(self.types.len);
         try self.types.append(self.alloc, s);
@@ -4316,64 +4324,24 @@ fn callMethod(
                 .sp = newFp,
             };
         },
-        .untypedNative1 => {
-            if (numArgs != data.untypedNative1.numParams) {
+        .untypedHost => {
+            if (numArgs != data.untypedHost.numParams) {
                 return null;
             }
             // Optimize.
             pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
-            @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.untypedNative1.ptr));
+            @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.untypedHost.ptr));
             @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
 
             vm.framePtr = sp;
-            const res: Value = @bitCast(data.untypedNative1.ptr.?(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs));
+            const res: Value = @bitCast(data.untypedHost.ptr.?(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
             if (reqNumRetVals == 1) {
                 sp[startLocal] = res;
             } else {
-                switch (reqNumRetVals) {
-                    0 => {
-                        // Nop.
-                    },
-                    1 => cy.panic("not possible"),
-                    else => {
-                        cy.panic("unsupported");
-                    },
-                }
-            }
-            return cy.fiber.PcSp{
-                .pc = pc + cy.bytecode.CallObjSymInstLen,
-                .sp = sp,
-            };
-        },
-        .untypedNative2 => {
-            if (numArgs != data.untypedNative2.numParams) {
-                return null;
-            }
-            vm.framePtr = sp;
-            const res = data.untypedNative2.ptr(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs);
-            if (res.left.isInterrupt()) {
-                return error.Panic;
-            }
-            if (reqNumRetVals == 2) {
-                sp[startLocal] = res.left;
-                sp[startLocal+1] = res.right;
-            } else {
-                switch (reqNumRetVals) {
-                    0 => {
-                        release(vm, res.left);
-                        release(vm, res.right);
-                    },
-                    1 => {
-                        sp[startLocal] = res.left;
-                        release(vm, res.right);
-                    },
-                    else => {
-                        cy.panic("unsupported");
-                    },
-                }
+                // Nop.
             }
             return cy.fiber.PcSp{
                 .pc = pc + cy.bytecode.CallObjSymInstLen,
@@ -4432,13 +4400,13 @@ fn callMethod(
                 .sp = newFp,
             };
         },
-        .typedNative => {
-            if (numArgs != data.typedNative.numParams) {
+        .typedHost => {
+            if (numArgs != data.typedHost.numParams) {
                 return null;
             }
             // Perform type check on args.
             const vals = sp[startLocal+5..startLocal+5+numArgs-1];
-            const targetFuncSig = vm.compiler.sema.getFuncSig(data.typedNative.funcSigId);
+            const targetFuncSig = vm.compiler.sema.getFuncSig(data.typedHost.funcSigId);
             for (vals, targetFuncSig.params()[1..]) |val, cstrTypeId| {
                 const valTypeId = val.getTypeId();
                 const semaTypeId = vm.types.buf[valTypeId].semaTypeId;
@@ -4448,14 +4416,14 @@ fn callMethod(
             }
 
             // Optimize only if anySelfFuncSigId matches.
-            if (anySelfFuncSigId == data.typedNative.funcSigId) {
+            if (anySelfFuncSigId == data.typedHost.funcSigId) {
                 pc[0] = cy.Inst.initOpCode(.callObjNativeFuncIC);
-                @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.typedNative.ptr));
+                @as(*align(1) u48, @ptrCast(pc + 8)).* = @intCast(@intFromPtr(data.typedHost.ptr));
                 @as(*align(1) u16, @ptrCast(pc + 14)).* = @intCast(typeId);
             }
 
             vm.framePtr = sp;
-            const res: Value = @bitCast(data.typedNative.ptr.?(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs));
+            const res: Value = @bitCast(data.typedHost.ptr.?(@ptrCast(vm), @ptrCast(sp + startLocal + 4), numArgs));
             if (res.isInterrupt()) {
                 return error.Panic;
             }
@@ -4584,7 +4552,7 @@ export fn zDumpEvalOp(vm: *const VM, pc: [*]const cy.Inst) void {
 }
 
 export fn zFreeObject(vm: *cy.VM, obj: *HeapObject) linksection(cy.HotSection) void {
-    cy.heap.freeObject(vm, obj, true, false, true, false);
+    cy.heap.freeObject(vm, obj, true, false, true);
 } 
 
 export fn zEnd(vm: *cy.VM, pc: [*]const cy.Inst) void {
@@ -4970,6 +4938,12 @@ pub var dummyCyclableHead = DummyCyclableNode{
     .typeId = vmc.GC_MARK_MASK | rt.NoneT,
 };
 
-pub fn defaultPrint(_: *UserVM, _: cy.Str) callconv(.C) void {
-    // Default print is a nop.
+pub extern fn hostPrint(str: [*]const u8, strLen: usize) void;
+
+pub fn defaultPrint(_: *UserVM, str: cy.Str) callconv(.C) void {
+    if (cy.isWasmFreestanding) {
+        hostPrint(str.buf, str.len);
+    } else {
+        // Default print is a nop.
+    }
 }

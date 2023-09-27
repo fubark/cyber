@@ -6,6 +6,31 @@
 @host var system string
 @host var vecBitSize int
 
+@host
+type File object:
+  @host func close(self) none
+  @host func iterator(self) any
+  @host func next(self) any
+  @host func read(self, n int) any
+  @host func readToEnd(self) any
+  @host func seek(self, n int) any
+  @host func seekFromCur(self, n int) any
+  @host func seekFromEnd(self, n int) any
+  @host func stat(self) any
+  @host func streamLines(self) any
+  @host func streamLines(self, bufSize int) any
+  @host func write(self, val any) any
+
+@host
+type Dir object:
+  @host func iterator(self) any
+  @host func stat(self) any
+  @host func walk(self) any
+
+@host
+type DirIterator object:
+  @host func next(self) any
+
 @host func access(path any, mode symbol) any
 @host func args() List
 @host func bindLib(path any, decls List) any

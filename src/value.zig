@@ -48,11 +48,6 @@ pub const StaticUstringHeader = struct {
     mruCharIdx: u32,
 };
 
-pub const ValuePair = struct {
-    left: Value,
-    right: Value,
-};
-
 /// NaN tagging over a f64 value.
 /// Represents a f64 value if not a quiet nan.
 /// Otherwise, the sign bit represents either a pointer value or a special value (true, false, none, etc).
@@ -332,6 +327,10 @@ pub const Value = packed union {
         return false;
     }
 
+    pub inline fn asHostObject(self: *const Value, comptime T: type) *T {
+        return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)) + 8);
+    }
+
     pub inline fn asHeapObject(self: *const Value) *cy.HeapObject {
         return @ptrFromInt(@as(usize, @intCast(self.val & ~vmc.POINTER_MASK)));
     }
@@ -413,6 +412,14 @@ pub const Value = packed union {
         } else {
             return False;
         }
+    }
+
+    pub inline fn initHostPtr(ptr: ?*anyopaque) Value {
+        return .{ .val = vmc.NOCYC_POINTER_MASK | (@intFromPtr(ptr) - 8) };
+    }
+
+    pub inline fn initHostCycPtr(ptr: ?*anyopaque) Value {
+        return .{ .val = vmc.CYC_POINTER_MASK | (@intFromPtr(ptr) - 8) };
     }
 
     pub inline fn initPtr(ptr: ?*anyopaque) Value {
@@ -555,9 +562,6 @@ pub const Value = packed union {
                     rt.NativeFuncT => return .nativeFunc,
                     rt.TccStateT => return .tccState,
                     rt.PointerT => return .pointer,
-                    rt.FileT => return .file,
-                    rt.DirT => return .dir,
-                    rt.DirIteratorT => return .dirIter,
                     rt.MetaTypeT => return .metatype,
                     cy.NullId => return .danglingObject,
                     else => {
@@ -593,9 +597,6 @@ pub const ValueUserTag = enum {
     enumT,
     symbol,
     err,
-    file,
-    dir,
-    dirIter,
     metatype,
     danglingObject,
     none,
@@ -660,18 +661,23 @@ pub fn shallowCopy(vm: *cy.VM, val: Value) linksection(cy.StdSection) Value {
                 fmt.panic("Unsupported copy pointer.", &.{});
             },
             else => {
-                const numFields = @as(*const cy.VM, @ptrCast(vm)).types.buf[obj.getTypeId()].numFields;
-                const fields = obj.object.getValuesConstPtr()[0..numFields];
-                var new: Value = undefined;
-                if (numFields <= 4) {
-                    new = cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields) catch cy.fatal();
+                const entry = &@as(*const cy.VM, @ptrCast(vm)).types.buf[obj.getTypeId()];
+                if (!entry.isHostObject) {
+                    const numFields = entry.data.numFields;
+                    const fields = obj.object.getValuesConstPtr()[0..numFields];
+                    var new: Value = undefined;
+                    if (numFields <= 4) {
+                        new = cy.heap.allocObjectSmall(vm, obj.getTypeId(), fields) catch cy.fatal();
+                    } else {
+                        new = cy.heap.allocObject(vm, obj.getTypeId(), fields) catch cy.fatal();
+                    }
+                    for (fields) |field| {
+                        cy.arc.retain(vm, field);
+                    }
+                    return new;
                 } else {
-                    new = cy.heap.allocObject(vm, obj.getTypeId(), fields) catch cy.fatal();
+                    fmt.panic("Unsupported copy host object.", &.{});
                 }
-                for (fields) |field| {
-                    cy.arc.retain(vm, field);
-                }
-                return new;
             },
         }
     } else {

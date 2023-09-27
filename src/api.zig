@@ -13,6 +13,7 @@ const fmt = @import("fmt.zig");
 const debug = @import("debug.zig");
 const VM = cy.VM;
 const Value = cy.Value;
+const fs = @import("std/fs.zig");
 
 /// A simplified VM handle.
 pub const UserVM = struct {
@@ -286,15 +287,15 @@ pub const UserVM = struct {
     }
 
     pub inline fn allocDir(self: *UserVM, fd: std.os.fd_t, iterable: bool) !Value {
-        return cy.heap.allocDir(self.internal(), fd, iterable);
+        return fs.allocDir(self.internal(), fd, iterable);
     }
 
-    pub inline fn allocDirIterator(self: *UserVM, dir: *cy.Dir, recursive: bool) !Value {
-        return cy.heap.allocDirIterator(self.internal(), dir, recursive);
+    pub inline fn allocDirIterator(self: *UserVM, dir: Value, recursive: bool) !Value {
+        return fs.allocDirIterator(self.internal(), dir, recursive);
     }
 
     pub inline fn allocFile(self: *UserVM, fd: std.os.fd_t) !Value {
-        return cy.heap.allocFile(self.internal(), fd);
+        return fs.allocFile(self.internal(), fd);
     }
 
     pub inline fn valueAsString(self: *UserVM, val: Value) []const u8 {

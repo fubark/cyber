@@ -54,10 +54,15 @@ type List object:
   @host func iterator(self) any
   @host func joinString(self, sep any) string
   @host func len(self) int
-  @host func pairIterator(self) any
+  @host func seqIterator(self) any
   @host func remove(self, idx int) any
   @host func resize(self, size int) any
   @host func sort(self, lessFn any) any
+
+@host
+type ListIterator object:
+  @host func next(self) any
+  @host func nextSeq(self) any
 
 @host
 type Map object:
@@ -66,8 +71,13 @@ type Map object:
   @host func remove(self, key any) none
   @host func size(self) int
   @host func iterator(self) any
-  @host func pairIterator(self) any
+  @host func seqIterator(self) any
 
+@host
+type MapIterator object:
+  @host func next(self) any
+  @host func nextSeq(self) any
+  
 -- type string trait:
 --   func append(self, str any) string
 --   func charAt(self, idx int) any

@@ -123,8 +123,8 @@ pub const Chunk = struct {
     varLoader: ?cy.HostVarLoaderFn = null,
     /// For binding @host type declarations.
     typeLoader: ?cy.HostTypeLoaderFn = null,
-    /// Run before declarations are loaded.
-    preLoad: ?cy.PreLoadModuleFn = null,
+    /// Run after type declarations are loaded.
+    postTypeLoad: ?cy.PostLoadModuleFn = null,
     /// Run after declarations have been loaded.
     postLoad: ?cy.PostLoadModuleFn = null,
     /// Run before chunk is destroyed.
@@ -516,6 +516,12 @@ pub const Chunk = struct {
         self.buf.setOpArgU16(pc + 1, @bitCast(-@as(i16, @intCast(pc - toPc))));
     }
 
+    pub fn pushEmptyJumpNone(self: *Chunk, condLocal: LocalId) !u32 {
+        const start: u32 = @intCast(self.buf.ops.items.len);
+        try self.buf.pushOp3(.jumpNone, 0, 0, condLocal);
+        return start;
+    }
+
     pub fn pushEmptyJumpNotNone(self: *Chunk, condLocal: LocalId) !u32 {
         const start: u32 = @intCast(self.buf.ops.items.len);
         try self.buf.pushOp3(.jumpNotNone, 0, 0, condLocal);
@@ -562,6 +568,10 @@ pub const Chunk = struct {
 
     pub fn patchJumpNotCondToCurPc(self: *Chunk, jumpPc: u32) void {
         self.buf.setOpArgU16(jumpPc + 2, @intCast(self.buf.ops.items.len - jumpPc));
+    }
+
+    pub fn patchJumpNoneToCurPc(self: *Chunk, jumpPc: u32) void {
+        self.buf.setOpArgU16(jumpPc + 1, @intCast(self.buf.ops.items.len - jumpPc));
     }
 
     pub fn patchJumpNotNoneToCurPc(self: *Chunk, jumpPc: u32) void {

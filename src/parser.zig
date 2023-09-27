@@ -1428,20 +1428,12 @@ pub const Parser = struct {
                         const firstChild = try self.parseSingleOrIndentedBodyStmts();
                         self.popBlock();
 
-                        const eachClause = try self.pushNode(.eachClause, start);
-                        self.nodes.items[eachClause].head = .{
-                            .eachClause = .{
-                                .value = ident,
-                                .key = NullId,
-                            }
-                        };
-
                         const for_stmt = try self.pushNode(.for_range_stmt, start);
                         self.nodes.items[for_stmt].head = .{
                             .for_range_stmt = .{
                                 .range_clause = range_clause,
                                 .body_head = firstChild,
-                                .eachClause = eachClause,
+                                .eachClause = ident,
                             },
                         };
                         return for_stmt;
@@ -1457,76 +1449,34 @@ pub const Parser = struct {
         } else if (token.tag() == .each_k) {
             self.advanceToken();
             token = self.peekToken();
-            const ident = (try self.parseExpr(.{})) orelse {
-                return self.reportParseError("Expected ident.", &.{});
-            };
-            if (self.nodes.items[ident].node_t == .ident) {
-                token = self.peekToken();
-                if (token.tag() == .colon) {
-                    self.advanceToken();
-                    try self.pushBlock();
-                    const firstChild = try self.parseSingleOrIndentedBodyStmts();
-                    self.popBlock();
-
-                    const each = try self.pushNode(.eachClause, start);
-                    self.nodes.items[each].head = .{
-                        .eachClause = .{
-                            .value = ident,
-                            .key = NullId,
-                        }
-                    };
-
-                    const for_stmt = try self.pushNode(.for_iter_stmt, start);
-                    self.nodes.items[for_stmt].head = .{
-                        .for_iter_stmt = .{
-                            .iterable = expr_id,
-                            .body_head = firstChild,
-                            .eachClause = each,
-                        },
-                    };
-                    return for_stmt;
-                } else if (token.tag() == .comma) {
-                    self.advanceToken();
-                    const secondIdent = (try self.parseExpr(.{})) orelse {
-                        return self.reportParseError("Expected ident.", &.{});
-                    };
-                    if (self.nodes.items[secondIdent].node_t == .ident) {
-                        token = self.peekToken();
-                        if (token.tag() == .colon) {
-                            self.advanceToken();
-                            try self.pushBlock();
-                            const firstChild = try self.parseSingleOrIndentedBodyStmts();
-                            self.popBlock();
-
-                            const each = try self.pushNode(.eachClause, start);
-                            self.nodes.items[each].head = .{
-                                .eachClause = .{
-                                    .value = secondIdent,
-                                    .key = ident,
-                                }
-                            };
-
-                            const for_stmt = try self.pushNode(.for_iter_stmt, start);
-                            self.nodes.items[for_stmt].head = .{
-                                .for_iter_stmt = .{
-                                    .iterable = expr_id,
-                                    .body_head = firstChild,
-                                    .eachClause = each,
-                                },
-                            };
-                            return for_stmt;
-                        } else {
-                            return self.reportParseError("Expected :.", &.{});
-                        }
-                    } else {
-                        return self.reportParseError("Expected ident.", &.{});
-                    }
-                } else {
-                    return self.reportParseError("Expected :.", &.{});
-                }
+            var eachClause: NodeId = undefined;
+            if (token.tag() == .left_bracket) {
+                eachClause = try self.parseSeqDestructure();
             } else {
-                return self.reportParseErrorAt("Expected ident.", &.{}, token.pos());
+                eachClause = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected each clause.", &.{});
+                };
             }
+            token = self.peekToken();
+            if (token.tag() == .colon) {
+                self.advanceToken();
+            } else {
+                return self.reportParseError("Expected :.", &.{});
+            }
+
+            try self.pushBlock();
+            const firstChild = try self.parseSingleOrIndentedBodyStmts();
+            self.popBlock();
+
+            const for_stmt = try self.pushNode(.for_iter_stmt, start);
+            self.nodes.items[for_stmt].head = .{
+                .for_iter_stmt = .{
+                    .iterable = expr_id,
+                    .body_head = firstChild,
+                    .eachClause = eachClause,
+                },
+            };
+            return for_stmt;
         } else {
             return self.reportParseError("Expected :.", &.{});
         }
@@ -1826,6 +1776,74 @@ pub const Parser = struct {
                 else => return,
             }
         }
+    }
+
+    fn parseSeqDestructure(self: *Parser) !NodeId {
+        const start = self.next_pos;
+        // Assume first token is left bracket.
+        self.advanceToken();
+
+        var lastEntry: NodeId = undefined;
+        var firstEntry: NodeId = NullId;
+        outer: {
+            self.consumeWhitespaceTokens();
+            var token = self.peekToken();
+
+            if (token.tag() == .right_bracket) {
+                // Empty.
+                return self.reportParseError("Expected at least one identifier.", &.{});
+            } else {
+                firstEntry = (try self.parseExpr(.{})) orelse {
+                    return self.reportParseError("Expected array item.", &.{});
+                };
+                if (self.nodes.items[firstEntry].node_t != .ident) {
+                    return self.reportParseError("Expected ident.", &.{});
+                }
+                lastEntry = firstEntry;
+            }
+
+            while (true) {
+                self.consumeWhitespaceTokens();
+                token = self.peekToken();
+                if (token.tag() == .comma) {
+                    self.advanceToken();
+                    if (self.peekToken().tag() == .new_line) {
+                        self.advanceToken();
+                        self.consumeWhitespaceTokens();
+                    }
+                } else if (token.tag() == .right_bracket) {
+                    break :outer;
+                }
+
+                token = self.peekToken();
+                if (token.tag() == .right_bracket) {
+                    break :outer;
+                } else {
+                    const ident = (try self.parseExpr(.{})) orelse {
+                        return self.reportParseError("Expected array item.", &.{});
+                    };
+                    if (self.nodes.items[ident].node_t != .ident) {
+                        return self.reportParseError("Expected ident.", &.{});
+                    }
+                    self.nodes.items[lastEntry].next = ident;
+                    lastEntry = ident;
+                }
+            }
+        }
+
+        const seqDestr = try self.pushNode(.seqDestructure, start);
+        self.nodes.items[seqDestr].head = .{
+            .seqDestructure = .{
+                .head = firstEntry,
+            },
+        };
+
+        // Parse closing bracket.
+        const token = self.peekToken();
+        if (token.tag() == .right_bracket) {
+            self.advanceToken();
+            return seqDestr;
+        } else return self.reportParseError("Expected closing bracket.", &.{});
     }
 
     fn parseArrayLiteral(self: *Parser) !NodeId {
@@ -3391,6 +3409,8 @@ pub const NodeType = enum {
     funcDeclInit,
     funcHeader,
     funcParam,
+    hostObjectDecl,
+    seqDestructure,
     objectDecl,
     objectDeclBody,
     objectField,
@@ -3649,9 +3669,8 @@ pub const Node = struct {
             body_head: NodeId,
             eachClause: NodeId,
         },
-        eachClause: struct {
-            value: NodeId,
-            key: NodeId,
+        seqDestructure: struct {
+            head: NodeId,
         },
         sliceExpr: struct {
             arr: NodeId,

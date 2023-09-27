@@ -85,7 +85,7 @@ pub fn build(b: *std.build.Builder) !void {
 
         var opts = getDefaultOptions(target, optimize);
         opts.ffi = false;
-        opts.malloc = .malloc;
+        opts.malloc = if (target.getCpuArch().isWasm()) .zig else .malloc;
         opts.cli = false;
         opts.applyOverrides();
 

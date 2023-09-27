@@ -128,6 +128,8 @@ const Command = enum {
 fn compilePath(alloc: std.mem.Allocator, path: []const u8) !void {
     const src = try std.fs.cwd().readFileAlloc(alloc, path, 1e10);
     defer alloc.free(src);
+    
+    cy.verbose = verbose;
 
     try vm.init(alloc);
     cy.cli.setupVMForCLI(@ptrCast(&vm));
@@ -196,7 +198,6 @@ fn evalPath(alloc: std.mem.Allocator, path: []const u8) !void {
         vm.dumpStats();
     }
     if (cy.TrackGlobalRC) {
-        vm.compiler.deinitRtObjects();
         vm.deinitRtObjects();
         try cy.arc.checkGlobalRC(&vm);
     }

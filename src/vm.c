@@ -239,7 +239,7 @@ static inline TypeId getTypeId(Value val) {
 
 static Str getTypeName(VM* vm, TypeId id) {
 #if TRACE
-    if (id == NULL_U32) {
+    if ((id & TYPE_MASK) == TYPE_MASK) {
         return (Str){ .ptr = "DanglingObject", .len = strlen("DanglingObject") };
     }
 #endif
@@ -412,9 +412,9 @@ static inline ValueResult allocMetaType(VM* vm, uint8_t symType, uint32_t symId)
     return (ValueResult){ .val = VALUE_PTR(res.obj), .code = RES_CODE_SUCCESS };
 }
 
-static inline ValueResult allocNativeFunc1(VM* vm, void* func, u32 numParams, u32 rFuncSigId) {
+static inline ValueResult allocHostFunc(VM* vm, void* func, u32 numParams, u32 rFuncSigId) {
     HeapObjectResult res = zAllocPoolObject(vm);
-    res.obj->nativeFunc1 = (NativeFunc1){
+    res.obj->hostFunc = (HostFunc){
         .typeId = TYPE_NATIVE_FUNC,
         .rc = 1,
         .func = func,
@@ -431,7 +431,7 @@ static inline ValueResult allocFuncFromSym(VM* vm, FuncId funcId) {
         case FUNC_SYM_NATIVEFUNC1: {
             u32 rFuncSigId = sym.innerExtra.nativeFunc1.rFuncSigId;
             u16 numParams = sym.innerExtra.nativeFunc1.typedFlagNumParams & ~((u16)1 << 15);
-            return allocNativeFunc1(vm, sym.inner.nativeFunc1, numParams, rFuncSigId);
+            return allocHostFunc(vm, sym.inner.nativeFunc1, numParams, rFuncSigId);
         }
         case FUNC_SYM_FUNC: {
             return allocLambda(vm, sym.inner.func.pc,
@@ -487,23 +487,23 @@ static void panicStaticMsg(VM* vm, const char* msg) {
 }
 
 static inline void panicDivisionByZero(VM* vm) {
-    return panicStaticMsg(vm, "Division by zero.");
+    panicStaticMsg(vm, "Division by zero.");
 }
 
 static inline void panicOutOfBounds(VM* vm) {
-    return panicStaticMsg(vm, "Out of bounds.");
+    panicStaticMsg(vm, "Out of bounds.");
 }
 
 static inline void panicExpectedInteger(VM* vm) {
-    return panicStaticMsg(vm, "Expected integer operand.");
+    panicStaticMsg(vm, "Expected integer operand.");
 }
 
 static inline void panicExpectedFloat(VM* vm) {
-    return panicStaticMsg(vm, "Expected float operand.");
+    panicStaticMsg(vm, "Expected float operand.");
 }
 
 static inline void panicFieldMissing(VM* vm) {
-    return panicStaticMsg(vm, "Field not found in value.");
+    panicStaticMsg(vm, "Field not found in value.");
 }
 
 static void panicIncompatibleFieldType(VM* vm, SemaTypeId fieldSemaTypeId, Value rightv) {
@@ -720,6 +720,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(BitwiseNot),
         JENTRY(BitwiseLeftShift),
         JENTRY(BitwiseRightShift),
+        JENTRY(JumpNone),
         JENTRY(JumpNotNone),
         JENTRY(AddInt),
         JENTRY(SubInt),
@@ -731,6 +732,7 @@ ResultCode execBytecode(VM* vm) {
         JENTRY(ForRangeInit),
         JENTRY(ForRange),
         JENTRY(ForRangeReverse),
+        JENTRY(SeqDestructure),
         JENTRY(Match),
         JENTRY(StaticFunc),
         JENTRY(StaticVar),
@@ -1883,6 +1885,16 @@ beginSwitch:
             stack[pc[3]] = VALUE_INTEGER(VALUE_AS_INTEGER(left) >> rightInt);
         )
     }
+    CASE(JumpNone): {
+        int16_t offset = READ_I16(1);
+        if (VALUE_IS_NONE(stack[pc[3]])) {
+            pc += offset;
+            NEXT();
+        } else {
+            pc += 4;
+            NEXT();
+        }
+    }
     CASE(JumpNotNone): {
         int16_t offset = READ_I16(1);
         if (!VALUE_IS_NONE(stack[pc[3]])) {
@@ -1980,6 +1992,30 @@ beginSwitch:
             pc += 7;
         }
         NEXT();
+    }
+    CASE(SeqDestructure): {
+        Value val = stack[pc[1]];
+        u8 numDst = pc[2];
+
+        TypeId typeId = getTypeId(val);
+        if (typeId == TYPE_TUPLE) {
+            Tuple* tuple = (Tuple*)VALUE_AS_HEAPOBJECT(val);
+            if (tuple->len < numDst) {
+                panicStaticMsg(vm, "Not enough elements.");
+                RETURN(RES_CODE_PANIC);
+            }
+            for (int i = 0; i < numDst; i += 1) {
+                Value elem = (&tuple->firstValue)[i];
+                retain(vm, elem);
+                stack[pc[3+i]] = elem;
+            }
+            pc += 3 + numDst;
+            NEXT();
+        } else {
+            zDumpValue(val);
+            panicStaticMsg(vm, "Expected tuple.");
+            RETURN(RES_CODE_PANIC);
+        }
     }
     CASE(Match): {
         pc += zOpMatch(vm, pc, stack);

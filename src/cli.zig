@@ -19,7 +19,8 @@ const stdMods = std.ComptimeStringMap(cy.ModuleLoaderResult, .{
         .src = cy.Str.initSlice(os_mod.Src), .srcIsStatic = true,
         .varLoader = os_mod.varLoader,
         .funcLoader = os_mod.funcLoader,
-        .preLoad = os_mod.preLoad,
+        .typeLoader = os_mod.typeLoader,
+        .postTypeLoad = os_mod.postTypeLoad,
         .postLoad = os_mod.postLoad,
     }},
     .{"test", cy.ModuleLoaderResult{

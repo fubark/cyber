@@ -2734,11 +2734,9 @@ test "ARC cycles." {
         \\  var res = performGC()
         \\  -- Cycle still alive in the current stack so no gc.
         \\  t.eq(res['numCycFreed'], 0)
-        \\  t.eq(res['numObjFreed'], 0)
         \\foo()
         \\var res = performGC()
         \\t.eq(res['numCycFreed'], 2)
-        \\t.eq(res['numObjFreed'], 2)
     );
 
     // Reference cycle but still reachable from a root value.
@@ -2752,7 +2750,6 @@ test "ARC cycles." {
         \\g = a
         \\var res = performGC()
         \\t.eq(res['numCycFreed'], 0)
-        \\t.eq(res['numObjFreed'], 0)
     );
 
     // Reference cycle with child non cyclable.
@@ -2767,7 +2764,6 @@ test "ARC cycles." {
         \\foo()
         \\var res = performGC()
         \\t.eq(res['numCycFreed'], 2)
-        \\t.eq(res['numObjFreed'], 3)
     );
 
     // Reference cycle with non pool objects.
@@ -2787,6 +2783,5 @@ test "ARC cycles." {
         \\foo()
         \\var res = performGC()
         \\t.eq(res['numCycFreed'], 2)
-        \\t.eq(res['numObjFreed'], 2)
     );
 }

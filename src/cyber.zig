@@ -48,7 +48,6 @@ pub const codegen = @import("codegen.zig");
 
 pub const value = @import("value.zig");
 pub const Value = value.Value;
-pub const ValuePair = value.ValuePair;
 pub const StaticUstringHeader = value.StaticUstringHeader;
 
 pub const ValueUserTag = value.ValueUserTag;
@@ -69,8 +68,6 @@ pub const heap = @import("heap.zig");
 pub const HeapObject = heap.HeapObject;
 pub const MapInner = heap.MapInner;
 pub const Map = heap.Map;
-pub const Dir = heap.Dir;
-pub const DirIterator = heap.DirIterator;
 pub const CyList = heap.List;
 pub const Closure = heap.Closure;
 pub const Pointer = heap.Pointer;
@@ -180,7 +177,6 @@ pub fn Nullable(comptime T: type) type {
 pub const QuickenFuncFn = *const fn (*UserVM, pc: [*]Inst, [*]const Value, u8) void;
 pub const ZHostFuncFn = *const fn (*UserVM, [*]const Value, u8) Value;
 pub const ZHostFuncCFn = *const fn (*UserVM, [*]const Value, u8) callconv(.C) Value;
-pub const ZHostFuncPairFn = *const fn (*UserVM, [*]const Value, u8) ValuePair;
 
 /// Overlap with `include/cyber.h` for Cyber types.
 pub const Str = extern struct {
@@ -198,7 +194,7 @@ pub const Str = extern struct {
         return self.buf[0..self.len];
     }
 };
-pub const PreLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
+pub const PostTypeLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
 pub const PostLoadModuleFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
 pub const ModuleDestroyFn = *const fn (*UserVM, modId: vmc.ModuleId) callconv(.C) void;
 pub const ModuleResolverFn = *const fn (*UserVM, ChunkId, curUri: Str, spec: Str, outUri: *Str) callconv(.C) bool;
@@ -208,7 +204,7 @@ pub const ModuleLoaderResult = extern struct {
     funcLoader: ?HostFuncLoaderFn = null,
     varLoader: ?HostVarLoaderFn = null,
     typeLoader: ?HostTypeLoaderFn = null,
-    preLoad: ?PreLoadModuleFn = null,
+    postTypeLoad: ?PostTypeLoadModuleFn = null,
     postLoad: ?PostLoadModuleFn = null,
     destroy: ?ModuleDestroyFn = null,
 };
@@ -248,6 +244,7 @@ pub const HostTypeResult = extern struct {
         object: extern struct {
             typeId: *rt.TypeId,
             semaTypeId: *types.TypeId,
+            getChildren: ?ObjectGetChildrenFn,
             finalizer: ?ObjectFinalizerFn,
         },
         coreObject: extern struct {
@@ -257,8 +254,17 @@ pub const HostTypeResult = extern struct {
     },
     type: HostTypeType,
 };
+pub const ValueSlice = extern struct {
+    ptr: [*]Value,
+    len: usize,
+
+    pub fn slice(self: *const ValueSlice) []Value {
+        return self.ptr[0..self.len];
+    }
+};
 pub const HostTypeLoaderFn = *const fn (*UserVM, HostTypeInfo, *HostTypeResult) callconv(.C) bool;
-pub const ObjectFinalizerFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) void;
+pub const ObjectGetChildrenFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) ValueSlice;
+pub const ObjectFinalizerFn = *const fn (*UserVM, ?*anyopaque) callconv (.C) usize;
 pub const PrintFn = *const fn (*UserVM, str: Str) callconv(.C) void;
 
 pub const cli = @import("cli.zig");
@@ -280,3 +286,5 @@ pub inline fn unsupported() noreturn {
 pub inline fn fatal() noreturn {
     panic("error");
 }
+
+pub const apiUnsupportedError = bindings.fromUnsupportedError;

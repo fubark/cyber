@@ -426,6 +426,10 @@ pub fn dumpInst(pcOffset: u32, code: OpCode, pc: [*]const Inst, len: usize, extr
             const jump = @as(*const align(1) u16, @ptrCast(pc + 2)).*;
             fmt.printStderr("{} {} cond={}, offset={}", &.{v(pcOffset), v(code), v(pc[1].val), v(jump)});
         },
+        .jumpNone => {
+            const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
+            fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].val)});
+        },
         .jumpNotNone => {
             const jump = @as(*const align(1) i16, @ptrCast(pc + 1)).*;
             fmt.printStderr("{} {} offset={}, cond={}", &.{v(pcOffset), v(code), v(jump), v(pc[3].val)});
@@ -697,6 +701,9 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .tagLiteral => {
             return 3;
         },
+        .seqDestructure => {
+            return 3 + pc[2].val;
+        },
         .call,
         .captured,
         .constOp,
@@ -706,6 +713,7 @@ pub fn getInstLenAt(pc: [*]const Inst) u8 {
         .setStaticFunc,
         .pushTry,
         .jumpNotNone,
+        .jumpNone,
         .jumpCond,
         .setField,
         .compare,
@@ -925,6 +933,7 @@ pub const OpCode = enum(u8) {
     /// TODO: Rename to symbol.
     tagLiteral = vmc.CodeTagLiteral,
 
+    seqDestructure = vmc.CodeSeqDestructure,
     bitwiseAnd = vmc.CodeBitwiseAnd,
     bitwiseOr = vmc.CodeBitwiseOr,
     bitwiseXor = vmc.CodeBitwiseXor,
@@ -932,6 +941,7 @@ pub const OpCode = enum(u8) {
     bitwiseLeftShift = vmc.CodeBitwiseLeftShift,
     bitwiseRightShift = vmc.CodeBitwiseRightShift,
     jumpNotNone = vmc.CodeJumpNotNone,
+    jumpNone = vmc.CodeJumpNone,
     addInt = vmc.CodeAddInt,
     subInt = vmc.CodeSubInt,
     mulInt = vmc.CodeMulInt,
@@ -981,7 +991,7 @@ pub const OpCode = enum(u8) {
 };
 
 test "bytecode internals." {
-    try t.eq(std.enums.values(OpCode).len, 106);
+    try t.eq(std.enums.values(OpCode).len, 108);
     try t.eq(@sizeOf(Inst), 1);
     try t.eq(@sizeOf(Const), 8);
     try t.eq(@alignOf(Const), 8);

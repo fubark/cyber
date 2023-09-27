@@ -3,7 +3,7 @@ type Account object:
     balance
 
     func new(name):  
-        return Account{ name: name, balance: 0 }
+        return Account{ name: name, balance: 0.0 }
 
     func deposit(self, amt):
         self.balance += amt

@@ -262,7 +262,7 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
 
             // Push props onto stack.
 
-            const numFields = self.compiler.vm.types.buf[typeId].numFields;
+            const numFields = self.compiler.vm.types.buf[typeId].data.numFields;
             // Repurpose stack for sorting fields.
             const sortedFieldsStart = self.assignedVarStack.items.len;
             try self.assignedVarStack.resize(self.alloc, self.assignedVarStack.items.len + numFields);
@@ -305,7 +305,7 @@ fn objectInit(self: *Chunk, nodeId: cy.NodeId, req: RegisterCstr) !GenValue {
                 }
             }
 
-            if (self.compiler.vm.types.buf[typeId].numFields <= 4) {
+            if (self.compiler.vm.types.buf[typeId].data.numFields <= 4) {
                 try self.pushOptionalDebugSym(nodeId);
                 try self.buf.pushOpSlice(.objectSmall, &[_]u8{ @intCast(typeId), tempStart, @intCast(numFields), dst });
             } else {
@@ -1715,27 +1715,35 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 
     const hasEach = node.head.for_iter_stmt.eachClause != cy.NullId;
 
-    var valIdent: cy.Node = undefined;
-    var valVar: sema.LocalVar = undefined;
-    var keyVar: sema.LocalVar = undefined;
-    var keyIdent: cy.Node = undefined;
-    var pairIter = false;
+    var valReg: RegisterId = undefined;
+    var seqRegs: [10]RegisterId = undefined;
+    var seqLen: u32 = 0;
+    var seqIter = false;
 
     if (hasEach) {
         const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
-        if (eachClause.head.eachClause.key != cy.NullId) {
-            keyIdent = c.nodes[eachClause.head.eachClause.key];
-            keyVar = c.genGetVar(keyIdent.head.ident.semaVarId).?;
-            pairIter = true;
-        }
-        valIdent = c.nodes[eachClause.head.eachClause.value];
-        valVar = c.genGetVar(valIdent.head.ident.semaVarId).?;
+        if (eachClause.node_t == .ident) {
+            valReg = c.genGetVar(eachClause.head.ident.semaVarId).?.local;
 
-        // At this point the temp var is loosely defined.
-        c.vars.items[valIdent.head.ident.semaVarId].isDefinedOnce = true;
-        if (pairIter) {
-            c.vars.items[keyIdent.head.ident.semaVarId].isDefinedOnce = true;
+            // At this point the temp var is loosely defined.
+            c.vars.items[eachClause.head.ident.semaVarId].isDefinedOnce = true;
+        } else if (eachClause.node_t == .seqDestructure) {
+            var curId = eachClause.head.seqDestructure.head;
+            while (curId != cy.NullId) {
+                const ident = c.nodes[curId];
+                seqRegs[seqLen] = c.genGetVar(ident.head.ident.semaVarId).?.local;
+                c.vars.items[ident.head.ident.semaVarId].isDefinedOnce = true;
+                seqLen += 1;
+                if (seqLen == 10) {
+                    return c.reportErrorAt("Too many destructure identifiers: 10", &.{}, node.head.for_iter_stmt.eachClause);
+                }
+                curId = ident.next;
+            }
+            seqIter = true;
+        } else {
+            cy.unexpected();
         }
+
     }
 
     // Reserve temp local for iterator.
@@ -1744,12 +1752,12 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
     const funcSigId = try sema.ensureFuncSig(c.compiler, &.{ bt.Any }, bt.Any);
 
     const iterv = try expression(c, node.head.for_iter_stmt.iterable, RegisterCstr.exactMustRetain(iterLocal + 4));
-    if (pairIter) {
-        try pushCallObjSym(c, iterLocal, 1, 1,
-            @intCast(c.compiler.vm.pairIteratorMGID), @intCast(funcSigId),
+    if (seqIter) {
+        try pushCallObjSym(c, iterLocal, 1, true,
+            @intCast(c.compiler.vm.seqIteratorMGID), @intCast(funcSigId),
             node.head.for_iter_stmt.iterable);
     } else {
-        try pushCallObjSym(c, iterLocal, 1, 1,
+        try pushCallObjSym(c, iterLocal, 1, true,
             @intCast(c.compiler.vm.iteratorMGID), @intCast(funcSigId),
             node.head.for_iter_stmt.iterable);
     }
@@ -1757,32 +1765,35 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
         try pushRelease(c, iterv.local, node.head.for_iter_stmt.iterable);
     }
 
+    var skipFromTop: u32 = undefined;
     try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
-    if (pairIter) {
-        try pushCallObjSym(c, iterLocal + 1, 1, 2,
-            @intCast(c.compiler.vm.nextPairMGID), @intCast(funcSigId),
+    if (seqIter) {
+        try pushCallObjSym(c, iterLocal + 1, 1, true,
+            @intCast(c.compiler.vm.nextSeqMGID), @intCast(funcSigId),
             node.head.for_iter_stmt.iterable);
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
-            try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
-            try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+            skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
+            try pushReleases(c, seqRegs[0..seqLen], node.head.for_iter_stmt.eachClause);
+
+            try c.pushDebugSym(nodeId);
+            try c.buf.pushOp2(.seqDestructure, iterLocal + 1, @intCast(seqLen));
+            try c.buf.pushOperands(seqRegs[0..seqLen]);
+            try pushRelease(c, iterLocal + 1, node.head.for_iter_stmt.eachClause);
+        } else {
+            skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
         }
     } else {
-        try pushCallObjSym(c, iterLocal + 1, 1, 1,
+        try pushCallObjSym(c, iterLocal + 1, 1, true,
             @intCast(c.compiler.vm.nextMGID), @intCast(funcSigId),
             node.head.for_iter_stmt.iterable);
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valReg);
         }
+        skipFromTop = try c.pushEmptyJumpNone(iterLocal + 1);
     }
-
-    const skipSkipJump = try c.pushEmptyJumpNotNone(if (pairIter) keyVar.local else valVar.local);
-    const skipBodyJump = try c.pushEmptyJump();
-    c.patchJumpNotNoneToCurPc(skipSkipJump);
 
     const bodyPc = c.buf.ops.items.len;
     const jumpStackSave: u32 = @intCast(c.subBlockJumpStack.items.len);
@@ -1791,34 +1802,44 @@ fn forIterStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 
     const contPc = c.buf.ops.items.len;
 
+    var skipFromInner: u32 = undefined;
     try c.buf.pushOp2(.copyRetainSrc, iterLocal, iterLocal + 5);
-    if (pairIter) {
-        try pushCallObjSym(c, iterLocal + 1, 1, 2,
-            @intCast(c.compiler.vm.nextPairMGID), @intCast(funcSigId),
+    if (seqIter) {
+        try pushCallObjSym(c, iterLocal + 1, 1, true,
+            @intCast(c.compiler.vm.nextSeqMGID), @intCast(funcSigId),
             node.head.for_iter_stmt.iterable);
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
-            try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, keyVar.local);
-            try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 2, valVar.local);
+            // Must check for `none` before destructuring.
+            skipFromInner = try c.pushEmptyJumpNone(iterLocal + 1);
+            try pushReleases(c, seqRegs[0..seqLen], node.head.for_iter_stmt.eachClause);
+
+            try c.pushDebugSym(nodeId);
+            try c.buf.pushOp2(.seqDestructure, iterLocal + 1, @intCast(seqLen));
+            try c.buf.pushOperands(seqRegs[0..seqLen]);
         }
+        try pushRelease(c, iterLocal + 1, node.head.for_iter_stmt.eachClause);
     } else {
-        try pushCallObjSym(c, iterLocal + 1, 1, 1,
+        try pushCallObjSym(c, iterLocal + 1, 1, true,
             @intCast(c.compiler.vm.nextMGID), @intCast(funcSigId),
             node.head.for_iter_stmt.iterable);
         try pushRelease(c, iterLocal + 5, node.head.for_iter_stmt.iterable);
         if (hasEach) {
             try c.pushOptionalDebugSym(nodeId);
-            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valVar.local);
+            try c.buf.pushOp2(.copyReleaseDst, iterLocal + 1, valReg);
         }
     }
 
-    try c.pushJumpBackNotNone(bodyPc, if (pairIter) keyVar.local else valVar.local);
+    if (seqIter and hasEach) {
+        // Already performed none check.
+        try c.pushJumpBackTo(bodyPc);
+        c.patchJumpNoneToCurPc(skipFromInner);
+    } else {
+        try c.pushJumpBackNotNone(bodyPc, iterLocal + 1);
+    }
+    c.patchJumpNoneToCurPc(skipFromTop);
 
     c.patchForBlockJumps(jumpStackSave, c.buf.ops.items.len, contPc);
-
-    c.patchJumpToCurPc(skipBodyJump);
 
     // TODO: Iter local should be a reserved hidden local (instead of temp) so it can be cleaned up by endLocals when aborting the current fiber.
     try c.pushOptionalDebugSym(nodeId);
@@ -1833,8 +1854,7 @@ fn forRangeStmt(c: *Chunk, nodeId: cy.NodeId) !void {
 
     var local: u8 = cy.NullU8;
     if (node.head.for_range_stmt.eachClause != cy.NullId) {
-        const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
-        const ident = c.nodes[eachClause.head.eachClause.value];
+        const ident = c.nodes[node.head.for_range_stmt.eachClause];
         local = c.genGetVar(ident.head.ident.semaVarId).?.local;
 
         // inc = as_clause.head.as_range_clause.inc;
@@ -2308,7 +2328,7 @@ fn callObjSymUnaryExpr(
     const selfv = try expression(self, childId, RegisterCstr.temp);
 
     const funcSigId = try sema.ensureFuncSig(self.compiler, &.{ bt.Any }, bt.Any);
-    try pushCallObjSym(self, callStartLocal, 1, 1, @intCast(mgId), @intCast(funcSigId), debugNodeId);
+    try pushCallObjSym(self, callStartLocal, 1, true, @intCast(mgId), @intCast(funcSigId), debugNodeId);
     if (selfv.retained) {
         try pushRelease(self, selfv.local, debugNodeId);
     }
@@ -2326,7 +2346,7 @@ fn callObjSymUnaryExpr(
 fn callObjSymRelease(self: *Chunk, callStartLocal: u8, mgId: vmc.MethodGroupId, funcSigId: sema.FuncSigId, numArgs: u8, 
     releaseIds: []const u8, dst: RegisterCstr, debugNodeId: cy.NodeId) !GenValue {
 
-    try pushCallObjSym(self, callStartLocal, numArgs, 1, @intCast(mgId), @intCast(funcSigId), debugNodeId);
+    try pushCallObjSym(self, callStartLocal, numArgs, true, @intCast(mgId), @intCast(funcSigId), debugNodeId);
 
     try pushReleases(self, releaseIds, debugNodeId);
 
@@ -2416,7 +2436,7 @@ fn callObjSymTernNoRet(self: *Chunk, mgId: vmc.MethodGroupId, a: cy.NodeId, b: c
     const bType = self.nodeTypes[b];
     const cType = self.nodeTypes[c];
     const funcSigId = try sema.ensureFuncSig(self.compiler, &.{ bt.Any, bType, cType }, bt.Any);
-    try pushCallObjSym(self, callStartLocal, 3, 0, @intCast(mgId), @intCast(funcSigId), debugNodeId);
+    try pushCallObjSym(self, callStartLocal, 3, false, @intCast(mgId), @intCast(funcSigId), debugNodeId);
 
     try pushReleases(self, retainedTemps, debugNodeId);
 
@@ -2470,7 +2490,7 @@ fn callObjSymBinExpr(self: *Chunk, mgId: vmc.MethodGroupId, opts: GenBinExprOpti
 
     const argT = self.nodeTypes[opts.rightId];
     const funcSigId = try sema.ensureFuncSig(self.compiler, &.{ bt.Any, argT }, bt.Any);
-    try pushCallObjSym(self, callStartLocal, 2, 1, @intCast(mgId), @intCast(funcSigId), opts.debugNodeId);
+    try pushCallObjSym(self, callStartLocal, 2, true, @intCast(mgId), @intCast(funcSigId), opts.debugNodeId);
 
     try pushReleaseOpt2(self, selfv.retained, selfv.local, argv.retained, argv.local, opts.debugNodeId);
 
@@ -2514,7 +2534,7 @@ fn callObjSym(self: *Chunk, callStartLocal: u8, callExprId: cy.NodeId) !GenValue
     const methodSymId = try self.compiler.vm.ensureMethodGroup(name);
 
     const funcSigId: u16 = @intCast(ident.head.ident.semaMethodSigId);
-    try pushCallObjSym(self, callStartLocal, @intCast(numArgs), 1,
+    try pushCallObjSym(self, callStartLocal, @intCast(numArgs), true,
         @intCast(methodSymId), funcSigId, callExprId);
     try pushReleases(self, retainedTemps, callExprId);
     return GenValue.initTempValue(callStartLocal, bt.Any, true);
@@ -3188,7 +3208,7 @@ fn binOpAssignToIndex(
 
             const indexType = c.nodeTypes[left.head.indexExpr.right];
             const funcSigId = try sema.ensureFuncSig(c.compiler, &.{ bt.Any, indexType, resv.vtype }, bt.Any);
-            try pushCallObjSym(c, callStartLocal, 3, 0, @intCast(c.compiler.vm.setIndexMGID), @intCast(funcSigId), debugNodeId);
+            try pushCallObjSym(c, callStartLocal, 3, false, @intCast(c.compiler.vm.setIndexMGID), @intCast(funcSigId), debugNodeId);
 
             // ARC cleanup.
             try pushReleases(c, retainedTemps, debugNodeId);
@@ -3468,10 +3488,10 @@ fn pushInlineTernExpr(chunk: *cy.Chunk, code: cy.OpCode, a: u8, b: u8, c: u8, ds
     try chunk.buf.pushOpSlice(code, &.{ a, b, c, dst, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
 }
 
-fn pushCallObjSym(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, numRet: u8, symId: u8, funcSigId: u16, nodeId: cy.NodeId) !void {
+fn pushCallObjSym(chunk: *cy.Chunk, startLocal: u8, numArgs: u8, expectReturn: bool, symId: u8, funcSigId: u16, nodeId: cy.NodeId) !void {
     try chunk.pushDebugSym(nodeId);
     const start = chunk.buf.ops.items.len;
-    try chunk.buf.pushOpSlice(.callObjSym, &.{ startLocal, numArgs, numRet, symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+    try chunk.buf.pushOpSlice(.callObjSym, &.{ startLocal, numArgs, @as(u8, if (expectReturn) 1 else 0), symId, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
     chunk.buf.setOpArgU16(start + 5, funcSigId);
 }
 

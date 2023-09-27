@@ -80,18 +80,18 @@ var list = [1, 2, 3, 4, 5]
 for list each n:
     print n
 ```
-When the `as` clause contains two variables, the for loop will iterate a `PairIterable` object. A PairIterable type contains a `pairIterator()` method that returns a `PairIterator` object. A PairIterator type contains a `nextPair()` method that returns two values or `none` on the first value when finished. 
-The list object is also a PairIterable and the key is the index of the value in the list.
+When the `as` clause contains a sequence destructuring expression, the for loop will iterate a `SequenceIterator` created from the iterating value's `seqIterator()` method. The loop then continues to invoke `nextSeq()` from the `SequenceIterator` to get the next sequence object until `none` is returned. 
+The list object produces an index and value tuple when iterated like this.
 ```cy
 -- Iterate on values and indexes.
-for list each i, n:
+for list each [i, n]:
     print '{i} -> {n}'
 
 -- Iterate on just indexes.
-for list each i, _:
+for list each [i, _]:
     print i 
 ```
-The `for` clause can also iterate over maps with the same idea.
+The `for` clause can also iterate over maps.
 ```cy
 var map = { a: 123, b: 234 }
 
@@ -100,11 +100,11 @@ for map each v:
     print v
 
 -- Iterate on values and keys.
-for map each k, v:
+for map each [k, v]:
     print '{k} -> {v}'
 
 -- Iterate on just keys.
-for map each k, _:
+for map each [k, _]:
     print k
 ```
 

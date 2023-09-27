@@ -10,8 +10,8 @@ t.eq(typeof('abc🦊').id(), 4)
 t.eq(typeof(.abc).id(), 6)
 t.eq(typeof(123).id(), 7)
 t.eq(typeof(123.0).id(), 8)
-t.eq(typeof([]).id(), 9)
-t.eq(typeof({}).id(), 11)
+t.eq(typeof([]).id(), 10)
+t.eq(typeof({}).id(), 12)
 
 -- Referencing type object.
 type Foo object:
@@ -20,19 +20,19 @@ var foo = Foo{ a: 123 }
 t.eq(typeof(foo), Foo)
 
 -- Referencing builtin types.
-t.eq((any).id(), 29)
+t.eq((any).id(), 27)
 t.eq((boolean).id(), 1)
 t.eq((float).id(), 8)
 t.eq((int).id(), 7)
-t.eq((string).id(), 30)
-t.eq((rawstring).id(), 31)
+t.eq((string).id(), 28)
+t.eq((rawstring).id(), 29)
 t.eq((symbol).id(), 6)
-t.eq((List).id(), 9)
-t.eq((Map).id(), 11)
-t.eq((pointer).id(), 24)
+t.eq((List).id(), 10)
+t.eq((Map).id(), 12)
+t.eq((pointer).id(), 25)
 t.eq((error).id(), 2)
-t.eq((fiber).id(), 20)
-t.eq((metatype).id(), 28)
+t.eq((fiber).id(), 21)
+t.eq((metatype).id(), 26)
 
 -- Referencing type name path.
 import os 'os'

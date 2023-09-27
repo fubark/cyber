@@ -76,7 +76,7 @@ pub const VMcompiler = struct {
             .lastErrNode = undefined,
             .lastErrChunk = undefined,
             .errorPayload = undefined,
-            .sema = sema.Model.init(vm.alloc),
+            .sema = sema.Model.init(vm.alloc, self),
             .moduleLoader = defaultModuleLoader,
             .moduleResolver = defaultModuleResolver,
             .chunks = .{},
@@ -146,10 +146,16 @@ pub const VMcompiler = struct {
         std.debug.assert(id == sema.NameRawstring);
         id = try sema.ensureNameSym(self, "symbol");
         std.debug.assert(id == sema.NameSymbol);
+        id = try sema.ensureNameSym(self, "tuple");
+        std.debug.assert(id == sema.NameTuple);
         id = try sema.ensureNameSym(self, "List");
         std.debug.assert(id == sema.NameList);
+        id = try sema.ensureNameSym(self, "ListIterator");
+        std.debug.assert(id == sema.NameListIterator);
         id = try sema.ensureNameSym(self, "Map");
         std.debug.assert(id == sema.NameMap);
+        id = try sema.ensureNameSym(self, "MapIterator");
+        std.debug.assert(id == sema.NameMapIterator);
         id = try sema.ensureNameSym(self, "pointer");
         std.debug.assert(id == sema.NamePointer);
         id = try sema.ensureNameSym(self, "none");
@@ -176,10 +182,16 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Rawstring);
         id = try sema.addBuiltinSym(self, "symbol", rt.SymbolT);
         std.debug.assert(id == bt.Symbol);
+        id = try sema.addBuiltinSym(self, "tuple", rt.TupleT);
+        std.debug.assert(id == bt.Tuple);
         id = try sema.addBuiltinSym(self, "List", rt.ListT);
         std.debug.assert(id == bt.List);
+        id = try sema.addBuiltinSym(self, "ListIterator", rt.ListIteratorT);
+        std.debug.assert(id == bt.ListIter);
         id = try sema.addBuiltinSym(self, "Map", rt.MapT);
         std.debug.assert(id == bt.Map);
+        id = try sema.addBuiltinSym(self, "MapIterator", rt.MapIteratorT);
+        std.debug.assert(id == bt.MapIter);
         id = try sema.addBuiltinSym(self, "pointer", rt.PointerT);
         std.debug.assert(id == bt.Pointer);
         id = try sema.addBuiltinSym(self, "none", rt.NoneT);
@@ -195,8 +207,6 @@ pub const VMcompiler = struct {
         std.debug.assert(id == bt.Undefined);
         id = try sema.addResolvedInternalSym(self, "string");
         std.debug.assert(id == bt.StaticString);
-        id = try sema.addResolvedInternalSym(self, "File");
-        std.debug.assert(id == bt.File);
         id = try sema.addResolvedInternalSym(self, "any");
         std.debug.assert(id == bt.Dynamic);
     }
@@ -315,12 +325,18 @@ pub const VMcompiler = struct {
                         .funcInit => {},
                     }
                 }
+
+                if (chunk.postTypeLoad) |postTypeLoad| {
+                    postTypeLoad(@ptrCast(self.vm), chunk.modId);
+                }
             }
+
             // Check for import tasks.
             for (self.importTasks.items) |task| {
                 try self.performImportTask(task);
             }
             self.importTasks.clearRetainingCapacity();
+
             if (id == self.chunks.items.len) {
                 // No more chunks were added from import tasks.
                 break;
@@ -332,10 +348,6 @@ pub const VMcompiler = struct {
         id = 0;
         while (id < self.chunks.items.len) : (id += 1) {
             var chunk = &self.chunks.items[id];
-
-            if (chunk.preLoad) |preLoad| {
-                preLoad(@ptrCast(self.vm), chunk.modId);
-            }
 
             // Process static declarations.
             for (chunk.parser.staticDecls.items) |decl| {
@@ -537,7 +549,7 @@ pub const VMcompiler = struct {
             newChunk.funcLoader = res.funcLoader;
             newChunk.varLoader = res.varLoader;
             newChunk.typeLoader = res.typeLoader;
-            newChunk.preLoad = res.preLoad;
+            newChunk.postTypeLoad = res.postTypeLoad;
             newChunk.postLoad = res.postLoad;
             newChunk.srcOwned = !res.srcIsStatic;
             newChunk.destroy = res.destroy;

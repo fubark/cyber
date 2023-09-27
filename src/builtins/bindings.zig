@@ -160,7 +160,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const append = try b.ensureMethodGroup("append");
     const byteAt = try b.ensureMethodGroup("byteAt");
     const charAt = try b.ensureMethodGroup("charAt");
-    const close = try b.ensureMethodGroup("close");
     const codeAt = try b.ensureMethodGroup("codeAt");
     const concat = try b.ensureMethodGroup("concat");
     const endsWith = try b.ensureMethodGroup("endsWith");
@@ -180,30 +179,21 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     const less = try b.ensureMethodGroup("less");
     const lower = try b.ensureMethodGroup("lower");
     self.nextMGID = try b.ensureMethodGroup("next");
-    self.nextPairMGID = try b.ensureMethodGroup("nextPair");
-    self.pairIteratorMGID = try b.ensureMethodGroup("pairIterator");
-    const read = try b.ensureMethodGroup("read");
-    const readToEnd = try b.ensureMethodGroup("readToEnd");
+    self.nextSeqMGID = try b.ensureMethodGroup("nextSeq");
+    self.seqIteratorMGID = try b.ensureMethodGroup("seqIterator");
     const repeat = try b.ensureMethodGroup("repeat");
     const replace = try b.ensureMethodGroup("replace");
     const runeAt = try b.ensureMethodGroup("runeAt");
-    const seek = try b.ensureMethodGroup("seek");
-    const seekFromCur = try b.ensureMethodGroup("seekFromCur");
-    const seekFromEnd = try b.ensureMethodGroup("seekFromEnd");
     const slice = try b.ensureMethodGroup("slice");
     const sliceAt = try b.ensureMethodGroup("sliceAt");
     const split = try b.ensureMethodGroup("split");
     const startsWith = try b.ensureMethodGroup("startsWith");
-    const stat = try b.ensureMethodGroup("stat");
     const status = try b.ensureMethodGroup("status");
-    const streamLines = try b.ensureMethodGroup("streamLines");
     const toString = try b.ensureMethodGroup("toString");
     const trim = try b.ensureMethodGroup("trim");
     const upper = try b.ensureMethodGroup("upper");
     const utf8 = try b.ensureMethodGroup("utf8");
     const value = try b.ensureMethodGroup("value");
-    const walk = try b.ensureMethodGroup("walk");
-    const write = try b.ensureMethodGroup("write");
     
     // Init compile time builtins.
     var rsym: sema.Symbol = undefined;
@@ -242,21 +232,20 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     id = try self.addBuiltinType("float", bt.Float);
     std.debug.assert(id == rt.FloatT);
 
+    id = try self.addBuiltinType("Tuple", bt.Tuple);
+    std.debug.assert(id == rt.TupleT);
+
     id = try self.addBuiltinType("List", bt.List);
     std.debug.assert(id == rt.ListT);
 
-    id = try self.addBuiltinType("ListIterator", cy.NullId);
+    id = try self.addBuiltinType("ListIterator", bt.ListIter);
     std.debug.assert(id == rt.ListIteratorT);
-    try b.addMethod(rt.ListIteratorT, self.nextMGID, &.{bt.Any}, bt.Any, listIteratorNext);
-    try b.addMethod2(rt.ListIteratorT, self.nextPairMGID, &.{bt.Any}, bt.Any, listIteratorNextPair);
 
     id = try self.addBuiltinType("Map", bt.Map);
     std.debug.assert(id == rt.MapT);
 
-    id = try self.addBuiltinType("MapIterator", cy.NullId);
+    id = try self.addBuiltinType("MapIterator", bt.MapIter);
     std.debug.assert(id == rt.MapIteratorT);
-    try b.addMethod(rt.MapIteratorT, self.nextMGID,     &.{bt.Any}, bt.Any, mapIteratorNext);
-    try b.addMethod2(rt.MapIteratorT, self.nextPairMGID, &.{bt.Any}, bt.Any, mapIteratorNextPair);
 
     id = try self.addBuiltinType("Closure", cy.NullId);
     std.debug.assert(id == rt.ClosureT);
@@ -388,56 +377,6 @@ pub fn bindCore(self: *cy.VM) linksection(cy.InitSection) !void {
     sb = ModuleBuilder.init(self.compiler, rsym.inner.builtinType.modId);
     try sb.setFunc("$call", &.{ bt.Any }, bt.Pointer, pointerCall);
     try b.addMethod(rt.PointerT, value, &.{ bt.Any }, bt.Integer, pointerValue);
-
-    id = try self.addBuiltinType("File", bt.File);
-    std.debug.assert(id == rt.FileT);
-    if (cy.hasStdFiles) {
-        try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, fileClose);
-        try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, fileIterator);
-        try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, fileNext);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Integer }, bt.Any, fileRead);
-        try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, fileReadToEnd);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Integer }, bt.Any, fileSeek);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Integer }, bt.Any, fileSeekFromCur);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Integer }, bt.Any, fileSeekFromEnd);
-        try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, fileStreamLines);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, fileStreamLines1);
-        try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, fileWrite);
-    } else {
-        try b.addMethod(rt.FileT, close,               &.{ bt.Any }, bt.None, nop);
-        try b.addMethod(rt.FileT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.FileT, self.nextMGID,       &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.FileT, read,                &.{ bt.Any, bt.Integer }, bt.Any, nop);
-        try b.addMethod(rt.FileT, readToEnd,           &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.FileT, seek,                &.{ bt.Any, bt.Integer }, bt.Any, nop);
-        try b.addMethod(rt.FileT, seekFromCur,         &.{ bt.Any, bt.Integer }, bt.Any, nop);
-        try b.addMethod(rt.FileT, seekFromEnd,         &.{ bt.Any, bt.Integer }, bt.Any, nop);
-        try b.addMethod(rt.FileT, stat,                &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.FileT, streamLines,         &.{ bt.Any, bt.Float }, bt.Any, nop);
-        try b.addMethod(rt.FileT, write,               &.{ bt.Any, bt.Any }, bt.Any, nop);
-    }
-
-    id = try self.addBuiltinType("Dir", cy.NullId);
-    std.debug.assert(id == rt.DirT);
-    if (cy.hasStdFiles) {
-        try b.addMethod(rt.DirT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, dirIterator);
-        try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, fileOrDirStat);
-        try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, dirWalk);
-    } else {
-        try b.addMethod(rt.DirT, self.iteratorMGID,   &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.DirT, stat,                &.{ bt.Any }, bt.Any, nop);
-        try b.addMethod(rt.DirT, walk,                &.{ bt.Any }, bt.Any, nop);
-    }
-
-    id = try self.addBuiltinType("DirIterator", cy.NullId);
-    std.debug.assert(id == rt.DirIteratorT);
-    if (cy.hasStdFiles) {
-        try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, dirIteratorNext);
-    } else {
-        try b.addMethod(rt.DirIteratorT, self.nextMGID, &.{ bt.Any }, bt.Any, nop);
-    }
 
     id = try self.addBuiltinType("MetaType", bt.MetaType);
     std.debug.assert(id == rt.MetaTypeT);
@@ -660,24 +599,19 @@ pub fn listConcat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.St
     return Value.None;
 }
 
-fn listIteratorNextPair(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) cy.ValuePair {
+pub fn listIteratorNextSeq(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
         defer obj.listIter.nextIdx += 1;
         const val = list.list.ptr[obj.listIter.nextIdx];
         vm.retain(val);
-        return .{
-            .left = Value.initInt(@intCast(obj.listIter.nextIdx)),
-            .right = val,
-        };
-    } else return .{
-        .left = Value.None,
-        .right = Value.None,
-    };
+        const idx = Value.initInt(@intCast(obj.listIter.nextIdx));
+        return cy.heap.allocTuple(vm.internal(), &.{idx, val}) catch cy.fatal();
+    } else return Value.None;
 }
 
-fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn listIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     const list = obj.listIter.list;
     if (obj.listIter.nextIdx < list.list.len) {
@@ -721,23 +655,17 @@ pub fn mapIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Sect
     return vm.allocMapIterator(&obj.map) catch fatal();
 }
 
-fn mapIteratorNextPair(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) cy.ValuePair {
+pub fn mapIteratorNextSeq(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(Section) Value {
     const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
         vm.retain(entry.key);
         vm.retain(entry.value);
-        return .{
-            .left = entry.key,
-            .right = entry.value,
-        };
-    } else return .{
-        .left = Value.None,
-        .right = Value.None,
-    };
+        return cy.heap.allocTuple(vm.internal(), &.{entry.key, entry.value}) catch cy.fatal();
+    } else return Value.None;
 }
 
-fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
+pub fn mapIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(cy.Section) Value {
     const obj = args[0].asHeapObject();
     const map: *cy.ValueMap = @ptrCast(&obj.mapIter.map.inner);
     if (map.next(&obj.mapIter.nextIdx)) |entry| {
@@ -1954,379 +1882,9 @@ fn stringIndexChar(comptime T: cy.StringType) cy.ZHostFuncFn {
     return S.inner;
 }
 
-pub fn fileStreamLines(vm: *cy.UserVM, args: [*]const Value, nargs: u8) linksection(StdSection) Value {
-    return fileStreamLines1(vm, &[_]Value{ args[0], Value.initF64(@floatFromInt(4096)) }, nargs);
-}
-
-pub fn fileStreamLines1(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    // Don't need to release obj since it's being returned.
-    const obj = args[0].asHeapObject();
-    const bufSize: u32 = @intFromFloat(args[1].asF64());
-    var createReadBuf = true;
-    if (obj.file.hasReadBuf) {
-        if (bufSize != obj.file.readBufCap) {
-            // Cleanup previous buffer.
-            vm.allocator().free(obj.file.readBuf[0..obj.file.readBufCap]);
-        } else {
-            createReadBuf = false;
-        }
-    }
-    // Allocate read buffer.
-    obj.file.iterLines = true;
-    if (createReadBuf) {
-        const readBuf = vm.allocator().alloc(u8, bufSize) catch cy.fatal();
-        obj.file.readBuf = readBuf.ptr;
-        obj.file.readBufCap = @intCast(readBuf.len);
-        obj.file.hasReadBuf = true;
-    }
-    return args[0];
-}
-
-pub fn dirWalk(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-    if (obj.dir.iterable) {
-        vm.retainObject(obj);
-        return vm.allocDirIterator(@ptrCast(obj), true) catch fatal();
-    } else {
-        return prepareThrowSymbol(vm, .NotAllowed);
-    }
-}
-
-pub fn dirIterator(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-    if (obj.dir.iterable) {
-        vm.retainObject(obj);
-        return vm.allocDirIterator(@ptrCast(obj), false) catch fatal();
-    } else {
-        return prepareThrowSymbol(vm, .NotAllowed);
-    }
-}
-
-pub fn fileIterator(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    // Don't need to release obj since it's being returned.
-    const obj = args[0].asHeapObject();
-    obj.file.curPos = 0;
-    obj.file.readBufEnd = 0;
-    return args[0];
-}
-
-pub fn fileSeekFromEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
-    }
-
-    const numBytes = args[1].asInteger();
-    if (numBytes > 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
-    }
-
-    const file = obj.file.getStdFile();
-    file.seekFromEnd(numBytes) catch |err| {
-        return fromUnsupportedError(vm, "seekFromEnd", err, @errorReturnTrace());
-    };
-    return Value.None;
-}
-
-pub fn fileSeekFromCur(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
-    }
-
-    const numBytes = args[1].asInteger();
-
-    const file = obj.file.getStdFile();
-    file.seekBy(numBytes) catch |err| {
-        return fromUnsupportedError(vm, "seekFromCur", err, @errorReturnTrace());
-    };
-    return Value.None;
-}
-
-pub fn fileSeek(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
-    }
-
-    const numBytes = args[1].asInteger();
-    if (numBytes < 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
-    }
-
-    const file = obj.file.getStdFile();
-    const unumBytes: u32 = @intCast(numBytes);
-    file.seekTo(unumBytes) catch |err| {
-        return fromUnsupportedError(vm, "seek", err, @errorReturnTrace());
-    };
-    return Value.None;
-}
-
-pub fn fileWrite(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
-    }
-
-    var buf = vm.valueToTempRawString(args[1]);
-    const file = obj.file.getStdFile();
-    const numWritten = file.write(buf) catch |err| {
-        return fromUnsupportedError(vm, "write", err, @errorReturnTrace());
-    };
-
-    return Value.initInt(@intCast(numWritten));
-}
-
-pub fn fileClose(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-    obj.file.close();
-    return Value.None;
-}
-
-pub fn fileRead(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
-    }
-
-    const numBytes = args[1].asInteger();
-    if (numBytes <= 0) {
-        return prepareThrowSymbol(vm, .InvalidArgument);
-    }
-    const unumBytes: usize = @intCast(numBytes);
-    const file = obj.file.getStdFile();
-
-    const alloc = vm.allocator();
-    const ivm: *cy.VM = @ptrCast(vm);
-    const tempBuf = &ivm.u8Buf;
-    tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
-    tempBuf.ensureTotalCapacityPrecise(alloc, unumBytes) catch fatal();
-
-    const numRead = file.read(tempBuf.buf[0..unumBytes]) catch |err| {
-        return fromUnsupportedError(vm, "read", err, @errorReturnTrace());
-    };
-    // Can return empty string when numRead == 0.
-    return vm.allocRawString(tempBuf.buf[0..numRead]) catch fatal();
-}
-
-pub fn fileReadToEnd(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.file.closed) {
-        return prepareThrowSymbol(vm, .Closed);
-    }
-
-    const file = obj.file.getStdFile();
-
-    const alloc = vm.allocator();
-    const ivm: *cy.VM = @ptrCast(vm);
-    const tempBuf = &ivm.u8Buf;
-    tempBuf.clearRetainingCapacity();
-    defer tempBuf.ensureMaxCapOrClear(alloc, 4096) catch fatal();
-
-    const MinReadBufSize = 4096;
-    tempBuf.ensureTotalCapacity(alloc, MinReadBufSize) catch fatal();
-
-    while (true) {
-        const buf = tempBuf.buf[tempBuf.len .. tempBuf.buf.len];
-        const numRead = file.readAll(buf) catch |err| {
-            return fromUnsupportedError(vm, "readToEnd", err, @errorReturnTrace());
-        };
-        tempBuf.len += numRead;
-        if (numRead < buf.len) {
-            // Done.
-            const all = tempBuf.items();
-            // Can return empty string.
-            return vm.allocRawString(all) catch fatal();
-        } else {
-            tempBuf.ensureUnusedCapacity(alloc, MinReadBufSize) catch fatal();
-        }
-    }
-}
-
-pub fn fileOrDirStat(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    if (obj.getTypeId() == rt.FileT) {
-        if (obj.file.closed) {
-            return prepareThrowSymbol(vm, .Closed);
-        }
-    } else {
-        if (obj.dir.closed) {
-            return prepareThrowSymbol(vm, .Closed);
-        }
-    }
-
-    // File/Dir share the same fd member offset.
-    const file = obj.file.getStdFile();
-    const stat = file.stat() catch |err| {
-        return fromUnsupportedError(vm, "stat", err, @errorReturnTrace());
-    };
-
-    const ivm = vm.internal();
-
-    const map = vm.allocEmptyMap() catch fatal();
-    const sizeKey = vm.allocAstring("size") catch fatal();
-    const modeKey = vm.allocAstring("mode") catch fatal();
-    const typeKey = vm.allocAstring("type") catch fatal();
-    const atimeKey = vm.allocAstring("atime") catch fatal();
-    const ctimeKey = vm.allocAstring("ctime") catch fatal();
-    const mtimeKey = vm.allocAstring("mtime") catch fatal();
-    defer {
-        vm.release(sizeKey);
-        vm.release(modeKey);
-        vm.release(typeKey);
-        vm.release(atimeKey);
-        vm.release(ctimeKey);
-        vm.release(mtimeKey);
-    }
-    map.asHeapObject().map.set(ivm, sizeKey, Value.initF64(@floatFromInt(stat.size))) catch fatal();
-    map.asHeapObject().map.set(ivm, modeKey, Value.initF64(@floatFromInt(stat.mode))) catch fatal();
-    const typeTag: Symbol = switch (stat.kind) {
-        .file => .file,
-        .directory => .dir,
-        else => .unknown,
-    };
-    map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
-    map.asHeapObject().map.set(ivm, atimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.atime, 1000000)))) catch fatal();
-    map.asHeapObject().map.set(ivm, ctimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.ctime, 1000000)))) catch fatal();
-    map.asHeapObject().map.set(ivm, mtimeKey, Value.initF64(@floatFromInt(@divTrunc(stat.mtime, 1000000)))) catch fatal();
-    return map;
-}
-
 pub fn metatypeId(_: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
     const obj = args[0].asHeapObject();
     return Value.initInt(obj.metatype.symId);
-}
-
-pub fn dirIteratorNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-
-    const ivm = vm.internal();
-    const iter: *cy.DirIterator = @ptrCast(obj);
-    if (iter.recursive) {
-        const walker = cy.ptrAlignCast(*std.fs.IterableDir.Walker, &iter.inner.walker);
-        const entryOpt = walker.next() catch |err| {
-            return fromUnsupportedError(vm, "next", err, @errorReturnTrace());
-        };
-        if (entryOpt) |entry| {
-            const map = vm.allocEmptyMap() catch fatal();
-            const pathKey = vm.allocAstring("path") catch fatal();
-            const nameKey = vm.allocAstring("name") catch fatal();
-            const typeKey = vm.allocAstring("type") catch fatal();
-            defer {
-                vm.release(pathKey);
-                vm.release(nameKey);
-                vm.release(typeKey);
-            }
-            const entryPath = vm.allocRawString(entry.path) catch fatal();
-            const entryName = vm.allocRawString(entry.basename) catch fatal();
-            defer {
-                vm.release(entryPath);
-                vm.release(entryName);
-            }
-            map.asHeapObject().map.set(ivm, pathKey, entryPath) catch fatal();
-            map.asHeapObject().map.set(ivm, nameKey, entryName) catch fatal();
-            const typeTag: Symbol = switch (entry.kind) {
-                .file => .file,
-                .directory => .dir,
-                else => .unknown,
-            };
-            map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
-            return map;
-        } else {
-            return Value.None;
-        }
-    } else {
-        const stdIter = cy.ptrAlignCast(*std.fs.IterableDir.Iterator, &iter.inner.iter);
-        const entryOpt = stdIter.next() catch |err| {
-            return fromUnsupportedError(vm, "next", err, @errorReturnTrace());
-        };
-        if (entryOpt) |entry| {
-            const map = vm.allocEmptyMap() catch fatal();
-            const nameKey = vm.allocAstring("name") catch fatal();
-            const typeKey = vm.allocAstring("type") catch fatal();
-            const entryName = vm.allocRawString(entry.name) catch fatal();
-            defer {
-                vm.release(nameKey);
-                vm.release(typeKey);
-                vm.release(entryName);
-            }
-            map.asHeapObject().map.set(ivm, nameKey, entryName) catch fatal();
-            const typeTag: Symbol = switch (entry.kind) {
-                .file => .file,
-                .directory => .dir,
-                else => .unknown,
-            };
-            map.asHeapObject().map.set(ivm, typeKey, Value.initSymbol(@intFromEnum(typeTag))) catch fatal();
-            return map;
-        } else {
-            return Value.None;
-        }
-    }
-}
-
-pub fn fileNext(vm: *cy.UserVM, args: [*]const Value, _: u8) linksection(StdSection) Value {
-    const obj = args[0].asHeapObject();
-    if (obj.file.iterLines) {
-        const alloc = vm.allocator();
-        const readBuf = obj.file.readBuf[0..obj.file.readBufCap];
-        if (cy.getLineEnd(readBuf[obj.file.curPos..obj.file.readBufEnd])) |end| {
-            // Found new line.
-            const line = vm.allocRawString(readBuf[obj.file.curPos..obj.file.curPos+end]) catch cy.fatal();
-
-            // Advance pos.
-            obj.file.curPos += @intCast(end);
-
-            return line;
-        }
-
-        var lineBuf = cy.HeapRawStringBuilder.init(@ptrCast(vm)) catch fatal();
-        defer lineBuf.deinit();
-        // Start with previous string without line delimiter.
-        lineBuf.appendString(alloc, readBuf[obj.file.curPos..obj.file.readBufEnd]) catch cy.fatal();
-
-        // Read into buffer.
-        const file = obj.file.getStdFile();
-        const reader = file.reader();
-
-        while (true) {
-            const bytesRead = reader.read(readBuf) catch cy.fatal();
-            if (bytesRead == 0) {
-                // End of stream.
-                obj.file.iterLines = false;
-                if (lineBuf.len > 0) {
-                    return Value.initPtr(lineBuf.ownObject(alloc));
-                } else {
-                    return Value.None;
-                }
-            }
-            if (cy.getLineEnd(readBuf[0..bytesRead])) |end| {
-                // Found new line.
-                lineBuf.appendString(alloc, readBuf[0..end]) catch cy.fatal();
-
-                // Advance pos.
-                obj.file.curPos = @intCast(end);
-                obj.file.readBufEnd = @intCast(bytesRead);
-
-                return Value.initPtr(lineBuf.ownObject(alloc));
-            } else {
-                lineBuf.appendString(alloc, readBuf[0..bytesRead]) catch cy.fatal();
-
-                // Advance pos.
-                obj.file.curPos = @intCast(bytesRead);
-                obj.file.readBufEnd = @intCast(bytesRead);
-            }
-        }
-    } else {
-        return Value.None;
-    }
 }
 
 pub fn booleanCall(_: *cy.UserVM, args: [*]const Value, _: u8) Value {
@@ -2554,19 +2112,6 @@ pub const ModuleBuilder = struct {
         }
     }
 
-    pub fn addMethod2(
-        self: *const ModuleBuilder, typeId: rt.TypeId, mgId: vmc.MethodGroupId,
-        params: []const types.TypeId, ret: types.TypeId, ptr: cy.ZHostFuncPairFn,
-    ) !void {
-        const funcSigId = try sema.ensureFuncSig(self.compiler, params, ret);
-        const funcSig = self.compiler.sema.getFuncSig(funcSigId);
-        if (funcSig.isParamsTyped) {
-            return error.Unsupported;
-        } else {
-            try self.vm.addMethod(typeId, mgId, rt.MethodInit.initUntypedNative2(funcSigId, ptr, @intCast(params.len)));
-        }
-    }
-
     pub fn mod(self: *const ModuleBuilder) *cy.Module {
         return self.compiler.sema.getModulePtr(self.modId);
     }
@@ -2588,7 +2133,7 @@ pub const ModuleBuilder = struct {
             const id = try self.vm.ensureFieldSym(field);
             try self.vm.addFieldSym(typeId, id, @intCast(i), bt.Any);
         }
-        self.vm.types.buf[typeId].numFields = @intCast(fields.len);
+        self.vm.types.buf[typeId].data.numFields = @intCast(fields.len);
         return typeId;
     }
 };

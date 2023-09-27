@@ -76,7 +76,6 @@ type Thing object:  -- Exported type.
 ```
 
 The annotation `@hide` provides a hint to editors that the static symbol should not appear in the auto-complete. Despite this, the symbol is still reachable.
-> _Planned Feature_
 
 ## Builtin Modules.
 Builtin modules are the bare minimum that comes with Cyber. The [embeddable library]({{<relref "/docs/toc/embedding">}}) contains these modules and nothing more. They include:

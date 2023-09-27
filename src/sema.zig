@@ -527,6 +527,7 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
         .enumDecl => {
             return;
         },
+        .hostObjectDecl,
         .objectDecl => {
             try objectDecl(c, nodeId);
         },
@@ -573,10 +574,18 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             if (node.head.for_iter_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_iter_stmt.eachClause];
-                if (eachClause.head.eachClause.key != cy.NullId) {
-                    _ = try getOrDeclareLocal(c, eachClause.head.eachClause.key, bt.Any);
+                if (eachClause.node_t == .ident) {
+                    _ = try getOrDeclareLocal(c, node.head.for_iter_stmt.eachClause, bt.Any);
+                } else if (eachClause.node_t == .seqDestructure) {
+                    var curId = eachClause.head.seqDestructure.head;
+                    while (curId != cy.NullId) {
+                        _ = try getOrDeclareLocal(c, curId, bt.Any);
+                        const cur = c.nodes[curId];
+                        curId = cur.next;
+                    }
+                } else {
+                    return c.reportErrorAt("Unsupported each clause: {}", &.{v(eachClause.node_t)}, node.head.for_iter_stmt.eachClause);
                 }
-                _ = try getOrDeclareLocal(c, eachClause.head.eachClause.value, bt.Any);
             }
 
             try semaStmts(c, node.head.for_iter_stmt.body_head);
@@ -587,7 +596,11 @@ pub fn semaStmt(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
             if (node.head.for_range_stmt.eachClause != cy.NullId) {
                 const eachClause = c.nodes[node.head.for_range_stmt.eachClause];
-                _ = try getOrDeclareLocal(c, eachClause.head.eachClause.value, bt.Integer);
+                if (eachClause.node_t == .ident) {
+                    _ = try getOrDeclareLocal(c, node.head.for_range_stmt.eachClause, bt.Integer);
+                } else {
+                    return c.reportErrorAt("Unsupported each clause: {}", &.{v(eachClause.node_t)}, node.head.for_range_stmt.eachClause);
+                }
             }
 
             const range_clause = c.nodes[node.head.for_range_stmt.range_clause];
@@ -810,6 +823,7 @@ pub fn declareEnum(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 }
 
 pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
+    c.nodes[nodeId].node_t = .hostObjectDecl;
     const node = c.nodes[nodeId];
     const nameN = c.nodes[node.head.objectDecl.name];
     const name = c.getNodeTokenString(nameN);
@@ -840,6 +854,14 @@ pub fn declareHostObject(c: *cy.Chunk, nodeId: cy.NodeId) !void {
                     const objType = try resolveObjectSym(c.compiler, key, objModId);
                     res.data.object.typeId.* = objType.typeId;
                     res.data.object.semaTypeId.* = objType.sTypeId;
+
+                    c.compiler.vm.types.buf[objType.typeId].isHostObject = true;
+                    c.compiler.vm.types.buf[objType.typeId].data = .{
+                        .hostObject = .{
+                            .getChildren = @ptrCast(res.data.object.getChildren),
+                            .finalizer = @ptrCast(res.data.object.finalizer),
+                        },
+                    };
 
                     // Persist for declareObjectMembers.
                     c.nodes[node.head.objectDecl.name].head.ident.sema_csymId = CompactSymbolId.initSymId(objType.sTypeId);
@@ -896,31 +918,33 @@ pub fn declareObjectMembers(c: *cy.Chunk, nodeId: cy.NodeId) !void {
     var i: u32 = 0;
 
     const body = c.nodes[node.head.objectDecl.body];
-    var fieldId = body.head.objectDeclBody.fieldsHead;
-    while (fieldId != cy.NullId) : (i += 1) {
-        const field = c.nodes[fieldId];
-        const fieldName = c.getNodeTokenString(field);
-        const fieldNameId = try ensureNameSym(c.compiler, fieldName);
-        const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
+    if (node.node_t == .objectDecl) {
+        var fieldId = body.head.objectDeclBody.fieldsHead;
+        while (fieldId != cy.NullId) : (i += 1) {
+            const field = c.nodes[fieldId];
+            const fieldName = c.getNodeTokenString(field);
+            const fieldNameId = try ensureNameSym(c.compiler, fieldName);
+            const fieldSymId = try c.compiler.vm.ensureFieldSym(fieldName);
 
-        var fieldType: SymbolId = undefined;
-        if (field.head.objectField.typeSpecHead != cy.NullId) {
-            fieldType = try getOrResolveTypeSymFromSpecNode(c, field.head.objectField.typeSpecHead);
-        } else {
-            fieldType = bt.Any;
+            var fieldType: SymbolId = undefined;
+            if (field.head.objectField.typeSpecHead != cy.NullId) {
+                fieldType = try getOrResolveTypeSymFromSpecNode(c, field.head.objectField.typeSpecHead);
+            } else {
+                fieldType = bt.Any;
+            }
+
+            try c.compiler.vm.addFieldSym(rtTypeId, fieldSymId, @intCast(i), fieldType);
+
+            try c.compiler.sema.objectMembers.put(c.alloc, .{
+                .objectMemberKey = .{
+                    .objSymId = objSymId,
+                    .memberNameId = fieldNameId,
+                },
+            }, {});
+            fieldId = field.next;
         }
-
-        try c.compiler.vm.addFieldSym(rtTypeId, fieldSymId, @intCast(i), fieldType);
-
-        try c.compiler.sema.objectMembers.put(c.alloc, .{
-            .objectMemberKey = .{
-                .objSymId = objSymId,
-                .memberNameId = fieldNameId,
-            },
-        }, {});
-        fieldId = field.next;
+        c.compiler.vm.types.buf[rtTypeId].data.numFields = i;
     }
-    c.compiler.vm.types.buf[rtTypeId].numFields = i;
 
     var funcId = body.head.objectDeclBody.funcsHead;
     while (funcId != cy.NullId) {
@@ -951,6 +975,10 @@ fn objectDecl(c: *cy.Chunk, nodeId: cy.NodeId) !void {
 
         const func = &c.semaFuncDecls.items[declId];
         const funcN = c.nodes[funcId];
+        if (funcN.node_t != .funcDecl) {
+            funcId = funcN.next;
+            continue;
+        }
 
         if (func.numParams > 0) {
             const param = c.nodes[func.paramHead];
@@ -1160,9 +1188,11 @@ pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !voi
             if (res.type == .standard) {
                 cy.module.declareHostFunc(c.compiler, modId, name, func.funcSigId, declId, res.ptr) catch |err| {
                     if (err == error.DuplicateSymName) {
-                        return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+                        const modName = c.compiler.sema.getModuleName(modId);
+                        return c.reportErrorAt("The symbol `{}.{}` already exists.", &.{v(modName), v(name)}, nodeId);
                     } else if (err == error.DuplicateFuncSig) {
-                        return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+                        const modName = c.compiler.sema.getModuleName(modId);
+                        return c.reportErrorAt("The function `{}.{}` with the same signature already exists.", &.{v(modName), v(name)}, nodeId);
                     } else return err;
                 };
                 const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
@@ -1174,9 +1204,11 @@ pub fn declareHostFunc(c: *cy.Chunk, modId: cy.ModuleId, nodeId: cy.NodeId) !voi
                 }
                 cy.module.declareHostQuickenFunc(c.compiler, modId, name, func.funcSigId, declId, @ptrCast(res.ptr)) catch |err| {
                     if (err == error.DuplicateSymName) {
-                        return c.reportErrorAt("The symbol `{}` already exists.", &.{v(name)}, nodeId);
+                        const modName = c.compiler.sema.getModuleName(modId);
+                        return c.reportErrorAt("The symbol `{}.{}` already exists.", &.{v(modName), v(name)}, nodeId);
                     } else if (err == error.DuplicateFuncSig) {
-                        return c.reportErrorAt("The function `{}` with the same signature already exists.", &.{v(name)}, nodeId);
+                        const modName = c.compiler.sema.getModuleName(modId);
+                        return c.reportErrorAt("The function `{}.{}` with the same signature already exists.", &.{v(modName), v(name)}, nodeId);
                     } else return err;
                 };
                 const key = ResolvedSymKey.initResolvedSymKey(mod.resolvedRootSymId, nameId);
@@ -4283,14 +4315,17 @@ pub const NameInt = 3;
 pub const NameString = 4;
 pub const NameRawstring = 5;
 pub const NameSymbol = 6;
-pub const NameList = 7;
-pub const NameMap = 8;
-pub const NamePointer = 9;
-pub const NameNone = 10;
-pub const NameError = 11;
-pub const NameFiber = 12;
-pub const NameMetatype = 13;
-pub const NameBuiltinTypeEnd = 14;
+pub const NameTuple = 7;
+pub const NameList = 8;
+pub const NameListIterator = 9;
+pub const NameMap = 10;
+pub const NameMapIterator = 11;
+pub const NamePointer = 12;
+pub const NameNone = 13;
+pub const NameError = 14;
+pub const NameFiber = 15;
+pub const NameMetatype = 16;
+pub const NameBuiltinTypeEnd = 17;
 
 pub const FuncDeclId = u32;
 
@@ -4388,6 +4423,7 @@ const FuncSigKey = struct {
 
 pub const Model = struct {
     alloc: std.mem.Allocator,
+    compiler: *cy.VMcompiler,
 
     /// Unique name syms.
     nameSyms: std.ArrayListUnmanaged(Name),
@@ -4419,9 +4455,10 @@ pub const Model = struct {
 
     objectMembers: std.HashMapUnmanaged(ObjectMemberKey, void, cy.hash.KeyU64Context, 80),
 
-    pub fn init(alloc: std.mem.Allocator) Model {
+    pub fn init(alloc: std.mem.Allocator, compiler: *cy.VMcompiler) Model {
         return .{
             .alloc = alloc,
+            .compiler = compiler,
             .nameSyms = .{},
             .nameSymMap = .{},
             .resolvedSyms = .{},
@@ -4524,6 +4561,12 @@ pub const Model = struct {
 
     pub inline fn getModule(self: *Model, id: cy.ModuleId) cy.Module {
         return self.modules.items[id];
+    }
+
+    pub fn getModuleName(self: *Model, id: cy.ModuleId) []const u8 {
+        const symId = self.getModule(id).resolvedRootSymId;
+        const nameId = self.getSymbol(symId).key.resolvedSymKey.nameId;
+        return getName(self.compiler, nameId);
     }
 
     pub inline fn getModulePtr(self: *Model, id: cy.ModuleId) *cy.Module {
@@ -4651,6 +4694,7 @@ test "sema internals." {
     try t.eq(@sizeOf(CapVarDesc), 4);
 
     try t.eq(@offsetOf(Model, "alloc"), @offsetOf(vmc.SemaModel, "alloc"));
+    try t.eq(@offsetOf(Model, "compiler"), @offsetOf(vmc.SemaModel, "compiler"));
     try t.eq(@offsetOf(Model, "nameSyms"), @offsetOf(vmc.SemaModel, "nameSyms"));
     try t.eq(@offsetOf(Model, "nameSymMap"), @offsetOf(vmc.SemaModel, "nameSymMap"));
     try t.eq(@offsetOf(Model, "resolvedSyms"), @offsetOf(vmc.SemaModel, "resolvedSyms"));
